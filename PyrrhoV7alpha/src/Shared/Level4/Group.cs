@@ -1,12 +1,8 @@
-using System.Collections.Generic;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using System.Text;
-using System.Runtime.InteropServices;
-using System.Text.RegularExpressions;
-using Pyrrho.Level2;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -20,77 +16,62 @@ namespace Pyrrho.Level4
     /// shareable as of 26 April 2021
     internal class GroupingRowSet : RowSet
     {
-        internal const long
-            Groupings = -406;   //CList<long>   Grouping
-        internal CTree<long, bool> having =>
-            (CTree<long, bool>)mem[TableExpression.Having]??CTree<long,bool>.Empty;
-        internal CList<long> groupings =>
-            (CList<long>)mem[Groupings] ?? CList<long>.Empty;
-        internal override RowSet Source(Context cx)
-        {
-            return cx.data[source];
-        }
         /// <summary>
         /// Constructor: called from QuerySpecification
         /// </summary>
-        /// <param name="q">The query</param>
+        /// <param name="q">The query select list (a Domain defpos)</param>
         /// <param name="rs">The source rowset</param>
         /// <param name="gr">The group specification</param>
         /// <param name="h">The having condition</param>
-        public GroupingRowSet(Context cx, Query q, RowSet rs, long gr, BTree<long, bool> h)
-            : base(q.defpos, cx, q.domain, rs.finder, _Key(cx, q, gr), q.where,
-                  q.ordSpec, q.matches, _Mem(cx, rs, gr, h))
+        public GroupingRowSet(Iix dp,Context cx, long q, RowSet rs, BTree<long,object> m)
+            : base(dp.dp, cx, _Mem(dp,cx,q, rs, m))
+        {
+            cx.Add(this);
+        }
+        protected GroupingRowSet(long dp, Context cx, BTree<long, object> m) 
+            : base(dp,cx, m) 
         { }
+        protected GroupingRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
         /// For views etc should propagate grouping to the source rowset rs as much as possible
         /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="rs"></param>
-        /// <param name="gr"></param>
-        /// <param name="h"></param>
-        /// <returns></returns>
-        static BTree<long,object> _Mem(Context cx,RowSet rs,long gr,BTree<long,bool>h)
+        /// <param name="dp">The defpos of the future GroupingRowSet</param>
+        /// <param name="cx">The context</param>
+        /// <param name="d">The query select list (a Domain defpos)</param>
+        /// <param name="rs">The source rowset</param>
+        /// <param name="m">Properties for the new GroupingRowSet</param>
+        /// <returns>Updated list of properties for the GroupingRowSet</returns>
+        static BTree<long, object> _Mem(Iix dp, Context cx,long d, RowSet rs, 
+            BTree<long,object> m)
         {
-            var m = BTree<long, object>.Empty;
-            m += (_Source,rs.defpos);
-            m += (TableExpression.Having,h);
-            m += (TableExpression.Group, gr);
+            var gr = (long)m[Group];
             var groups = (GroupSpecification)cx.obs[gr];
             var gs = CList<long>.Empty;
             for (var b = groups.sets.First(); b != null; b = b.Next())
                 gs = _Info(cx,(Grouping)cx.obs[b.value()],gs);
             m += (Groupings,gs);
+            m += (_Domain, d);
+            var fi = rs.finder;
+            var ad = (Domain)cx.obs[d];
+            for (var b = gs.First(); b != null; b = b.Next())
+                for (var c = ((Grouping)cx.obs[b.value()]).members.First(); c != null; c = c.Next())
+                    fi += (c.key(), new Finder(c.key(), dp.dp));
+            for (var b = cx._Dom(ad).aggs.First(); b != null; b = b.Next())
+                fi += (b.key(), new Finder(b.key(), dp.dp));
+            m += (_Finder, fi); 
+            m += (IIx, cx.Ix(rs.iix.lp,dp.dp));
+            m += (_Source, rs.defpos);
+            if (rs.Keys() is CList<long> ks)
+                m += (Index.Keys, ks);
+            m += (Index.Keys, _Key(cx, gr));
             m += (Table.LastData, rs.lastData);
+            var h = (CTree<long,bool>)m[Having]??CTree<long,bool>.Empty;
+            m += (_Depth, cx.Depth(h,groups,cx._Dom(d),rs));
             return m;
         }
-        protected GroupingRowSet(Context cx,GroupingRowSet rs, CTree<long,Finder> nd,
-            BList<TRow> rws,bool bt) :base(cx,rs+(_Rows,rws),nd,bt)
-        { }
-        protected GroupingRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
         {
             return new GroupingRowSet(defpos,m);
-        }
-        internal override RowSet New(Context cx,CTree<long, Finder> nd, bool bt)
-        {
-            return new GroupingRowSet(cx,this,nd,rows,bt);
-        }
-        /// <summary>
-        /// We need to change some properties, but if it has come from a framing
-        /// it will be shareable and so we must create a new copy first
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="m"></param>
-        /// <returns></returns>
-        internal override DBObject New(Context cx, BTree<long, object> m)
-        {
-            if (m == mem)
-                return this;
-            if (defpos >= Transaction.Analysing)
-                return (RowSet)New(m);
-            var rs = new GroupingRowSet(cx.GetUid(), m);
-            Fixup(cx, rs);
-            return rs;
         }
         public static GroupingRowSet operator+(GroupingRowSet rs,(long,object)x)
         {
@@ -106,36 +87,21 @@ namespace Pyrrho.Level4
             r += (Groupings, cx.Replaced(groupings));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (GroupingRowSet)base.Fix(cx);
+            var r = (GroupingRowSet)base._Fix(cx);
             var ng = cx.Fix(groupings);
             if (ng != groupings)
                 r += (Groupings, ng);
-            cx.aggregators += (r.defpos, true);
             return r;
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (GroupingRowSet)base._Relocate(wr);
-            r += (Groupings, wr.Fix(groupings));
+            var r = (GroupingRowSet)base._Relocate(cx);
+            r += (Groupings, cx.Fix(groupings));
             return r;
         }
-        static CList<long> _Info(Context cx,Grouping g,CList<long>gs)
-        {
-            gs += g.defpos;
-            var cs = BList<SqlValue>.Empty;
-            for (var b=g.members.First();b!=null;b=b.Next())
-                cs += (SqlValue)cx.obs[b.key()];
-            var dm = new Domain(Sqlx.ROW,cs);
-            cx.Replace(g,g + (DBObject._Domain, dm));
-            for (var b = g.groups.First(); b != null; b = b.Next())
-                gs = _Info(cx, b.value(), gs);
-            return gs;
-        }
-        static CList<long> _Key(Context cx,Query q,long gr)
+        static CList<long> _Key(Context cx,long gr)
         {
             var ns = CList<long>.Empty;
             var ck = BTree<long, bool>.Empty;
@@ -153,6 +119,14 @@ namespace Pyrrho.Level4
                 }
             return ns;
         }
+        protected override bool CanAssign()
+        {
+            return false;
+        }
+        internal override bool Built(Context cx)
+        {
+            return mem.Contains(_Built);
+        }
         /// <summary>
         /// Build the grouped tables in the result.
         /// </summary>
@@ -161,33 +135,44 @@ namespace Pyrrho.Level4
         internal override RowSet Build(Context _cx)
         {
             var cx = new Context(_cx);
-            cx.finder += Source(cx).finder;
+            var sce = (RowSet)cx.obs[source];
+            cx.finder += sce.finder;
             var ts = BTree<long, BTree<PRow,BTree<long,Register>>>.Empty;
             // Traverse the source rowset building partial sums for aggregation expressions
             // for each combination of grouping expressions.
             // Both of these are SqlValues of course.
-            for (var rb = FirstB(cx) as GroupingBuilding; rb != null;
-                rb = rb.Next(cx) as GroupingBuilding)
+            for (var rb = sce.First(cx); rb != null;
+                rb = rb.Next(cx))
                 if (!rb.IsNull)
+                {
+                    for (var b = matches.First(); b != null; b = b.Next()) // this is now redundant
+                    {
+                        var sc = cx.obs[b.key()] as SqlValue;
+                        if (sc==null || sc.CompareTo(b.value()) != 0)
+                                goto next;
+                    }
+                    for (var b = where.First(); b != null; b = b.Next()) // so is this
+                        if (cx.obs[b.key()].Eval(cx) != TBool.True)
+                            goto next;
                     for (var gb = groupings.First(); gb != null; gb = gb.Next())
                     {
                         var g = (Grouping)_cx.obs[gb.value()];
                         var tg = ts[g.defpos] ?? BTree<PRow, BTree<long, Register>>.Empty;
-                        for (var b = rb._grs.having.First(); b != null; b = b.Next())
-                            if (cx.obs[b.key()].Eval(cx) != TBool.True)
-                                goto next;
-                        var key = cx.MakeKey(keys);
+                        var key = cx.MakeKey(g.keys);
                         var tk = tg[key] ?? BTree<long, Register>.Empty;
-                        if (tk==BTree<long,Register>.Empty)
-                            for (var b = rt.First(); b != null; b = b.Next())
+                        var dm = cx._Dom(this);
+                        if (tk == BTree<long, Register>.Empty)
+                            for (var b = dm.rowType.First(); b != null; b = b.Next())
                                 tk = cx.obs[b.value()].StartCounter(cx, this, tk);
-                        for (var b = rt.First(); b != null; b = b.Next())
+                        for (var b = dm.rowType.First(); b != null; b = b.Next())
                             tk = cx.obs[b.value()].AddIn(cx, rb, tk);
                         tg += (key, tk);
                         ts += (g.defpos, tg);
-                        next:;
                     }
+                next:;
+                }
             var rows= BList<TRow>.Empty;
+            cx.finder = finder + cx.finder;
             for (var gb = ts.First(); gb != null; gb = gb.Next())
             {
                 var g = cx.obs[gb.key()] as Grouping;
@@ -195,21 +180,33 @@ namespace Pyrrho.Level4
                 {
                     var vs = CTree<long,TypedValue>.Empty;
                     var k = b.key();
-                    for (var c = g.members.First(); c != null; c = c.Next(), k = k._tail)
-                        vs+=(c.key(), k._head);
+                    for (var c = g.keys.First(); c != null; c = c.Next(), k = k._tail)
+                    {
+                        var p = c.value();
+                        vs += (p, k._head);
+                        cx.values += (p, k._head);
+                    }
                     cx.funcs = ts[g.defpos][b.key()];
-                    for (var c = rt.First(); c != null; c = c.Next())
+                    // for the having calculation to work we must ensure that
+                    // having uses the uids that are in aggs
+                    for (var h = having.First(); h != null; h = h.Next())
+                        if (cx.obs[h.key()].Eval(cx) != TBool.True)
+                            goto skip;
+                    var dm = cx._Dom(this);
+                    for (var c = dm.rowType.First(); c != null; c = c.Next())
                         if (!vs.Contains(c.value()))
                         {
                             var sv = (SqlValue)cx.obs[c.value()];
                             vs+=(sv.defpos,sv.Eval(cx));
                         }
-                    rows+= new TRow(domain, vs);
+                    rows+= new TRow(dm, vs);
+                skip:;
                 }
             }
-            return new GroupingRowSet(cx,this,needed,rows,true);
+            return (RowSet)New(_cx,E+(_Rows,rows)+(_Built,true)+(Index.Tree,null));
         }
-        internal override Context Insert(Context cx, RowSet fm, bool iter, string prov, Level cl)
+        internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, bool iter,
+            CList<long> rt)
         {
             throw new DBException("42174");
         }
@@ -225,65 +222,26 @@ namespace Pyrrho.Level4
         {
             return GroupingBookmark.New(this, _cx);
         }
-        Cursor FirstB(Context _cx)
+        internal override void Show(StringBuilder sb)
         {
-            return GroupingBuilding.New(_cx, this);
-        }
-        internal class GroupingBuilding : Cursor
-        {
-            public readonly GroupingRowSet _grs;
-            public readonly Cursor _bbm;
-            public readonly ABookmark<TRow, BTree<long, TypedValue>> _ebm;
-            GroupingBuilding(Context _cx, GroupingRowSet grs, Cursor bbm,
-                ABookmark<TRow, BTree<long, TypedValue>> ebm, int pos)
-                : base(_cx, grs, pos, bbm?._defpos??0,bbm?._ppos??0,
-                      new TRow(grs.domain, bbm.values))
+            base.Show(sb);
+            sb.Append(" groupings (");
+            var cm = "";
+            for (var b=groupings.First();b!=null;b=b.Next())
             {
-                _grs = grs;
-                _bbm = bbm;
-                _ebm = ebm;
-                _cx.cursors += (grs.defpos, this);
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value()));
             }
-            internal static GroupingBuilding New(Context cx, GroupingRowSet grs)
+            sb.Append(")");
+            if (having!=CTree<long,bool>.Empty)
             {
-                Cursor bbm;
-                var oc = cx.finder;
-                var sce = grs.Source(cx);
-                cx.finder += sce.finder;
-                for (bbm = sce.First(cx); bbm != null; bbm = bbm.Next(cx))
+                sb.Append(" having ("); cm = "";
+                for (var b=having.First();b!=null;b=b.Next())
                 {
-                    var rb = new GroupingBuilding(cx, grs, bbm, null, 0);
-                    if (rb.Matches(cx))
-                    {
-                        cx.finder = oc;
-                        return rb;
-                    }
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key()));
                 }
-                cx.finder = oc;
-                return null;
-            }
-            protected override Cursor _Next(Context _cx)
-            {
-                var bbm = _bbm;
-                for (bbm = bbm.Next(_cx); bbm != null; bbm = bbm.Next(_cx))
-                {
-                    var rb = new GroupingBuilding(_cx, _grs, bbm, _ebm, _pos + 1);
-                    if (rb.Matches(_cx))
-                        return rb;
-                }
-                return null;
-            }
-            protected override Cursor _Previous(Context cx)
-            {
-                throw new System.NotImplementedException(); // never
-            }
-            internal override BList<TableRow> Rec()
-            {
-                return BList<TableRow>.Empty;
-            }
-            internal override Cursor _Fix(Context cx)
-            {
-                throw new System.NotImplementedException();
+                sb.Append(")");
             }
         }
         /// <summary>
@@ -296,7 +254,7 @@ namespace Pyrrho.Level4
             public readonly ABookmark<int, TRow> _ebm;
             GroupingBookmark(Context _cx, GroupingRowSet grs,
                 ABookmark<int,TRow> ebm, int pos)
-                : base(_cx, grs, pos, -1L,0,ebm.value())
+                : base(_cx, grs, pos, E,ebm.value())
             {
                 _grs = grs;
                 _ebm = ebm;
@@ -310,7 +268,7 @@ namespace Pyrrho.Level4
             }
             GroupingBookmark(Context cx,GroupingBookmark cu): base(cx,cu)
             {
-                _grs = (GroupingRowSet)cx.data[cx.RsReloc(cu._rowsetpos)].Fix(cx);
+                _grs = (GroupingRowSet)cx.obs[cx.Fix(cu._rowsetpos)].Fix(cx);
                 _ebm = _grs.rows.PositionAt(cu?._pos ?? 0);
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
@@ -320,36 +278,20 @@ namespace Pyrrho.Level4
             internal static GroupingBookmark New(Context cx, GroupingRowSet grs)
             {
                 var ox = cx.finder;
-                var sce = grs.Source(cx);
-                cx.finder += sce.finder;
-                for (var ebm = grs.rows?.First(); ebm != null; ebm = ebm.Next())
-                {
-                    var r = new GroupingBookmark(cx, grs, ebm, 0);
-                    if (r.Matches(cx) && Eval(grs.where, cx))
-                    {
-                        cx.finder = ox;
-                        return r;
-                    }
-                }
+                cx.finder += grs.finder;
+                var ebm = grs.rows?.First();
+                var r = (ebm==null)?null:new GroupingBookmark(cx, grs, ebm, 0);
                 cx.finder = ox;
-                return null;
+                return r;
             }
             internal static GroupingBookmark New(GroupingRowSet grs, Context cx)
             {
                 var ox = cx.finder;
-                var sce = grs.Source(cx);
-                cx.finder += sce.finder;
-                for (var ebm = grs.rows?.Last(); ebm != null; ebm = ebm.Previous())
-                {
-                    var r = new GroupingBookmark(cx, grs, ebm, 0);
-                    if (r.Matches(cx) && Eval(grs.where, cx))
-                    {
-                        cx.finder = ox;
-                        return r;
-                    }
-                }
+                cx.finder += grs.finder;
+                var ebm = grs.rows?.Last();
+                var r = (ebm == null) ? null : new GroupingBookmark(cx, grs, ebm, 0);
                 cx.finder = ox;
-                return null;
+                return r;
             }
             /// <summary>
             /// Move to the next grouped row
@@ -358,44 +300,215 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context cx)
             {
                 var ox = cx.finder;
-                cx.finder += _grs.Source(cx).finder;
+                cx.finder += _grs.finder;
                 var ebm = _ebm.Next();
-                var dt =_grs.domain;
-                for (; ebm != null; ebm = ebm.Next())
+                if (ebm==null)
                 {
-                    var r = new GroupingBookmark(cx, _grs, ebm, _pos + 1);
-                    for (var b = dt.representation.First(); b != null; b = b.Next())
-                        ((SqlValue)cx.obs[b.key()]).OnRow(cx,r);
-                    if (r.Matches(cx) && Eval(_grs.where, cx))
-                    {
-                        cx.finder = ox;
-                        return r;
-                    }
+                    cx.finder = ox;
+                    return null;
                 }
-                return null;
+                var dt = cx._Dom(_grs);
+                var r = new GroupingBookmark(cx, _grs, ebm, _pos + 1);
+                for (var b = dt.representation.First(); b != null; b = b.Next())
+                    ((SqlValue)cx.obs[b.key()]).OnRow(cx, r);
+                cx.finder = ox;
+                return r;
             }
             protected override Cursor _Previous(Context cx)
             {
                 var ox = cx.finder;
-                cx.finder += _grs.Source(cx).finder;
+                cx.finder += _grs.finder;
                 var ebm = _ebm.Previous();
-                var dt = _grs.domain;
-                for (; ebm != null; ebm = ebm.Previous())
+                if (ebm == null)
                 {
-                    var r = new GroupingBookmark(cx, _grs, ebm, _pos + 1);
-                    for (var b = dt.representation.First(); b != null; b = b.Next())
-                        ((SqlValue)cx.obs[b.key()]).OnRow(cx, r);
-                    if (r.Matches(cx) && Eval(_grs.where, cx))
-                    {
-                        cx.finder = ox;
-                        return r;
-                    }
+                    cx.finder = ox;
+                    return null;
                 }
-                return null;
+                var dt = cx._Dom(_grs);
+                var r = new GroupingBookmark(cx, _grs, ebm, _pos + 1);
+                for (var b = dt.representation.First(); b != null; b = b.Next())
+                    ((SqlValue)cx.obs[b.key()]).OnRow(cx, r);
+                cx.finder = ox;
+                return r;
             }
             internal override Cursor _Fix(Context cx)
             {
                 return new GroupingBookmark(cx, this);
+            }
+            internal override BList<TableRow> Rec()
+            {
+                return BList<TableRow>.Empty;
+            }
+        }
+    }
+    // shareable as of 26 April 2021
+    internal class EvalRowSet : RowSet
+    {
+        internal TRow row => (TRow)mem[TrivialRowSet.Singleton];
+        /// <summary>
+        /// Constructor: Build a rowSet that aggregates obs from a given source.
+        /// For views we should propagate aggregations from q to the source rowset rs
+        /// </summary>
+        /// <param name="rs">The source obs</param>
+        /// <param name="h">The having condition</param>
+		public EvalRowSet(Iix dp, Context cx, long q, RowSet rs,
+            BTree<long, object> m)
+            : base(dp.dp, cx, _Mem(dp.dp, cx, q, rs, m) + (_Source, rs.defpos)
+                  + (IIx, new Iix(rs.iix, dp.dp))
+                  + (RSTargets, rs.rsTargets)
+                  + (Table.LastData, rs.lastData))
+        {
+            cx.Add(this);
+        }
+        protected EvalRowSet(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        static BTree<long, object> _Mem(long dp, Context cx, long q, RowSet rs,
+                BTree<long, object> m)
+        {
+            var h = (CTree<long, bool>)m[Having] ?? CTree<long, bool>.Empty;
+            var dm = cx._Dom(q);
+            var fi = rs.finder;
+            for (var b = dm.aggs.First(); b != null; b = b.Next())
+                fi += (b.key(), new Finder(b.key(), dp));
+            var r = new BTree<long, object>(Domain.Aggs, dm.aggs);
+            if (h != CTree<long, bool>.Empty)
+                r += (Having, h);
+            r = r + (_Domain, dm.defpos) + (_Finder, fi);
+            rs = rs.Apply(new BTree<long, object>(Domain.Aggs, dm.aggs), cx, rs);
+            return r;
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new EvalRowSet(defpos, m);
+        }
+        public static EvalRowSet operator +(EvalRowSet rs, (long, object) x)
+        {
+            return (EvalRowSet)rs.New(rs.mem + x);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new EvalRowSet(dp, mem);
+        }
+        protected override Cursor _First(Context _cx)
+        {
+            return new EvalBookmark(_cx, this);
+        }
+        protected override Cursor _Last(Context _cx)
+        {
+            return new EvalBookmark(_cx, this);
+        }
+        protected override bool CanAssign()
+        {
+            return false;
+        }
+        internal override bool Built(Context cx)
+        {
+            return mem.Contains(_Built);
+        }
+        internal override RowSet Build(Context cx)
+        {
+            var tg = BTree<long, Register>.Empty;
+            var sce = (RowSet)cx.obs[source];
+            cx.finder += sce.finder;
+            var dm = cx._Dom(this);
+            var cols = dm.rowType;
+            if (cols.Length == 1 && cx.obs[cols[0]] is SqlFunction sf && sce.Built(cx) &&
+                sf.kind == Sqlx.COUNT && sf.mod == Sqlx.TIMES && where == CTree<long, bool>.Empty)
+                return (RowSet)New(cx, E + (_Built, true) + (TrivialRowSet.Singleton,
+                    new TRow(dm, new CTree<long, TypedValue>(sf.defpos,
+                        new TInt(sce.Build(cx)?.Cardinality(cx) ?? 0)))));
+            cx.Add(this);
+            for (var b = dm.rowType.First(); b != null; b = b.Next())
+                tg = ((SqlValue)cx.obs[b.value()]).StartCounter(cx, this, tg);
+            for (var ebm = sce.First(cx); ebm != null; ebm = ebm.Next(cx))
+                if ((!ebm.IsNull) && Eval(having, cx))
+                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                        tg = ((SqlValue)cx.obs[b.value()]).AddIn(cx, ebm, tg);
+            var vs = CTree<long, TypedValue>.Empty;
+            cx.funcs = tg;
+            for (int i = 0; i < cols.Length; i++)
+            {
+                var s = cols[i];
+                vs += (s, cx.obs[s].Eval(cx));
+            }
+            return (RowSet)New(cx, E + (_Built, true) + (TrivialRowSet.Singleton, new TRow(dm, vs)));
+        }
+        internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, bool iter,
+            CList<long> rt)
+        {
+            throw new DBException("42174");
+        }
+        internal override BTree<long, TargetActivation> Update(Context cx, RowSet fm, bool iter)
+        {
+            throw new DBException("42174");
+        }
+        internal override BTree<long, TargetActivation> Delete(Context cx, RowSet fm, bool iter)
+        {
+            throw new DBException("42174");
+        }
+        internal override Basis _Fix(Context cx)
+        {
+            var r = (EvalRowSet)base._Fix(cx);
+            return r;
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (RowSet)base._Replace(cx, so, sv);
+            var rw = row.Replace(cx, so, sv);
+            if (rw != row)
+                r += (TrivialRowSet.Singleton, rw);
+            cx.done += (defpos, r);
+            return r;
+        }
+        internal override void Show(StringBuilder sb)
+        {
+            base.Show(sb);
+            if (mem.Contains(Having))
+            {
+                sb.Append(" having (");
+                var cm = "";
+                for (var b = having.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key()));
+                }
+                sb.Append(")");
+            }
+        }
+        // shareable as of 26 April 2021
+        internal class EvalBookmark : Cursor
+        {
+            readonly EvalRowSet _ers;
+            internal EvalBookmark(Context _cx, EvalRowSet ers)
+                : base(_cx, ers, 0, E, ers.row)
+            {
+                _ers = ers;
+            }
+            EvalBookmark(Context cx, EvalBookmark cu) : base(cx, cu)
+            {
+                _ers = (EvalRowSet)cx.obs[cx.Fix(cu._rowsetpos)].Fix(cx);
+            }
+            EvalBookmark(EvalBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
+            {
+                _ers = cu._ers;
+            }
+            protected override Cursor New(Context cx, long p, TypedValue v)
+            {
+                return new EvalBookmark(this, cx, p, v);
+            }
+            protected override Cursor _Next(Context _cx)
+            {
+                return null; // just one row in the rowset
+            }
+            protected override Cursor _Previous(Context cx)
+            {
+                return null; // just one row in the rowset
+            }
+            internal override Cursor _Fix(Context cx)
+            {
+                return new EvalBookmark(cx, this);
             }
             internal override BList<TableRow> Rec()
             {

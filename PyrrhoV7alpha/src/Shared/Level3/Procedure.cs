@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -44,7 +44,7 @@ namespace Pyrrho.Level3
         public long body => (long)(mem[Body]??-1L);
 		public CList<long> ins => 
             (CList<long>)mem[Params]?? CList<long>.Empty;
-        public string clause => (string)mem[Clause];
+        public string clause => (string)mem[Clause]??"";
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
         /// <summary>
@@ -53,7 +53,8 @@ namespace Pyrrho.Level3
         /// <param name="p">The level 2 procedure</param>
 		public Procedure(PProcedure p, Context cx,BTree<long,object> m=null)
             : base( p.ppos, p.defpos, cx.role.defpos, (m??BTree<long,object>.Empty)
-                  + (Params, p.parameters) +(_Domain,p.retType) + (Body, p.proc)
+                  + (Params, p.parameters) +(_Domain,p.dataType.defpos) 
+                  + (Body, p.proc) 
                   + (Name,p.name) + (Clause, p.source.ident) + (LastChange, p.ppos))
         { }
         /// <summary>
@@ -63,13 +64,27 @@ namespace Pyrrho.Level3
         /// <param name="ps"></param>
         /// <param name="rt"></param>
         /// <param name="m"></param>
-        public Procedure(long defpos,CList<long> ps, Domain dt, 
+        public Procedure(long defpos,string n,CList<long> ps, Domain dt, 
             BTree<long, object> m=null) : base(defpos, (m??BTree<long,object>.Empty)
-                +(Params,ps)+(_Domain,dt)) { }
+                +(Params,ps)+(_Domain,dt.defpos)+(Name,n)) { }
         protected Procedure(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Procedure operator+(Procedure p,(long,object)v)
         {
             return (Procedure)p.New(p.mem + v);
+        }
+        internal override Database Drop(Database d, Database nd, long p)
+        {
+            for (var b = d.roles.First(); b != null; b = b.Next())
+            {
+                var ro = (Role)d.objects[b.value()];
+                if (ro.infos[defpos] is ObInfo oi)
+                {
+                    ro -= oi;
+                    nd += (ro,p);
+                }
+            }
+            nd += (Database.Procedures, d.procedures - defpos);
+            return base.Drop(d, nd, p);
         }
         /// <summary>
         /// Execute a Procedure/function.
@@ -86,13 +101,10 @@ namespace Pyrrho.Level3
             var i = 0;
             for (var b=actIns.First();b!=null;b=b.Next(), i++)
                 acts[i] = cx.obs[b.value()].Eval(cx);
-            var act = new CalledActivation(cx, this,Domain.Null);
-            act.Install1(framing);
-            act.Install2(framing);
-            var bd = (Executable)act.obs[body];
-            i = 0;
+            var act = new CalledActivation(cx, this,Domain.Null.defpos);
+            var bd = (Executable)cx.obs[body];
             for (var b=ins.First(); b!=null;b=b.Next(), i++)
-                act.values += (((FormalParameter)act.obs[b.value()]).val, acts[i]);
+                act.values += (b.value(), acts[b.key()]);
             cx = bd.Obey(act);
             var r = act.Ret();
             if (r is TArray ts)
@@ -128,7 +140,7 @@ namespace Pyrrho.Level3
         }
         internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db + (this+(Body,m.now.defpos),p) + (Database.SchemaKey,p);
+            cx.db = cx.db + (this+(Body,m.proc),p) + (Database.SchemaKey,p);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -138,22 +150,20 @@ namespace Pyrrho.Level3
         {
             return new Procedure(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (Procedure)base._Relocate(wr);
-            r += (Params, wr.Fix(ins));
-            r += (Body, wr.Fixed(body)?.defpos??-1L);
+            var r = (Procedure)base._Relocate(cx);
+            r += (Params, cx.Fix(ins));
+            r += (Body, cx.Fix(body));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (Procedure)base.Fix(cx);
+            var r = base._Fix(cx);
             var np = cx.Fix(ins);
             if (np!=ins)
-            r += (Params, np);
-            var nb = cx.obuids[body] ?? body;
+                r += (Params, np);
+            var nb = cx.Fix(body);
             if (nb>=0)
                 r += (Body, nb);
             return r;
@@ -163,21 +173,24 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (Procedure)base._Replace(cx, so, sv);
-            var bd = cx.obs[body]._Replace(cx, so, sv);
+    /*        if (!cx.obs.Contains(body))
+                cx.obs += framing.obs;
+    /*        var bd = cx.obs[body]?._Replace(cx, so, sv);
             var ch = (bd?.defpos ?? -1L) != body;
             if (ch)
                 r += (Body, bd.defpos);
-            var fs = CList<long>.Empty;
+    /*        var fs = CList<long>.Empty;
             ch = false;
             for (var b=ins.First();b!=null;b=b.Next())
             {
                 var fp = cx._Replace(b.value(), so, sv);
                 ch = ch || (fp.defpos != b.value());
                 fs += fp.defpos;
-            }
+            } 
             if (ch)
-                r += (Params, fs);
-            r = (Procedure)New(cx, r.mem);
+                r += (Params, fs); */
+            if (r!=this)
+                r = (Procedure)New(cx, r.mem);
             cx.done += (defpos, r);
             return r;
         }
@@ -200,8 +213,8 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" "); sb.Append(name);
-            sb.Append(" Arity="); sb.Append(arity);
-            if (domain!=Domain.Null) sb.Append(domain);
+            sb.Append(" Arity="); sb.Append(arity); sb.Append(" ");
+            if (domain!=Domain.Null.defpos) sb.Append(Uid(domain));
             sb.Append(" Params");
             var cm = '(';
             for (var i = 0; i < (int)ins.Count; i++)

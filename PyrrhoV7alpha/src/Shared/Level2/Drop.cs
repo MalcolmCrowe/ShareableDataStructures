@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -28,6 +28,7 @@ namespace Pyrrho.Level2
         public DropAction dropAction=DropAction.Restrict;
         public override long Dependent(Writer wr, Transaction tr)
         {
+
             if (!Committed(wr,delpos)) return delpos;
             return -1;
         }
@@ -57,11 +58,11 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
-		public Drop(ReaderBase rdr) : base (Type.Drop,rdr) {}
-        protected Drop(Type t, ReaderBase rdr) : base(t, rdr) { }
+		public Drop(Reader rdr) : base (Type.Drop,rdr) {}
+        protected Drop(Type t, Reader rdr) : base(t, rdr) { }
         protected Drop(Drop x, Writer wr) : base(x, wr)
         {
-            delpos = wr.Fix(x.delpos);
+            delpos = wr.cx.Fix(x.delpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -90,7 +91,7 @@ namespace Pyrrho.Level2
         /// deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr) 
+        public override void Deserialise(Reader rdr) 
 		{ 
 			delpos = rdr.GetLong();
 			base.Deserialise(rdr);
@@ -230,7 +231,7 @@ namespace Pyrrho.Level2
         {
             dropAction = a;
         }
-        public Drop1(ReaderBase rdr) : base(Type.Drop1, rdr) { }
+        public Drop1(Reader rdr) : base(Type.Drop1, rdr) { }
         public Drop1(Drop1 d, Writer wr) : base(d, wr) 
         {
             dropAction = d.dropAction;
@@ -244,7 +245,7 @@ namespace Pyrrho.Level2
             wr.WriteByte((byte)dropAction);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             dropAction = (DropAction)rdr.ReadByte();
             base.Deserialise(rdr);

@@ -4,7 +4,7 @@ using Pyrrho.Level4; // for rename/drop
 using Pyrrho.Common;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -21,15 +21,17 @@ namespace Pyrrho.Level3
     /// Indexes have unique names of form U(nnn), since they are not named in SQL.
     /// // shareable as of 26 April 2021
     /// </summary>
-    internal class Index : DBObject // can't implement RowSet unfortunately, see below
+    internal class Index : DBObject 
     {
         static long _uniq = 0;
         internal const long
             Adapter = -157, // long Procedure 
             IndexConstraint = -158,// PIndex.ConstraintType
-            Keys = -159, // CList<long> SqlValue
+            Keys = -159, // CList<long> for Objects: TableColumn
+                      // for RowSets: SqlValue
             References = -160, // BTree<long,BList<TypedValue>> computed by adapter
-            RefIndex = -161, // long Index
+            RefIndex = -161, // long for Table: Index
+                      // for RowSets: IndexRowSet/FilterRowSet/OrderedRowSet
             RefTable = -162, // long Table
             TableDefPos = -163, // long Table
             Tree = -164; // MTree
@@ -50,7 +52,7 @@ namespace Pyrrho.Level3
         /// The indexed rows: note the strong types inside here will need to be updated if column names change
         /// </summary>
         public MTree rows => (MTree)mem[Tree];
-        public CList<long> keys => (CList<long>)mem[Keys]??CList<long>.Empty;
+        public CList<long> keys => (CList<long>)mem[Keys]??CList<long>.Empty; //TableColumn
         /// <summary>
         /// for Foreign key, the referenced index
         /// </summary>
@@ -83,7 +85,7 @@ namespace Pyrrho.Level3
             var r = BTree<long, object>.Empty;
             if (c.adapter != "")
             {
-                r += (Adapter, cx.db.GetProcedure(c.adapter, 1).defpos);
+                r += (Adapter, cx.GetProcedure(cx.GetIid(),c.adapter, 1).defpos);
                 r += (References, BTree<long, BList<TypedValue>>.Empty);
             }
             if (c.reference > 0)
@@ -98,7 +100,7 @@ namespace Pyrrho.Level3
                 }
             }
             var cols = CList<long>.Empty;
-            var ds = BTree<long, DBObject>.Empty;
+            var ds = ObTree.Empty;
             var tb = (Table)cx.obs[c.tabledefpos];
             for (var b=c.columns.First();b!=null;b=b.Next())
             {
@@ -115,7 +117,7 @@ namespace Pyrrho.Level3
             TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?
                 TreeBehaviour.Allow : TreeBehaviour.Disallow;
             r += (Keys, cols);
-            var rows = new MTree(new TreeInfo(cols, ds, isfk, isfk));
+            var rows = new MTree(new TreeInfo(cx, cols, isfk, isfk));
             r += (Tree, rows);
             return r;
         }
@@ -237,17 +239,16 @@ namespace Pyrrho.Level3
             if (nd.objects[tabledefpos] is Table tb)
             {
                 var xs = CTree<CList<long>, long>.Empty;
-                var ks = CTree<long, bool>.Empty;
+                var ks = CList<long>.Empty;
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
                     if (b.value() != defpos)
                     {
                         var cs = b.key();
                         for (var c = cs.First(); c != null; c = c.Next())
-                            ks += (c.value(), true);
-                        xs += (cs, b.value());
+                            ks += c.value();
+                        xs += (ks, b.value());
                     }
                 tb += (Table.Indexes, xs);
-                tb += (Table.TableCols, ks);
                 nd += (tb, p);
             }
             if (nd.objects[reftabledefpos] is Table rt)
@@ -294,22 +295,20 @@ namespace Pyrrho.Level3
         {
             return new Index(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (Index)base._Relocate(wr);
-            r += (Adapter, wr.Fix(adapter));
-            r += (Keys, wr.Fix(keys));
-            r += (References, wr.Fix(references,wr.cx));
-            r += (RefIndex, wr.Fix(refindexdefpos));
-            r += (RefTable, wr.Fix(reftabledefpos));
+            var r = (Index)base._Relocate(cx);
+            r += (Adapter, cx.Fix(adapter));
+            r += (Keys, cx.Fix(keys));
+            r += (References, cx.Fix(references));
+            r += (RefIndex, cx.Fix(refindexdefpos));
+            r += (RefTable, cx.Fix(reftabledefpos));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (Index)base.Fix(cx);
-            var na = cx.obuids[adapter] ?? adapter;
+            var r = (Index)base._Fix(cx);
+            var na = cx.Fix(adapter);
             if (na!=adapter)
             r += (Adapter, na);
             var nk = cx.Fix(keys);
@@ -318,10 +317,10 @@ namespace Pyrrho.Level3
             var nr = cx.Fix(references);
             if (nr!=references)
             r += (References, nr);
-            var ni = cx.obuids[refindexdefpos] ?? refindexdefpos;
+            var ni = cx.Fix(refindexdefpos);
             if (refindexdefpos!=ni)
                 r += (RefIndex, ni);
-            var nt = cx.obuids[reftabledefpos] ?? reftabledefpos;
+            var nt = cx.Fix(reftabledefpos);
             if (reftabledefpos!=nt)
                 r += (RefTable, nt);
             return r;

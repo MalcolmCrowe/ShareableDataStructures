@@ -3,7 +3,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -31,31 +31,33 @@ namespace Pyrrho.Level3
     {
         public readonly long tabledefpos;
 		public readonly CheckUpdate check = null;
-        public ReadConstraint(Context cx, long d, RowSet rs, Index index, PRow match) 
+     /*   public ReadConstraint(Context cx, long d, RowSet rs, Index index, PRow match) 
             : this(d,_Check(cx,rs,index,match))
-        { }
+        { } */
         internal ReadConstraint(long tb,CheckUpdate ch)
         {
             tabledefpos = tb;
             check = ch;
         }
+        /*
         static CheckUpdate _Check(Context cx,RowSet rs,Index index,PRow match)
         {
             var cs = CTree<long,bool>.Empty;
-            var n = (rs.display == 0) ? int.MaxValue : rs.display;
+            var dm = cx._Dom(rs);
+            var n = (dm.display == 0) ? int.MaxValue : dm.display;
             if (cx.exec is SelectStatement)
-                for (var b = rs.rt.First(); b != null && b.key() < n; b = b.Next())
+                for (var b = dm.rowType.First(); b != null && b.key() < n; b = b.Next())
                     cs += (b.value(), true);
             var rq = index?.rows?.Get(match);
             return (rq == null) ? new CheckUpdate(cs) : new CheckSpecific(rq.Value, cs);
-        }
+        } */
         public static ReadConstraint operator +(ReadConstraint rc,
-            SelectedRowSet.SelectedCursor cu)
+            TableRowSet.TableCursor cu)
         {
             return (rc.check != null) ? new ReadConstraint(rc.tabledefpos, rc.check.Add(cu))
             : new ReadConstraint(rc.tabledefpos, // first constraint on this table
-                new CheckSpecific(cu._srs.rdCols, // therefore specific
-                    new CTree<long, bool>(cu._defpos, true)));
+                new CheckSpecific(cu._trs.rdCols, // therefore specific
+                    new CTree<long, bool>(cu._ds[rc.tabledefpos].Item1, true)));
         }
         /// <summary>
         /// Examine the consequences of changes to the object
@@ -69,14 +71,14 @@ namespace Pyrrho.Level3
             if (p is Record r)
                 return check.Check(r, ct);
             return null;
-        }
+        } 
         /// <summary>
         /// A parsable version of the read constraint
         /// </summary>
         /// <returns></returns>
         public override string ToString()
         {
-            return "[" + tabledefpos + (check?.ToString() ?? "") + "]";
+            return "[" + tabledefpos + " "+ (check?.ToString() ?? "") + "]";
         }
     }
     /// <summary>
@@ -99,9 +101,9 @@ namespace Pyrrho.Level3
         {
             rdcols = rt;
         }
-        public virtual CheckUpdate Add(SelectedRowSet.SelectedCursor cu)
+        public virtual CheckUpdate Add(TableRowSet.TableCursor cu)
         {
-            var cs = cu._srs.rdCols;
+            var cs = cu._trs.rdCols;
             return (cs == rdcols)?this: new CheckUpdate(cs+rdcols);
         }
         /// <summary>
@@ -135,14 +137,15 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override string ToString()
         {
-            var sb = new StringBuilder("(");
-            var cm = "";
+            var sb = new StringBuilder(GetType().Name);
+            var cm = " (";
             for (var e = rdcols?.First(); e != null; e = e.Next())
             {
                 sb.Append(cm);cm = ",";
                 sb.Append(DBObject.Uid(e.key()));
             }
-            sb.Append(")");
+            if (cm==",")
+                sb.Append(")");
             return sb.ToString();
         }
     }
@@ -164,15 +167,17 @@ namespace Pyrrho.Level3
         {
             recs = rs;
         }
+        /*
         public CheckSpecific(long rp, CTree<long, bool> cs) 
             : this(new CTree<long,bool>(rp,true),cs)
-        { }
-        public override CheckUpdate Add(SelectedRowSet.SelectedCursor cu)
+        { } */
+        public override CheckUpdate Add(TableRowSet.TableCursor cu)
         {
-            var cs = cu._srs.rdCols;
+            var cs = cu._trs.rdCols;
+            var (dp, pp) = cu._ds[cu._trs.target];
             return (cs.CompareTo(rdcols)!=0) ? base.Add(cu) :
-                recs.Contains(cu._defpos) ? this :
-                new CheckSpecific(recs + (cu._defpos, true),cs);
+                recs.Contains(dp) ? this :
+                new CheckSpecific(recs + (dp, true),cs);
         }
         /// <summary>
         /// Test for conflict against a given insert/update/deletion
@@ -212,6 +217,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    /*
     /// <summary>
     /// The readConstraint blocks Updates for a database object
     /// // shareable as of 26 April 2021
@@ -252,7 +258,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             return "-";
-        }
-    }
+        } 
+    } */
 
 }

@@ -20,7 +20,7 @@ using System.Net.Sockets;
 using System.Threading;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-20015
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use
 // This code may be used to connect to the Pyrrho Server or in Embedded Pyrrho

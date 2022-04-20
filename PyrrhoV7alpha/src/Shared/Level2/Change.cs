@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -69,14 +69,14 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
-		public Change(ReaderBase rdr) :base(Type.Change,rdr)
+		public Change(Reader rdr) :base(Type.Change,rdr)
         {
             prev = rdr.GetLong();
             name = rdr.GetString();
         }
         protected Change(Change x, Writer wr) : base(x, wr)
         {
-            prev = wr.Fix(x.prev);
+            prev = wr.cx.Fix(x.prev);
             name = x.name;
         }
         protected override Physical Relocate(Writer wr)
@@ -107,7 +107,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(ReaderBase rdr) 
+        public override void Deserialise(Reader rdr) 
 		{ 
 			prev = rdr.GetLong();
             affects = rdr.Prev(prev)??ppos;
@@ -122,10 +122,6 @@ namespace Pyrrho.Level2
 		{ 
 			return "Change "+Pos(prev)+" ["+Pos(Affects)+"] to "+name; 
 		}
-        /// <summary>
-        /// The new name of the object
-        /// </summary>
-		public override string Name { get { return name; }}
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
@@ -139,7 +135,7 @@ namespace Pyrrho.Level2
                         return new DBException("40022", name, that, ct);
                     break;
                 case Type.PType1:
-                case Type.PType: if (name.CompareTo(((PType)that).domain.name) == 0)
+                case Type.PType: if (name.CompareTo(((PType)that).dataType.name) == 0)
                         return new DBException("40032", ppos, that, ct);
                     break;
                 case Type.PRole1:
@@ -188,7 +184,7 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var oi = ro.infos[affects] as ObInfo;
-            ro = ro + (new ObInfo(affects, name,oi.domain, oi.priv),true);
+            ro = ro + (new ObInfo(affects, name,oi.dataType, oi.priv),true);
             cx.db += (ro, p);
             cx.obs+=(affects,cx.obs[affects] + (Basis.Name, name));
             if (cx.db.mem.Contains(Database.Log))

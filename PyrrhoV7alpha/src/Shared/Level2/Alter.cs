@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -32,10 +32,10 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer being read</param>
         /// <param name="pos">The defining position</param>
-        public Alter(ReaderBase rdr) : base(Type.Alter, rdr) { }
+        public Alter(Reader rdr) : base(Type.Alter, rdr) { }
         protected Alter(Alter x, Writer wr) : base(x, wr)
         {
-            _defpos = wr.Fix(x.defpos);
+            _defpos = wr.cx.Fix(x.defpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -45,7 +45,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Alter from the disk file buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
             _defpos = rdr.Prev(prev) ?? ppos;
@@ -56,12 +56,12 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
             var ti = (ObInfo)ro.infos[table.defpos];
-            var tc = new TableColumn(table, this, domain,cx.role);
+            var tc = new TableColumn(table, this, dataType, cx.role);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var ci = new ObInfo(defpos, name, domain,priv);
+            var ci = new ObInfo(defpos, name, dataType, priv);
             ro = ro + (defpos,ci) + (ti + (tc.defpos,ci),false);
-            table += tc;
+            table += (cx,tc);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
@@ -94,10 +94,10 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer being read</param>
         /// <param name="pos">The defining position</param>
-        public Alter2(ReaderBase rdr) : base(Type.Alter2, rdr) { }
+        public Alter2(Reader rdr) : base(Type.Alter2, rdr) { }
         protected Alter2(Alter2 x, Writer wr) : base(x, wr)
         {
-            _defpos = wr.Fix(x.defpos);
+            _defpos = wr.cx.Fix(x.defpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -107,7 +107,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Alter from the disk file buffer
         /// </summary>
         /// <param name="buf"></param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
             _defpos = rdr.Prev(prev) ?? -1L;
@@ -118,12 +118,12 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
             var ti = (ObInfo)ro.infos[table.defpos];
-            var tc = new TableColumn(table, this, domain,cx.role);
+            var tc = new TableColumn(table, this, dataType, cx.role);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var ci = new ObInfo(defpos, name, domain,priv);
+            var ci = new ObInfo(defpos, name, dataType, priv);
             ro = ro + (defpos, ci) + (ti + (tc.defpos, ci)+(ObInfo.Privilege,priv),false);
-            table += tc;
+            table += (cx,tc);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
@@ -164,10 +164,10 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer being read</param>
         /// <param name="pos">The defining position</param>
-		public Alter3(ReaderBase rdr) : base(Type.Alter3, rdr) { }
+		public Alter3(Reader rdr) : base(Type.Alter3, rdr) { }
         protected Alter3(Alter3 x, Writer wr) : base(x, wr)
         {
-            _defpos = wr.Fix(x.defpos);
+            _defpos = wr.cx.Fix(x.defpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -186,7 +186,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Alter from the disk file buffer
         /// </summary>
         /// <param name="rdr"></param>
-        public override void Deserialise(ReaderBase rdr) 
+        public override void Deserialise(Reader rdr) 
 		{ 
 			var previous = rdr.GetLong();
             _defpos = rdr.Prev(previous) ?? -1L;
@@ -197,12 +197,12 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
             var ti = (ObInfo)ro.infos[table.defpos];
-            var tc = new TableColumn(table, this, domain,cx.role);
+            var tc = new TableColumn(table, this, dataType, cx.role);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(defpos, name, domain, priv);
+            var oc = new ObInfo(defpos, name, dataType, priv);
             ro = ro + (oc.defpos, oc) + (ti + (defpos, oc),true);
-            table += tc;
+            table += (cx,tc);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

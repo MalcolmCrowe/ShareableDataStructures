@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -27,7 +27,7 @@ namespace Pyrrho.Level2
         public BTree<long, (CList<long>,CList<long>)> deC = BTree<long,(CList<long>,CList<long>)>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
-            var dp = wr.Fix(delpos);
+            var dp = wr.cx.Fix(delpos);
             if (!Committed(wr,dp)) return dp;
             if (!Committed(wr,tabledefpos)) return tabledefpos;
             return -1;
@@ -57,12 +57,12 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">a defining position</param>
-		public Delete(ReaderBase rdr) : base(Type.Delete, rdr) { }
-        protected Delete(Type t,ReaderBase rdr) : base(t, rdr) { }
+		public Delete(Reader rdr) : base(Type.Delete, rdr) { }
+        protected Delete(Type t,Reader rdr) : base(t, rdr) { }
         protected Delete(Delete x, Writer wr) : base(x, wr)
         {
-            tabledefpos = wr.Fix(x.tabledefpos);
-            delpos = wr.Fix(x.delpos);
+            tabledefpos = wr.cx.Fix(x.tabledefpos);
+            delpos = wr.cx.Fix(x.delpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -84,17 +84,17 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation of position information</param>
         public override void Serialise(Writer wr)
 		{
-            var dp = wr.Fix(delpos);
+            var dp = wr.cx.Fix(delpos);
             wr.PutLong(dp);
             wr.cx.affected = (wr.cx.affected ?? Rvv.Empty) 
-                + (wr.Fix(tabledefpos), (dp, ppos));
+                + (wr.cx.Fix(tabledefpos), (dp, ppos));
 			base.Serialise(wr);
 		}
         /// <summary>
         /// Deserialise the Delete from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             var dp = rdr.GetLong();
             base.Deserialise(rdr);
@@ -180,7 +180,6 @@ namespace Pyrrho.Level2
                 if (cx.db.objects[ob.value()] is Table tb && tb.tableRows.Contains(delpos))
                 {
                     var delRow = tb.tableRows[delpos];
-             //       ro = delRow.Cascade(cx.db, cx, ro, p); moved to TransitionRowSet
                     for (var b = tb.indexes.First(); b != null; b = b.Next())
                     {
                         var ix = (Index)cx.db.objects[b.value()];
@@ -217,11 +216,11 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">a defining position</param>
-		public Delete1(ReaderBase rdr) : base(Type.Delete1, rdr) { }
+		public Delete1(Reader rdr) : base(Type.Delete1, rdr) { }
         protected Delete1(Delete1 x, Writer wr) : base(x, wr)
         {
-            tabledefpos = wr.Fix(x.tabledefpos);
-            delpos = wr.Fix(x.delpos);
+            tabledefpos = wr.cx.Fix(x.tabledefpos);
+            delpos = wr.cx.Fix(x.delpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -233,14 +232,14 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation of position information</param>
         public override void Serialise(Writer wr)
         {
-            wr.PutLong(wr.Fix(tabledefpos));
+            wr.PutLong(wr.cx.Fix(tabledefpos));
             base.Serialise(wr);
         }
         /// <summary>
         /// Deserialise the Delete from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             var tb = rdr.GetLong();
             base.Deserialise(rdr);

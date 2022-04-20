@@ -4,7 +4,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -15,48 +15,6 @@ using Pyrrho.Level3;
 
 namespace Pyrrho.Level4
 {
-    /// <summary>
-    /// Used while parsing a QuerySpecification,
-    /// and removed at end of the parse (DoStars)
-    ///     /// shareable as of 26 April 2021
-    /// </summary>
-    internal class SqlStar : SqlValue
-    {
-        public readonly long prefix = -1L;
-        internal SqlStar(long dp, long pf) : base(dp,"*",Domain.Content)
-        { 
-            prefix = pf; 
-        }
-        protected SqlStar(long dp, long pf, BTree<long,object>m):base(dp,m)
-        {
-            prefix = pf;
-        }
-        protected SqlStar(long dp,BTree<long,object> m):base(dp,m) { }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new SqlStar(defpos,prefix,m);
-        }
-        public static SqlStar operator+(SqlStar s,(long,object)x)
-        {
-            return (SqlStar)s.New(s.mem + x);
-        }
-        internal override DBObject Relocate(long dp)
-        {
-            return new SqlStar(dp,mem);
-        }
-        internal override CTree<long, bool> Needs(Context cx)
-        {
-            return CTree<long,bool>.Empty;
-        }
-        internal override CTree<long, bool> Needs(Context cx, CTree<long, bool> qn)
-        {
-            return qn;
-        }
-        internal override CTree<long, RowSet.Finder> Needs(Context cx, RowSet rs)
-        {
-            return CTree<long, RowSet.Finder>.Empty;
-        }
-    }
     /// <summary>
     /// A Method Name for the parser
     /// </summary>
@@ -95,7 +53,7 @@ namespace Pyrrho.Level4
     internal class TablePeriodDefinition
     {
         public Sqlx pkind = Sqlx.SYSTEM_TIME;
-        public Ident periodname = new Ident("SYSTEM_TIME", 0);
+        public Ident periodname = new Ident("SYSTEM_TIME", Iix.None);
         public Ident col1 = null;
         public Ident col2 = null;
     }

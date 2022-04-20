@@ -1,7 +1,7 @@
 using System;
 using System.Collections.Generic;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -20,9 +20,9 @@ namespace Pyrrho.Common
 	{
         /// <summary>
         /// MemoryLimit is a server configuration parameter. The default value of zero (no limit)
-        /// means that the server will use all of virtual memory if necessary for its data structures
+        /// means that the server will use all of virtual memory if necessary for its obs structures
         /// It is more practical to set the limit to the size of physical memory to minimise thrashing.
-        /// The parameter is here because almost all server data structures are BTrees.
+        /// The parameter is here because almost all server obs structures are BTrees.
         /// </summary>
         public const long MemoryLimit = 0L;
         /// <summary>
@@ -127,11 +127,6 @@ namespace Pyrrho.Common
             for (var b = a?.First(); b != null; b = b.Next())
                 tree = tree.Add(b.key(), b.value());
             return tree;
-        }
-        public static void Add(ref ATree<K,V> tree, ATree<K,V> a)
-        {
-            for (var b = tree.First(); b != null; b = b.Next())
-                Add(ref tree, b.key(), b.value());
         }
         /// <summary>
         /// Add a given association to a given tree, checking the key is not null
@@ -240,7 +235,7 @@ namespace Pyrrho.Common
             if (u >= 0x7000000000000000)
                 return "%" + (u - 0x7000000000000000);
             if (u >= 0x6000000000000000)
-                return "@" + (u - 0x6000000000000000);
+                return "`" + (u - 0x6000000000000000);
             if (u >= 0x5000000000000000)
                 return "#" + (u - 0x5000000000000000);
             if (u >= 0x4000000000000000)

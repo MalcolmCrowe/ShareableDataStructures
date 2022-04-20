@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -70,7 +70,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PTransaction(ReaderBase rdr) : this(Type.PTransaction,rdr)
+		public PTransaction(Reader rdr) : this(Type.PTransaction,rdr)
 		{}
         /// <summary>
         /// Constructor: a Transaction record from the buffer
@@ -78,7 +78,7 @@ namespace Pyrrho.Level2
         /// <param name="tp">The PTransaction or PTransaction2 type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        protected PTransaction(Type tp, ReaderBase rdr)
+        protected PTransaction(Type tp, Reader rdr)
             : base(tp, rdr)
         { }
         protected PTransaction(PTransaction x, Writer wr) : base(x, wr)
@@ -121,7 +121,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
 		{
 			nrecs = rdr.GetInt();
 			ptrole = rdr.GetLong();
@@ -150,12 +150,12 @@ namespace Pyrrho.Level2
         }
     }
     /// <summary>
-    /// Import Transactions record the source of the data as a URI
+    /// Import Transactions record the source of the obs as a URI
     /// </summary>
     internal class PImportTransaction : PTransaction
     {
         /// <summary>
-        /// A URI describing the source of the imported data
+        /// A URI describing the source of the imported obs
         /// </summary>
         internal string uri;
         public PImportTransaction(int nr, long usr, long au, string ur, long pp, Context cx)
@@ -163,7 +163,7 @@ namespace Pyrrho.Level2
         {
             uri = ur;
         }
-        public PImportTransaction(ReaderBase rdr)
+        public PImportTransaction(Reader rdr)
             : base(Type.PImportTransaction, rdr)
         {}
         public override void Serialise(Writer wr)
@@ -171,7 +171,7 @@ namespace Pyrrho.Level2
             wr.PutString(uri);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             uri = rdr.GetString();
             base.Deserialise(rdr);
@@ -195,7 +195,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,refPhys)) return refPhys;
             return -1;
         }
-        internal TriggeredAction(ReaderBase rdr) : base(Type.TriggeredAction,rdr)
+        internal TriggeredAction(Reader rdr) : base(Type.TriggeredAction,rdr)
         { }
         internal TriggeredAction(long tg,long pp, Context cx)
             : base(Type.TriggeredAction,pp,cx)
@@ -204,7 +204,7 @@ namespace Pyrrho.Level2
         }
         protected TriggeredAction(TriggeredAction x, Writer wr) : base(x, wr)
         {
-            trigger = wr.Fix(x.trigger);
+            trigger = wr.cx.Fix(x.trigger);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -215,7 +215,7 @@ namespace Pyrrho.Level2
             wr.PutLong(trigger);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             trigger = rdr.GetLong();
             base.Deserialise(rdr);
@@ -263,9 +263,9 @@ namespace Pyrrho.Level2
             user = us; table = ta; 
             timestamp = ts; match = ma;
         }
-        internal Audit(ReaderBase rdr) : this(Type.Audit, rdr) { }
-        protected Audit(Type t, ReaderBase rdr) : base(t, rdr) { }
-        public override void Deserialise(ReaderBase rdr)
+        internal Audit(Reader rdr) : this(Type.Audit, rdr) { }
+        protected Audit(Type t, Reader rdr) : base(t, rdr) { }
+        public override void Deserialise(Reader rdr)
         {
             _user = rdr.GetLong();
             if (rdr is Reader rr)
@@ -284,14 +284,14 @@ namespace Pyrrho.Level2
         }
         public override void Serialise(Writer wr)
         {
-            table = wr.Fix(table);
-            timestamp = wr.Fix(timestamp);
-            wr.PutLong((user.defpos>=0)?wr.Fix(user.defpos):-1L);
+            table = wr.cx.Fix(table);
+            timestamp = wr.cx.Fix(timestamp);
+            wr.PutLong((user.defpos>=0)?wr.cx.Fix(user.defpos):-1L);
             wr.PutLong(table);
             wr.PutLong(timestamp);
             wr.PutLong(match.Count);
             for (var b = match.First();b!=null;b=b.Next())
-                wr.PutLong(wr.Fix(b.key()));
+                wr.PutLong(wr.cx.Fix(b.key()));
             for (var b = match.First(); b != null; b = b.Next())
                 wr.PutString(b.value());
             base.Serialise(wr);
@@ -327,9 +327,9 @@ namespace Pyrrho.Level2
         protected override Physical Relocate(Writer wr)
         {
             if (user.defpos>=0)
-                user = (User)wr.cx.db.objects[wr.Fix(user.defpos)];
-            table = wr.Fix(table);
-            match = wr.Fix(match);
+                user = (User)wr.cx.db.objects[wr.cx.Fix(user.defpos)];
+            table = wr.cx.Fix(table);
+            match = wr.cx.Fix(match);
             return this;
         }
 

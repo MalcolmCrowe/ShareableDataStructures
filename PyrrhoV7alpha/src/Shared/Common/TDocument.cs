@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -254,6 +254,46 @@ namespace Pyrrho.Common
                 throw ParseException("unparsed input at " + (i - 1));
             content = d.content;
             names = d.names;
+        }
+        internal TDocument(Register r) : base(Domain.Document)
+        {
+            var c = CList<(string, TypedValue)>.Empty;
+            TypedValue tv = new TInt(r.count);
+            if (r.sb != null)
+                tv = new TChar(r.sb.ToString());
+            else if (r.acc != null)
+                tv = r.acc;
+            else if (r.mset != null)
+            {
+                var a = new TDocument();
+                var n = 0;
+                for (var b = r.mset.tree.First(); b != null; b = b.Next())
+                    for (var d = 0; d < b.value(); d++)
+                        a.Add((++n).ToString(), b.key());
+                tv = a;
+            }
+            else
+            {
+                switch (r.sumType.kind)
+                {
+                    case Sqlx.INT:
+                    case Sqlx.INTEGER:
+                        tv = new TInteger(r.sumInteger);
+                        if (tv.IsNull)
+                            tv = new TInt(r.sumLong);
+                        break;
+                    case Sqlx.REAL:
+                        tv = new TReal(r.sum1); break;
+                    case Sqlx.NUMERIC:
+                        tv = new TNumeric(r.sumDecimal); break;
+                    case Sqlx.BOOLEAN:
+                        tv = TBool.For(r.bval); break;
+                }
+            }
+            c += (r.count.ToString(), tv);
+            if (r.acc1 != 0.0)
+                c += ("acc1", new TReal(r.acc1));
+            content = c;
         }
         internal static (TDocument,int) New(string s,int off)
         {
@@ -598,13 +638,17 @@ namespace Pyrrho.Common
         {
             var sb = new StringBuilder("{");
             var comma = "";
-            for (var f = content.First();f!= null;f=f.Next())
+            for (var f = content.First(); f != null; f = f.Next())
             {
-                sb.Append(comma); comma = ", ";
-                sb.Append('"');
-                sb.Append(f.value().Item1);
-                sb.Append("\": ");
-                Field(f.value(), sb);
+                var (n, v) = f.value();
+                if (v != null && v != TNull.Value)
+                {
+                    sb.Append(comma); comma = ", ";
+                    sb.Append('"');
+                    sb.Append(n);
+                    sb.Append("\": ");
+                    Field(f.value(), sb);
+                }
             }
             sb.Append("}");
             return sb.ToString();
@@ -790,14 +834,14 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="b">Document to compare with</param>
         /// <returns></returns>
-        internal int Query(TypedValue b)
+        internal int RowSet(TypedValue b)
         {
             for (var f=content.First();f!= null;f=f.Next())
-                        if (Query(f.value().Item1,f.value().Item2, b)!=0)
+                        if (RowSet(f.value().Item1,f.value().Item2, b)!=0)
                             return -1;
             return 0;
         }
-        int Query(string nm,TypedValue a, TypedValue b)
+        int RowSet(string nm,TypedValue a, TypedValue b)
         {
             var ki = b.dataType.kind;
             if (ki != Sqlx.DOCARRAY && ki != Sqlx.DOCUMENT)
@@ -852,7 +896,7 @@ namespace Pyrrho.Common
         /// <returns></returns>
         public override int _CompareTo(object obj)
         {
-            return Query((TypedValue)obj);
+            return RowSet((TypedValue)obj);
         }
         public bool Contains(string n)
         {

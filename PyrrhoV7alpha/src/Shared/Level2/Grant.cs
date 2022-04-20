@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -69,20 +69,20 @@ namespace Pyrrho.Level2
             obj = ob;
             grantee = ge;
         }
-        public Grant(ReaderBase rdr) : base(Type.Grant, rdr) { }
+        public Grant(Reader rdr) : base(Type.Grant, rdr) { }
         /// <summary>
         /// Constructor: a Grant request
         /// </summary>
         /// <param name="tp">The Grant type</param>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
-		protected Grant(Type tp, ReaderBase rdr) : base(tp,rdr)
+		protected Grant(Type tp, Reader rdr) : base(tp,rdr)
 		{}
         protected Grant(Grant x, Writer wr) : base(x, wr)
         {
             priv = x.priv;
-            obj = wr.Fix(x.obj);
-            grantee = wr.Fix(x.grantee);
+            obj = wr.cx.Fix(x.obj);
+            grantee = wr.cx.Fix(x.grantee);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -103,7 +103,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
 		{
 			priv = (Privilege)rdr.GetInt();
 			obj = rdr.GetLong();
@@ -192,16 +192,16 @@ namespace Pyrrho.Level2
             {
                 if (priv.HasFlag(Privilege.Select))
                 {
-                    rt = oi.domain.rowType;
-                    for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+                    rt = oi.dataType.rowType;
+                    for (var b = tb.Domains(cx).rowType.First(); b != null; b = b.Next())
                     {
                         var c = b.value();
                         var ic = (ObInfo)cx.db.role.infos[c];
-                        ro += (new ObInfo(c, ic.name, ic.domain, pr), false);
+                        ro += (new ObInfo(c, ic.name, ic.dataType, pr), false);
                     }
                 }
                 else
-                    for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
+                    for (var b = tb.Domains(cx).rowType.First(); b != null; b = b.Next())
                     {
                         var c = b.value();
                         if (ro.infos[c] is ObInfo ic &&
@@ -210,7 +210,7 @@ namespace Pyrrho.Level2
                     }
             }
             // install the privilege on the target object
-            ro += (new ObInfo(obj, oi.name, oi.domain + (Domain.RowType,rt),pr),true);
+            ro += (new ObInfo(obj, oi.name, oi.dataType + (Domain.RowType,rt),pr),true);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
@@ -232,11 +232,11 @@ namespace Pyrrho.Level2
         {
             userpos = us; pwd = p ?? ""; irolepos = r;
         }
-        internal Authenticate(ReaderBase rdr) : base(Type.Authenticate, rdr) { }
+        internal Authenticate(Reader rdr) : base(Type.Authenticate, rdr) { }
         protected Authenticate(Authenticate x, Writer wr) : base(x, wr)
         {
-            userpos = wr.Fix(x.userpos);
-            irolepos = wr.Fix(x.irolepos);
+            userpos = wr.cx.Fix(x.userpos);
+            irolepos = wr.cx.Fix(x.irolepos);
             pwd = x.pwd;
         }
         protected override Physical Relocate(Writer wr)
@@ -252,7 +252,7 @@ namespace Pyrrho.Level2
             base.Serialise(wr);
         }
 
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             userpos = rdr.GetLong();
             pwd = rdr.GetString();

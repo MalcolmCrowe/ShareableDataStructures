@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -173,12 +173,6 @@ namespace Pyrrho.Level3
         {
             return (Executable)New(mem);
         }
-        internal override Basis _Relocate(Writer wr)
-        {
-            if (defpos < wr.Length)
-                return this;
-            return ((DBObject)base._Relocate(wr)).Relocate(wr.Fix(defpos));
-        }
         internal static bool Calls(BList<long> ss,long defpos,Context cx)
         {
             for (var b = ss?.First(); b != null; b = b.Next())
@@ -186,15 +180,15 @@ namespace Pyrrho.Level3
                     return true;
             return false;
         }
-        internal virtual void Review(Context cx)
-        { }
         public override string ToString()
         {
-            var sb = new StringBuilder(GetType().Name);
+            var nm = GetType().Name;
+            if (nm == "Executable")
+                nm = type.ToString();
+            var sb = new StringBuilder(nm);
             if (mem.Contains(Label)) { sb.Append(" "); sb.Append(label); }
+            if (mem.Contains(Name)) { sb.Append(" "); sb.Append(name); }
             sb.Append(" ");sb.Append(Uid(defpos));
-            if (mem.Contains(TableExpression.Nuid))
-            { sb.Append(" Nuid="); sb.Append(Uid((long)mem[TableExpression.Nuid])); }
             if (mem.Contains(Stmt)) { sb.Append(" Stmt:"); sb.Append(stmt); }
             return sb.ToString();
         }
@@ -211,18 +205,22 @@ namespace Pyrrho.Level3
     internal class SelectStatement : Executable
     {
         internal const long
-             CS = -95; //long CursorSpecification
+            SourceSQL = -195, //string
+            Union = -196; // long RowSet
         /// <summary>
-        /// The cusorspecification (a Query) for this executable
+        /// The source string
         /// </summary>
-        public long cs=>(long)(mem[CS]??-1L);
+        public string _source => (string)mem[SourceSQL];
+        /// <summary>
+        /// The QueryExpression 
+        /// </summary>
+        public long union => (long)(mem[Union] ?? -1L);
         /// <summary>
         /// Constructor
         /// </summary>
         /// <param name="c">The cursor specification</param>
-        public SelectStatement(long dp, CursorSpecification c)
-            : base(dp, new BTree<long, object>(CS, c.defpos) + (Dependents, c.dependents)
-                  +(Depth,1+c.depth))
+        public SelectStatement(long dp, RowSet r)
+            : base(dp, new BTree<long, object>(Union, r.defpos)) 
         { }
         protected SelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SelectStatement operator+(SelectStatement s,(long,object)x)
@@ -237,25 +235,23 @@ namespace Pyrrho.Level3
         {
             return new SelectStatement(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SelectStatement)base._Relocate(wr);
-            r += (CS, wr.Fixed(cs).defpos);
+            var r = (SelectStatement)base._Relocate(cx);
+            r += (Union, cx.Fix(union));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (SelectStatement)base.Fix(cx);
-            var nc = cx.obuids[cs] ?? cs;
-            if (nc != cs)
-                r += (CS, nc);
+            var r = (SelectStatement)base._Fix(cx);
+            var nc = cx.Fix(union);
+            if (nc != union)
+                r += (Union, nc);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[cs].Calls(defpos, cx);
+            return cx.obs[union].Calls(defpos, cx);
         }
         /// <summary>
         /// Obey the executable
@@ -263,18 +259,13 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-        //    if (!cx.results.Contains(cs))
-        //        ((Query)cx.obs[cs]).RowSets(cx, CTree<long,RowSet.Finder>.Empty);
+            cx.result = union;
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t, cs, VIC.OK|VIC.OV);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" CS="); sb.Append(Uid(cs));
+            sb.Append(" Union="); sb.Append(Uid(union));
             return sb.ToString();
         }
     }
@@ -311,17 +302,15 @@ namespace Pyrrho.Level3
         {
             return new CompoundStatement(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (CompoundStatement)base._Relocate(wr);
-            r += (Stms, wr.Fix(stms));
+            var r = (CompoundStatement)base._Relocate(cx);
+            r += (Stms,cx.Fix(stms));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (CompoundStatement)base.Fix(cx);
+            var r = (CompoundStatement)base._Fix(cx);
             var nc = cx.Fix(stms);
             if (nc != stms)
                 r += (Stms, nc);
@@ -348,10 +337,6 @@ namespace Pyrrho.Level3
             catch (Exception e) { throw e; }
             return act.SlideDown();
         }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t, stms, VIC.OK | VIC.OV);
-        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -375,44 +360,38 @@ namespace Pyrrho.Level3
             (CList<long>)mem[QMarks] ?? CList<long>.Empty;
         internal Executable target => (Executable)mem[Target];
         public PreparedStatement(Context cx) 
-            :base(_Unheap(cx,cx.exec.defpos-1),_Mem(cx)) // actually will call UnLex
-        {  }
-        static long _Unheap(Context cx,long dp)
+            :base(cx.GetUid(),BTree<long,object>.Empty
+                 +(Target,cx.exec)+(QMarks,cx.qParams)+(_Framing,new Framing(cx)))
+        { }
+        protected PreparedStatement(long dp,BTree<long,object> m)
+            :base(dp,m)
+        { }
+        public static PreparedStatement operator+(PreparedStatement pr,(long,object)x)
         {
-            cx.ObReloc(dp);
-            return cx.obuids[dp]??dp;
+            return (PreparedStatement)pr.New(pr.mem + x);
         }
-        static BTree<long,object> _Mem(Context cx)
+        internal override Basis New(BTree<long, object> m)
         {
-            if (cx.exec is SelectStatement ss)
-                ((Query)cx.obs[ss.cs]).RowSets(cx, CTree<long, RowSet.Finder>.Empty);
-            cx.relocs = Context.Relocations.Prepare;
-            var f = new Framing(cx);
-            f.Relocate(cx);
-            cx.Scan(cx.qParams);
-            f = (Framing)f.Fix(cx);
-            cx._Add((Executable)cx.exec.Fix(cx));
-            var p = cx.exec.defpos;
-            var r = new BTree<long, object>(_Framing, f) 
-                + (Target,f.obs[cx.obuids[p]??p])
-                + (QMarks,cx.Fix(cx.qParams));
-            f.Install(cx);
-            cx.relocs=Context.Relocations.None;
-            return r;
+            return new PreparedStatement(defpos,m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new PreparedStatement(dp,mem);
         }
         public override Context Obey(Context cx)
         {
-            cx.Install2(framing);
-            return target.Obey(cx);
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            throw new DBException("2F003");
+            return ((Executable)target.Instance(iix,cx)).Obey(cx);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Target: ");sb.Append(target);
+            var cm = "";
+            sb.Append(" Params: ");
+            for (var b=qMarks.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ","; sb.Append(Uid(b.value()));
+            }
             return sb.ToString();
         }
     }
@@ -449,22 +428,20 @@ namespace Pyrrho.Level3
         {
             return new LocalVariableDec(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (LocalVariableDec)base._Relocate(wr);
-            r += (AssignmentStatement.Vbl, wr.Fixed(vbl).defpos);
-            r += (Init, wr.Fixed(init)?.defpos??-1L);
+            var r = (LocalVariableDec)base._Relocate(cx);
+            r += (AssignmentStatement.Vbl, cx.Fix(vbl));
+            r += (Init, cx.Fix(init));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (LocalVariableDec)base.Fix(cx);
-            var nb = cx.obuids[vbl] ?? vbl;
+            var r = (LocalVariableDec)base._Fix(cx);
+            var nb = cx.Fix(vbl);
             if (nb != vbl)
                 r += (AssignmentStatement.Vbl, nb);
-            var ni = cx.obuids[init] ?? init;
+            var ni = cx.Fix(init);
             if (init != ni)
                 r += (Init, ni);
             return r;
@@ -482,12 +459,13 @@ namespace Pyrrho.Level3
             var a = (Activation)cx;
             a.exec = this;
             var vb = (SqlValue)cx.obs[vbl];
-            TypedValue tv = cx.obs[init]?.Eval(cx)??vb.domain.defaultValue;
+            var dm = cx._Dom(vb);
+            TypedValue tv = cx.obs[init]?.Eval(cx)??dm.defaultValue;
             a.locals += (defpos, true); // local variables need special handling
             cx.AddValue(vb, tv); // We expect a==cx, but if not, tv will be copied to a later
             return cx;
         }
-        internal override CTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
+        internal override CTree<long, RowSet.Finder> Needs(Context context, long rs)
         {
             return CTree<long, RowSet.Finder>.Empty;
         }
@@ -495,17 +473,10 @@ namespace Pyrrho.Level3
         {
             return false;
         }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, init, VIC.OK | VIC.OV);
-            t = Scan(t, AssignmentStatement.Vbl, VIC.OK | VIC.OV);
-            return t;
-        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(label); sb.Append(' '); sb.Append(Uid(defpos));
-            sb.Append(' ');  sb.Append(domain.kind);
             return sb.ToString();
         }
 	}
@@ -531,43 +502,49 @@ namespace Pyrrho.Level3
         /// Constructor: a procedure formal parameter from the parser
         /// </summary>
         /// <param name="m">The mode</param>
-		public FormalParameter(long vp, Sqlx m, string n,Domain dt)
-            : base(vp,new BTree<long, object>(ParamMode, m)+(Name,n)+(AssignmentStatement.Val,vp)
-                  +(_Domain,dt))
+		public FormalParameter(Iix vp, Sqlx m, string n,Domain dt)
+            : base(vp,new BTree<long, object>(ParamMode, m)+(Name,n)+(AssignmentStatement.Val,vp.dp)
+                  +(_Domain,dt.defpos))
         { }
-        protected FormalParameter(long dp,BTree<long, object> m) : base(dp,m) { }
+        protected FormalParameter(Iix dp,BTree<long, object> m) : base(dp,m) { }
         public static FormalParameter operator +(FormalParameter s, (long, object) x)
         {
-            return new FormalParameter(s.defpos,s.mem + x);
+            return new FormalParameter(s.iix,s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new FormalParameter(defpos, m);
+            return new FormalParameter(iix, m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new FormalParameter(dp,mem);
+            return new FormalParameter(new Iix(iix,dp),mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (FormalParameter)base._Relocate(wr);
-            return r+(AssignmentStatement.Val,wr.Fixed(val).defpos);
+            var r = (FormalParameter)base._Relocate(cx);
+            return r+(AssignmentStatement.Val,cx.Fix(val));
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (FormalParameter)base.Fix(cx);
-            var nv = cx.obuids[val] ?? val;
-            if (nv != val)
-                r += (AssignmentStatement.Val, nv);
+            var r = (FormalParameter)base._Fix(cx);
+            var vl = cx.Fix(val);
+            if (vl != val)
+                r += (AssignmentStatement.Val, vl);
             return r;
+        }
+        internal override bool KnownBy(Context cx, RowSet q)
+        {
+            return true;
+        }
+        internal override bool KnownBy<V>(Context cx, CTree<long,V> cs)
+        {
+            return true;
         }
         internal override TypedValue Eval(Context cx)
         {
-            return cx.FindCx(defpos).values[defpos];
+            return cx.values[defpos];
         }
-        internal override CTree<long, RowSet.Finder> Needs(Context context, RowSet rs)
+        internal override CTree<long, RowSet.Finder> Needs(Context context, long rs)
         {
             return CTree<long, RowSet.Finder>.Empty;
         }
@@ -575,7 +552,8 @@ namespace Pyrrho.Level3
         {
             return false; // might be the target of an assignment in the method body
         }
-        internal override string ToString(string sg,CList<long> cs, Context cx)
+        internal override string ToString(string sg,Remotes rf,CList<long> cs,
+            CTree<long, string> ns, Context cx)
         {
             return Eval(cx).ToString();
         }
@@ -586,7 +564,6 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" "); sb.Append(domain);
             if (mem.Contains(ParamMode)) { sb.Append(" "); sb.Append(paramMode); }
             if (mem.Contains(Result)) { sb.Append(" "); sb.Append(result); }
             return sb.ToString();
@@ -610,7 +587,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="i">The name</param>
         /// <param name="c">The cursor specification</param>
-        public CursorDeclaration(long dp, Context cx,SqlCursor sc,CursorSpecification c) 
+        public CursorDeclaration(long dp, Context cx,SqlCursor sc,RowSet c) 
             : base(dp,cx,sc,new BTree<long,object>(CS,c.defpos)
                   +(_Domain,c.domain)) 
         { }
@@ -627,18 +604,16 @@ namespace Pyrrho.Level3
         {
             return new CursorDeclaration(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = base._Relocate(wr);
-            r += (CS, wr.Fixed(cs).defpos);
+            var r = (DBObject)base._Relocate(cx);
+            r += (CS, cx.Fix(cs));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (CursorDeclaration)base.Fix(cx);
-            var nc = cx.obuids[cs] ?? cs;
+            var r = (CursorDeclaration)base._Fix(cx);
+            var nc = cx.Fix(cs);
             if (nc!=cs)
                 r += (CS, nc);
             return r;
@@ -656,10 +631,6 @@ namespace Pyrrho.Level3
             var cu = cx.obs[cs];
             cx.AddValue(cu, cu.Eval(cx));
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t, cs, VIC.OK | VIC.OV);
         }
         public override string ToString()
         {
@@ -711,18 +682,16 @@ namespace Pyrrho.Level3
         {
             return new HandlerStatement(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (HandlerStatement)base._Relocate(wr);
-            r += (Action, wr.Fixed(action).defpos);
+            var r = (HandlerStatement)base._Relocate(cx);
+            r += (Action, cx.Fix(action));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (HandlerStatement)base.Fix(cx);
-            var na = cx.obuids[action] ?? action;
+            var r = (HandlerStatement)base._Fix(cx);
+            var na = cx.Fix(action);
             if (na!=action)
             r += (Action, na);
             return r;
@@ -743,10 +712,6 @@ namespace Pyrrho.Level3
         internal override bool Calls(long defpos, Context cx)
         {
             return cx.obs[action].Calls(defpos, cx);
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t,action, VIC.OK|VIC.OV);
         }
         public override string ToString()
         {
@@ -799,17 +764,15 @@ namespace Pyrrho.Level3
         {
             return new Handler(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (Handler)base._Relocate(wr);
-            r += (Hdlr, hdlr.Relocate(wr));
+            var r = (Handler)base._Relocate(cx);
+            r += (Hdlr, hdlr.Relocate(cx));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (Handler)base.Fix(cx);
+            var r = (Handler)base._Fix(cx);
             var nh = hdlr.Fix(cx);
             if (hdlr!=nh)
             r += (Hdlr, nh);
@@ -851,10 +814,6 @@ namespace Pyrrho.Level3
             }
             catch (Exception e) { throw e; }
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t,hdlr.defpos,VIC.OK|VIC.OV);
         }
         public override string ToString()
         {
@@ -926,7 +885,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: An assignment statement from the parser
         /// </summary>
-		public AssignmentStatement(long dp,SqlValue vb,SqlValue va) 
+		public AssignmentStatement(long dp,DBObject vb,SqlValue va) 
             : base(dp,BTree<long, object>.Empty+(Vbl,vb.defpos)+(Val,va.defpos)
                   +(Dependents,CTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true)))
         { }
@@ -943,22 +902,20 @@ namespace Pyrrho.Level3
         {
             return new AssignmentStatement(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (AssignmentStatement)base._Relocate(wr);
-            r += (Val, wr.Fixed(val).defpos);
-            r += (Vbl, wr.Fixed(vbl).defpos);
+            var r = (AssignmentStatement)base._Relocate(cx);
+            r += (Val, cx.Fix(val));
+            r += (Vbl, cx.Fix(vbl));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (AssignmentStatement)base.Fix(cx);
-            var na = cx.obuids[val] ?? val;
+            var r = (AssignmentStatement)base._Fix(cx);
+            var na = cx.Fix(val);
             if (na!=val)
                 r += (Val, na);
-            var nb = cx.obuids[vbl] ?? vbl;
+            var nb = cx.Fix(vbl);
             if (nb!=vbl)
                 r += (Vbl, nb);
             return r;
@@ -971,19 +928,13 @@ namespace Pyrrho.Level3
         {
             cx.exec = this;
             var vb = cx.obs[vbl];
-            var t = vb.domain;
+            var dm = cx._Dom(vb);
             if (val != -1L)
             {
-                var v = t.Coerce(cx,cx.obs[val].Eval(cx));
-                cx.AddValue(vb, v);
+                var v = dm.Coerce(cx,cx.obs[val].Eval(cx));
+                cx.values += (vbl, v);
             }
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, val, VIC.OK | VIC.OV);
-            t = Scan(t, vbl, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -1038,26 +989,24 @@ namespace Pyrrho.Level3
         {
             return new MultipleAssignment(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (MultipleAssignment)base._Relocate(wr);
-            r += (LhsType, wr.Fixed(lhsType).defpos);
-            r +=(List, wr.Fix(list));
-            r += (Rhs, wr.Fixed(rhs).defpos);
+            var r = (MultipleAssignment)base._Relocate(cx);
+            r += (LhsType, cx.Fix(lhsType));
+            r +=(List, cx.Fix(list));
+            r += (Rhs, cx.Fix(rhs));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (MultipleAssignment)base.Fix(cx);
-            var nt = cx.obuids[lhsType] ?? lhsType;
+            var r = (MultipleAssignment)base._Fix(cx);
+            var nt = cx.Fix(lhsType);
             if (nt != lhsType)
                 r += (LhsType, nt);
             var nl = cx.Fix(list);
             if (nl != list)
                 r += (List, nl);
-            var nr = cx.obuids[rhs] ?? rhs;
+            var nr = cx.Fix(rhs);
             if (nr != rhs)
                 r += (Rhs, nr);
             return r;
@@ -1078,13 +1027,6 @@ namespace Pyrrho.Level3
             for (int j = 0; j < r.Length; j++)
                 cx.values+=(list[j],r[j]);
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, lhsType, VIC.OK | VIC.OV);
-            t = Scan(t, list, VIC.OK | VIC.OV);
-            t = Scan(t, rhs, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -1130,18 +1072,16 @@ namespace Pyrrho.Level3
         {
             return new ReturnStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (ReturnStatement)base._Relocate(wr);
-            r += (Ret, wr.Fixed(ret).defpos);
+            var r = (ReturnStatement)base._Relocate(cx);
+            r += (Ret, cx.Fix(ret));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (ReturnStatement)base.Fix(cx);
-            var nr = cx.obuids[ret] ?? ret;
+            var r = (ReturnStatement)base._Fix(cx);
+            var nr = cx.Fix(ret);
             if (nr != ret)
                 r += (Ret, nr);
             return r;
@@ -1162,10 +1102,6 @@ namespace Pyrrho.Level3
             cx = a.SlideDown();
             return cx;
 		}
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t,ret,VIC.OK|VIC.OV);
-        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1213,23 +1149,21 @@ namespace Pyrrho.Level3
         {
             return new SimpleCaseStatement(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SimpleCaseStatement)base._Relocate(wr);
-            r += (Else, wr.Fix(els));
-            r += (_Operand, wr.Fixed(operand).defpos);
-            r += (Whens, wr.Fix(whens));
+            var r = (SimpleCaseStatement)base._Relocate(cx);
+            r += (Else, cx.Fix(els));
+            r += (_Operand, cx.Fix(operand));
+            r += (Whens, cx.Fix(whens));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (SimpleCaseStatement)base.Fix(cx);
+            var r = (SimpleCaseStatement)base._Fix(cx);
             var ne = cx.Fix(els);
             if (ne!=els)
             r += (Else, ne);
-            var no = cx.obuids[operand] ?? operand;
+            var no = cx.Fix(operand);
             if (no!=operand)
             r += (_Operand, no);
             var nw = cx.Fix(whens);
@@ -1256,13 +1190,6 @@ namespace Pyrrho.Level3
                 if (((SqlValue)cx.obs[operand]).Matches(cx)==true)
                     return ObeyList(((WhenPart)cx.obs[c.value()]).stms, cx);
             return ObeyList(els, cx);
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, els, VIC.OK | VIC.OV);
-            t = Scan(t, operand, VIC.OK | VIC.OV);
-            t = Scan(t, whens, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -1315,18 +1242,16 @@ namespace Pyrrho.Level3
         {
             return new SearchedCaseStatement(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SearchedCaseStatement)base._Relocate(wr);
-            r += (SimpleCaseStatement.Else,wr.Fix(els));
-            r += (SimpleCaseStatement.Whens, wr.Fix(whens));
+            var r = (SearchedCaseStatement)base._Relocate(cx);
+            r += (SimpleCaseStatement.Else,cx.Fix(els));
+            r += (SimpleCaseStatement.Whens, cx.Fix(whens));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (SearchedCaseStatement)base.Fix(cx);
+            var r = (SearchedCaseStatement)base._Fix(cx);
             var ne = cx.Fix(els);
             if (ne != els)
                 r += (SimpleCaseStatement.Else, ne);
@@ -1359,12 +1284,6 @@ namespace Pyrrho.Level3
             }
 			return ObeyList(els,cx);
 		}
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, whens, VIC.OK | VIC.OV);
-            t = Scan(t, els, VIC.OK | VIC.OV);
-            return t;
-        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1421,19 +1340,17 @@ namespace Pyrrho.Level3
         {
             return new WhenPart(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (WhenPart)base._Relocate(wr);
-            r += (Cond, wr.Fixed(cond)?.defpos??-1L);
-            r += (Stms, wr.Fix(stms));
+            var r = (WhenPart)base._Relocate(cx);
+            r += (Cond, cx.Fix(cond));
+            r += (Stms, cx.Fix(stms));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (WhenPart)base.Fix(cx);
-            var nc = cx.obuids[cond] ?? cond;
+            var r = (WhenPart)base._Fix(cx);
+            var nc = cx.Fix(cond);
             if (cond != nc)
                 r += (Cond, nc);
             var ns = cx.Fix(stms);
@@ -1455,12 +1372,6 @@ namespace Pyrrho.Level3
             }
             a.val = TBool.False;
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, cond, VIC.OK | VIC.OV);
-            t = Scan(t, stms, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -1523,21 +1434,19 @@ namespace Pyrrho.Level3
         {
             return new IfThenElse(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (IfThenElse)base._Relocate(wr);
-            r += (Search, wr.Fixed(search).defpos);
-            r += (Then,wr.Fix(then));
-            r += (Else, wr.Fix(els)); 
-            r += (Elsif, wr.Fix(elsif)); 
+            var r = (IfThenElse)base._Relocate(cx);
+            r += (Search, cx.Fix(search));
+            r += (Then,cx.Fix(then));
+            r += (Else, cx.Fix(els)); 
+            r += (Elsif, cx.Fix(elsif)); 
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (IfThenElse)base.Fix(cx);
-            var ns = cx.obuids[search] ?? search;
+            var r = (IfThenElse)base._Fix(cx);
+            var ns = cx.Fix(search);
             if (ns != search)
                 r += (Search, ns);
             var nt = cx.Fix(then);
@@ -1570,14 +1479,6 @@ namespace Pyrrho.Level3
                     && ((SqlValue)cx.obs[f.search]).Matches(cx)==true)
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, search, VIC.OK | VIC.OV);
-            t = Scan(t, then, VIC.OK | VIC.OV);
-            t = Scan(t, elsif, VIC.OK | VIC.OV);
-            t = Scan(t, els, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -1691,23 +1592,21 @@ namespace Pyrrho.Level3
         {
             return new WhileStatement(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (WhileStatement)base._Relocate(wr);
-            r += (Loop, wr.Fixed(loop).defpos);
-            r += (Search, wr.Fixed(search).defpos);
-            r += (What, wr.Fix(what));
+            var r = (WhileStatement)base._Relocate(cx);
+            r += (Loop, cx.Fix(loop));
+            r += (Search, cx.Fix(search));
+            r += (What, cx.Fix(what));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (WhileStatement)base.Fix(cx);
-            var nl = cx.obuids[loop] ?? loop;
+            var r = (WhileStatement)base._Fix(cx);
+            var nl = cx.Fix(loop);
             if (nl != loop)
                 r += (Loop, nl);
-            var ns = cx.obuids[search] ?? search;
+            var ns = cx.Fix(search);
             if (ns != search)
                 r += (Search, ns);
             var nw = cx.Fix(what);
@@ -1740,13 +1639,6 @@ namespace Pyrrho.Level3
         internal override bool Calls(long defpos, Context cx)
         {
             return Calls(what,defpos,cx) || cx.obs[search].Calls(defpos, cx);
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, loop, VIC.OK | VIC.OV);
-            t = Scan(t, search, VIC.OK | VIC.OV);
-            t = Scan(t, what, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -1797,23 +1689,21 @@ namespace Pyrrho.Level3
         {
             return new RepeatStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (RepeatStatement)base._Relocate(wr);
-            r += (WhileStatement.Loop, wr.Fix(loop));
-            r += (WhileStatement.Search, wr.Fixed(search).defpos);
-            r += (WhileStatement.What, wr.Fix(what));
+            var r = (RepeatStatement)base._Relocate(cx);
+            r += (WhileStatement.Loop, cx.Fix(loop));
+            r += (WhileStatement.Search, cx.Fix(search));
+            r += (WhileStatement.What, cx.Fix(what));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (RepeatStatement)base.Fix(cx);
-            var nl = cx.obuids[loop] ?? loop;
+            var r = (RepeatStatement)base._Fix(cx);
+            var nl = cx.Fix(loop);
             if (loop != nl)
                 r += (WhileStatement.Loop, nl);
-            var ns = cx.obuids[search] ?? search;
+            var ns = cx.Fix(search);
             if (ns != search)
                 r += (WhileStatement.Search, ns);
             var nw = cx.Fix(what);
@@ -1846,12 +1736,6 @@ namespace Pyrrho.Level3
             }
             cx = act.SlideDown(); 
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, loop, VIC.OK | VIC.OV);
-            t = Scan(t, what, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -1936,19 +1820,17 @@ namespace Pyrrho.Level3
         {
             return new LoopStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (LoopStatement)base._Relocate(wr);
-            r += (WhileStatement.Loop, wr.Fix(loop));
-            r += (WhenPart.Stms, wr.Fix(stms));
+            var r = (LoopStatement)base._Relocate(cx);
+            r += (WhileStatement.Loop, cx.Fix(loop));
+            r += (WhenPart.Stms, cx.Fix(stms));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (LoopStatement)base.Fix(cx);
-            var nl = cx.obuids[loop] ?? loop;
+            var r = (LoopStatement)base._Fix(cx);
+            var nl = cx.Fix(loop);
             if (nl != loop)
                 r += (WhileStatement.Loop, nl);
             var ns = cx.Fix(stms);
@@ -1986,12 +1868,6 @@ namespace Pyrrho.Level3
             }
             return act.SlideDown();
         }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, loop, VIC.OK | VIC.OV);
-            t = Scan(t, stms, VIC.OK | VIC.OV);
-            return t;
-        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2016,7 +1892,7 @@ namespace Pyrrho.Level3
             Cursor = -124, // long SqlCursor
             ForVn = -125, // string
             Loop = -126, // long
-            Sel = -127, // long CursorSpecification
+            Sel = -127, // long RowSet
             Stms = -128; // BList<long> Executable
         /// <summary>
         /// The query for the FOR
@@ -2058,27 +1934,24 @@ namespace Pyrrho.Level3
         {
             return new ForSelectStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (ForSelectStatement)base._Relocate(wr);
-            r += (WhileStatement.Loop, wr.Fixed(loop)?.defpos??-1L);
-            r += (Cursor, wr.Fix(cursor));
-            r += (Sel, wr.Fix(sel));
-            r += (Stms, wr.Fix(stms));
+            var r = (ForSelectStatement)base._Relocate(cx);
+            r += (WhileStatement.Loop, cx.Fix(loop));
+            r += (Cursor, cx.Fix(sel));
+            r += (Stms, cx.Fix(stms));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (ForSelectStatement)base.Fix(cx);
-            var nl = cx.obuids[loop] ?? loop;
+            var r = (ForSelectStatement)base._Fix(cx);
+            var nl = cx.Fix(loop);
             if (nl != loop)
                 r += (WhileStatement.Loop, nl);
-            var nc = cx.obuids[cursor] ?? cursor;
+            var nc = cx.Fix(cursor);
             if (nc != cursor)
                 r += (Cursor, nc);
-            var ns = cx.obuids[sel] ?? sel;
+            var ns = cx.Fix(sel);
             if (ns != sel)
                 r += (Sel, ns);
             var nn = cx.Fix(stms);
@@ -2097,18 +1970,12 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var da = ((Query)cx.obs[sel]).RowSets(cx,CTree<long,RowSet.Finder>.Empty);
-            if (da == null)
-                return cx;
-            cx.data += (sel, da);
-            var cs = (CursorSpecification)cx.obs[sel];
-            var qe = (QueryExpression)cx.obs[cs.union];
-            var qs = (QuerySpecification)cx.obs[qe.left];
+            var qs = (RowSet)cx.obs[sel];
             var ac = new Activation(cx,label);
-            for (var rb = da.First(ac); rb != null; rb = rb.Next(ac))
+            for (var rb = qs.First(ac); rb != null; rb = rb.Next(ac))
             {
                 ac.Add(qs);
-                ac.finder = cx.data[qs.defpos].finder;
+                ac.finder = ((RowSet)cx.obs[qs.defpos]).finder;
                 ac.brk = cx as Activation;
                 ac.cont = ac;
                 ac = (Activation)ObeyList(stms, ac);
@@ -2116,14 +1983,6 @@ namespace Pyrrho.Level3
                     ac.signal.Throw(cx);
             }
             return ac.SlideDown();
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, cursor, VIC.OK | VIC.OV);
-            t = Scan(t, loop, VIC.OK | VIC.OV);
-            t = Scan(t, sel, VIC.OK | VIC.OV);
-            t = Scan(t, stms, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -2171,18 +2030,16 @@ namespace Pyrrho.Level3
         {
             return new OpenStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (OpenStatement)base._Relocate(wr);
-            r += (FetchStatement.Cursor, wr.Fix(cursor));
+            var r = (OpenStatement)base._Relocate(cx);
+            r += (FetchStatement.Cursor, cx.Fix(cursor));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (OpenStatement)base.Fix(cx);
-            var nc = cx.obuids[cursor] ?? cursor;
+            var r = (OpenStatement)base._Fix(cx);
+            var nc = cx.Fix(cursor);
             if (nc != cursor)
                 r += (FetchStatement.Cursor, nc);
             return r;
@@ -2198,16 +2055,8 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            var c = (SqlCursor)cx.obs[cursor];
-            var rs = ((Query)cx.obs[c.spec]).RowSets(cx,CTree<long, RowSet.Finder>.Empty);
-            cx.data += (c.spec, rs);
             return cx;
         }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t, cursor, VIC.OK | VIC.OV);
-        }
-
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2228,7 +2077,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="n">The name of the cursor</param>
 		public CloseStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long,object>.Empty
-            +(FetchStatement.Cursor,c.defpos))
+            +(FetchStatement.Cursor,c.defpos)+(_Domain,c.domain))
 		{ }
         protected CloseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CloseStatement operator+(CloseStatement s,(long,object)x)
@@ -2243,18 +2092,16 @@ namespace Pyrrho.Level3
         {
             return new CloseStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (CloseStatement)base._Relocate(wr);
-            r += (FetchStatement.Cursor, wr.Fix(cursor));
+            var r = (CloseStatement)base._Relocate(cx);
+            r += (FetchStatement.Cursor, cx.Fix(cursor));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (CloseStatement)base.Fix(cx);
-            var nc = cx.obuids[cursor] ?? cursor;
+            var r = (CloseStatement)base._Fix(cx);
+            var nc = cx.Fix(cursor);
             if (nc!=cursor)
                 r += (FetchStatement.Cursor, nc);
             return r;
@@ -2269,12 +2116,8 @@ namespace Pyrrho.Level3
         /// </summary>
         public override Context Obey(Context cx)
         {
-            cx.data += (defpos,new EmptyRowSet(defpos,cx,cx.data[defpos]?.domain));
+            cx.Add(new EmptyRowSet(defpos,cx,domain));
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t, cursor, VIC.OK | VIC.OV);
         }
         public override string ToString()
         {
@@ -2329,26 +2172,24 @@ namespace Pyrrho.Level3
         {
             return new FetchStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (FetchStatement)base._Relocate(wr);
-            r += (Cursor, wr.Fixed(cursor).defpos);
-            r += (Outs, wr.Fix(outs));
-            r += (Where, wr.Fixed(where)?.defpos??-1L);
+            var r = (FetchStatement)base._Relocate(cx);
+            r += (Cursor, cx.Fix(cursor));
+            r += (Outs, cx.Fix(outs));
+            r += (Where, cx.Fix(where));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (FetchStatement)base.Fix(cx);
-            var nc = cx.obuids[cursor] ?? cursor;
+            var r = (FetchStatement)base._Fix(cx);
+            var nc = cx.Fix(cursor);
             if (nc != cursor)
                 r += (Cursor, nc);
             var no = cx.Fix(outs);
             if (outs != no)
                 r += (Outs, no);
-            var nw = cx.obuids[where] ?? where;
+            var nw = cx.Fix(where);
             if (where != nw)
                 r += (Where, nw);
             return r;
@@ -2364,7 +2205,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var cu = (SqlCursor)cx.obs[cursor];
-            var cs = (Query)cx.obs[cu.spec];
+            var cs = (RowSet)cx.obs[cu.spec];
             // position the cursor as specified
             var rqpos = 0L;
             var rb = cx.values[cu.defpos] as Cursor;
@@ -2382,7 +2223,8 @@ namespace Pyrrho.Level3
                 case Sqlx.LAST:
                     {
                         int n = 0;
-                        for (var e = cx.data[cs.defpos].First(cx); e != null; e = e.Next(cx))
+                        for (var e = ((RowSet)cx.obs[cs.defpos]).First(cx); e != null; 
+                            e = e.Next(cx))
                             n++;
                         rqpos = n - 1;
                         break;
@@ -2395,15 +2237,15 @@ namespace Pyrrho.Level3
                     break;
             }
             if (rb == null || rqpos == 0)
-                rb = cx.data[cs.defpos].First(cx);
+                rb = ((RowSet)cx.obs[cs.defpos]).First(cx);
             while (rb != null && rqpos != rb._pos)
                 rb = rb.Next(cx);
             cx.values += (cu.defpos, rb);
             if (rb == null)
-                cx = new Signal(defpos, "02000", "No data").Obey(cx);
+                cx = new Signal(defpos, "02000", "No obs").Obey(cx);
             else
             {
-                var dt = cs.rowType;
+                var dt = cx._Dom(cs).rowType;
                 for (int i = 0; i < dt.Length; i++)
                 {
                     var c = rb[i];
@@ -2416,13 +2258,6 @@ namespace Pyrrho.Level3
                 }
             }
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, cursor, VIC.OK | VIC.OV);
-            t = Scan(t, outs, VIC.OK | VIC.OV);
-            t = Scan(t, where, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -2450,7 +2285,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             Parms = -133, // CList<long> SqlValue
-            ProcDefPos = -134, // long
+            ProcDefPos = -134, // long Procedure
             Var = -135; // long SqlValue
         /// <summary>
         /// The target object (for a method)
@@ -2465,20 +2300,41 @@ namespace Pyrrho.Level3
         /// </summary>
 		public CList<long> parms =>
             (CList<long>)mem[Parms] ?? CList<long>.Empty;
+        public CTree<long,bool> aggs =>
+            (CTree<long,bool>)mem[Domain.Aggs]??CTree<long,bool>.Empty;
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-        public CallStatement(long dp, Procedure pr, string pn, CList<long> acts, SqlValue tg = null)
-         : this(dp, pr, pn, acts, (tg == null) ? null : new BTree<long, object>(Var, tg.defpos))
+        public CallStatement(Iix lp, Context cx,Procedure pr, string pn, 
+            CList<long> acts, SqlValue tg = null)
+         : this(lp,cx, (Procedure)pr?.Instance(lp,cx), pn, acts, 
+               (tg == null) ? null : 
+               new BTree<long, object>(Var, tg.defpos))
         { }
-        protected CallStatement(long dp, Procedure pr, string pn, CList<long> acts, BTree<long, object> m = null)
-         : base(dp, (m ?? BTree<long, object>.Empty) + (Parms, acts) + (ProcDefPos, pr?.defpos ?? -1L)
-               + (_Domain, pr?.domain ?? Domain.Content) + (Name, pn))
-        {
-            //         if (pr == null)
-            //             throw new DBException("42108", pn);
-        }
+        protected CallStatement(Iix dp, Context cx,Procedure pr, string pn, CList<long> acts, 
+            BTree<long, object> m = null)
+         : base(dp.dp, _Mem(cx,pr,acts,m) + (Parms, acts) + (ProcDefPos, pr?.defpos ?? -1L)
+               + (Name, pr?.name??pn))
+        { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,Procedure pr,CList<long> acts,BTree<long,object>m)
+        {
+            m = m ?? BTree<long, object>.Empty;
+            var dm = cx._Dom(pr)??Domain.Content;
+            var ag = CTree<long, bool>.Empty;
+            for (var b=acts.First();b!=null;b=b.Next())
+            {
+                var pa = (SqlValue)cx.obs[b.value()];
+                ag += pa.IsAggregation(cx);
+            }
+            if (ag!=dm.aggs)
+            {
+                dm = (Domain)cx.Add(dm.Relocate(cx.GetUid()) + (Domain.Aggs, ag));
+                m += (Domain.Aggs, ag);
+            }
+            m += (_Domain, dm.defpos);
+            return m;
+        }
         public static CallStatement operator +(CallStatement s, (long, object) x)
         {
             return new CallStatement(s.defpos, s.mem + x);
@@ -2491,26 +2347,24 @@ namespace Pyrrho.Level3
         {
             return new CallStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (CallStatement)base._Relocate(wr);
-            r += (ProcDefPos, wr.Fix(procdefpos));
-            r += (Parms, wr.Fix(parms));
-            r += (Var, wr.Fix(var));
+            var r = (CallStatement)base._Relocate(cx);
+            r += (ProcDefPos, cx.Fix(procdefpos));
+            r += (Parms, cx.Fix(parms));
+            r += (Var, cx.Fix(var));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (CallStatement)base.Fix(cx);
-            var np = cx.obuids[procdefpos] ?? procdefpos;
+            var r = (CallStatement)base._Fix(cx);
+            var np = cx.Fix(procdefpos);
             if (np != procdefpos)
                 r += (ProcDefPos, np);
             var ns = cx.Fix(parms);
             if (parms != ns)
                 r += (Parms, ns);
-            var va = cx.obuids[var] ?? var;
+            var va = cx.Fix(var);
             if (var != va)
                 r += (Var, va);
             return r;
@@ -2520,11 +2374,6 @@ namespace Pyrrho.Level3
             if (var != -1L && cx.obs[var].Calls(defpos, cx))
                 return true;
             return procdefpos == defpos || Calls(parms, defpos, cx);
-        }
-        internal void Grouped(Context cx, GroupSpecification gs)
-        {
-            ((SqlValue)cx.obs[var])?.Grouped(cx, gs);
-            gs.Grouped(cx, parms);
         }
         /// <summary>
         /// Execute a proc/method call
@@ -2553,16 +2402,10 @@ namespace Pyrrho.Level3
             }
             if (np != r.parms)
                 r += (Parms, np);
-            r = (CallStatement)New(cx, r.mem);
+            if (r!=this)
+                r = (CallStatement)New(cx, r.mem);
             cx.done += (defpos, r);
             return r;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            t = Scan(t, parms, VIC.OK | VIC.OV);
-            t = Scan(t, procdefpos, VIC.OK | VIC.OV);
-            t = Scan(t, var, VIC.OK | VIC.OV);
-            return t;
         }
         public override string ToString()
         {
@@ -2632,17 +2475,15 @@ namespace Pyrrho.Level3
         {
             return new SignalStatement(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SignalStatement)base._Relocate(wr);
-            r += (SetList, wr.Fix(setlist));
+            var r = (SignalStatement)base._Relocate(cx);
+            r += (SetList, cx.Fix(setlist));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (SignalStatement)base.Fix(cx);
+            var r = (SignalStatement)base._Fix(cx);
             var ns = cx.Fix(setlist);
             if (ns != setlist)
                 r += (SetList, ns);
@@ -2711,10 +2552,6 @@ namespace Pyrrho.Level3
                 for (var x = setlist.First(); x != null; x = x.Next())
                     e.info += (x.key(), cx.obs[x.value()].Eval(cx));
             throw e;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t, setlist, VIC.OK | VIC.OV);
         }
         public override string ToString()
         {
@@ -2857,17 +2694,15 @@ namespace Pyrrho.Level3
         {
             return new GetDiagnostics(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = base._Relocate(wr);
-            r += (List, wr.Fix(list));
+            var r = base._Relocate(cx);
+            r += (List, cx.Fix(list));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (Executable)base.Fix(cx);
+            var r = (Executable)base._Fix(cx);
             var nl = cx.Fix(list);
             if (nl != list)
                 r += (List, nl);
@@ -2890,10 +2725,6 @@ namespace Pyrrho.Level3
             for (var b = list.First(); b != null; b = b.Next())
                 cx.AddValue(cx.obs[b.key()], cx.tr.diagnostics[b.value()]);
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t,List,VIC.OK|VIC.OV);
         }
         public override string ToString()
         {
@@ -2945,19 +2776,17 @@ namespace Pyrrho.Level3
         {
             return new SelectSingle(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (SelectSingle)base._Relocate(wr);
-            r += (ForSelectStatement.Sel, wr.Fixed(sel).defpos);
-            r += (Outs, wr.Fix(outs));
+            var r = (SelectSingle)base._Relocate(cx);
+            r += (ForSelectStatement.Sel, cx.Fix(sel));
+            r += (Outs, cx.Fix(outs));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (SelectSingle)base.Fix(cx);
-            var ns = cx.obuids[sel] ?? sel;
+            var r = (SelectSingle)base._Fix(cx);
+            var ns = cx.Fix(sel);
             if (ns != sel)
                 r += (ForSelectStatement.Sel, ns);
             var no = cx.Fix(outs);
@@ -2977,8 +2806,7 @@ namespace Pyrrho.Level3
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-            var sr = ((Query)cx.obs[sel]).RowSets(cx, CTree<long, RowSet.Finder>.Empty);
-            var rb = sr.First(cx);
+            var rb = ((RowSet)cx.obs[sel]).First(cx);
             a.AddValue(this, rb);
             if (rb != null)
                 for (var b = outs.First(); b != null; b = b.Next())
@@ -2986,10 +2814,6 @@ namespace Pyrrho.Level3
             else
                 a.NoData();
             return cx;
-        }
-        internal override BTree<long, VIC?> Scan(BTree<long, VIC?> t)
-        {
-            return Scan(t, outs, VIC.OK|VIC.OV);
         }
         public override string ToString()
         {
@@ -3005,4 +2829,298 @@ namespace Pyrrho.Level3
         }
 
     }
+    /// <summary>
+    /// The interesting bit here is that if we have something like "insert into a(b,c) select d,e from f"
+    /// the table-valued subquery silently gets its columns renamed to b,c and types coerced to match a, 
+    /// and then the resulting columns get reordered to become candidate rows of a so that trigger processing
+    /// etc can proceed.
+    /// This is a bit more complex than "insert into a values(..." and requires some planning.
+    /// The current approach is that in the above example domain is a's row type, nominaltype is for (b,c)
+    /// and rows is a subquery before the renaming. 
+    /// The renaming, reordering and coercion steps complicate the coding.
+    /// shareable
+    /// </summary>
+    internal class SqlInsert : Executable
+    {
+        internal const long
+            InsCols = -241, // CList<long> TableColumn
+            Provenance = -155, //string
+            Value = -156; // long RowSet
+        internal long source => (long)(mem[RowSet._Source] ?? -1L);
+        /// <summary>
+        /// Provenance information if supplied
+        /// </summary>
+        public string provenance => (string)mem[Provenance];
+        public long value => (long)(mem[Value] ?? -1L);
+        public CList<long> insCols => (CList<long>)mem[InsCols]; // tablecolumns if specified
+        /// <summary>
+        /// Constructor: an INSERT statement from the parser.
+        /// </summary>
+        /// <param name="cx">The parsing context</param>
+        /// <param name="fm">The rowset with target info</param>
+        /// <param name="v">The uid of the data rowset</param>
+        public SqlInsert(long dp, RowSet fm, string prov, long v, CList<long>iC)
+           : base(dp, BTree<long, object>.Empty + (RowSet._Source, fm.defpos)
+                 + (Provenance, prov) + (Value, v) + (InsCols, iC))
+        { }
+        protected SqlInsert(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new SqlInsert(defpos, m);
+        }
+        public static SqlInsert operator +(SqlInsert s, (long, object) x)
+        {
+            return new SqlInsert(s.defpos, s.mem + x);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = base._Replace(cx, so, sv);
+            var tg = cx.ObReplace(source, so, sv);
+            if (tg != source)
+                r += (RowSet._Source, tg);
+            if (r != this)
+                r = (SqlInsert)New(cx, r.mem);
+            cx.done += (defpos, r);
+            return cx.Add(r);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new SqlInsert(dp, mem);
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (SqlInsert)base._Relocate(cx);
+            r += (RowSet._Source, cx.Fix(source));
+            r += (Value, cx.Fix(value));
+            return r;
+        }
+        internal override Basis _Fix(Context cx)
+        {
+            var r = (SqlInsert)base._Fix(cx);
+            var tg = cx.Fix(source);
+            if (tg != source)
+                r += (RowSet._Source, tg);
+            var nv = cx.Fix(value);
+            if (nv != value)
+                r += (Value, nv);
+            return r;
+        }
+        public override Context Obey(Context cx)
+        {
+            cx.result = 0;
+            var tg = (RowSet)cx.obs[source];
+            var data = (RowSet)cx.obs[value];
+            if (provenance!=null)
+                cx._Add(cx._Dom(data) + (Domain.Provenance, provenance));
+            var ts = BTree<long, TargetActivation>.Empty;
+            for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+            {
+                var tb = cx.obs[it.value()];
+                ts += tb.Insert(cx, data, true, insCols);
+            }
+            for (var ib = data.First(cx); ib != null; ib = ib.Next(cx))
+                for (var it = ts.First(); it != null; it = it.Next())
+                {
+                    var ta = it.value();
+                    ta.db = cx.db;
+                    ta.cursors = cx.cursors;
+                    ta.cursors += (ta._fm.defpos, ib);
+                    ta.EachRow(ib._pos);
+                    cx.db = ta.db;
+                    ts += (it.key(), ta);
+                }
+            for (var c = ts.First(); c != null; c = c.Next())
+            {
+                var ta = c.value();
+                ta.db = cx.db;
+                ta.Finish();
+                ts += (c.key(), ta);
+                cx.affected += ta.affected;
+            }
+            return cx;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Target: ");
+            sb.Append(Uid(source));
+            sb.Append(" Value: "); sb.Append(Uid(value));
+            if (provenance != null)
+            { sb.Append(" Provenance: "); sb.Append(provenance); }
+            if (insCols!=null)
+            {
+                sb.Append(" Columns: [");
+                var cm = "";
+                for (var b=insCols.First(); b != null; b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.value()));
+                }
+                sb.Append("]");
+            }
+            return sb.ToString();
+        }
+    }
+    /// <summary>
+    /// QuerySearch is for DELETE and UPDATE 
+    /// // shareable as of 26 April 2021
+    /// </summary>
+    internal class QuerySearch : Executable
+    {
+        internal long source => (long)(mem[RowSet._Source] ?? -1L);
+        internal QuerySearch(long dp, Context cx, RowSet f, DBObject tb, Grant.Privilege how)
+            : this(Type.DeleteWhere, dp, cx, f, tb, how)
+        // detected for HttpService for DELETE verb
+        { }
+        /// <summary>
+        /// Constructor: a DELETE or UPDATE statement from the parser
+        /// </summary>
+        /// <param name="cx">The parsing context</param>
+        protected QuerySearch(Type et, long dp, Context cx, RowSet f, DBObject tb,
+            Grant.Privilege how, CTree<UpdateAssignment, bool> ua = null)
+            : base(dp, BTree<long, object>.Empty
+                  + (RowSet._Source, f.defpos)
+                  + (_Depth, f.depth + 1) + (_Type, et) + (RowSet.Assig, ua))
+        {
+            if (cx._Dom(f).rowType.Length == 0)
+                throw new DBException("2E111", cx.db.user, dp).Mix();
+        }
+        protected QuerySearch(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static QuerySearch operator +(QuerySearch q, (long, object) x)
+        {
+            return (QuerySearch)q.New(q.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new QuerySearch(defpos, m);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (QuerySearch)base._Replace(cx, so, sv);
+            if (r != this)
+                r = (QuerySearch)New(cx, r.mem);
+            cx.done += (defpos, r);
+            return r;
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new QuerySearch(dp, mem);
+        }
+        internal override Basis _Relocate(Context cx)
+        {
+            var r = (QuerySearch)base._Relocate(cx);
+            r += (RowSet._Source, cx.Fix(source));
+            return r;
+        }
+        internal override Basis _Fix(Context cx)
+        {
+            var r = (QuerySearch)base._Fix(cx);
+            r += (RowSet._Source, cx.Fix(source));
+            return r;
+        }
+        public override Context Obey(Context cx)
+        {
+            var tg = (RowSet)cx.obs[source];
+            var ts = BTree<long, TargetActivation>.Empty;
+            for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+            {
+                var tb = cx.obs[it.value()];
+                ts += tb.Delete(cx, tg, true);
+            }
+            for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
+                for (var it = ts.First(); it != null; it = it.Next())
+                {
+                    var ta = it.value();
+                    ta.db = cx.db;
+                    ta.cursors = cx.cursors;
+                    ta.cursors += (ta._fm.defpos, ib);
+                    ta.EachRow(ib._pos);
+                    cx.db = ta.db;
+                    ts += (it.key(), ta);
+                }
+            for (var c = ts.First(); c != null; c = c.Next())
+            {
+                var ta = c.value();
+                ta.db = cx.db;
+                ta.Finish();
+                ts += (c.key(), ta);
+                cx.affected += ta.affected;
+            }
+            return cx;
+        }
+        /// <summary>
+        /// A readable version of the delete statement
+        /// </summary>
+        /// <returns></returns>
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Target: "); sb.Append(Uid(source));
+            return sb.ToString();
+        }
+    }
+    /// <summary>
+    /// Implement a searched UPDATE statement as a kind of QuerySearch
+    /// // shareable as of 26 April 2021
+    /// </summary>
+    internal class UpdateSearch : QuerySearch
+    {
+        /// <summary>
+        /// Constructor: A searched UPDATE statement from the parser
+        /// </summary>
+        /// <param name="cx">The context</param>
+        public UpdateSearch(long dp, Context cx, RowSet f, DBObject tb,
+            Grant.Privilege how)
+            : base(Type.UpdateWhere, dp, cx, f, tb, how)
+        { }
+        protected UpdateSearch(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static UpdateSearch operator +(UpdateSearch u, (long, object) x)
+        {
+            return (UpdateSearch)u.New(u.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new UpdateSearch(defpos, m);
+        }
+        public override Context Obey(Context cx)
+        {
+            cx.result = 0;
+            var tg = (RowSet)cx.obs[source];
+            var ts = BTree<long, TargetActivation>.Empty;
+            for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+            {
+                var tb = cx.obs[it.value()];
+                ts += tb.Update(cx, tg, true);
+            }
+            for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
+                for (var it = ts.First(); it != null; it = it.Next())
+                {
+                    var ta = it.value();
+                    ta.db = cx.db;
+                    ta.cursors = cx.cursors;
+                    ta.cursors += (ta._fm.defpos, ib);
+                    ta.EachRow(ib._pos);
+                    cx.db = ta.db;
+                    ts += (it.key(), ta);
+                }
+            for (var c = ts.First(); c != null; c = c.Next())
+            {
+                var ta = c.value();
+                ta.db = cx.db;
+                ta.Finish();
+                ts += (c.key(), ta);
+                cx.affected += ta.affected;
+            }
+            return cx;
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new UpdateSearch(dp, mem);
+        }
+    }
+
 }

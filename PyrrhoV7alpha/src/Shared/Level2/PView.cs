@@ -6,7 +6,7 @@ using System.Configuration;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -53,7 +53,7 @@ namespace Pyrrho.Level2
             : this(Type.PView, nm, vd, dm, pp, cx) 
         { }
         protected PView(Type pt,string nm,string vd, Domain dm, long pp, Context cx) 
-            : base(pt,pp,cx,new Framing(cx),dm)
+            : base(pt,pp,cx,pp,dm)
         {
             name = nm;
             viewdef = vd;
@@ -63,14 +63,12 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public PView(ReaderBase rdr) : base(Type.PView, rdr) { }
-        protected PView(Type tp, ReaderBase rdr) : base(tp, rdr) { }
+        public PView(Reader rdr) : base(Type.PView, rdr) { }
+        protected PView(Type tp, Reader rdr) : base(tp, rdr) { }
         protected PView(PView x, Writer wr) : base(x, wr)
         {
             name = x.name;
-            wr.srcPos = wr.Length + 1;
             viewdef = x.viewdef;
-            domain = (Domain)x.domain.Relocate(wr);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -91,7 +89,7 @@ namespace Pyrrho.Level2
         /// deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
             viewdef = rdr.GetString();
@@ -101,44 +99,35 @@ namespace Pyrrho.Level2
         {
             if (viewdef!="")
             {
-                var psr = new Parser(rdr, new Ident(viewdef, ppos + 2), null);
-                var ss = psr.ParseCursorSpecification(Domain.TableType);
-                var cs = (CursorSpecification)psr.cx.obs[ss.cs];
-                psr.cx._Add(cs);
-                psr.cx.data += (ppos, psr.cx.data[psr.cx.result]);
-                Frame(psr.cx);
-                domain = psr.cx.data[psr.cx.result].domain;
+                var psr = new Parser(rdr, 
+                    new Ident(viewdef, rdr.context.Ix(ppos + 2)), null);
+                psr.cx.nextStmt = rdr.context.nextStmt;
+                var cs = psr.ParseCursorSpecification(Domain.TableType);
+                dataType = psr.cx._Dom(psr.cx.obs[cs.union]);
+                rdr.context.nextStmt = psr.cx.nextStmt;
+                framing = new Framing(psr.cx);
             }
         }
-        internal virtual BTree<long,object> _Dom(Database db,BTree<long,object>m)
+        internal virtual BTree<long,object> _Dom(Context cx,BTree<long,object>m)
         {
-            var ns = CTree<string, CTree<long,long>>.Empty;
-            var d = 2 + (domain?.depth ?? 0);
-            for (var b = domain?.rowType.First(); b != null && b.key()<domain.display; 
+            var d = 2 + (dataType?.depth ?? 0);
+            for (var b = dataType?.rowType.First(); b != null && b.key()<dataType.display; 
                 b = b.Next())
             {
                 var p = b.value();
                 var c = (SqlValue)framing.obs[p];
-                d = DBObject._Max(d, 1 + c.depth);
-                var r = ns[c.name] ?? CTree<long, long>.Empty;
-                var tg = ((From)framing.obs[c.from]).target; 
-                ns += (c.name, r+(tg,p));
-                if (c.alias != null)
-                {
-                    r = ns[c.alias] ?? CTree<long, long>.Empty;
-                    ns += (c.alias, r+(tg,p));
-                }
+                if (c!=null)
+                    d = DBObject._Max(d, 1 + c.depth);
             }
-            var rs = framing.data[framing.result];
+/*            var rs = (RowSet)framing.obs[framing.result];
             var ts = CList<long>.Empty;
             for (var b = rs.rsTargets.First(); b != null; b = b.Next())
-                ts += b.key();
+                ts += b.key(); */
             return (m??BTree<long,object>.Empty) 
-                + (DBObject._Domain, domain) 
-                + (View.ViewPpos, ppos) + (View.ViewCols, ns) 
-                + (View.Targets,ts) 
+                + (DBObject._Domain,dataType.defpos)
+                + (View.ViewPpos, ppos)
                 + (DBObject._Framing, framing)
-                + (DBObject.Depth, d);
+                + (DBObject._Depth, d);
         } 
         /// <summary>
         /// a readable version of this Physical
@@ -185,8 +174,8 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
                 Grant.Privilege.GrantInsert |
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var vw = new View(this,cx.db)._Refs(ppos,cx);
-            var ti = new ObInfo(ppos, name, domain, priv);
+            var vw = new View(this,cx);
+            var ti = new ObInfo(ppos, name, dataType, priv);
             ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + (ro,p)+ (vw,p);
             if (cx.db.mem.Contains(Database.Log))
@@ -200,9 +189,9 @@ namespace Pyrrho.Level2
             if (this is PRestView)
                 return (tr, ph);
             var pv = (PView)ph;
-            var vw = (DBObject)((DBObject)tr.objects[ppos])._Relocate(wr) 
-                + (DBObject._Framing, pv.framing);
-            vw = ((View)vw)._Refs(ph.ppos,wr.cx);
+            var vw = ((DBObject)tr.objects[ppos]).Relocate(wr.cx) 
+                + (DBObject._Framing, pv.framing.Fix(wr.cx));
+            wr.cx.instDFirst = -1;
             return ((Transaction)(tr + (vw, tr.loadpos)), ph);
         }
     }
@@ -210,23 +199,34 @@ namespace Pyrrho.Level2
     {
         internal long structpos,usingtbpos = -1L;
         internal string rname = null, rpass = null;
+        internal long usingTableRowSet = -1L;
+        internal CTree<string,long> names = CTree<string,long>.Empty;
+        internal CTree<long,string> namesMap = CTree<long,string>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr, usingtbpos)) return usingtbpos;
             return -1;
         }
-        public PRestView(ReaderBase rdr) : this(Type.RestView, rdr) { }
-        protected PRestView(Type t, ReaderBase rdr) : base(t,rdr) { }
+        public PRestView(Reader rdr) : this(Type.RestView, rdr) { }
+        protected PRestView(Type t, Reader rdr) : base(t,rdr) { }
         public PRestView(string nm, long tp, Domain dm, long pp, Context cx)
             : this(Type.RestView, nm, tp, dm, pp, cx) { }
         protected PRestView(Type t,string nm,long tp,Domain dm,long pp, Context cx)
             : base(t,nm,"",dm,pp,cx)
         {
             structpos = tp;
+            for (var b = dm.rowType.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                var c = cx.obs[p];
+                names += (c.name,p);
+                namesMap += (p, c.name);
+            }
         }
         protected PRestView(PRestView x, Writer wr) : base(x, wr)
         {
-            structpos = wr.Fix(x.structpos);
+            structpos = wr.cx.Fix(x.structpos);
+            namesMap = wr.cx.Fix(x.namesMap);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -238,7 +238,7 @@ namespace Pyrrho.Level2
             wr.PutLong(structpos);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             structpos = rdr.GetLong();
             base.Deserialise(rdr);
@@ -246,25 +246,15 @@ namespace Pyrrho.Level2
         internal override void OnLoad(Reader rdr)
         {
             var db = rdr.context.db;
-            var ro = db.role;
-            var os = BTree<long, DBObject>.Empty;
-            var ds = Ident.Idents.Empty;
             var tb = (Table)db.objects[structpos];
-            var ti = (ObInfo)ro.infos[structpos];
-            var cs = Ident.Idents.Empty;
-            os += (structpos, tb);
-            domain = ti.domain;
-            for (var b=domain.rowType.First();b!=null;b=b.Next())
-            {
-                var cp = b.value();
-                var ci = (ObInfo)ro.infos[cp];
-                var tc = (DBObject)db.objects[cp];
-                cs += (ci.name, cp, Ident.Idents.Empty);
-                ds += (ci.name, cp, Ident.Idents.Empty);
-                os += (cp, tc);
-            }
-            // fix r.union and lower structures during Instancing
-            framing = Framing.Empty + (Framing.Obs, os);
+            var psr = new Parser(rdr.context, tb.name);
+            var op = rdr.context.parse;
+            psr.cx.parse = ExecuteStatus.Parse;
+            dataType = new Domain(psr.cx,
+                psr.ParseRowTypeSpec(Sqlx.VIEW)+(Domain.Structure,structpos));
+            rdr.context.parse = op;
+            rdr.context.nextStmt = psr.cx.nextStmt;
+            framing = new Framing(psr.cx);
         }
         internal override void Install(Context cx, long p)
         {
@@ -275,27 +265,14 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
                 Grant.Privilege.GrantInsert |
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var vw = new RestView(this, cx.db)._Refs(ppos,cx);
-            var ti = new ObInfo(ppos, name, Domain.TableType, priv);
-            ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
-            cx.db = cx.db + (ro, p) + (vw, p);
-            cx.Install(vw, p);
-        }
-        internal override BTree<long, object> _Dom(Database db,BTree<long,object>m)
-        {
-            var ns = CTree<string, CTree<long,long>>.Empty;
-            for (var b = domain.rowType.First(); b != null && b.key()<domain.display; 
-                b = b.Next())
-            {
-                var p = b.value();
-                var c = (ObInfo)db.role.infos[p];
-                var r = ns[c.name] ?? CTree<long, long>.Empty;
-                ns += (c.name, r + (ppos,p));
-            } 
-            return (m??BTree<long,object>.Empty) + (DBObject._Domain, domain)
-                + (View.ViewPpos, ppos) + (View.ViewCols, ns)
-                + (DBObject._Framing, framing)
-                + (DBObject.Depth, 2);
+            var ti = new ObInfo(ppos, name, dataType, priv);
+            var vt = (VirtualTable)cx.db.objects[structpos] + (VirtualTable._RestView,ppos)
+                +(ObInfo._DataType,dataType);
+            var vi = (ObInfo)ro.infos[structpos]+(ObInfo._DataType,dataType);
+            ro = ro + (ti, true) + (vi,true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            var rv = new RestView(this, cx);
+            cx.db = cx.db + (ro, p) + (rv, p) + (vt,p);
+            cx.Install(rv, p);
         }
         public override string ToString()
         {
@@ -307,7 +284,7 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class PRestView1 : PRestView
     {
-        public PRestView1(ReaderBase rdr) : base(Type.RestView1, rdr) { }
+        public PRestView1(Reader rdr) : base(Type.RestView1, rdr) { }
         public PRestView1(string nm, long tp, Domain dm, string rnm, string rpw, long pp, 
             Context cx) : base(Type.RestView1, nm, tp, dm, pp, cx)
         {
@@ -330,7 +307,7 @@ namespace Pyrrho.Level2
             wr.PutString(rpass);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             rname = rdr.GetString();
             rpass = rdr.GetString();
@@ -343,15 +320,18 @@ namespace Pyrrho.Level2
     }
     internal class PRestView2 : PRestView
     {
-        public PRestView2(ReaderBase rdr) : base(Type.RestView1, rdr) { }
-        public PRestView2(string nm, long tp, Domain dm, long utp, long pp, Context cx)
+        public PRestView2(Reader rdr) : base(Type.RestView2, rdr) { }
+        public PRestView2(string nm, long tp, Domain dm, RowSet uf, long pp, Context cx)
             : base(Type.RestView2, nm, tp, dm, pp, cx)
         {
-            usingtbpos = utp;
+            usingtbpos = uf.target;
+            usingTableRowSet = uf.rsTargets.First().value();
+            FixCols(cx);
         }
         protected PRestView2(PRestView2 x, Writer wr) : base(x, wr)
         {
-            usingtbpos = wr.Fix(x.usingtbpos);
+            usingtbpos = wr.cx.Fix(x.usingtbpos);
+            usingTableRowSet = wr.cx.Fix(x.usingTableRowSet);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -363,7 +343,7 @@ namespace Pyrrho.Level2
             wr.PutLong(usingtbpos);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             usingtbpos = rdr.GetLong();
             base.Deserialise(rdr);
@@ -373,6 +353,43 @@ namespace Pyrrho.Level2
             if (that.type == Type.Drop && usingtbpos == ((Drop)that).delpos)
                 return new DBException("40012",usingtbpos, that, ct);
             return base.Conflicts(db, cx, that, ct);
+        }
+        // Identify the remote columns of the restview and adjust the framing
+        void FixCols(Context cx)
+        {
+            var vs = BTree<string, DBObject>.Empty;
+            for (var b = dataType.rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var c = cx.obs[p];
+                vs += (c.name, c);
+            }
+            var ts = (TableRowSet)cx.obs[usingTableRowSet];
+            for (var b=cx._Dom(ts).rowType.First(); b != null; b=b.Next())
+            {
+                var p = b.value();
+                var c = cx.obs[p];
+                if (vs[c.name] is DBObject oc)
+                    cx.Replace(oc,c);
+            }
+            framing = new Framing(cx);
+        }
+        internal override void OnLoad(Reader rdr)
+        {
+            var db = rdr.context.db;
+            var tb = (Table)db.objects[structpos];
+            var psr = new Parser(rdr.context, tb.name);
+            var op = rdr.context.parse;
+            psr.cx.parse = ExecuteStatus.Parse;
+            dataType = new Domain(psr.cx,
+                psr.ParseRowTypeSpec(Sqlx.VIEW) + (Domain.Structure, structpos));
+            var ut = (Table)db.objects[usingtbpos];
+            var ic = new Ident(ut.name, psr.cx.GetIid());
+            usingTableRowSet = new From(ic, psr.cx, ut).source;
+            rdr.context.parse = op;
+            rdr.context.nextStmt = psr.cx.nextStmt;
+            framing = new Framing(psr.cx);
+            FixCols(psr.cx);
         }
         public override string ToString()
         {
@@ -390,7 +407,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public PView1(ReaderBase rdr) : base(Type.PView1,rdr) { }
+        public PView1(Reader rdr) : base(Type.PView1,rdr) { }
         protected PView1(PView1 x, Writer wr) : base(x, wr) { }
         protected override Physical Relocate(Writer wr)
         {
@@ -401,7 +418,7 @@ namespace Pyrrho.Level2
         /// deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             rdr.GetString();
             rdr.GetString();

@@ -3,7 +3,7 @@ using System.Text;
 using System.Collections;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -43,7 +43,7 @@ namespace Pyrrho
             dict.Add("08C06", "Cannot change connection properties during a transaction");
             dict.Add("0U000", "Attempt to assign to a non-updatable column");
             dict.Add("21000", "Cardinality violation");
-            dict.Add("22000", "Data and incompatible type errors");
+            dict.Add("22000", "Data and incompatible type errors for {0}");
             dict.Add("22003", "Out of bounds value");
             dict.Add("22004", "Illegal null value");
             dict.Add("22005", "Error in assignment: expected {0} got {1}");
@@ -54,6 +54,7 @@ namespace Pyrrho
             dict.Add("22012", "Division by zero");
             dict.Add("22019", "Invalid escape character");
             dict.Add("2201B", "Invalid regular expression");
+            dict.Add("2201C", "Null row not permitted in value");
             dict.Add("2201M", "Namespace {0} not defined");
             dict.Add("22025", "Invalid escape sequence");
             dict.Add("22041", "Invalid RDF format");
@@ -70,7 +71,7 @@ namespace Pyrrho
             dict.Add("22201", "Unexpected type {0} for comparison with Decimal");
             dict.Add("22202", "Incomparable types");
             dict.Add("22203", "Loss of precision on conversion");
-            dict.Add("22204", "Query expected");
+            dict.Add("22204", "RowSet expected");
             dict.Add("22205", "Null value found in table {0}");
             dict.Add("22206", "Null value not allowed in column {0}");
             dict.Add("22207", "Row has incorrect length");
@@ -105,7 +106,7 @@ namespace Pyrrho
             dict.Add("2E201", "Transaction is not open");
             dict.Add("2E202", "A reader is already open");
             dict.Add("2E203", "Unexpected reply");
-            dict.Add("2E204", "Bad data type {0} (internal)");
+            dict.Add("2E204", "Bad obs type {0} (internal)");
             dict.Add("2E205", "Stream closed");
             dict.Add("2E206", "Internal error: {0}");
             dict.Add("2E208", "Badly formatted connection string {0}");
@@ -116,7 +117,7 @@ namespace Pyrrho
             dict.Add("2E302", "Type {0} does not define public field {1}");
             dict.Add("2E303", "Types {0} and {1} do not match");
             dict.Add("2E304", "GET rurl should begin with /");
-            dict.Add("2E305", "No data returned by rurl {0}");
+            dict.Add("2E305", "No obs returned by rurl {0}");
             dict.Add("2E307", "Obtain an up-to-date schema for {0} from Role$Class");
             dict.Add("2F003", "Prohibited SQL-statement attempted");
             dict.Add("2H000", "Collation error: {0}");
@@ -203,6 +204,7 @@ namespace Pyrrho
             dict.Add("40083", "Secondary connection conflict on {0}");
             dict.Add("40084", "Remote object has just been changed");
             dict.Add("40085", "Transaction conflict: An update conflicts with delete of {0}");
+            dict.Add("40086", "Transaction conflict: An update conflicts with update of {0}");
             dict.Add("42000", "Syntax error at {0}");
             dict.Add("42101", "Illegal character {0}");
             dict.Add("42102", "Name cannot be null");

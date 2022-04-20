@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System.Data.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -65,17 +65,17 @@ namespace Pyrrho.Level2
             _udt = td.defpos;
 			methodType = mt;
             if (mt == MethodType.Constructor)
-                retType = td;
+                dataType = td;
 		}
         /// <summary>
         /// Constructor: a new Method definition from the ReadBuffer
         /// </summary>
         /// <param name="bp">the ReadBuffer</param>
         /// <param name="pos">The defining position</param>
-		public PMethod(Type tp, ReaderBase rdr) : base(tp,rdr){}
+		public PMethod(Type tp, Reader rdr) : base(tp,rdr){}
         protected PMethod(PMethod x, Writer wr) : base(x, wr)
         {
-            _udt = wr.Fix(x._udt);
+            _udt = wr.cx.Fix(x._udt);
             udt = (UDType)wr.cx.db.objects[_udt];
             methodType = x.methodType;
         }
@@ -97,16 +97,23 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rd)
+        public override void Deserialise(Reader rd)
 		{
             _udt = rd.GetLong();
-            if (rd is Reader rdr)
-            {
-                udt = (UDType)rdr.context.db.objects[_udt];
-                udt.Defs(rdr.context);
-            }
 			methodType = (MethodType)rd.GetInt();
             base.Deserialise(rd);
+            if (methodType == MethodType.Constructor)
+                dataType = rd.context._Dom(_udt);
+        }
+        internal override void OnLoad(Reader rdr)
+        {
+            udt = (UDType)rdr.context.db.objects[_udt];
+            var psr = new Parser(rdr.context, source);
+            var mnm = new Ident(name,rdr.context.Ix(rdr.context.nextStmt));
+            parameters = psr.ParseParameters(mnm);
+            dataType = psr.ParseReturnsClause(mnm);
+            rdr.context.nextStmt = psr.cx.nextStmt;
+            framing = new Framing(psr.cx);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -114,8 +121,9 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return "Method " + methodType.ToString()+" " + udt 
-                + "." + nameAndArity + "[" + retType + "] " + source.ident; 
+            return "Method " + methodType.ToString()+" " 
+                + DBObject.Uid(ppos) + "="+DBObject.Uid(_udt)
+                + "." + nameAndArity + source.ident; 
 		}
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -139,8 +147,8 @@ namespace Pyrrho.Level2
                         break;
                     }
                 case Type.Modify:
-                    if (nameAndArity == ((Modify)that).name)
-                        return new DBException("4003p", defpos, that, ct);
+                    if (nameAndArity == ((Modify)that).nameAndArity)
+                        return new DBException("40036", defpos, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);
@@ -151,12 +159,14 @@ namespace Pyrrho.Level2
             var mt = new Method(this,cx);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            var mi = new ObInfo(defpos, name, udt, priv);
+            var mi = new ObInfo(defpos, nameAndArity, dataType, priv);
             var oi = (ObInfo)ro.infos[udt.defpos] ??
                 throw new PEException("PE918");
             oi += (mt,name);
             ro = ro + mt + (oi,true) + (mi,false);
+            udt += (Database.Procedures, udt.methods + (mt.defpos, nameAndArity));
             cx.db += (ro, p);
+            cx.db += (udt.defpos, udt);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(mt,p);

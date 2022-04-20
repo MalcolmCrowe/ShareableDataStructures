@@ -3,7 +3,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -40,7 +40,7 @@ namespace Pyrrho.Level3
         /// <param name="owner">the owner</param>
         /// <param name="rs">the accessing roles</param>
         public Method(PMethod m, Context cx)
-            : base(m, cx, BTree<long, object>.Empty
+            : base(m, cx, BTree<long, object>.Empty + (_Framing,m.framing)
                   + (TypeDef, m.udt) + (MethodType, m.methodType))
         { }
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }
@@ -66,9 +66,14 @@ namespace Pyrrho.Level3
         internal override void Modify(Context cx, Modify m, long p)
         {
             cx.db = cx.db 
-                + (this + (Body, m.bodydefpos) + (Params,m.parms) 
+                + (this + (Body, m.proc) + (Params,m.parms) 
                     + (_Framing,m.framing),p)
                 + (Database.SchemaKey,p); // ensure call on the correct operator+
+        }
+        internal override DBObject Instance(Iix lp,Context cx, Domain q = null, BList<Ident> cs=null)
+        {
+            udType.Instance(lp,cx,q);
+            return base.Instance(lp,cx, q);
         }
         /// <summary>
         /// Execute a Method
@@ -88,44 +93,43 @@ namespace Pyrrho.Level3
                 throw new DBException("42105");
             var a = cx.GetActivation();
             a.var = (SqlValue)cx.obs[var];
-            var ut = udType;
-            var targ = a.var?.Eval(cx)??ut.defaultValue;
+            var ut = (UDType)cx.db.objects[udType.defpos];
+            var targ = a.var?.Eval(cx) ?? ut.defaultValue;
+            for (var b=ut.representation.First();b!=null;b=b.Next())
+            {
+                 var p= b.key();
+                 cx.values+=(p,targ[p]);
+            }
             var n = (int)ins.Count;
             var acts = new TypedValue[n];
             var i = 0;
-            for (var b = actIns.First(); i<n && b != null; b = b.Next(), i++)
+            for (var b = actIns.First(); i < n && b != null; b = b.Next(), i++)
                 acts[i] = cx.obs[b.value()].Eval(cx);
-            var act = new CalledActivation(cx, this, ut);
-            act.Install1(framing);
-            act.Install2(framing);
-            var bd = (Executable)act.obs[body];
+            var me = (Method)cx.db.objects[defpos];
+            me = (Method)me.Instance(cx.GetIid(),cx);
+            var act = new CalledActivation(cx, me, ut.defpos);
+            var bd = (Executable)act.obs[me.body];
             if (targ is TRow rw)
                 for (var b = rw.values.First(); b != null; b = b.Next())
                     act.values += (b.key(), b.value());
-            act.values += (defpos,targ);
+            act.values += (defpos, targ);
             i = 0;
-            for (var b = ins.First(); b != null; b = b.Next(), i++)
+            for (var b = me.ins.First(); b != null; b = b.Next(), i++)
             {
                 var pp = b.value();
                 var pi = (FormalParameter)act.obs[pp];
                 act.values += (pi.val, acts[i]);
             }
-    //        if (methodType != PMethod.MethodType.Constructor)
-    //            for (var b=ut.representation.First();b!=null;b=b.Next())
-    //            {
-    //                var p= b.key();
-    //                act.values+=(p,cx.values[p]);
-    //            }
             cx = bd.Obey(act);
             var r = act.Ret();
-            if (r is TArray ts)
+            if (r is TArray)
             {
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());
             }
             i = 0;
-            for (var b = ins.First(); b != null; b = b.Next(), i++)
+            for (var b = me.ins.First(); b != null; b = b.Next(), i++)
             {
                 var p = (FormalParameter)cx.obs[b.value()];
                 var m = p.paramMode;
@@ -137,11 +141,11 @@ namespace Pyrrho.Level3
             }
             if (methodType == PMethod.MethodType.Constructor)
             {
-                var ks = CTree<long,TypedValue>.Empty;
+                var ks = CTree<long, TypedValue>.Empty;
                 for (var b = ut.representation.First(); b != null; b = b.Next())
                 {
                     var p = b.key();
-                    ks+=(p,act.values[p]);
+                    ks += (p, act.values[p]);
                 }
                 r = new TRow(ut, ks);
             }
@@ -149,7 +153,7 @@ namespace Pyrrho.Level3
             {
                 cx.val = r;
                 i = 0;
-                for (var b = ins.First(); b != null; b = b.Next(), i++)
+                for (var b = me.ins.First(); b != null; b = b.Next(), i++)
                 {
                     var p = (FormalParameter)cx.obs[b.value()];
                     var m = p.paramMode;
@@ -176,6 +180,9 @@ namespace Pyrrho.Level3
                     ms += (b.key(), sm);
             }
             nd += (nd.role+(d.types[udType],oi+(ObInfo.MethodInfos,ms)),p);
+            var udt = udType as UDType;
+            udt += (Database.Procedures, udt.methods - defpos);
+            nd += (udt.defpos, udt);
             return base.Drop(d, nd, p);
         }
     }

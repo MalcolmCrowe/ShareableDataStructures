@@ -6,7 +6,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -26,9 +26,10 @@ namespace Pyrrho.Level3
         internal const long
             Action = -290, // long Executable
             NewRow = -293, // long Cursor
-            NewTable = -294, // long Query
+            NewTable = -294, // long RowSet
             OldRow = -295, // long Cursor
-            OldTable = -296, // long Query
+            OldTable = -296, // long RowSet
+            TrigPpos = -299, // long Trigger
             TrigType = -297, // PTrigger.TrigType
             UpdateCols = -298; // CList<long> SqlValue
         public long table => (long)mem[From.Target];
@@ -54,13 +55,14 @@ namespace Pyrrho.Level3
         /// </summary>
 		public long newTable => (long)(mem[NewTable]??-1L);
         public long action => (long)(mem[Action]??-1L);
+        public long ppos => (long)(mem[TrigPpos] ?? -1L);
         /// <summary>
         /// A new Trigger from the PhysBase
         /// </summary>
 		public Trigger(PTrigger p,Role ro)
             : base(p.ppos, 
                   _Mem(p) + (Action,p.def) + (Name,p.name)
-                  + (Definer, ro.defpos) + (_From, p.from)
+                  + (Definer, ro.defpos) + (_From, p.from) + (TrigPpos, p.ppos)
                   + (_Framing, p.framing) + (From.Target, p.target) + (TrigType, p.tgtype)
                   + (UpdateCols, p.cols) + (LastChange, p.ppos))
 		{ }
@@ -68,15 +70,15 @@ namespace Pyrrho.Level3
         { }
         static BTree<long,object> _Mem(PTrigger p)
         {
-            var r = new BTree<long, object>(_Domain, p.domain);
+            var r = new BTree<long, object>(_Domain, p.dataType.defpos);
             if (p.oldTable != null)
-                r += (OldTable, p.oldTable.iix);
+                r += (OldTable, p.oldTable.iix.dp);
             if (p.newTable != null)
-                r += (NewTable, p.newTable.iix);
+                r += (NewTable, p.newTable.iix.dp);
             if (p.oldRow != null)
-                r += (OldRow, p.oldRow.iix);
+                r += (OldRow, p.oldRow.iix.dp);
             if (p.newRow != null)
-                r += (NewRow, p.newRow.iix);
+                r += (NewRow, p.newRow.iix.dp);
             return r;
         }
         public static Trigger operator+(Trigger t,(long,object)x)
@@ -92,19 +94,22 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             sb.Append(" TrigType=");sb.Append(tgType);
             sb.Append(" On=");sb.Append(Uid(table));
-            sb.Append(" From: ");sb.Append(Uid(from));
-            sb.Append(" Action:");sb.Append(Uid(action));
-            if (cols != null)
+            if (defpos >= Transaction.HeapStart)
             {
-                sb.Append(" UpdateCols:");
-                var cm = '(';
-                for (var i = 0; i < cols.Count; i++)
-                { sb.Append(cm); cm = ','; sb.Append(cols[i]); }
+                sb.Append(" From: "); sb.Append(Uid(from));
+                sb.Append(" Action:"); sb.Append(Uid(action));
+                if (cols != null && cols!=CList<long>.Empty)
+                {
+                    sb.Append(" UpdateCols:");
+                    var cm = '(';
+                    for (var i = 0; i < cols.Count; i++)
+                    { sb.Append(cm); cm = ','; sb.Append(cols[i]); }
+                }
+                if (oldRow != -1L) { sb.Append(" OldRow="); sb.Append(Uid(oldRow)); }
+                if (newRow != -1L) { sb.Append(" NewRow="); sb.Append(Uid(newRow)); }
+                if (oldTable != -1L) { sb.Append(" OldTable="); sb.Append(Uid(oldTable)); }
+                if (newTable != -1L) { sb.Append(" NewTable="); sb.Append(Uid(newTable)); }
             }
-            if (oldRow!= -1L) { sb.Append(" OldRow="); sb.Append(Uid(oldRow)); }
-            if (newRow != -1L) { sb.Append(" NewRow="); sb.Append(Uid(newRow)); }
-            if (oldTable != -1L) { sb.Append(" OldTable="); sb.Append(Uid(oldTable)); }
-            if (newTable != -1L) { sb.Append(" NewTable="); sb.Append(Uid(newTable)); }
             return sb.ToString();
 		}
 
@@ -148,7 +153,8 @@ namespace Pyrrho.Level3
             o = cx.ObReplace(newTable, so, sv);
             if (o != newTable)
                 r += (NewTable, o);
-            r = New(cx, r.mem);
+            if (r!=this)
+                r = New(cx, r.mem);
             cx.done += (defpos, r);
             return r;
         }
@@ -172,25 +178,22 @@ namespace Pyrrho.Level3
             nd += (tb, p);
             return base.Drop(d, nd, p);
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (Trigger)base.Fix(cx);
-            var dm = domain.Fix(cx);
-            if (dm != domain)
-                r += (_Domain, dm);
-            var na = cx.obuids[action] ?? action;
+            var r = (Trigger)base._Fix(cx);
+            var na = cx.Fix(action);
             if (na != action)
                 r += (Action, na);
-            var nr = cx.obuids[newRow] ?? newRow;
+            var nr = cx.Fix(newRow);
             if (newRow != nr)
                 r += (NewRow, nr);
-            var nt = cx.obuids[newTable] ?? newTable;
+            var nt = cx.Fix(newTable);
             if (newTable != nt)
                 r += (NewTable, nt);
-            var no = cx.obuids[oldRow] ?? oldRow;
+            var no = cx.Fix(oldRow);
             if (oldRow != no)
                 r += (OldRow, no);
-            var nu = cx.obuids[oldTable] ?? oldTable;
+            var nu = cx.Fix(oldTable);
             if (oldTable != nu)
                 r += (OldTable, nu);
             var nc = cx.Fix(cols);
@@ -198,17 +201,15 @@ namespace Pyrrho.Level3
                 r += (UpdateCols, nc);
             return r;
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r= (Trigger)base._Relocate(wr);
-            r += (Action, wr.Fixed(action)?.defpos??-1L);
-            r += (NewRow, wr.Fixed(newRow)?.defpos ?? -1L);
-            r += (NewTable, wr.Fixed(newTable)?.defpos ?? -1L);
-            r += (OldRow, wr.Fixed(oldRow)?.defpos ?? -1L);
-            r += (OldTable, wr.Fixed(oldTable)?.defpos ?? -1L);
-            r += (UpdateCols, wr.Fix(cols));
+            var r= (Trigger)base._Relocate(cx);
+            r += (Action, cx.Fix(action));
+            r += (NewRow, cx.Fix(newRow));
+            r += (NewTable, cx.Fix(newTable));
+            r += (OldRow, cx.Fix(oldRow));
+            r += (OldTable, cx.Fix(oldTable));
+            r += (UpdateCols, cx.Fix(cols));
             return r;
         }
     }
@@ -218,13 +219,15 @@ namespace Pyrrho.Level3
     internal class TransitionTable : From
     {
         internal const long
+            ColIds = -304, // CList<long> TableColumn
             Old = -327, // bool
             Trig = -326; // long
+        internal CList<long> colIds => (CList<long>)mem[ColIds] ?? CList<long>.Empty;
         internal bool old => (bool)mem[Old];
-        internal long trig => (long)mem[Trig];
-        internal CList<long> columns => (CList<long>)mem[SqlValue._Columns] ?? CList<long>.Empty;
+ //       internal long trig => (long)mem[Trig];
         internal TransitionTable(Ident ic, bool old, Context cx, From fm, Trigger tg)
-                : base(ic.iix, _Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos))
+                : base(ic.iix.dp,_Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos)
+                      +(IIx,new Iix(fm.iix,ic.iix.dp)))
         { }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TransitionTable operator+(TransitionTable t,(long,object)x)
@@ -241,60 +244,62 @@ namespace Pyrrho.Level3
             var vs = BList<SqlValue>.Empty;
             var ds = CTree<long, bool>.Empty;
             var d = 1+fm.depth;
-            for (var b = fm.rowType.First(); b != null; b = b.Next())
+      /*      for (var b = cx._Dom(fm).rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
                 var c = (SqlValue)cx.obs[p];
-                var u = cx.GetUid();
-                var v = new SqlCopy(u, cx, c.name, ic.iix, p);
+                var u = cx.GetIid();
+                var v = new SqlCopy(u, cx, c.name, ic.iix.dp, p);
                 cx.Add(v);
                 vs += v;
                 cs += v.defpos;
-                ds += (u, true);
+                ds += (u.dp, true);
                 d = _Max(d, 1 + v.depth);
             } 
-            var nd = new Domain(Sqlx.ROW,vs);
-            return BTree<long, object>.Empty + (_Domain, nd) + (Name, ic.ident)
-                  + (SqlValue._Columns, cs) + (Dependents, ds) + (Depth, d)
+            var nd = new Domain(cx.GetUid(),cx,Sqlx.ROW,vs);
+            cx.Add(nd); */
+            return BTree<long, object>.Empty + (_Domain, fm.domain) 
+                    + (Name, ic.ident)
+                  + (Dependents, ds) + (_Depth, d) + (ColIds, cs)
                   + (Target, fm.target);
         }
         internal override DBObject Relocate(long dp)
         {
             return new TransitionTable(dp,mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r =  (TransitionTable)base._Relocate(wr);
-            r += (Trig, wr.Fix(trig));
-            r += (SqlValue._Columns, wr.Fix(columns));
+            var r =  (TransitionTable)base._Relocate(cx);
+     //       r += (Trig, cx.Fix(trig));
+            r += (ColIds, cx.Fix(colIds));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (TransitionTable)base.Fix(cx);
-            var nt = cx.obuids[trig] ?? trig;
-            if (nt != trig)
-                r += (Trig, nt);
-            var nc = cx.Fix(columns);
-            if (nc != columns)
-                r += (SqlValue._Columns, nc);
+            var r = (TransitionTable)base._Fix(cx);
+    //        var nt = cx.Fix(trig);
+    //        if (nt != trig)
+    //            r += (Trig, nt);
+            var nc = cx.Fix(colIds);
+            if (nc != colIds)
+                r += (ColIds, nc);
             return r;
         }
-        internal override void _Add(Context cx)
+   /*     internal override void _Add(Context cx)
         {
             // don't call the base
-            var tg = (Trigger)cx.obs[trig];
+            var tg = (Trigger)(cx.obs[trig]);
             var tb = ((Table)cx.db.objects[tg.table]);
-            tb._Add(cx);
+            cx.Add(tb);
             cx.obs += (defpos, this);
-        }
+            var dp = cx.depths[depth] ?? ObTree.Empty;
+            cx.depths += (depth, dp + (defpos, this));
+        } */
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(old ? " old" : " new");
-            sb.Append(" for "); sb.Append(Uid(trig));
+      //      sb.Append(" for "); sb.Append(Uid(trig));
             sb.Append(" from ");sb.Append(Uid(target));
             return sb.ToString();
         }

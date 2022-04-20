@@ -4,7 +4,7 @@ using System.Runtime.ExceptionServices;
 using System.Text;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -287,7 +287,7 @@ namespace Pyrrho.Common
         SEARCH = 249,
         SECOND = 250,
         SELECT = 251,
-        SENSITIVE = 252,    // has a different usage in Pyrrho
+        SENSITIVE = 252,    
         SESSION_USER = 253,
         SET = 254,
         SIGNAL = 255, //vol 4
@@ -686,11 +686,11 @@ namespace Pyrrho.Common
         Date,       // Integer (UTC ticks)
         TimeSpan,   // Integer (UTC ticks)
         Boolean,    // byte 3 values: T=1,F=0,U=255
-        DomainRef,  // typedefpos, Integer els, els x data 
+        DomainRef,  // typedefpos, Integer els, els x obs 
         Blob,       // Integer length, length x byte: Opaque binary type (Clob is String)
-        Row,        // spec, Integer cols, cols x data
-        Multiset,   // Integer els, els x data
-        Array,		// Integer els, els x data
+        Row,        // spec, Integer cols, cols x obs
+        Multiset,   // Integer els, els x obs
+        Array,		// Integer els, els x obs
         Password   // A more secure type of string (write-only)
     }
     /// <summary>
@@ -708,7 +708,7 @@ namespace Pyrrho.Common
     internal class DBException : Exception // Client error 
     {
         internal string signal; // Compatible with SQL2011
-        internal object[] objects; // additional data for insertion in (possibly localised) message format
+        internal object[] objects; // additional obs for insertion in (possibly localised) message format
         // diagnostic info (there is an active transaction unless we have just done a rollback)
         internal ATree<Sqlx, TypedValue> info = new BTree<Sqlx, TypedValue>(Sqlx.TRANSACTION_ACTIVE, new TInt(1));
         readonly TChar iso = new TChar("ISO 9075");
@@ -727,7 +727,7 @@ namespace Pyrrho.Common
             {
                 Console.Write("Exception " + sqlstate);
                 foreach (var o in obs)
-                    Console.Write("|" + o.ToString());
+                    Console.Write("|" + (o?.ToString()??"$Null"));
                 Console.WriteLine();
             }
         }
@@ -795,7 +795,7 @@ namespace Pyrrho.Common
     }
 
     /// <summary>
-    /// Supports the SQL2011 Interval data type. 
+    /// Supports the SQL2011 Interval obs type. 
     /// Note that Intervals cannot have both year-month and day-second fields.
     /// Shareable
     /// </summary>
@@ -835,7 +835,9 @@ namespace Pyrrho.Common
         public static Rvv operator +(Rvv r, (long, Level4.Cursor) x)
         {
             var (rp, cu) = x;
-            return new Rvv(r + (rp, (cu._defpos, cu._ppos)));
+            if (cu == null)
+                return r;
+            return new Rvv(r + (rp, cu._ds[rp]));
         }
         public static Rvv operator +(Rvv r, (long, (long, long)) x)
         {
@@ -885,6 +887,39 @@ namespace Pyrrho.Common
             }
             return new Rvv(a);
         }
+        internal static bool Validate(Database db,string es,string eu)
+        {
+            var e = Parse(es);
+            for (var b = e?.First();b!=null;b=b.Next())
+            {
+                var tk = b.key();
+                var tb = (Table)db.objects[tk];
+                if (tb == null)
+                    return false;
+                for (var c=b.value().First();c!=null;c=c.Next())
+                {
+                    var dp = c.key();
+                    if (dp==-1L)
+                    {
+                        if (tb.lastChange > c.value())
+                            return false;
+                        continue;
+                    }
+                    var tr = tb.tableRows[dp];
+                    if (tr == null)
+                        return false;
+                    if (tr.ppos > c.value())
+                        return false;
+                }
+            }
+            if (eu!=null)
+            {
+                var ck = THttpDate.Parse(eu);
+                if (ck.value != null && db.lastModified > ck.value.Value)
+                    return false;
+            }
+            return true;
+        }
         /// <summary>
         /// This is from the context, st is the time from If-Unmodified-Since
         /// </summary>
@@ -922,6 +957,8 @@ namespace Pyrrho.Common
         }
         public static Rvv Parse(string s)
         {
+            if (s == null)
+                return null;
             var r = Empty;
             if (s == "*")
                 return Empty;
@@ -958,7 +995,7 @@ namespace Pyrrho.Common
         }
     }
     /// <summary>
-    /// Supports the SQL2003 Date data type
+    /// Supports the SQL2003 Date obs type
     /// </summary>
     public class Date : IComparable
     {

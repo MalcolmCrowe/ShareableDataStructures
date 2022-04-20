@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4; 
 using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -91,7 +91,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record(ReaderBase rdr) : base(Type.Record, rdr) 
+        public Record(Reader rdr) : base(Type.Record, rdr) 
         { }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the buffer
@@ -99,13 +99,13 @@ namespace Pyrrho.Level2
         /// <param name="t">The Record or UpdatePost type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected Record(Type t, ReaderBase rdr) : base(t, rdr) { }
+		protected Record(Type t, Reader rdr) : base(t, rdr) { }
         protected Record(Record x, Writer wr) : base(x, wr)
         {
-            tabledefpos = wr.Fix(x.tabledefpos);
+            tabledefpos = wr.cx.Fix(x.tabledefpos);
             fields = CTree<long, TypedValue>.Empty;
             for (var b = x.fields.PositionAt(0); b != null; b = b.Next())
-                fields += (wr.Fix(b.key()), b.value());
+                fields += (wr.cx.Fix(b.key()), b.value());
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -127,7 +127,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Record from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-		public override void Deserialise(ReaderBase rdr)
+		public override void Deserialise(Reader rdr)
         {
             tabledefpos = rdr.GetLong();
             GetFields(rdr);
@@ -137,15 +137,15 @@ namespace Pyrrho.Level2
         /// Deserialise a list of field values
         /// </summary>
         /// <param name="buf">The buffer</param>
-        internal virtual void GetFields(ReaderBase rdr)
+        internal virtual void GetFields(Reader rdr)
         {
             fields = CTree<long, TypedValue>.Empty;
             long n = rdr.GetLong();
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var (_, cdt) = rdr.GetColumnDomain(c,ppos); // nominal data type from log
-                cdt = cdt.GetDataType(rdr); // actual data type from buffer
+                var (_, cdt) = rdr.GetColumnDomain(c,ppos); // nominal obs type from log
+                cdt = cdt.GetDataType(rdr); // actual obs type from buffer
                 if (cdt != null)
                 {
                     var tv = cdt.Get(rdr.log, rdr, ppos);
@@ -160,13 +160,13 @@ namespace Pyrrho.Level2
         internal virtual void PutFields(Writer wr)  //LOCKED
         {
             wr.PutLong(fields.Count);
-            var dm = ((Table) wr.cx.db.objects[tabledefpos]).domain;
+            var cs = ((Table) wr.cx.db.objects[tabledefpos]).tblCols;
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
             {
-                long k = d.key();
+                var k = d.key();
                 var o = d.value();
                 wr.PutLong(k); // coldefpos
-                var ndt = dm[k];
+                var ndt = cs[k];
                 var dt = o?.dataType??Domain.Null;
                 dt.PutDataType(ndt, wr);
                 dt.Put(o,wr);
@@ -255,7 +255,6 @@ namespace Pyrrho.Level2
                     throw new DBException("23000", "duplicate key ", k);
                 if (x.reftabledefpos>=0)
                 {
-                    var rt = (Table)cx.db.objects[x.reftabledefpos];
                     var rx = (Index)cx.db.objects[x.refindexdefpos];
                     if (!rx.rows.Contains(k))
                         throw new DBException("23000", "missing foreign key ", k);
@@ -322,8 +321,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record1(ReaderBase rdr) : base(Type.Record1, rdr) { }
-        protected Record1(Type t,ReaderBase rdr) : base(t, rdr) { }
+        public Record1(Reader rdr) : base(Type.Record1, rdr) { }
+        protected Record1(Type t,Reader rdr) : base(t, rdr) { }
         /// <summary>
         /// A new Record1 from the parser
         /// </summary>
@@ -372,7 +371,7 @@ namespace Pyrrho.Level2
         /// Deserialise this record from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             provenance = rdr.GetString();
             base.Deserialise(rdr);
@@ -388,8 +387,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record2(ReaderBase rdr) : base(Type.Record2, rdr) { }
-        protected Record2(Type t, ReaderBase rdr) : base(t, rdr) { }
+        public Record2(Reader rdr) : base(Type.Record2, rdr) { }
+        protected Record2(Type t, Reader rdr) : base(t, rdr) { }
         /// <summary>
         /// A new Record2 from the parser
         /// </summary>
@@ -405,7 +404,7 @@ namespace Pyrrho.Level2
         }
         protected Record2(Record2 x, Writer wr) : base(x, wr)
         {
-            subType = wr.Fix(x.subType);
+            subType = wr.cx.Fix(x.subType);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -424,7 +423,7 @@ namespace Pyrrho.Level2
         /// Deserialise this record from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             subType = rdr.GetLong();
             base.Deserialise(rdr);
@@ -440,7 +439,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record3(ReaderBase rdr) : base(Type.Record3, rdr) 
+        public Record3(Reader rdr) : base(Type.Record3, rdr) 
         { }
         /// <summary>
         /// A new Record1 from the parser
@@ -476,7 +475,7 @@ namespace Pyrrho.Level2
         /// Deserialise this record from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);

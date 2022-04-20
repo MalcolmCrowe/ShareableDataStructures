@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -42,7 +42,7 @@ namespace Pyrrho.Level2
         public PCheck(long dm, string nm, SqlValue se, string cs, long pp, Context cx)
             : this(Type.PCheck, dm, nm, se, cs, pp, cx) { }
         protected PCheck(Type tp, long dm, string nm, SqlValue se, string cs, 
-            long pp, Context cx) : base(tp,pp,cx,new Framing(cx),Domain.Bool)
+            long pp, Context cx) : base(tp,pp,cx,dm,Domain.Bool)
 		{
 			ckobjdefpos = dm;
             defpos = ppos;
@@ -55,15 +55,15 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PCheck(ReaderBase rdr) : base (Type.PCheck,rdr)
+		public PCheck(Reader rdr) : base (Type.PCheck,rdr)
 		{}
         protected PCheck(PCheck x, Writer wr) : base(x, wr)
         {
-            ckobjdefpos = wr.Fix(x.ckobjdefpos);
-            defpos = wr.Fix(x.defpos);
+            ckobjdefpos = wr.cx.Fix(x.ckobjdefpos);
+            defpos = wr.cx.Fix(x.defpos);
             name = x.name;
             check = x.check;
-            test = wr.Fixed(x.test).defpos;
+            test = x.test;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -92,7 +92,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
 		{
 			ckobjdefpos = rdr.GetLong();
 			name = rdr.GetString();
@@ -106,10 +106,11 @@ namespace Pyrrho.Level2
             if (check != "")
             {
                 var ob = ((DBObject)rdr.context.db.objects[ckobjdefpos]);
-                var psr = new Parser(rdr, new Ident(check, ppos+1), ob);
+                var psr = new Parser(rdr, new Ident(check, rdr.context.Ix(ppos+1)), ob);
                 var sv = psr.ParseSqlValue(Domain.Bool).Reify(rdr.context);
                 test = sv.defpos;
-                Frame(psr.cx);
+                rdr.context.nextStmt = psr.cx.nextStmt;
+                framing = new Framing(psr.cx);
             }
         }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -118,7 +119,7 @@ namespace Pyrrho.Level2
             {
                 case Type.PCheck2:
                 case Type.PCheck:
-                    if (name == ((PCheck)that).name)
+                    if (name!="" && name == ((PCheck)that).name)
                         return new DBException("40046", defpos, that, ct);
                     break;
                 case Type.Drop:
@@ -158,6 +159,7 @@ namespace Pyrrho.Level2
             var ck = (DBObject)tr.objects[defpos] + (Check.Condition, pc.framing.obs[pc.test])
                 + (DBObject._Framing, pc.framing);
             var co = ((DBObject)tr.objects[ckobjdefpos]).Add((Check)ck, tr);
+            wr.cx.instDFirst = -1;
             return ((Transaction)(tr + (ck, tr.loadpos)+(co,tr.loadpos)),ph);
         }
     }
@@ -185,11 +187,11 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PCheck2(ReaderBase rdr) : base(rdr)
+		public PCheck2(Reader rdr) : base(rdr)
 		{}
         protected PCheck2(PCheck2 p, Writer wr) : base(p, wr) 
         {
-            subobjdefpos = wr.Fix(p.subobjdefpos);
+            subobjdefpos = wr.cx.Fix(p.subobjdefpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -209,7 +211,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
 		{
-			subobjdefpos = wr.Fix(subobjdefpos);
+			subobjdefpos = wr.cx.Fix(subobjdefpos);
             wr.PutLong(subobjdefpos);
 			base.Serialise(wr);
 		}
@@ -217,7 +219,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
 		{
 			subobjdefpos = rdr.GetLong();
 			base.Deserialise(rdr);
@@ -234,7 +236,11 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             var ck = new Check(this, cx.db);
-            cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
+            cx.Install(ck,p);
+            var nc = ((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db);
+            cx.Install(nc,p);
+            // we don't install this new column in ck's framing, as there is
+            // no good way to maintain the surrounding context reliably in the framing
             if (name != null && name != "")
             {
                 ro += (new ObInfo(defpos, name, Domain.Bool,Grant.Privilege.Execute),true);
@@ -242,7 +248,6 @@ namespace Pyrrho.Level2
             }
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(ck,p);
         }
     }
 }

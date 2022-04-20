@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -15,7 +15,42 @@ using Pyrrho.Level2;
 // this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level4
 {
-
+    internal class Iix : IComparable
+    {
+        internal readonly long lp; // lexical (if not equal to dp)
+        internal readonly int sd; // select depth
+        internal readonly long dp; // defining
+        internal static Iix None = new Iix(-1L);
+        internal Iix(long u) { lp = u; sd = 0;  dp = u;  }
+        private Iix(long l,int s,long u) { lp = l; sd = s; dp = u; }
+        internal Iix(Iix ix,long u) { lp = ix.lp; sd = ix.sd; dp = u; }
+        internal Iix(long l,Context cx,long u) { lp = l; sd = cx.selectDepth; dp = u; }
+        public static Iix operator+(Iix u,int j)
+        {
+            return new Iix(u.lp + j, u.sd, u.dp + j);
+        }
+        internal Iix Fix(Context cx)
+        {
+            return new Iix(dp);
+        }
+        public int CompareTo(object obj)
+        {
+            if (obj == null)
+                return -1;
+            var that = (Iix)obj;
+            return lp.CompareTo(that.lp);
+        }        
+        public override string ToString()
+        {
+            var sb = new StringBuilder(DBObject.Uid(lp));
+            if (this != None)
+            {
+                if (dp != lp)
+                { sb.Append('|'); sb.Append(DBObject.Uid(dp)); }
+            }
+            return sb.ToString();
+        }
+    }
     /// <summary>
     /// Implement an identifier lexeme class.
     /// // shareable as of 26 April 2021
@@ -23,19 +58,21 @@ namespace Pyrrho.Level4
     internal class Ident : IComparable
     {
         internal readonly Ident sub;
-        internal readonly long iix;
+        internal readonly Iix iix;
         internal readonly string ident;
-        internal Ident(Lexer lx, string s = null)
+        internal Ident(Parser psr, string s = null)
         {
+            var lx = psr.lxr;
             ident = s ?? ((lx.tok == Sqlx.ID) ? lx.val.ToString() : lx.tok.ToString());
-            iix = lx.Position;
+            iix = psr.LexPos();
             sub = null;
         }
-        internal Ident(Lexer lx, int st, int pos, Ident sb = null)
+        internal Ident(Parser psr, long q)
         {
-            iix = lx.Position;
-            ident = new string(lx.input, st, pos - st);
-            sub = sb;
+            var lx = psr.lxr;
+            ident = (lx.tok == Sqlx.ID) ? lx.val.ToString() : lx.tok.ToString();
+            iix = psr.LexPos();
+            sub = null;
         }
         internal Ident(Ident lf, Ident sb)
         {
@@ -53,12 +90,12 @@ namespace Pyrrho.Level4
                 sub = new Ident(pr.sub, s);
             }
         }
-        internal Ident(string s, long dp)
+        internal Ident(string s, Iix dp)
         {
             iix = dp;
             ident = s;
         }
-        Ident(string s, long dp,Ident sb)
+        internal Ident(string s, Iix dp,Ident sb)
         {
             iix = dp;
             ident = s;
@@ -99,13 +136,13 @@ namespace Pyrrho.Level4
             }
             return sb.ToString();
         }
-        internal Ident Relocate(Level2.Writer wr)
+        internal Ident Relocate(Context cx)
         {
-            return new Ident(ident, wr.Fix(iix), sub?.Relocate(wr));
+            return new Ident(ident, cx.Fix(iix), sub?.Relocate(cx));
         }
         internal Ident Fix(Context cx)
         {
-            return new Ident(ident, cx.obuids[iix]??iix, sub?.Fix(cx));
+            return new Ident(ident, cx.Fix(iix), sub?.Fix(cx));
         }
         public int CompareTo(object obj)
         {
@@ -121,24 +158,18 @@ namespace Pyrrho.Level4
                 return -1;
             return 0;
         }
-        /// <summary>
-        /// TODO: if A(B,C) do not match select D.B from A,..
-        /// // shareable as of 26 April 2021
-        /// </summary>
-        internal class Idents : BTree<string, (long, Idents)>
+        // shareable as of 26 April 2021
+        internal class Idents : BTree<string, (Iix, Idents)>
         {
             public new static Idents Empty = new Idents();
             Idents() : base() { }
-            Idents(BTree<string, (long, Idents)> b) : base(b.root) { }
-            public static Idents operator +(Idents t, (string, long, Idents) x)
+            Idents(BTree<string, (Iix, Idents)> b) : base(b.root) { }
+            public static Idents operator +(Idents t, (string, Iix, Idents) x)
             {
-                return new Idents(t + (x.Item1,(x.Item2,x.Item3)));
+                var (n, iix, ids) = x;
+                return new Idents(t + (n,(iix,ids)));
             }
-            public static Idents operator +(Idents t, Idents x)
-            {
-                return new Idents((BTree<string,(long,Idents)>)t+x);
-            }
-            public static Idents operator +(Idents t, (Ident, long) x)
+            public static Idents operator +(Idents t, (Ident, Iix) x)
             {
                 var (id, p) = x;
                 if (t.Contains(id.ident))
@@ -157,26 +188,51 @@ namespace Pyrrho.Level4
                     return new Idents(t + (id.ident, (p, ts)));
                 }
             }
-            internal (long,Idents,Ident) this[(Ident,int) x]
+            public static Idents operator +(Idents t, (Ident, int) x)
+            {
+                var (id, n) = x;
+                var ts = Empty;
+                if (t.Contains(id.ident))
+                    ts = t[id.ident].Item2;
+                if (id.sub != null && n > 0)
+                    ts = ts + (id.sub, n - 1);
+                return new Idents(t + (id.ident, (id.iix, ts)));
+            }
+            /// <summary>
+            /// Identifier chain lookup function. Search in this
+            /// for a given chain, stopping at a given depth.
+            /// Rarely used: cx.Lookup is preferred since it
+            /// uses the cx.obs information for well-defined objects.
+            /// </summary>
+            /// <param name="x">A pair: (chain,depth)</param>
+            /// <returns>(Deepest Iix found, descendants, rest of chain)</returns>
+            internal (Iix,Idents,Ident) this[(Ident,int) x]
             {
                 get
                 {
                     var (ic, d) = x;
                     if (ic == null || !Contains(ic.ident) || d < 1)
-                        return (-1L, null, ic);
+                        return (Iix.None, null, ic);
                     var (ob, ids) = this[ic.ident];
-                    if (ids!=null && ic.sub != null && d > 1)
+                    if (ids != Empty && ic.sub != null && d > 1 && ids.Contains(ic.sub.ident))
                         return ids[(ic.sub, d - 1)];
                     return (ob, ids, ic.sub);
                 }
             }
-            internal long this[Ident ic]
+            /// <summary>
+            /// A simplified call of the above
+            /// </summary>
+            /// <param name="ic"></param>
+            /// <returns></returns>
+            internal Iix this[Ident ic]
             {
                 get
                 {
+                    if (!Contains(ic.ident))
+                        return Iix.None;
                     var (ob, _, s) = this[(ic, ic.Length)];
                     if (s != null)
-                        return -1L;
+                        return Iix.None;
                     return ob;
                 }
             }
@@ -187,54 +243,21 @@ namespace Pyrrho.Level4
             }
             internal Idents ApplyDone(Context cx)
             {
-                var r = BTree<string, (long, Idents)>.Empty;
+                var r = BTree<string, (Iix, Idents)>.Empty;
                 for (var b=First();b!=null;b=b.Next())
                 {
                     var (p, st) = b.value();
-                    if (p!=-1L && cx.done[p] is DBObject nb)
+                    if (p.dp!=-1L && cx.done[p.dp] is DBObject nb)
                     {
-                        p = nb.defpos;
-                        for (var c=(nb as Query)?.rowType.First();c!=null;c=c.Next())
+                        p = cx.Ix(nb.defpos);
+                        for (var c=cx._Dom(nb)?.rowType.First();c!=null;c=c.Next())
                         if (cx.done[c.value()] is SqlValue s)
-                            st = new Idents(st + (s.name, (s.defpos, st[s.name].Item2)));
+                            st = new Idents(st + (s.name, (s.iix, st[s.name].Item2??Empty)));
                     }
                     st = st?.ApplyDone(cx);
                     r += (b.key(), (p, st)); // do not change the string key part
                 }
                 return new Idents(r);
-            }
-            internal Idents Fix(BTree<long,long?>fx)
-            {
-                var r = BTree<string,(long,Idents)>.Empty;
-                for (var b = First(); b != null; b = b.Next())
-                {
-                    var (p, t) = b.value();
-                    r += (b.key(), (fx[p] ?? p, t.Fix(fx)));
-                }
-                return new Idents(r);
-            }
-            internal static Idents For(long ob,Database db,Context cx)
-            {
-                var r = Empty;
-                var oi = (ObInfo)db.role.infos[ob];
-                for (var b=oi?.domain.representation.First();b!=null;b=b.Next())
-                {
-                    var p = b.key();
-                    var d = b.value();
-                    var sc = cx.Inf(p);
-                    r += (sc.name, sc.defpos, For(p,db,cx));
-                    cx.Add(sc);
-                }
-                return r;
-            }
-            internal void Scan(Context cx)
-            {
-                for (var b=First();b!=null;b=b.Next())
-                {
-                    var (p, ids) = b.value();
-                    cx.ObReloc(p);
-                    ids?.Scan(cx);
-                }
             }
             internal Idents Relocate(Context cx)
             {
@@ -243,24 +266,13 @@ namespace Pyrrho.Level4
                 {
                     var n = b.key();
                     var (p, ids) = b.value();
-                    r += (n, cx.obuids[p]??p, ids?.Relocate(cx));
+                    r += (n, cx.Fix(p), ids?.Relocate(cx));
                 }
                 return r;
             }
-            internal Idents Relocate(Level2.Writer wr)
+            public override ATree<string, (Iix, Idents)> Add(ATree<string, (Iix, Idents)> a)
             {
-                var r = Empty;
-                for (var b = First(); b != null; b = b.Next())
-                {
-                    var n = b.key();
-                    var (p, ids) = b.value();
-                    r += (n, wr.Fix(p), ids?.Relocate(wr));
-                }
-                return r;
-            }
-            public override ATree<string, (long, Idents)> Add(ATree<string, (long, Idents)> a)
-            {
-                return new Idents((BTree<string,(long,Idents)>)base.Add(a));
+                return new Idents((BTree<string,(Iix,Idents)>)base.Add(a));
             }
             public override string ToString()
             {
@@ -269,10 +281,10 @@ namespace Pyrrho.Level4
                 {
                     sb.Append(b.key()); sb.Append("=(");
                     var (p, ids) = b.value();
-                    if (p >= 0)
-                        sb.Append(DBObject.Uid(p));
+                    if (p.dp >= 0)
+                        sb.Append(p.ToString());
                     sb.Append(",");
-                    if (ids!=null)
+                    if (ids!=Empty)
                         sb.Append(ids.ToString());
                     sb.Append(");");
                 }
@@ -282,10 +294,10 @@ namespace Pyrrho.Level4
         // shareable as of 26 April 2021
         internal class IdBookmark
         {
-            internal readonly ABookmark<string, (long, Idents)> _bmk;
+            internal readonly ABookmark<string, (Iix, Idents)> _bmk;
             internal readonly Ident _parent,_key;
             internal readonly int _pos;
-            internal IdBookmark(ABookmark<string,(long,Idents)> bmk,
+            internal IdBookmark(ABookmark<string,(Iix,Idents)> bmk,
                 Ident parent, int pos)
             {
                 _bmk = bmk; _parent = parent;  _pos = pos;
@@ -295,7 +307,7 @@ namespace Pyrrho.Level4
             {
                 return _key;
             }
-            public long value()
+            public Iix value()
             {
                 return _bmk.value().Item1;
             }
@@ -312,7 +324,7 @@ namespace Pyrrho.Level4
                     if (bmk == null)
                         return null;
                     (p, id) = bmk.value();
-                    if (p != -1L)
+                    if (p.dp != -1L)
                         return new IdBookmark(bmk, _parent, _pos + 1);
                     if (id == null) // shouldn't happen
                         return null;
@@ -420,7 +432,7 @@ namespace Pyrrho.Level4
 			Advance();
 			tok = Next();
         }
-        internal Lexer(Ident id) : this(id.ident, id.iix) { }
+        internal Lexer(Ident id) : this(id.ident, id.iix.lp) { }
         /// <summary>
         /// Mutator: Advance one position in the input
         /// ch is set to the new character
@@ -774,7 +786,7 @@ namespace Pyrrho.Level4
                         tok = Sqlx.INTEGERLITERAL;
                         return tok;
                     }
-                case '@':
+                case '`':
                     {
                         Advance();
                         while (char.IsDigit(Advance()))
@@ -790,7 +802,7 @@ namespace Pyrrho.Level4
                         while (char.IsDigit(Advance()))
                             ;
                         str = new string(input, start + 1, pos - start - 1);
-                        val = new TInt(long.Parse(str) + PyrrhoServer.Preparing);
+                        val = new TInt(long.Parse(str) + Transaction.HeapStart);
                         tok = Sqlx.INTEGERLITERAL;
                         return tok;
                     }

@@ -10,7 +10,7 @@ using System.Net.NetworkInformation;
 using System.Net;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -77,7 +77,7 @@ namespace Pyrrho.Level2
         /// <param name="tp">The Type required</param>
         /// <param name="tb">The buffer</param>
         /// <param name="pos">The defining position</param>
-        protected Physical(Type tp, ReaderBase rdr)
+        protected Physical(Type tp, Reader rdr)
         {
             type = tp;
             ppos = rdr.Position-1;
@@ -88,7 +88,7 @@ namespace Pyrrho.Level2
             type = ph.type;
             digested = ph.digested;
             ppos = wr.Length;
-            wr.uids += (ph.ppos, ppos);
+            wr.cx.uids += (ph.ppos, ppos);
             time = ph.time;
         }
         internal static int IntLength(long p)
@@ -125,7 +125,7 @@ namespace Pyrrho.Level2
         }
         public virtual bool Committed(Writer wr,long pos)
         {
-            return pos < wr.Length || wr.uids.Contains(pos);
+            return pos < wr.Length || wr.cx.uids.Contains(pos);
         }
         /// <summary>
         /// On commit, dependent Physicals must be committed first
@@ -159,7 +159,6 @@ namespace Pyrrho.Level2
                 tr.physicals[pd].Commit(wr,tr);
                 // and try again
             }
-            wr.srcPos = wr.Length + 1;
             var ph = Relocate(wr);
             wr.WriteByte((byte)type);
             ph.Serialise(wr);
@@ -167,7 +166,6 @@ namespace Pyrrho.Level2
             return (tr,ph);
         }
         protected abstract Physical Relocate(Writer wr);
-        internal virtual void Relocate(Context cx) { }
         /// <summary>
         /// Serialise ourselves to the datafile. Called by Commit,
         /// which has already written the first byte of the log entry.
@@ -183,15 +181,11 @@ namespace Pyrrho.Level2
         /// Deserialise ourselves from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public virtual void Deserialise(ReaderBase rdr)
+        public virtual void Deserialise(Reader rdr)
         {
             rdr.Segment(this);
         }
-        /// <summary>
-        /// The name of the record
-        /// </summary>
-        public virtual string Name { get { return null; } }
-        public override string ToString() { return "Physical"; }
+        public override string ToString() { return type.ToString(); }
         protected string Pos(long p)
         {
             return DBObject.Uid(p);
@@ -221,14 +215,14 @@ namespace Pyrrho.Level2
             var cp = 0;
             for (var b=digested.First();b!=null;b=b.Next())
             {
-                var sp = wr.Fix(b.key())-ppos;
+                var sp = wr.cx.Fix(b.key())-ppos;
                 if (sp <= 0)
                     continue;
                 while(cp<sp)
                     sb.Append(s[cp++]);
                 var (os, dp) = b.value();
                 cp += os.Length;
-                sb.Append('"'); sb.Append(wr.Fix(dp)); sb.Append('"');
+                sb.Append('"'); sb.Append(wr.cx.Fix(dp)); sb.Append('"');
             }
             while (cp < s.Length)
                 sb.Append(s[cp++]);
@@ -239,7 +233,7 @@ namespace Pyrrho.Level2
     }
     internal class Curated : Physical
     {
-        public Curated(ReaderBase rdr) : base(Type.Curated, rdr) { }
+        public Curated(Reader rdr) : base(Type.Curated, rdr) { }
         public Curated(long pp, Context cx) : base(Type.Curated, pp, cx) { }
         protected Curated(Curated x, Writer wr) : base(x, wr) { }
         public override long Dependent(Writer wr, Transaction tr)
@@ -265,7 +259,7 @@ namespace Pyrrho.Level2
     internal class Versioning : Physical
     {
         public long perioddefpos;
-        public Versioning(ReaderBase rdr) : base(Type.Versioning,rdr) { }
+        public Versioning(Reader rdr) : base(Type.Versioning,rdr) { }
         public Versioning(long pd, long pp, Context cx)
             : base(Type.Versioning, pp, cx)
         {
@@ -273,7 +267,7 @@ namespace Pyrrho.Level2
         }
         protected Versioning(Versioning x, Writer wr) : base(x, wr)
         {
-            perioddefpos = wr.Fix(x.perioddefpos);
+            perioddefpos = wr.cx.Fix(x.perioddefpos);
         }
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -305,7 +299,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation of position information</param>
         public override void Serialise(Writer wr)
         {
-            perioddefpos = wr.Fix(perioddefpos);
+            perioddefpos = wr.cx.Fix(perioddefpos);
             wr.PutLong(perioddefpos);
             base.Serialise(wr);
         }
@@ -313,7 +307,7 @@ namespace Pyrrho.Level2
         /// Deserialise the Delete from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             perioddefpos = rdr.GetLong();
             base.Deserialise(rdr);
@@ -338,7 +332,7 @@ namespace Pyrrho.Level2
     {
         public string prefix = "";
         public string uri;
-        public Namespace(ReaderBase rdr) : base(Type.Namespace, rdr) 
+        public Namespace(Reader rdr) : base(Type.Namespace, rdr) 
         {
         }
         public Namespace(string pf, string ur, long pp, Context cx)
@@ -366,7 +360,7 @@ namespace Pyrrho.Level2
             wr.PutString(uri);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             prefix = rdr.GetString();
             uri = rdr.GetString();
@@ -392,11 +386,11 @@ namespace Pyrrho.Level2
     {
         public long obj;
         public Level classification; 
-        public Classify(ReaderBase rdr) : base(Type.Classify,rdr)
+        public Classify(Reader rdr) : base(Type.Classify,rdr)
         { }
         protected Classify(Classify x, Writer wr) : base(x, wr)
         {
-            obj = wr.Fix(x.obj);
+            obj = wr.cx.Fix(x.obj);
             classification = x.classification;
         }
         public override long Dependent(Writer wr, Transaction tr)
@@ -417,11 +411,11 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
         {
             Level.SerialiseLevel(wr,classification);
-            obj = wr.Fix(obj);
+            obj = wr.cx.Fix(obj);
             wr.PutLong(obj);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             classification = Level.DeserialiseLevel(rdr);
             obj = rdr.GetLong();
@@ -456,57 +450,50 @@ namespace Pyrrho.Level2
     internal abstract class Compiled : Physical
     {
         internal Framing framing;
-        internal Domain domain;
-        protected Compiled(Type tp, long pp, Context cx,Framing frame,Domain dom) 
-            : base(tp, pp, cx) 
-        {
-            framing = frame;
-            domain = dom;
-        }
-        protected Compiled(Type tp, long pp, Context cx,Domain dm)
+        internal Domain dataType = null;
+        protected Compiled(Type tp, long pp, Context cx, long tgt, Domain dom)
             : base(tp, pp, cx)
         {
-            domain = dm;
-            Frame(cx);
+            var oc = cx.parse;
+            framing = new Framing(cx);
+            dataType = cx._Dom(framing.obs[framing.result]) ?? cx._Dom(cx.obs[tgt]) ?? dom;
+            cx.parse = oc;
         }
-        protected Compiled(Type tp, ReaderBase rdr) :base(tp,rdr) 
+        protected Compiled(Type tp, long pp, Context cx, Domain dm)
+            : base(tp, pp, cx)
+        {
+            dataType = dm;
+        }
+        protected Compiled(Type tp, Reader rdr) : base(tp, rdr)
         {
             framing = Framing.Empty; // fixed in OnLoad
-            domain = Domain.Content;
+            dataType = Domain.Content;
         }
-        protected Compiled(Compiled ph, Writer wr) : base(ph, wr) 
+        protected Compiled(Compiled ph, Writer wr) : base(ph, wr)
         {
-            framing = (Framing)ph.framing._Relocate(wr);
-            domain = (Domain)ph.domain._Relocate(wr);
+            var oc = wr.cx.parse;
+            wr.cx.parse = ExecuteStatus.Compile;
+            framing = (Framing)ph.framing._Relocate(wr.cx);
+            dataType = (Domain)ph.dataType._Relocate(wr.cx);
+            wr.cx.parse = oc;
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            throw new NotImplementedException();
+        }
+        public override (Transaction, Physical) Commit(Writer wr, Transaction tr)
+        {
+            wr.cx.instDFirst = -1L;
+            return base.Commit(wr, tr);
         }
         internal override void Install(Context cx, long p)
         {
-            cx.db += (Database.NextPrep, cx.nextHeap);
         }
-        internal override void Relocate(Context cx)
+        public override string ToString()
         {
-            if (framing == Framing.Empty || cx.relocs!=Context.Relocations.Frame)
-                return;
-            framing.Install(cx);
-            cx.SrcFix(ppos + 1);
-            framing.Relocate(cx);
-            var of = framing;
-            framing = (Framing)framing.Fix(cx);
-            domain = (Domain)domain.Fix(cx);
-            framing.Install(cx);
-            if (of != framing)
-                Install(cx, cx.db.loadpos);
-        }
-        /// <summary>
-        /// Fix heap uids and install compiled DBObjects from the context
-        /// </summary>
-        /// <param name="cx">The parsing context</param>
-        public void Frame(Context cx)
-        {
-            cx.SrcFix(ppos+1);
-            framing = new Framing(cx);
-            Relocate(cx);
-            cx.frame = null;
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" Domain "); sb.Append(dataType);
+            return sb.ToString();
         }
     }
     internal class Post : Physical
@@ -532,7 +519,7 @@ namespace Pyrrho.Level2
         }
         HttpWebRequest GetRequest()
         {
-            var vw = (RestView)_cx.obs[_vw];
+            var vw = (RestView)(_cx.obs[_vw]??_cx.db.objects[_vw]);
             string user = vw.clientName ?? _cx.user.name, password = vw.clientPassword;
             var ss = url.Split('/');
             if (ss.Length > 3)
@@ -560,13 +547,15 @@ namespace Pyrrho.Level2
             var vi = (ObInfo)_cx.db.role.infos[vw.viewPpos];
             if (vi.metadata.Contains(Sqlx.ETAG))
             {
-                var s = _cx.etags.cons[url].rvv?.ToString() ?? "";
-                if (s == "")
+                if (_cx.obs[_cx.result] is RowSet rs && rs.First(_cx) is Cursor cu)
+                    rq.Headers.Add("If-Match: " + cu._Rvv(_cx));
+                else
+                {
+                    rq.Headers.Add("If-Match: W/" + _cx.db.loadpos);
                     rq.Headers.Add("If-Unmodified-Since: "
                         + new THttpDate(_cx.db.lastModified,
                         vi.metadata.Contains(Sqlx.MILLI)));
-                else
-                    rq.Headers.Add("If-Match: " + s);
+                }
             }
             return rq;
         }

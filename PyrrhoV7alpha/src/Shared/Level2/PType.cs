@@ -1,11 +1,10 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
-using System.Security.Authentication.ExtendedProtection;
-using System.Xml;
+using System.Globalization;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -23,9 +22,11 @@ namespace Pyrrho.Level2
 	///		representation	uses structDef field in Domain
 	///	so attributes are TableColumns of the referenced PTable
 	/// </summary>
-	internal class PType : PDomain
+	internal class PType : Compiled
 	{
-        internal UDType under;
+        internal Domain under = null;
+        internal Domain structure = null;
+        internal string name = "";
         /// <summary>
         /// Constructor: A user-defined type definition from the Parser
         /// </summary>
@@ -33,17 +34,22 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the new type</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        protected PType(Type t, Ident nm, Domain dm, long pp, Context cx)
-            : base(t, nm.ident, new UDType(pp,dm), pp, cx)
-        { }
-        public PType(Ident nm, Domain dm, long pp, Context cx)
-            : this(Type.PType, nm, dm, pp, cx) { }
+        protected PType(Type t, Ident nm, Domain dm, Domain un, long pp, Context cx)
+            : base(t, pp, cx, dm)
+        {
+            name = nm.ident;
+            under = un;
+            structure = dm;
+            framing = new Framing(cx);
+        }
+        public PType(Ident nm, Domain dm, Domain un, long pp, Context cx)
+            : this(Type.PType, nm, dm, un, pp, cx) { }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PType(ReaderBase rdr) : base(Type.PType,rdr) 
+		public PType(Reader rdr) : base(Type.PType,rdr) 
         { }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer
@@ -51,16 +57,26 @@ namespace Pyrrho.Level2
         /// <param name="t">The PType type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected PType(Type t, ReaderBase rdr) : base(t,rdr) {}
+		protected PType(Type t, Reader rdr) : base(t,rdr) {}
         protected PType(PType x, Writer wr) : base(x, wr)
         {
-            if (x.under!=null)
-                under = (UDType)wr.Fixed(under.defpos);
-            domain = new UDType(this);
-            wr.cx._Add(domain);
-            wr.cx.db += (Database.Types, wr.cx.db.types + (domain, defpos));
+            name = x.name;
+            structure = (Domain)x.structure?._Relocate(wr.cx);
+            under = (Domain)x.under?._Relocate(wr.cx);
         }
-        protected override PDomain New(Writer wr)
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            if (under!=null && !Committed(wr, under.defpos))
+                return under.defpos;
+            for (var b=structure?.rowType.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                if (p<=Transaction.Executables && !Committed(wr, p))
+                    return p;
+            }
+            return -1L;
+        }
+        protected override Physical Relocate(Writer wr)
         {
             return new PType(this, wr);
         }
@@ -70,24 +86,48 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong((under!=null)?wr.cx.db.types[under]:-1L);
+            wr.PutLong(under?.defpos??-1L); 
+            // copied from PDomain.Serialise
+            wr.PutString(name);
+            wr.PutInt((int)dataType.kind);
+            wr.PutInt(dataType.prec);
+            wr.PutInt(dataType.scale);
+            wr.PutInt((int)dataType.charSet);
+            wr.PutString(dataType.culture.Name);
+            wr.PutString(dataType.defaultString);
+            wr.PutLong(dataType.structure);
 			base.Serialise(wr);
 		}
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rd)
+        public override void Deserialise(Reader rdr)
         {
-            underdefpos = rd.GetLong();
-            base.Deserialise(rd);
-            domain = new UDType(this);
-            if (rd is Reader rdr)
+            var un = rdr.GetLong();
+            if (un > 0)
+                under = (Domain)rdr.context.db.objects[un];
+            name = rdr.GetString();
+            var m = BTree<long, object>.Empty;
+            var k = (Sqlx)rdr.GetInt();
+            m = m + (Domain.Precision, rdr.GetInt())
+                + (Domain.Scale, rdr.GetInt())
+                + (Domain.Charset, (CharSet)rdr.GetInt())
+                + (Domain.Culture, PDomain.GetCulture(rdr.GetString()));
+            var ds = rdr.GetString();
+            if (ds.Length > 0
+                && k == Sqlx.CHAR && ds[0] != '\'')
             {
-                if (underdefpos != -1)
-                    under = (UDType)rdr.context.db.objects[underdefpos];
-                rdr.context.db += (ppos, domain);
+                ds = "'" + ds + "'";
+                m += (Domain.DefaultString, ds);
             }
+            var st = rdr.GetLong();
+            var dt = ((ObInfo)rdr.context.db.role.infos[st]).dataType;
+            m = m + (Domain.Structure,st)
+                + (Domain.Representation,dt.representation)
+                + (Domain.RowType, dt.rowType);
+            structure = new Domain(ppos, k, m);
+            base.Deserialise(rdr);
         }
         /// <summary>
         /// A readable version of the Physical
@@ -95,40 +135,80 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
 		{
-            string a = "PType ";
-            a += domain.ToString();
-			return a;
+            return "PType " + name + "["+ DBObject.Uid(structure.structure)+"]";
 		}
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
+            var nm = dataType.name;
             switch(that.type)
             {
-                case Type.Drop:
-                        if (db.types[under] == ((Drop)that).delpos)
-                        return new DBException("40011", name, that, ct);
-                    break;// base class has other reasons for concern
+                case Type.PType:
+                case Type.PType1:
+                    if (nm == ((PType)that).dataType.name)
+                        return new DBException("40022", nm, that, ct);
+                    break;
+                case Type.PDomain1:
+                case Type.PDomain:
+                    if (nm == cx._Dom(((PDomain)that).domain).name)
+                        return new DBException("40022", nm, that, ct);
+                    break;
+                case Type.PTable:
+                case Type.PTable1:
+                    if (dataType.name == ((PTable)that).name)
+                        return new DBException("40032", nm, that, ct);
+                    break;
+                case Type.PView1:
+                case Type.PView:
+                    if (nm == ((PView)that).name)
+                        return new DBException("40032", nm, that, ct);
+                    break;
+                case Type.PRole1:
+                case Type.PRole:
+                    if (nm == ((PRole)that).name)
+                        return new DBException("40035", nm, that, ct);
+                    break;
+                case Type.RestView1:
+                case Type.RestView:
+                    if (nm == ((PRestView)that).name)
+                        return new DBException("40032", nm, that, ct);
+                    break;
                 case Type.Change:
-                    if (db.types[under] == ((Change)that).affects)
-                        return new DBException("40021", name, that, ct);
-                    break;// base class has other reasons for concern
+                    if (nm == ((Change)that).name)
+                        return new DBException("40032", nm, that, ct);
+                    break;
+                case Type.Drop:
+                    if (ppos == ((Drop)that).delpos)
+                        return new DBException("40016", nm, that, ct);
+                    break;
             }
             return base.Conflicts(db, cx, that, ct);
+        }
+        public override (Transaction, Physical) Commit(Writer wr, Transaction tr)
+        {
+            var (nt, ph) = base.Commit(wr, tr);
+            return (nt,ph);
         }
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var udt = (UDType)domain;
+            var udt = new UDType(this, cx);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var oi = new ObInfo(ppos, domain.name, domain, priv);
-            ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
+            var oi = new ObInfo(ppos, name, udt, priv);
+            var st = CTree<string, long>.Empty;
+            for (var b=udt.rowType.First();b!=null;b=b.Next())
+            {
+                var ci = (ObInfo)ro.infos[b.value()];
+                st += (ci.name, b.value());
+            }
+            ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
             ro += (oi, true);
+            var tt = cx.db.role.typeTracker[ppos] ?? CTree<long, (Domain,CTree<string,long>)>.Empty
+                + (ppos, (udt,st));
+            ro += (Role.TypeTracker, cx.db.role.typeTracker + (ppos, tt));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
             cx.db = cx.db + (ro, p) + (ppos, udt, p);
-            cx.db += (Database.Types, cx.db.types + (udt-Domain.Representation, ppos));
-            var tt = cx.db.typeTracker[defpos] ?? BTree<long, Domain>.Empty
-    + (ppos, udt);
-            cx.db += (Database.TypeTracker, cx.db.typeTracker + (defpos, tt));
+            cx.db += (Database.Types, cx.db.types + (udt, ppos));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
         }
@@ -136,22 +216,11 @@ namespace Pyrrho.Level2
     internal class PType1 : PType // no longer used
     {
         /// <summary>
-        /// Constructor: A user-defined type definition from the Parser
-        /// </summary>
-        /// <param name="nm">The name of the new type</param>
-        /// <param name="wu">The =WITH uri in the representation if any</param>
-        /// <param name="un">The supertype if specified</param>
-        /// <param name="dt">The representation datatype</param>
-        /// <param name="db">The local database</param>
-        public PType1(Ident nm, Domain ud, long pp, Context cx)
-            : base(Type.PType1, nm, ud, pp, cx)
-        {  }
-        /// <summary>
         /// Constructor: A user-defined type definition from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PType1(ReaderBase rdr) : base(Type.PType1,rdr) {}
+		public PType1(Reader rdr) : base(Type.PType1,rdr) {}
         protected PType1(PType1 x, Writer wr) : base(x, wr)
         { }
         protected override Physical Relocate(Writer wr)
@@ -163,7 +232,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             string withuri = rdr.GetString();
             base.Deserialise(rdr);

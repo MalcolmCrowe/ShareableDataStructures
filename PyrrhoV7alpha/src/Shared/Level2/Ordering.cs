@@ -3,7 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -62,14 +62,14 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Ordering(ReaderBase rdr)
+        public Ordering(Reader rdr)
             : base(Type.Ordering, rdr)
         { }
         protected Ordering(Ordering x, Writer wr) : base(x, wr)
         {
-            domain = (Domain)x.domain._Relocate(wr);
+            domain = (Domain)x.domain.Relocate(wr.cx);
             domdefpos = domain.defpos;
-            funcdefpos = wr.Fix(x.funcdefpos);
+            funcdefpos = wr.cx.Fix(x.funcdefpos);
             flags = x.flags;
         }
         protected override Physical Relocate(Writer wr)
@@ -83,7 +83,7 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
         {
             wr.PutLong(wr.cx.db.types[domain]);
-            funcdefpos = wr.Fix(funcdefpos);
+            funcdefpos = wr.cx.Fix(funcdefpos);
             wr.PutLong(funcdefpos);
             wr.PutInt((int)flags);
             base.Serialise(wr);
@@ -92,7 +92,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             domdefpos = rdr.GetLong();
             funcdefpos = rdr.GetLong();

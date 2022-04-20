@@ -129,14 +129,10 @@
     <Compile Include="Level4\Activation.cs" />
     <Compile Include="Level4\Context.cs" />
     <Compile Include="Level3\Executable.cs" />
-    <Compile Include="Level3\From.cs" />
-    <Compile Include="Level4\Group.cs" />
     <Compile Include="Level4\Join.cs" />
     <Compile Include="Level4\MergeResults.cs" />
     <Compile Include="Level3\QueryClasses.cs" />
     <Compile Include="Level4\Parser.cs" />
-    <Compile Include="Level3\Query.cs" />
-    <Compile Include="Level3\QuerySpecification.cs" />
     <Compile Include="Level4\RowSet.cs" />
     <Compile Include="Level4\RTree.cs" />
     <Compile Include="Level4\SystemResults.cs" />

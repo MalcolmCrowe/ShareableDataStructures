@@ -3,7 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -69,14 +69,14 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public PPeriodDef(ReaderBase rdr)
+        public PPeriodDef(Reader rdr)
             : base(Type.PeriodDef, rdr)
         { }
         protected PPeriodDef(PPeriodDef x, Writer wr) : base(x, wr)
         {
-            tabledefpos = wr.Fix(x.tabledefpos);
-            startcol = wr.Fix(x.startcol);
-            endcol = wr.Fix(x.endcol);
+            tabledefpos = wr.cx.Fix(x.tabledefpos);
+            startcol = wr.cx.Fix(x.startcol);
+            endcol = wr.cx.Fix(x.endcol);
             periodname = x.periodname;
         }
         protected override Physical Relocate(Writer wr)
@@ -89,12 +89,12 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation information for positions</param>
         public override void Serialise(Writer wr)
         {
-            tabledefpos = wr.Fix(tabledefpos);
+            tabledefpos = wr.cx.Fix(tabledefpos);
             wr.PutLong(tabledefpos);
             wr.PutString(periodname.ToString());
-            startcol = wr.Fix(startcol);
+            startcol = wr.cx.Fix(startcol);
             wr.PutLong(startcol);
-            endcol = wr.Fix(endcol);
+            endcol = wr.cx.Fix(endcol);
             wr.PutLong(endcol);
             base.Serialise(wr);
         }
@@ -102,7 +102,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             tabledefpos = rdr.GetLong();
             periodname = rdr.GetString();

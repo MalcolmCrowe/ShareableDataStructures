@@ -2,7 +2,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -43,7 +43,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public Revoke(ReaderBase rdr) : base(Type.Revoke,rdr)
+		public Revoke(Reader rdr) : base(Type.Revoke,rdr)
 		{}
         protected Revoke(Revoke x, Writer wr) : base(x, wr) { }
         protected override Physical Relocate(Writer wr)

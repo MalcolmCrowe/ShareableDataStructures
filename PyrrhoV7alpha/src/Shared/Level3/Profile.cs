@@ -6,7 +6,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -260,7 +260,7 @@ namespace Pyrrho.Level3
             {
                 TableColumn tc = db.objects[s.key()] as TableColumn;
                 var i = 0;
-                for (var b=ti.domain.rowType.First();b!=null;b=b.Next(),i++)
+                for (var b=ti.dataType.rowType.First();b!=null;b=b.Next(),i++)
                     if (b.value() == s.key())
                         break;
                 var ci = (ObInfo)db.role.infos[tc.defpos];
@@ -643,7 +643,7 @@ namespace Pyrrho.Level3
         } */
 #if !SILVERLIGHT && !WINDOWS_PHONE
         /// <summary>
-        /// Save the profile data to an xml file.
+        /// Save the profile obs to an xml file.
         /// This is done if profiling is turned off.
         /// </summary>
         /// <param name="db">The database for which profiling is to be saved</param>
@@ -658,7 +658,7 @@ namespace Pyrrho.Level3
             w.Close();
         }
         /// <summary>
-        /// Load the profile data from a saved xml file (if such exists).
+        /// Load the profile obs from a saved xml file (if such exists).
         /// </summary>
         public void Load()
         {

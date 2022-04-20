@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -17,7 +17,8 @@ namespace Pyrrho.Level4
 {
     /// <summary>
     /// See BTree for details 
-    /// RTree is used for total and partial orderings where the value is of type RRow: 
+    /// RTree is used for total and partial orderings where the value is of type RRow
+    /// where an RRow is a snaphot of the Context's Cursors (rationale below)
     /// Logically an RTree contains associations of form (TRow,RRow)
     /// RTree uses MTree for implementation.
     /// IMMUTABLE
@@ -40,21 +41,12 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Constructor: a new empty MTree for given TreeSpec
         /// </summary>
-        internal RTree(long dp,CList<long> ks,Domain dt,
+        internal RTree(long dp,Context cx,Domain dt,
             TreeBehaviour d=TreeBehaviour.Disallow,TreeBehaviour n=TreeBehaviour.Allow)
         {
             defpos = dp;
-            domain = dt+(Domain.RowType,ks);
-            mt = new MTree(new TreeInfo(ks,dt,d,n));
-            rows = BList<BTree<long, Cursor>>.Empty;
-        }
-        internal RTree(long dp, Domain dt, TreeBehaviour d = TreeBehaviour.Disallow,
-             TreeBehaviour n = TreeBehaviour.Allow)
-        {
-            defpos = dp;
+            mt = new MTree(new TreeInfo(cx,dt.rowType,d,n));
             domain = dt;
-            var m = new MTree(new TreeInfo(dt.rowType, dt, d, n));
-            mt = m;
             rows = BList<BTree<long, Cursor>>.Empty;
         }
         protected RTree(long dp,CList<long> k,Domain d,MTree m,
@@ -85,13 +77,13 @@ namespace Pyrrho.Level4
         }
         internal RTree Fix(Context cx)
         {
-            return new RTree(cx.rsuids[defpos]??defpos, 
+            return new RTree(cx.Fix(defpos), 
                 cx.Fix(keyType), (Domain)domain.Fix(cx),
                 mt.Fix(cx),cx.Fix(rows));
         }
         internal RTree Relocate(Writer wr)
         {
-            return new RTree(wr.Fix(defpos), (Domain)domain._Relocate(wr),
+            return new RTree(wr.cx.Fix(defpos), wr.cx, (Domain)domain.Relocate(wr.cx),
                 mt.info.onDuplicate, mt.info.onNullKey);
         }
         internal RTree Replace(Context cx,DBObject so,DBObject sv)
@@ -109,7 +101,7 @@ namespace Pyrrho.Level4
         internal readonly TRow _key;
         RTreeBookmark(Context cx,RTree rt,int pos,MTreeBookmark mb,
             BTree<long,Cursor> cs, Cursor rr)
-            :base(cx,rt.defpos,rt.domain,pos,rr._defpos,rr._ppos,rr)
+            :base(cx,rt.defpos,rt.domain,pos,rr._ds,rr)
         { 
             _rt = rt; _mb = mb; _cs = cs;
             _key = new TRow(new Domain(Sqlx.ROW,cx,_rt.keyType), mb.key());
@@ -121,6 +113,10 @@ namespace Pyrrho.Level4
         RTreeBookmark(Context cx,RTree rt, int pos, MTreeBookmark mb) 
             :this(cx,rt,pos,mb,rt.rows[(int)(mb.Value()??-1L)])
         { }
+        public override MTreeBookmark Mb()
+        {
+            return _mb;
+        }
         public override Cursor ResetToTiesStart(Context _cx, MTreeBookmark mb)
         {
             if (mb!=null && mb.Value().HasValue)
@@ -171,11 +167,11 @@ namespace Pyrrho.Level4
         }
         internal override BList<TableRow> Rec()
         {
-            throw new NotImplementedException();
+            throw new DBException("2F003");
         }
         internal override Cursor _Fix(Context cx)
         {
-            throw new NotImplementedException();
+            throw new DBException("2F003");
         }
     }
 }

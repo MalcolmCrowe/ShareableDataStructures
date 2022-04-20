@@ -2,7 +2,7 @@ using System;
 using System.Collections.Generic;
 using System.Globalization;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -368,6 +368,8 @@ namespace Pyrrho.Common
         /// <returns></returns>
 		public static Integer operator+(Integer a,Integer b)
 		{
+            if (a == null)
+                return b;
 			return a.Add(b,0);
 		}
         /// <summary>
@@ -849,7 +851,7 @@ namespace Pyrrho.Common
         /// <param name="q">The double value</param>
 		internal Numeric(double d)
 		{
-			Numeric a = Parse(d.ToString());
+			Numeric a = Parse(d.ToString("G",CultureInfo.InvariantCulture));
 			mantissa = a.mantissa;
 			scale = a.scale;
 		}

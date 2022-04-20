@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -17,7 +17,7 @@ namespace Pyrrho.Level2
 {
 	/// <summary>
 	/// A PTable has a name, a set of TableColumns, a set of records, a primary key, a set of indices
-    /// Only the name is defined in the PTable: the rest comes in other data
+    /// Only the name is defined in the PTable: the rest comes in other obs
 	/// </summary>
 	internal class PTable : Physical
 	{
@@ -46,7 +46,6 @@ namespace Pyrrho.Level2
         public PTable(string nm, Sqlx d, long pp, Context cx)
             : this(Type.PTable, nm, d, pp, cx)
 		{}
-        public PTable(long np, Context cx) : base(Type.PTable,np,cx) { }
         /// <summary>
         /// Constructor: a Table definition from the Parser
         /// </summary>
@@ -65,15 +64,15 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PTable(ReaderBase rdr) : base (Type.PTable,rdr)
-		{}
+		public PTable(Reader rdr) : base (Type.PTable,rdr)
+		{ }
         /// <summary>
         /// Constructor: a Table definition from the buffer
         /// </summary>
         /// <param name="t">The PTable type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected PTable(Type t, ReaderBase rdr) : base(t,rdr) {}
+		protected PTable(Type t, Reader rdr) : base(t,rdr) {}
         protected PTable(PTable x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -96,11 +95,9 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            if (name != "" && name[0] == '(')
-                kind = Sqlx.TYPE;
 			base.Deserialise(rdr);
 		}
         /// <summary>
@@ -142,9 +139,12 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences | 
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
                 Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
-            var tb = (name[0]=='(')?new VirtualTable(this,ro):new Table(this,ro);
-            var ti = new ObInfo(ppos, name, Domain.TableType, priv);
+            var tb = (name[0]=='(')?new VirtualTable(this,ro,cx):new Table(this,ro);
+            var ti = tb._ObInfo(ppos, name, priv);
             ro = ro + (ti,true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            ro += (Role.TypeTracker,
+                ro.typeTracker + (defpos, new CTree<long,(Domain,CTree<string,long>)>
+                (defpos,(Domain.TableType, CTree<string, long>.Empty))));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);
@@ -165,8 +165,8 @@ namespace Pyrrho.Level2
         {
             rowiri = ir;
         }
-        public PTable1(ReaderBase rdr) : base(Type.PTable1, rdr) { }
-        protected PTable1(Type tp, ReaderBase rdr) : base(tp, rdr) { }
+        public PTable1(Reader rdr) : base(Type.PTable1, rdr) { }
+        protected PTable1(Type tp, Reader rdr) : base(tp, rdr) { }
         protected PTable1(PTable1 x, Writer wr) : base(x, wr)
         {
             rowiri = x.rowiri;
@@ -180,7 +180,7 @@ namespace Pyrrho.Level2
             wr.PutString(rowiri);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             rowiri = rdr.GetString();
             base.Deserialise(rdr);
@@ -201,10 +201,10 @@ namespace Pyrrho.Level2
         {
             rowpos = pr;
         }
-        public AlterRowIri(ReaderBase rdr) : base(Type.AlterRowIri, rdr) { }
+        public AlterRowIri(Reader rdr) : base(Type.AlterRowIri, rdr) { }
         protected AlterRowIri(AlterRowIri x, Writer wr) : base(x, wr)
         {
-            rowpos = wr.Fix(rowpos);
+            rowpos = wr.cx.Fix(rowpos);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -215,7 +215,7 @@ namespace Pyrrho.Level2
             wr.PutLong(rowpos);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong(); // defpos is clobbered by base.Deserialise
             base.Deserialise(rdr);
@@ -237,7 +237,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,tabledefpos)) return tabledefpos;
             return -1;
         }
-        public Enforcement(ReaderBase rdr) : base(Type.Enforcement, rdr)
+        public Enforcement(Reader rdr) : base(Type.Enforcement, rdr)
         {
         }
 
@@ -260,7 +260,7 @@ namespace Pyrrho.Level2
         }
         protected Enforcement(Enforcement x, Writer wr) : base(x, wr)
         {
-            tabledefpos = wr.Fix(x.tabledefpos);
+            tabledefpos = wr.cx.Fix(x.tabledefpos);
             enforcement = x.enforcement;
         }
         protected override Physical Relocate(Writer wr)
@@ -273,7 +273,7 @@ namespace Pyrrho.Level2
             wr.PutLong((long)enforcement);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             tabledefpos = rdr.GetLong();
             enforcement = (Grant.Privilege)rdr.GetLong();

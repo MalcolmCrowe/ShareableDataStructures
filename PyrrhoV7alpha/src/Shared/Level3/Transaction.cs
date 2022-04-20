@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System;
 using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -28,6 +28,7 @@ namespace Pyrrho.Level3
         internal const long
             AutoCommit = -278, // bool
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
+            _ETags = -462, // BTree<string,string> url, ETag
             Physicals = -250, // BTree<long,Physical>
             StartTime = -217, // DateTime
             Step = -276, // long
@@ -38,12 +39,14 @@ namespace Pyrrho.Level3
         public override long lexeroffset => uid;
         internal long step => (long)(mem[Step] ?? TransPos);
         internal override long nextPos => (long)(mem[NextPos]??TransPos);
-        internal override string source => (string)mem[CursorSpecification._Source];
+        internal override string source => (string)mem[SelectStatement.SourceSQL];
         internal BTree<long, Physical> physicals =>
             (BTree<long,Physical>)mem[Physicals]??BTree<long, Physical>.Empty;
         internal DateTime startTime => (DateTime)mem[StartTime];
         internal override bool autoCommit => (bool)(mem[AutoCommit]??true);
         internal long triggeredAction => (long)(mem[TriggeredAction]??-1L);
+        internal CTree<string,string> etags => 
+            (CTree<string,string>)mem[_ETags]??CTree<string,string>.Empty;
         /// <summary>
         /// Physicals, SqlValues and Executables constructed by the transaction
         /// will use virtual positions above this mark (see PyrrhoServer.nextIid)
@@ -51,7 +54,7 @@ namespace Pyrrho.Level3
         public const long TransPos = 0x4000000000000000;
         public const long Analysing = 0x5000000000000000;
         public const long Executables = 0x6000000000000000;
-        // actual start of Heap is given by db.nextPrep for the connection (see Context(db))
+        // actual start of Heap is given by conn.nextPrep for the connection (see Context(db))
         public const long HeapStart = 0x7000000000000000; //so heap starts after prepared statements
         /// <summary>
         /// As created from the Database: 
@@ -63,7 +66,7 @@ namespace Pyrrho.Level3
         /// <param name="auto"></param>
         internal Transaction(Database db,long t,string sce,bool auto) 
             :base(db.loadpos,db.mem+(NextId,t+1)
-            +(AutoCommit,auto)+(CursorSpecification._Source,sce))
+            +(AutoCommit,auto)+(SelectStatement.SourceSQL,sce))
         { }
         protected Transaction(Transaction t,long p, BTree<long, object> m)
             : base(p, m)
@@ -76,7 +79,7 @@ namespace Pyrrho.Level3
         {
             return new Transaction(this, c, m);
         }
-        public override Transaction Transact(long t,string sce,bool? auto=null)
+        public override Transaction Transact(long t,string sce,Connection con,bool? auto=null)
         {
             var r = this;
             if (auto == false && autoCommit)
@@ -84,25 +87,23 @@ namespace Pyrrho.Level3
             // Ensure the correct role amd user combination
             r += (Step, r.nextPos);
             if (t>=TransPos) // if sce is tranaction-local, we need to make space above nextIid
-                r = r+ (NextId,t+1)+(CursorSpecification._Source,sce);
+                r = r+ (NextId,t+1)+(SelectStatement.SourceSQL,sce);
             return r;
         }
         public override Database RdrClose(ref Context cx)
         {
             cx.values = CTree<long, TypedValue>.Empty;
             cx.cursors = BTree<long, Cursor>.Empty;
-            cx.data = BTree<long, RowSet>.Empty;
-            cx.results = BTree<long, long>.Empty;
-            cx.obs = BTree<long, DBObject>.Empty;
+            cx.obs = ObTree.Empty;
             cx.result = -1L;
             // but keep rdC, etags
             if (!autoCommit)
-                return Unheap(cx);
+                return this;
             else
             {
                 var r = cx.db.Commit(cx);
                 var aff = cx.affected;
-                cx = new Context(r);
+                cx = new Context(r,cx.conn);
                 cx.affected = aff;
                 return r;
             }
@@ -115,21 +116,6 @@ namespace Pyrrho.Level3
                 if (b.value() is Record || b.value() is Delete)
                     c++;
             return c;
-        }
-        /// <summary>
-        /// Fix all heap uids in framing fields of compiled objects
-        /// such as TableColumn (generation rule), Check, Trigger, Procedure, Method
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <returns>This Transaction with the compiled objects updated</returns>
-        Database Unheap(Context cx)
-        {
-            cx.relocs = Context.Relocations.Step;
-            var st = physicals.PositionAt(step);
-            for (var b = st; b != null; b = b.Next())
-                b.value().Relocate(cx);
-            cx.relocs = Context.Relocations.None;
-            return cx.db;
         }
         public static Transaction operator +(Transaction d, (long, object) x)
         {
@@ -152,7 +138,7 @@ namespace Pyrrho.Level3
         }
         internal override void Add(Context cx,Physical ph, long lp)
         {
-            if (cx.parse != ExecuteStatus.Obey)
+            if (cx.parse != ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Compile)
                 return;
             cx.db += (Physicals,physicals +(ph.ppos, ph));
             cx.db += (NextPos, ph.ppos + 1);
@@ -173,8 +159,8 @@ namespace Pyrrho.Level3
                 a.user = (User)db.objects[db.roles[a.user.name]];
             lock (wr.file)
             {
-                wr.stmtPos = databases[name].nextStmt; // may have changed!
-                wr.oldStmt = wr.stmtPos;
+                wr.cx.nextStmt = databases[name].nextStmt; // may have changed!
+                wr.oldStmt = wr.cx.nextStmt;
                 wr.segment = wr.file.Position;
                 a.Commit(wr, this);
                 wr.PutBuf();
@@ -185,8 +171,8 @@ namespace Pyrrho.Level3
         {
             if (cx == null)
                 return Rollback();
-            if (physicals == BTree<long, Physical>.Empty && cx.rdC.Count==0
-                && cx.etags==null)
+            if (physicals == BTree<long, Physical>.Empty && 
+                (autoCommit || (cx.rdC.Count==0 && (cx.db as Transaction)?.etags==null)))
                 return Rollback();
             // check for the case of an ad-hoc user that does not need to commit
             if (physicals.Count == 1L && physicals.First().value() is PUser)
@@ -199,15 +185,15 @@ namespace Pyrrho.Level3
                 ta.Exec();
             }
             if (!autoCommit)
-                for (var b = cx.etags?.cons.First(); b != null; b = b.Next())
+                for (var b = (cx.db as Transaction)?.etags.First(); b != null; b = b.Next())
                     if (b.key() != name)
-                        cx.CheckRemote(b.key(),b.value().rvv);
+                        cx.CheckRemote(b.key(),b.value()); 
             // Both rdr and wr access the database - not the transaction information
             var db = databases[name];
             var rdr = new Reader(new Context(db), loadpos);
             var wr = new Writer(new Context(db), dbfiles[name]);
             wr.cx.nextHeap = cx.nextHeap; // preserve Compiled objects framing
-            wr.cx.relocs = Context.Relocations.Commit;
+            wr.cx.nextStmt = cx.db.nextStmt;
             var tb = physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll();
             Physical ph = null;
@@ -228,7 +214,8 @@ namespace Pyrrho.Level3
                 }
                 for (var b = tb; b != null; b = b.Next())
                 {
-                    var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pt);
+                    var p = b.value();
+                    var ce = ph.Conflicts(rdr.context.db, cx, p, pt);
                     if (ce!=null)
                     {
                         cx.wconflicts++;
@@ -239,8 +226,6 @@ namespace Pyrrho.Level3
             lock (wr.file)
             { 
                 db = databases[name]; // may have moved on 
-                wr.stmtPos = db.nextStmt;
-                wr.oldStmt = wr.stmtPos;
                 rdr = new Reader(new Context(db), ph?.ppos ?? loadpos); 
                 rdr.locked = true;
                 since = rdr.GetAll(); // resume where we had to stop above, use new file length
@@ -286,14 +271,11 @@ namespace Pyrrho.Level3
                 wr.PutBuf();
                 df.Flush();
                 wr.cx.db += (NextStmt, cx.nextStmt); // not wr.cx.nextStmt
-                wr.cx.db += (NextPrep, cx.nextHeap); // sneaky
                 wr.cx.db += (LastModified, System.IO.File.GetLastWriteTimeUtc(name));
-                cx.etags?.Clear();
                 wr.cx.result = -1L;
                 var r = new Database(wr.Length,wr.cx.db.mem);
                 lock (_lock)
                     databases += (name, r);
-                r += (_Connection, conn);
                 cx.db = r;
                 return r;
             }
@@ -323,7 +305,7 @@ namespace Pyrrho.Level3
                 return cx;
             var a = new Activation(cx,e.label);
             a.exec = e;
-            var ac = e.Obey(a); // Obey must not call the Parser!
+            var ac = e.Obey(a); 
             if (a.signal != null)
             {
                 var ex = Exception(a.signal.signal, a.signal.objects);
@@ -333,47 +315,45 @@ namespace Pyrrho.Level3
             }
             cx.result = -1L;
             if (cx != ac)
+            {
                 cx.db = ac.db;
+                cx.rdC = ac.rdC;
+            }
             return cx;
         }
         /// <summary>
-        /// For REST service: do what we should according to the path, mime type and posted data
+        /// For REST service: do what we should according to the path, mime type and posted obs
         /// </summary>
         /// <param name="method">GET/HEAD/PUT/POST/DELETE</param>
         /// <param name="path">The URL</param>
         /// <param name="mime">The mime type in the header</param>
-        /// <param name="sdata">The posted data if any</param>
+        /// <param name="sdata">The posted obs if any</param>
         internal Context Execute(Context cx, string method, string id, string dn, string[] path, string mime, 
             string sdata)
         {
             var db = this;
+            cx.inHttpService = true;
             if (path.Length >= 4)
             {
                 switch (method)
                 {
                     case "HEAD":
-                        if (!cx.etags.assertMatch.Validate(cx.db, cx.etags.assertUnmodifiedSince))
-                            throw new DBException("40082");
-                        db.Execute(cx, From._static, method, dn, path, 2);
                         cx.result = -1L;
                         break;
                     case "GET":
-                        db.Execute(cx, From._static, method, dn, path, 2);
+                        db.Execute(cx, new TrivialRowSet(cx), method, dn, path, 2);
                         break;
                     case "DELETE":
-                        db.Execute(cx, From._static,method, dn, path, 2);
-                        cx = db.Delete(cx, cx.data[cx.result]);
+                        db.Execute(cx, new TrivialRowSet(cx), method, dn, path, 2);
+                        cx = db.Delete(cx, (TableRowSet)cx.obs[cx.result]);
                         break;
                     case "PUT":
-                        db.Execute(cx, From._static,method, dn, path, 2);
-                        cx = db.Put(cx,cx.data[cx.result], sdata);
-        //                var rvr = tr.result.rowSet as RvvRowSet;
-        //                tr.SetResults(rvr._rs);
+                        db.Execute(cx, new TrivialRowSet(cx), method, dn, path, 2);
+                        cx = db.Put(cx,(TableRowSet)cx.obs[cx.result], sdata);
                         break;
                     case "POST":
-                        db.Execute(cx, From._static,id + ".", dn, path, 2);
-                        //                tr.stack = tr.result?.acts ?? BTree<string, Activation>.Empty;
-                        cx = db.Post(cx, cx.data[cx.result],sdata);
+                        db.Execute(cx, new TrivialRowSet(cx), id + ".", dn, path, 2);
+                        cx = db.Post(cx, (TableRowSet)cx.obs[cx.result],sdata);
                         break;
                 }
             }
@@ -394,24 +374,13 @@ namespace Pyrrho.Level3
         /// <param name="ro"></param>
         /// <param name="path"></param>
         /// <param name="p"></param>
-        internal void Execute(Context cx, From f,string method, string dn, string[] path, int p)
+        internal void Execute(Context cx, RowSet f,string method, string dn, string[] path, int p)
         {
             if (p >= path.Length || path[p] == "")
             {
                 //               f.Validate(etag);
-                var rs = f.RowSets(cx, CTree<long, RowSet.Finder>.Empty);
+                var rs = f;
                 cx.result = rs.defpos;
-                if (method == "HEAD")
-                {
-                    var tb = (Table)cx.obs[rs.rsTargets.First().key()];
-                    var b = rs.First(cx);
-                    if (b != null)
-                        for (; b != null; b = b.Next(cx))
-                            b._Rvv(cx);
-                    var st = cx.etags.assertUnmodifiedSince;
-                    if (st!=null && !cx.etags.assertMatch.Validate(cx.db, st))
-                        throw new DBException("40084");
-                }
                 return;
             }
             string cp = path[p];
@@ -426,14 +395,12 @@ namespace Pyrrho.Level3
                     {
                         var tbs = cp.Substring(6 + off);
                         tbs = WebUtility.UrlDecode(tbs);
-                        var tbn = new Ident(tbs, 0);
+                        var tbn = new Ident(tbs, cx.Ix(0));
                         var tb = objects[cx.db.role.dbobjects[tbn.ident]] as Table
                             ?? throw new DBException("42107", tbn).Mix();
-                        f = new From(new Ident("",uid + 4 + off), cx, tb);
-                            
-                        //       if (schemaKey != 0 && schemaKey != ro.defs[f.target.defpos].lastChange)
-                        //           throw new DBException("2E307", tbn).Mix();
-                        //       f.PreAnalyse(transaction);
+                        var lp = cx.Ix(uid + 6 + off);
+                        var fm = new From(new Ident("", lp), cx, tb);
+                        f = (TableRowSet)cx.obs[fm.source];
                         break;
                     }
                 case "procedure":
@@ -466,9 +433,9 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                                 sk = WebUtility.UrlDecode(sk);
 #endif
-                                var tc = (TableColumn)kt.domain.ObjFor(cx,sk);
+                                var tc = (TableColumn)kt.dataType.ObjFor(cx,sk);
                                 TypedValue kv = null;
-                                var ft = tc.domain;
+                                var ft = cx._Dom(tc);
                                 try
                                 {
                                     kv = ft.Parse(uid,sk);
@@ -479,12 +446,12 @@ namespace Pyrrho.Level3
                                 }
                                 kn++;
                                 p++;
-                                var cond = new SqlValueExpr(1, cx, Sqlx.EQL,
-                                    new SqlCopy(2,cx,"",f.defpos,tc.defpos),
-                                    new SqlLiteral(3,cx,kv,ft),Sqlx.NO);
-                                f = (From)f.AddCondition(cx,Query.Where,cond,false);
+                                var cond = new SqlValueExpr(cx.Ix(2), cx, Sqlx.EQL,
+                                    new SqlCopy(cx.Ix(3),cx,"",f.defpos,tc.defpos),
+                                    new SqlLiteral(cx.Ix(4), cx,kv,ft),Sqlx.NO);
+                                f = (From)f.New(cx,RowSet.E+(RowSet._Where,cond.defpos));
                             }
-                            var rs = f.RowSets(cx, CTree<long, RowSet.Finder>.Empty);
+                            var rs = f;
                             cx.result = rs.defpos;
                             break;
                         }
@@ -514,53 +481,17 @@ namespace Pyrrho.Level3
                             sk = ks.Split(',');
                         var n = sk.Length;
                         var psr = new Parser(cx);
-                        f = (From)f.AddCondition(cx,Query.Where,
-                            psr.ParseSqlValue(sk[0], Domain.Bool).Disjoin(cx));
-                        //           if (f.target.SafeName(this) == "User")
-                        //           {
-                        TypedValue[] wh = new TypedValue[n];
-                        var sq = new Ident[n];
-                        for (int j = 0; j < n; j++)
-                        {
-                            string[] lr = sk[j].Split('=');
-                            if (lr.Length != 2)
-                                throw new DBException("42000", sk[j]).ISO();
-                            var cn = lr[0];
-                            var sc = f.domain.ObjFor(cx,cn)
-                                ?? throw new DBException("42112", cn).Mix();
-                            var ct = sc.domain;
-                            var cv = lr[1];
-                            wh[j] = ct.Parse(uid,cv);
-                            sq[j] = new Ident(cn, 0);
-                        }
-                        //               Authentication(transaction.result.rowSet, wh, sq); // 5.3 this is a no-op if the targetName is not User
-                        //             }
-                        break;
-                    }
-                case "select":
-                    {
-                        string ss = cp.Substring(8 + off);
-                        string[] sk = cp.Split(',');
-                        int n = sk.Length;
-                        var qout = new CursorSpecification(uid+4+off)
-                            +(CursorSpecification.Union,f.defpos)+(DBObject._From,f.from); // ???
-                        var qin = f;
-                        var rs = f.RowSets(cx, CTree<long, RowSet.Finder>.Empty);
-                        cx.result = rs.defpos;
-                        for (int j = 0; j < n; j++)
-                        {
-                            var cn = sk[j];
-                            cn = WebUtility.UrlDecode(cn);
-                            var cd = new Ident(cn, j);
-                            qout += (Domain.RowType,qout.rowType + j);
-                        }
+                        var iix = cx.Ix(cp.Length + Analysing);
+                        f += (RowSet._Where,
+                            psr.ParseSqlValue(new Ident(sk[0],iix), Domain.Bool).Disjoin(cx));
+                        cx.Add(f);
                         break;
                     }
                 case "distinct":
                     {
                         if (cp.Length < 10)
                         {
-                            cx.val = new DistinctRowSet(cx,cx.data[cx.result]).First(cx);
+                            cx.val = new DistinctRowSet(cx,(RowSet)cx.obs[cx.result]).First(cx);
                             break;
                         }
                         string[] ss = cp.Substring(9).Split(',');
@@ -659,11 +590,6 @@ namespace Pyrrho.Level3
                                 goto case "key";
                             }
                         }
-                        if (GetObject(cn) != null)
-                        {
-                            off = -7;
-                            goto case "select";
-                        }
                         if (cx.val != null)
                         {
                             off = -4;
@@ -674,36 +600,57 @@ namespace Pyrrho.Level3
             }
             Execute(cx, f, method, dn, path, p + 1);
         }
-        internal override Context Put(Context cx, RowSet r, string s)
+        internal override Context Put(Context cx, TableRowSet rs, string s)
         {
-            var rs = (SelectedRowSet)r;
             var da = new TDocArray(s);
-            var us = r.assig;
+            var tb = (Table)objects[rs.target];
+            var ix = tb.FindPrimaryIndex(this);
+            var us = rs.assig;
+            var ma = CTree<long,TypedValue>.Empty;
             var d = da[0];
-            for (var c = rs.rt.First(); c != null; c = c.Next())
+            for (var c = cx._Dom(rs).rowType.First(); c != null; c = c.Next())
             {
                 var n = "";
-                if (cx.obs[c.value()] is SqlValue sc)
-                    n = sc.name;
+                var isk = false;
+                if (cx.obs[c.value()] is SqlValue sv)
+                {
+                    n = sv.name;
+                    if (sv is SqlCopy sc)
+                        isk = ix.keys.Has(sc.copyFrom);
+                }
                 else if (cx.db.role.infos[c.value()] is ObInfo ci)
                     n = ci.name;
-                var sl = new SqlLiteral(cx.nextHeap++, cx, d[n]);
-                cx._Add(sl);
-                us += (new UpdateAssignment(c.value(), sl.defpos), true);
+                if (isk)
+                    ma += (c.value(), d[n]);  
+                else
+                {
+                    var sl = new SqlLiteral(cx.GetIid(), cx, d[n]);
+                    cx._Add(sl);
+                    us += (new UpdateAssignment(c.value(), sl.defpos), true);
+                }
             }
-            rs += (Query.Assig, us);
-            return rs.Update(cx, rs, true);
+            rs += (RowSet._Matches, ma);
+            rs += (RowSet.Assig, us);
+            cx.Add(rs);
+            rs = (TableRowSet)cx.obs[rs.defpos];
+            var ta = rs.Update(cx, rs, true)[rs.target];
+            ta.db = cx.db;
+            rs.First(cx);
+            ta.cursors = cx.cursors;
+            ta.EachRow(0);
+            cx.db = ta.db;
+            return cx;
         }
-        internal override Context Post(Context cx, RowSet r, string s)
+        internal override Context Post(Context cx, TableRowSet rs, string s)
         {
-            var rs = (SelectedRowSet)r;
             var da = new TDocArray(s);
             var rws = BList<(long, TRow)>.Empty;
+            var dm = cx._Dom(rs);
             for (var i = 0; i < da.Count; i++)
             {
                 var d = da[i];
                 var vs = CTree<long, TypedValue>.Empty;
-                for (var c = rs.rt.First(); c != null; c = c.Next())
+                for (var c = dm.rowType.First(); c != null; c = c.Next())
                 {
                     var n = "";
                     if (cx.obs[c.value()] is SqlValue sc)
@@ -712,12 +659,32 @@ namespace Pyrrho.Level3
                         n = ci.name;
                     vs += (c.value(), d[n]);
                 }
-                rws += (cx.nextHeap++, new TRow(r.domain,vs));
+                rws += (cx.GetUid(), new TRow(dm, vs));
             }
-            var ers = new ExplicitRowSet(cx.nextHeap++, r.domain, rws);
-            cx.data += (ers.defpos, ers);
-            rs += (RowSet._Source, ers.defpos);
-            return rs.Insert(cx, rs, true, "", null);
+            var ers = new ExplicitRowSet(cx.GetUid(), cx, dm, rws);
+            cx.Add(ers);
+            var cu = ers.First(cx);
+            rs = rs + (Index.Tree,ers.tree) +(Index.Keys,ers.keys);
+            var ta = rs.Insert(cx, rs, true, rs.sRowType)[rs.target];
+            ta.db = cx.db;
+            cx.cursors += (rs.defpos, cu);
+            ta.cursors = cx.cursors;
+            ta.EachRow(0);
+            return cx;
+        }
+        internal override Context Delete(Context cx, TableRowSet r)
+        {
+            var fm = (From)cx.obs[r.from];
+            var ts = r.Delete(cx, fm, true);
+            var ta = ts.First().value();
+            for (var b=r.First(cx);b!=null;b=b.Next(cx))
+            {
+                ta.db = cx.db;
+                cx.cursors += (fm.defpos,cx.cursors[r.target]);
+                ta.EachRow(b._pos);
+                cx.db = ta.db;
+            }
+            return base.Delete(cx, r);
         }
         /// <summary>
         /// Implement Grant or Revoke
@@ -754,7 +721,7 @@ namespace Pyrrho.Level3
         {
             var rt = role.infos[tb.defpos] as ObInfo;
             var ne = list.cols != BTree<string, bool>.Empty;
-            for (var b = rt.domain.representation.First(); b != null; b = b.Next())
+            for (var b = rt.dataType.representation.First(); b != null; b = b.Next())
             {
                 var p = b.key();
                 var ci = (ObInfo)cx.db.role.infos[p];
@@ -816,7 +783,7 @@ namespace Pyrrho.Level3
                 if (grant)
                 { 
                     p = gp;
-                    for (var cp = gd.domain.rowType.First(); cp != null; cp = cp.Next())
+                    for (var cp = gd.dataType.rowType.First(); cp != null; cp = cp.Next())
                     {
                         var c = cp.value();
                         var ci = (ObInfo)role.infos[c];

@@ -2,7 +2,6 @@
 using Pyrrho;
 using System.Threading.Tasks;
 using System.Collections.Generic;
-using System.Security.Principal;
 
 namespace Test
 {
@@ -29,11 +28,10 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("3 June 2021 Repeatable tests");
+                Console.WriteLine("20 April 2022 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
-                    Console.WriteLine("Tests 12.8,12.9,22,23 need RowSet Review so no -R flag");
                     Console.WriteLine("Ensure A,DB,DC,testdb not present in database folder for any of");
                     Console.WriteLine("PyrrhoTest");
                     Console.WriteLine("PyrrhoTest 10 0");
@@ -114,16 +112,17 @@ namespace Test
             Test21();
             if (test == 0 || test > 21)
             {
+                var user = Environment.UserDomainName + "\\" + Environment.UserName;
                 connA = new PyrrhoConnect("Files=A");
                 connA.Act("create table D(e int primary key,f char,g char)");
                 connA.Act("insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')");
                 connA.Act("create role A");
-                connA.Act("grant A to \"" + WindowsIdentity.GetCurrent().Name+"\"");
+                connA.Act("grant A to \"" + user +"\"");
                 Test22();
                 ResetA();
                 Test23();
             }
-    //        Test24();
+            Test24(); 
         }
         void ResetA()
         {
@@ -139,9 +138,9 @@ namespace Test
             Act(10,"create table A(B int,C int,D char,primary key(B,C))");
             Act(11,"insert into A values(2,3,'TwentyThree')");
             Act(12,"insert into A values(1,9,'Nineteen')");
-            CheckResults(1,1,"select * from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+            CheckResults(1,1,"select * from A", "[{B:2,C:3,D:'TwentyThree'},{B:1,C:9,D:'Nineteen'}]");
             Act(13,"update A set C=19 where C=9");
-            CheckResults(1,2, "select * from A", "[{B:1,C:19,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
+            CheckResults(1,2, "select * from A", "[{B:2,C:3,D:'TwentyThree'},{B:1,C:19,D:'Nineteen'}]");
             Act(14,"delete from A where C=19");
             CheckResults(1,3, "select * from A", "[{B:2,C:3,D:'TwentyThree'}]");
             Act(15,"insert into A(B,D) (select E.B,upper(E.D) from A E)");
@@ -175,7 +174,7 @@ namespace Test
             Act(30,"create table b(c int primary key,d char)");
             Act(31,"insert into b values(45,'DE')");
             Act(32,"insert into b values(-23,'HC')");
-            CheckResults(3,1,"select * from b", "[{C:-23,D:'HC'},{C:45,D:'DE'}]");
+            CheckResults(3,1,"select * from b", "[{C:45,D:'DE'},{C:-23,D:'HC'}]");
             CheckResults(3,2,"select * from b where c=-23", "[{C:-23,D:'HC'}]");
             Rollback();
         }
@@ -188,10 +187,10 @@ namespace Test
             Act(40,"create table e(f int,g char,primary key(g,f))");
             Act(41,"insert into e values(23,'XC')");
             Act(42,"insert into e values(45,'DE')");
-            CheckResults(4,1,"select * from e", "[{F:45,G:'DE'},{F:23,G:'XC'}]");
+            CheckResults(4,1,"select * from e", "[{F:23,G:'XC'},{F:45,G:'DE'}]");
             Act(43,"insert into e(g) values('DE')");
             CheckResults(4,2,"select * from e",
-                "[{F:45,G:'DE'},{F:46,G:'DE'},{F:23,G:'XC'}]");
+                "[{F:23,G:'XC'},{F:45,G:'DE'},{F:46,G:'DE'}]");
             // the EvalRowSet loop in the next test should execute only once
             CheckResults(4,3,"select count(f) from e where g='DE' and f<=45",
                 "[{COUNT:1}]");
@@ -243,11 +242,51 @@ namespace Test
             Act(73,"insert into TB values('Glasgow',4,29)");
             CheckResults(7, 1, "select S,count(C) as occ,sum(C) as total from TB group by S",
                 "[{S:\"Glasgow\",OCC:2,TOTAL:72},{S:\"Paisley\",OCC:1,TOTAL:82}]");
-            Act(74,"create table TBB(b int,c int,d int, e int)");
-            Act(75,"insert into TBB values(1,21,31,41),(3,22,35,47),(1,22,33,42),(1,22,35,49)");
-            Act(76,"insert into TBB values(2,21,37,40),(2,23,33,43),(1,24,31,44),(2,26,37,45)");
-            CheckResults(7, 2, "select sum(g) as h,d from (select count(*) as g,b,d from TBB group by b,d) group by d having b<3",
-                "[{H:2,D:31},{H:2,D:33},{H:1,D:35},{H:2,D:37}]");
+            // contributed by Fritz Laux
+            Act(400, "CREATE TABLE people (Id INT(11) NOT NULL, Name VARCHAR(50) , Salary NUMERIC(7,2), "
+                +"country VARCHAR(50), city VARCHAR(50) , PRIMARY KEY (Id) )");
+            /* UK*/
+            Act(401,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(1, 'Tom', 50000, 'UK', 'London')");
+            Act(402,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(2, 'Alex', 60000, 'UK', 'London')");
+            Act(403,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(3, 'Bob', 66000, 'UK', 'London')");
+            Act(404,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(4, 'Anne', 62000, 'UK', 'London')");
+            Act(405,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(5, 'Pam', 72000, 'UK', 'London')");
+            Act(406,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(6, 'Liz', 52000, 'UK', 'London')");
+
+            Act(407,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(7, 'Anne', 62000, 'UK', 'Glasgow')"); 
+            Act(408,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(8, 'Claire', 62000, 'UK', 'Glasgow')");
+            Act(409,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(9, 'Marc', 58000, 'UK', 'Glasgow')");
+            Act(410,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(10, 'Carla', 62000, 'UK', 'Glasgow')");
+            Act(411,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(11, 'Mary', 64000, 'UK', 'Glasgow')");
+            Act(412,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(12, 'Martha', 63000, 'UK', 'Glasgow')");
+
+            Act(413,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(20, 'Mike', 62000, 'UK', 'Liverpool')");
+            Act(414,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(21, 'Paul', 62000, 'UK', 'Liverpool')");
+            Act(415,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(22, 'John', 62000, 'UK', 'Liverpool')");
+
+            /* Germany*/
+            Act(416,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(61, 'Tom', 50000, 'GER', 'Berlin')");
+            Act(417,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(62, 'Alex', 60000, 'GER', 'Berlin')");
+            Act(418,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(63, 'Bob', 66000, 'GER', 'Berlin')");
+            Act(419,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(64, 'Anne', 62000, 'GER', 'Berlin')");
+            Act(420,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(65, 'Pam', 72000, 'GER', 'Berlin')");
+            Act(421,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(66, 'Liz', 52000, 'GER', 'Berlin')");
+
+            Act(422,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(67, 'Anne', 62000, 'GER', 'Munich')");
+            Act(423,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(68, 'Claire', 62000, 'GER', 'Munich')");
+            Act(424,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(69, 'Marc', 58000, 'GER', 'Munich')");
+            Act(425,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(70, 'Carla', 62000, 'GER', 'Munich')");
+            Act(426,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(71, 'Mary', 64000, 'GER', 'Munich')");
+            Act(427,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(72, 'Martha', 63000, 'GER', 'Munich')");
+
+            Act(428,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(80, 'Mike', 62000, 'GER', 'Tuebingen')");
+            Act(429,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(81, 'Paul', 62000, 'GER', 'Tuebingen')");
+            Act(430,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(82, 'John', 62000, 'GER', 'Tuebingen')");
+
+            /* Queries */
+
+            CheckResults(7,2,"select city, avg(Salary), count(*) as numPeople from people where country = 'GER' group by city having count(*) > 4",
+                "[{CITY:'Berlin',AVG:60333.3333333333,NUMPEOPLE:6},{CITY:'Munich',AVG:61833.3333333333,NUMPEOPLE:6}]");
             Rollback();
         }
         void Test8()
@@ -284,13 +323,21 @@ namespace Test
             CheckResults(8, 8, "select * from JA full join JE on B=F",
     "[{B:4,\"JA.C\":2,D:43,F:4,\"JE.C\":3,G:22},{B:7,\"JA.C\":4,D:29,F:7,\"JE.C\":2,G:31}," +
     "{B:8,\"JA.C\":3,D:82},{F: 11,\"JE.C\":4,G:10}]");
+            CheckResults(8, 9, "select sum(c), g from JA natural join JE group by g",
+                "[{SUM:4,G:10},{SUM:3,G:22},{SUM:2,G:31}]");
+            CheckResults(8, 10, "select sum(f),g from JA natural join JE where c=2 group by g",
+                "[{SUM:7,G:31}]");
+            CheckResults(8, 11, "select c,sum(f),g from JA natural join JE group by g,c having sum(f)<6",
+                "[{C:3,SUM:4,G:22}]");
+            CheckResults(8, 12, "select c,sum(d),sum(f),g from JA natural join JE group by g,c",
+                "[{C:2,SUM:43,Col2:7,G:31},{ C: 3,SUM: 82,Col2: 4,G: 22},{ C: 4,SUM: 29,Col2: 11,G: 10}]");
             // Test for lateral join (the keyword LATERAL is not required and not supported)
             Act(88,"create table SalesPerson(pid int primary key)");
             Act(89,"insert into SalesPerson values(1),(2),(3)"); 
             Act(90,"create table Sales(sid int primary key, spid int, cust int, amount int)"); 
             Act(91,"insert into Sales values(4,3,10,22),(5,2,11,12),(6,2,10,37)"); 
             Act(92,"insert into Sales values(7,1,12,7),(8,3,13,41),(9,1,12,17)");
-            CheckResults(8, 9, "select * from SalesPerson,"+
+            CheckResults(8, 13, "select * from SalesPerson,"+
                 "(select cust, amount from Sales " +
                 "where spid = pid order by amount desc fetch first 1 rows only)",
                 "[{PID:1,CUST:12,AMOUNT:17},{PID:2,CUST:10,AMOUNT:37},{PID:3,CUST:13,AMOUNT:41}]");
@@ -352,43 +399,45 @@ namespace Test
             Commit(109);
             Act(110,"update RWC set C=3 where A=42");
             Begin();
-            task1 = Task.Factory.StartNew(() => Test10A(111));
+            cmd.CommandText = "select * from RRC";
+            r = Read(cmd, 111);
+            task1 = Task.Factory.StartNew(() => Test10A(112));
             task1.Wait();
-            Commit(112);
+            Commit(113);
             Begin();
-            Act(113,"update RWC set C=3 where A=52");
-            task1 = Task.Factory.StartNew(() => Test10C(114));
+            Act(114,"update RWC set C=3 where A=52");
+            task1 = Task.Factory.StartNew(() => Test10C(115));
             task1.Wait();
             CheckExceptionNonQuery(10, 2, "Commit", "Transaction conflict");
             Begin();
             CheckResults(10,3,"select * from RWC","[{A:42,B:'the product of 6 and 9',C:3},{A:52,B:'Weeks in the year',C:4}]");
-            task1 = Task.Factory.StartNew(() => Test10B(115));
+            task1 = Task.Factory.StartNew(() => Test10B(116));
             task1.Wait();
             CheckExceptionNonQuery(10, 4, "Commit", "Transaction conflict");
             Begin();
-            Act(116,"insert into RWC values(13,'Lucky for some',4)");
-            task1 = Task.Factory.StartNew(() => Test10D(117));
+            Act(117,"insert into RWC values(13,'Lucky for some',4)");
+            task1 = Task.Factory.StartNew(() => Test10D(118));
             task1.Wait();
             CheckExceptionNonQuery(10, 5, "Commit", "Transaction conflict");
             Begin();
-            Act(118,"delete from RWC where a=52"); 
-            task1 = Task.Factory.StartNew(() => Test10E(119));
+            Act(119,"delete from RWC where a=52"); 
+            task1 = Task.Factory.StartNew(() => Test10E(120));
             task1.Wait();
             CheckExceptionNonQuery(10, 6, "Commit", "Transaction conflict");
             Begin();
-            Act(120,"update RRC set E=42 where D='Douglas Adams'");
-            task1 = Task.Factory.StartNew(() => Test10F(121));
+            Act(121,"update RRC set E=42 where D='Douglas Adams'");
+            task1 = Task.Factory.StartNew(() => Test10F(122));
             task1.Wait();
             CheckExceptionNonQuery(10, 7, "Commit", "Transaction conflict"); 
             Begin();
-            Act(122,"update RWC set A=12,B='Dozen' where A=13");
-            task1 = Task.Factory.StartNew(() => Test10G(123));
+            Act(123,"update RWC set A=12,B='Dozen' where A=13");
+            task1 = Task.Factory.StartNew(() => Test10G(124));
             task1.Wait();
             CheckExceptionNonQuery(10, 8, "Commit", "Transaction conflict");
-            Act(124,"delete from RWC where A=12");
+            Act(125,"delete from RWC where A=12");
             Begin();
-            Act(125,"insert into RWC values (12,'Dozen',7)");
-            task1 = Task.Factory.StartNew(() => Test10H(126));
+            Act(126,"insert into RWC values (12,'Dozen',7)");
+            task1 = Task.Factory.StartNew(() => Test10H(127));
             task1.Wait();
             CheckExceptionNonQuery(10, 7, "Commit", "Transaction conflict"); 
             Act(131,"insert into RWC values (13,'Black Friday',6)");
@@ -460,21 +509,21 @@ namespace Test
             if (qry == 0 || qry == 1)
             {
                 Begin();
-                Act(110,"create table cs(b int not null,c int default 4,d int generated always as b+c)");
+                Act(134,"create table cs(b int not null,c int default 4,d int generated always as b+c)");
                 CheckExceptionNonQuery(11, 1, "insert into cs(c) values(5)", "Null value not allowed in column B");
             }
             if (qry == 0 || qry == 2)
             {
                 Begin();
-                Act(111,"create table cs(b int not null,c int default 4,d int generated always as (b+c))");
-                Act(112,"insert into cs(b) values(3)");
+                Act(135,"create table cs(b int not null,c int default 4,d int generated always as b+c)");
+                Act(136,"insert into cs(b) values(3)");
                 CheckExceptionNonQuery(11, 2, "insert into cs values(1,2,3)", "Attempt to assign to a non-updatable column");
             }
             if (qry == 0 || qry == 3)
             {
                 Begin();
-                Act(113,"create table cs(b int not null,c int default 4,d int generated always as (b+c))");
-                Act(114,"insert into cs(b) values(3)");
+                Act(137,"create table cs(b int not null,c int default 4,d int generated always as b+c)");
+                Act(138,"insert into cs(b) values(3)");
                 CheckResults(11, 3, "select * from cs", "[{B:3,C:4,D:7}]");
             }
             Rollback();
@@ -485,47 +534,49 @@ namespace Test
                 return;
             testing = 12;
             Begin();
-            Act(120,"create table sce(a int primary key,b char)");
-            Act(121,"insert into sce values(12,'Zodiac')");
-            Act(122,"insert into sce values(13,'Bakers')");
-            Act(123,"insert into sce values(14,'Fortnight')");
-            Act(124,"create table dst(c int)");
-            Act(125,"insert into dst (select a from sce where b<'H')");
+            Act(139,"create table sce(a int primary key,b char)");
+            Act(140,"insert into sce values(12,'Zodiac')");
+            Act(141,"insert into sce values(13,'Bakers')");
+            Act(142,"insert into sce values(14,'Fortnight')");
+            Act(143,"create table dst(c int)");
+            Act(144,"insert into dst (select a from sce where b<'H')");
             CheckResults(12, 1, "select * from dst", "[{C:13},{C:14}]");
             CheckResults(12, 2, "select a from sce where b in('Fortnight','Zodiac')",
                "[{A:12},{A:14}]");
             CheckResults(12, 3, "select * from dst where c in (select a from sce where b='Bakers')",
                 "[{C:13}]");
-            Act(126,"insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')");
+            Act(145,"insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')");
             CheckResults(12, 4, "select * from dst", "[{C:13},{C:14},{C:18}]");
-            Act(127,"insert into dst (select min(x.c)-3 from dst x)");
-            CheckResults(12, 5, "select * from dst", "[{C:13},{C:14},{C:18},{C:10}]");
+            Act(146,"insert into dst (select min(x.c)-3 from dst x)");
+            CheckResults(12, 5, "select * from dst", "[{C:13},{C:14},{C:18},{C:10}]"); 
             if (commit)
             {
-                Prepare(128,"Ins1", "insert into sce values(?,?)");
-                Prepare(129,"Upd1", "update sce set a=? where b=?");
-                Prepare(130,"Del1", "delete from dst where c>?");
-                Prepare(131,"Ins2", "insert into dst (select char_length(b) from sce where a=?)");
-                Prepare(132,"Sel1", "select * from dst where c<?");
-                Execute(133,"Ins1", "" + 5, "'HalfDozen'");
-                Execute(134,"Upd1", "" + 6, "'HalfDozen'");
-                Execute(135,"Del1", "" + 10);
-                Execute(136,"Ins2", "" + 6);
-                CheckExecuteResults(12, 6, "[{C:9}]", "Sel1", "" + 10);
+                Prepare(147,"Ins1", "insert into sce values(?,?)");
+                Prepare(148,"Upd1", "update sce set a=? where b=?");
+                Prepare(149,"Del1", "delete from dst where c>?");
+                Prepare(150,"Ins2", "insert into dst (select char_length(b) from sce where a=?)");
+                Prepare(151,"Sel1", "select * from dst where c<?");
+                Execute(152,"Ins1", "" + 5, "'HalfDozen'");
+                Execute(153,"Upd1", "" + 6, "'HalfDozen'");
+                Execute(154,"Del1", "" + 10);
+                Execute(156,"Ins2", "" + 6);
+                CheckResults(12, 6, "select * from sce where a=6", "[{A:6,B:'HalfDozen'}]");
+                CheckResults(12, 7, "select * from dst", "[{C:10},{C:9}]");
+                CheckExecuteResults(12, 8, "[{C:9}]", "Sel1", "" + 10);
             }
-            Act(137,"create table p(q int primary key,r char,a int)");
-            Act(138,"create view v as select q,r as s,a from p");
-            Act(139,"insert into v(s) values('Twenty'),('Thirty')");
-            Act(140,"update v set s='Forty two' where q=1");
-            CheckResults(12, 7, "select r from p", "[{R:'Forty two'},{R:'Thirty'}]");
-            Act(141,"delete from v where s='Thirty'");
-            Act(142,"insert into p(r) values('Fifty')");
-            Act(143,"create table t(s char,u int)");
-            Act(144,"insert into t values('Forty two',42),('Fifty',48)");
-            Act(145,"create view w as select * from t natural join v");
-            Act(146,"update w set u=50,a=21 where q=2");
-            CheckResults(12,8,"table p", "[{Q:1,R:'Forty two'},{Q:2,R:'Fifty',A:21}]");
-            CheckResults(12,9, "table t", "[{S:'Forty two',U:42},{S:'Fifty',U:50}]");
+            Act(157,"create table p(q int primary key,r char,a int)");
+            Act(158,"create view v as select q,r as s,a from p");
+            Act(159,"insert into v(s) values('Twenty'),('Thirty')");
+            Act(160,"update v set s='Forty two' where q=1");
+            CheckResults(12, 9, "select r from p", "[{R:'Forty two'},{R:'Thirty'}]");
+            Act(161,"delete from v where s='Thirty'");
+            Act(162,"insert into p(r) values('Fifty')");
+            Act(163,"create table t(s char,u int)");
+            Act(164,"insert into t values('Forty two',42),('Fifty',48)");
+            Act(165,"create view w as select * from t natural join v");
+            Act(166,"update w set u=50,a=21 where q=2");
+            CheckResults(12,10,"table p", "[{Q:1,R:'Forty two'},{Q:2,R:'Fifty',A:21}]");
+            CheckResults(12,11, "table t", "[{S:'Forty two',U:42},{S:'Fifty',U:50}]");
             Rollback();
         }
         void Test13()
@@ -534,58 +585,58 @@ namespace Test
                 return;
             testing = 13;
             Begin();
-            Act(130,"create table ad(a int,b char)");
-            Act(131,"insert into ad values(20,'Twenty')");
+            Act(167,"create table ad(a int,b char)");
+            Act(168,"insert into ad values(20,'Twenty')");
             if (qry == 0 || qry == 1)
             {
                 CheckExceptionNonQuery(13, 1, "alter table ad add c char not null", "Table is not empty");
                 if (!commit)
                 {
                     Begin();
-                    Act(132,"create table ad(a int,b char)");
-                    Act(133,"insert into ad values(20,'Twenty')");
+                    Act(169,"create table ad(a int,b char)");
+                    Act(170,"insert into ad values(20,'Twenty')");
                 }
             }
-            Act(134,"alter table ad add c char default 'XX'");
-            Act(135,"insert into ad(a,b) values(2,'Two')");
+            Act(171,"alter table ad add c char default 'XX'");
+            Act(172,"insert into ad(a,b) values(2,'Two')");
             CheckResults(13, 2, "select * from ad", "[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]");
-            Act(136,"alter table ad drop b");
+            Act(173,"alter table ad drop b");
             CheckResults(13,3,"select * from ad", "[{A:20},{A:2,C:'XX'}]");
-            Act(137,"alter table ad add primary key(a)");
-            Act(138,"insert into ad values(21,'AB')");
-            Act(139,"create table de (d int references ad)");
+            Act(174,"alter table ad add primary key(a)");
+            Act(175,"insert into ad values(21,'AB')");
+            Act(176,"create table de (d int references ad)");
             if (qry == 0 || qry == 4)
             {
                 CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint: missing foreign key DE(14)");
                 if (!commit)
                 {
                     Begin();
-                    Act(140,"create table ad(a int,b char)");
-                    Act(141,"insert into ad values(20,'Twenty')");
-                    Act(142,"alter table ad add c char default 'XX'");
-                    Act(143,"insert into ad(a,b) values(2,'Two')");
-                    Act(144,"alter table ad drop b");
-                    Act(145,"alter table ad add primary key(a)");
-                    Act(146,"insert into ad values(21,'AB')");
-                    Act(147,"create table de (d int references ad)");
+                    Act(177,"create table ad(a int,b char)");
+                    Act(178,"insert into ad values(20,'Twenty')");
+                    Act(179,"alter table ad add c char default 'XX'");
+                    Act(180,"insert into ad(a,b) values(2,'Two')");
+                    Act(181,"alter table ad drop b");
+                    Act(182,"alter table ad add primary key(a)");
+                    Act(183,"insert into ad values(21,'AB')");
+                    Act(184,"create table de (d int references ad)");
                 }
             }
-            Act(148,"insert into de values(21)");
+            Act(185,"insert into de values(21)");
             if (qry == 0 || qry == 5)
             {
                 CheckExceptionNonQuery(13, 5, "delete from ad where c='AB'", "Integrity constraint: RESTRICT - foreign key in use");
                 if (!commit)
                 {
                     Begin();
-                    Act(149,"create table ad(a int,b char)");
-                    Act(150,"insert into ad values(20,'Twenty')");
-                    Act(151,"alter table ad add c char default 'XX'");
-                    Act(152,"insert into ad(a,b) values(2,'Two')");
-                    Act(153,"alter table ad drop b");
-                    Act(154,"alter table ad add primary key(a)");
-                    Act(155,"insert into ad values(21,'AB')");
-                    Act(156,"create table de (d int references ad)");
-                    Act(157,"insert into de values(21)");
+                    Act(186,"create table ad(a int,b char)");
+                    Act(187,"insert into ad values(20,'Twenty')");
+                    Act(188,"alter table ad add c char default 'XX'");
+                    Act(189,"insert into ad(a,b) values(2,'Two')");
+                    Act(190,"alter table ad drop b");
+                    Act(191,"alter table ad add primary key(a)");
+                    Act(192,"insert into ad values(21,'AB')");
+                    Act(193,"create table de (d int references ad)");
+                    Act(194,"insert into de values(21)");
                 }
             }
             if (qry == 0 || qry == 6)
@@ -594,23 +645,23 @@ namespace Test
                 if (!commit)
                 {
                     Begin();
-                    Act(158,"create table ad(a int,b char)");
-                    Act(159,"insert into ad values(20,'Twenty')");
-                    Act(160,"alter table ad add c char default 'XX'");
-                    Act(161,"insert into ad(a,b) values(2,'Two')");
-                    Act(162,"alter table ad drop b");
-                    Act(163,"alter table ad add primary key(a)");
-                    Act(164,"insert into ad values(21,'AB')");
-                    Act(165,"create table de (d int references ad)");
-                    Act(166,"insert into de values(21)");
+                    Act(195,"create table ad(a int,b char)");
+                    Act(196,"insert into ad values(20,'Twenty')");
+                    Act(197,"alter table ad add c char default 'XX'");
+                    Act(198,"insert into ad(a,b) values(2,'Two')");
+                    Act(199,"alter table ad drop b");
+                    Act(200,"alter table ad add primary key(a)");
+                    Act(201,"insert into ad values(21,'AB')");
+                    Act(202,"create table de (d int references ad)");
+                    Act(203,"insert into de values(21)");
                 }
             }
-            Act(167,"drop de cascade");
-            Act(168,"alter table ad drop primary key(a)");
+            Act(204,"drop de cascade");
+            Act(205,"alter table ad drop primary key(a)");
             CheckResults(13,7, "select * from ad", "[{A:20},{A:2,C:'XX'},{A:21,C:'AB'}]");
-            Act(169,"insert into ad(a) values(13)");
+            Act(206,"insert into ad(a) values(13)");
             CheckResults(13,8, "select * from ad", "[{A:20},{A:2,C:'XX'},{A:21,C:'AB'},{A:13,C:'XX'}]");
-            Act(170,"drop ad");
+            Act(207,"drop ad");
             if (qry == 0 || qry == 11)
             {
                 CheckExceptionQuery(13, 11, "select * from ad", "Table AD undefined");
@@ -624,29 +675,29 @@ namespace Test
                 return;
             testing = 14;
             Begin();
-            Act(140,"create table fi(a int primary key, b char)");
-            Act(141,"create table se(c char primary key, d int references fi on delete cascade)");
-            Act(142,"insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
-            Act(143,"insert into se values('johnson', 2019),('elizabeth',1953),('disaster',2019)");
-            Act(144,"insert into se values('normans',1066),('hastings', 1066)");
-            Act(145,"delete from fi where a = 1066");
+            Act(208,"create table fi(a int primary key, b char)");
+            Act(209,"create table se(c char primary key, d int references fi on delete cascade)");
+            Act(210,"insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
+            Act(211,"insert into se values('disaster', 2019),('elizabeth',1953),('johnson',2019)");
+            Act(212,"insert into se values('normans',1066),('hastings', 1066)");
+            Act(213,"delete from fi where a = 1066");
             CheckResults(14, 1, "table se", "[{C:'disaster',D:2019},{C:'elizabeth',D:1953},{C:'johnson',D:2019}]");
-            Act(146,"alter table se set (d) references fi on delete restrict");
+            Act(214,"alter table se set (d) references fi on delete restrict");
             CheckExceptionNonQuery(14,2,"delete from fi where a = 2019","Integrity constraint: RESTRICT");
             if (!commit)
             {
                 Begin();
-                Act(147,"create table fi(a int primary key, b char)");
-                Act(148,"create table se(c char primary key, d int references fi on delete cascade)");
-                Act(149,"insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
-                Act(150,"insert into se values('johnson', 2019),('elizabeth',1953),('disaster',2019)");
-                Act(151,"insert into se values('normans',1066),('hastings', 1066)");
-                Act(152,"delete from fi where a = 1066");
+                Act(215,"create table fi(a int primary key, b char)");
+                Act(216,"create table se(c char primary key, d int references fi on delete cascade)");
+                Act(217,"insert into fi values(1066,'invasion'),(1953,'accession'),(2019, 'brexit')");
+                Act(218,"insert into se values('disaster', 2019),('elizabeth',1953),('johnson',2019)");
+                Act(219,"insert into se values('normans',1066),('hastings', 1066)");
+                Act(220,"delete from fi where a = 1066");
             }
-            Act(153,"alter table se set(d) references fi on delete set null on update cascade");
-            Act(154,"update fi set a = 2020 where a = 2019");
+            Act(221,"alter table se set(d) references fi on delete set null on update cascade");
+            Act(222,"update fi set a = 2020 where a = 2019");
             CheckResults(14,3, "table se", "[{C:'disaster',D:2020},{C:'elizabeth',D:1953},{C:'johnson',D:2020}]");
-            Act(155,"delete from fi where a = 2020");
+            Act(223,"delete from fi where a = 2020");
             CheckResults(14,4, "table se", "[{C:'disaster'},{C:'elizabeth',D:1953},{C:'johnson'}]");
             Rollback();
         }
@@ -656,14 +707,14 @@ namespace Test
                 return;
             testing = 15;
             Begin();
-            Act(150,"create table ca(a char,b int check (b>0))");
+            Act(224,"create table ca(a char,b int check (b>0))");
             CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99)","Column B Check constraint fails");
             if (!commit)
             {
                 Begin();
-                Act(151,"create table ca(a char,b int check (b>0))");
+                Act(225,"create table ca(a char,b int check (b>0))");
             }
-            Act(152,"insert into ca values('Pos',45)");
+            Act(226,"insert into ca values('Pos',45)");
             CheckResults(15, 2, "table ca", "[{A:'Pos',B:45}]");
             Rollback();
         }
@@ -673,25 +724,25 @@ namespace Test
                 return;
             testing = 16;
             Begin();
-            Act(160,"create table xa(b int,c int,d char)");
-            Act(161,"create table xb(tot int)");
-            Act(162,"insert into xb values (0)");
-            Act(163,"create trigger ruab before update on xa referencing old as mr new as nr " +
+            Act(227,"create table xa(b int,c int,d char)");
+            Act(228,"create table xb(tot int)");
+            Act(229,"insert into xb values (0)");
+            Act(230,"create trigger ruab before update on xa referencing old as mr new as nr " +
             "for each row begin atomic update xb set tot=tot-mr.b+nr.b; " +
             "set d='changed' end");
-            Act(164,"create trigger riab before insert on xa " +
+            Act(231,"create trigger riab before insert on xa " +
             "for each row begin atomic set c=b+3; update xb set tot=tot+b end");
-            Act(165,"insert into xa(b,d) values (7,'inserted')");
-            Act(166,"insert into xa(b, d) values(9, 'Nine')");
+            Act(232,"insert into xa(b,d) values (7,'inserted')");
+            Act(233,"insert into xa(b, d) values(9, 'Nine')");
             CheckResults(16,1,"table xa", "[{B:7,C:10,D:'inserted'},{B:9,C:12,D:'Nine'}]");
             CheckResults(16,2,"table xb", "[{TOT:16}]");
-            Act(167,"update xa set b=8,d='updated' where b=7");
+            Act(234,"update xa set b=8,d='updated' where b=7");
             CheckResults(16,3,"table xa", "[{B:8,C:10,D:'changed'},{B:9,C:12,D:'Nine'}]");
             CheckResults(16,4,"table xb", "[{TOT:17}]");
-            Act(168,"create table xc(totb int,totc int)");
-            Act(169,"create trigger sdai instead of delete on xa referencing old table as ot " +
+            Act(235,"create table xc(totb int,totc int)");
+            Act(236,"create trigger sdai instead of delete on xa referencing old table as ot " +
             "for each statement begin atomic insert into xc (select b,c from ot) end");
-            Act(170,"delete from xa where d='changed'");
+            Act(237,"delete from xa where d='changed'");
             CheckResults(16,5,"table xc", "[{TOTB:8,TOTC:10}]");
             CheckResults(16,6,"table xa", "[{B:8,C:10,D:'changed'},{B:9,C:12,D:'Nine'}]"); // INSTEAD OF!
             Rollback();
@@ -702,7 +753,7 @@ namespace Test
                 return;
             testing = 17;
             Begin();
-            Act(171,"create function reverse(a char) returns char "+
+            Act(238,"create function reverse(a char) returns char "+
                 "if char_length(a)<=1 then return a "+
                 "else return reverse(substring(a from 1 for char_length(a)-1))"+
                 "   ||substring(a from 0 for 1) end if");
@@ -715,11 +766,11 @@ namespace Test
                 return;
             testing = 18;
             Begin();
-            Act(180,"create table author(id int primary key,aname char)");
-            Act(181,"create table book(id int primary key,authid int references author,title char)");
-            Act(182,"insert into author values (1,'Dickens'),(2,'Conrad')");
-            Act(183,"insert into book(authid,title) values (1,'Dombey & Son'),(2,'Lord Jim'),(1,'David Copperfield')");
-            Act(184,"create function booksby(auth char) returns table(title char) "+
+            Act(239,"create table author(id int primary key,aname char)");
+            Act(240,"create table book(id int primary key,authid int references author,title char)");
+            Act(241,"insert into author values (1,'Dickens'),(2,'Conrad')");
+            Act(242,"insert into book(authid,title) values (1,'Dombey & Son'),(2,'Lord Jim'),(1,'David Copperfield')");
+            Act(243,"create function booksby(auth char) returns table(title char) "+
                 "return table (select title from author inner join book b "+
                 "on author.id=b.authid where aname=booksby.auth)");
             CheckResults(18, 1, "select title from author inner join book b on author.id=b.authid where aname='Dickens'",
@@ -736,9 +787,9 @@ namespace Test
                 return;
             testing = 19;
             Begin();
-            Act(190,"create table ga(a1 int primary key,a2 char)");
-            Act(191,"insert into ga values(1,'First'),(2,'Second')");
-            Act(192,"create function gather1() returns char "+
+            Act(244,"create table ga(a1 int primary key,a2 char)");
+            Act(245,"insert into ga values(1,'First'),(2,'Second')");
+            Act(246,"create function gather1() returns char "+
                 " begin declare c cursor for select a2 from ga;" +
                 "  declare done Boolean default false;" +
                 "  declare continue handler for sqlstate '02000' set done=true;" +
@@ -758,7 +809,7 @@ namespace Test
                 "  close c;" +
                 "  return a end");
             CheckResults(19, 1, "select gather1()", "[{GATHER1:'First, Second'}]");
-            Act(193,"create function gather2() returns char "+
+            Act(247,"create function gather2() returns char "+
                 "  begin declare b char default '';" +
                 "   for select a2 from ga do " +
                 "    if b='' then " +
@@ -777,25 +828,25 @@ namespace Test
                 return;
             testing = 20;
             Begin();
-            Act(200,"create type point as (x int, y int)");
-            Act(201,"create type size as (w int,h int)");
-            Act(202,"create type line as (strt point,en point)");
-            Act(203,"create type rect as (tl point,sz size) "
+            Act(248,"create type point as (x int, y int)");
+            Act(249,"create type size as (w int,h int)");
+            Act(250,"create type line as (strt point,en point)");
+            Act(251,"create type rect as (tl point,sz size) "
               +"constructor method rect(x1 int, y1 int, x2 int, y2 int),"
               +"method centre() returns point");
-            Act(204,"create table figure(id int primary key,title char)");
-            Act(205,"create table figureline(id int primary key,fig int references figure,what line)");
-            Act(206,"create table figurerect(id int primary key,fig int references figure,what rect)");
-            Act(207,"create constructor method rect(x1 int,y1 int,x2 int,y2 int) "
+            Act(252,"create table figure(id int primary key,title char)");
+            Act(253,"create table figureline(id int primary key,fig int references figure,what line)");
+            Act(254,"create table figurerect(id int primary key,fig int references figure,what rect)");
+            Act(255,"create constructor method rect(x1 int,y1 int,x2 int,y2 int) "
               +"begin tl = point(x1, y1); sz = size(x2 - x1, y2 - y1) end");
-            Act(208,"create method centre() returns point for rect "
+            Act(256,"create method centre() returns point for rect "
               +"return point(tl.x + sz.w / 2, tl.y + sz.h / 2)");
-            Act(209,"create function centrerect(a int) returns point "
+            Act(257,"create function centrerect(a int) returns point "
               +"return (select what.centre() from figurerect where id = centrerect.a)");
-            Act(210,"insert into figure values(1,'Diagram')");
-            Act(211,"insert into figurerect values(1,1,rect(point(1,2),size(3,4)))");
-            Act(212,"insert into figurerect values(2,1,rect(4,5,6,7))");
-            Act(213,"insert into figureline values(1,1,line(centrerect(1),centrerect(2)))");
+            Act(258,"insert into figure values(1,'Diagram')");
+            Act(259,"insert into figurerect values(1,1,rect(point(1,2),size(3,4)))");
+            Act(260,"insert into figurerect values(2,1,rect(4,5,6,7))");
+            Act(261,"insert into figureline values(1,1,line(centrerect(1),centrerect(2)))");
             CheckResults(20, 1, "select what from figureline",
                 "[{WHAT:'LINE(STRT=POINT(X=2,Y=4),EN=POINT(X=5,Y=6))'}]");
             Rollback();
@@ -806,29 +857,29 @@ namespace Test
                 return;
             testing = 21;
             Begin();
-            Act(210,"create table members (id int primary key,firstname char)");
-            Act(211,"create table played (id int primary key, winner int references members,"
+            Act(262,"create table members (id int primary key,firstname char)");
+            Act(263,"create table played (id int primary key, winner int references members,"
               + "loser int references members,agreed boolean)");
-            Act(212,"grant select on members to public");
-            Act(213,"grant select on played to public");
-            Act(214,"create procedure claim(won int,beat int)"
+            Act(264,"grant select on members to public");
+            Act(265,"grant select on played to public");
+            Act(266,"create procedure claim(won int,beat int)"
               + "insert into played(winner,loser) values(claim.won,claim.beat)");
-            Act(215,"create procedure agree(p int)"
+            Act(267,"create procedure agree(p int)"
               + "update played set agreed=true "
                + "where winner=agree.p and loser in"
                 + "(select m.id from members m where current_user like '%'||firstname escape '^')");
-            Act(216,"insert into members(firstname) values(current_user)");
+            Act(268,"insert into members(firstname) values(current_user)");
             CheckResults(21, 1, "select id from members where current_user like '%'||firstname escape'^'",
               "[{ID:1}]");
-            Act(217,"insert into members(firstname) values('Fred')");
-            Act(218,"insert into played(winner,loser) values(2,1)");
-            Act(219,"create role membergames");
-            Act(220,"grant execute on procedure claim(int,int) to role membergames");
-            Act(221,"grant execute on procedure agree(int) to role membergames");
-            Act(222,"grant membergames to public");
-            Act(223,"set role membergames");
-            Act(224,"call agree(2)");
-            Act(225,"call claim(1,2)");
+            Act(269,"insert into members(firstname) values('Fred')");
+            Act(270,"insert into played(winner,loser) values(2,1)");
+            Act(271,"create role membergames");
+            Act(272,"grant execute on procedure claim(int,int) to role membergames");
+            Act(273,"grant execute on procedure agree(int) to role membergames");
+            Act(274,"grant membergames to public");
+            Act(275,"set role membergames");
+            Act(276,"call agree(2)");
+            Act(277,"call claim(1,2)");
             CheckResults(21, 2, "table played", "[{ID:1,WINNER:2,LOSER:1,AGREED:true},{ID:2,WINNER:1,LOSER:2}]");
             Rollback();
         }
@@ -838,18 +889,18 @@ namespace Test
                 return;
             testing = 22;
             Begin();
-            Act(226,"create view WU of (e int, f char, g char) as get " +
+            Act(278,"create view WU of (e int, f char, g char) as get " +
                 "etag url 'http://localhost:8180/A/A/D'");
             CheckResults(22, 1, "select * from wu", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}]");
-            Act(227,"create table HU (e int primary key, k char, m int)");
-            Act(228,"insert into HU values (1,'Cleaner',12500), (2,'Manager',31400)");
-            Act(229,"create view VU as select * from wu natural join HU");
+            Act(279,"create table HU (e int primary key, k char, m int)");
+            Act(280,"insert into HU values (1,'Cleaner',12500), (2,'Manager',31400)");
+            Act(281,"create view VU as select * from wu natural join HU");
             CheckResults(22, 2, "select e, f, m from VU where e=1",
                 "[{E:1,F:'Joe',M:12500}]"); // CHECK only works for committed tables/views
-            Act(230,"insert into wu values(3,'Fred','Bloggs')");
+            Act(282,"insert into wu values(3,'Fred','Bloggs')");
             CheckResults(22, 3, "select * from wu", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'},"+
                 "{E:3,F:'Fred',G:'Bloggs'}]");
-            Act(231,"update vu set f='Elizabeth' where e=2");
+            Act(283,"update vu set f='Elizabeth' where e=2");
             CheckResults(22, 4, "select * from wu where e=2", "[{E:2,F:'Elizabeth',G:'Boop'}]");
             Rollback();
         }
@@ -859,29 +910,29 @@ namespace Test
                 return;
             testing = 23;
             // this test has its own explicit transaction control
-            Act(232,"create view W of (e int, f char, g char) as get " +
+            Act(284,"create view WW of (e int, f char, g char) as get " +
                 "etag 'http://localhost:8180/A/A/D'");
-            CheckResults(23, 1, "select * from w", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}]");
+            CheckResults(23, 1, "select * from ww", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}]");
             if (qry < 5)
             {
-                Act(233,"create table H (e int primary key, k char, m int)");
-                Act(234,"insert into H values (1,'Cleaner',12500), (2,'Manager',31400)");
-                Act(235,"create view V as select * from w natural join H");
-                CheckResults(22, 2, "select e, f, m from V where e=1", "[{E:1,F:'Joe',M:12500}]");
-                Act(236,"insert into w values(3,'Fred','Bloggs')");
-                CheckResults(23, 3, "select * from w", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}," +
+                Act(285, "create table H (e int primary key, k char, m int)");
+                Act(286, "insert into H values (1,'Cleaner',12500), (2,'Manager',31400)");
+                Act(287, "create view VV as select * from ww natural join H");
+                CheckResults(23, 2, "select e, f, m from VV where e=1", "[{E:1,F:'Joe',M:12500}]");
+                Act(288, "insert into ww values(3,'Fred','Bloggs')");
+                CheckResults(23, 3, "select * from ww", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}," +
                     "{E:3,F:'Fred',G:'Bloggs'}]");
-                Act(237,"update v set f='Elizabeth' where e=2");
-                CheckResults(23, 4, "select * from w where e=2", "[{E:2,F:'Elizabeth',G:'Boop'}]");
+                Act(289, "update vv set f='Elizabeth' where e=2");
+                CheckResults(23, 4, "select * from ww where e=2", "[{E:2,F:'Elizabeth',G:'Boop'}]");
                 ResetA();
             }
             // read-write conflicts
             if (qry == 0 || qry == 5)
             {
                 tr = conn.BeginTransaction();
-                cur = 238;
-                Touch("select * from w where e=2");
-                cur = 239;
+                cur = 290;
+                Touch("select * from ww where e=2");
+                cur = 291;
                 connA.Act("update d set f='Liz' where e=2");
                 CheckExceptionCommit(23, 5, "ETag validation failure");
                 ResetA();
@@ -889,10 +940,10 @@ namespace Test
             if (qry == 0 || qry == 6)
             {
                 tr = conn.BeginTransaction();
-                Touch("select * from w where e=2");
-                cur = 240;
+                Touch("select * from ww where e=2");
+                cur = 292;
                 connA.Act("delete from d where e=2");
-                cur = 241;
+                cur = 293;
                 CheckExceptionCommit(23, 6, "ETag validation failure");
                 ResetA();
             }
@@ -900,22 +951,22 @@ namespace Test
             if (qry == 0 || qry == 7)
             {
                 tr = conn.BeginTransaction();
-                cur = 242;
-                Touch("select * from w where e=1");
-                cur = 243;
+                cur = 294;
+                Touch("select * from ww where e=1");
+                cur = 295;
                 connA.Act("update d set f='Liz' where e=2");
-                Commit(244);
-                CheckResults(23, 7, "select * from w", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Liz',G:'Boop'}]");
+                Commit(296);
+                CheckResults(23, 7, "select * from ww", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Liz',G:'Boop'}]");
                 ResetA();
             }
             if (qry == 0 || qry == 8)
             {
                 tr = conn.BeginTransaction();
-                cur = 245;
-                Touch("select * from w where e=1");
-                cur = 246;
+                cur = 297;
+                Touch("select * from ww where e=1");
+                cur = 298;
                 connA.Act("delete from d where e=2");
-                CheckResults(23, 8, "select * from w", "[{E:1,F:'Joe',G:'Soap'}]");
+                CheckResults(23, 8, "select * from ww", "[{E:1,F:'Joe',G:'Soap'}]");
                 tr.Commit();
                 ResetA();
             }
@@ -923,8 +974,8 @@ namespace Test
             if (qry == 0 || qry == 9)
             {
                 tr = conn.BeginTransaction();
-                Act(247,"update w set f='Liz' where e=2");
-                cur = 248;
+                Act(299,"update ww set f='Liz' where e=2");
+                cur = 300;
                 connA.Act("update d set f='Eliza' where e=2");
                 CheckExceptionCommit(23, 9, "ETag validation failure");
                 ResetA();
@@ -932,8 +983,8 @@ namespace Test
             if (qry == 0 || qry == 10)
             {
                 tr = conn.BeginTransaction(); // II
-                Act(249,"insert into w values (3,'Fred','Bloggs')");
-                cur = 250;
+                Act(301,"insert into ww values (3,'Fred','Bloggs')");
+                cur = 302;
                 connA.Act("insert into d values (3,'Anyone','Else')");
                 CheckExceptionCommit(23, 10, "Integrity constraint:");
                 ResetA();
@@ -941,8 +992,8 @@ namespace Test
             if (qry == 0 || qry == 11)
             {
                 tr = conn.BeginTransaction();  // UD
-                Act(251,"update w set f='Liz' where e=2");
-                cur = 252;
+                Act(303,"update ww set f='Liz' where e=2");
+                cur = 304;
                 connA.Act("delete from d where e=2");
                 CheckExceptionCommit(23, 11, "ETag validation failure");
                 ResetA();
@@ -950,8 +1001,8 @@ namespace Test
             if (qry == 0 || qry == 12)
             {
                 tr = conn.BeginTransaction();  // DU
-                Act(253,"delete from w where e=2");
-                cur = 254;
+                Act(305,"delete from ww where e=2");
+                cur = 306;
                 connA.Act("update d set f='Eliza' where e=2");
                 CheckExceptionCommit(23, 12, "ETag validation failure");
                 ResetA();
@@ -959,8 +1010,8 @@ namespace Test
             if (qry == 0 || qry == 13)
             {
                 tr = conn.BeginTransaction();  // DD
-                Act(255,"delete from w where e=2");
-                cur = 256;
+                Act(307,"delete from ww where e=2");
+                cur = 308;
                 connA.Act("delete from d where e=2");
                 CheckExceptionCommit(23, 13, "ETag validation failure");
                 ResetA();
@@ -968,98 +1019,101 @@ namespace Test
             if (qry == 0 || qry == 14)
             {
                 tr = conn.BeginTransaction();  // non UU
-                Act(257,"update w set f='Joseph' where e=1");
-                cur = 258;
+                Act(309,"update ww set f='Joseph' where e=1");
+                cur = 310;
                 connA.Act("update d set f='Eliza' where e=2");
-                Commit(259);
-                CheckResults(23, 14, "select * from w", "[{E:1,F:'Joseph',G:'Soap'},{E:2,F:'Eliza',G:'Boop'}]");
+                Commit(311);
+                CheckResults(23, 14, "select * from ww", "[{E:1,F:'Joseph',G:'Soap'},{E:2,F:'Eliza',G:'Boop'}]");
                 ResetA();
             }
             if (qry == 0 || qry == 15)
             {
                 tr = conn.BeginTransaction();  // non II
-                Act(260,"insert into w values (4,'Some','Other')");
-                cur = 261;
+                Act(312,"insert into ww values (4,'Some','Other')");
+                cur = 313;
                 connA.Act("insert into d values (3,'Anyone','Else')");
-                Commit(262);
-                CheckResults(23, 15, "select * from w", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}," +
+                Commit(314);
+                CheckResults(23, 15, "select * from ww", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}," +
                     "{E:3,F:'Anyone',G:'Else'},{E:4,F:'Some',G:'Other'}]");
                 ResetA();
             }
             if (qry == 0 || qry == 16)
             {
                 tr = conn.BeginTransaction(); // non UD
-                Act(263,"update w set f='Joseph' where e=1");
-                cur = 264;
+                Act(315,"update ww set f='Joseph' where e=1");
+                cur = 316;
                 connA.Act("delete from d where e=2");
-                Commit(265);
-                CheckResults(23, 16, "select * from w", "[{E:1,F:'Joseph',G:'Soap'}]");
+                Commit(317);
+                CheckResults(23, 16, "select * from ww", "[{E:1,F:'Joseph',G:'Soap'}]");
                 ResetA();
             }
             if (qry == 0 || qry == 17)
             {
                 tr = conn.BeginTransaction(); // non DU
-                Act(266,"delete from w where e=2");
-                cur = 267;
+                Act(318,"delete from ww where e=2");
+                cur = 319;
                 connA.Act("update d set f='Joseph' where e=1");
-                Commit(268);
-                CheckResults(23, 17, "select * from w", "[{E:1,F:'Joseph',G:'Soap'}]");
+                Commit(320);
+                CheckResults(23, 17, "select * from ww", "[{E:1,F:'Joseph',G:'Soap'}]");
                 ResetA();
             }
         }
         public void Test24()
         {
+            if (test>0 && test != 24)
+                return;
+            testing = 24;
             var user = Environment.UserDomainName + "\\" + Environment.UserName;
             var connB = new PyrrhoConnect("Files=DB");
-            cur = 269;
+            cur = 321;
             connB.Act("create table T(E int,F char)");
-            cur = 270;
+            cur = 322;
             connB.Act("insert into T values(3,'Three'),(6,'Six'),(4,'Vier'),(6,'Sechs')");
-            cur = 271;
+            cur = 323;
             connB.Act("create role DB");
-            cur = 272;
+            cur = 324;
             connB.Act("grant DB to \"" + user + "\"");
             connB.Close();
             var connC = new PyrrhoConnect("Files=DC");
-            cur = 273;
+            cur = 325;
             connC.Act("create table U(E int,F char)");
-            cur = 274;
+            cur = 326;
             connC.Act("insert into U values(5,'Five'),(4,'Four'),(8,'Ate')");
-            cur = 275;
+            cur = 327;
             connC.Act("create role DC");
-            cur = 276;
+            cur = 328;
             connC.Act("grant DC to \"" + user + "\"");
-            cur = 277;
+            cur = 329;
             connC.Close();
-            Act(278,"create view V of (E int,F char) as get 'http://localhost:8180/DB/DB/t'");
-            Act(279,"create table VU (d char primary key, k int, u char)");
-            Act(280,"insert into VU values('B',4,'http://localhost:8180/DB/DB/t')");
-            Act(281,"insert into VU values('C',1,'http://localhost:8180/DC/DC/u')");
-            Act(282,"create view W of (E int, D char, K int, F char) as get using VU");
-            Act(283,"create table M (e int primary key, n char, unique(n))");
-            Act(284,"insert into M values (2,'Deux'),(3,'Trois'),(4,'Quatre')");
-            Act(285,"insert into M values (5,'Cinq'),(6,'Six'),(7,'Sept')");
-            CheckResults(24, 1, "select * from v", "[{E:3,F:'Three'},{E:6,F:'Six'}," +
+            Act(330,"create view BV of (E int,F char) as get 'http://localhost:8180/DB/DB/t'");
+            Act(331,"create table BU (d char primary key, k int, u char)");
+            Act(332,"insert into BU values('B',4,'http://localhost:8180/DB/DB/t')");
+            Act(333,"insert into BU values('C',1,'http://localhost:8180/DC/DC/u')");
+            Act(334,"create view BW of (E int, D char, K int, F char) as get using BU");
+            Act(335,"create table M (e int primary key, n char, unique(n))");
+            Act(336,"insert into M values (2,'Deux'),(3,'Trois'),(4,'Quatre')");
+            Act(337,"insert into M values (5,'Cinq'),(6,'Six'),(7,'Sept')");
+            CheckResults(24, 1, "select * from bv", "[{E:3,F:'Three'},{E:6,F:'Six'}," +
                 "{E:4,F:'Vier'},{E:6,F:'Sechs'}]");
-            CheckResults(24, 2, "select * from V where e=6", "[{E:6,F:'Six'},{E:6,F:'Sechs'}]");
-            CheckResults(24, 3, "select * from w", "[{E:3,D:'B',K:4,F:'Three'}," +
+            CheckResults(24, 2, "select * from BV where e=6", "[{E:6,F:'Six'},{E:6,F:'Sechs'}]");
+            CheckResults(24, 3, "select * from bw", "[{E:3,D:'B',K:4,F:'Three'}," +
                 "{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'}," +
                 "{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Ate'}]");
-            CheckResults(24, 4, "select * from w where e<6", "[{E:3,D:'B',K:4,F:'Three'}," +
+            CheckResults(24, 4, "select * from bw where e<6", "[{E:3,D:'B',K:4,F:'Three'}," +
                 "{E:4,D:'B',K:4,F:'Vier'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'}]");
-            CheckResults(24, 5, "select * from w where k=1", "[{E:5,D:'C',K:1,F:'Five'}," +
+            CheckResults(24, 5, "select * from bw where k=1", "[{E:5,D:'C',K:1,F:'Five'}," +
                 "{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Ate'}]");
-            CheckResults(24, 6, "select count(e) from w", "[{COUNT:7}]");
-            CheckResults(24, 7, "select count(*) from w", "[{COUNT:7}]");
-            CheckResults(24, 8, "select max(f) from w", "[{MAX:'Vier'}]");
-            CheckResults(24, 9, "select max(f) from w where e>4", "[{MAX:'Six'}]");
-            CheckResults(24, 10, "select count(*) from w where k>2", "[{COUNT:4}]");
-            CheckResults(24, 11, "select min(f) from w", "[{MIN:'Ate'}]");
-            CheckResults(24, 12, "select sum(e)*sum(e),d from w group by d",
-                "[{Col0:97,D:'B'},{Col0:105,D:'C'}]");
-            CheckResults(24, 13, "select count(*),k/2 as k2 from w group by k2",
-                "[{COUNT:4,K2:2},{COUNT:3,K2:0}]");
-            CheckResults(24, 14, "select avg(e) from w", "[{AVG:7.14582}]");
+            CheckResults(24, 6, "select count(e) from bw", "[{COUNT:7}]");
+            CheckResults(24, 7, "select count(*) from bw", "[{COUNT:7}]");
+            CheckResults(24, 8, "select max(f) from bw", "[{MAX:'Vier'}]");
+            CheckResults(24, 9, "select max(f) from bw where e>4", "[{MAX:'Six'}]");
+            CheckResults(24, 10, "select count(*) from bw where k>2", "[{COUNT:4}]");
+            CheckResults(24, 11, "select min(f) from bw", "[{MIN:'Ate'}]");
+            CheckResults(24, 12, "select sum(e)*sum(e),d from bw group by d",
+                "[{Col0:361,D:'B'},{Col0:289,D:'C'}]");
+            CheckResults(24, 13, "select count(*),k/2 as k2 from bw group by k2",
+                "[{COUNT:3,K2:0},{COUNT:4,K2:2}]");
+            CheckResults(24, 14, "select avg(e) from bw", "[{AVG:5.14285714285714}]");
             /* E	D	K	F	    N
                 3	B	4	Three	Trois
                 4	B	4	Vier	Quatre
@@ -1067,42 +1121,42 @@ namespace Test
                 5	C	1	Five	Cinq
                 6	B	4	Six	    Six
                 6	B	4	Sechs	Six	 */
-            CheckResults(24, 15, "select f,n from w natural join m", "[{F:'Three',N:'Trois'}," +
+            CheckResults(24, 15, "select f,n from bw natural join m", "[{F:'Three',N:'Trois'}," +
                 "{F:'Vier',N:'Quatre'},{F:'Four',N:'Quatre'},{F:'Five',N:'Cinq'}," +
-                "(F:'Six',N:'Six'},(F:'Sechs',N:'Six'}]");
-            CheckResults(24, 16, "select e+char_length(f) as x,n from w natural join m",
-                "[{Col0:8,N:'Trois'},{Col0:8,N:'Quatre'},{Col0:8,N:'Quatre'}," +
-                "{Col0:9,N:'Cinq'},{Col0:9, N::'Six'},{Col0:10,N:'Six'}]");
-            CheckResults(24, 17, "select char_length(f)+char_length(n) from w natural join m",
+                "{F:'Six',N:'Six'},{F:'Sechs',N:'Six'}]");
+            CheckResults(24, 16, "select e+char_length(f) as x,n from bw natural join m",
+                "[{X:8,N:'Trois'},{X:8,N:'Quatre'},{X:8,N:'Quatre'}," +
+                "{X:9,N:'Cinq'},{X:9, N:'Six'},{X:11,N:'Six'}]");
+            CheckResults(24, 17, "select char_length(f)+char_length(n) from bw natural join m",
                 "[{Col0:10},{Col0:10},{Col0:10},{Col0:8},{Col0:6},{Col0:8}]");
-            CheckResults(24, 18, "select sum(e)+char_length(max(f)) from w", "[{Col0:32}]");
-            CheckResults(24, 19, "select count(*),e+char_length(f) as x from w group by x",
-                "[{COUNT:3,Col1:8},{COUNT:2,Col1:9},{COUNT:1,Col1:11}]");
-            CheckResults(24, 20, "select count(*),e+char_length(n) as x from w natural join m group by x",
-                "[{COUNT:1,Col1:8},{COUNT:2,Col1:10},{COUNT:3,Col1:9}]");
-            CheckResults(24, 21, "select sum(e)+char_length(f),f  from w natural join m group by f",
-                "[{Col0:8,F:'Three'},{Col0:8,F:'Vier'},{Col0:8,F:'Four'},{Col0:9,F:'Five'}," +
-                "{Col0:9,F:'Six'},{Col0:11,'F:'Sechs'}]");
-            CheckResults(24, 22, "select sum(char_length(f))+char_length(n) as x,n from w natural join m group by n",
-                "{Col0:10,N:'Trois'},{Col0:14,N:'Quatre'},{Col0:8,N:'Cinq'},{Col0:11,N:'Six'}]");
-            CheckResults(24, 23, "Select count(*) from w natural join m","[{COUNT:6}]");
-            Act(286,"update v set F='Tri' where E=3");
-            Act(287,"insert into V values (9,'Nine')");
-            CheckResults(24, 24, "select * from V", "[{E:3,F:'Tri'},{E:6,F:'Six'}," +
+            CheckResults(24, 18, "select sum(e)+char_length(max(f)) from bw", "[{Col0:40}]");
+            CheckResults(24, 19, "select count(*),e+char_length(f) as x from bw group by x",
+                "[{COUNT:3,X:8},{COUNT:2,X:9},{COUNT:2,X:11}]");
+            CheckResults(24, 20, "select count(*),e+char_length(n) as x from bw natural join m group by x",
+                "[{COUNT:1,X:8},{COUNT:3,X:9},{COUNT:2,X:10}]");
+            CheckResults(24, 21, "select sum(e)+char_length(f),f  from bw natural join m group by f",
+                "[{Col0:9,F:'Five'},{Col0:8,F:'Four'},{Col0:11,F:'Sechs'}," +
+                "{Col0:9,F:'Six'},{Col0:8,F:'Three'},{Col0:8,F:'Vier'}]");
+            CheckResults(24, 22, "select sum(char_length(f))+char_length(n) as x,n from bw natural join m group by n",
+                "[{X:8,N:'Cinq'},{X:14,N:'Quatre'},{X:11,N:'Six'},{X:10,N:'Trois'}]");
+            CheckResults(24, 23, "Select count(*) from bw natural join m","[{COUNT:6}]");
+            Act(338,"update bv set F='Tri' where E=3");
+            Act(339,"insert into BV values (9,'Nine')");
+            CheckResults(24, 24, "select * from BV", "[{E:3,F:'Tri'},{E:6,F:'Six'}," +
                 "{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'}]");
-            Act(288,"update w set f='Eight' where e=8");
-            Act(289,"insert into w(D,E,F) values('B',7,'Seven')");
-            CheckResults(24, 25, "select * from V","[{E:3,F:'Tri'},{E:6,F:'Six'},"+
-                "{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'},{E:8,F:'Seven'}]");
-            CheckResults(24, 26, "select * from W", "[{E:3,D:'B',K:4,F:'Three'}," +
+            Act(340,"update bw set f='Eight' where e=8");
+            Act(341,"insert into bw(D,E,F) values('B',7,'Seven')");
+            CheckResults(24, 25, "select * from BV","[{E:3,F:'Tri'},{E:6,F:'Six'},"+
+                "{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'},{E:7,F:'Seven'}]");
+            CheckResults(24, 26, "select * from BW", "[{E:3,D:'B',K:4,F:'Tri'}," +
                 "{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'}," +
                 "{E:9,D:'B',K:4,F:'Nine'},{E:7,D:'B',K:4,F:'Seven'},"+
                 "{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Eight'}]");
-            Act(290,"delete from w where E=7");
-            Act(291,"update v set f='Ate' where e=8");
-            CheckResults(24, 27, "select * from v", "[{E:3,F:'Tri'},{E:6,F:'Six'}," +
+            Act(342,"delete from BW where E=7");
+            Act(343,"update bv set f='Ate' where e=8");
+            CheckResults(24, 27, "select * from bv", "[{E:3,F:'Tri'},{E:6,F:'Six'}," +
                 "{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'}]");
-            CheckResults(24, 28, "select * from w", "[{E:3,D:'B',K:4,F:'Three'}," +
+            CheckResults(24, 28, "select * from bw", "[{E:3,D:'B',K:4,F:'Tri'}," +
                 "{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'}," +
                 "{E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},"+
                 "{E:8,D:'C',K:1,F:'Eight'}]");

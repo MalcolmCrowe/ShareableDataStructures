@@ -9,7 +9,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Security;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -150,7 +150,7 @@ namespace Pyrrho.Level1
                 }
                 if (rc + rx == bSize)
                 {
-                    rcount = (((int)buf.bytes[0]) << 7) + (int)buf.bytes[1];
+                    rcount = ((buf.bytes[0]) << 7) + (int)buf.bytes[1];
                     buf.wait.Set();
                 }
                 else
@@ -312,7 +312,7 @@ namespace Pyrrho.Level1
         /// <summary>
         /// Version 2.0 extended exception handling.
         /// Discard the write buffer contents and send an exception block
-        /// instead. Note that it is possible for exception data to be
+        /// instead. Note that it is possible for exception obs to be
         /// more than one buffer: any additional buffers are normal.
         /// </summary>
         internal void StartException()
@@ -391,7 +391,7 @@ namespace Pyrrho.Level1
             base.Close();
         }
         /// <summary>
-        /// data transfer API
+        /// obs transfer API
         /// </summary>
         /// <returns>a Unicode string from the stream</returns>
         internal string GetString()
@@ -402,7 +402,7 @@ namespace Pyrrho.Level1
             return Encoding.UTF8.GetString(b, 0, b.Length);
         }
         /// <summary>
-        /// data transfer API
+        /// obs transfer API
         /// </summary>
         /// <returns>an Int32 from the stream</returns>
         public int GetInt()
@@ -438,7 +438,7 @@ namespace Pyrrho.Level1
             catch (Exception ex) { return ex; }
         }
         /// <summary>
-        /// data transfer API
+        /// obs transfer API
         /// </summary>
         /// <param name="n">a Unicode string for the stream</param>
         internal void PutString(string n)
@@ -516,7 +516,7 @@ namespace Pyrrho.Level1
             return;
         }
         /// <summary>
-        /// data transfer API
+        /// obs transfer API
         /// </summary>
         /// <param name="n">an Int32 for the stream</param>
         internal void PutInt(int n)
@@ -529,7 +529,7 @@ namespace Pyrrho.Level1
             Write(b, 0, 4);
         }
         /// <summary>
-        /// data transfer API
+        /// obs transfer API
         /// </summary>
         /// <param name="n">an Int64 for the stream</param>
         public void PutLong(long n)
@@ -559,13 +559,13 @@ namespace Pyrrho.Level1
             for (var b=r.columns.First();b!=null;b=b.Next(), j++)
             {
                 var p = b.value();
-                var d = r.dataType.representation[p];
+                var d = _cx._Dom(_cx.obs[p]);
                 PutString(r.dataType.NameFor(_cx,p,b.key()));
                 var c = r[p];
                 if (c is TArray ta && ta.Length>=1)
                     c = ta[0];
                 c = d.Coerce(_cx, c);
-                PutString(d.DomainName());
+                PutString(d.name);
                 PutInt(d.Typecode()); // other flags are 0
                 PutCell(_cx,d, c);
             }
@@ -578,7 +578,8 @@ namespace Pyrrho.Level1
         {
             PutString("ARRAY");
             int n = a.Length;
-            var et = a.dataType.elType ?? ((a.Length > 0) ? a[0].dataType : Domain.Content);
+            var et = _cx._Dom(a.dataType.elType) ?? 
+                ((a.Length > 0) ? a[0].dataType : Domain.Content);
             PutString(et.ToString());
             PutInt(et.Typecode());
             PutInt(n);
@@ -589,32 +590,33 @@ namespace Pyrrho.Level1
         /// send a Multiset to the client
         /// </summary>
         /// <param name="m">the Multiset</param>
-        internal void PutMultiset(Context _cx, TMultiset m)
+        internal void PutMultiset(Context cx, TMultiset m)
         {
             PutString("MULTISET");
             var e = m.First();
-            var et = m.dataType.elType ?? m?.dataType ?? Domain.Content;
+            var et = cx._Dom(m.dataType.elType) ?? m?.dataType ?? Domain.Content;
             PutString(et.ToString());
             PutInt(et.Typecode());
             PutInt((int)m.Count);
             for (; e != null; e = e.Next())
-                PutCell(_cx,et, e.Value());
+                PutCell(cx,et, e.Value());
         }
         /// <summary>
         /// Send a Table to the client
         /// </summary>
         /// <param name="r">the RowSet</param>
-        internal void PutTable(Context _cx, RowSet r)
+        internal void PutTable(Context cx, RowSet r)
         {
             PutString("TABLE");
-            PutSchema(_cx);
+            PutSchema(cx);
             int n = 0;
-            for (var e = r.First(_cx); e != null; e = e.Next(_cx))
+            for (var e = r.First(cx); e != null; e = e.Next(cx))
                 n++;
             PutInt(n);
-            for (var e = r.First(_cx); e != null; e = e.Next(_cx))
-                for (var b = r.rt.First(); b!=null; b=b.Next())
-                    PutCell(_cx,_cx.Inf(b.value()).domain, e[b.key()]);
+            var dm = cx._Dom(r);
+            for (var e = r.First(cx); e != null; e = e.Next(cx))
+                for (var b = dm.rowType.First(); b!=null; b=b.Next())
+                    PutCell(cx,cx.Inf(b.value()).dataType, e[b.key()]);
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -659,7 +661,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema(Context cx)
         {
-            var result = cx.data[cx.result];
+            var result = (RowSet)cx.obs[cx.result];
             if (result == null)
             {
 #if EMBEDDED
@@ -675,8 +677,9 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema);
 #endif
-            var dt = result.rt;
-            int m = result.display;
+            var dm = cx._Dom(result);
+            var dt = dm.rowType;
+            int m = cx._Dom(result).display;
             PutInt(m);
             if (m == 0)
             {
@@ -694,12 +697,12 @@ namespace Pyrrho.Level1
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
                 var j = 0;
-                for (var b=result.rt.First();j<m && b!=null;b=b.Next(),j++)
+                for (var b=dt.First();j<m && b!=null;b=b.Next(),j++)
                 {
                     var cp = b.value();
                     var i = b.key();
                     PutString(result.NameFor(cx,i));
-                    var dn = result.domain[cp];
+                    var dn = dm.representation[cp];
                     if (dn.kind!=Sqlx.TYPE)
                         PutString(dn.kind.ToString());
                     else
@@ -734,8 +737,8 @@ namespace Pyrrho.Level1
                 PutLong(fm.lastChange);
             else
                 PutLong(0);
-            var dt = result.domain;
-            int m = result.display;
+            var dt = cx._Dom(result);
+            int m = dt.display;
             PutInt(m);
             if (m == 0)
                 Console.WriteLine("No columns?");
@@ -751,7 +754,7 @@ namespace Pyrrho.Level1
                 {
                     var n = cx.Inf(b.key()).name;
                     PutString(n);
-                    var k = b.value().kind;
+                    var k = cx._Dom(b.value()).kind;
                     switch (k)
                     {
                         case Sqlx.DOCUMENT:
@@ -765,7 +768,7 @@ namespace Pyrrho.Level1
             }
             Flush();
         }
-        internal void PutColumns(Database db,Domain dt)
+        internal void PutColumns(Context cx,Domain dt)
         {
             if (dt == null || dt.Length == 0)
             {
@@ -785,11 +788,12 @@ namespace Pyrrho.Level1
             int m = dt.Length;
             PutInt(m);
             for (var j = 0; j < m; j++)
-                if (db.objects[dt[j]] is SqlCopy sc && db.objects[sc.copyFrom] is TableColumn dn)
+                if (cx.db.objects[dt[j]] is SqlCopy sc && cx.db.objects[sc.copyFrom] is TableColumn dn)
                 {
                     PutString(sc.name);
-                    PutString((dn.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
-                    var flags = dn.domain.Typecode() + (dn.notNull ? 0x100 : 0) +
+                    var dm = cx._Dom(sc);
+                    PutString((dm.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
+                    var flags = dm.Typecode() + (dn.notNull ? 0x100 : 0) +
                     ((dn.generated != GenerationRule.None) ? 0x200 : 0);
                     PutInt(flags);
                 }
@@ -798,7 +802,7 @@ namespace Pyrrho.Level1
         /// <summary>
         /// Send a key.
         /// Used in server-server comms to collect traversal conditions,
-        /// and thus reduce the amount of data transferred
+        /// and thus reduce the amount of obs transferred
         /// </summary>
         /// <param name="link"></param>
         internal void PutKey(Context _cx, PRow key)
@@ -809,10 +813,10 @@ namespace Pyrrho.Level1
                 PutCell(_cx,key[i].dataType, key[i]);
         }
         /// <summary>
-        /// Send a data cell.
+        /// Send a obs cell.
         /// Normal result of SELECT in client-server comms.
         /// Used in server-server comms to collect traversal conditions,
-        /// and thus reduce the amount of data transferred
+        /// and thus reduce the amount of obs transferred
         /// </summary>
         /// <param name="nt"></param>
         /// <param name="tv"></param>
@@ -829,16 +833,16 @@ namespace Pyrrho.Level1
             else
             {
                 WriteByte(2);
-                PutString(p.dataType.ToString());
+                PutString(p.dataType.name);
                 PutInt(p.dataType.Typecode());
             }
             PutData(_cx,p);
         }
         /// <summary>
-        /// Send data cell contents.
+        /// Send obs cell contents.
         /// Normal result of SELECT in client-server comms.
         /// Used in server-server comms to collect traversal conditions,
-        /// and thus reduce the amount of data transferred
+        /// and thus reduce the amount of obs transferred
         /// </summary>
         /// <param name="tv"></param>
         internal void PutData(Context _cx, TypedValue tv)
@@ -926,7 +930,7 @@ namespace Pyrrho.Level1
             }
         }
         /// <summary>
-        /// data transfer API
+        /// obs transfer API
         /// </summary>
         /// <returns>a list of strings from the stream</returns>
         internal string[] GetStrings()

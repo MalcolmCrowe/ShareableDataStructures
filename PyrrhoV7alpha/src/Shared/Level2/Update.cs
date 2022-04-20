@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -46,13 +46,13 @@ namespace Pyrrho.Level2
                 _classification = old.classification;
             prev = old.ppos;
         }
-        public Update(ReaderBase rdr) : base(Type.Update, rdr) { }
-        protected Update(Type t, ReaderBase rdr) : base(t, rdr) 
+        public Update(Reader rdr) : base(Type.Update, rdr) { }
+        protected Update(Type t, Reader rdr) : base(t, rdr) 
         {  }
         protected Update(Update x, Writer wr) : base(x, wr)
         {
-            _defpos = wr.Fix(x._defpos);
-            prev = wr.Fix(x.prev);
+            _defpos = wr.cx.Fix(x._defpos);
+            prev = wr.cx.Fix(x.prev);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -72,7 +72,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             prev = rdr.GetLong();
             _defpos = rdr.GetLong();
@@ -170,22 +170,11 @@ namespace Pyrrho.Level2
                     same = b.value().CompareTo(was.vals[b.key()]) == 0;
             if (same)
                 return now;
-       //     var ro = cx.db.role; code moved to TableActivation
-       //     was.Cascade(cx.db, cx, ro, 0, Drop.DropAction.Restrict, fields);
             for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
             {
                 var x = (Index)cx.db.objects[xb.value()];
                 var ok = x.MakeKey(was.vals);
                 var nk = x.MakeKey(now.vals);
-                /*        if (ok.CompareTo(nk)!=0 && ((x.flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != 0)
-                            && x.rows.Contains(nk)) code moved to TableActivation
-                            throw new DBException("23000", "duplicate key", nk);
-                        if (x.reftabledefpos >= 0)
-                        { code moved to TableActivation
-                            var rx = (Index)cx.db.objects[x.refindexdefpos];
-                            if (!rx.rows.Contains(nk))
-                                throw new DBException("23000", "missing foreign key ", nk);
-                        } */
                 if (ok._CompareTo(nk) != 0)
                 {
                     x -= (ok, defpos);
@@ -212,7 +201,7 @@ namespace Pyrrho.Level2
                 throw new DBException("42105");
             _classification = lv;
         }
-        public Update1(ReaderBase rdr) : base(Type.Update1, rdr)
+        public Update1(Reader rdr) : base(Type.Update1, rdr)
         {  }
         protected Update1(Update1 x, Writer wr) : base(x, wr)
         {
@@ -222,7 +211,7 @@ namespace Pyrrho.Level2
         {
             return new Update1(this, wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);

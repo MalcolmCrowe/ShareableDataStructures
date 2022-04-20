@@ -3,7 +3,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -56,7 +56,8 @@ namespace Pyrrho.Level3
         /// <param name="s"></param>
         public Check(long dp,string s)
             : base(dp,new BTree<long,object>(Source,s)+(Condition,
-                  new Parser(new Context(Database._system),new Ident(s,dp))
+                  new Parser(new Context(Database._system),
+                      new Ident(s,Context._system.Ix(dp)))
                   .ParseSqlValue(s,Domain.Bool))) { }
         /// <summary>
         /// Constructor: copy with changes
@@ -78,6 +79,7 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             sb.Append(" From.Target="); sb.Append(Uid(checkobjpos));
             sb.Append(" Source="); sb.Append(source);
+            sb.Append(" Search="); sb.Append(Uid(search));
             return sb.ToString();
         }
         internal override CTree<long, bool> Needs(Context cx)
@@ -92,18 +94,16 @@ namespace Pyrrho.Level3
         {
             return new Check(dp, mem);
         }
-        internal override Basis _Relocate(Writer wr)
+        internal override Basis _Relocate(Context cx)
         {
-            if (defpos < wr.Length)
-                return this;
-            var r = (Check)base._Relocate(wr);
-            r += (Condition, wr.Fixed(search).defpos);
+            var r = (Check)base._Relocate(cx);
+            r += (Condition, cx.Fix(search));
             return r;
         }
-        internal override Basis Fix(Context cx)
+        internal override Basis _Fix(Context cx)
         {
-            var r = (Check)base.Fix(cx);
-            var ns = cx.obuids[search] ?? search;
+            var r = (Check)base._Fix(cx);
+            var ns = cx.Fix(search);
             if (ns!=search)
                 r += (Condition, ns);
             return r;
@@ -111,6 +111,16 @@ namespace Pyrrho.Level3
         internal override Database Drop(Database d, Database nd, long p)
         {
             nd = ((DBObject)nd.objects[checkobjpos]).DropCheck(defpos, nd, p);
+            for (var b = d.roles.First(); b != null; b = b.Next())
+            {
+                var ro = (Role)d.objects[b.value()];
+                if (ro.infos[defpos] is ObInfo oi)
+                {
+                    ro -= oi;
+                    ro += (Role.DBObjects, ro.dbobjects - oi.name);
+                    nd += (ro,p);
+                }
+            }
             return base.Drop(d, nd, p);
         }
     }

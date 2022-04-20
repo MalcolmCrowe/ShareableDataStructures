@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -44,7 +44,7 @@ namespace Pyrrho.Level2
             name = nm;
             details = dt;
         }
-        public PRole(ReaderBase rdr) : base(Type.PRole, rdr) { }
+        public PRole(Reader rdr) : base(Type.PRole, rdr) { }
         protected PRole(PRole x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -69,7 +69,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr) 
+        public override void Deserialise(Reader rdr) 
 		{
             name = rdr.GetString();
             if (type == Type.PRole)
@@ -122,57 +122,46 @@ namespace Pyrrho.Level2
          /// <summary>
          /// column sequence number for view column
          /// </summary>
-        public long seq;
+        public long seq = -1L; // backward compatibility
         public long defpos;
-        public string detail = "";
+        public CTree<Sqlx,TypedValue> detail = CTree<Sqlx,TypedValue>.Empty;
         public string iri = "";
-        public long refpos;
-        public long flags;
-        public static Sqlx[] keys = { Sqlx.NO, Sqlx.ENTITY, Sqlx.ATTRIBUTE, //0x0-0x2
-            Sqlx.PIE, Sqlx.NONE, Sqlx.POINTS, Sqlx.X, Sqlx.Y, Sqlx.HISTOGRAM, //0x4-0x80
-            Sqlx.LINE, Sqlx.CAPTION, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, Sqlx.NONE, //0x100-0x2000
-            Sqlx.LEGEND, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, // 0x4000-0x40000
-            Sqlx.PASSWORD, Sqlx.IRI, Sqlx.ETAG, Sqlx.MILLI }; // 0x80000-0x400000
+        public long refpos = -1L;
+        public long flags = 0L;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,refpos)) return refpos;
             return -1;
         }
-        public PMetadata(string nm, long sq, long ob, BTree<Sqlx,object> md, long pp, Context cx)
+        public PMetadata(string nm, long sq, long ob, CTree<Sqlx,TypedValue> md, long pp, Context cx)
             : this(Type.Metadata, nm, sq, ob, md, pp, cx) { }
-        public PMetadata(Type t,string nm,long sq,long ob, BTree<Sqlx,object> md,long pp,Context cx)
+        public PMetadata(Type t,string nm,long sq,long ob, CTree<Sqlx,TypedValue> md,long pp,Context cx)
             :base(t,pp,cx)
         { 
             name = nm;
             seq = sq;
             defpos = ob;
-            detail = Detail(md);
-            iri = Iri(md);
-            refpos = Inv(md);
-            flags = Flags(md);
+            detail = md;
+            iri = md[Sqlx.IRI]?.ToString()??"";
+            refpos = md[Sqlx.INVERTS]?.ToLong()??-1L;
+            flags = 0L;
         }
-        public PMetadata(ReaderBase rdr) : this(Type.Metadata, rdr) { }
-        protected PMetadata(Type t, ReaderBase rdr) : base(t, rdr) { }
+        public PMetadata(Reader rdr) : this(Type.Metadata, rdr) { }
+        protected PMetadata(Type t, Reader rdr) : base(t, rdr) { }
         protected PMetadata(PMetadata x, Writer wr) : base(x, wr)
         {
             name = x.name;
             seq = x.seq;
-            defpos = wr.Fix(x.defpos);
+            defpos = wr.cx.Fix(x.defpos);
             detail = x.detail;
             iri = x.iri;
-            refpos = wr.Fix(x.refpos);
+            refpos = wr.cx.Fix(x.refpos);
             flags = x.flags;
         }
         protected override Physical Relocate(Writer wr)
         {
             return new PMetadata(this, wr);
-        }
-        internal override void Relocate(Context cx)
-        {
-            refpos = cx.ObReloc(refpos);
-            defpos = cx.ObReloc(defpos);
-            Install(cx, cx.db.loadpos);
         }
         /// <summary>
         /// Serialise this Physical to the PhysBase
@@ -181,10 +170,10 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
             wr.PutString(name.ToString());
-            wr.PutString(detail??"");
+            wr.PutString(Detail(wr));
             wr.PutString(iri??"");
             wr.PutLong(seq+1); 
-            defpos = wr.Fix(defpos);
+            defpos = wr.cx.Fix(defpos);
             wr.PutLong(defpos);
             wr.PutLong(flags);
 			base.Serialise(wr);
@@ -193,64 +182,61 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr) 
+        public override void Deserialise(Reader rdr) 
 		{
 			name =rdr.GetString();
-            detail = rdr.GetString();
+            detail = new Parser(rdr.context,rdr.GetString()).ParseMetadata(Sqlx.ANY);
             iri = rdr.GetString();
             seq = rdr.GetLong()-1;
             defpos = rdr.GetLong();
             flags = rdr.GetLong();
             base.Deserialise(rdr);
 		}
-        internal static long Flags(BTree<Sqlx,object> md)
+        string Detail(Writer wr)
         {
-            var r = 0L;
-            for (var b=md.First();b!=null;b=b.Next())
-            {
-                var m = 1L;
-                for (var i = 1; i <= keys.Length; i++, m <<= 1)
-                    if (b.key() == keys[i-1])
-                        r += m;
-            }
-            return r;
+            var sb = new StringBuilder();
+            for (var b = detail.First(); b != null; b = b.Next())
+                switch(b.key())
+                {
+                    case Sqlx.DESC:
+                    case Sqlx.URL:
+                    case Sqlx.MIME:
+                    case Sqlx.SQLAGENT:
+                    case Sqlx.USER:
+                    case Sqlx.PASSWORD:
+                        sb.Append(b.key());
+                        sb.Append(" '");
+                        sb.Append(b.value());
+                        sb.Append("' ");
+                        break;
+                    case Sqlx.IRI:
+                        sb.Append(b.value().ToString());
+                        break;
+                    case Sqlx.INVERTS:
+                        sb.Append(b.key());
+                        sb.Append(' ');
+                        var ob = (DBObject)wr.cx.db.objects[b.value().ToLong() ?? -1L];
+                        sb.Append(ob.name);
+                        sb.Append(' ');
+                        break;
+                    default:
+                        sb.Append(b.key());
+                        sb.Append(' ');
+                        break;
+                }
+            return sb.ToString();
+        }
+        internal static long Flags(CTree<Sqlx,TypedValue> md)
+        {
+            return 0L;
         }
         internal string MetaFlags()
         {
-            var sb = new StringBuilder();
-            var cm = "";
-            var m = 1L;
-            for (var i=0;i<=keys.Length;i++,m<<=1)
-                if ((flags&m)!=0L)
-                { sb.Append(cm); cm = " "; sb.Append(keys[i-1]); }
-            return sb.ToString();
+            return detail.ToString();
         }
-        internal BTree<Sqlx,object> Metadata()
+        internal CTree<Sqlx,TypedValue> Metadata()
         {
-            var r = BTree<Sqlx, object>.Empty;
-            var m = 1L;
-            for (var i = 1; i <= keys.Length; i++, m <<= 1)
-                if ((flags & m) != 0L)
-                {
-                    object v = "";
-                    var k = keys[i-1];
-                    switch (k)
-                    {
-                        case Sqlx.NO:
-                        case Sqlx.URL:
-                        case Sqlx.MIME:
-                        case Sqlx.SQLAGENT:
-                            r += (k, (detail==null || detail == "") ? iri : detail);
-                            break;
-                        case Sqlx.INVERTS:
-                            r += (k, refpos);
-                            break;
-                        default:
-                            r += (k, v);
-                            break;
-                    }
-                }
-            return r;
+            return detail;
         }
         long Inv(BTree<Sqlx,object> md)
         {
@@ -272,19 +258,7 @@ namespace Pyrrho.Level2
         {
             var sb = new StringBuilder();
             sb.Append("PMetadata "); sb.Append(name);
-            sb.Append("["); sb.Append(DBObject.Uid(defpos));
-            if (seq >= 0) { sb.Append("."); sb.Append(seq);  }
-            sb.Append("]");
-            var m = 1L;
-            var cm = "";
-            for (var i = 1; i <= keys.Length; i++, m <<= 1)
-                if ((flags&m)!=0L)
-                {
-                    sb.Append(cm); cm = ","; sb.Append(keys[i-1]);
-                }
-            if (detail != "")
-            { sb.Append("("); sb.Append(detail); sb.Append(")"); }
-            sb.Append(iri);
+            sb.Append(detail);
             return sb.ToString();
         }
         public override DBException Conflicts(Database db, Context cx, Physical that,PTransaction ct)
@@ -337,12 +311,12 @@ namespace Pyrrho.Level2
         /// <param name="sq">The column seq no for a view column</param>
         /// <param name="ob">the DBObject ref</param>
         /// <param name="db">The physical database</param>
-        protected PMetadata2(Type tp,string nm, long sq, long ob, BTree<Sqlx,object> md, long pp,Context cx)
+        protected PMetadata2(Type tp,string nm, long sq, long ob, CTree<Sqlx,TypedValue> md, long pp,Context cx)
          : base(tp, nm, sq, ob, md, pp, cx)
         {
         }
-        public PMetadata2(ReaderBase rdr) : base (Type.Metadata2,rdr){}
-        public PMetadata2(Type pt,ReaderBase rdr) : base(pt, rdr) {}
+        public PMetadata2(Reader rdr) : base (Type.Metadata2,rdr){}
+        public PMetadata2(Type pt,Reader rdr) : base(pt, rdr) {}
         protected PMetadata2(PMetadata2 x, Writer wr) : base(x, wr)
         {
         }
@@ -362,7 +336,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr) 
+        public override void Deserialise(Reader rdr) 
 		{
             rdr.GetInt();
             rdr.GetLong();
@@ -374,8 +348,8 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
         {
-            return "PMetadata2 " + name + "[" + defpos + "." + seq + "]" + ((detail != "") ? "(" + detail + ")" : "") +
-                iri + flags;
+            return "PMetadata2 " + name + "[" + defpos + "." + seq + "]" + detail +
+                iri;
         }
 
      }
@@ -390,11 +364,11 @@ namespace Pyrrho.Level2
         /// <param name="ob">the DBObject ref</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-        public PMetadata3(string nm, long sq, long ob, BTree<Sqlx,object> md, long pp, Context cx)
+        public PMetadata3(string nm, long sq, long ob, CTree<Sqlx,TypedValue> md, long pp, Context cx)
             : base(Type.Metadata3, nm, sq, ob, md, pp, cx)
         {
         }
-        public PMetadata3(ReaderBase rdr) : base(Type.Metadata3, rdr) { }
+        public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }
         protected PMetadata3(PMetadata3 x, Writer wr) : base(x, wr)
         {
         }
@@ -415,7 +389,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             refpos = rdr.GetLong();
             base.Deserialise(rdr);
@@ -426,8 +400,8 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
         public override string ToString()
         {
-            return "PMetadata3 " + name + "[" + defpos + "." + seq + "]" + ((detail != "") ? "(" + detail + ")" : "") +
-                iri + flags + DBObject.Uid(refpos);
+            return "PMetadata3 " + name + "[" + defpos + "." + seq + "]" + detail +
+                iri;
         }
 
     }

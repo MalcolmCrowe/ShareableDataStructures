@@ -8,7 +8,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -110,18 +110,21 @@ namespace Pyrrho
         /// <summary>
         /// Send results to the client using the PyrrhoWebOutput mechanisms
         /// </summary>
-        public virtual void SendResults(HttpListenerResponse rs,Transaction tr,Context cx,
+        public virtual ETag SendResults(HttpListenerResponse rs,Transaction tr,Context cx,
             string url,bool etags)
         {
-            var r = cx.data[cx.result];
+            var r = (RowSet)cx.obs[cx.result];
+            if (r!=null)
+                cx.finder += r.finder;
             Cursor e = r?.First(cx);
+            ETag et = ETag.Empty;
             if (e!=null && etags)
             {
                 for (; e != null; e = e.Next(cx))
-                    e._Rvv(cx);
+                    et = e._Rvv(cx);
                 e = r.First(cx);
             }
-            Header(rs, tr, cx, url,etags);
+            Header(rs, tr, cx, url,et.assertMatch.ToString());
             if (r!=null)
             {
                 BeforeResults();
@@ -130,20 +133,21 @@ namespace Pyrrho
                 AfterResults();
             }
             Footer();
+            return et;
         }
         /// <summary>
         /// Header for the page
         /// </summary>
         public virtual void Header(HttpListenerResponse rs, Transaction tr,
-            Context cx, string url,bool etags)
+            Context cx, string url,string etags)
         {
             rs.StatusCode = 200;
-            RowSet r = cx.data[cx.result];
+            var r = (RowSet)cx.obs[cx.result];
             if (r == null && cx.exec is QuerySearch us)
-                r = cx.data[us.nuid];
+                r = (RowSet)cx.obs[us.source];
             if (r == null && cx.exec is SqlInsert si)
-                r = cx.data[si.nuid];
-            if (r!=null && cx.db.role.infos[r.rsTargets.First().key()] is ObInfo oi)
+                r = (RowSet)cx.obs[si.source];
+            if (r!=null && cx.db.role.infos[r.target] is ObInfo oi)
             {
                 if (oi.description is string ds && ds != "")
                     rs.AddHeader("Description", ds);
@@ -152,12 +156,12 @@ namespace Pyrrho
                 if (cx.obs[r.target] is Table tb)
                     rs.AddHeader("LastData", tb.lastData.ToString());
             }
-            if (etags)
+            if (etags!="")
             {
-                var s = cx.etags.cons[url].rvv?.ToString()??"";
-                rs.AddHeader("ETag", s);
+       //         var s = cx.db.etags?.cons[url]?.etag??"";
+                rs.AddHeader("ETag", etags);
                 if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
-                    Console.WriteLine("Returning ETag: "+s);
+                    Console.WriteLine("Returning ETag: "+etags);
             }
         }
         /// <summary>
@@ -190,7 +194,7 @@ namespace Pyrrho
             : base(d,s)
         { }
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
-            string dn, bool etags)
+            string dn, string etags)
         {
             rs.AddHeader("Content-Type", "text/plain");
             base.Header(rs, tr, cx, dn, etags);
@@ -199,7 +203,7 @@ namespace Pyrrho
         {
             var dt = e.dataType;
             var cm = "(";
-            for (var b = cx.Cols(e._rowsetpos).First();b!=null;b=b.Next())
+            for (var b = dt.rowType.First();b!=null;b=b.Next())
             {
                 var p = b.value();
                 sbuild.Append(cm);
@@ -207,12 +211,12 @@ namespace Pyrrho
             }
             sbuild.Append(")");
         }
-        public override void SendResults(HttpListenerResponse rs, Transaction tr,Context cx, 
+        public override ETag SendResults(HttpListenerResponse rs, Transaction tr,Context cx, 
             string dn,bool etags)
         {
             var cm = "";
-            Header(rs, tr,cx, dn,etags);
-            if (cx.data[cx.result] is RowSet r)
+            Header(rs, tr,cx, dn,"");
+            if (cx.obs[cx.result] is RowSet r)
             {
                 BeforeResults();
                 for (var e=r.First(cx); e != null; e = e.Next(cx))
@@ -223,6 +227,7 @@ namespace Pyrrho
                 AfterResults();
             }
             Footer();
+            return ETag.Empty;
         }
     }
     /// <summary>
@@ -230,7 +235,7 @@ namespace Pyrrho
     /// </summary>
     internal class HtmlWebOutput : PyrrhoWebOutput
     {
-        BTree<Sqlx,object> chartType = BTree<Sqlx,object>.Empty;
+        CTree<Sqlx,TypedValue> chartType = CTree<Sqlx,TypedValue>.Empty;
         long xcol= 0;
         long ycol = 0;
         long ccol = 0;
@@ -245,14 +250,14 @@ namespace Pyrrho
             : base(d, s)
         { }
         public override void Header(HttpListenerResponse hrs, Transaction tr,
-            Context cx,string dn,bool etags)
+            Context cx,string dn,string etags)
         {
             hrs.AddHeader("Content-Type", "text/html");
-            base.Header(hrs, tr, cx, dn,etags);
+            base.Header(hrs, tr, cx, dn,"");
             sbuild.Append("<!DOCTYPE HTML>\r\n");
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
-            var rs = cx.data[cx.result];
+            var rs = (RowSet)cx.obs[cx.result];
             var fm = (From)cx.obs[rs.defpos];
             var om = tr.objects[fm.target] as DBObject;
             var mi = (ObInfo)tr.role.infos[om.defpos];
@@ -262,8 +267,8 @@ namespace Pyrrho
                 if (mi.description != "" && mi.description[0] == '<')
                     sbuild.Append(mi.description);
             }
-            var oi = rs.rt;
-            if (chartType != BTree<Sqlx,object>.Empty)
+            var oi = cx._Dom(rs).rowType;
+            if (chartType != CTree<Sqlx,TypedValue>.Empty)
             {
                 for (var co = oi.First(); co != null; co = co.Next())
                 {
@@ -283,9 +288,9 @@ namespace Pyrrho
                         ccol = ci.defpos;
                 }
                 if ((xcol ==0) && (ycol ==0))
-                    chartType = BTree<Sqlx,object>.Empty;
+                    chartType = CTree<Sqlx,TypedValue>.Empty;
             }
-            if (chartType!=BTree<Sqlx,object>.Empty)
+            if (chartType!=CTree<Sqlx,TypedValue>.Empty)
             {
                 var wd = 210;
                 if (chartType.Contains(Sqlx.LEGEND))
@@ -298,12 +303,12 @@ namespace Pyrrho
                 sbuild.Append("var chartType = \"" + Level2.PMetadata.Flags(chartType) + "\";\r\n");
                 sbuild.Append("var xdesc = \"" + xdesc + "\";\r\n");
                 sbuild.Append("var ydesc = \"" + ydesc + "\";\r\n");
-                sbuild.Append("var data = [ \r\n");
+                sbuild.Append("var obs = [ \r\n");
             }
             else
             {
                 sbuild.Append("<table border><tr>");
-                for (var b=rs.rt.First();b!=null;b=b.Next())
+                for (var b=cx._Dom(rs).rowType.First();b!=null;b=b.Next())
                 {
                     var ci = (ObInfo)cx.db.role.infos[b.value()];
                     sbuild.Append("<th>" + ci.name + "</th>");
@@ -319,7 +324,7 @@ namespace Pyrrho
         {
             var dt = e.dataType;
             var oi = _cx.Inf(e._rowsetpos);
-            if (chartType!=BTree<Sqlx,object>.Empty)
+            if (chartType!=CTree<Sqlx,TypedValue>.Empty)
             {
                 sbuild.Append(comma+"[");
                 var rc = e[xcol];
@@ -341,7 +346,7 @@ namespace Pyrrho
             else
             {
                 sbuild.Append("<tr>");
-                for (var b=oi.domain.rowType.First();b!=null;b=b.Next())
+                for (var b=oi.dataType.rowType.First();b!=null;b=b.Next())
                 {
                     var s = GetVal(e[b.value()]);
                     sbuild.Append("<td>" + s + "</td>");
@@ -351,15 +356,15 @@ namespace Pyrrho
         }
         public override void Footer()
         {
-            if (chartType!=BTree<Sqlx,object>.Empty)
+            if (chartType!=CTree<Sqlx,TypedValue>.Empty)
             {
-                sbuild.Append("     ];           var pt = data[0];\r\n");
-                sbuild.Append("    // first find data window\r\n");
+                sbuild.Append("     ];           var pt = obs[0];\r\n");
+                sbuild.Append("    // first find obs window\r\n");
                 sbuild.Append("    var minX = pt[0], maxX = pt[0];\r\n");
                 sbuild.Append("    var minY = pt[1], maxY = pt[1];\r\n");
                 sbuild.Append("    var sumY = pt[1];\r\n");
-                sbuild.Append("    for (var i = 1; i < data.length; i++) {\r\n");
-                sbuild.Append("        pt = data[i];\r\n");
+                sbuild.Append("    for (var i = 1; i < obs.length; i++) {\r\n");
+                sbuild.Append("        pt = obs[i];\r\n");
                 sbuild.Append("        if (pt[0] < minX) minX = pt[0];\r\n");
                 sbuild.Append("        if (pt[0] > maxX) maxX = pt[0];\r\n");
                 sbuild.Append("        if (pt[1] < minY) minY = pt[1];\r\n");
@@ -377,7 +382,7 @@ namespace Pyrrho
                 sbuild.Append("    maxY = yd*Math.round(maxY*1.0/yd+1.5);\r\n");
                 sbuild.Append("    var wid = canvas.width - 40;\r\n");
                 sbuild.Append("    var hig = canvas.height - 30;\r\n"); 
-                if (chartType!=BTree<Sqlx,object>.Empty)
+                if (chartType!=CTree<Sqlx,TypedValue>.Empty)
                 {
                     sbuild.Append("    var scx = (maxX == minX) ? 1 : wid / (maxX - minX);\r\n");
                     sbuild.Append("    var scy = (maxY == minY) ? 1 : hig / (maxY - minY);\r\n");
@@ -385,12 +390,12 @@ namespace Pyrrho
                 }
                 if (chartType.Contains(Sqlx.HISTOGRAM))
                 {
-                        sbuild.Append("    pickColours(data.length); drawAxes();\r\n");
+                        sbuild.Append("    pickColours(obs.length); drawAxes();\r\n");
                         sbuild.Append("    drawYmarks(); drawHistogram(); \r\n");
                         sbuild.Append("    function drawHistogram() {\r\n");
-                        sbuild.Append("       w = 80.0/data.length;\r\n");
-                        sbuild.Append("       for(i=0;i<data.length;i++) { \r\n");
-                        sbuild.Append("         pt=data[i];\r\n");
+                        sbuild.Append("       w = 80.0/obs.length;\r\n");
+                        sbuild.Append("       for(i=0;i<obs.length;i++) { \r\n");
+                        sbuild.Append("         pt=obs[i];\r\n");
                         sbuild.Append("         ctx.fillStyle = colours[i];\r\n");
                         sbuild.Append("         ctx.fillRect(30+w/2+i*w+i*w,trY(pt[1]),w,170-trY(pt[1]));\r\n");
                         sbuild.Append("        }\r\n"); 
@@ -399,10 +404,10 @@ namespace Pyrrho
               //          {
                             sbuild.Append("    drawXCaptions();\r\n");
                             sbuild.Append("    function drawXCaptions() {\r\n");
-                            sbuild.Append("       for(i=0;i<data.length;i++) {\r\n");
-                            sbuild.Append("         pt = data[i]; \r\n");
+                            sbuild.Append("       for(i=0;i<obs.length;i++) {\r\n");
+                            sbuild.Append("         pt = obs[i]; \r\n");
                             sbuild.Append("         ctx.fillStyle = \"black\";\r\n");
-                            sbuild.Append("         ctx.fillText(pt[2],40+i*160/data.length,180);\r\n");
+                            sbuild.Append("         ctx.fillText(pt[2],40+i*160/obs.length,180);\r\n");
                             sbuild.Append("       }\r\n");
                             sbuild.Append("    }\r\n");
                //         }
@@ -410,8 +415,8 @@ namespace Pyrrho
                 {
                         sbuild.Append("    drawAxes();drawYmarks(); drawXmarks(); drawLineGraph();\r\n");
                         sbuild.Append("    function drawLineGraph() {\r\n");
-                        sbuild.Append("      // now plot the data points\r\n");
-                        sbuild.Append("      pt = data[0];\r\n");
+                        sbuild.Append("      // now plot the obs points\r\n");
+                        sbuild.Append("      pt = obs[0];\r\n");
                         sbuild.Append("      ctx.beginPath();\r\n");
                         sbuild.Append("      ctx.moveTo(trX(pt[0]), trY(pt[1]));\r\n");
                         if (chartType.Contains(Sqlx.LEGEND))
@@ -419,8 +424,8 @@ namespace Pyrrho
                             sbuild.Append("      if (pt.length > 2)\r\n");
                             sbuild.Append("        ctx.fillText(pt[2], trX(pt[0]), trY(pt[1]));\r\n");
                         }
-                        sbuild.Append("      for (i = 1; i < data.length; i++) {\r\n");
-                        sbuild.Append("        pt = data[i];\r\n");
+                        sbuild.Append("      for (i = 1; i < obs.length; i++) {\r\n");
+                        sbuild.Append("        pt = obs[i];\r\n");
                         sbuild.Append("        ctx.lineTo(trX(pt[0]), trY(pt[1]));\r\n");
                         if (chartType.Contains(Sqlx.LEGEND))
                         {
@@ -435,8 +440,8 @@ namespace Pyrrho
                 {
                         sbuild.Append("    drawAxes(); drawYmarks(); drawXmarks(); drawPoints();\r\n");
                         sbuild.Append("    function drawPoints() {\r\n");
-                        sbuild.Append("       for (i=0;i<data.length;i++) {\r\n");
-                        sbuild.Append("         pt = data[i];\r\n");
+                        sbuild.Append("       for (i=0;i<obs.length;i++) {\r\n");
+                        sbuild.Append("         pt = obs[i];\r\n");
                         sbuild.Append("         ctx.fillStyle=\"red\";\r\n");
                         sbuild.Append("         ctx.fillRect(trX(pt[0])-1,trY(pt[1])-1,3,3);\r\n");
                         if (chartType.Contains(Sqlx.LEGEND))
@@ -448,11 +453,11 @@ namespace Pyrrho
                         sbuild.Append("    }\r\n");
                 } else if(chartType.Contains(Sqlx.PIE))
                 {
-                        sbuild.Append("    pickColours(data.length); drawPie(); \r\n");
+                        sbuild.Append("    pickColours(obs.length); drawPie(); \r\n");
                         sbuild.Append("    function drawPie() {\r\n");
                         sbuild.Append("      var ang = 0;\r\n");
-                        sbuild.Append("      for(i=0;i<data.length;i++) {\r\n");
-                        sbuild.Append("         pt = data[i];\r\n");
+                        sbuild.Append("      for(i=0;i<obs.length;i++) {\r\n");
+                        sbuild.Append("         pt = obs[i];\r\n");
                         sbuild.Append("         var nang = ang+2*Math.PI*pt[1]/sumY;\r\n");
                         sbuild.Append("         ctx.beginPath();\r\n");
                         sbuild.Append("         ctx.moveTo(100,100);\r\n");
@@ -474,8 +479,8 @@ namespace Pyrrho
                 {
                     sbuild.Append("    drawLegend();\r\n");
                     sbuild.Append("    function drawLegend() {\r\n");
-                    sbuild.Append("      for(i=0;i<data.length;i++) {\r\n");
-                    sbuild.Append("         pt = data[i];\r\n");    
+                    sbuild.Append("      for(i=0;i<obs.length;i++) {\r\n");
+                    sbuild.Append("         pt = obs[i];\r\n");    
                     sbuild.Append("         ctx.fillStyle=colours[i];\r\n");
                     sbuild.Append("         ctx.fillRect(200,15+13*i,5,5);\r\n");
                     sbuild.Append("         ctx.fillStyle=\"black\";\r\n");
@@ -483,7 +488,7 @@ namespace Pyrrho
                     sbuild.Append("        }\r\n");
                     sbuild.Append("      }\r\n");               
                 }
-                if (chartType!=BTree<Sqlx,object>.Empty && !chartType.Contains(Sqlx.PIE))
+                if (chartType!=CTree<Sqlx,TypedValue>.Empty && !chartType.Contains(Sqlx.PIE))
                 {
                     sbuild.Append("    function drawAxes() {\r\n");
                     sbuild.Append("      ctx.beginPath();\r\n");
@@ -563,7 +568,7 @@ namespace Pyrrho
         public JsonWebOutput(Transaction db, StringBuilder s) : base(db, s)
         { }
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
-            string dn,bool etags)
+            string dn,string etags)
         {
             rs.AddHeader("Content-Type", "application/json");
             base.Header(rs, tr, cx, dn,etags);
@@ -577,23 +582,35 @@ namespace Pyrrho
         {
             sbuild.Append("]");
         }
-        public override void PutRow(Context _cx, Cursor e)
+        public override void PutRow(Context cx, Cursor e)
         {
+            var rs = (RowSet)cx.obs[e._rowsetpos];
+            var key = (cx.groupCols[cx._Dom(rs)] is Domain gc)?new TRow(gc, e.values):TRow.Empty;
             sbuild.Append(cm); cm = ",";
             var rt = e.columns;
             var doc = new TDocument();
             for (var b = rt.First(); b != null; b = b.Next())
             {
-                var ci = (SqlValue)_cx.obs[b.value()];
+                var ci = (SqlValue)cx.obs[b.value()];
                 if (e[ci.defpos] is TypedValue tv)
-                    doc=doc.Add(ci.alias??ci.name, tv);
+                {
+                    var n = ci.alias ?? ci.name;
+                    if (n == "")
+                        n = "Col" + b.key();
+                    doc=doc.Add(n, tv);
+                }
             }
             if (e[DBObject.Classification] is TLevel lv)
                 doc=doc.Add("$classification", lv.ToString());
             if (e[Domain.Provenance] is TChar pv)
                 doc=doc.Add("$provenance", pv.ToString());
-            doc=doc.Add("$pos", new TInt(e._defpos));
-            doc=doc.Add("$check", new TInt(e._ppos));
+            if (e._ds.Count > 0)
+            {
+                doc = doc.Add("$pos", new TInt(e._ds.First().value().Item1));
+                doc = doc.Add("$check", new TInt(e._ds.First().value().Item2));
+            }
+            for (var b = cx.funcs[key]?.First(); b != null; b = b.Next())
+                doc = doc.Add("$" + DBObject.Uid(b.key()), new TDocument(b.value()));
             sbuild.Append(doc.ToString());
         }
     }
@@ -613,7 +630,7 @@ namespace Pyrrho
             rootName = rn;
         }
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
-            string dn, bool etags)
+            string dn, string etags)
         {
             rs.AddHeader("Content-Type", "application/xml");
             base.Header(rs, tr, cx, dn, etags);
@@ -676,7 +693,7 @@ namespace Pyrrho
                 }
                 if (path.Length <= 2)
                     return;
-                var dbn = new Ident(pathbits[1], 0);
+                var dbn = new Ident(pathbits[1], Iix.None);
                 if (dbn.ident.EndsWith(".htm"))
                 {
                     var rdr = new StreamReader(PyrrhoStart.path + path);
@@ -698,7 +715,9 @@ namespace Pyrrho
                 details += ("Role", role);
                 var acc = client.Request.Headers["Accept"];
                 var d = Database.Get(details);
-                var db = d.Transact(Transaction.Analysing, "")
+                if (d == null)
+                    throw new DBException("3D000",dbn.ident);
+                var db = d.Transact(Transaction.Analysing, "",new Connection(details))
                     + (Database.LastModified, d.lastModified); // use the file time, not UTCNow
                 if (acc != null && acc.Contains("text/plain"))
                     woutput = new SqlWebOutput(db, sbuild);
@@ -732,43 +751,39 @@ namespace Pyrrho
                     if (eu != null)
                         Console.WriteLine("Received If-Unmodified-Since: " + eu);
                 }
+                if (Rvv.Validate(d,et,eu))
+                     rv = Rvv.Empty;
+                else
+                     throw new DBException("40084");
                 var cx = new Context(db);
-                cx.etags = new ETags();
-                cx.etags.cons += (cx.db.name, new HttpParams(cx.db.name));
-                cx.result = cx.db.lexeroffset;
-                cx.etags.assertMatch = rv;
-                cx.etags.assertUnmodifiedSince = THttpDate.Parse(eu);
                 db.Execute(cx, client.Request.HttpMethod, "H", cx.db.name, pathbits,
                     client.Request.Headers["Content-Type"], sb);
-                var ex = cx.etags.cons[cx.db.name];
                 var ocx = cx;
                 cx = new Context(cx.db.Commit(cx));
-                ocx.etags.cons += (ocx.db.name, ex);
                 woutput.SendResults(client.Response, db, ocx, db.name, true);
                 return;
             }
             catch (DBException e)
             {
-                if (woutput != null)
+                switch (e.signal.Substring(0, 2))
                 {
-                    switch (e.signal.Substring(0, 2))
-                    {
-                        case "22":
-                        case "20": client.Response.StatusCode = 400; break;
-                        case "23": client.Response.StatusCode = 403; 
-                            if(woutput!=null)
-                            {
-                                var bs = Encoding.UTF8.GetBytes(e.Message);
-                                client.Response.ContentLength64 = bs.Length;
-                                var wr = client.Response.OutputStream;
-                                wr.Write(bs, 0, bs.Length);
-                                wr.Close();
-                            }
-                            break;
-                        case "42": client.Response.StatusCode = 401; break;
-                        case "40": client.Response.StatusCode = 412; break;
-                        default: client.Response.StatusCode = 400; break;
-                    }
+                    case "22":
+                    case "20": client.Response.StatusCode = 400; break;
+                    case "23":
+                        client.Response.StatusCode = 403;
+                        if (woutput != null)
+                        {
+                            var bs = Encoding.UTF8.GetBytes(e.Message);
+                            client.Response.ContentLength64 = bs.Length;
+                            var wr = client.Response.OutputStream;
+                            wr.Write(bs, 0, bs.Length);
+                            wr.Close();
+                        }
+                        break;
+                    case "42": client.Response.StatusCode = 401; break;
+                    case "40": client.Response.StatusCode = 412; break;
+                    case "3D": client.Response.StatusCode = 404; break;
+                    default: client.Response.StatusCode = 400; break;
                 }
                 return;
             }
@@ -800,7 +815,7 @@ namespace Pyrrho
             }
         }
         /// <summary>
-        ///  for posted data we use this routine
+        ///  for posted obs we use this routine
         /// </summary>
         /// <returns>a string</returns>
 		string ReadLine()

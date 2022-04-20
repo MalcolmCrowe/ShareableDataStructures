@@ -3,7 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -51,7 +51,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position in the buffer</param>
-        public PUser(ReaderBase rdr) : base(Type.PUser, rdr) { }
+        public PUser(Reader rdr) : base(Type.PUser, rdr) { }
         protected PUser(PUser x, Writer wr) : base(x, wr)
         {
             name = x.name;
@@ -74,7 +74,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
             base.Deserialise(rdr);
@@ -105,7 +105,7 @@ namespace Pyrrho.Level2
             ro += (ui,false);
             cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             cx.db += (Database.Users, cx.db.users + (name, ppos));
-            if (cx.db.log!=null)
+            if (cx.db.log!=Common.BTree<long, Type>.Empty)
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             if (first)
             {
@@ -125,7 +125,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,_user)) return _user;
             return -1;
         }
-        public Clearance(ReaderBase rdr) : base(Type.Clearance, rdr)
+        public Clearance(Reader rdr) : base(Type.Clearance, rdr)
         { }
         public Clearance(long us, Level cl, long pp, Context cx)
             : base(Type.Clearance, pp, cx)
@@ -135,7 +135,7 @@ namespace Pyrrho.Level2
         }
         protected Clearance(Clearance x, Writer wr) : base(x, wr)
         {
-            _user = wr.Fix(x._user);
+            _user = wr.cx.Fix(x._user);
             clearance = x.clearance;
         }
         protected override Physical Relocate(Writer wr)
@@ -149,7 +149,7 @@ namespace Pyrrho.Level2
             wr.PutLong(_user);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             clearance = Level.DeserialiseLevel(rdr);
             _user = rdr.GetLong();

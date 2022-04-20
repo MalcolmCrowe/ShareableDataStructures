@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -31,7 +31,7 @@ namespace Pyrrho.Level2
         /// <param name="old">The previous version of the Domain</param>
         /// <param name="nm">The (new) name</param>
         /// <param name="sd">The (new) structure definition</param>
-        /// <param name="dt">The (new) Sql data type</param>
+        /// <param name="dt">The (new) Sql obs type</param>
         /// <param name="pb">The local database</param>
         public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
@@ -47,11 +47,11 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public Edit(ReaderBase rdr) : base(Type.Edit,rdr) {}
+		public Edit(Reader rdr) : base(Type.Edit,rdr) {}
         protected Edit(Edit x, Writer wr) : base(x, wr)
         {
-            _defpos = wr.Fix(x._defpos);
-            prev = (Domain)x.prev._Relocate(wr);
+            _defpos = wr.cx.Fix(x._defpos);
+            prev = (Domain)x.prev.Relocate(wr.cx);
             _prev = prev.defpos;
         }
         protected override Physical Relocate(Writer wr)
@@ -71,7 +71,7 @@ namespace Pyrrho.Level2
         /// Deserialise from the buffer
         /// </summary>
         /// <param name="buf">The buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
 		{
 			_defpos = rdr.GetLong();
             _prev = rdr.Prev(_defpos)??_defpos;
@@ -110,7 +110,7 @@ namespace Pyrrho.Level2
                         for (var cp = t.fields.PositionAt(0); cp != null; cp = cp.Next())
                         {
                             var c = (DBObject)db.objects[cp.key()];
-                            if (cx.db.types[c.domain] == defpos)
+                            if (c.domain == defpos)
                                 return new DBException("40079", defpos, that, ct);
                         }
                         break;

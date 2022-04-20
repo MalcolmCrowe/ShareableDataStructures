@@ -9,7 +9,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -22,7 +22,7 @@ namespace Pyrrho.Common
     /// <summary>
     /// Data values and local variables can be of structured types 
     /// (row, array, multiset, user-defined, documents). 
-    /// In normal use such complex data can be in a class of TypedValue 
+    /// In normal use such complex obs can be in a class of TypedValue 
     /// (containing other TypedValues), and can be referred to by a single SqlValue. 
     /// But if during analysis we find we are dealing with SQL references to its internal contents, 
     /// it is built into a structured SqlValue (SqlRow, SqlArray etc) 
@@ -35,8 +35,6 @@ namespace Pyrrho.Common
         internal readonly Domain dataType = Domain.Null;
         internal TypedValue(Domain t)
         {
-            if (t == null)
-                throw new PEException("PE666");
             dataType = t;
         }
         internal abstract TypedValue New(Domain t);
@@ -49,7 +47,7 @@ namespace Pyrrho.Common
         {
             if (td.kind == Sqlx.CONTENT)
                 td = null;
-            return new SqlLiteral(dp, cx, this, td);
+            return new SqlLiteral(cx.Ix(dp), cx, this, td);
         }
         internal virtual byte BsonType()
         {
@@ -104,9 +102,24 @@ namespace Pyrrho.Common
         {
             return New(dataType.Replaced(cx));
         }
-        internal virtual TypedValue Relocate(Writer wr)
+        internal virtual TypedValue Replace(Context cx,DBObject so,DBObject sv)
         {
-            return New((Domain)dataType._Relocate(wr));
+            return Replaced(cx);
+        }
+        internal virtual TypedValue Relocate(Context cx)
+        {
+            if (dataType.defpos < 0)
+                return this;
+            return New((Domain)dataType.Relocate(cx));
+        }
+        internal Domain _DataType()
+        {
+            var dt = dataType;
+            if (dt.kind == Sqlx.UNION)
+                for (var b = dt.mem.First(); b != null; b = b.Next())
+                    if (b.value() is Domain d && d.CanBeAssigned(this))
+                        return d;
+            return dt;
         }
         public override string ToString()
         {
@@ -118,6 +131,8 @@ namespace Pyrrho.Common
         }
         public int CompareTo(object obj)
         {
+            if (IsNull) 
+                return ((TypedValue)obj).IsNull?0:-1;
             return dataType.Compare(this,(TypedValue)obj);
         }
     }
@@ -131,10 +146,11 @@ namespace Pyrrho.Common
         static TNull _Value;
         TNull() : base(Domain.Null) { _Value = this; }
         TNull(Domain d) : base(d) { }
+        internal TNull(long t) : this((Domain)Context._system.obs[t]) { }
         internal static TNull Value => _Value??new TNull();
-        internal override TypedValue New(Domain t)
+        internal override TypedValue New(Domain d)
         {
-            return new TNull(t);
+            return new TNull(d);
         }
         internal override object Val()
         {
@@ -150,6 +166,10 @@ namespace Pyrrho.Common
         {
             return (obj is TNull || obj==null)?0: -1;
         }
+        internal override SqlValue Build(long dp, Context cx, Domain td)
+        {
+            return SqlNull.Value;
+        }
         public override bool IsNull
         {
             get
@@ -162,7 +182,7 @@ namespace Pyrrho.Common
     internal class TInt : TypedValue
     {
         internal readonly long? value;
-        internal TInt(Domain dt, long? v) : base(dt) { value = v; }
+        internal TInt(Domain dt, long? v) : base(dt.Best(Domain.Int)) { value = v; }
         internal TInt(long? v) : this(Domain.Int, v) { }
         internal override TypedValue New(Domain t)
         {
@@ -237,7 +257,7 @@ namespace Pyrrho.Common
     internal class TInteger : TInt
     {
         internal readonly Integer ivalue;
-        internal TInteger(Domain dt, Integer i) : base(dt,0) { ivalue = i; }
+        internal TInteger(Domain dt, Integer i) : base(dt.Best(Domain.Int),0) { ivalue = i; }
         internal TInteger(Integer i) : this(Domain.Int, i) { }
         internal override object Val()
         {
@@ -381,7 +401,7 @@ namespace Pyrrho.Common
         }
         internal override string ToString(CList<long> cs,Context cx)
         {
-            return "'" + base.ToString() + "'";
+            return "'" + value + "'";
         }
         internal override object Val()
         {
@@ -399,7 +419,7 @@ namespace Pyrrho.Common
     internal class TNumeric : TypedValue
     {
         internal readonly Numeric value;
-        internal TNumeric(Domain dt, Numeric n) : base(dt) { value = n; }
+        internal TNumeric(Domain dt, Numeric n) : base(dt.Best(Domain.Numeric)) { value = n; }
         internal TNumeric(Numeric n) : this(Domain.Numeric, n) { }
         internal override TypedValue New(Domain t)
         {
@@ -559,21 +579,14 @@ namespace Pyrrho.Common
     // shareable
     internal class TQParam : TypedValue
     {
-        internal readonly long qid;
-        public TQParam(Domain dt,long id) :base(dt) { qid = id; }
+        internal readonly Iix qid;
+        public TQParam(Domain dt,Iix id) :base(dt) { qid = id; }
         internal override TypedValue Fix(Context cx)
         {
-            var id = cx.obuids[qid]??qid;
+            var id = cx.Fix(qid);
             if (id==qid)
                 return base.Fix(cx);
             return new TQParam((Domain)dataType.Fix(cx), id);
-        }
-        internal override TypedValue Relocate(Writer wr)
-        {
-            var id = wr.Fix(qid);
-            if (id == qid)
-                return base.Relocate(wr);
-            return new TQParam((Domain)dataType._Relocate(wr), id);
         }
         public override bool IsNull => false;
         public override int _CompareTo(object obj)
@@ -592,7 +605,7 @@ namespace Pyrrho.Common
         }
         public override string ToString()
         {
-            return "?" + DBObject.Uid(qid);
+            return "?" + DBObject.Uid(qid.dp);
         }
     }
     // shareable as of 26 April 2021
@@ -608,11 +621,6 @@ namespace Pyrrho.Common
         {
             return new TUnion((Domain)dataType.Fix(cx), 
                 value.Fix(cx));
-        }
-        internal override TypedValue Relocate(Writer wr)
-        {
-            return new TUnion((Domain)dataType._Relocate(wr),
-                value.Relocate(wr));
         }
         public override int _CompareTo(object obj)
         {
@@ -640,7 +648,7 @@ namespace Pyrrho.Common
                     ts.Add(dt);
             }
             if (ts.Count == 0)
-                throw new Exception("22000");
+                throw new DBException("22000",dataType);
             if (ts.Count == 1)
                 return ts[0].Coerce(cx,value);
             return new TUnion(Domain.UnionType(lp,ts.ToArray()),value);
@@ -997,10 +1005,6 @@ namespace Pyrrho.Common
         {
             return new TPartial(cx.Fix(value));
         }
-        internal override TypedValue Relocate(Writer wr)
-        {
-            return new TPartial(wr.Fix(value));
-        }
         internal override object Val()
         {
             return value;
@@ -1021,7 +1025,8 @@ namespace Pyrrho.Common
     internal class TArray : TypedValue
     {
         internal readonly BList<TypedValue> list; 
-        internal TArray(Domain dt, params TypedValue[] a) : base(dt) 
+        internal TArray(Domain dt, params TypedValue[] a) 
+            : base(new Domain(-1L,Sqlx.ARRAY,dt)) 
         { 
             var ts = BList<TypedValue>.Empty;
             foreach (var x in a)
@@ -1128,10 +1133,6 @@ namespace Pyrrho.Common
         internal override TypedValue Fix(Context cx)
         {
             return new TTypeSpec((Domain)_dataType.Fix(cx));
-        }
-        internal override TypedValue Relocate(Writer wr)
-        {
-            return new TTypeSpec((Domain)_dataType._Relocate(wr));
         }
         internal override object Val()
         {
@@ -1294,10 +1295,10 @@ namespace Pyrrho.Common
     internal class TRvv : TypedValue
     {
         internal readonly Rvv rvv;
-        internal TRvv(Context cx,string url) : base (Domain.Rvv)
+        internal TRvv(Context cx,string match) : base (Domain.Rvv)
         {
-            rvv = cx.etags?.cons[url].rvv??
-                throw new PEException("PE381");
+            var tr = cx.db as Transaction;
+            rvv = Rvv.Parse(match);
         }
         internal TRvv(Rvv r) : base(Domain.Rvv)
         {
@@ -1334,20 +1335,22 @@ namespace Pyrrho.Common
             return rvv.ToString();
         }
     }
-    // shareable
-    internal class TMetadata : TypedValue
+    // shareable: no mutators
+    internal sealed class TMetadata : TypedValue
     {
-        protected readonly BTree<Sqlx, object> md;
-        public TMetadata(BTree<Sqlx,object> m) : base(Domain.Metadata)
+        readonly CTree<Sqlx, TypedValue> md;
+        public TMetadata(CTree<Sqlx,TypedValue> m=null) : base(Domain.Metadata)
         {
-            md = m;
+            md = m ?? CTree<Sqlx,TypedValue>.Empty;
         }
 
-        public override bool IsNull => md==BTree<Sqlx,object>.Empty;
+        public override bool IsNull => md==CTree<Sqlx,TypedValue>.Empty;
 
         public override int _CompareTo(object obj)
         {
-            throw new NotImplementedException();
+            if (obj is TMetadata tt)
+                return md.CompareTo(tt.md);
+            return -1;
         }
 
         internal override TypedValue New(Domain t)
@@ -1357,15 +1360,26 @@ namespace Pyrrho.Common
 
         internal override object Val()
         {
-            throw new NotImplementedException();
+            return md;
         }
         public override string ToString()
         {
-            return ObInfo.Metadata(md);
+            if (md == CTree<Sqlx, TypedValue>.Empty)
+                return "";
+            var sb = new StringBuilder();
+            var cm = '{';
+            for (var b=md.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ',';
+                sb.Append(b.key()); sb.Append(':');
+                sb.Append(b.value());
+            }
+            sb.Append('}');
+            return sb.ToString();
         }
     }
     /// <summary>
-    /// Column is a convenience class for named values: has a name, segpos, data type, value.
+    /// Column is a convenience class for named values: has a name, segpos, obs type, value.
     /// Should really only be used in system tables and Documents. Should not be stored anywhere.
     /// </summary>
     ///     // shareable as of 26 April 2021
@@ -1393,18 +1407,28 @@ namespace Pyrrho.Common
     // shareable as of 26 April 2021
     internal class PRow : ITypedValue
     {
+        internal readonly Sqlx _kind;
         internal readonly TypedValue _head;
         internal readonly PRow _tail;
-        public PRow(TypedValue head, PRow tail = null)
+        public PRow(TypedValue head, PRow tail = null, Sqlx k=Sqlx.EQL)
         {
-            _head = head; _tail = tail;
+            _head = head; _tail = tail; _kind = k;
         }
-        PRow(TRow r,int off,int len)
+        /// <summary>
+        /// For now the only inequality TRow keys we support are where the inequality
+        /// applies to the very last value of the key
+        /// </summary>
+        /// <param name="r"></param>
+        /// <param name="k">Sqlx.EQL or an inequality operator</param>
+        /// <param name="off"></param>
+        /// <param name="len"></param>
+        PRow(TRow r,Sqlx k,int off,int len)
         {
             _head = r[off];
-            _tail = (off < len - 1) ? new PRow(r, off + 1, len) : null;
+            _tail = (off < len - 1) ? new PRow(r, k, off + 1, len) : null;
+            _kind = (off < len - 1) ? Sqlx.EQL : k;
         }
-        public PRow(TRow r) : this(r, 0, r.Length)
+        public PRow(TRow r,Sqlx k=Sqlx.EQL) : this(r, k, 0, r.Length)
         { }
         public PRow(BList<TypedValue> v,int off=0)
         {
@@ -1486,6 +1510,13 @@ namespace Pyrrho.Common
                 return (that._tail != null) ? -1 : 0;
             return _tail.CompareTo(that?._tail);
         }
+        public static PRow Reverse(PRow k)
+        {
+            PRow r = null;
+            for (;k!=null;k=k._tail)
+                r = new PRow(k._head, r);
+            return r;
+        }
     }
     /// <summary>
     /// All TypedValues have a domain; TRow also has a BList of uids to give the columns ordering
@@ -1501,83 +1532,57 @@ namespace Pyrrho.Common
         internal readonly int docCol = -1;  // note the position of a single document column if present
         internal int Length => dataType.Length;
         internal CList<long> columns => dataType.rowType;
+        internal static TRow Empty = new TRow(Domain.Row, CTree<long, TypedValue>.Empty);
         public TRow(Domain dt,CTree<long,TypedValue> vs)
             :base(dt)
         {
+            if (dt == null)
+                Console.WriteLine("Here");
             values = vs;
         }
         public TRow(Domain dt, BTree<long, long> map, BTree<long, TypedValue> vs)
             : base(dt)
         {
+            if (dt == null)
+                Console.WriteLine("Here");
             var v = CTree<long, TypedValue>.Empty;
             for (var b = map.First(); b != null; b = b.Next())
                 if (dt.representation.Contains(b.key()))
                     v += (b.key(), vs[b.value()] ?? TNull.Value);
             values = v;
         }
-        /// <summary>
-        /// The following two methods assume that the given value list is from a RowSet source,
-        /// and delivers the corresponding TRow for the rowSet.
-        /// </summary>
-        /// <param name="oi"></param>
-        /// <param name="map"></param>
-        /// <param name="vs"></param>
-        public TRow(Domain dt, CTree<long, RowSet.Finder> map, BTree<long, TypedValue> vs)
-            : base(dt)
+        public TRow(RowSet rs,Domain dm,TRow rw) : base(dm)
         {
-            var v = CTree<long, TypedValue>.Empty;
-            for (var b = map.First(); b != null; b = b.Next())
-                if (dt.representation.Contains(b.key()))
-                    v += (b.key(), vs[b.value().col] ?? TNull.Value);
-            values = v;
-        }
-        public TRow(RowSet rs, TRow rw) : base(rs.domain) 
-        {
-            var v = CTree<long, TypedValue>.Empty;
-            for (var b = rs.domain.rowType.First(); b != null; b = b.Next())
+            if (dm == null)
+                Console.WriteLine("Here");
+            var vs = CTree<long, TypedValue>.Empty;
+            for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                v += (p, rw[p] ?? TNull.Value);
+                var v = rw[p];
+                if (v == null)
+                    for (var c = rs.matching[p]?.First(); c != null && v == null; c = c.Next())
+                        v = rw[c.key()];
+                vs += (p, v ?? TNull.Value);
             }
-            values = v;
+            values = vs;
         }
-        /// <summary>
-        /// Assert2: sce is assignment-compatible to dst
-        /// </summary>
-        /// <param name="dst"></param>
-        /// <param name="sce"></param>
-        /// <returns></returns>
-        public static bool Assert2(Domain dst, Domain sce)
+        public TRow(TRow rw, Domain dm) :base(dm)
         {
-            for (var b = dst.rowType.First(); b != null; b = b.Next())
-                if (sce.representation[sce.rowType[b.key()]] is Domain dm)
-                {
-                    if (dst.representation[b.value()]?.CanTakeValueOf(dm)!=true)
-                        return false;
-                }
-            return true;
-        }
-        /// <summary>
-        /// Precondition: Assert2
-        /// </summary>
-        /// <param name="rw"></param>
-        /// <param name="rs"></param>
-        public TRow(TRow rw,RowSet rs) :base(rs.domain)
-        {
-            if (!Assert2(rs.domain, rw.dataType))
-                throw new PEException("Assert2");
+            if (dm == null)
+                Console.WriteLine("Here");
             var v = CTree<long, TypedValue>.Empty;
-            for (var b = rs.domain.rowType.First(); b != null; b = b.Next())
+            for (var b = dm.rowType.First(); b != null; b = b.Next())
                 v += (b.value(), rw[b.key()] ?? TNull.Value);
             values = v;
         }
-        public TRow(SqlValue sv, CTree<long, TypedValue> vs) : this(sv.domain, vs) { }
-        public TRow(ObInfo oi, CTree<long, TypedValue> vs) : this(oi.domain, vs) { }
+        public TRow(SqlValue sv, CTree<long, TypedValue> vs) : this(Context._system._Dom(sv), vs) { }
+        public TRow(ObInfo oi, CTree<long, TypedValue> vs) : this(oi.dataType, vs) { }
         /// <summary>
         /// Constructor: values by columns
         /// </summary>
          /// <param name="v">The values</param>
-        public TRow(Domain dt, params TypedValue[] v) : 
+        public TRow(Context cx,Domain dt, params TypedValue[] v) : 
             base(dt)
         {
             var vals = CTree<long, TypedValue>.Empty;
@@ -1586,12 +1591,11 @@ namespace Pyrrho.Common
             {
                 var p = b.value();
                 var vi = (i<v.Length)?v[i]:null;
-                vals += (p, vi ?? dt.representation[p].defaultValue);
+                vals += (p, vi ?? (cx._Dom(dt.representation[p]).defaultValue));
             }
             values = vals;
         }
-        public TRow(RowSet rs, params TypedValue[] v) : this(rs.domain, v) { }
-        public TRow(ObInfo oi, params TypedValue[] v) : this(oi.domain, v) { }
+        public TRow(Context cx,ObInfo oi, params TypedValue[] v) : this(cx, oi.dataType, v) { }
         internal TRow(Domain dm, PRow v) : base(dm)
         {
             var vals = CTree<long, TypedValue>.Empty;
@@ -1604,16 +1608,15 @@ namespace Pyrrho.Common
         }
         internal override TypedValue New(Domain t)
         {
-            throw new NotImplementedException(); // use Relocate
+            var vs = CTree<long, TypedValue>.Empty;
+            var nb = t.rowType.First();
+            for (var b = dataType.rowType.First(); b != null && nb != null; b = b.Next(), nb = nb.Next())
+                vs += (nb.value(), values[b.value()]);
+            return new TRow(t, vs);
         }
         internal override TypedValue Fix(Context cx)
         {
             return new TRow((Domain)dataType.Fix(cx),cx.Fix(values));
-        }
-        internal override TypedValue Relocate(Writer wr)
-        {
-            return new TRow((Domain)dataType._Relocate(wr),
-                wr.Fix(values));
         }
         public static TRow operator+(TRow rw,(long,TypedValue)x)
         {
@@ -1623,8 +1626,7 @@ namespace Pyrrho.Common
         {
             return this;
         }
-        internal override TypedValue this[long n] => values[n];
-        internal TypedValue this[BTree<long,bool> c] => values[c];
+        internal override TypedValue this[long n] => values[n]??TNull.Value;
         internal TypedValue this[int i]
         {
             get {
@@ -1636,6 +1638,16 @@ namespace Pyrrho.Common
                         return values[b.key()];
                 return null;
             }
+        }
+        internal override TypedValue Replace(Context cx, DBObject ov, DBObject nv)
+        {
+            var dt = (Domain)dataType.Replace(cx, ov, nv);
+            if (dt == dataType)
+                return this;
+            var vs = new TypedValue[dt.Length];
+            for (var b = dataType.rowType.First(); b != null; b = b.Next())
+                vs[b.key()] = values[b.value()];
+            return new TRow(cx, dt, vs);
         }
         /// <summary>
         /// Make a readable representation of the Row
@@ -1672,7 +1684,7 @@ namespace Pyrrho.Common
             }
             catch { }
         bad:
-            throw new DBException("22000").ISO();
+            throw new DBException("22000",this).ISO();
         }
         internal override TypedValue[] ToArray()
         {
@@ -1686,9 +1698,11 @@ namespace Pyrrho.Common
             get 
             {
                 var d = dataType.display;
-                for (var b = values.First(); b != null && d>0; b = b.Next(),d--)
+                if (d == 0)
+                    d = int.MaxValue;
+                for (var b = dataType.rowType.First(); b != null && d>0; b = b.Next(),d--)
                 {
-                    var v = b.value();
+                    var v = values[b.value()];
                     if (v != null && !v.IsNull)
                         return false;
                 }
@@ -1746,11 +1760,6 @@ namespace Pyrrho.Common
         {
             return new TMultiset((Domain)dataType.Fix(cx),
                 cx.Fix(tree),count);
-        }
-        internal override TypedValue Relocate(Writer wr)
-        {
-            return new TMultiset((Domain)dataType._Relocate(wr),
-                wr.Fix(tree),count);
         }
         /// <summary>
         /// Mutator: Add n copies of object a
@@ -1955,7 +1964,7 @@ namespace Pyrrho.Common
                 return b;
             if (b == null)
                 return a;
-            Domain tp = a.dataType.elType;
+            Domain tp = Context._system._Dom(a.dataType.elType);
             TMultiset r = new TMultiset(a.dataType);
             for (var d = a.tree.First(); d != null; d = d.Next())
             {
@@ -1996,13 +2005,13 @@ namespace Pyrrho.Common
         {
             var that = (TMultiset)obj;
             if (dataType.kind != that.dataType.kind)
-                throw new DBException("22000").ISO();
+                throw new DBException("22000",this).ISO();
             var e = tree.First();
             var f = that.tree.First();
             var et = dataType.elType;
             for (; e!=null && f!=null; e = e.Next(), f = f.Next())
             {
-                var c = et.Compare(e.key(),f.key());
+                var c = Context._system._Dom(et).Compare(e.key(),f.key());
                 if (c != 0)
                     return c;
             }
@@ -2042,10 +2051,6 @@ namespace Pyrrho.Common
         internal override TypedValue Fix(Context cx)
         {
             return new TXml(name,cx.Fix(attributes),content,cx.Fix(children));
-        }
-        internal override TypedValue Relocate(Writer wr)
-        {
-            return new TXml(name, wr.Fix(attributes), content, wr.Fix(children));
         }
         internal override object Val()
         {
@@ -2131,5 +2136,5 @@ namespace Pyrrho.Common
     /// The OrderCategory enumeration. Row of this type are placed in the database so the following values cannot be changed.
     /// </summary>
     [Flags]
-    internal enum OrderCategory { None = 0, Equals = 1, Full = 2, Relative = 4, Map = 8, State = 16 };
+    internal enum OrderCategory { None = 0, Equals = 1, Full = 2, Relative = 4, Map = 8, State = 16, Primitive = 32 };
 }

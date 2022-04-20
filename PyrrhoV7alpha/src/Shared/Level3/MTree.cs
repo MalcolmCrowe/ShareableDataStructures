@@ -3,7 +3,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -34,8 +34,8 @@ namespace Pyrrho.Level3
         /// So info.nominalKeyType describes the TypedValue[], info.vType is always Int.
         /// And impl.nominalKeyType describes one component of the TypedValue[], impl.vType is MTree, Partial or Int.
         /// </summary>
-        internal readonly SqlTree impl; // of type Domain.MImpl
-        internal readonly TreeInfo info; // if info is null, so is SqlTree, and partial is not null
+        internal readonly SqlTree impl; 
+        internal readonly TreeInfo info; // if info is null, so is SqlTree, and Cardinality is count
         /// <summary>
         /// The number of entries in the MTree
         /// </summary>
@@ -54,6 +54,10 @@ namespace Pyrrho.Level3
         {
             info = ti;
             count = 0;
+        }
+        internal MTree(int c)
+        {
+            count = c;
         }
         /// <summary>
         /// Constructor: an MTree with one given Slot
@@ -93,6 +97,67 @@ namespace Pyrrho.Level3
             impl = i;
             count = c;
         }
+        internal CList<long> Keys()
+        {
+            var r = CList<long>.Empty;
+            for (var t = info; t != null; t = t.tail)
+                r += t.head;
+            return r;
+        }
+        internal bool Distinct()
+        {
+            for (var t = info; t != null; t = t.tail)
+                if (t.onDuplicate != TreeBehaviour.Disallow)
+                    return false;
+            return true;
+        }
+        internal int Cardinality(PRow filt=null)
+        {
+            if (count == 0L)
+                return 0;
+            if (info == null)
+                return (int)count;
+            if (Distinct())
+                return (int)count;
+            if (filt._head is TypedValue v)
+            {
+                if (impl[v] is TypedValue t)
+                    switch (t.dataType.kind)
+                    {
+                        case Sqlx.T:
+                            return (int)((TPartial)t).value.Count;
+                        case Sqlx.INT:
+                            return (int)((TInt)t).value.Value;
+                        case Sqlx.M:
+                            return ((TMTree)t).value.Cardinality(filt._tail);
+                        default:
+                            return 1;
+                    }
+                else
+                    return 0;
+            }
+            var r = 0;
+            for (var b = impl.First(); b != null; b = b.Next())
+            {
+                var t = b.value();
+                switch (t.dataType.kind)
+                {
+                    case Sqlx.T:
+                        r += (int)((TPartial)t).value.Count;
+                        break;
+                    case Sqlx.INT:
+                        r += (int)((TInt)t).value.Value;
+                        break;
+                    case Sqlx.M:
+                        r += ((TMTree)t).value.Cardinality();
+                        break;
+                    default:
+                        r++;
+                        break;
+                }
+            }
+            return r;
+        }
         /// <summary>
         /// A key for this index has a null at position cur: return a suitable new value for this null
         /// </summary>
@@ -100,7 +165,7 @@ namespace Pyrrho.Level3
         /// <param name="off"></param>
         /// <param name="cur"></param>
         /// <returns></returns>
-        internal TypedValue NextKey(BList<TypedValue> key, int off, int cur)
+        internal TypedValue NextKey(CList<TypedValue> key, int off, int cur)
         {
             if (off < cur)
             {
@@ -240,9 +305,9 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Return the tree defined by the off-th key columns, or an empty one
         /// </summary>
-        /// <param name="k">An array of key column values</param>
-        /// <param name="off">An index into k[]</param>
-        MTree Ensure(BList<TypedValue> k, int off)
+        /// <param name="k">A list of key column values</param>
+        /// <param name="off">An index into k</param>
+        MTree Ensure(CList<TypedValue> k, int off)
         {
             if (impl != null && impl.Contains(k[off]))
             {
@@ -432,16 +497,9 @@ namespace Pyrrho.Level3
         {
             return new MTree(info.Replaced(cx, so, sv), impl, count);
         }
-        internal MTree Relocate(Writer wr)
+        internal MTree Relocate(Context cx)
         {
-            var r = new MTree(info.Relocate(wr));
-            for (var b = First(); b != null; b = b.Next())
-            {
-                var iq = b.Value();
-                if (iq != null)
-                    r += (wr.Fix(b.key()), b.Value().Value);
-            }
-            return r;
+            return new MTree(info.Relocate(cx));
         }
         public override string ToString()
         {
@@ -645,9 +703,6 @@ namespace Pyrrho.Level3
                     if (pmk != null)
                         goto done;
                 }
-                var h = _filter?._head;
-                if (h!= null && !h.IsNull)
-                    return null;
                 outer = ABookmark<TypedValue, TypedValue>.Next(outer);
                 if (outer == null)
                     return null;
@@ -810,42 +865,20 @@ namespace Pyrrho.Level3
         /// <param name="d">Whether duplicates are allowed at this level</param>
         /// <param name="n">Whether nulls are allowed at this level</param>
         /// <param name="off">the offset of the current level in multi</param>
-        internal TreeInfo(CList<SqlValue> cols,TreeBehaviour d, TreeBehaviour n, int off=0)
-        {
-            if (off < cols.Length)
-            {
-                var v = cols[off];
-                (head, headType) = (v.defpos,v.domain);
-            }
-            onDuplicate = d;
-            onNullKey = n;
-            tail = (off+1 < cols.Length)?new TreeInfo(cols, d,n, off+1):null;
-        }
-        internal TreeInfo(CList<long> cols, BTree<long,DBObject> ds, TreeBehaviour d, TreeBehaviour n, int off = 0)
+        internal TreeInfo(Context cx,CList<long> cols, TreeBehaviour d, TreeBehaviour n, int off = 0)
         {
             if (off < (int)cols.Count)
             {
                 head = cols[off];
-                headType = ds[head].domain;
+                headType = (cx.obs[head]??(DBObject)cx.db.objects[head]).Domains(cx);
             }
             onDuplicate = d;
             onNullKey = n;
-            tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, ds, d, n, off + 1) : null;
-        }
-        internal TreeInfo(CList<long> cols, Domain dt, TreeBehaviour d, TreeBehaviour n, int off = 0)
-        {
-            if (off < (int)cols.Count)
-            {
-                head = cols[off];
-                headType = dt.representation[head];
-            }
-            onDuplicate = d;
-            onNullKey = n;
-            tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cols, dt, d, n, off + 1) : null;
+            tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cx,cols, d, n, off + 1) : null;
         }
         internal TreeInfo Fix(Context cx)
         {
-            return new TreeInfo(cx.obuids[head]??head, (Domain)headType.Fix(cx), 
+            return new TreeInfo(cx.Fix(head), (Domain)headType.Fix(cx), 
                 onDuplicate, onNullKey, tail?.Fix(cx));
         }
         internal TreeInfo Replaced(Context cx)
@@ -853,10 +886,10 @@ namespace Pyrrho.Level3
             return new TreeInfo(cx.done[head]?.defpos ?? head, (Domain)headType.Fix(cx),
                 onDuplicate, onNullKey, tail?.Replaced(cx));
         }
-        internal TreeInfo Relocate(Level2.Writer wr)
+        internal TreeInfo Relocate(Context cx)
         {
-            return new TreeInfo(wr.Fix(head), (Domain)headType._Relocate(wr),
-                onDuplicate, onNullKey, tail?.Relocate(wr));
+            return new TreeInfo(cx.Fix(head), (Domain)headType.Relocate(cx),
+                onDuplicate, onNullKey, tail?.Relocate(cx));
         }
         internal TreeInfo Replaced(Context cx,DBObject so,DBObject sv)
         {

@@ -1,13 +1,12 @@
-﻿using System;
-using System.Text;
-using System.IO;
-using Pyrrho.Common;
+﻿using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
-using System.Data;
+using System;
+using System.IO;
+using System.Text;
 using System.Threading;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -58,8 +57,47 @@ namespace Pyrrho.Level2
             throw new NotImplementedException();
         }
     }
-    public abstract class WriterBase : IOBase
+    public class Writer : IOBase
     {
+        public Stream file; // shared with Reader(s)
+        public long seg = -1;    // The SSegment uid for the start of a Commit once roles are defined
+                                 //       internal BTree<long, long> uids = BTree<long, long>.Empty; // used for movement of DbObjects
+                                 //      internal BTree<long, RowSet> rss = BTree<long, RowSet>.Empty; // ditto RowSets
+                                 // fixups: unknownolduid -> referer -> how->bool
+        public long segment;  // the most recent PTransaction/PTriggeredAction written
+        public long oldStmt; // Where we are with Executables
+                             //       public long srcPos,oldStmt,stmtPos; // for Fixing uids
+        internal BList<Rvv> rvv = BList<Rvv>.Empty;
+        BList<byte[]> prevBufs = BList<byte[]>.Empty;
+        internal Context cx; // access the database we are writing to
+        internal Writer(Context c, Stream f)
+        {
+            cx = c;
+            file = f;
+        }
+        public long Length => file.Length + buf.pos;
+        public override void PutBuf()
+        {
+            file.Seek(0, SeekOrigin.End);
+            for (var b = prevBufs.First(); b != null; b = b.Next())
+            {
+                var bf = b.value();
+                file.Write(bf, 0, Buffer.Size);
+            }
+            prevBufs = BList<byte[]>.Empty;
+            file.Write(buf.buf, 0, buf.pos);
+            buf.pos = 0;
+        }
+        public override void WriteByte(byte value)
+        {
+            if (buf.pos >= Buffer.Size)
+            {
+                prevBufs += buf.buf;
+                buf.buf = new byte[Buffer.Size];
+                buf.pos = 0;
+            }
+            buf.buf[buf.pos++] = value;
+        }
         public void PutInt(int? n)
         {
             if (n == null)
@@ -90,695 +128,65 @@ namespace Pyrrho.Level2
             for (var i = 0; i < b.Length; i++)
                 WriteByte(b[i]);
         }
-    }
-    public class Writer : WriterBase
-    {
-        public Stream file; // shared with Reader(s)
-        public long seg = -1;    // The SSegment uid for the start of a Commit once roles are defined
-        internal BTree<long, long> uids = BTree<long, long>.Empty; // used for movement of DbObjects
-        internal BTree<long, RowSet> rss = BTree<long, RowSet>.Empty; // ditto RowSets
-        // fixups: unknownolduid -> referer -> how->bool
-        internal BTree<long,BTree<long,BTree<long,bool>>> fixup 
-            = BTree<long, BTree<long, BTree<long, bool>>>.Empty;
-        internal long curs = -1;
-        public long segment;  // the most recent PTransaction/PTriggeredAction written
-        public long srcPos,oldStmt,stmtPos; // for Fixing uids
-        internal BList<Rvv> rvv= BList<Rvv>.Empty;
-        BList<byte[]> prevBufs = BList<byte[]>.Empty;
-        internal Context cx; // access the database we are writing to
-        internal Writer(Context c,Stream f)
-        {
-            cx = c;
-            file = f;
-        }
-        public long Length => file.Length + buf.pos;
-        public override void PutBuf()
-        {
-            file.Seek(0, SeekOrigin.End);
-            for (var b=prevBufs.First();b!=null;b=b.Next())
-            {
-                var bf = b.value();
-                file.Write(bf, 0, Buffer.Size);
-            }
-            prevBufs = BList<byte[]>.Empty;
-            file.Write(buf.buf, 0, buf.pos);
-            buf.pos = 0;
-        }
-        public override void WriteByte(byte value)
-        {
-            if (buf.pos >= Buffer.Size)
-            {
-                prevBufs += buf.buf;
-                buf.buf = new byte[Buffer.Size];
-                buf.pos = 0;
-            }
-            buf.buf[buf.pos++] = value;
-        }
         internal Ident PutIdent(Ident id)
         {
-            if (id == null || id.ident=="")
+            if (id == null || id.ident == "")
             {
                 PutString("");
                 return null;
             }
-            var r = new Ident(id.ident,Length);
+            var r = new Ident(id.ident, cx.Ix(Length));
             PutString(id.ident);
             return r;
         }
-        internal long Fix(long pos)
-        {
-            if (uids.Contains(pos)) 
-                return uids[pos];
-            if (cx.parse==ExecuteStatus.Prepare && pos>PyrrhoServer.Preparing)
-            {
-                var r = cx.db.nextStmt;
-                cx.db += (Database.NextStmt, r+1);
-                uids += (pos, r);
-                return r;
-            }
-            if (pos>=Transaction.Executables && pos<oldStmt)
-            {
-                uids += (pos, ++stmtPos);
-                return stmtPos;
-            }
-            if (pos>Transaction.Analysing && pos<Transaction.Executables)
-            {
-                uids += (pos, ++srcPos);
-                return srcPos;
-            }
-            return pos;
-        }
-        internal long Fix1(long pos)
-        {
-            return uids.Contains(pos)?uids[pos] : pos;
-        }
-        internal Ident Fix(Ident id)
-        {
-            if (id == null)
-                return null;
-            var p = Fix(id.iix);
-            if (p == id.iix)
-                return id;
-            return new Ident(id.ident, p);
-        }
-        /// <summary>
-        /// Not to be used for ObInfo
-        /// </summary>
-        /// <param name="pos"></param>
-        /// <returns></returns>
-        internal DBObject Fixed(long pos)
-        {
-            var p = Fix(pos);
-            if (p <= Length && cx.db.objects[p] is DBObject nb)
-                return nb;
-            if (p == pos)
-                return (DBObject)cx.obs[p]?._Relocate(this);
-            if (cx.obs[p] is DBObject x)
-                return x;
-            var ob = cx.obs[pos];
-            if ((pos>=Transaction.TransPos && pos<Transaction.Executables)
-                || pos>=Transaction.HeapStart)
-            {
-                ob = ob.Relocate(p).Relocate(this);
-                p = ob.defpos;
-                cx.obs -= pos;
-                cx.obs += (p,ob);
-                return ob;
-            }
-            return ob;
-        }
-        internal BList<long> Fix(BList<long> ord)
-        {
-            var r = BList<long>.Empty;
-            var ch = false;
-            for (var b = ord?.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var f = Fix(p);
-                if (p != f)
-                    ch = true;
-                r += f;
-            }
-            return ch ? r : ord;
-        }
-        internal CList<long> Fix(CList<long> ord)
-        {
-            var r = CList<long>.Empty;
-            var ch = false;
-            for (var b=ord?.First();b!=null;b=b.Next())
-            {
-                var p = b.value();
-                var f = Fix(p);
-                if (p != f)
-                    ch = true;
-                r += f;
-            }
-            return ch? r : ord;
-        }
-        internal CList<TypedValue> Fix(CList<TypedValue> ord)
-        {
-            var r = CList<TypedValue>.Empty;
-            var ch = false;
-            for (var b = ord?.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var f = p.Relocate(this);
-                if (p != f)
-                    ch = true;
-                r += f;
-            }
-            return ch ? r : ord;
-        }
-        internal CTree<TypedValue, long> Fix(CTree<TypedValue, long> mu)
-        {
-            var r = CTree<TypedValue, long>.Empty;
-            for (var b = mu?.First(); b != null; b = b.Next())
-                r += (b.key().Relocate(this),b.value());
-            return r;
-        }
-        internal CTree<K,long> Fix<K>(CTree<K,long> us) where K:IComparable
-        {
-            var r = CTree<K,long>.Empty;
-            var ch = false;
-            for (var b = us?.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var f = Fixed(p);
-                if (p != f.defpos)
-                    ch = true;
-                r += (b.key(),f.defpos);
-            }
-            return ch ? r : us;
-        }
-        internal CTree<string, TypedValue> Fix(CTree<string, TypedValue> a)
-        {
-            var r = CTree<string, TypedValue>.Empty;
-            for (var b = a?.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                r += (p, b.value().Relocate(this));
-            }
-            return r;
-        }
-        internal CTree<PTrigger.TrigType,CTree<long,bool>> Fix(CTree<PTrigger.TrigType,CTree<long,bool>> t)
-        {
-            var r = CTree<PTrigger.TrigType, CTree<long, bool>>.Empty;
-            for (var b = t.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                r += (p, Fix(b.value()));
-            }
-            return r;
-        }
-        internal CTree<long, CList<TypedValue>> Fix(CTree<long, CList<TypedValue>> refs, Context nc)
-        {
-            var r = CTree<long, CList<TypedValue>>.Empty;
-            var ch = false;
-            for (var b = refs?.First(); b != null; b = b.Next())
-            {
-                var p = Fixed(b.key()).defpos;
-                var vs = Fix(b.value());
-                ch = ch || (p != b.key()) || vs != b.value();
-                r += (p, vs);
-            }
-            return ch ? r : refs;
-        }
-        internal CList<K> Fix<K>(CList<K> key) where K:TypedValue
-        {
-            var r = CList<K>.Empty;
-            var ch = false;
-            for (var b = key?.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var f =(K)p.Relocate(this);
-                if (p != f)
-                    ch = true;
-                r += f;
-            }
-            return ch ? r : key;
-        }
-        internal BTree<long, SqlValue> Fix(BTree<long, SqlValue> rs)
-        {
-            var r = BTree<long, SqlValue>.Empty;
-            var ch = false;
-            for (var b = rs.First(); b != null; b = b.Next())
-            {
-                var p = Fix(b.key());
-                var d = (SqlValue)b.value()._Relocate(this);
-                ch = ch || p != b.key() || d != b.value();
-                r += (p, d);
-            }
-            return ch ? r : rs;
-        }
-        internal BList<Grouping> Fix(BList<Grouping> gs)
-        {
-            var r = BList<Grouping>.Empty;
-            var ch = false;
-            for (var b = gs.First(); b != null; b = b.Next())
-            {
-                var g = (Grouping)b.value()._Relocate(this);
-                ch = ch || g != b.value();
-                r += g;
-            }
-            return ch ? r : gs;
-        }
-        internal BList<Domain> Fix(BList<Domain> ds)
-        {
-            var r = BList<Domain>.Empty;
-            var ch = false;
-            for (var b = ds?.First(); b != null; b = b.Next())
-            {
-                var d = b.value();
-                var nd = (Domain)d._Relocate(this);
-                if (d != nd)
-                    ch = true;
-                r += nd;
-            }
-            return ch ? r : ds;
-        }
-        internal BList<(SqlXmlValue.XmlName,long)> Fix(BList<(SqlXmlValue.XmlName, long)> cs)
-        {
-            var r = BList<(SqlXmlValue.XmlName, long)>.Empty;
-            for (var b = cs.First(); b != null; b = b.Next())
-            {
-                var (n, p) = b.value();
-                var np = Fixed(p).defpos;
-                r += (n,np);
-            }
-            return r;
-        }
-        internal CTree<long,long> Fix(CTree<long,long> fd)
-        {
-            var r = CTree<long, long>.Empty;
-            var ch = false;
-            for (var b = fd?.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var v = b.value();
-                var np = Fix(p);
-                var nv = Fix(v);
-                if (p != np || v!=nv)
-                    ch = true;
-                r += (np, nv);
-            }
-            return ch ? r : fd;
-        }
-        internal BTree<long, long?> Fix(BTree<long, long?> fd)
-        {
-            var r = BTree<long, long?>.Empty;
-            var ch = false;
-            for (var b = fd?.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var v = b.value();
-                var np = Fix(p);
-                var nv = Fix(v.Value);
-                if (p != np || v != nv)
-                    ch = true;
-                r += (np, nv);
-            }
-            return ch ? r : fd;
-        }
-        internal CTree<long, V> Fix<V>(CTree<long, V> fi) where V:IComparable
-        {
-            var r = CTree<long, V>.Empty;
-            var ch = false;
-            for (var b = fi?.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var np = Fix(p);
-                if (p != np)
-                    ch = true;
-                r += (np, b.value());
-            }
-            return ch ? r : fi;
-        }
-        internal CTree<long, CTree<long, bool>> Fix(CTree<long, CTree<long, bool>> fi)
-        {
-            var r = CTree<long, CTree<long, bool>>.Empty;
-            var ch = false;
-            for (var b = fi?.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var np = Fix(p);
-                if (p != np)
-                    ch = true;
-                r += (np, Fix(b.value()));
-            }
-            return ch ? r : fi;
-        }
-        internal CTree<long,Domain> Fix(CTree<long,Domain> rs)
-        {
-            var r = CTree<long, Domain>.Empty;
-            var ch = false;
-            for (var b = rs.First(); b != null; b = b.Next())
-            {
-                var rk = b.key();
-                var nk = Fix1(rk);
-                var od = b.value();
-                var rr = (Domain)od._Relocate(this);
-                if (rr != b.value() || rk != nk)
-                    ch = true;
-                r += (nk, rr);
-            }
-            return ch ? r : rs;
-        }
-        internal CList<UpdateAssignment> Fix(CList<UpdateAssignment> us)
-        {
-            var r = CList<UpdateAssignment>.Empty;
-            var ch = false;
-            for (var b = us?.First(); b != null; b = b.Next())
-            {
-                var u = (UpdateAssignment)b.value()._Relocate(this);
-                ch = ch || u != b.value();
-                r += u;
-            }
-            return ch ? r : us;
-        }
-        internal CTree<UpdateAssignment,bool> Fix(CTree<UpdateAssignment,bool> us)
-        {
-            var r = CTree<UpdateAssignment,bool>.Empty;
-            var ch = false;
-            for (var b = us?.First(); b != null; b = b.Next())
-            {
-                var u = (UpdateAssignment)b.key()._Relocate(this);
-                ch = ch || u != b.key();
-                r += (u,b.value());
-            }
-            return ch ? r : us;
-        }
-        internal CTree<string,CTree<long,long>> Fix
-            (CTree<string, CTree<long, long>> vc)
-        {
-            var r = CTree<string, CTree<long, long>>.Empty;
-            for (var b = vc.First(); b != null; b = b.Next())
-                r += (b.key(), Fix(b.value()));
-            return r;
-        }
-        internal CTree<long, TypedValue> Fix(CTree<long, TypedValue> fi)
-        {
-            var r = CTree<long, TypedValue>.Empty;
-            var ch = false;
-            for (var b = fi?.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var np = Fix(p);
-                if (p != np)
-                    ch = true;
-                r += (np, b.value());
-            }
-            return ch ? r : fi;
-        }
-        internal PRow Fix(PRow rw)
-        {
-            if (rw == null)
-                return null;
-            return new PRow(rw._head?.Relocate(this), Fix(rw._tail));
-        }
-        internal CTree<long, RowSet.Finder> Fix(CTree<long, RowSet.Finder> fi)
-        {
-            var r = CTree<long, RowSet.Finder>.Empty;
-            for (var b = fi.First(); b != null; b = b.Next())
-                r += (Fix(b.key()), b.value().Relocate(this));
-            return r;
-        }
-        internal BTree<SqlValue, TypedValue> Fix(BTree<SqlValue, TypedValue> vt)
-        {
-            var r = BTree<SqlValue, TypedValue>.Empty;
-            var ch = false;
-            for (var b = vt?.First(); b != null; b = b.Next())
-            {
-                var p = (SqlValue)b.key()._Relocate(this);
-                var v = b.value().Relocate(this);
-                if (p != b.key() || v != b.value())
-                    ch = true;
-                r += (p, b.value());
-            }
-            return ch ? r : vt;
-        }
+
     }
 
-    public class ReaderBase : IOBase
+    public class Reader : IOBase
     {
-        internal Database database;
+        internal Context context;
+        internal Role role;
+        internal User user;
+        internal PTransaction trans = null;
+        public long segment;
         FileStream file;
-        public long limit; 
+        public long limit;
         internal BTree<long, Physical.Type> log;
         public bool locked = false;
-        internal ReaderBase(Database db, long p)
+        internal Reader(Database db, long p)
         {
-            database = db;
+            context = new Context(db);
+            context.parse = ExecuteStatus.Parse;
             file = db._File();
             log = db.log;
             limit = file.Length;
             GetBuf(p);
         }
-        public override int GetBuf(long s)
+        internal Reader(Context cx)
         {
-            int m = (limit == 0 || limit >= s + Buffer.Size) ? Buffer.Size : (int)(limit - s);
-            bool taken = false;
-            try
-            {
-                if (!locked)
-                    Monitor.Enter(file, ref taken);
-                file.Seek(s, SeekOrigin.Begin);
-                buf.len = file.Read(buf.buf, 0, m);
-                buf.pos = 0;
-            }
-            finally
-            {
-                if (taken)
-                {
-                    Monitor.Exit(file);
-                    locked = false;
-                }
-            }
-            buf.start = s;
-            return buf.len;
+            var db = cx.db;
+            context = new Context(db);
+            context.parse = ExecuteStatus.Parse;
+            file = db._File();
+            log = db.log;
+            role = db.role;
+            user = (User)db.objects[db.owner];
+            limit = file.Length;
+            GetBuf(db.loadpos);
         }
-        public override int ReadByte()
+        internal Reader(Context cx, long p, PTransaction pt = null)
         {
-            if (Position >= limit)
-                return -1;
-            if (buf.pos == buf.len)
-            {
-                int n = GetBuf(buf.start + buf.len);
-                if (n < 0)
-                    return -1;
-                buf.pos = 0;
-            }
-            return buf.buf[buf.pos++];
-        }
-        public virtual long Position => buf.start + buf.pos;
-        internal virtual void Set(Physical ph) 
-        {
-        }
-        internal virtual void Segment(Physical ph) 
-        {
-            ph.trans = GetLong();
-        }
-        internal virtual DBObject GetObject(long pp)
-        {
-            return null;
-        }
-        internal virtual void Upd(PColumn3 pc) { }
-        internal virtual long? Prev(long pv)
-        {
-            if (pv < 0)
-                return null;
-            return GetPhysical(pv).Affects;
-        }
-        internal virtual void Setup(PDomain pd)
-        {
-            TypedValue dv = TNull.Value;
-            var ds = pd.domain.defaultString;
-            var domain = pd.domain;
-            if (ds.Length > 0
-                && pd.domain.kind == Sqlx.CHAR && ds[0] != '\'')
-                ds = "'" + ds + "'";
-            if (ds != "")
-                try
-                {
-                    dv = Domain.For(domain.kind).Parse(database.uid, ds);
-                }
-                catch (Exception) { }
-            domain += (Domain.Default, dv);
-            if (pd.eldefpos >= 0)
-            {
-                if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET
-                    || domain.kind == Sqlx.SENSITIVE)
-                    domain += (Domain.Element, GetDomain(pd.eldefpos,pd.ppos));
-                else
-                    domain = new UDType(pd.ppos,pd.domain);
-            }
-            pd.domain = domain;
-        }
-        internal virtual void Setup(Modify pd)
-        { }
-        internal virtual void Setup(Ordering od)
-        { }
-        /// <summary>
-        /// Get the Domain for a given TableColumn defpos
-        /// </summary>
-        /// <param name="log"></param>
-        /// <param name="p"></param>
-        /// <returns></returns>
-        internal (string,Domain) GetColumnDomain(long cp,long p)
-        {
-            var tp = -1L;
-            var n = "";
-            for (var cb = database.colTracker[cp]?.First(); cb != null; cb = cb.Next())
-            {
-                tp = cb.key();
-                if (tp > p)
-                    break;
-                n = cb.value();
-            }
-            return (n,GetDomain(tp,p));
-        }
-        internal Domain GetDomain(long tp,long p)
-        {
-            var r = Domain.Null;
-            for (var b = database.typeTracker[tp]?.First();b!=null;b=b.Next())
-            {
-                var dp = b.key();
-                if (dp > p)
-                    break;
-                r = b.value();
-            }
-            return r;
-        }
-        /// <summary>
-        /// Get the Domain for a given table defpos and column name
-        /// </summary>
-        /// <param name="log"></param>
-        /// <param name="tb"></param>
-        /// <param name="cn"></param>
-        /// <returns></returns>
-        internal virtual (long, Domain) GetDomain(long tb, string cn, long pp)
-        {
-            var dm = GetDomain(tb, pp);
-            for (var b=dm.rowType.First();b!=null;b=b.Next())
-            {
-                var cp = b.value();
-                var (n, cdt) = GetColumnDomain(cp, pp);
-                if (n == cn)
-                    return (cp, cdt);
-            }
-            return (-1L, Domain.Content);
-        }
-        internal Physical GetPhysical(long pv)
-        {
-            if (pv < 0)
-                return null;
-            return new ReaderBase(database, pv).Create();
-        }
-        internal Integer GetInteger()
-        {
-            var n = ReadByte();
-            var cs = new byte[n];
-            for (int j = 0; j < n; j++)
-                cs[j] = (byte)ReadByte();
-            return new Integer(cs);
-        }
-        public int GetInt()
-        {
-            return GetInteger();
-        }
-        internal int GetInt32()
-        {
-            var r = 0;
-            for (var i = 0; i < 4; i++)
-                r = (r << 8) + ReadByte();
-            return r;
-        }
-        public long GetLong()
-        {
-            return GetInteger();
-        }
-        public string GetString()
-        {
-            int n = GetInt();
-            byte[] cs = new byte[n];
-            for (int j = 0; j < n; j++)
-                cs[j] = (byte)ReadByte();
-            return Encoding.UTF8.GetString(cs, 0, n);
-        }
-        internal Ident GetIdent()
-        {
-            var p = Position;
-            var s = GetString();
-            return (s == "") ? null : new Ident(s, p);
-        }
-        /// <summary>
-        /// Get a Numeric from the buffer
-        /// </summary>
-        /// <returns>a new Numeric</returns>
-        internal Common.Numeric GetDecimal()
-        {
-            Integer m = GetInteger();
-            return new Common.Numeric(m, GetInt());
-        }
-        /// <summary>
-        /// Get a Real from the buffer
-        /// </summary>
-        /// <returns>a new real</returns>
-        public double GetDouble()
-        {
-            return GetDecimal();
-        }
-        /// <summary>
-        /// Get a dateTime from the buffer
-        /// </summary>
-        /// <returns>a new datetime</returns>
-        public DateTime GetDateTime()
-        {
-            return new DateTime(GetLong());
-        }
-        /// <summary>
-        /// Get an Interval from the buffer
-        /// </summary>
-        /// <returns>a new Interval</returns>
-        internal Interval GetInterval()
-        {
-            var ym = (byte)ReadByte();
-            if (ym == 1)
-            {
-                var years = GetInt();
-                var months = GetInt();
-                return new Interval(years, months);
-            }
-            else
-                return new Interval(GetLong());
-        }
-        /// <summary>
-        /// Attempt some backward compatibility
-        /// </summary>
-        /// <returns></returns>
-        internal Interval GetInterval0()
-        {
-            var years = GetInt();
-            var months = GetInt();
-            var ticks = GetLong();
-            var r = new Interval(years, months, ticks);
-            return r;
-        }
-        /// <summary>
-        /// Get an array of bytes from the buffer
-        /// </summary>
-        /// <returns>the new byte array</returns>
-        public byte[] GetBytes()
-        {
-            int n = GetInt();
-            byte[] b = new byte[n];
-            for (int j = 0; j < n; j++)
-                b[j] = (byte)ReadByte();
-            return b;
-        }
-        protected bool EoF()
-        {
-            return Position >= limit;
-        }
+            var db = cx.db;
+            context = new Context(db);
+            context.parse = ExecuteStatus.Parse;
+            file = db._File();
+            log = db.log;
+            role = db.role;
+            user = (User)db.objects[db.owner];
+            limit = file.Length;
+            trans = pt;
+            GetBuf(p);
+        } 
         internal Physical Create()
         {
             if (EoF())
@@ -864,14 +272,30 @@ namespace Pyrrho.Level2
             p.Deserialise(this);
             return p;
         }
-    }
-    public class Reader : ReaderBase
-    {
-        internal Context context;
-        internal Role role;
-        internal User user;
-        internal PTransaction trans = null;
-        public long segment;
+
+        public override int GetBuf(long s)
+        {
+            int m = (limit == 0 || limit >= s + Buffer.Size) ? Buffer.Size : (int)(limit - s);
+            bool taken = false;
+            try
+            {
+                if (!locked)
+                    Monitor.Enter(file, ref taken);
+                file.Seek(s, SeekOrigin.Begin);
+                buf.len = file.Read(buf.buf, 0, m);
+                buf.pos = 0;
+            }
+            finally
+            {
+                if (taken)
+                {
+                    Monitor.Exit(file);
+                    locked = false;
+                }
+            }
+            buf.start = s;
+            return buf.len;
+        }
         public override int ReadByte()
         {
             if (Position >= limit)
@@ -885,53 +309,189 @@ namespace Pyrrho.Level2
             }
             return buf.buf[buf.pos++];
         }
-        internal Reader(Context cx) : base(cx.db,cx.db.loadpos)
+        public long Position => buf.start + buf.pos;
+        /// <summary>
+        /// Get the colpos and Domain for a given table defpos, column name, ppos
+        /// </summary>
+        /// <param name="log"></param>
+        /// <param name="tb"></param>
+        /// <param name="cn"></param>
+        /// <returns></returns>
+        internal virtual (long,Domain) GetDomain(long tb, string cn, long pp)
         {
-            var db = cx.db;
-            context = new Context(db);
-            role = db.role;
-            user = (User)db.objects[db.owner];
+            var (dm, st) = GetDomain(tb, pp);
+            var cp = st[cn];
+            return (cp,GetDomain(cp,pp).Item1);
         }
-        internal Reader(Context cx, long p, PTransaction pt=null)
-            :base(cx.db,p)
+        /// <summary>
+        /// Get the name and Domain for a given TableColumn defpos and ppos
+        /// </summary>
+        /// <param name="log"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        internal (string, Domain) GetColumnDomain(long cp, long p)
         {
-            var db = cx.db;
-            context = new Context(db);
-            role = db.role;
-            user = (User)db.objects[db.owner];
-            trans = pt;
+            var tc = (TableColumn)context.db.objects[cp];
+            var oi = (ObInfo)context.db.role.infos[cp];
+            var nm = oi.name;
+            var dt = GetDomain(oi.domain,p); // can't simply assume dataType is correct
+            return (nm,dt.Item1);
         }
-        internal override void Set(Physical ph)
+        /// <summary>
+        /// Get the Domain and column map for a given DBObject defpos and ppos
+        /// </summary>
+        /// <param name="tp"></param>
+        /// <param name="p"></param>
+        /// <returns></returns>
+        internal (Domain,CTree<string,long>) GetDomain(long tp, long p)
+        {
+            var r = (Domain.Content,CTree<string,long>.Empty);
+            for (var b = context.db.role.typeTracker[tp]?.First(); b != null; b = b.Next())
+            {
+                var dp = b.key();
+                if (dp > p)
+                    break;
+                r = b.value();
+            }
+            return r;
+        }
+        internal Integer GetInteger()
+        {
+            var n = ReadByte();
+            var cs = new byte[n];
+            for (int j = 0; j < n; j++)
+                cs[j] = (byte)ReadByte();
+            return new Integer(cs);
+        }
+        public int GetInt()
+        {
+            return GetInteger();
+        }
+        internal int GetInt32()
+        {
+            var r = 0;
+            for (var i = 0; i < 4; i++)
+                r = (r << 8) + ReadByte();
+            return r;
+        }
+        public long GetLong()
+        {
+            return GetInteger();
+        }
+        public string GetString()
+        {
+            int n = GetInt();
+            byte[] cs = new byte[n];
+            for (int j = 0; j < n; j++)
+                cs[j] = (byte)ReadByte();
+            return Encoding.UTF8.GetString(cs, 0, n);
+        }
+        internal Ident GetIdent()
+        {
+            var p = context.GetIid();
+            var s = GetString();
+            return (s == "") ? null : new Ident(s, p);
+        }
+        /// <summary>
+        /// Get a Numeric from the buffer
+        /// </summary>
+        /// <returns>a new Numeric</returns>
+        internal Common.Numeric GetDecimal()
+        {
+            Integer m = GetInteger();
+            return new Common.Numeric(m, GetInt());
+        }
+        /// <summary>
+        /// Get a Real from the buffer
+        /// </summary>
+        /// <returns>a new real</returns>
+        public double GetDouble()
+        {
+            return GetDecimal();
+        }
+        /// <summary>
+        /// Get a dateTime from the buffer
+        /// </summary>
+        /// <returns>a new datetime</returns>
+        public DateTime GetDateTime()
+        {
+            return new DateTime(GetLong());
+        }
+        /// <summary>
+        /// Get an Interval from the buffer
+        /// </summary>
+        /// <returns>a new Interval</returns>
+        internal Interval GetInterval()
+        {
+            var ym = (byte)ReadByte();
+            if (ym == 1)
+            {
+                var years = GetInt();
+                var months = GetInt();
+                return new Interval(years, months);
+            }
+            else
+                return new Interval(GetLong());
+        }
+        /// <summary>
+        /// Attempt some backward compatibility
+        /// </summary>
+        /// <returns></returns>
+        internal Interval GetInterval0()
+        {
+            var years = GetInt();
+            var months = GetInt();
+            var ticks = GetLong();
+            var r = new Interval(years, months, ticks);
+            return r;
+        }
+        /// <summary>
+        /// Get an array of bytes from the buffer
+        /// </summary>
+        /// <returns>the new byte array</returns>
+        public byte[] GetBytes()
+        {
+            int n = GetInt();
+            byte[] b = new byte[n];
+            for (int j = 0; j < n; j++)
+                b[j] = (byte)ReadByte();
+            return b;
+        }
+        protected bool EoF()
+        {
+            return Position >= limit;
+        }
+        internal void Set(Physical ph)
         {
             ph.trans = trans?.ppos ?? 0;
             ph.time = trans?.pttime ?? 0;
         }
-        internal override void Segment(Physical ph)
+        internal void Segment(Physical ph)
         {
             segment = GetLong();
             ph.trans = segment;
         }
-        internal override DBObject GetObject(long pp)
+        internal DBObject GetObject(long pp)
         {
             return (DBObject)context.db.objects[pp];
         }
-        internal override void Upd(PColumn3 pc)
+        internal  void Upd(PColumn3 pc)
         {
             if (pc.ups != "")
                 try
                 {
-                    pc.upd = new Parser(context).ParseAssignments(pc.ups, pc.table.domain);
+                    pc.upd = new Parser(context).ParseAssignments(pc.ups, pc.dataType);
                 }
                 catch (Exception)
                 {
                     pc.upd = CTree<UpdateAssignment, bool>.Empty;
                 }
         }
-        internal override long? Prev(long pv)
+        internal long? Prev(long pv)
         {
             return (long?)context.db.objects[pv];
         }
-        internal override void Setup(PDomain pd)
+        internal void Setup(PDomain pd)
         {
             TypedValue dv = TNull.Value;
             var ds = pd.domain.defaultString;
@@ -948,68 +508,48 @@ namespace Pyrrho.Level2
                 catch (Exception) { }
             if (pd.eldefpos >= 0)
             {
-                if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET 
-                    || domain.kind == Sqlx.SENSITIVE)
+                if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET)
                     domain += (Domain.Element, context.db.objects[pd.eldefpos]);
                 else
                 {
                     var tb = (Table)context.db.objects[pd.eldefpos];
-                    var rs = CTree<long, Domain>.Empty;
-                    for (var b = tb.domain.rowType.First(); b != null; b = b.Next())
-                    {
-                        var tc = (DBObject)context.db.objects[b.value()];
-                        rs += (b.value(), tc.domain);
-                    }
                     domain = domain + (Domain.Structure, pd.eldefpos)
-                        + (Domain.RowType, tb.domain.rowType)
-                        + (Domain.Representation, rs);
+                        + (Domain.Representation,tb.tblCols);
                 }
             }
-            if (pd is PType) // the structure may have just been defined
-            {
-                for (var b=context.db.objects.Last();b!=null;b=b.Previous())
-                    if (b.value() is Table st)
-                    {
-                        if (st.name is string n && n.Length>0 && n[0]=='(')
-                            domain = domain + (Domain.Structure, st.defpos)
-                                + (Domain.RowType, st.domain.rowType)
-                                + (Domain.Representation, st.domain.representation);
-                        break;
-                    }
-            }
             pd.domain = domain;
-            context.db += (pd.domdefpos, pd.domain, Position);
+            if (pd.domdefpos!=-1L)
+                context.db += (pd.domdefpos, pd.domain, Position);
         }
-        internal override void Setup(Ordering od)
+        internal void Setup(Ordering od)
         {
             od.domain = (Domain)context.db.objects[od.domdefpos];
         }
-        internal override void Setup(Modify pm)
+        internal void Setup(Modify pm)
         {
-            switch (pm.name)
+            switch (pm.nameAndArity)
             {
                 default:
                     {
                         var mi = (ObInfo)context.role.infos[pm.modifydefpos];
                         var mt = (Method)context.db.objects[pm.modifydefpos];
-                        if (mi.domain is UDType udt)
+                        if (mi.dataType is UDType udt)
                         {
-                            var psr = new Parser(context, new Ident(pm.body, pm.ppos + 2));
-                            var (pps, xp) = psr.ParseProcedureHeading(new Ident(pm.name, pm.ppos + 1));
+                            var psr = new Parser(context, pm.source);
+                            var (pps, xp) = psr.ParseProcedureHeading(new Ident(pm.nameAndArity, context.GetIid()));
                             for (var b = udt.representation.First(); b != null; b = b.Next())
                             {
                                 var p = b.key();
-                                var ic = new Ident(psr.cx.Inf(p).name, p);
-                                psr.cx.defs += (ic, p);
-                                psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value()));
+                                var px = psr.cx.Ix(p);
+                                var ic = new Ident(psr.cx.Inf(p).name, px);
+                                psr.cx.defs += (ic, px);
+                                psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value().defpos));
                             }
-                            pm.now = psr.ParseProcedureStatement(xp,null,null);
+                            pm.proc = psr.ParseProcedureStatement(xp, null, null).defpos;
                             pm.framing = new Framing(psr.cx);
                             context.db = psr.cx.db;
-                            pm.Frame(psr.cx);
-                            pm.framing += (Framing.Obs,
-                                pm.framing.obs + (mt.defpos, mt + (Procedure.Body, pm.now.defpos)));
-                            pm.bodydefpos = pm.now.defpos;
+                            context.nextStmt = psr.cx.nextStmt;
+                            pm.framing += (mt + (Procedure.Body, pm.proc));
                             pm.parms = pps;
                         }
                         break;
@@ -1017,21 +557,17 @@ namespace Pyrrho.Level2
                 case "Source":
                     {
                         var ps = context.db.objects[pm.modifydefpos] as Procedure;
-                        pm.now = new Parser(context).ParseQueryExpression(new Ident(pm.body,pm. ppos + 1), ps.domain);
+                        var (_, rs) = new Parser(context).ParseQueryExpression(
+                            pm.source, context._Dom(ps.domain));
+                        pm.proc = rs.defpos;
                         break;
                     }
-                case "Insert": // we ignore all of these (PView1)
-                case "Update":
-                case "Delete":
-                    pm.now = null;
-                    break;
             }
         }
         internal void Add(Physical ph)
         {
             ph.OnLoad(this);
             context.result = -1L;
-            context.frameFix = Position-1;
             context.db.Add(context, ph, Position);
         }
         /// <summary>
@@ -1048,13 +584,15 @@ namespace Pyrrho.Level2
         internal BList<Physical> GetAll()
         {
             var r = BList<Physical>.Empty;
-            try { 
+            try
+            {
                 for (long p = Position; p < limit; p = Position) // will have moved on
                     r += Create();
-            } catch(Exception)
+            }
+            catch (Exception)
             {
                 if (locked)
-                    throw new Exception("GetAll "+Position);
+                    throw new Exception("GetAll " + Position);
             }
             return r;
         }

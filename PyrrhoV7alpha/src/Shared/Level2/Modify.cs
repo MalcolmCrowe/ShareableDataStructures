@@ -8,7 +8,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -32,17 +32,16 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The new name of the routine
         /// </summary>
-		public string name;
+		public string nameAndArity;
         /// <summary>
         /// The new parameters and body of the routine
         /// </summary>
-		public string body;
-        public long bodydefpos;
+		public Ident source;
         public CList<long> parms;
         /// <summary>
         /// The Parsed version of the body for the definer's role
         /// </summary>
-        public DBObject now;
+        public long proc = -1L;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,modifydefpos)) return modifydefpos;
@@ -55,33 +54,35 @@ namespace Pyrrho.Level2
         /// <param name="dp">The defining position of the routine</param>
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
-        public Modify(string nm, long dp, string pc, DBObject nw, long pp, Context cx)
-            : base(Type.Modify,pp,cx,nw.domain)
+        public Modify(string nm, long dp, Procedure me, Ident sce, long pp, Context cx)
+            : base(Type.Modify,pp,cx,me.body,cx._Dom(me))
 		{
             modifydefpos = dp;
-            name = nm;
-            body = pc;
-            now = nw?? throw new PEException("PE919");
-            if (now is Method mt)
-            {
-                parms = mt.ins;
-                bodydefpos = mt.body;
-            }
+            nameAndArity = me.name+"$"+me.arity;
+            source = sce;
+            proc = me.body;
+        }
+        public Modify(string nm, long dp, RowSet rs, Ident sce, long pp, Context cx)
+    : base(Type.Modify, pp, cx, rs.defpos, cx._Dom(rs))
+        {
+            modifydefpos = dp;
+            nameAndArity = nm;
+            source = sce;
+            proc = rs.defpos;
         }
         /// <summary>
         /// Constructor: A Modify request from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public Modify(ReaderBase rdr) : base(Type.Modify,rdr) {}
+		public Modify(Reader rdr) : base(Type.Modify,rdr) {}
         protected Modify(Modify x, Writer wr) : base(x, wr)
         {
-            modifydefpos = wr.Fix(x.modifydefpos);
-            name = x.name;
-            body = x.body;
-            now = x.now;
-            parms = wr.Fix(x.parms);
-            bodydefpos = wr.Fix(x.bodydefpos);
+            modifydefpos = wr.cx.Fix(x.modifydefpos);
+            nameAndArity = x.nameAndArity;
+            source = x.source;
+            parms = wr.cx.Fix(x.parms);
+            proc = wr.cx.Fix(x.proc);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -93,38 +94,59 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for the positions</param>
         public override void Serialise(Writer wr) 
 		{
-			modifydefpos = wr.Fix(modifydefpos);
+			modifydefpos = wr.cx.Fix(modifydefpos);
             wr.PutLong(modifydefpos);
-            wr.PutString(name);
-            wr.PutString(body);
+            wr.PutString(nameAndArity);
+            if (wr.cx.db.format < 51)
+                source = new Ident(DigestSql(wr, source.ident), source.iix);
+            wr.PutString(source.ident);
+            proc = wr.cx.Fix(proc);
 			base.Serialise(wr);
-            var pp = wr.cx.db.objects[modifydefpos] as Procedure;
-            pp += (Procedure.Clause, body);
-            wr.cx.Install(pp,wr.cx.db.loadpos);
         }
         /// <summary>
         /// Desrialise this physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
 		{
 			modifydefpos = rdr.GetLong();
-			name = rdr.GetString();
-			body = rdr.GetString();
+			nameAndArity = rdr.GetString();
+			source = new Ident(rdr.GetString(), rdr.context.Ix(ppos + 1));
 			base.Deserialise(rdr);
-            rdr.Setup(this);
- 
 		}
         internal override void OnLoad(Reader rdr)
         {
-            if (now == null)
-                return;
-            var psr = new Parser(rdr.context);
             var pr = (Method)rdr.context.db.objects[modifydefpos];
-            pr += (DBObject._Framing, framing);
-            rdr.context.db += (pr, rdr.context.db.loadpos);
-            psr.cx.srcFix = ppos + 1;
-            rdr.context.obs += (pr.defpos, pr + (Procedure.Body, now));
+            var psr = new Parser(rdr.context, source);
+            var ns = rdr.context.nextStmt;
+            psr.cx.obs = ObTree.Empty;
+        //    new Ident(psr, nameAndArity);
+        //    psr.LexPos(); //synchronise with CREATE
+            // instantiate everything we may need
+            var oi = (ObInfo)rdr.context.db.role.infos[pr.udType.defpos];
+            var odt = (UDType)oi.dataType;
+            odt.Instance(psr.LexPos(),psr.cx, Domain.Null);
+            for (var b = pr.ins.First(); b != null; b = b.Next())
+            {
+                var p = psr.cx.obs[b.value()];
+                var ip = rdr.context.Ix(p.defpos);
+                psr.cx.defs += (new Ident(p.name, ip), ip);
+            }
+            psr.cx.Install(pr, 0);
+            // and parse the body
+            var bd = psr.ParseProcedureStatement(rdr.context._Dom(pr), null, null);
+            proc = bd.defpos;
+            rdr.context.nextStmt = psr.cx.nextStmt;
+            // the framing is all of the new bits
+            var os = pr.framing.obs;
+            for (var b = psr.cx.obs.PositionAt(ns);
+                b != null; b = b.Next())
+                os += (b.key(), b.value());
+            var fr = framing = Framing.Empty+(Framing.Obs,os);
+            // 
+            pr += (Procedure.Body, proc);
+            pr += (DBObject._Framing,fr);
+            rdr.context.Install(pr, rdr.Position);
         }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -144,7 +166,7 @@ namespace Pyrrho.Level2
                 case Type.Modify:
                     {
                         var m = (Modify)that;
-                        if (name == m.name || modifydefpos == m.modifydefpos)
+                        if (nameAndArity == m.nameAndArity || modifydefpos == m.modifydefpos)
                             return new DBException("40052", modifydefpos, that, ct);
                         break;
                     }
@@ -157,16 +179,22 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-			return "Modify "+Pos(modifydefpos)+": "+name+" to "+body;
+            return "Modify " + nameAndArity + "["+ modifydefpos+"] to " + source.ident;
 		}
-
         internal override void Install(Context cx, long p)
         {
-            ((DBObject)cx.db.objects[modifydefpos])?.Modify(cx, this, p);
-            var ob = ((DBObject)cx.db.objects[modifydefpos])??now;
-            cx.obs += (modifydefpos,ob);
+            var ro = cx.db.role;
+            var pr = (Method)cx.db.objects[modifydefpos];
+            pr = pr + (DBObject.Definer, ro.defpos)
+                + (DBObject._Framing, framing) + (Procedure.Body, proc);
+            ro = ro + (new ObInfo(modifydefpos, nameAndArity, dataType,
+                Grant.Privilege.Execute | Grant.Privilege.GrantExecute), true) + pr;
+            if (cx.db.format < 51)
+                ro += (Role.DBObjects, ro.dbobjects + ("" + modifydefpos, ppos));
+            cx.db = cx.db + (ro, p) + (pr, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install(pr, p);
             base.Install(cx, p);
         }
     }

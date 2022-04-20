@@ -4,7 +4,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -140,6 +140,12 @@ namespace Pyrrho.Common
         {
             return (CTree<K,V>)tree.Remove(k);
         }
+        public static CTree<K,V> operator-(CTree<K,V> tree,CTree<K,V>s)
+        {
+            for (var b = s.First(); b != null; b = b.Next())
+                tree -= b.key();
+            return tree;
+        }
         /// <summary>
         /// Add of trees, optionally non-destructive
         /// </summary>
@@ -149,7 +155,8 @@ namespace Pyrrho.Common
         public static CTree<K, V> operator +(CTree<K, V> c, (CTree<K, V>, bool) x)
         {
             var (d, nd) = x;
-            for (var b = d.First(); b != null; b = b.Next())
+            c = c ?? Empty;
+            for (var b = d?.First(); b != null; b = b.Next())
                 if (!(c.Contains(b.key()) && nd))
                     c += (b.key(), b.value());
             return c;
@@ -327,11 +334,11 @@ namespace Pyrrho.Common
                 r += (b.key().Fix(cx), b.value().Fix(cx));
             return r;
         }
-        internal SqlTree Relocate(Writer wr)
+        internal SqlTree Relocate(Context cx)
         {
-            var r = new SqlTree(info.Relocate(wr), kind, null);
+            var r = new SqlTree(info.Relocate(cx), kind, null);
             for (var b = First(); b != null; b = b.Next())
-                r += (b.key().Relocate(wr), b.value().Relocate(wr));
+                r += (b.key().Relocate(cx), b.value().Relocate(cx));
             return r;
         }
     }
@@ -363,19 +370,37 @@ namespace Pyrrho.Common
         {
             return (CList<V>)b.Remove(i);
         }
+        public static CList<V> operator-(CList<V> b,CList<V> c)
+        {
+            while (b.Count>0 && c.Count>0 && b[0].CompareTo(c[0])==0) // NB not !=Empty
+            {
+                b -= 0;
+                c -= 0;
+            }
+            return b;
+        }
         public static CList<V> operator +(CList<V> a,CList<V> b)
         {
-            var r = a;
-            for (var x = b.First(); x != null; x = x.Next())
+            var r = a ?? Empty;
+            for (var x = b?.First(); x != null; x = x.Next())
                 r += x.value();
             return r;
         }
-        public CList<V> Without(V k)
+        public CList<V> Without(V v)
         {
             var r = Empty;
             for (var b = First(); b != null; b = b.Next())
-                if (b.value().CompareTo(k) != 0)
+                if (b.value().CompareTo(v) != 0)
                     r += b.value();
+            return r;
+        }
+        public CList<V> Replace(V v,V w)
+        {
+            var r = Empty;
+            for (var b = First(); b != null; b = b.Next())
+                if (b.value().CompareTo(v) == 0)
+                    r += w;
+                else r += b.value();
             return r;
         }
         public int CompareTo(object obj)
@@ -404,6 +429,14 @@ namespace Pyrrho.Common
                 if (v.CompareTo(b.value()) == 0)
                     return b.key();
             return -1;
+        }
+
+        internal CTree<V, bool> ToTree() 
+        {
+            var r = CTree<V, bool>.Empty;
+            for (var b = First(); b != null; b = b.Next())
+                r += (b.value(), true);
+            return r;
         }
     }
 }

@@ -2,7 +2,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -13,7 +13,7 @@ using Pyrrho.Level4;
 namespace Pyrrho.Level2
 {
     /// <summary>
-    /// A checkpoint record contains no data. It establishes a synchronisation point for a mobile client.
+    /// A checkpoint record contains no obs. It establishes a synchronisation point for a mobile client.
     /// Note - as of Nov 2018 no version of the server creates this record.
     /// It is preserved here for compatibility with existing databases.
     /// </summary>
@@ -24,7 +24,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The position in the buffer</param>
-        public Checkpoint(ReaderBase rdr) : base(Type.Checkpoint, rdr) { }
+        public Checkpoint(Reader rdr) : base(Type.Checkpoint, rdr) { }
         protected Checkpoint(Checkpoint x, Writer wr) : base(x, wr) { }
         protected override Physical Relocate(Writer wr)
         {

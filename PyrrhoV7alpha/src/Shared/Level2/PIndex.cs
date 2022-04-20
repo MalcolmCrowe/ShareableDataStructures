@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -131,23 +131,23 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">Position in the buffer</param>
-        public PIndex(ReaderBase rdr) : base(Type.PIndex, rdr) { }
+        public PIndex(Reader rdr) : base(Type.PIndex, rdr) { }
         /// <summary>
         /// Constructor: A new PIndex request from the buffer
         /// </summary>
         /// <param name="t">The PIndex type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">Position in the buffer</param>
-        public PIndex(Type t, ReaderBase rdr) : base(t, rdr) { }
+        public PIndex(Type t, Reader rdr) : base(t, rdr) { }
         protected PIndex(PIndex x, Writer wr) : base(x, wr)
         {
             name = x.name;
-            tabledefpos = wr.Fix(x.tabledefpos);
+            tabledefpos = wr.cx.Fix(x.tabledefpos);
             columns = CList<long>.Empty;
             for (var b = x.columns.First(); b != null; b = b.Next())
-                columns += (b.key(), wr.Fix(b.value()));
+                columns += (b.key(), wr.cx.Fix(b.value()));
             flags = x.flags;
-            reference = wr.Fix(x.reference);
+            reference = wr.cx.Fix(x.reference);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -162,14 +162,14 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocatioon information for positions</param>
         public override void Serialise(Writer wr) //LOCKED
         {
-            tabledefpos = wr.Fix(tabledefpos);
+            tabledefpos = wr.cx.Fix(tabledefpos);
             wr.PutString(name.ToString());
             wr.PutLong(tabledefpos);
             wr.PutInt((int)columns.Count);
             for (int j = 0; j < columns.Count; j++)
                 wr.PutLong(columns[j]);
             wr.PutInt((int)flags);
-            reference = wr.Fix(reference);
+            reference = wr.cx.Fix(reference);
             wr.PutLong(reference);
             base.Serialise(wr);
         }
@@ -177,7 +177,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
             tabledefpos = rdr.GetLong();
@@ -263,7 +263,7 @@ namespace Pyrrho.Level2
             {
                 var tc = b.value();
                 cs += tc;
-                cx.obs += (tc,(TableColumn)cx.db.objects[tc]);
+                cx.Add((TableColumn)cx.db.objects[tc]);
                 kc += (tc,true);
             }
             tb += (Table.KeyCols, kc);
@@ -318,8 +318,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">Position in the buffer</param>
-        public PIndex1(ReaderBase rdr) : base(Type.PIndex1, rdr) { }
-        protected PIndex1(Type t, ReaderBase rdr) : base(t, rdr) { }
+        public PIndex1(Reader rdr) : base(Type.PIndex1, rdr) { }
+        protected PIndex1(Type t, Reader rdr) : base(t, rdr) { }
         protected PIndex1(PIndex1 x, Writer wr) : base(x, wr)
         {
             adapter = x.adapter;
@@ -333,7 +333,7 @@ namespace Pyrrho.Level2
             wr.PutString(adapter);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             adapter = rdr.GetString();
             base.Deserialise(rdr);
@@ -375,8 +375,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">Position in the buffer</param>
-        public PIndex2(ReaderBase rdr) : base(Type.PIndex2, rdr) { }
-        protected PIndex2(Type t, ReaderBase rdr) : base(t, rdr) { }
+        public PIndex2(Reader rdr) : base(Type.PIndex2, rdr) { }
+        protected PIndex2(Type t, Reader rdr) : base(t, rdr) { }
         protected PIndex2(PIndex2 x, Writer wr) : base(x, wr)
         {
             metadata = x.metadata;
@@ -390,7 +390,7 @@ namespace Pyrrho.Level2
             wr.PutLong((long)metadata);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             metadata = (ulong)rdr.GetLong();
             base.Deserialise(rdr);
@@ -406,7 +406,7 @@ namespace Pyrrho.Level2
             index = ix;
             ctype = ct;
         }
-        public RefAction(ReaderBase rdr) : base(Type.RefAction,rdr) { }
+        public RefAction(Reader rdr) : base(Type.RefAction,rdr) { }
         protected RefAction(RefAction r, Writer wr) : base(r, wr) 
         {
             index = r.index;
@@ -414,11 +414,11 @@ namespace Pyrrho.Level2
         }
         public override void Serialise(Writer wr)
         {
-            wr.PutLong(wr.Fix(index));
+            wr.PutLong(wr.cx.Fix(index));
             wr.PutInt((int)ctype);
             base.Serialise(wr);
         }
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
         {
             index = rdr.GetLong();
             ctype = (PIndex.ConstraintType)rdr.GetInt();

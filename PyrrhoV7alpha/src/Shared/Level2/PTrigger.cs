@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -108,7 +108,7 @@ namespace Pyrrho.Level2
         /// <param name="pp">The current position in the datafile</param>
         protected PTrigger(Type tp, string tc, long tb, int ty, CList<long> cs, 
             Ident or, Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
-            : base(tp,pp,cx,new Framing(cx),Domain.TableType)
+            : base(tp,pp,cx,tb,Domain.TableType)
 		{
             name = tc;
             target = tb;
@@ -127,34 +127,29 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		public PTrigger(ReaderBase rdr) : base(Type.PTrigger,rdr) {}
+		public PTrigger(Reader rdr) : base(Type.PTrigger,rdr) {}
         protected PTrigger(PTrigger x, Writer wr) : base(x, wr)
         {
             name = x.name;
             src = x.src;
             tgtype = x.tgtype;
-            target = wr.Fix(x.target);
-            from = wr.Fixed(x.from).defpos;
-            def = wr.Fixed(x.def).defpos;
+            var cx = wr.cx;
+            target = cx.Fix(x.target);
+            from = cx.Fix(x.from);
+            def = cx.Fix(x.def);
             var cs = CList<long>.Empty;
             if (x.cols != null)
                 for (var b = x.cols.First(); b!=null; b=b.Next())
-                    cs += wr.Fix(b.value());
+                    cs += cx.Fix(b.value());
             cols = cs;
-            oldRow = wr.Fix(x.oldRow);
-            newRow = wr.Fix(x.newRow);
-            oldTable = wr.Fix(x.oldTable);
-            newTable = wr.Fix(x.newTable);
+            oldRow = cx.Fix(x.oldRow);
+            newRow = cx.Fix(x.newRow);
+            oldTable = cx.Fix(x.oldTable);
+            newTable = cx.Fix(x.newTable);
         }
         protected override Physical Relocate(Writer wr)
         {
             return new PTrigger(this, wr);
-        }
-        internal override void Relocate(Context cx)
-        {
-            base.Relocate(cx);
-            from = cx.obuids[from]??from;
-            domain = (Domain)domain.Fix(cx);
         }
         /// <summary>
         /// Serialise this Physical to the PhysBase
@@ -162,9 +157,8 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr) 
 		{
-            wr.srcPos = wr.Length+1; 
             wr.PutString(name.ToString());
-            wr.PutLong(wr.Fix(target));
+            wr.PutLong(wr.cx.Fix(target));
             wr.PutInt((int)tgtype);
 			if (cols==null)
                 wr.PutInt(0);
@@ -173,14 +167,15 @@ namespace Pyrrho.Level2
 				int n = cols.Length;
                 wr.PutInt(n);
 				for(var b=cols.First();b!=null;b=b.Next())
-                    wr.PutLong(wr.Fix(b.value()));
+                    wr.PutLong(wr.cx.Fix(b.value()));
 			}
             // DON'T update oldRow, newRow, oldTable, newTable
             wr.PutIdent(oldRow);
             wr.PutIdent(newRow);
             wr.PutIdent(oldTable);
             wr.PutIdent(newTable);
-            src = new Ident((wr.cx.db.format < 51)?DigestSql(wr,src.ident):src.ident,wr.Length);
+            src = new Ident((wr.cx.db.format < 51)?DigestSql(wr,src.ident):src.ident,
+                wr.cx.Ix(wr.Length));
             src = wr.PutIdent(src);
 			base.Serialise(wr);
 		}
@@ -188,7 +183,7 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(ReaderBase rdr)
+        public override void Deserialise(Reader rdr)
 		{
 			name = rdr.GetString();
             target = rdr.GetLong();
@@ -207,10 +202,10 @@ namespace Pyrrho.Level2
         internal override void OnLoad(Reader rdr)
         {
             var ob = ((DBObject)rdr.context.db.objects[target]);
-            var psr = new Parser(rdr, new Ident(src.ident, ppos + 1), ob);
-            psr.cx.srcFix = ppos+1;
+            var psr = new Parser(rdr, 
+                new Ident(src.ident, rdr.context.Ix(ppos + 1)), ob);
+            psr.cx.nextStmt = rdr.context.nextStmt;
             def = psr.ParseTriggerDefinition(this);
-            Frame(psr.cx);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -290,10 +285,11 @@ namespace Pyrrho.Level2
             var (tr,ph) = base.Commit(wr, t);
             var pt = (PTrigger)ph;
             var tg = (DBObject)tr.objects[defpos] + (Check.Condition, pt.framing.obs[pt.def])
-                + (DBObject._Framing, pt.framing) + (Trigger.OldRow,pt.oldRow?.iix??-1L)
-                +(Trigger.NewRow,pt.newRow?.iix??-1) + (Trigger.OldTable,pt.oldTable?.iix??-1)
-                +(Trigger.NewTable,pt.newTable?.iix??-1L);
+                + (DBObject._Framing, pt.framing) + (Trigger.OldRow,pt.oldRow?.iix.dp??-1L)
+                +(Trigger.NewRow,pt.newRow?.iix.dp??-1) + (Trigger.OldTable,pt.oldTable?.iix.dp??-1)
+                +(Trigger.NewTable,pt.newTable?.iix.dp??-1L);
             var co = ((Table)tr.objects[target]).AddTrigger((Trigger)tg, tr);
+            wr.cx.instDFirst = -1;
             return ((Transaction)(tr + (tg, tr.loadpos) + (co, tr.loadpos)),ph);
         }
     }

@@ -5,11 +5,8 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
-#if ASSERTRANGE
-using System.Security.Permissions;
-#endif
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -38,7 +35,7 @@ namespace Pyrrho.Level3
         internal const long Name = -50; // string
         static long _dbg = 0;
         internal readonly long dbg = ++_dbg;
-        // negative keys are for system data, positive for user-defined data
+        // negative keys are for system obs, positive for user-defined obs
         internal readonly BTree<long, object> mem;
         public string name => (string)mem[Name]??"";
         public virtual long lexeroffset => 0;
@@ -92,12 +89,16 @@ namespace Pyrrho.Level3
                 throw new PEException("PE101");
         }
 #endif
+        internal virtual Basis Fix(Context cx)
+        {
+            return _Fix(cx);
+        }
         /// <summary>
         /// Deep Fix of uids following Commit or View.Instance
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
-        internal virtual Basis Fix(Context cx)
+        internal virtual Basis _Fix(Context cx)
         {
             return this;
         }
@@ -106,7 +107,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="wr"></param>
         /// <returns></returns>
-        internal virtual Basis _Relocate(Writer wr)
+        internal virtual Basis _Relocate(Context cx)
         {
             return this;
         }
@@ -116,22 +117,31 @@ namespace Pyrrho.Level3
             if (mem.Contains(Name)) { sb.Append(" Name="); sb.Append(name); }
             return sb.ToString();
         }
-        // Tailor REST string for differnt remote DBMS
-        internal virtual string ToString(string sg, CList<long> cs, Context cx)
+        [Flags]
+        internal enum Remotes { None=0, Selects=1, Operands=2 }
+        /// <summary>
+        /// Tailor REST string for differnt remote DBMS
+        /// </summary>
+        /// <param name="sg">SqlAgent</param>
+        /// <param name="rf">role in remote query</param>
+        /// <param name="cs">remote columns</param>
+        /// <param name="ns">remote names</param>
+        /// <param name="cx">Context</param>
+        /// <returns></returns>
+        internal virtual string ToString(string sg, Remotes rf, CList<long> cs, 
+            CTree<long,string> ns, Context cx)
         {
             return ToString();
         }
     }
-    // for view instancing and RowSet Review: Ok = ob key, RK rs key, OV ob value, RV rs value
-    [Flags] internal enum VIC { None = 0, OK = 1, RK = 2, OV = 4, RV = 8 }
-    public enum ExecuteStatus { Parse, Obey, Prepare }
+    public enum ExecuteStatus { Parse, Obey, Prepare, Compile, SubView }
 
     /// <summary>
     /// Counter-intuitively, a logical database (embodied by the durable contents of the transaction log)
     /// is represented in the engine by a great many immutable instances of this class as physical records
     /// are processed by the engine. New instances are not created by copying! Instead, 
     /// every modification at database or transaction level creates a new instance.
-    /// The first instance of the database is created when the server first reads physical data from the 
+    /// The first instance of the database is created when the server first reads physical obs from the 
     /// transaction log, and is initialised to contain the system objects (database _system). 
     /// The entire contents of the transaction log file are then processed so that at the conclusion of
     /// Load() there is an instance that represents the committed state of the database.
@@ -171,7 +181,6 @@ namespace Pyrrho.Level3
         public override long lexeroffset => loadpos;
         internal const long
             ColTracker = -318, // BTree<long,BTree<long,long>> colpos, ppos, dompos
-            _Connection = -261, // BTree<string,string>: the session details
             Curated = -53, // long
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
@@ -180,11 +189,11 @@ namespace Pyrrho.Level3
             Levels = -56, // BTree<Level,long>
             LevelUids = -57, // BTree<long,Level>
             Log = -188,     // BTree<long,Physical.Type>
-            NextStmt = -393, // long: uncommitted compiled statements
-            NextPrep = -394, // long: highwatermark of prepared statements for this connection
-            NextPos = -395, // long: next proposed Physical record
             NextId = -58, // long:  will be used for next transaction
+            NextPos = -395, // long: next proposed Physical record
+            NextStmt = -393, // long: next space in compiled range
             Owner = -59, // long: the defpos of the owner user for the database
+            Procedures = -95, // CTree<long,string> Procedure
             Role = -285, // Role: the current role (e.g. an executable's definer)
             _Role = -302, // long: role.defpos, initially set to the session role
             Roles = -60, // BTree<string,long>
@@ -198,7 +207,6 @@ namespace Pyrrho.Level3
         internal virtual long uid => -1;
         internal FileStream df => dbfiles[name];
         internal long curated => (long)(mem[Curated]??-1L);
-        internal long nextPrep => (long)(mem[NextPrep] ?? PyrrhoServer.Preparing);
         internal long nextStmt => (long)(mem[NextStmt] ?? 
             throw new PEException("PE777"));
         internal virtual long nextPos => Transaction.TransPos;
@@ -223,17 +231,15 @@ namespace Pyrrho.Level3
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
         public DateTime lastModified => (DateTime)mem[LastModified];
-        /// <summary>
-        /// This is normally left unbuilt
-        /// </summary>
         public BTree<long, Physical.Type> log =>
             (BTree<long, Physical.Type>)mem[Log] ?? BTree<long, Physical.Type>.Empty;
         public BTree<long, object> objects => mem;
-        public BTree<string, string> conn => (BTree<string,string>)mem[_Connection];
+        public CTree<long, string> procedures =>
+            (CTree<long, string>)mem[Procedures] ?? CTree<long, string>.Empty;
         public BTree<long, BTree<long, Domain>> typeTracker =>
             (BTree<long, BTree<long, Domain>>)mem[TypeTracker] ?? BTree<long, BTree<long, Domain>>.Empty;
-        public BTree<long, BTree<long, string>> colTracker =>
-            (BTree<long, BTree<long, string>>)mem[ColTracker] ?? BTree<long, BTree<long, string>>.Empty;
+        public BTree<long, BTree<long, DBObject>> colTracker =>
+            (BTree<long, BTree<long, DBObject>>)mem[ColTracker] ?? BTree<long, BTree<long, DBObject>>.Empty;
         /// <summary>
         /// This code sets up the _system Database.
         /// It contains two roles ($Schema and _public), 
@@ -247,10 +253,11 @@ namespace Pyrrho.Level3
                     (_User, su.defpos) +  (Owner, su.defpos));
             var gu = new Role("GUEST", Guest, BTree<long, object>.Empty);
             _system = new Database("System", su, sr, gu)+(_Schema,sr.defpos);
-            SystemRowSet.Kludge(); 
-            Domain.RdfTypes();
             Context._system = new Context(_system);
+            Domain.StandardTypes();
+            SystemRowSet.Kludge();
         }
+        internal static void Kludge() { }
         /// <summary>
         /// The creates the _system database
         /// </summary>
@@ -277,7 +284,8 @@ namespace Pyrrho.Level3
         /// <param name="n"></param>
         /// <param name="f"></param>
         public Database(string n,string path,FileStream f):base(_system.mem+(Name,n)
-            +(Format,_Format(f))+(LastModified,File.GetLastWriteTimeUtc(path)))
+            +(Format,_Format(f))+(LastModified,File.GetLastWriteTimeUtc(path))
+            +(NextStmt,Transaction.Executables))
         {
             dbfiles += (n, f);
             loadpos = 5;
@@ -336,33 +344,6 @@ namespace Pyrrho.Level3
             var (dp, dm, curpos) = x;
             return d.New(curpos, d.mem + (dp, dm));
         }
-        public static Database Get(BTree<string,string> cs)
-        {
-            var fn = cs["Files"];
-            var f = dbfiles[fn];
-            if (f == null)
-                try
-                {
-                    var fp = PyrrhoStart.path + fn;
-                    if (!File.Exists(fp))
-                        return null;
-                    var db = new Database(fn, fp, new FileStream(fp,
-                        FileMode.Open, FileAccess.ReadWrite, FileShare.None));
-                    db.Load();
-                    f = dbfiles[fn];
-                }
-                catch (Exception) { }
-            if (f == null)
-                    return null;
-            for (; ; )
-            {
-                var r = databases[fn];
-                if (r != null) // add the connectionString for the session
-                    return r + (_Connection, cs);
-                // otherwise the database is loading
-                Thread.Sleep(1000);
-            }
-        }
         internal virtual void Add(Context cx,Physical ph,long lp)
         {
             ph.Install(cx, lp);
@@ -380,6 +361,38 @@ namespace Pyrrho.Level3
             var bs = new byte[5];
             return (f.Read(bs, 0, 5)==5)?bs[4]:0;
         }
+        public static Database Get(BTree<string, string> cs)
+        {
+            var fn = cs["Files"];
+            var f = dbfiles[fn];
+            if (f == null)
+                try
+                {
+                    var fp = PyrrhoStart.path + fn;
+                    if (!File.Exists(fp))
+                    {
+                        Console.WriteLine("Database not found " + fp);
+                        return null;
+                    }
+                    var db = new Database(fn, fp, new FileStream(fp,
+                        FileMode.Open, FileAccess.ReadWrite, FileShare.None));
+                    if (PyrrhoStart.VerboseMode)
+                        Console.WriteLine("Database file found: " + fp);
+                    db.Load();
+                    f = dbfiles[fn];
+                }
+                catch (Exception) { }
+            if (f == null)
+                return null;
+            for (; ; )
+            {
+                var r = databases[fn];
+                if (r != null) 
+                    return r;
+                // otherwise the database is loading
+                Thread.Sleep(1000);
+            }
+        }
         /// <summary>
         /// Start a new Transtion if necessary (Transaction override does very little)
         /// </summary>
@@ -387,17 +400,17 @@ namespace Pyrrho.Level3
         /// <param name="sce"></param>
         /// <param name="auto"></param>
         /// <returns></returns>
-        public virtual Transaction Transact(long t, string sce, bool? auto = null)
+        public virtual Transaction Transact(long t, string sce,Connection con,bool? auto = null)
         {
             // if not new, this database may be out of date: ensure we get the latest
             // and add the connection for the session
-            var r = databases[name] + (_Connection, conn);
+            var r = databases[name];
             if (r == null || r.loadpos < loadpos)
                 r = this; // this is more recent!
             // ensure a valid user and role combination
             // 1. Default:
             Role ro = guest;
-            var user = conn["User"];
+            var user = con.props["User"];
             User u = objects[roles[user]] as User;
             if (u == null)// 2. if the user is unknown
             {
@@ -417,7 +430,7 @@ namespace Pyrrho.Level3
                         throw new DBException("42105");
                 }
             }
-            if (conn["Role"] is string rn) // 3. has a specific role been requested?
+            if (con.props["Role"] is string rn) // 3. has a specific role been requested?
             {
                 ro = (Role)objects[roles[rn]]
                     ?? throw new DBException("42105"); // 3a
@@ -453,7 +466,7 @@ namespace Pyrrho.Level3
             else
                 ro = guest;
             done:
-            var tr = new Transaction(r, t, sce, auto ?? autoCommit) + (NextPrep, nextPrep)
+            var tr = new Transaction(r, t, sce, auto ?? autoCommit)
                 + (Transaction.StartTime,DateTime.Now);
             if (u.defpos==-1L) // make a PUser for ad-hoc User, in case of Audit or Grant
             { 
@@ -525,10 +538,11 @@ namespace Pyrrho.Level3
                         rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
                 }
             }
-            var d = rdr.context.db;
+            var d = rdr.context.db + (NextStmt,rdr.context.nextStmt);
+            if (PyrrhoStart.VerboseMode)
+                Console.WriteLine("Database " + name + " loaded to " + rdr.Position);
             lock (_lock)
                 databases += (name, d);
-            rdr.context.db = d;
             return d;
         }
         internal Database BuildLog()
@@ -547,17 +561,13 @@ namespace Pyrrho.Level3
                     rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
                 }
             }
-            var d = rdr.context.db;
-            lock (_lock)
-                databases += (name, d);
-            rdr.context.db = d;
-            return d;
+            return rdr.context.db;
         }
         internal (Physical, long) _NextPhysical(long pp,PTransaction trans=null)
         {
             try
             {
-                var rdr = new ReaderBase(this, pp);
+                var rdr = new Reader(this, pp);
                 var ph = rdr.Create();
                 pp = (int)rdr.Position;
                 if (ph == null)
@@ -572,7 +582,7 @@ namespace Pyrrho.Level3
         {
             try
             {
-                var ph = new ReaderBase(this, pp).Create();
+                var ph = new Reader(this, pp).Create();
                 return ph;
             }
             catch (Exception)
@@ -603,24 +613,23 @@ namespace Pyrrho.Level3
         }
         internal virtual void Execute(Role r, string id,string[] path, int p, string etag)
         { }
-        internal virtual Context Post(Context cx, RowSet  r, string s)
+        internal virtual Context Post(Context cx, TableRowSet  r, string s)
         { return cx;  }
-        internal virtual Context Put(Context cx, RowSet r, string s)
+        internal virtual Context Put(Context cx, TableRowSet r, string s)
         { return cx;  }
-        internal virtual Context Delete(Context cx, RowSet r)
+        internal virtual Context Delete(Context cx, TableRowSet r)
         { return cx; }
         /// <summary>
-        /// Commit the physical data
+        /// Commit the physical obs
         /// </summary>
         internal virtual Database Commit(Context cx)
         {
-            return databases[name] + (_Connection, conn) 
-                + (NextPrep, nextPrep) + (LastModified, DateTime.UtcNow);
+            return databases[name] 
+                + (LastModified, DateTime.UtcNow);
         }
         internal Database Rollback()
         {
-            return databases[name] + (_Connection, conn)
-                + (NextPrep, nextPrep);
+            return databases[name];
         }
         public virtual DBException Exception(string sig, params object[] obs)
         {

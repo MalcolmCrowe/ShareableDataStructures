@@ -3,7 +3,7 @@ using System.Collections;
 using System.Collections.Generic;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2021
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -75,16 +75,6 @@ namespace Pyrrho.Common
                 return new BTree<K,V>(root.Update(this, k, v));
             return Insert(k, v);
         }
-        /// <summary>
-        /// Add a given association to a given tree
-        /// </summary>
-        /// <param name="tree">ref the tree</param>
-        /// <param name="k">a key</param>
-        /// <param name="v">a new value</param>
-        public static void Add(ref BTree<K, V> tree, K k, V v)
-        {
-            tree = (BTree<K,V>)tree.Add(k, v);
-        }
         public static BTree<K, V> operator +(BTree<K, V> tree, (K, V) v)
         {
             return (BTree<K,V>)tree.Add(v.Item1, v.Item2);
@@ -149,27 +139,25 @@ namespace Pyrrho.Common
             if (!Contains(k))
                 return this;
             if (root.total == 1) // empty index
-                return BTree<K,V>.Empty;
+                return Empty;
             // note: we allow root to have 1 entry
             return new BTree<K,V>(root.Remove(this, k));
         }
-        internal V this[BTree<K, bool> c]
+        internal static BTree<K,bool> FromList(BList<K> ls)
         {
-            get
-            {
-                for (var b = c.First(); b != null; b = b.Next())
-                    if (this[b.key()] is V v) return v;
-                return default;
-            }
+            var r = BTree<K,bool>.Empty;
+            for (var b = ls.First(); b != null; b = b.Next())
+                r += (b.value(), true);
+            return r;
         }
     }
-    /// <summary>
-    /// Buckets are used to hold up to Size key-value pairs.
-    /// Inner buckets have values that are subtrees (Inner or Leaf)
-    /// Various constructors help to ensure that Buckets are never modified.
-    /// (No Mutators)
-    /// </summary>
-    public class Inner<K,V> : Bucket<K,V>
+        /// <summary>
+        /// Buckets are used to hold up to Size key-value pairs.
+        /// Inner buckets have values that are subtrees (Inner or Leaf)
+        /// Various constructors help to ensure that Buckets are never modified.
+        /// (No Mutators)
+        /// </summary>
+        public class Inner<K,V> : Bucket<K,V>
     {
         internal readonly KeyValuePair<K, Bucket<K, V>>[] slots;
         // INVARIANT: this subtree has >Size/2 entries
@@ -808,8 +796,8 @@ namespace Pyrrho.Common
         /// <param name="b">The old list</param>
         /// <param name="k">An index</param>
         /// <param name="v"></param>
-        public BList(BList<V> b,int k,V v) 
-            :base((((BTree<int,V>)b)+(k,v)).root)
+        public BList(BList<V> b, int k, V v)
+            : base((((BTree<int, V>)b) + (k, v)).root)
         {
             if (k < 0 || k >= b.Length) // b is old version
                 throw new NotSupportedException();
@@ -881,6 +869,13 @@ namespace Pyrrho.Common
             var i = 0;
             for (var b = First(); b != null; b = b.Next(), i++)
                 r[i] = b.value();
+            return r;
+        }
+        public static BList<V> FromArray(params V[] vs)
+        {
+            var r = Empty;
+            foreach (var v in vs)
+                r += v;
             return r;
         }
         public virtual bool Has(V v)
