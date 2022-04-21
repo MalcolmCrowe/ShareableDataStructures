@@ -209,7 +209,7 @@ namespace Pyrrho
                                 long t = 0;
                                 cx = new Context(db,cx);
                                 var ts = db.loadpos;
-                                db = new Parser((Transaction)db,cx).ParseSql(cmd, Domain.Content);
+                                db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = db;
                                 var tn = DateTime.Now.Ticks;
                                 if (PyrrhoStart.DebugMode && tn > t)
@@ -1272,7 +1272,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (20 Apr 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (21 Apr 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

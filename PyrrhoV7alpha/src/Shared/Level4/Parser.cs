@@ -61,11 +61,6 @@ namespace Pyrrho.Level4
             cx = new Context(da,con);
             cx.db = da.Transact(da.nextId,da.source,con);
         }
-        public Parser(Transaction da,Context cx)
-        {
-            cx = new Context(da,cx);
-            cx.db = da.Transact(da.nextId, da.source,cx.conn);
-        }
         public Parser(Context c)
         {
             cx = c;
@@ -7625,6 +7620,12 @@ namespace Pyrrho.Level4
                             case Sqlx.CONTENT:
                                 et = Domain.Content;
                                 break;
+                            case Sqlx.ROW:
+                                break;
+                            default:
+                                var v = ParseSqlValue(xp);
+                                Mustbe(Sqlx.RPAREN);
+                                return v;
                         }
                         var fs = BList<SqlValue>.Empty;
                         for (var i = 0; ; i++)
