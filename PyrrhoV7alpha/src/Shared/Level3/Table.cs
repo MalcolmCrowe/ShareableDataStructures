@@ -325,8 +325,10 @@ namespace Pyrrho.Level3
                 cx.instances += (b.value(), id.iix);
             }
             var rowSet = (RowSet)cx._Add(new TableRowSet(id.iix, cx, defpos, q.defpos)+(_From,fm)
-                +(InstanceRowSet.RdCols,rc)); 
+                +(InstanceRowSet.RdCols,rc));
+#if MANDATORYACCESSCONTROL
             Audit(cx, rowSet);
+#endif
             return rowSet;
         }
         public override bool Denied(Context cx, Grant.Privilege priv)

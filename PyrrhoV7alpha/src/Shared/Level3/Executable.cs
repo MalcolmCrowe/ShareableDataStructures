@@ -357,11 +357,11 @@ namespace Pyrrho.Level3
             QMarks = -396,  // CList<long> SqlValue
             Target = -397; // Executable
         internal CList<long> qMarks =>
-            (CList<long>)mem[QMarks] ?? CList<long>.Empty;
+           (CList<long>)mem[QMarks] ?? CList<long>.Empty;
         internal Executable target => (Executable)mem[Target];
-        public PreparedStatement(Context cx) 
-            :base(cx.GetUid(),BTree<long,object>.Empty
-                 +(Target,cx.exec)+(QMarks,cx.qParams)+(_Framing,new Framing(cx)))
+        public PreparedStatement(Context cx)
+            : base(cx.GetUid(), BTree<long, object>.Empty
+                 + (Target, cx.exec) + (QMarks, cx.qParams) + (_Framing, new Framing(cx)))
         { }
         protected PreparedStatement(long dp,BTree<long,object> m)
             :base(dp,m)
@@ -388,7 +388,7 @@ namespace Pyrrho.Level3
             sb.Append(" Target: ");sb.Append(target);
             var cm = "";
             sb.Append(" Params: ");
-            for (var b=qMarks.First();b!=null;b=b.Next())
+            for (var b = qMarks.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ","; sb.Append(Uid(b.value()));
             }

@@ -463,29 +463,46 @@ namespace Pyrrho.Level4
                         case _Where:
                             {
                                 var w = (CTree<long, bool>)v;
-                                var q = (CTree<long, bool>)m[p] ?? CTree<long, bool>.Empty;
                                 var ma = (CTree<long, TypedValue>)mm[_Matches] ?? CTree<long, TypedValue>.Empty;
+                                var oa = ma;
+                                var mw = (CTree<long,bool>)m[_Where] ?? CTree<long, bool>.Empty;
+                                var ow = mw;
+                                var mh = (CTree<long, bool>)m[_Where] ?? CTree<long, bool>.Empty;
+                                var oh = mh;
                                 for (var b = w.First(); b != null; b = b.Next())
                                 {
                                     var k = b.key();
                                     var sv = (SqlValue)cx.obs[k];
-                                    if (sv.KnownBy(cx, this))
-                                    {
-                                        if (sv.IsAggregation(cx) != CTree<long, bool>.Empty)
-                                            m += (Having, q + (k, true));
-                                        else
-                                            m += (_Where, q + (k, true));
-                                    }
+                                    var matched = false;
                                     if (sv is SqlValueExpr se && se.kind == Sqlx.EQL)
                                     {
                                         var le = (SqlValue)cx.obs[se.left];
                                         var ri = (SqlValue)cx.obs[se.right];
                                         if (le.isConstant(cx) && !im.matches.Contains(ri.defpos))
-                                            mm += (_Matches, ma + (ri.defpos, le.Eval(cx)));
+                                        {
+                                            matched = true;
+                                            ma += (ri.defpos, le.Eval(cx));
+                                        }
                                         if (ri.isConstant(cx) && !im.matches.Contains(le.defpos))
-                                            mm += (_Matches, ma + (le.defpos, ri.Eval(cx)));
+                                        {
+                                            matched = true;
+                                            ma += (le.defpos, ri.Eval(cx));
+                                        }
                                     }
+                                    if (sv.KnownBy(cx, this))
+                                    {
+                                        if (sv.IsAggregation(cx) != CTree<long, bool>.Empty) 
+                                            mh += (k, true);
+                                        else if (!matched)
+                                            mw += (k, true);
+                                    } 
                                 }
+                                if (ma != oa)
+                                    mm += (_Matches, ma);
+                                if (mw != ow)
+                                    m += (_Where, mw);
+                                if (mh != oh)
+                                    m += (Having, mh);
                                 break;
                             }
                         case _Matches:
@@ -2085,15 +2102,23 @@ namespace Pyrrho.Level4
                     return true;
             return base.Knows(cx,p);
         }
-        protected override Cursor _First(Context cx)
+        public override Cursor First(Context cx)
         {
             return FromCursor.New(cx, this);
         }
-        protected override Cursor _Last(Context cx)
+        public override Cursor Last(Context cx)
         {
             if (source == Static)
                 return new TrivialRowSet(iix, cx, (TRow)cx._Dom(this).Eval(cx)).Last(cx);
-            return FromCursor.New(this, cx); ;
+            return FromCursor.New(this, cx);
+        }
+        protected override Cursor _First(Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        protected override Cursor _Last(Context cx)
+        {
+            throw new NotImplementedException();
         }
         internal override bool Built(Context cx)
         {
@@ -3494,7 +3519,9 @@ namespace Pyrrho.Level4
     internal class TableRowSet : InstanceRowSet
     {
         internal const long
+            _Index = -410, // long Index
             SKeys = -453; // CList<long> TableColumn
+        public long index => (long)(mem[_Index] ?? -1L);
         public CTree<CList<long>, long> indexes =>
             (CTree<CList<long>, long>)mem[Table.Indexes] ?? CTree<CList<long>, long>.Empty;
         public CList<long> skeys => (CList<long>)mem[SKeys] ?? CList<long>.Empty;
@@ -3606,6 +3633,7 @@ namespace Pyrrho.Level4
                 if (index != null && index.rows != null)
                 {
                     m += (Index.Tree, index.rows);
+                    m += (_Index, index.defpos);
                     m += (SKeys, index.keys);
                     m += (_Matches, ma);
                     for (var b = trs.indexes.First(); b != null; b = b.Next())
@@ -3753,30 +3781,46 @@ namespace Pyrrho.Level4
             cx.Add(r);
             return r;
         }
-        protected override Cursor _First(Context _cx)
+        public override Cursor First(Context _cx)
         {
             PRow key = null;
             for (var b = keys.First(); b != null; b = b.Next())
             {
                 TypedValue v = null;
-                for (var d = _cx.cursors.First(); v == null && d != null; d = d.Next())
-                    if (d.value()[b.value()] is TypedValue tv && !tv.IsNull)
-                        v = tv;
-                for (var c = matching[b.value()]?.First(); v == null && c != null; c = c.Next())
+                if (matches[b.value()] is TypedValue t0 && t0 != TNull.Value)
+                    v = t0;
+                if (v == null)
+                {
                     for (var d = _cx.cursors.First(); v == null && d != null; d = d.Next())
-                        if (d.value()[c.key()] is TypedValue tv && !tv.IsNull)
+                        if (d.value()[b.value()] is TypedValue tv && !tv.IsNull)
                             v = tv;
-                if (v != null)
-                    key = new PRow(v, key);
+                    for (var c = matching[b.value()]?.First(); v == null && c != null; c = c.Next())
+                        for (var d = _cx.cursors.First(); v == null && d != null; d = d.Next())
+                            if (d.value()[c.key()] is TypedValue tv && !tv.IsNull)
+                                v = tv;
+                }
+                if (v == null)
+                    return TableCursor.New(_cx, this, null);
+                key = new PRow(v, key);
             }
             return TableCursor.New(_cx,this,PRow.Reverse(key));
         }
-        protected override Cursor _Last(Context _cx)
+        protected override Cursor _First(Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        protected override Cursor _Last(Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        public override Cursor Last(Context _cx)
         {
             PRow key = null;
             for (var b = keys.First(); b != null; b = b.Next())
             {
                 TypedValue v = null;
+                if (matches[b.value()] is TypedValue t0 && t0 != TNull.Value)
+                    v = t0;
                 for (var d = _cx.cursors.First(); v == null && d != null; d = d.Next())
                     if (d.value()[b.value()] is TypedValue tv && !tv.IsNull)
                         v = tv;
@@ -3784,8 +3828,9 @@ namespace Pyrrho.Level4
                     for (var d = _cx.cursors.First(); v == null && d != null; d = d.Next())
                         if (d.value()[c.key()] is TypedValue tv && !tv.IsNull)
                             v = tv;
-                if (v != null)
-                    key = new PRow(v, key);
+                if (v == null)
+                    return TableCursor.New(_cx, this, null);
+                key = new PRow(v, key);
             }
             return TableCursor.New(this, _cx,PRow.Reverse(key));
         }
@@ -3923,22 +3968,26 @@ namespace Pyrrho.Level4
                 _cx.finder = trs.finder;
                 if (trs.keys!=CList<long>.Empty)
                 {
-                    MTree t = null;
-                    if (trs.indexes.Contains(trs.keys) 
-                        && _cx.db.objects[trs.indexes[trs.keys]] is Index ix)
-                        t = ix.rows;
+                    /*                 MTree t = null;
+                                     if (trs.indexes.Contains(trs.keys) 
+                                         && _cx.db.objects[trs.indexes[trs.keys]] is Index ix)
+                                         t = ix.rows;
+                    */
+                    var t = ((Index)_cx.db.objects[trs.index]).rows;
                     if (t!=null)
                     for (var bmk = t.PositionAt(key);bmk != null;bmk=bmk.Next())
                     {
                         var iq = bmk.Value();
                         if (iq == null)
                             continue;
-                        var rec = table.tableRows[iq.Value];
+                         var rec = table.tableRows[iq.Value];
+#if MANDATORYACCESSCONTROL
                         if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
                             && _cx.db._user != table.definer
                             && _cx.db._user != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
                             continue;
+#endif
                         var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
                         if (rb.Matches(_cx))
                         {
@@ -3951,11 +4000,13 @@ namespace Pyrrho.Level4
                 for (var b = table.tableRows.First(); b != null; b = b.Next())
                 {
                     var rec = b.value();
+#if MANDATORYACCESSCONTROL
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                         _cx.db.user != null && _cx.db.user.defpos != table.definer
                          && _cx.db._user != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
+#endif
                     var rb = new TableCursor(_cx, trs, table, 0, rec, b);
                     if (rb.Matches(_cx))
                     {
@@ -3979,11 +4030,13 @@ namespace Pyrrho.Level4
                         if (iq == null)
                             continue;
                         var rec = table.tableRows[iq.Value];
+#if MANDATORYACCESSCONTROL
                         if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
                             && _cx.db._user != table.definer
                             && _cx.db._user != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
                             continue;
+#endif
                         var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
                         if (rb.Matches(_cx))
                         {
@@ -3995,11 +4048,13 @@ namespace Pyrrho.Level4
                 for (var b = table.tableRows.Last(); b != null; b = b.Previous())
                 {
                     var rec = b.value();
+#if MANDATORYACCESSCONTROL
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                         _cx.db.user != null && _cx.db.user.defpos != table.definer
                          && _cx.db._user != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
+#endif
                     var rb = new TableCursor(_cx, trs, table, 0, rec, b);
                     if (rb.Matches(_cx))
                     {
@@ -4024,10 +4079,12 @@ namespace Pyrrho.Level4
                         if (mb.Value() == null)
                             continue;
                         var rec = _table.tableRows[mb.Value().Value];
+#if MANDATORYACCESSCONTROL
                         if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                             _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                             continue;
+#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, null, mb,
                             rec.MakeKey(_trs.keys));
                         if (rb.Matches(_cx))
@@ -4044,10 +4101,12 @@ namespace Pyrrho.Level4
                         if (bmk == null)
                             return null;
                         var rec = bmk.value();
+#if MANDATORYACCESSCONTROL
                         if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                             _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                             continue;
+#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, bmk);
                         if (rb.Matches(_cx))
                         {
@@ -4071,10 +4130,12 @@ namespace Pyrrho.Level4
                         if (mb.Value() == null)
                             continue;
                         var rec = _table.tableRows[mb.Value().Value];
+#if MANDATORYACCESSCOLNTROL
                         if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                             _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                             continue;
+#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, null, mb,
                             rec.MakeKey(_trs.keys));
                         if (rb.Matches(_cx))
@@ -4091,10 +4152,12 @@ namespace Pyrrho.Level4
                         if (bmk == null)
                             return null;
                         var rec = bmk.value();
+#if MANDATORYACCESSCONTROL
                         if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                             _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                             continue;
+#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, bmk);
                         if (rb.Matches(_cx))
                         {

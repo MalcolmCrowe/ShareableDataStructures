@@ -412,6 +412,7 @@ namespace Pyrrho.Level4
                 case PTrigger.TrigType.Insert:
                     if (table.Denied(cx, Grant.Privilege.Insert))
                         throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+#if MANDATORYACCESSCONTROL
                     // parameter cl is only supplied when d_User.defpos==d.owner
                     // otherwise check if we should compute it
                     if (cx.db.user != null &&
@@ -427,6 +428,7 @@ namespace Pyrrho.Level4
                         // (a subset of the user’s references)
                         level = uc.ForInsert(table.classification);
                     }
+#endif
                     //       var ckc = new ConstraintChecking(tr, trs, this);
                     finder = cx.finder + _finder; // the activation finder takes precedence
                     break;
@@ -476,11 +478,15 @@ namespace Pyrrho.Level4
                     break;
                 case PTrigger.TrigType.Delete:
                     var targetInfo = (ObInfo)cx.db.role.infos[ts.target];
-                    if (table.Denied(cx, Grant.Privilege.Delete) ||
+                    if (table.Denied(cx, Grant.Privilege.Delete)
+#if MANDATORYACCESSCONTROL
+                        ||
                         (table.enforcement.HasFlag(Grant.Privilege.Delete) &&
                         cx.db.user.clearance.minLevel > 0 &&
                         (cx.db.user.clearance.minLevel != targetInfo.classification.minLevel ||
-                        cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel)))
+                        cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel))
+#endif
+                        )
                         throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
                     level = cx.db.user.clearance;
                     cx.finder += _finder; // the activateion finder takes precedence
@@ -564,6 +570,7 @@ namespace Pyrrho.Level4
                         if (fi == true) // an insteadof trigger has fired
                             return;
                         // Step C
+#if MANDATORYACCESSCONTROL
                         // If Update is enforced by the table, and a record selected for update 
                         // is not one to which the user has clearance 
                         // or does not match the user’s clearance level, 
@@ -575,6 +582,7 @@ namespace Pyrrho.Level4
                                  || level.minLevel != rc.classification.minLevel)
                                  : level.minLevel > 0))
                             throw new DBException("42105");
+#endif
                         // Step D
                         tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
                         for (var b = newRow.First(); b != null; b = b.Next())
@@ -615,6 +623,7 @@ namespace Pyrrho.Level4
                             return;
                         tgc = (TransitionRowSet.TargetCursor)cursors[_trs.defpos];
                         rc = tgc._rec;
+#if MANDATORYACCESSCONTROL
                         if (_cx.db.user.defpos != _cx.db.owner && table.enforcement.HasFlag(Grant.Privilege.Delete) ?
                             // If Delete is enforced by the table and the user has delete privilege for the table, 
                             // but the record to be deleted has a classification level different from the user 
@@ -622,6 +631,7 @@ namespace Pyrrho.Level4
                             ((!level.ClearanceAllows(rc.classification)) || level.minLevel > rc.classification.minLevel)
                             : level.minLevel > 0)
                             throw new DBException("42105");
+#endif
                         for (var b = casc.First(); b != null; b = b.Next())
                         {
                             var ct = (TableActivation)b.value();

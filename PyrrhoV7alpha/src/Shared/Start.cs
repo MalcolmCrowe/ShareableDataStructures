@@ -209,7 +209,7 @@ namespace Pyrrho
                                 long t = 0;
                                 cx = new Context(db,cx);
                                 var ts = db.loadpos;
-                                db = new Parser((Transaction)db,cx).ParseSql(cmd, Domain.Content);
+                                db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = db;
                                 var tn = DateTime.Now.Ticks;
                                 if (PyrrhoStart.DebugMode && tn > t)
@@ -369,6 +369,7 @@ namespace Pyrrho
                             }
                         case Protocol.ExecuteTrace: // v7 Prepared statement API
                             {
+                                var st = DateTime.Now;
                                 var nm = tcp.GetString();
                                 var n = tcp.GetInt();
                                 var sb = new StringBuilder();
@@ -396,8 +397,7 @@ namespace Pyrrho
                                 }
                                 else
                                     tcp.PutSchema(cx);
-                                if (tracing)
-                                    Debug(2, "Done");
+                                 Console.WriteLine(nm + " " + (DateTime.Now.Ticks - st.Ticks));
                                 break;
                             }
                         case Protocol.ExecuteReader: // ExecuteReader
@@ -767,7 +767,7 @@ namespace Pyrrho
                 Console.WriteLine("(" + cid + ") Ends with " + p);
             tcp?.Close();
         }
-        static DateTime startTrace;
+ /*       static DateTime startTrace;
         internal static bool tracing = false;
         internal static void Debug(int a, string m) // a=0 start, 1-continue, 2=stop
         {
@@ -791,7 +791,7 @@ namespace Pyrrho
                     Console.WriteLine(m + " " + t.TotalMilliseconds + " Stop " + m);
                     break;
             }
-        }
+        } */
         BTree<string, string> GetConnectionString(TCPStream tcp)
         {
             var dets = BTree<string, string>.Empty;
