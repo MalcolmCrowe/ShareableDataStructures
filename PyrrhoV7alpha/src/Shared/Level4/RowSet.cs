@@ -4639,12 +4639,16 @@ namespace Pyrrho.Level4
                 var vs = CTree<long, TypedValue>.Empty;
                 var rv = (SqlRow)cx.obs[rs.sqlRows[p]];
                 var rd = cx._Dom(rv);
+                var sd = cx._Dom(rs);
                 var n = rd.rowType.Length;
                 if (n < dm.rowType.Length)
                     throw new DBException("22109");
                 int j = 0;
                 for (var b = dm.rowType.First(); b != null; b = b.Next())
-                    vs += (b.value(), cx.obs[rd.rowType[j++]].Eval(cx));
+                {
+                    var d = cx._Dom(cx.obs[sd.rowType[j]]);
+                    vs += (b.value(), d.Coerce(cx,cx.obs[rd.rowType[j++]].Eval(cx)));
+                }
                 return new TRow(dm,vs);
             }
             protected override Cursor New(Context cx,long p, TypedValue v)
@@ -7257,7 +7261,6 @@ namespace Pyrrho.Level4
         {
             internal readonly RestRowSetUsing _ru;
             internal readonly TableRowSet.TableCursor _tc;
-            internal readonly RestRowSet.RestCursor _rc;
             internal RestUsingCursor(Context cx,RestRowSetUsing ru,int pos,
                 TableRowSet.TableCursor tc,RestRowSet.RestCursor rc)
                 :base(cx,ru,pos,tc._ds,_Value(cx,ru,tc,rc))
@@ -7276,8 +7279,6 @@ namespace Pyrrho.Level4
                     return null;
                 var cu = (RestUsingCursor)ls[pos];
                 cx.cursors += (cu._tc._rowsetpos, cu._tc);
-                if (cu._rc!=null)
-                    cx.cursors += (cu._rc._rowsetpos, cu._rc);
                 cx.cursors += (ru.defpos, cu);
                 cx.values += cu.values;
                 var dm = cx._Dom(ru);

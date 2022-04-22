@@ -258,10 +258,10 @@ namespace Pyrrho.Level4
         {
             cx.Add(pre);
             cx.Add(pre.framing);
-            lxr = new Lexer(s, cx.db.lexeroffset,true);
+            lxr = new Lexer(s, cx.db.lexeroffset, true);
             tok = lxr.tok;
             var b = cx.Fix(pre.qMarks).First();
-            for (;b!=null && tok!=Sqlx.EOF;b=b.Next())
+            for (; b != null && tok != Sqlx.EOF; b = b.Next())
             {
                 var v = lxr.val;
                 var lp = LexPos();
@@ -273,7 +273,7 @@ namespace Pyrrho.Level4
                     if (tok == Sqlx.CHARLITERAL)
                     {
                         Next();
-                        v = new SqlDateTimeLiteral(lp,cx,
+                        v = new SqlDateTimeLiteral(lp, cx,
                             new Domain(lp.dp, tk, BTree<long, object>.Empty), v.ToString()).Eval(cx);
                     }
                 }
@@ -7624,6 +7624,8 @@ namespace Pyrrho.Level4
                                 break;
                             default:
                                 var v = ParseSqlValue(xp);
+                                if (v is SqlLiteral sl)
+                                    v = (SqlValue)cx.Add(new SqlLiteral(lp, cx, xp.Coerce(cx, sl.val)));
                                 Mustbe(Sqlx.RPAREN);
                                 return v;
                         }

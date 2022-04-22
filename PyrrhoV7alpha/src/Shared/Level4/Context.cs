@@ -902,7 +902,7 @@ namespace Pyrrho.Level4
         internal void QParams()
         {
             for (var b = obs.PositionAt(Transaction.HeapStart); b != null; b = b.Next())
-               obs += (b.key(), b.value().QParams(this));
+                obs += (b.key(), b.value().QParams(this));
         }
         internal CTree<long,TypedValue> QParams(CTree<long,TypedValue> f)
         {
