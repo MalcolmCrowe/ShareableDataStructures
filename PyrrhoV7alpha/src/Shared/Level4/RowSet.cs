@@ -3968,12 +3968,10 @@ namespace Pyrrho.Level4
                 _cx.finder = trs.finder;
                 if (trs.keys!=CList<long>.Empty)
                 {
-                    /*                 MTree t = null;
-                                     if (trs.indexes.Contains(trs.keys) 
-                                         && _cx.db.objects[trs.indexes[trs.keys]] is Index ix)
-                                         t = ix.rows;
-                    */
-                    var t = ((Index)_cx.db.objects[trs.index]).rows;
+                    var t = (trs.index >= 0) ? ((Index)_cx.db.objects[trs.index]).rows : null;
+                    if (t==null && trs.indexes.Contains(trs.keys) 
+                            && _cx.db.objects[trs.indexes[trs.keys]] is Index ix)
+                        t = ix.rows;
                     if (t!=null)
                     for (var bmk = t.PositionAt(key);bmk != null;bmk=bmk.Next())
                     {
