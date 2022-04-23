@@ -2821,10 +2821,8 @@ namespace Pyrrho.Level4
         /// 
         /// A simple example to bear in mind is
         /// select sum(a)+count(f),b,g from v,w group by b,g
-        /// Provided a nd b are ONLY in v, and f and g are ONLY in w, this rowset R can be transformed into
-        /// select sa + cf, b, g from (select sum(a) as sa,b from v group by b),(select count(f) as cf,g from w group by g)
-        /// If even one of these is remote, this is well worth the trouble, as network traffic and computer load are reduced.
-        /// Note that propertuies V1-V5 are preserved in this transformation, and don't meed to be rechecked. 
+        /// If one of v,w is remote, this is well worth the trouble to aggregate it separately.
+        /// as network traffic and computer load are reduced.
         /// The KnownFragments methods help to split up the select items in R. We try to preserve R's column ordering
         /// in the resulting S's as far as possible (since mostly no splitting of expressions occurs)..
         /// 
@@ -2842,6 +2840,8 @@ namespace Pyrrho.Level4
         internal BTree<long, BTree<long, object>> SplitAggs(BTree<long, object> mm, Context cx)
         {
             var r = BTree<long, BTree<long, object>>.Empty;
+            var dm = cx._Dom(this);
+            var rdct = dm.aggs.Count == 0 && distinct;
             var ss = AggSources(cx);
             var ua = CTree<long, long>.Empty; // all uids -> unique sid
             var ub = CTree<long, bool>.Empty; // uids with unique sids
@@ -2937,6 +2937,8 @@ namespace Pyrrho.Level4
                     sp += (GroupCols, nd);
                     r += (s.defpos, sp + (Group, group) + (Groupings, groupings));
                 }
+                if (rdct)
+                    r += (s.defpos,sp+(Distinct, true));
             }
             return r;
         no: // if nothing can be done, return empty
@@ -4224,9 +4226,10 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Build(Context cx)
         {
-            var ds = ObTree.Empty;
             var sce = (RowSet)cx.obs[source];
-            var mt = new MTree(new TreeInfo(cx, sce.keys, TreeBehaviour.Ignore, TreeBehaviour.Ignore));
+            var dm = cx._Dom(sce);
+            var ks = (sce.keys.Count > 0) ? sce.keys : dm.rowType;
+            var mt = new MTree(new TreeInfo(cx, ks, TreeBehaviour.Ignore, TreeBehaviour.Ignore));
             var rs = BTree<int, TRow>.Empty;
             for (var a = sce.First(cx); a != null; a = a.Next(cx))
             {
@@ -6651,6 +6654,8 @@ namespace Pyrrho.Level4
             {
                 rq.Method = "POST";
                 sql.Append("select ");
+                if (distinct)
+                    sql.Append("distinct ");
                 var co = "";
                 var dd = cx._Dom(this);
                 cx.groupCols += (dd, groupCols);

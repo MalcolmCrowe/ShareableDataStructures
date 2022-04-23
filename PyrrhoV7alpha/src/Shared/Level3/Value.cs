@@ -6108,6 +6108,8 @@ namespace Pyrrho.Level3
                             case Sqlx.UPPER:
                             case Sqlx.XMLAGG:
                                 sb.Append(kind);sb.Append('(');
+                                if (mod == Sqlx.DISTINCT)
+                                    sb.Append("DISTINCT ");
                                 sb.Append(vl); sb.Append(')'); break;
                             case Sqlx.ARRAY: 
                             case Sqlx.CASE: 

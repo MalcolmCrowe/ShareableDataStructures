@@ -1272,7 +1272,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (22 Apr 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (23 Apr 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }
