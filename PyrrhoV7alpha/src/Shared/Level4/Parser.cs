@@ -5698,12 +5698,24 @@ namespace Pyrrho.Level4
             RowSet r = new SelectRowSet(lp, cx, dm, fm, m + (RowSet._Finder, fi));
             if (dm.aggs!=CTree<long,bool>.Empty)
                 m += (Domain.Aggs, dm.aggs);
-            if (tok==Sqlx.GROUP)
-                m += (RowSet.Group, ParseGroupClause()?.defpos??-1L);
-            if (tok==Sqlx.HAVING)
+            if (tok == Sqlx.GROUP)
+            {
+                if (dm.aggs == CTree<long, bool>.Empty)
+                    throw new DBException("42128", "GROUP");
+                m += (RowSet.Group, ParseGroupClause()?.defpos ?? -1L);
+            }
+            if (tok == Sqlx.HAVING)
+            {
+                if (dm.aggs == CTree<long, bool>.Empty)
+                    throw new DBException("42128", "HAVING");
                 m += (RowSet.Having, ParseHavingClause(dm));
-            if (tok==Sqlx.WINDOW)
+            }
+            if (tok == Sqlx.WINDOW)
+            {
+                if (dm.aggs == CTree<long, bool>.Empty)
+                    throw new DBException("42128", "WINDOW");
                 m += (RowSet.Windows, ParseWindowClause());
+            }
             r = r.Apply(m, cx, r);
             if (d)
                 r = new DistinctRowSet(cx, r);
@@ -5974,10 +5986,10 @@ namespace Pyrrho.Level4
                     ua = cx.obs[cx.defs[a].Item1.dp];
             }
             var fm = (From)cx.Add(new From(ic, cx, ob, q, pr,cs,a));
-            if (q!=null)
-                q = (Domain)cx.obs[q.defpos];
             if (ut is SqlValue && ut!=ob)
             {
+                if (ob is Table || ob is View)
+                    throw new DBException("42104", ob.name);
                 cx.Replace(ut, fm);
                 var it = ic.ident + ".";
                 for (var b=cx.defs.PositionAt(it);b!=null;b=b.Next())
@@ -6047,28 +6059,58 @@ namespace Pyrrho.Level4
                 }
             return q;
         }
+        /// <summary>
+        /// The columns in fm should bind more tightly than the needs of q.
+        /// The returned comain nmay have a new defpos!
+        /// </summary>
+        /// <param name="q"></param>
+        /// <param name="a"></param>
+        /// <param name="fm"></param>
+        /// <returns></returns>
         (Domain,RowSet) Resolve(Domain q,string a,RowSet fm)
         {
+            var rt = CList<long>.Empty;
             var rs = CTree<long, Domain>.Empty;
-            var ch = false;
+            var cr = false;
+            var ct = false;
+            var fd = cx._Dom(fm);
+            var ma = CTree<string, SqlValue>.Empty;
+            for (var b=fd.rowType.First();b!=null;b=b.Next())
+            {
+                var v = (SqlValue)cx.obs[b.value()];
+                ma += (v.name, v);
+            }
             for (var b = q?.rowType.First(); b != null; b = b.Next())
             {
                 var c = b.value();
                 var co = cx.obs[c] as SqlValue;
-                var (nc, nf) = co?.Resolve(cx, fm, a) ?? (co, fm);
-                if (nf != null)
-                    fm = nf;
-                if (co!=null && co.from < 0 && co.WellDefinedOperands(cx))
-                    nc += (DBObject._From, fm.defpos);
-                if (co != nc)
-                    cx.Replace(co, nc);
+                SqlValue nc;
+                if (ma.Contains(co.name) && co.iix.sd!=fm.iix.sd && co.iix.sd!=0)
+                {
+                    nc = ma[co.name];
+                    ct = true;
+                }
+                else
+                {
+                    (nc, fm) = co?.Resolve(cx, fm, a) ?? (co, fm);
+                    if (co != null && co.from < 0 && co.WellDefinedOperands(cx))
+                    {
+                        nc += (DBObject._From, fm.defpos);
+                        cx.Replace(co, nc);
+                    }
+                }
+                rt += nc.defpos;
                 var dm = cx._Dom(nc);
                 if (dm != q.representation[c])
-                    ch = true;
-                rs += (c, dm);
+                    cr = true;
+                rs += (nc.defpos, dm);
             }
-            if (ch)
+            if (ct)
+                q = new Domain(cx.GetUid(), cx, Sqlx.TABLE, rs, rt);
+            else if (cr)
                 q += (Domain.Representation, rs);
+            if (ct||cr)
+                cx.Add(q);
             return (q,fm);
         }
         /// <summary>
@@ -7932,7 +7974,7 @@ namespace Pyrrho.Level4
                             else
                             {
                                 window = ParseWindowSpecificationDetails();
-                                window += (Basis.Name, "U" + cx.db.uid);
+                                window += (Basis.Name, "U" + DBObject.Uid(cx.GetUid()));
                             }
                         }
                         var sf = new SqlFunction(lp, cx, kind, val, op1, op2, mod, BTree<long, object>.Empty

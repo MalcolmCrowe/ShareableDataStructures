@@ -77,7 +77,7 @@ namespace Pyrrho.Level4
         internal bool inHttpService = false;
         internal int selectDepth = 0; // for Iix
         internal CTree<Domain, Domain> groupCols = CTree<Domain, Domain>.Empty; // GroupCols for a Domain with Aggs
-        internal BTree<TRow,BTree<long, Register>> funcs = BTree<TRow, BTree<long,Register>>.Empty; // Agg GroupCols
+        internal BTree<long,BTree<TRow,BTree<long, Register>>> funcs = BTree<long,BTree<TRow, BTree<long,Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by RowSet
@@ -1686,6 +1686,10 @@ namespace Pyrrho.Level4
         /// </summary>
         internal TRow profile = null;
         /// <summary>
+        /// The current partition
+        /// </summary>
+        internal RTree wtree = null;
+        /// <summary>
         /// The bookmark for the current row
         /// </summary>
         internal Cursor wrb = null;
@@ -1728,6 +1732,37 @@ namespace Pyrrho.Level4
         /// a multiset for accumulating things
         /// </summary>
         internal TMultiset mset = null;
+        internal Register(Context cx,TRow key,SqlFunction sf)
+        {
+            var oc = cx.cursors;
+            if (sf.window != null)
+            {
+                cx.funcs += (sf.defpos,cx.funcs[sf.defpos]??BTree<TRow,BTree<long,Register>>.Empty + 
+                    (key, (cx.funcs[sf.defpos]?[key] ?? BTree<long, Register>.Empty) + (sf.defpos, this))); // prevent stack oflow
+                var dp = sf.window.defpos;
+                var os = sf.window.order;
+                if (os != CList<long>.Empty)
+                {
+                    var dm = new Domain(Sqlx.ROW, cx, os);
+                    var sce = (RowSet)cx.obs[sf.from];
+                    for (var e = sce.First(cx); e != null; e = e.Next(cx))
+                    {
+                        var vs = CTree<long, TypedValue>.Empty;
+                        cx.cursors += (dp, e);
+                        wtree = new RTree(dp, cx, dm,
+                        TreeBehaviour.Allow, TreeBehaviour.Allow);
+                        for (var b = os.First(); b != null; b = b.Next())
+                        {
+                            var s = cx.obs[b.value()];
+                            vs += (s.defpos, s.Eval(cx));
+                        }
+                        var rw = new TRow(dm, vs);
+                        RTree.Add(ref wtree, rw, cx.cursors);
+                    }
+                }
+            }
+            cx.cursors = oc;
+        }
         public override string ToString()
         {
             var s = new StringBuilder("{");

@@ -58,6 +58,10 @@ select count(c) as d from f where b<20
 create table ta(b date,c interval hour to second,d boolean)
 insert into ta values(date'2019-01-06T12:30:00',interval'02:00:00'hour to second,false)
 select * from ta
+create table td(int e,int f)
+insert into td values(2,5),(4,6),(2,7),(6,8)
+select distinct b from td
+select avg(distinct b) from td
 7:
 create table TB(S char,D int,C int)
 insert into TB values('Glasgow',2,43)
@@ -107,6 +111,30 @@ INSERT INTO people(Id, Name, Salary, country, city) VALUES(82, 'John', 62000, 'G
 
 /* Queries */
 select city, avg(Salary), count(*) as numPeople from people where country = 'GER' group by city having count(*) > 4
+// MariaDB examples
+CREATE TABLE student ("name" CHAR, test CHAR, score INT)
+[INSERT INTO student VALUES('Chun', 'SQL', 75), ('Chun', 'Tuning', 73),
+ ('Esben', 'SQL', 43), ('Esben', 'Tuning', 31),
+ ('Kaolin', 'SQL', 56), ('Kaolin', 'Tuning', 88),
+ ('Tatiana', 'SQL', 87), ('Tatiana', 'Tuning', 83)]
+[SELECT "name", test, score, AVG(score) OVER (PARTITION BY test) AS average_by_test,
+  AVG(score) OVER (PARTITION BY "name") AS average_by_name FROM student]
+->[{name:'Chun',TEST:'SQL',SCORE:75,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:74},
+{name:'Chun',TEST:'Tuning',SCORE:73,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:74},
+{name:'Esben',TEST:'SQL',SCORE:43,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:37},
+{name:'Esben',TEST:'Tuning',SCORE:31,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:37},
+{name:'Kaolin',TEST:'SQL',SCORE:56,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:72},
+{name:'Kaolin',TEST:'Tuning',SCORE:88,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:72},
+{name:'Tatiana',TEST:'SQL',SCORE:87,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:85},             {name:'Tatiana',TEST:'Tuning',SCORE:83,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:85}]
+CREATE TABLE users (email CHAR,first_name CHAR, last_name CHAR,  account_type CHAR)
+[INSERT INTO users VALUES ('admin@boss.org', 'Admin', 'Boss', 'admin'),
+ ('bob.carlsen@foo.bar', 'Bob', 'Carlsen','regular'),
+ ('eddie.stevens@data.org', 'Eddie', 'Stevens', 'regular'),
+ ('john.smith@xyz.org', 'John', 'Smith','regular'),
+ ('root@boss.org', 'Root', 'Chief', 'admin')]
+[SELECT row_number() OVER (PARTITION BY account_type ORDER BY email) AS rnum,
+  email, first_name, last_name. account_type FROM users]
+->[{RNUM:1,EMAIL:admin@boss.org',FIRST_NAME:'Admin',LAST_NAME:'Boss',ACCOUNT_TYPE:'admin'},            {RNUM:2,EMAIL:root@boss.org',FIRST_NAME:'Root',LAST_NAME:'Chief',ACCOUNT_TYPE:'admin'},            {RNUM:1,EMAIL:'bob.carlsen@foo.bar',FIRST_NAME:'Bob',LAST_NAME:'Carlsen',ACCOUNT_TYPE:'regular'},              {RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'},                {RNUM:3,EMAIL:'jphn.smaith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'}]
 8:
 create table JA(B int,C int,D int)
 insert into JA values(4,2,43)
@@ -131,7 +159,7 @@ select sum(c),g from JA natural join JE group by g
 select sum(f),g from JA natural join JE where c=2 group by g
 -> [{SUM:7,G:31}]
 select c,sum(f),g from JA natural join JE group by g,c having sum(f)<6
--> [{C:3,SUM:3,G:22}]
+-> [{C:3,SUM:4,G:22}]
 select c,sum(d),sum(f),g from JA natural join JE group by g,c
 -> [{C:2,SUM:43,Col2:7,G:31},
 {C:3,SUM:82,Col2:4,G:22},

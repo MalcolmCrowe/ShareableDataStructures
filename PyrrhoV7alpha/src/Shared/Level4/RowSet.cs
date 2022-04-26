@@ -1855,7 +1855,8 @@ namespace Pyrrho.Level4
                 {
                     ids += (c.name, c.iix, Ident.Idents.Empty);
                     if ((!cx.defs.Contains(c.name)) ||
-                        cx.defs[c.name].Item1.dp < Transaction.TransPos)
+                        cx.defs[c.name].Item1 is Iix ix && 
+                        (ix.dp < Transaction.TransPos || ix.sd<ic.iix.sd))
                         cx.defs += (c.name, c.iix, Ident.Idents.Empty);
                     if (c.alias != null)
                     {
@@ -2603,10 +2604,9 @@ namespace Pyrrho.Level4
     {
         internal TRow row => rows[0];
         /// <summary>
-        /// This constructor builds a rowset for the given QuerySpec
-        /// directly using its defpos, rowType, ordering, where and match info.
-        /// Note we cannot assume that columns are simple SqlCopy.
-        /// If they contain aggregations we must perform a Build.
+        /// This constructor builds a rowset for the given QuerySpec (select list defines dm)
+        /// Query environment can supply values for the select list but source columns
+        /// should bind more closely.
         /// </summary>
         internal SelectRowSet(Iix lp, Context cx, Domain dm, RowSet r,BTree<long,object> m=null)
             : base(lp.dp, _Mem(cx,lp,dm,r,m)) // don't pass cx to base: not dp, cx, _Mem..
@@ -2872,8 +2872,8 @@ namespace Pyrrho.Level4
                 var e = (SqlValue)cx.obs[a];
                 if (e is SqlFunction sf && sf.kind == Sqlx.COUNT && sf.mod == Sqlx.TIMES)
                 {
-                    if (Sources(cx).Count > 1)
-                        goto no;
+                    //if (Sources(cx).Count > 1)
+                    //    goto no;
                     for (var c = ss.First(); c != null; c = c.Next())
                     {
                         var ex = r[c.key()] ?? BTree<long, object>.Empty;
@@ -2951,34 +2951,38 @@ namespace Pyrrho.Level4
             var dm = cx._Dom(this);
             return dm.rowType.CompareTo(sd.rowType) == 0 && where.CompareTo(sc.where) == 0;
         }
-        internal override RowSet Build(Context _cx)
+        internal override RowSet Build(Context cx)
         {
-            var dm = _cx._Dom(this);
-            var cx = new Context(_cx);
+            var dm = cx._Dom(this);
+   //         var cx = new Context(_cx);
             cx.groupCols += (dm, groupCols);
             if (dm.aggs != CTree<long, bool>.Empty)
             {
                 var sce = (RowSet)cx.obs[source];
-                var countStar = dm.display == 1 && cx.obs[dm.rowType[0]] is SqlFunction sf
+                SqlFunction countStar= null;
+                if (dm.display == 1 && cx.obs[dm.rowType[0]] is SqlFunction sf
                     && _ProcSources(cx).Count == 0
-                    && sf.kind == Sqlx.COUNT && sf.mod == Sqlx.TIMES && where == CTree<long, bool>.Empty;
-                if (countStar && sce.Built(cx) && _RestSources(cx).Count == 0)
+                    && sf.kind == Sqlx.COUNT && sf.mod == Sqlx.TIMES && where == CTree<long, bool>.Empty)
+                    countStar = sf;
+                if (countStar!=null && sce.Built(cx) && _RestSources(cx).Count == 0)
                 {
                     var v = sce.Build(cx)?.Cardinality(cx) ?? 0;
-                    var rg = new Register();
+                    var rg = new Register(cx,TRow.Empty,countStar);
                     rg.count = v;
                     var cp = dm.rowType[0];
-                    _cx.funcs += (TRow.Empty, (_cx.funcs[TRow.Empty] ?? BTree<long, Register>.Empty)
-                        + (cp, rg));
+                    cx.funcs += (defpos,cx.funcs[defpos]??BTree<TRow,BTree<long,Register>>.Empty+
+                        (TRow.Empty, (cx.funcs[defpos]?[TRow.Empty] ?? BTree<long, Register>.Empty)
+                        + (cp, rg)));
                     var sg = new TRow(dm, new CTree<long, TypedValue>(cp, new TInt(v)));
-                    _cx.values += (defpos, sg);
-                    return (RowSet)New(_cx, E + (_Built, true) + (_Rows, new BList<TRow>(sg)));
+                    cx.values += (defpos, sg);
+                    return (RowSet)New(cx, E + (_Built, true) + (_Rows, new BList<TRow>(sg)));
                 }
                 cx.finder += sce.finder;
                 for (var rb = sce.First(cx); rb != null;
                     rb = rb.Next(cx))
                     if (!rb.IsNull)
                     {
+                        cx.finder += sce.finder;
                         for (var b = matches.First(); b != null; b = b.Next()) // this is now redundant
                         {
                             var sc = cx.obs[b.key()] as SqlValue;
@@ -3003,7 +3007,10 @@ namespace Pyrrho.Level4
                                 for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
                                 {
                                     var p = gb.value();
-                                    vals += (p, cx.obs[p].Eval(cx));
+                                    var kv = cx.obs[p].Eval(cx);
+                                    if (kv == null || kv.IsNull)
+                                        throw new DBException("22004", cx.obs[p].name);
+                                    vals += (p, kv);
                                 }
                                 var key = new TRow(groupCols, vals);
                                 for (var b = dm.aggs.First(); b != null; b = b.Next())
@@ -3013,7 +3020,7 @@ namespace Pyrrho.Level4
                     }
                 var rws = BList<TRow>.Empty;
                 cx.cursors = BTree<long, Cursor>.Empty;
-                for (var b = cx.funcs.First(); b != null; b = b.Next())
+                for (var b = cx.funcs[defpos]?.First(); b != null; b = b.Next())
                 {
                     cx.values = CTree<long, TypedValue>.Empty;
                     // Remember the aggregating SqlValues are probably not just aggregation SqlFunctions
@@ -3044,16 +3051,14 @@ namespace Pyrrho.Level4
                     rws += new TRow(dm, vs);
                 skip:;
                 }
-                _cx.funcs = cx.funcs;
-                _cx.groupCols = cx.groupCols;
                 if (rws == BList<TRow>.Empty)
                     rws += new TRow(dm, CTree<long, TypedValue>.Empty);
-                return (RowSet)New(_cx, E + (_Rows, rws) + (_Built, true) + (Index.Tree, null)
+                return (RowSet)New(cx, E + (_Rows, rws) + (_Built, true) + (Index.Tree, null)
                     + (Index.Keys, groupings));
             }
-            for (var b = Sources(_cx).First(); b != null; b = b.Next())
-                ((RowSet)_cx.obs[b.key()]).Build(_cx);
-            return (RowSet)New(_cx, E + (_Built, true));
+            for (var b = Sources(cx).First(); b != null; b = b.Next())
+                ((RowSet)cx.obs[b.key()]).Build(cx);
+            return (RowSet)New(cx, E + (_Built, true));
         }
         protected override Cursor _First(Context _cx)
         {
@@ -6085,7 +6090,7 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Build(Context cx)
         {
-            var w = (WindowSpecification)cx.obs[wf.window];
+            var w = wf.window;
             // we first compute the needs of this window function
             // The key will consist of partition/grouping and order columns
             // The value part consists of the parameter of the window function

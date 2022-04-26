@@ -1409,7 +1409,7 @@ namespace Pyrrho.Level3
                             throw new DBException("22004").ISO();
                         if (ra.Length != rb.Length)
                             throw new DBException("22202").Mix()
-                                .AddType(ra.dataType).AddValue(rb.dataType);
+                                   .AddType(ra.dataType).AddValue(rb.dataType);
                         c = 0;
                         for (var cb = ra.dataType.representation.First(); c == 0 && cb != null;
                             cb = cb.Next())
@@ -2907,7 +2907,7 @@ namespace Pyrrho.Level3
                                 }
                                 var fd = (Document)f.Value;
                                 var ra = fd.fields.ToArray();
-                                var fc = cx.funcs[key]?[sf.defpos] ?? sf.StartCounter(cx);
+                                var fc = cx.funcs[sf.from]?[key]?[sf.defpos] ?? sf.StartCounter(cx,key);
                                 fc.count += int.Parse(ra[0].Key);
                                 switch (sf.kind)
                                 {
@@ -2987,8 +2987,11 @@ namespace Pyrrho.Level3
                                         fc.bval = fc.bval && (bool)ra[0].Value;
                                         break;
                                 }
-                                cx.funcs += (key, (cx.funcs?[key] ?? BTree<long, Register>.Empty)
-                                    + (sf.defpos, fc));
+                                var t1 = cx.funcs[sf.from] ?? BTree<TRow, BTree<long, Register>>.Empty;
+                                var t2 = t1[key] ?? BTree<long, Register>.Empty;
+                                t2 += (sf.defpos, fc);
+                                t1 += (key, t2);
+                                cx.funcs += (sf.from, t1);
                                 cx.values -= sf.defpos;
                                 var v = sf.Eval(cx);
                                 cx.values += (sf.defpos, v);

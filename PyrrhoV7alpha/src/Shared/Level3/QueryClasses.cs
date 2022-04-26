@@ -217,6 +217,29 @@ namespace Pyrrho.Level3
                 r += (Low, w);
             return r;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (query >= 0) { sb.Append(" Query "); sb.Append(Uid(query));  }
+            if (orderWindow!=null) { sb.Append(" OWin "); sb.Append(orderWindow); }
+            var cm = "";
+            if (order!=null && order.Count>0) 
+            { 
+                sb.Append(" Order ["); 
+                for (var b=order.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.value()));
+                }
+                sb.Append("]");
+            }
+            if (partition != 0) { sb.Append(" Parts "); sb.Append(partition); }
+            if (units != Sqlx.NO) { sb.Append(" Units "); sb.Append(units); }
+            if (low!=null) { sb.Append(" Low "); sb.Append(low); }
+            if (high != null) { sb.Append(" High "); sb.Append(high); }
+            if (exclude != Sqlx.Null) { sb.Append(" Exclude "); sb.Append(exclude); }
+            return sb.ToString();
+        }
     }
     // shareable as of 26 April 2021
     internal class Grouping :DBObject,IComparable
