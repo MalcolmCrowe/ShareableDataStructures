@@ -424,7 +424,7 @@ namespace Pyrrho.Level3
                 if (cx.obs[b.value()] is SqlStar st
                     && (f == null || (st.prefix < 0
                     || (cx.obs[st.prefix] is SqlValue sv
-                        && cx.defs[sv.name].Item1.dp == f.defpos))))
+                        && cx.defs[sv.name][sv.iix.sd].Item1.dp == f.defpos))))
                     return true;
             }
             return false;

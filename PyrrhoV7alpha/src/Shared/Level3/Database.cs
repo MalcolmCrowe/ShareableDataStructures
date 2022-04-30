@@ -180,7 +180,6 @@ namespace Pyrrho.Level3
         internal readonly long loadpos;
         public override long lexeroffset => loadpos;
         internal const long
-            ColTracker = -318, // BTree<long,BTree<long,long>> colpos, ppos, dompos
             Curated = -53, // long
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
@@ -200,7 +199,6 @@ namespace Pyrrho.Level3
             _Schema = -291, // long: (always the same as _system._role) the owner role for the database
             SchemaKey = -286, // long: highwatermark for schema changes
             Types = -61, // CTree<Domain,long>
-            TypeTracker = -315, // BTree<long,BTree<long,Domain>> colpos,modpos
             User = -277, // User: always the connection user
             _User = -301,// long: user.defpos, always the connection user, maybe uncommitted
             Users = -287; // BTree<string,long> users defined in the database
@@ -236,10 +234,6 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         public CTree<long, string> procedures =>
             (CTree<long, string>)mem[Procedures] ?? CTree<long, string>.Empty;
-        public BTree<long, BTree<long, Domain>> typeTracker =>
-            (BTree<long, BTree<long, Domain>>)mem[TypeTracker] ?? BTree<long, BTree<long, Domain>>.Empty;
-        public BTree<long, BTree<long, DBObject>> colTracker =>
-            (BTree<long, BTree<long, DBObject>>)mem[ColTracker] ?? BTree<long, BTree<long, DBObject>>.Empty;
         /// <summary>
         /// This code sets up the _system Database.
         /// It contains two roles ($Schema and _public), 

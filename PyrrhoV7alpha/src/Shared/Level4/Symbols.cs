@@ -39,15 +39,19 @@ namespace Pyrrho.Level4
                 return -1;
             var that = (Iix)obj;
             return lp.CompareTo(that.lp);
-        }        
+        }
         public override string ToString()
         {
-            var sb = new StringBuilder(DBObject.Uid(lp));
-            if (this != None)
+            if (dp < 0)
             {
-                if (dp != lp)
-                { sb.Append('|'); sb.Append(DBObject.Uid(dp)); }
+                if (this == None)
+                    return "None";
+                return "Ambiguous";
             }
+            var sb = new StringBuilder(DBObject.Uid(sd));
+            sb.Append(":"); sb.Append(DBObject.Uid(lp));
+            if (dp != lp)
+            { sb.Append('|'); sb.Append(DBObject.Uid(dp)); }
             return sb.ToString();
         }
     }
@@ -159,44 +163,60 @@ namespace Pyrrho.Level4
             return 0;
         }
         // shareable as of 26 April 2021
-        internal class Idents : BTree<string, (Iix, Idents)>
+        internal class Idents : BTree<string, BTree<int,(Iix, Idents)>>
         {
             public new static Idents Empty = new Idents();
             Idents() : base() { }
-            Idents(BTree<string, (Iix, Idents)> b) : base(b.root) { }
+            Idents(BTree<string, BTree<int,(Iix, Idents)>> b) : base(b.root) { }
             public static Idents operator +(Idents t, (string, Iix, Idents) x)
             {
                 var (n, iix, ids) = x;
-                return new Idents(t + (n,(iix,ids)));
+                var s = t[n]??BTree<int,(Iix,Idents)>.Empty;
+                // discard out-of-scope items
+                for (var b = s.PositionAt(iix.sd+1); b != null; b = b.Next())
+                    s -= b.key();
+                return new Idents(t + (n,s+(iix.sd,(iix,ids))));
             }
             public static Idents operator +(Idents t, (Ident, Iix) x)
             {
                 var (id, p) = x;
                 if (t.Contains(id.ident))
                 {
-                    var (to, ts) = t[id.ident];
-                    if (id.sub != null)
-                        return new Idents(t + (id.ident, (to, ts + (id.sub, p))));
+                    var s = t[id.ident]??BTree<int,(Iix,Idents)>.Empty;
+                    if (s.Contains(p.sd))
+                    {
+                        var (to, ts) = s[p.sd];
+                        if (id.sub != null)
+                            s += (p.sd, (to, ts + (id.sub, p)));
+                        else
+                            s += (p.sd, (p, ts));
+                    }
                     else
-                        return new Idents(t + (id.ident, (p, ts)));
+                        s += (p.sd, (p, Empty));
+                    return new Idents(t + (id.ident, s));
                 }
                 else
                 {
                     var ts = Empty;
                     if (id.sub != null)
                         ts += (id.sub, p);
-                    return new Idents(t + (id.ident, (p, ts)));
+                    return new Idents(t + (id.ident, new BTree<int,(Iix,Idents)>(p.sd,(p, ts))));
                 }
             }
             public static Idents operator +(Idents t, (Ident, int) x)
             {
                 var (id, n) = x;
                 var ts = Empty;
-                if (t.Contains(id.ident))
-                    ts = t[id.ident].Item2;
+                var s = t[id.ident]??BTree<int,(Iix,Idents)>.Empty;
+                if (s.Contains(id.iix.sd))
+                    ts = s[id.iix.sd].Item2;
                 if (id.sub != null && n > 0)
                     ts = ts + (id.sub, n - 1);
-                return new Idents(t + (id.ident, (id.iix, ts)));
+                return new Idents(t + (id.ident, s+(id.iix.sd,(id.iix, ts))));
+            }
+            public static Idents operator-(Idents t,string s)
+            {
+                return new Idents((BTree<string,BTree<int,(Iix, Idents)>>)t.Remove(s));
             }
             /// <summary>
             /// Identifier chain lookup function. Search in this
@@ -213,10 +233,15 @@ namespace Pyrrho.Level4
                     var (ic, d) = x;
                     if (ic == null || !Contains(ic.ident) || d < 1)
                         return (Iix.None, null, ic);
-                    var (ob, ids) = this[ic.ident];
+                    var ix = Iix.None;
+                    Idents ids = Empty;
+                    var s = this[ic.ident] ?? BTree<int, (Iix, Idents)>.Empty; ;
+                    for (var sd = ic.iix.sd;ix == Iix.None && sd>=0;sd--)
+                        if (s.Contains(sd))
+                           (ix, ids) = this[ic.ident][sd];
                     if (ids != Empty && ic.sub != null && d > 1 && ids.Contains(ic.sub.ident))
                         return ids[(ic.sub, d - 1)];
-                    return (ob, ids, ic.sub);
+                    return (ix, ids, ic.sub);
                 }
             }
             /// <summary>
@@ -236,26 +261,41 @@ namespace Pyrrho.Level4
                     return ob;
                 }
             }
-            public IdBookmark First(int p,Ident pr=null)
+            internal (Iix,Idents) this[(string,int)x]
             {
-                var b = base.First();
-                return (b==null)?null:new IdBookmark(b, pr, p);
+                get 
+                {
+                    var (s, d) = x;
+                    for (var b=PositionAt(s)?.value().Last();b!=null;b=b.Previous())
+                    {
+                        if (b.key() <= d)
+                            return b.value();
+                    }
+                    return (Iix.None,Idents.Empty);
+                }
             }
             internal Idents ApplyDone(Context cx)
             {
-                var r = BTree<string, (Iix, Idents)>.Empty;
+                var r = BTree<string, BTree<int,(Iix,Idents)>>.Empty;
                 for (var b=First();b!=null;b=b.Next())
                 {
-                    var (p, st) = b.value();
-                    if (p.dp!=-1L && cx.done[p.dp] is DBObject nb)
+                    for (var s = b.value().First(); s != null; s = s.Next())
                     {
-                        p = cx.Ix(nb.defpos);
-                        for (var c=cx._Dom(nb)?.rowType.First();c!=null;c=c.Next())
-                        if (cx.done[c.value()] is SqlValue s)
-                            st = new Idents(st + (s.name, (s.iix, st[s.name].Item2??Empty)));
+                        var (p, st) = s.value();
+                        if (p.dp != -1L && cx.done[p.dp] is DBObject nb)
+                        {
+                            p = cx.Ix(nb.defpos);
+                            for (var c = cx._Dom(nb)?.rowType.First(); c != null; c = c.Next())
+                                if (cx.done[c.value()] is SqlValue v)
+                                {
+                                    var ds = st[v.name] ?? BTree<int,(Iix,Idents)>.Empty;
+                                    var dd = ds[v.iix.sd].Item2??Empty;
+                                    st = new Idents(st + (v.name, ds +(v.iix.sd,(v.iix,dd))));
+                                }
+                        }
+                        st = st?.ApplyDone(cx);
+                        r += (b.key(), b.value()+(p.sd,(p, st))); // do not change the string key part
                     }
-                    st = st?.ApplyDone(cx);
-                    r += (b.key(), (p, st)); // do not change the string key part
                 }
                 return new Idents(r);
             }
@@ -265,14 +305,17 @@ namespace Pyrrho.Level4
                 for (var b=First();b!=null;b=b.Next())
                 {
                     var n = b.key();
-                    var (p, ids) = b.value();
-                    r += (n, cx.Fix(p), ids?.Relocate(cx));
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                    {
+                        var (p, ids) = c.value();
+                        r += (n, cx.Fix(p), ids?.Relocate(cx));
+                    }
                 }
                 return r;
             }
-            public override ATree<string, (Iix, Idents)> Add(ATree<string, (Iix, Idents)> a)
+            public override ATree<string, BTree<int,(Iix, Idents)>> Add(ATree<string, BTree<int,(Iix, Idents)>> a)
             {
-                return new Idents((BTree<string,(Iix,Idents)>)base.Add(a));
+                return new Idents((BTree<string,BTree<int,(Iix,Idents)>>)base.Add(a));
             }
             public override string ToString()
             {
@@ -280,55 +323,16 @@ namespace Pyrrho.Level4
                 for (var b=First();b!=null;b=b.Next())
                 {
                     sb.Append(b.key()); sb.Append("=(");
-                    var (p, ids) = b.value();
-                    if (p.dp >= 0)
-                        sb.Append(p.ToString());
-                    sb.Append(",");
-                    if (ids!=Empty)
-                        sb.Append(ids.ToString());
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                    {
+                        var (p, ids) = c.value();
+                        sb.Append(p.ToString());sb.Append(",");
+                        if (ids != Empty)
+                            sb.Append(ids.ToString());
+                    }
                     sb.Append(");");
                 }
                 return sb.ToString();
-            }
-        }
-        // shareable as of 26 April 2021
-        internal class IdBookmark
-        {
-            internal readonly ABookmark<string, (Iix, Idents)> _bmk;
-            internal readonly Ident _parent,_key;
-            internal readonly int _pos;
-            internal IdBookmark(ABookmark<string,(Iix,Idents)> bmk,
-                Ident parent, int pos)
-            {
-                _bmk = bmk; _parent = parent;  _pos = pos;
-                _key = new Ident(_parent,_bmk.key());
-            }
-            public Ident key()
-            {
-                return _key;
-            }
-            public Iix value()
-            {
-                return _bmk.value().Item1;
-            }
-            public int Position => _pos;
-            public IdBookmark Next()
-            {
-                var bmk = _bmk;
-                var (p, id) = bmk.value(); // assert: ob!=null (it's value())
-                for (; ; )
-                {
-                    if (id?.First(_pos + 1) is IdBookmark ib)
-                        return ib;
-                    bmk = bmk.Next();
-                    if (bmk == null)
-                        return null;
-                    (p, id) = bmk.value();
-                    if (p.dp != -1L)
-                        return new IdBookmark(bmk, _parent, _pos + 1);
-                    if (id == null) // shouldn't happen
-                        return null;
-                }
             }
         }
     }

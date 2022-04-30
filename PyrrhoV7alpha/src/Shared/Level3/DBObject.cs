@@ -254,8 +254,8 @@ namespace Pyrrho.Level3
         internal override Basis _Fix(Context cx)
         {
             var r = this;
-            if (iix is Iix ix && ix.lp != ix.dp)
-                r += (IIx, new Iix(ix.dp));
+            if (iix!=null)
+                r += (IIx, new Iix(iix.dp,cx,iix.dp));
             var np = cx.Fix(defpos);
             if (np != defpos)
             {
@@ -287,11 +287,6 @@ namespace Pyrrho.Level3
         internal virtual Database Add(Database d,PMetadata pm, long p)
         {
             return d;
-        }
-        // Helper for format<51 compatibility
-        internal virtual SqlValue ToSql(Ident id,Database db)
-        {
-            return null;
         }
         internal virtual BTree<long,SystemFilter> SysFilter(Context cx,BTree<long,SystemFilter> sf)
         {

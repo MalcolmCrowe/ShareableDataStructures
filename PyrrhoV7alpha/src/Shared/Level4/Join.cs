@@ -115,9 +115,9 @@ namespace Pyrrho.Level4
                         nv += c;
                     else
                     {
-                        c += (Name, rr.name + "." + cn);
+                        c += (Name, (rr.alias??rr.name) + "." + cn);
                         cx.Add(c);
-                        cc += (Name, lr.name + "." + cn);
+                        cc += (Name, (lr.alias??lr.name) + "." + cn);
                         cx.Add(cc);
                         if (b.key() < d)
                             dm += (cx,c);
@@ -270,6 +270,8 @@ namespace Pyrrho.Level4
             }
             if (jc != oj)
                 m = m + (_Where, wh) + (JoinCond, jc);
+            if (jc == CTree<long, bool>.Empty)
+                m += (JoinKind, Sqlx.CROSS);
             var ld = lr.lastData;
             var rd = rr.lastData;
             if (ld != 0 && rd != 0)

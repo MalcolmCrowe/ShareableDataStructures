@@ -94,8 +94,7 @@ namespace Pyrrho.Level3
             Low = -224,// WindowBound
             Order = -225, // CList<long>
             OrderWindow = -226, // string
-            Partition = -228, // int
-            PartitionType = -229, // CList<long>
+            PartitionType = -229, // Domain
             Units = -230, // Sqlx
             WQuery = -231; // long RowSet
         /// <summary>
@@ -111,14 +110,10 @@ namespace Pyrrho.Level3
         /// </summary>
         internal CList<long> order => (CList<long>)mem[Order];
         /// <summary>
-        /// how many window partitioning order items have been specified
-        /// </summary>
-        internal int partition => (int)(mem[Partition]??0);
-        /// <summary>
-        /// The partitionType is the partition columns for the window/
+        /// The partitionType is the partition columns for the window.
         /// NB this a Domain, not an ObInfo as we treat the TRow as a single value for once
         /// </summary>
-        internal CList<long> partitionType => (CList<long>)mem[PartitionType];
+        internal Domain partitionType => (Domain)mem[PartitionType];
         /// <summary>
         /// ROW or RANGE if have window frame
         /// </summary>
@@ -159,7 +154,7 @@ namespace Pyrrho.Level3
             r += (High, high?._Relocate(cx));
             r += (Low, low?._Relocate(cx));
             r += (Order, cx.Fix(order));
-            r += (PartitionType, cx.Fix(partitionType));
+            r += (PartitionType, partitionType.Fix(cx));
             r += (WQuery, cx.Fix(query));
             return r;
         }
@@ -175,7 +170,7 @@ namespace Pyrrho.Level3
             var no = cx.Fix(order);
             if (no != order)
                 r += (Order, no);
-            var np = cx.Fix(partitionType);
+            var np = partitionType.Fix(cx);
             if (np != partitionType)
                 r += (PartitionType, np);
             var nq = cx.Fix(query);
@@ -200,7 +195,7 @@ namespace Pyrrho.Level3
                     return false;
                 return order.CompareTo(w.order) == 0;
             }
-            return partition == w.partition;
+            return true;
         }
         internal override DBObject QParams(Context cx)
         {
@@ -219,7 +214,8 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            var sb = new StringBuilder(base.ToString());
+            var sb = new StringBuilder(" Window ");
+            sb.Append(Uid(defpos));
             if (query >= 0) { sb.Append(" Query "); sb.Append(Uid(query));  }
             if (orderWindow!=null) { sb.Append(" OWin "); sb.Append(orderWindow); }
             var cm = "";
@@ -233,7 +229,6 @@ namespace Pyrrho.Level3
                 }
                 sb.Append("]");
             }
-            if (partition != 0) { sb.Append(" Parts "); sb.Append(partition); }
             if (units != Sqlx.NO) { sb.Append(" Units "); sb.Append(units); }
             if (low!=null) { sb.Append(" Low "); sb.Append(low); }
             if (high != null) { sb.Append(" High "); sb.Append(high); }

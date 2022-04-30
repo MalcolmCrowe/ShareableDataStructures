@@ -261,10 +261,10 @@ namespace Pyrrho.Level4
         {
             DBObject v = null;
             if (ic.Length > 0 && defs.Contains(ic.ToString())
-                    && obs[defs[ic.ToString()].Item1.dp] is SqlValue s0)
+                    && obs[defs[ic.ToString()][ic.iix.sd].Item1.dp] is SqlValue s0)
                 v = s0;
             else if (defs.Contains(ic.ident))
-                v = obs[defs[ic.ident].Item1.dp];
+                v = obs[defs[ic.ident][ic.iix.sd].Item1.dp];
             if (v != null && !xp.CanTakeValueOf(_Dom(v)))
                 throw new DBException("42000", ic);
             return v;
@@ -969,11 +969,12 @@ namespace Pyrrho.Level4
         }
         internal void AddDefs(Ident id, Domain dm, string a=null)
         {
+            defs += (id.ident, id.iix, Ident.Idents.Empty);
             for (var b = dm?.rowType.First(); b != null;// && b.key() < dm.display; 
                 b = b.Next())
             {
                 var p = b.value();
-                var px = Ix(p,id.iix.dp);
+                var px = Ix(id.iix.lp,p);
                 var ob = obs[p] ?? (DBObject)db.objects[p];
                 var n = (ob is SqlValue v) ? v.alias??v.name : Inf(p)?.name;
                 if (n == null)
@@ -1737,20 +1738,24 @@ namespace Pyrrho.Level4
             var oc = cx.cursors;
             if (sf.window != null)
             {
-                cx.funcs += (sf.defpos,cx.funcs[sf.defpos]??BTree<TRow,BTree<long,Register>>.Empty + 
-                    (key, (cx.funcs[sf.defpos]?[key] ?? BTree<long, Register>.Empty) + (sf.defpos, this))); // prevent stack oflow
+                var t1 = cx.funcs[sf.from] ?? BTree<TRow, BTree<long, Register>>.Empty;
+                var t2 = t1[key] ?? BTree<long, Register>.Empty;
+                t2 += (sf.defpos, this);
+                t1 += (key, t2);
+                cx.funcs += (sf.from, t1);  // prevent stack oflow
                 var dp = sf.window.defpos;
                 var os = sf.window.order;
                 if (os != CList<long>.Empty)
                 {
                     var dm = new Domain(Sqlx.ROW, cx, os);
-                    var sce = (RowSet)cx.obs[sf.from];
+                    wtree = new RTree(dp, cx, dm,
+                       TreeBehaviour.Allow, TreeBehaviour.Allow);
+                    var fm = (RowSet)cx.obs[sf.from];
+                    var sce = (RowSet)cx.obs[fm.source];
                     for (var e = sce.First(cx); e != null; e = e.Next(cx))
                     {
                         var vs = CTree<long, TypedValue>.Empty;
                         cx.cursors += (dp, e);
-                        wtree = new RTree(dp, cx, dm,
-                        TreeBehaviour.Allow, TreeBehaviour.Allow);
                         for (var b = os.First(); b != null; b = b.Next())
                         {
                             var s = cx.obs[b.value()];

@@ -966,6 +966,8 @@ namespace Pyrrho
                 case Sqlx.MULTISET:
                     return 1 + MultisetLength(cx, (TMultiset)o);
                 case Sqlx.TABLE:
+                    if (o is Cursor c)
+                        return 1 + TableLength(cx, (RowSet)cx.obs[c._rowsetpos]);
                     return 1 + TableLength(cx, (RowSet)o);
                 case Sqlx.INTERVAL:
                     return 10; // 1+ 1byte + (1long or 2xint)
@@ -1272,7 +1274,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (23 Apr 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (30 Apr 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

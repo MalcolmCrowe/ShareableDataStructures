@@ -1791,8 +1791,7 @@ namespace Pyrrho.Level4
         {
             var rs = (RowSet)cx.obs[_rowsetpos];
             var p = _dom.rowType[i];
-            var ob = (SqlValue)cx.obs[p];
-            return ob.name;
+            return (cx.obs[p] is SqlValue sv)?sv.name:"";
         }
         public override string ToString()
         {
@@ -1833,8 +1832,33 @@ namespace Pyrrho.Level4
         internal override Assertions Requires => Assertions.SimpleCols;
         /// <summary>
         /// Contructor 
+        /// This constructor is used in a CRUD operation for a TableReference, i.e.
+        /// a Table, View or Rowset (subquery or emptyrowset).
+        /// If it is a select operation, then q will be a partially known
+        /// set of display columns as specified in the SelectList. If the select list 
+        /// contains *, then the set of display columns will be extended to all of the
+        /// referenceable columns in the table expression. By the end of parsing
+        /// the TableExpression the select list (and the resulting domain of
+        /// the SelectRowSet that will be constructed) will be fully known. At this
+        /// stage some of the table references may have been constructed. Remember that
+        /// the columns in table references will supply the operands for the 
+        /// expressions in the select list (not all will be simple).
+        /// If it is an Insert operation there may be a column list specified in the cr parameter.
+        /// Where conditions etc may folow the TableExpression, so non-referenced columns
+        /// in the TableExpression will be added to the select list in case they are 
+        /// referenced in where conditions, join conditions or ordering specifications.
+        /// The TableReference ic may identify a DBObject ob (Table or View) by name, in which case an
+        /// instance of the object will be constructed with the given uid ic.iix.dp.
+        /// 
+        /// The defining position of instance we will construct may not actually be the same as
+        /// the ic.iix.dp we have been given, as our table name or alias may already have an
+        /// instance uid (a foward reference noted in cx.defs). It cannot have more than one!
+        /// 
+        /// If q is null, there will be just one tablereference maybe with named columns, otherwise all columns.
         /// </summary>
-        /// <param name="ic">Lexical identifier</param>
+        /// <param name="ic">Lexical identifier: ic.ident the name if any,
+        ///  ic.iix.lp will be the SELECT uid if different from ic.iix.dp, 
+        ///  ic.iix.sd the select depth, ic.iix.dp the table reference uid</param>
         /// <param name="cx">The context</param>
         /// <param name="ob">The object to be instanced</param>
         /// <param name="q">The value list if any</param>
@@ -1843,21 +1867,30 @@ namespace Pyrrho.Level4
         /// <param name="cr">NonNull for SqlInsert, an explicit column list if not empty</param>
         public From(Ident ic, Context cx, DBObject ob, Domain q = null,
             Grant.Privilege pr = Grant.Privilege.Select, BList<Ident> cr = null,
-            string a=null)
-            : base(cx,ic.iix.dp,_Mem(ic, cx, ob, q, pr, cr, a)+(IIx,ic.iix))
+            string a = null)
+            : this(cx, _Mem(ic, cx, ob, q, pr, cr, a)) { }
+        From(Context cx, BTree<long, object> m)
+            : base(cx, ((Iix)m[IIx]).dp, m)
         {
-            var ids = cx.defs[ic.ident].Item2;
+            var ids = cx.defs[(alias ?? name, cx.selectDepth)].Item2;
             var dm = cx._Dom(this);
             for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
+                // update defs with the newly defined entries and their aliases
                 var c = (SqlValue)cx.obs[b.value()];
                 if (c.name != "")
                 {
                     ids += (c.name, c.iix, Ident.Idents.Empty);
                     if ((!cx.defs.Contains(c.name)) ||
-                        cx.defs[c.name].Item1 is Iix ix && 
-                        (ix.dp < Transaction.TransPos || ix.sd<ic.iix.sd))
+                        cx.defs[c.name][c.iix.sd].Item1 is Iix ix && ix.dp >= 0 &&
+                        (ix.dp < Transaction.TransPos || ix.sd < iix.sd))
                         cx.defs += (c.name, c.iix, Ident.Idents.Empty);
+          /*          else if (cx.defs[c.name].Contains(c.iix.sd)) cf test8:10
+                    {
+                        var x = cx.defs[c.name][c.iix.sd].Item1;
+                        if (x.dp>=0 && x.dp!=c.defpos)
+                            cx.defs += (c.name, new Iix(-1L, cx, -1L), Ident.Idents.Empty);
+                    } */
                     if (c.alias != null)
                     {
                         ids += (c.alias, c.iix, Ident.Idents.Empty);
@@ -1865,9 +1898,7 @@ namespace Pyrrho.Level4
                     }
                 }
             }
-            cx.defs += (ic.ident, ic.iix, ids);
-            if (a!=null)
-                cx.defs += (a, ic.iix, ids);
+            cx.defs += (alias??name, iix, ids);
         }
         public From(long dp, Context cx, SqlCall pc, Domain q, CList<long> cr = null)
             : base(dp,cx, _Mem(dp, cx, pc, q, cr))
@@ -1887,21 +1918,88 @@ namespace Pyrrho.Level4
         {
             return new From(defpos, m);
         }
+        /// <summary>
+        /// Workshop for the CRUD From constructor
+        /// If q is non-null, it will be a TABLE domain with a set of columns (the display)
+        /// and if there are no stars will know how many there are, and maybe their names or aliases.
+        /// We probably won't know their Domains (but they may be literal values, simple names,
+        /// expressions or function calls with a a constrained Union Domain result).
+        /// Consider instead the set of non-star Ident operands N in these expressions. 
+        /// At this stage there are three sorts of Ident here:
+        ///  Identifiers that have occurred to the left of the current SELECT: may also be
+        ///  only partially known but they will eventually be defined by the RowSet they are from.
+        ///  All other Idents n in N will name ix.cx.lp as their From. There are three cases:
+        ///  n is now the uid of an SqlCopy targeting a previous tablereference in the tableexpression.
+        ///  n has form f.u where f is a forward reference (the name or alias of this or a future tablereference)
+        ///  n is a simple name which may unambiguously match a column name in this tablereference
+        ///  And all of these are in cx.defs already (ambiguous references already excluded).
+        ///  
+        /// For this tablereference ic, we will be constructing an Instance of ob whose rowType will
+        /// contain uids in the above collection N, including all the f.u idents where f names ic or its alias a,
+        /// and any unabiguous references to the names of ob; and heap uids for any unreferenced columns
+        /// in case they are referenced later: these will be in the display if q contains a star.
+        /// Where we have constructed this RowSet, all of these references will be to SqlCopy 
+        /// targeting this tablereference and (for a base table) with a copyFrom field identifying the base column.
+        /// 
+        /// </summary>
+        /// <param name="ic">Lexical identifier: ic.ident the name if any,
+        ///  ic.iix.lp will be the SELECT uid if different from ic.iix.dp, 
+        ///  ic.iix.sd the select depth, ic.iix.dp the table reference uid</param>
+        /// <param name="cx">The context</param>
+        /// <param name="ob">The DBObject named: this will be instanced</param>
+        /// <param name="q">The select list</param>
+        /// <param name="pr">The privilege required for CRUD</param>
+        /// <param name="cr">The named column list for SqlInsert</param>
+        /// <param name="a">The alias for this tablereference if any</param>
+        /// <returns>The properties for this instance rowset</returns>
+        /// <exception cref="DBException"></exception>
         internal static BTree<long, object> _Mem(Ident ic,Context cx, DBObject ob, Domain q,
            Grant.Privilege pr, BList<Ident> cr,string a)
         {
-            var vs = BList<SqlValue>.Empty; // the resolved select list in query rowType order
-            var qn = CTree<long, bool>.Empty;
-            var dt = ob.Domains(cx, pr);
+            var vs = BList<SqlValue>.Empty; // the resolved select list for this instance in query rowType order
+            var qn = CTree<long, bool>.Empty; // the set N of identifiers in q
             qn = q?.Needs(cx,-1L,qn);
-            cx.defs += (ic.ident, ic.iix, Ident.Idents.Empty);
-            if (a!=null)
-                cx.defs += (a, ic.iix, Ident.Idents.Empty);
-            var d = dt.Length;
+            var dt = ob.Domains(cx, pr); // the domain of the referenced object ob
+            var tn = ic.ident; // the object name
+            var n = a ?? tn;
+            var _ix = ic.iix; // our eventual uid
+            var fu = BTree<string, long>.Empty;
+            // we begin by examining the f.u entries in cx.defs. If f matches n we will 
+            if (cx.defs.Contains(tn)) // care: our name may have occurred earlier (for a different instance)
+            {
+                var (ix,ids) = cx.defs[(n, ic.iix.sd)];
+                if (cx.obs[ix.dp] is ForwardReference)
+                {
+                    _ix = ix;
+                    for (var b = ids.First(); b != null; b = b.Next())
+                        if (b.value() != BTree<int, (Iix, Ident.Idents)>.Empty)
+                            fu += (b.key(), b.value().Last().value().Item1.dp);
+                }
+            }
+            else if (a != null && cx.defs.Contains(a))
+            {
+                var (ix, ids) = cx.defs[(n, ic.iix.sd)];
+                if (cx.obs[ix.dp] is ForwardReference)
+                {
+                    if (_ix.dp != ic.iix.dp)
+                        throw new DBException("42104", a);
+                    _ix = ix;
+                    for (var b = ids.First(); b != null; b = b.Next())
+                        if (b.value() != BTree<int, (Iix, Ident.Idents)>.Empty)
+                            fu += (b.key(), b.value().Last().value().Item1.dp);
+                }
+            }
+            else // we are not yet in cx.defs: add our new instance uid and its alias if any
+            {
+                cx.defs += (ic.ident, _ix, Ident.Idents.Empty);
+                if (a != null)
+                    cx.defs += (a, _ix, Ident.Idents.Empty);
+            }
+            int d = dt.Length; // di is the Domain of the referenced object ob
             var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
             var tr = CTree<long,long>.Empty; // the mapping to physical positions
             var mp = CTree<long, bool>.Empty; // the set of referenced columns
-            var ma = BTree<string, DBObject>.Empty; // the set of referenceable columns in dm
+            var ma = BTree<string, DBObject>.Empty; // the set of referenceable columns in dt
             for (var b = dt.rowType.First(); b != null && b.key() < dt.display; b = b.Next())
             {
                 var p = b.value();
@@ -1916,7 +2014,7 @@ namespace Pyrrho.Level4
             }
             if (cr == null || cr==BList<Ident>.Empty)
             {
-                // we want to add everything from dm that matches q.Needs
+                // we want to add everything from dt that matches q.Needs with lexical uids
                 if (q!= null)
                 {
                     for (var b = qn.First(); b != null; b = b.Next())
@@ -1935,10 +2033,15 @@ namespace Pyrrho.Level4
                             var tc = ma[uv.name];
                             if (tc == null || (tc is TableColumn && cx.obs[uv.from] is VirtualTable)) //??
                                 continue;
-                            // we have a match for one of q's Needs
-                            var nv = (tc is SqlValue sc)?(sc+(IIx, cx.Ix(uv.iix.lp,tc.defpos)))
-                                :new SqlCopy(uv.iix, cx, uv.name, ic.iix.dp, tc.defpos);
-                            nv += (_From, ic.iix.dp);
+                            SqlValue nv = null;
+                            if (tc is SqlValue sc)
+                                nv = sc + (IIx, cx.Ix(uv.iix.lp, tc.defpos));
+                            if (nv == null && (fu.Contains(uv.name) && fu[uv.name] == p
+                                ||cx.defs[(uv.name,_ix.sd)].Item1.dp>=0))
+                                nv = new SqlCopy(uv.iix, cx, uv.name, _ix.dp, tc.defpos);
+                            if (nv == null)
+                                continue;
+                            nv += (_From, _ix.dp);
                             if (uv.alias != null)
                                 nv += (_Alias, uv.alias);
                             cx.Replace(uv, nv); // update the context (but not q)
@@ -1996,7 +2099,7 @@ namespace Pyrrho.Level4
                     var ci = cx.Inf(p);
                     if (sc == null && cx.defs.Contains(ci.name))
                     {
-                        var (ix, _) = cx.defs[ci.name];
+                        var ix = cx.defs[(ci.name,cx.selectDepth)].Item1;
                         var so = cx.obs[ix.dp];
                         if (so?.GetType().Name == "SqlValue")
                         {
@@ -2055,13 +2158,15 @@ namespace Pyrrho.Level4
                 op = ((RestView)cx.obs[rrs.restView]).viewPpos;
             var fa = (pr==Grant.Privilege.Select)? Assertions.None: 
                 (cr == null) ? Assertions.AssignTarget : Assertions.ProvidesTarget;
-            var r = BTree<long, object>.Empty + (Name, ic.ident)
+            var r = BTree<long, object>.Empty + (Name, tn)
                    + (Target, ts.target) + (_Domain,fd.defpos)
-                   + (_Finder, fi) + (IIx,ic.iix)
+                   + (_Finder, fi) + (IIx,_ix)
                    + (_Source, ts.defpos) + (Matching, mg)
                    + (RSTargets, new CTree<long, long>(op, ts.defpos))
                    + (Asserts, fa)
                    + (_Depth,cx.Depth(fd,ts,ob));
+            if (a!=null)
+                r += (_Alias,a);
             return r;
         }
         static BTree<long, object> _Mem(long dp, Context cx, SqlCall ca, Domain q, CList<long> cr = null)
@@ -2180,10 +2285,6 @@ namespace Pyrrho.Level4
             if (nt != target)
                 r += (Target, nt);
             return r;
-        }
-        internal override SqlValue ToSql(Ident id, Database db)
-        {
-            return new SqlTable(id.iix, this);
         }
         /// <summary>
         /// Accessor: Check a new table check constraint
@@ -2636,7 +2737,7 @@ namespace Pyrrho.Level4
                     var ku = b.key();
                     if (cx.obs[ku].name is string su && cx.defs.Contains(su))
                     {
-                        var kf = cx.defs[su].Item1.dp;
+                        var kf = cx.defs[su][cx.selectDepth].Item1.dp;
                         fi += (ku, new Finder(kf, r.defpos));
                     }
                 }
@@ -4716,7 +4817,7 @@ namespace Pyrrho.Level4
                 for (var b = dm.rowType.First(); b != null; b = b.Next())
                 {
                     var d = cx._Dom(cx.obs[sd.rowType[j]]);
-                    vs += (b.value(), d.Coerce(cx,cx.obs[rd.rowType[j++]].Eval(cx)));
+                    vs += (b.value(), d.Coerce(cx,(cx.obs[rd.rowType[j++]]??SqlNull.Value).Eval(cx)));
                 }
                 return new TRow(dm,vs);
             }

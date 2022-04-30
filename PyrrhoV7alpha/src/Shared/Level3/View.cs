@@ -116,10 +116,10 @@ namespace Pyrrho.Level3
             for (var b = q?.rowType.First(); b != null; b = b.Next())
             {
                 var sv = cx.obs[b.value()];
-                var ids = cx.defs[vi.name].Item2;
+                var ids = cx.defs[vi.name][cx.selectDepth].Item2;
                 if (ids.Contains(sv.name))
                 {
-                    var sp = ids[sv.name].Item1.dp;
+                    var sp = ids[sv.name][cx.selectDepth].Item1.dp;
                     var so = cx.obs[cx.uids[sp]??sp];
                     cx.Replace(so, so.Relocate(b.value())+(InstanceOf,so.defpos));
                     if (!cx.obs.Contains(sp))
@@ -128,10 +128,10 @@ namespace Pyrrho.Level3
                 for (var c = sv.Operands(cx).First(); c != null; c = c.Next())
                 {
                     var sx = cx.obs[c.key()];
-                    ids = cx.defs[vi.name].Item2;
+                    ids = cx.defs[vi.name][cx.selectDepth].Item2;
                     if (ids.Contains(sx.name))
                     {
-                        var sw = ids[sx.name].Item1.dp;
+                        var sw = ids[sx.name][cx.selectDepth].Item1.dp;
                         var so = cx.obs[cx.uids[sw] ?? sw];
                         cx.Replace(so, so.Relocate(c.key()) + (InstanceOf, so.defpos));
                         if (!cx.obs.Contains(sw))
@@ -144,7 +144,7 @@ namespace Pyrrho.Level3
                 var iv= b.value();
                 if (cx.defs.Contains(iv.ident))
                 {
-                    var sp = cx.defs[iv.ident].Item1.dp;
+                    var sp = cx.defs[iv.ident][cx.selectDepth].Item1.dp;
                     var so = cx.obs[cx.uids[sp]??sp];
                     cx.Replace(so, so.Relocate(iv.iix.dp)+(InstanceOf,so.defpos));
                     if (!cx.obs.Contains(sp))

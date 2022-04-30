@@ -75,6 +75,10 @@ namespace Pyrrho.Level4
         {
             return RTreeBookmark.New(this, cx);
         }
+        public RTreeBookmark PositionAt(Context cx,PRow key)
+        {
+            return RTreeBookmark.New(cx, this, key);
+        }
         internal RTree Fix(Context cx)
         {
             return new RTree(cx.Fix(defpos), 
@@ -133,6 +137,13 @@ namespace Pyrrho.Level4
         internal static RTreeBookmark New(RTree rt,Context cx)
         {
             for (var mb = rt.mt.Last(); mb != null; mb = mb.Previous())
+                if (mb.Value().HasValue)
+                    return new RTreeBookmark(cx, rt, 0, mb);
+            return null;
+        }
+        internal static RTreeBookmark New(Context cx,RTree rt,PRow key)
+        {
+            for (var mb = rt.mt.PositionAt(key); mb != null; mb = mb.Next())
                 if (mb.Value().HasValue)
                     return new RTreeBookmark(cx, rt, 0, mb);
             return null;
