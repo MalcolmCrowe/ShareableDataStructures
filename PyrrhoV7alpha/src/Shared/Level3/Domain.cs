@@ -2688,8 +2688,7 @@ namespace Pyrrho.Level3
                                 case Sqlx.DATE: str = ((Date)v.Val()).date.ToString(culture); break;
                                 case Sqlx.CHAR: str = (string)v.Val(); break;
                                 case Sqlx.CHECK: str = ((Rvv)v.Val())?.ToString()??""; break;
-                                default: //str = v.ToString(); break;
-                                    throw new DBException("22005", vt.kind, kind);
+                                default: str = v.ToString(); break;
                             }
                             if (prec != 0 && str.Length > prec)
                                 throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()

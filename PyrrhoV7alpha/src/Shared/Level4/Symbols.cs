@@ -24,7 +24,7 @@ namespace Pyrrho.Level4
         internal Iix(long u) { lp = u; sd = 0;  dp = u;  }
         private Iix(long l,int s,long u) { lp = l; sd = s; dp = u; }
         internal Iix(Iix ix,long u) { lp = ix.lp; sd = ix.sd; dp = u; }
-        internal Iix(long l,Context cx,long u) { lp = l; sd = cx.selectDepth; dp = u; }
+        internal Iix(long l,Context cx,long u) { lp = l; sd = cx.sD; dp = u; }
         public static Iix operator+(Iix u,int j)
         {
             return new Iix(u.lp + j, u.sd, u.dp + j);

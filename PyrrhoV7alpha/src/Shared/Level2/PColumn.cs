@@ -322,7 +322,7 @@ namespace Pyrrho.Level2
                 }
                 else
                     generated = new GenerationRule(Generation.Expression,
-                        dfs, SqlNull.Value, defpos);
+                        dfs, new SqlNull(new Iix(rdr.Position)), defpos);
             }
         }
         internal override void OnLoad(Reader rdr)

@@ -168,7 +168,7 @@ namespace Pyrrho.Common
         }
         internal override SqlValue Build(long dp, Context cx, Domain td)
         {
-            return SqlNull.Value;
+            return new SqlNull(new Iix(dp));
         }
         public override bool IsNull
         {

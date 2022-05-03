@@ -75,7 +75,8 @@ namespace Pyrrho.Level4
         internal CTree<long, Iix> instances = CTree<long, Iix>.Empty;
         internal CTree<long, CTree<long,bool>> awaits = CTree<long, CTree<long,bool>>.Empty; // SqlValue,RowSet
         internal bool inHttpService = false;
-        internal int selectDepth = 0; // for Iix
+        internal BTree<int,Ident.Idents> selectDepth = BTree<int,Ident.Idents>.Empty; // saved defs for previous level
+        internal int sD => (int)selectDepth.Count; // see IncSD() and DecSD() below
         internal CTree<Domain, Domain> groupCols = CTree<Domain, Domain>.Empty; // GroupCols for a Domain with Aggs
         internal BTree<long,BTree<TRow,BTree<long, Register>>> funcs = BTree<long,BTree<TRow, BTree<long,Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
@@ -434,6 +435,38 @@ namespace Pyrrho.Level4
             if (role.infos.Contains(dp))
                 return (ObInfo)role.infos[dp];
             return null;
+        }
+        /// <summary>
+        /// Symbol management stack
+        /// </summary>
+        internal void IncSD()
+        {
+            selectDepth += (sD, defs);
+        }
+        internal void DecSD()
+        {
+            // we don't want to lose the previous defs right away.
+            // they will be needed for OrderBy and ForSelect bodies
+            // but at least restore the Ambiguous entries in defs
+            // at level sD
+            var sd = sD;
+            for (var b=defs.First();b!=null;b=b.Next())
+            {
+                var n = b.key();
+                var t = defs[n];
+                if (t.Contains(sd))
+                {
+                    var px = t[sd].Item1;
+                    if (px.dp < 0) // n is ambiguous at level sd
+                    {
+                        var s = selectDepth[sd - 1][n];
+                        var sl = s.Last().value();
+                        var (d, i) = sl;
+                        defs += (n, d, i);
+                    }
+                }
+            }
+            selectDepth -= sd;
         }
         internal BTree<long, SqlValue> Map(CList<long> s)
         {
@@ -1433,6 +1466,16 @@ namespace Pyrrho.Level4
             {
                 var p = b.value();
                 r += (b.key(), uids[p]??p);
+            }
+            return r;
+        }
+        internal BList<(long,long)> Fix(BList<(long,long)> cs)
+        {
+            var r = BList<(long,long)>.Empty;
+            for (var b = cs.First();b!=null; b=b.Next())
+            {
+                var (w, x) = b.value();
+                r += (Fix(w), Fix(x));
             }
             return r;
         }

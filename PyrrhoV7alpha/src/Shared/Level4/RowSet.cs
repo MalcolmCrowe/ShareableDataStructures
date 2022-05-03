@@ -80,6 +80,7 @@ namespace Pyrrho.Level4
             RowOrder = -404, //CList<long> SqlValue 
             RSTargets = -197, // CTree<long,long> Table/View RowSet 
             SimpleTableQuery = -247, //bool
+            Scalar = -95, // bool
             _Source = -151, // RowSet
             Static = -152, // RowSet (defpos for STATIC)
             Stem = -211, // CTree<long,bool> RowSet 
@@ -145,6 +146,7 @@ namespace Pyrrho.Level4
         internal CTree<long, bool> window =>
             (CTree<long, bool>)mem[Windows] ?? CTree<long, bool>.Empty;
         internal MTree tree => (MTree)mem[Index.Tree];
+        internal bool scalar => (bool)(mem[Scalar] ?? false);
         internal readonly struct Finder : IComparable
         {
             public readonly long col;
@@ -1872,7 +1874,7 @@ namespace Pyrrho.Level4
         From(Context cx, BTree<long, object> m)
             : base(cx, ((Iix)m[IIx]).dp, m)
         {
-            var ids = cx.defs[(alias ?? name, cx.selectDepth)].Item2;
+            var ids = cx.defs[(alias ?? name, cx.sD)].Item2;
             var dm = cx._Dom(this);
             for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
@@ -1964,7 +1966,7 @@ namespace Pyrrho.Level4
             var n = a ?? tn;
             var _ix = ic.iix; // our eventual uid
             var fu = BTree<string, long>.Empty;
-            // we begin by examining the f.u entries in cx.defs. If f matches n we will 
+            // we begin by examining the f.u entries in cx.defs. If f matches n we will add to fu
             if (cx.defs.Contains(tn)) // care: our name may have occurred earlier (for a different instance)
             {
                 var (ix,ids) = cx.defs[(n, ic.iix.sd)];
@@ -2021,6 +2023,7 @@ namespace Pyrrho.Level4
                     {
                         var p = b.key();
                         if (cx.obs[p] is SqlValue uv 
+                                && uv.iix.sd>=cx.sD
                                 && (!dt.rowType.Has(p)) 
                                 &&!(uv is SqlCopy))// && dt.rowType.Has(uc.copyFrom))))
                         {
@@ -2099,9 +2102,9 @@ namespace Pyrrho.Level4
                     var ci = cx.Inf(p);
                     if (sc == null && cx.defs.Contains(ci.name))
                     {
-                        var ix = cx.defs[(ci.name,cx.selectDepth)].Item1;
+                        var ix = cx.defs[(ci.name,cx.sD)].Item1;
                         var so = cx.obs[ix.dp];
-                        if (so?.GetType().Name == "SqlValue")
+                        if (so?.GetType().Name == "SqlValue" && ix.sd>=cx.sD)
                         {
                             sc = new SqlCopy(ix, cx, ci.name, ic.iix.dp, co,
                                 new BTree<long, object>(_Alias, so.alias));
@@ -2737,7 +2740,7 @@ namespace Pyrrho.Level4
                     var ku = b.key();
                     if (cx.obs[ku].name is string su && cx.defs.Contains(su))
                     {
-                        var kf = cx.defs[su][cx.selectDepth].Item1.dp;
+                        var kf = cx.defs[su][cx.sD].Item1.dp;
                         fi += (ku, new Finder(kf, r.defpos));
                     }
                 }
@@ -4817,7 +4820,7 @@ namespace Pyrrho.Level4
                 for (var b = dm.rowType.First(); b != null; b = b.Next())
                 {
                     var d = cx._Dom(cx.obs[sd.rowType[j]]);
-                    vs += (b.value(), d.Coerce(cx,(cx.obs[rd.rowType[j++]]??SqlNull.Value).Eval(cx)));
+                    vs += (b.value(), d.Coerce(cx,(cx.obs[rd.rowType[j++]]?.Eval(cx)??TNull.Value)));
                 }
                 return new TRow(dm,vs);
             }

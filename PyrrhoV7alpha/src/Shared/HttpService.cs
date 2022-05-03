@@ -122,6 +122,7 @@ namespace Pyrrho
             {
                 for (; e != null; e = e.Next(cx))
                     et = e._Rvv(cx);
+                cx.funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty;
                 e = r.First(cx);
             }
             Header(rs, tr, cx, url,et.assertMatch.ToString());
@@ -609,7 +610,7 @@ namespace Pyrrho
                 doc = doc.Add("$pos", new TInt(e._ds.First().value().Item1));
                 doc = doc.Add("$check", new TInt(e._ds.First().value().Item2));
             }
-            for (var b = cx.funcs[key]?.First(); b != null; b = b.Next())
+            for (var b = cx.funcs[e._rowsetpos]?[key]?.First(); b != null; b = b.Next())
                 doc = doc.Add("$" + DBObject.Uid(b.key()), new TDocument(b.value()));
             sbuild.Append(doc.ToString());
         }
