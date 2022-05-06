@@ -29,107 +29,25 @@ namespace Pyrrho.Level3
     /// BREAK nnn will set breakto just outside the named looping construct.
     /// An UNDO handler will restore the state to the defining point of the handler, and then EXIT.
     /// </summary>
-	internal class Executable : DBObject
+	internal abstract class Executable : DBObject
 	{
-        public enum Type
-        {
-            // cf SQL2011-2 Table 32
-            NoType = 0,
-            AlterDomain = 3,
-            AlterTable = 4,
-            Call = 7,
-            Clearance = 8,
-            CloseCursor = 9,
-            CreateRoutine = 14,
-            AlterRoutine = 17,
-            DeleteWhere = 19,
-            Select = 21,
-            CreateDomain = 23,
-            DropDomain = 27,
-            DropRole = 29,
-            DropRoutine = 30,
-            DropTable = 32,
-            DropTrigger = 34,
-            Fetch = 45,
-            GetDescriptor = 47,
-            Grant = 48,
-            GrantRole = 49,
-            Insert = 50,
-            Open = 53,
-            Return = 58,
-            Revoke = 59,
-            AlterType = 60,
-            CreateRole = 61,
-            RollbackWork = 62,
-            SelectSingle = 65,
-            SetRole = 73,
-            SetSessionAuthorization = 76,
-            CreateTable = 77,
-            CreateTrigger = 80,
-            UpdateWhere = 82,
-            CreateType = 83,
-            CreateView = 84,
-            SetSessionCharacteristics = 109,
-            StartTransaction = 111,
-            CreateOrdering = 114,
-            DropOrdering = 115,
-            RevokeRole = 129,
-            // additional command codes
-            Signal = 200,
-            HttpPost = 201,
-            HttpPut = 202,
-            HttpDelete = 203,
-            Compound = 204,
-            VariableDec = 205,
-            HandlerDef = 206,
-            Break = 207,
-            Assignment = 208,
-            Case = 209,
-            IfThenElse = 210,
-            While = 211,
-            Repeat = 212,
-            Iterate = 213,
-            Loop = 214,
-            ForSelect = 215,
-            Namespace = 216,
-            Drop = 217,
-            Constraint = 218,
-            Column = 219,
-            Period = 220,
-            Rename = 223,
-            When = 230,
-            Commit = 231
-        }
-
         internal const long
             Label = -92, // string
-            Stmt = -93, // string
-            _Type = -94; // Executable.Type
+            Stmt = -93; // string
         public string stmt => (string)mem[Stmt];
         /// <summary>
         /// The label for the Executable
         /// </summary>
         internal string label => (string)mem[Label];
-        internal Type type => (Type)(mem[_Type]??Type.NoType);
-        /// <summary>
-        /// Constructor: define an Executable of a given type.
-        /// Procedure statements are subclasses of Executable
-        /// </summary>
-        /// <param name="t">The Executable.Type</param>
-        public Executable(long dp, Type t) : this(dp,new BTree<long,object>(_Type,t))
-        { }
-        protected Executable(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static Executable operator+(Executable e,(long,object)x)
-        {
-            return new Executable(e.defpos, e.mem + x);
-        }
+        protected Executable(long dp, BTree<long, object> m=null) 
+            : base(dp, m??BTree<long,object>.Empty) { }
         /// <summary>
         /// Support execution of a list of Executables, in an Activation.
         /// With break behaviour
         /// </summary>
         /// <param name="e">The Executables</param>
         /// <param name="tr">The transaction</param>
-		protected Context ObeyList(BList<long> e,Context cx)
+		protected Context ObeyList(CList<long> e,Context cx)
 		{
             if (e == null)
                 throw new DBException("42173");
@@ -161,19 +79,9 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context</param>
 		public virtual Context Obey(Context cx)
         {
-            if (type == Type.RollbackWork)
-                throw cx.db.Exception("40000").ISO();
             return cx;
         }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new Executable(defpos,m);
-        }
-        internal override DBObject Relocate(long dp)
-        {
-            return (Executable)New(mem);
-        }
-        internal static bool Calls(BList<long> ss,long defpos,Context cx)
+        internal static bool Calls(CList<long> ss,long defpos,Context cx)
         {
             for (var b = ss?.First(); b != null; b = b.Next())
                 if (cx.obs[b.value()].Calls(defpos, cx))
@@ -183,8 +91,6 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var nm = GetType().Name;
-            if (nm == "Executable")
-                nm = type.ToString();
             var sb = new StringBuilder(nm);
             if (mem.Contains(Label)) { sb.Append(" "); sb.Append(label); }
             if (mem.Contains(Name)) { sb.Append(" "); sb.Append(name); }
@@ -194,9 +100,21 @@ namespace Pyrrho.Level3
         }
     }
     // shareable as of 26 April 2021
-    internal class CommitStatement : Executable
+    internal class RollbackStatement : Executable
     {
-        public CommitStatement(long dp) : base(dp, Type.Commit) { }
+        public RollbackStatement(long dp) : base(dp) { }
+        public override Context Obey(Context cx)
+        {
+            throw cx.db.Exception("40000").ISO();
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            throw new NotImplementedException();
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            throw new NotImplementedException();
+        }
     }
     /// <summary>
     /// A Select Statement can be used in a stored procedure so is a subclass of Executable
@@ -262,6 +180,17 @@ namespace Pyrrho.Level3
             cx.result = union;
             return cx;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (SelectStatement)base._Replace(cx, so, sv);
+            var nu = ((RowSet)cx.obs[r.union])._Replace(cx, so, sv).defpos;
+            if (nu!=r.union)
+                r += (Union, nu);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -276,12 +205,12 @@ namespace Pyrrho.Level3
     internal class CompoundStatement : Executable
     {
         internal const long
-             Stms = -96; // BList<long> Executable
+             Stms = -96; // CList<long> Executable
         /// <summary>
         /// The contained list of Executables
         /// </summary>
-		public BList<long> stms =>
-            (BList<long>)mem[Stms] ?? BList<long>.Empty;
+		public CList<long> stms =>
+            (CList<long>)mem[Stms] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: create a compound statement
         /// </summary>
@@ -337,6 +266,17 @@ namespace Pyrrho.Level3
             catch (Exception e) { throw e; }
             return act.SlideDown();
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (CompoundStatement)base._Replace(cx, so, sv);
+            var ns = cx.Replaced(r.stms);
+            if (ns!=r.stms)
+                r += (Stms, ns);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -381,6 +321,17 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             return ((Executable)target.Instance(iix,cx)).Obey(cx);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (PreparedStatement)base._Replace(cx, so, sv);
+            var nq = cx.Replaced(r.qMarks);
+            if (nq!=r.qMarks)
+                r += (QMarks,nq);
+            cx.done += (defpos, r);
+            return r;
         }
         public override string ToString()
         {
@@ -472,6 +423,17 @@ namespace Pyrrho.Level3
         internal override bool LocallyConstant(Context cx, RowSet rs)
         {
             return false;
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (LocalVariableDec)base._Replace(cx, so, sv);
+            var ni = ((SqlValue)cx.obs[r.init])._Replace(cx,so,sv).defpos ;
+            if (ni!=r.init)
+                r += (Init, ni);
+            cx.done += (defpos, r);
+            return r;
         }
         public override string ToString()
         {
@@ -632,6 +594,17 @@ namespace Pyrrho.Level3
             cx.AddValue(cu, cu.Eval(cx));
             return cx;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (CursorDeclaration)base._Replace(cx, so, sv);
+            var nc = ((SqlValue)cx.obs[r.cs])._Replace(cx, so, sv).defpos;
+            if (nc != r.cs)
+                r += (CS, nc);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -712,6 +685,17 @@ namespace Pyrrho.Level3
         internal override bool Calls(long defpos, Context cx)
         {
             return cx.obs[action].Calls(defpos, cx);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (HandlerStatement)base._Replace(cx, so, sv);
+            var na = ((Executable)cx.obs[r.action])._Replace(cx, so, sv).defpos;
+            if (na != r.action)
+                r += (Action, na);
+            cx.done += (defpos, r);
+            return r;
         }
         public override string ToString()
         {
@@ -887,7 +871,8 @@ namespace Pyrrho.Level3
         /// </summary>
 		public AssignmentStatement(long dp,DBObject vb,SqlValue va) 
             : base(dp,BTree<long, object>.Empty+(Vbl,vb.defpos)+(Val,va.defpos)
-                  +(Dependents,CTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true)))
+                  +(Dependents,CTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true))
+                  +(_Depth,Math.Max(va.depth+1,vb.depth+1)))
         { }
         protected AssignmentStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static AssignmentStatement operator+(AssignmentStatement s,(long,object)x)
@@ -936,6 +921,20 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (AssignmentStatement)base._Replace(cx, so, sv);
+            var nb = ((SqlValue)cx.obs[vbl])._Replace(cx, so, sv).defpos;
+            if (nb != r.vbl)
+                r += (Vbl, nb);
+            var na = ((SqlValue)cx.obs[val])._Replace(cx, so, sv).defpos;
+            if (na != r.val)
+                r += (Val, na);  
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -956,13 +955,13 @@ namespace Pyrrho.Level3
     internal class MultipleAssignment : Executable
     {
         internal const long
-            LhsType = -107, // long DBObject
-            List = -108, // BList<long> SqlValue
+            LhsType = -107, // long Domain
+            List = -108, // CList<long> SqlValue
             Rhs = -109; // long SqlValue
         /// <summary>
         /// The list of identifiers
         /// </summary>
-        internal BList<long> list => (BList<long>)mem[List];
+        internal CList<long> list => (CList<long>)mem[List];
         /// <summary>
         /// The row type of the lefthand side, used to coerce the given value 
         /// </summary>
@@ -974,9 +973,26 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: A new multiple assignment statement from the parser
         /// </summary>
-        public MultipleAssignment(long dp) : base(dp,BTree<long,object>.Empty)
+        public MultipleAssignment(long dp,Context cx,BList<Ident>ls,SqlValue rh) : 
+            base(dp,_Mem(cx,ls,rh))
         { }
         protected MultipleAssignment(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,BList<Ident> lh,SqlValue rg)
+        {
+            var d = rg.depth + 1;
+            var dm = cx._Dom(rg);
+            var r = new BTree<long,object>(Rhs,rg.defpos);
+            var ls = CList<long>.Empty;
+            for (var b=lh.First();b!=null;b=b.Next())
+            {
+                var id = b.value();
+                var v = (SqlValue)cx.obs[id.iix.dp];
+                dm = dm.Constrain(cx, id.iix.lp, cx._Dom(v));
+                d = Math.Max(d, v.depth+1);
+                ls += v.defpos;
+            }
+            return r + (_Depth,d)+(List,ls)+(LhsType,dm.defpos);
+        }
         public static MultipleAssignment operator+(MultipleAssignment s,(long,object)x)
         {
             return new MultipleAssignment(s.defpos, s.mem + x);
@@ -1028,6 +1044,23 @@ namespace Pyrrho.Level3
                 cx.values+=(list[j],r[j]);
             return cx;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (MultipleAssignment)base._Replace(cx, so, sv);
+            var nd = ((Domain)cx.obs[lhsType])._Replace(cx, so, sv).defpos;
+            if (nd != r.lhsType)
+                r += (LhsType, nd);
+            var nl = cx.Replaced(r.list);
+            if (nl != r.list)
+                r += (List, nl);
+            var na = ((SqlValue)cx.obs[rhs])._Replace(cx, so, sv).defpos;
+            if (na != r.rhs)
+                r += (Rhs, na);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1057,7 +1090,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a return statement from the parser
         /// </summary>
-        public ReturnStatement(long dp) : base(dp, BTree<long, object>.Empty)
+        public ReturnStatement(long dp,SqlValue v) : base(dp, 
+            new BTree<long, object>(Ret,v.defpos)+(_Depth,v.depth+1))
         { }
         protected ReturnStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ReturnStatement operator +(ReturnStatement s, (long, object) x)
@@ -1102,6 +1136,17 @@ namespace Pyrrho.Level3
             cx = a.SlideDown();
             return cx;
 		}
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (ReturnStatement)base._Replace(cx, so, sv);
+            var nr = ((SqlValue)cx.obs[ret])._Replace(cx, so, sv).defpos;
+            if (nr != r.ret)
+                r += (Ret,nr);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1116,9 +1161,9 @@ namespace Pyrrho.Level3
     internal class SimpleCaseStatement : Executable
     {
         internal const long
-            Else = -111, // BList<long> Executable
+            Else = -111, // CList<long> Executable
             _Operand = -112, // long SqlValue
-            Whens = -113; // BList<long> WhenPart
+            Whens = -113; // CList<long> WhenPart
         /// <summary>
         /// The test expression
         /// </summary>
@@ -1126,17 +1171,39 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A list of when parts
         /// </summary>
-        public BList<long> whens => (BList<long>)mem[Whens]?? BList<long>.Empty;
+        public CList<long> whens => (CList<long>)mem[Whens]?? CList<long>.Empty;
         /// <summary>
         /// An else part
         /// </summary>
-        public BList<long> els => (BList<long>)mem[Else]?? BList<long>.Empty;
+        public CList<long> els => (CList<long>)mem[Else]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a case statement from the parser
         /// </summary>
-        public SimpleCaseStatement(long dp) : base(dp,BTree<long,object>.Empty)
+        public SimpleCaseStatement(long dp,Context cx,SqlValue op,BList<WhenPart> ws,
+            CList<long> ss) : 
+            base(dp,_Mem(cx,op,ws,ss))
         { }
         protected SimpleCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx, SqlValue op, BList<WhenPart> ws,
+            CList<long> ss)
+        {
+            var r = new BTree<long,object>(_Operand,op.defpos);
+            var d = op.depth + 1;
+            var wl = CList<long>.Empty;
+            for (var b=ws.First();b!=null;b=b.Next())
+            {
+                var w = b.value();
+                d = Math.Max(d, w.depth + 1);
+                wl += w.defpos;
+            }
+            if (ss!=CList<long>.Empty)
+            {
+                for (var b = ss.First(); b != null; b = b.Next())
+                    d = Math.Max(d, cx.obs[b.value()].depth + 1);
+                r += (Else, ss);
+            }
+            return r + (Whens,wl) + (_Depth,d);
+        }
         public static SimpleCaseStatement operator+(SimpleCaseStatement s,(long,object)x)
         {
             return new SimpleCaseStatement(s.defpos, s.mem + x);
@@ -1191,6 +1258,23 @@ namespace Pyrrho.Level3
                     return ObeyList(((WhenPart)cx.obs[c.value()]).stms, cx);
             return ObeyList(els, cx);
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (SimpleCaseStatement)base._Replace(cx, so, sv);
+            var no = ((SqlValue)cx.obs[r.operand])._Replace(cx, so, sv).defpos;
+            if (no != r.operand)
+                r += (_Operand, no);
+            var nw = cx.Replaced(r.whens);
+            if (nw != r.whens)
+                r += (Whens, nw);
+            var ne = cx.Replaced(r.els);
+            if (ne != r.els)
+                r += (Else, ne);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1219,17 +1303,37 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A list of when parts
         /// </summary>
-		public BList<long> whens => (BList<long>)mem[SimpleCaseStatement.Whens];
+		public CList<long> whens => (CList<long>)mem[SimpleCaseStatement.Whens];
         /// <summary>
         /// An else part
         /// </summary>
-		public BList<long> els => (BList<long>)mem[SimpleCaseStatement.Else]?? BList<long>.Empty;
+		public CList<long> els => (CList<long>)mem[SimpleCaseStatement.Else]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a searched case statement from the parser
         /// </summary>
-		public SearchedCaseStatement(long dp) : base(dp,BTree<long,object>.Empty)
+		public SearchedCaseStatement(long dp,Context cx,BList<WhenPart>ws,CList<long>ss) 
+            : base(dp,_Mem(cx,ws,ss))
         {  }
         protected SearchedCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,BList<WhenPart>ws,CList<long>ss)
+        {
+            var d = 1;
+            var r = BTree<long, object>.Empty;
+            if (ss != CList<long>.Empty)
+            {
+                for (var b = ss.First(); b != null; b = b.Next())
+                    d = Math.Max(d, cx.obs[b.value()].depth + 1);
+                r += (SimpleCaseStatement.Else,ss);
+            }
+            var wl = CList<long>.Empty;
+            for (var b = ws.First(); b != null; b = b.Next())
+            {
+                var w = b.value();
+                d = Math.Max(d, w.depth + 1);
+                wl += w.defpos;
+            }
+            return r + (SimpleCaseStatement.Whens,wl)+(_Depth, d);
+        }
         public static SearchedCaseStatement operator+(SearchedCaseStatement s,(long,object)x)
         {
             return new SearchedCaseStatement(s.defpos, s.mem + x);
@@ -1284,6 +1388,20 @@ namespace Pyrrho.Level3
             }
 			return ObeyList(els,cx);
 		}
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (SearchedCaseStatement)base._Replace(cx, so, sv);
+            var nw = cx.Replaced(r.whens);
+            if (nw != r.whens)
+                r += (SimpleCaseStatement.Whens, nw);
+            var ne = cx.Replaced(r.els);
+            if (ne != r.els)
+                r += (SimpleCaseStatement.Else, ne);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1310,7 +1428,7 @@ namespace Pyrrho.Level3
 	{
         internal const long
             Cond = -114, // long SqlValue
-            Stms = -115; // BList<long> Executable
+            Stms = -115; // CList<long> Executable
         /// <summary>
         /// A search condition for the when part
         /// </summary>
@@ -1318,13 +1436,13 @@ namespace Pyrrho.Level3
         /// <summary>
         /// a list of statements
         /// </summary>
-		public BList<long> stms =>(BList<long>)mem[Stms]?? BList<long>.Empty;
+		public CList<long> stms =>(CList<long>)mem[Stms]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: A searched when part from the parser
         /// </summary>
         /// <param name="v">A search condition</param>
         /// <param name="s">A list of statements for this when</param>
-        public WhenPart(long dp,SqlValue v, BList<long> s) 
+        public WhenPart(long dp,SqlValue v, CList<long> s) 
             : base(dp, BTree<long,object>.Empty+(Cond,v.defpos)+(Stms,s))
         { }
         protected WhenPart(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -1373,6 +1491,20 @@ namespace Pyrrho.Level3
             a.val = TBool.False;
             return cx;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (WhenPart)base._Replace(cx, so, sv);
+            var no = ((SqlValue)cx.obs[r.cond])._Replace(cx, so, sv).defpos;
+            if (no != r.cond)
+                r += (Cond, no);
+            var nw = cx.Replaced(r.stms);
+            if (nw != r.stms)
+                r += (Stms, nw);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1396,10 +1528,10 @@ namespace Pyrrho.Level3
 	internal class IfThenElse : Executable
 	{
         internal const long
-            Else = -116, // BList<long> Executable
-            Elsif = -117, // BList<long> Executable
+            Else = -116, // CList<long> Executable
+            Elsif = -117, // CList<long> Executable
             Search = -118, // long SqlValue
-            Then = -119; // BList<long> Executable
+            Then = -119; // CList<long> Executable
         /// <summary>
         /// The test condition
         /// </summary>
@@ -1407,21 +1539,36 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The then statements
         /// </summary>
-		public BList<long> then => (BList<long>)mem[Then]?? BList<long>.Empty;
+		public CList<long> then => (CList<long>)mem[Then]?? CList<long>.Empty;
         /// <summary>
         /// The elsif parts
         /// </summary>
-		public BList<long> elsif => (BList<long>)mem[Elsif] ?? BList<long>.Empty;
+		public CList<long> elsif => (CList<long>)mem[Elsif] ?? CList<long>.Empty;
         /// <summary>
         /// The else part
         /// </summary>
-		public BList<long> els => (BList<long>)mem[Else] ?? BList<long>.Empty;
+		public CList<long> els => (CList<long>)mem[Else] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: an if-then-else statement from the parser
         /// </summary>
-		public IfThenElse(long dp) : base(dp,BTree<long,object>.Empty)
+		public IfThenElse(long dp,Context cx,SqlValue se,CList<long>th,CList<long>ei,CList<long> el) 
+            : base(dp,_Mem(cx,se,th,ei,el))
 		{}
         protected IfThenElse(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx, SqlValue se, CList<long> th, CList<long> ei,
+            CList<long> el)
+        {
+            var r = new BTree<long, object>(Search,se.defpos) +(Then,th) +(Elsif,ei)
+                + (Else,el);
+            var d = se.depth + 1;
+            for (var b = th.First(); b != null; b = b.Next())
+                d = Math.Max(d, cx.obs[b.value()].depth + 1);
+            for (var b = ei.First(); b != null; b = b.Next())
+                d = Math.Max(d, cx.obs[b.value()].depth + 1); 
+            for (var b = el.First(); b != null; b = b.Next())
+                d = Math.Max(d, cx.obs[b.value()].depth + 1);
+            return r + (_Depth,d);
+        }
         public static IfThenElse operator+(IfThenElse s,(long,object)x)
         {
             return new IfThenElse(s.defpos, s.mem + x);
@@ -1479,6 +1626,26 @@ namespace Pyrrho.Level3
                     && ((SqlValue)cx.obs[f.search]).Matches(cx)==true)
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (IfThenElse)base._Replace(cx, so, sv);
+            var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
+            if (no != r.search)
+                r += (Search, no);
+            var nt = cx.Replaced(r.then);
+            if (nt != r.then)
+                r += (Then, nt);
+            var ni = cx.Replaced(r.elsif);
+            if (ni != r.elsif)
+                r += (Elsif, ni);
+            var ne = cx.Replaced(r.els);
+            if (ne != r.els)
+                r += (Else, ne);
+            cx.done += (defpos, r);
+            return r;
         }
         public override string ToString()
         {
@@ -1561,9 +1728,8 @@ namespace Pyrrho.Level3
 	internal class WhileStatement : Executable
 	{
         internal const long
-            Loop = -121, // long Executable
             Search = -122, // long SqlValue
-            What = -123; // BList<long> Executable
+            What = -123; // CList<long> Executable
         /// <summary>
         /// The search condition for continuing
         /// </summary>
@@ -1571,8 +1737,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements to execute
         /// </summary>
-		public BList<long> what => (BList<long>)mem[What]?? BList<long>.Empty;
-        public long loop => (long)(mem[Loop] ?? 0); 
+		public CList<long> what => (CList<long>)mem[What]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a while statement from the parser
         /// </summary>
@@ -1595,7 +1760,6 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (WhileStatement)base._Relocate(cx);
-            r += (Loop, cx.Fix(loop));
             r += (Search, cx.Fix(search));
             r += (What, cx.Fix(what));
             return r;
@@ -1603,9 +1767,6 @@ namespace Pyrrho.Level3
         internal override Basis _Fix(Context cx)
         {
             var r = (WhileStatement)base._Fix(cx);
-            var nl = cx.Fix(loop);
-            if (nl != loop)
-                r += (Loop, nl);
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (Search, ns);
@@ -1640,6 +1801,20 @@ namespace Pyrrho.Level3
         {
             return Calls(what,defpos,cx) || cx.obs[search].Calls(defpos, cx);
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (WhileStatement)base._Replace(cx, so, sv);
+            var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
+            if (no != r.search)
+                r += (Search, no);
+            var nw = cx.Replaced(r.what);
+            if (nw != r.what)
+                r += (What, nw);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1650,8 +1825,6 @@ namespace Pyrrho.Level3
                 sb.Append(cm); cm = ";";
                 sb.Append(Uid(b.value()));
             }
-            if (loop != -1L)
-            { sb.Append(" Loop: "); sb.Append(Uid(loop)); }
             return sb.ToString();
         }
     }
@@ -1668,9 +1841,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of statements to execute at least once
         /// </summary>
-		public BList<long> what => (BList<long>)mem[WhileStatement.What];
-        public long loop => (long)(mem[WhileStatement.Loop]??0L);
-        /// <summary>
+		public CList<long> what => (CList<long>)mem[WhileStatement.What];
+         /// <summary>
         /// Constructor: a repeat statement from the parser
         /// </summary>
         /// <param name="n">The label</param>
@@ -1692,7 +1864,6 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (RepeatStatement)base._Relocate(cx);
-            r += (WhileStatement.Loop, cx.Fix(loop));
             r += (WhileStatement.Search, cx.Fix(search));
             r += (WhileStatement.What, cx.Fix(what));
             return r;
@@ -1700,9 +1871,6 @@ namespace Pyrrho.Level3
         internal override Basis _Fix(Context cx)
         {
             var r = (RepeatStatement)base._Fix(cx);
-            var nl = cx.Fix(loop);
-            if (loop != nl)
-                r += (WhileStatement.Loop, nl);
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (WhileStatement.Search, ns);
@@ -1737,6 +1905,20 @@ namespace Pyrrho.Level3
             cx = act.SlideDown(); 
             return cx;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (RepeatStatement)base._Replace(cx, so, sv);
+            var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
+            if (no != r.search)
+                r += (WhileStatement.Search, no);
+            var nw = cx.Replaced(r.what);
+            if (nw != r.what)
+                r += (WhileStatement.What, nw);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1747,8 +1929,6 @@ namespace Pyrrho.Level3
                 sb.Append(Uid(b.value()));
             }
             sb.Append(" Operand="); sb.Append(Uid(search));
-            if (loop != -1L)
-            { sb.Append(" Loop: "); sb.Append(Uid(loop)); }
             return sb.ToString();
         }
     }
@@ -1798,8 +1978,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public BList<long> stms => (BList<long>)mem[WhenPart.Stms];
-        public long loop => (long)(mem[WhileStatement.Loop]??0);
+		public CList<long> stms => (CList<long>)mem[WhenPart.Stms];
         /// <summary>
         /// Constructor: a loop statement from the parser
         /// </summary>
@@ -1823,16 +2002,12 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (LoopStatement)base._Relocate(cx);
-            r += (WhileStatement.Loop, cx.Fix(loop));
             r += (WhenPart.Stms, cx.Fix(stms));
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (LoopStatement)base._Fix(cx);
-            var nl = cx.Fix(loop);
-            if (nl != loop)
-                r += (WhileStatement.Loop, nl);
             var ns = cx.Fix(stms);
             if (ns != stms)
                 r += (WhenPart.Stms, ns);
@@ -1868,6 +2043,17 @@ namespace Pyrrho.Level3
             }
             return act.SlideDown();
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (LoopStatement)base._Replace(cx, so, sv);
+            var nw = cx.Replaced(r.stms);
+            if (nw != r.stms)
+                r += (WhenPart.Stms, nw);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1877,8 +2063,6 @@ namespace Pyrrho.Level3
                 sb.Append(cm); cm = ";";
                 sb.Append(Uid(b.value()));
             }
-            if (loop != -1L)
-            { sb.Append(" Loop: "); sb.Append(Uid(loop)); }
             return sb.ToString();
         }
     }
@@ -1889,39 +2073,38 @@ namespace Pyrrho.Level3
 	internal class ForSelectStatement : Executable
 	{
         internal const long
-            Cursor = -124, // long SqlCursor
             ForVn = -125, // string
-            Loop = -126, // long
             Sel = -127, // long RowSet
-            Stms = -128; // BList<long> Executable
+            Stms = -128; // CList<long> Executable
         /// <summary>
         /// The query for the FOR
         /// </summary>
 		public long sel => (long)(mem[Sel]??-1L);
         /// <summary>
-        /// The SqlCursor
-        /// </summary>
-		public long cursor => (long)mem[Cursor];
-        /// <summary>
         /// The identifier in the AS part
         /// </summary>
 		public string forvn => (string)mem[ForVn];
         /// <summary>
-        /// The FOR loop
-        /// </summary>
-        public long loop => (long)(mem[Loop] ?? -1L);
-        /// <summary>
         /// The statements in the loop
         /// </summary>
-		public BList<long> stms => (BList<long>)mem[Stms];
+		public CList<long> stms => (CList<long>)mem[Stms];
         /// <summary>
         /// Constructor: a for statement from the parser
         /// </summary>
         /// <param name="n">The label for the FOR</param>
-        public ForSelectStatement(long dp, string n) : base(dp,BTree<long,object>.Empty
-            +(Label,n))
+        public ForSelectStatement(long dp, Context cx, string n,Ident vn, 
+            RowSet rs,CList<long>ss ) 
+            : base(dp,_Mem(cx,rs,ss) +(Label,n)+(ForVn,vn.ident))
 		{ }
         protected ForSelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,RowSet rs,CList<long>ss)
+        {
+            var r = BTree<long,object>.Empty;
+            var d = rs.depth+1;
+            for (var b = ss.First(); b != null; b = b.Next())
+                d = Math.Max(d, cx.obs[b.value()].depth + 1);
+            return r + (Sel,rs.defpos) + (Stms,ss) + (_Depth, d);
+        }
         public static ForSelectStatement operator+(ForSelectStatement s,(long,object)x)
         {
             return new ForSelectStatement(s.defpos, s.mem + x);
@@ -1937,20 +2120,13 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (ForSelectStatement)base._Relocate(cx);
-            r += (WhileStatement.Loop, cx.Fix(loop));
-            r += (Cursor, cx.Fix(sel));
+            r += (Sel, cx.Fix(sel));
             r += (Stms, cx.Fix(stms));
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (ForSelectStatement)base._Fix(cx);
-            var nl = cx.Fix(loop);
-            if (nl != loop)
-                r += (WhileStatement.Loop, nl);
-            var nc = cx.Fix(cursor);
-            if (nc != cursor)
-                r += (Cursor, nc);
             var ns = cx.Fix(sel);
             if (ns != sel)
                 r += (Sel, ns);
@@ -1984,13 +2160,25 @@ namespace Pyrrho.Level3
             }
             return ac.SlideDown();
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (ForSelectStatement)base._Replace(cx, so, sv);
+            var no = ((RowSet)cx.obs[r.sel])._Replace(cx, so, sv).defpos;
+            if (no != r.sel)
+                r += (Sel, no);
+            var nw = cx.Replaced(r.stms);
+            if (nw != r.stms)
+                r += (Stms, nw);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             if (forvn != null)
             { sb.Append(" Var="); sb.Append(forvn); }
-            if (cursor != -1L)
-            { sb.Append(" Cursor="); sb.Append(cursor); }
             sb.Append(" Sel="); sb.Append(Uid(sel));
             var cm = " Stms: ";
             for (var b = stms.First(); b != null; b = b.Next())
@@ -1998,8 +2186,6 @@ namespace Pyrrho.Level3
                 sb.Append(cm); cm = ";";
                 sb.Append(Uid(b.value()));
             }
-            if (loop != -1L)
-            { sb.Append(" Loop: "); sb.Append(Uid(loop)); }
             return sb.ToString();
         }
     }
@@ -2056,6 +2242,17 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             return cx;
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (OpenStatement)base._Replace(cx, so, sv);
+            var no = ((SqlValue)cx.obs[r.cursor])._Replace(cx, so, sv).defpos;
+            if (no != r.cursor)
+                r += (FetchStatement.Cursor, no);
+            cx.done += (defpos, r);
+            return r;
         }
         public override string ToString()
         {
@@ -2119,6 +2316,17 @@ namespace Pyrrho.Level3
             cx.Add(new EmptyRowSet(defpos,cx,domain));
             return cx;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (CloseStatement)base._Replace(cx, so, sv);
+            var no = ((SqlValue)cx.obs[r.cursor])._Replace(cx, so, sv).defpos;
+            if (no != r.cursor)
+                r += (FetchStatement.Cursor, no);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2135,7 +2343,7 @@ namespace Pyrrho.Level3
         internal const long
             Cursor = -129, // long SqlCursor
             How = -130, // Sqlx
-            Outs = -131, // BList<long> SqlValue
+            Outs = -131, // CList<long> SqlValue
             Where = -132; // long SqlValue
         long cursor =>(long)(mem[Cursor]??-1L);
         /// <summary>
@@ -2149,7 +2357,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of assignable expressions to receive values
         /// </summary>
-		public BList<long> outs => (BList<long>)mem[Outs]?? BList<long>.Empty; 
+		public CList<long> outs => (CList<long>)mem[Outs]?? CList<long>.Empty; 
         /// <summary>
         /// Constructor: a fetch statement from the parser
         /// </summary>
@@ -2258,6 +2466,23 @@ namespace Pyrrho.Level3
                 }
             }
             return cx;
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (FetchStatement)base._Replace(cx, so, sv);
+            var nc = ((SqlValue)cx.obs[r.cursor])._Replace(cx, so, sv).defpos;
+            if (nc != r.cursor)
+                r += (Cursor, nc);
+            var no = cx.Replaced(r.outs);
+            if (no != r.outs)
+                r += (Outs, no);
+            cx.done += (defpos, r);
+            var nw = ((SqlValue)cx.obs[r.where])._Replace(cx, so, sv).defpos;
+            if (nw != r.where)
+                r += (Where, nw);
+            return r;
         }
         public override string ToString()
         {
@@ -2553,6 +2778,18 @@ namespace Pyrrho.Level3
                     e.info += (x.key(), cx.obs[x.value()].Eval(cx));
             throw e;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (SignalStatement)base._Replace(cx, so, sv);
+            var sl = CTree<Sqlx, long>.Empty;
+            for (var b = r.setlist.First(); b != null; b = b.Next())
+                sl += (b.key(), cx.uids[b.value()] ?? b.value());
+            r += (SetList, sl);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2702,7 +2939,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis _Fix(Context cx)
         {
-            var r = (Executable)base._Fix(cx);
+            var r = (GetDiagnostics)base._Fix(cx);
             var nl = cx.Fix(list);
             if (nl != list)
                 r += (List, nl);
@@ -2726,6 +2963,18 @@ namespace Pyrrho.Level3
                 cx.AddValue(cx.obs[b.key()], cx.tr.diagnostics[b.value()]);
             return cx;
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (GetDiagnostics)base._Replace(cx, so, sv);
+            var ls = CTree<long, Sqlx>.Empty;
+            for (var b = r.list.First(); b != null; b = b.Next())
+                ls += (cx.uids[b.key()] ?? b.key(), b.value());
+            r += (List, ls);
+            cx.done += (defpos, r);
+            return r;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2747,7 +2996,7 @@ namespace Pyrrho.Level3
 	internal class SelectSingle : Executable
     {
         internal const long
-            Outs = -142; // BList<long> SqlValue
+            Outs = -142; // CList<long> SqlValue
         /// <summary>
         /// The query
         /// </summary>
@@ -2755,7 +3004,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The output list
         /// </summary>
-		public BList<long> outs => (BList<long>)mem[Outs] ?? BList<long>.Empty;
+		public CList<long> outs => (CList<long>)mem[Outs] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a select statement: single row from the parser
         /// </summary>
@@ -2814,6 +3063,17 @@ namespace Pyrrho.Level3
             else
                 a.NoData();
             return cx;
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (SelectSingle)base._Replace(cx, so, sv);
+            var no = cx.Replaced(r.outs);
+            if (no != r.outs)
+                r += (Outs, no);
+            cx.done += (defpos, r);
+            return r;
         }
         public override string ToString()
         {
@@ -2970,19 +3230,15 @@ namespace Pyrrho.Level3
     internal class QuerySearch : Executable
     {
         internal long source => (long)(mem[RowSet._Source] ?? -1L);
-        internal QuerySearch(long dp, Context cx, RowSet f, DBObject tb, Grant.Privilege how)
-            : this(Type.DeleteWhere, dp, cx, f, tb, how)
-        // detected for HttpService for DELETE verb
-        { }
         /// <summary>
         /// Constructor: a DELETE or UPDATE statement from the parser
         /// </summary>
         /// <param name="cx">The parsing context</param>
-        protected QuerySearch(Type et, long dp, Context cx, RowSet f, DBObject tb,
+        internal QuerySearch(long dp, Context cx, RowSet f, DBObject tb,
             Grant.Privilege how, CTree<UpdateAssignment, bool> ua = null)
             : base(dp, BTree<long, object>.Empty
                   + (RowSet._Source, f.defpos)
-                  + (_Depth, f.depth + 1) + (_Type, et) + (RowSet.Assig, ua))
+                  + (_Depth, f.depth + 1) + (RowSet.Assig, ua))
         {
             if (cx._Dom(f).rowType.Length == 0)
                 throw new DBException("2E111", cx.db.user, dp).Mix();
@@ -3075,7 +3331,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context</param>
         public UpdateSearch(long dp, Context cx, RowSet f, DBObject tb,
             Grant.Privilege how)
-            : base(Type.UpdateWhere, dp, cx, f, tb, how)
+            : base(dp, cx, f, tb, how)
         { }
         protected UpdateSearch(long dp, BTree<long, object> m) : base(dp, m) { }
         public static UpdateSearch operator +(UpdateSearch u, (long, object) x)

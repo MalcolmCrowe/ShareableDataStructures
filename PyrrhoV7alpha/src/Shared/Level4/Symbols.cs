@@ -22,7 +22,7 @@ namespace Pyrrho.Level4
         internal readonly long dp; // defining
         internal static Iix None = new Iix(-1L);
         internal Iix(long u) { lp = u; sd = 0;  dp = u;  }
-        private Iix(long l,int s,long u) { lp = l; sd = s; dp = u; }
+        internal Iix(long l,int s,long u) { lp = l; sd = s; dp = u; }
         internal Iix(Iix ix,long u) { lp = ix.lp; sd = ix.sd; dp = u; }
         internal Iix(long l,Context cx,long u) { lp = l; sd = cx.sD; dp = u; }
         public static Iix operator+(Iix u,int j)
@@ -171,6 +171,8 @@ namespace Pyrrho.Level4
             public static Idents operator +(Idents t, (string, Iix, Idents) x)
             {
                 var (n, iix, ids) = x;
+                if (n == null || n == "")
+                    return t;
                 var s = t[n]??BTree<int,(Iix,Idents)>.Empty;
                 // discard out-of-scope items
                 for (var b = s.PositionAt(iix.sd+1); b != null; b = b.Next())
@@ -180,6 +182,8 @@ namespace Pyrrho.Level4
             public static Idents operator +(Idents t, (Ident, Iix) x)
             {
                 var (id, p) = x;
+                if (id.ident == null || id.ident == "")
+                    return t;
                 if (t.Contains(id.ident))
                 {
                     var s = t[id.ident]??BTree<int,(Iix,Idents)>.Empty;
@@ -206,6 +210,8 @@ namespace Pyrrho.Level4
             public static Idents operator +(Idents t, (Ident, int) x)
             {
                 var (id, n) = x;
+                if (id.ident == null || id.ident == "")
+                    return t;
                 var ts = Empty;
                 var s = t[id.ident]??BTree<int,(Iix,Idents)>.Empty;
                 if (s.Contains(id.iix.sd))
@@ -284,7 +290,7 @@ namespace Pyrrho.Level4
                         var (p, st) = s.value();
                         if (p.dp != -1L && cx.done[p.dp] is DBObject nb)
                         {
-                            p = cx.Ix(nb.defpos);
+                            p = new Iix(p.lp,p.sd,nb.defpos);
                             for (var c = cx._Dom(nb)?.rowType.First(); c != null; c = c.Next())
                                 if (cx.done[c.value()] is SqlValue v)
                                 {

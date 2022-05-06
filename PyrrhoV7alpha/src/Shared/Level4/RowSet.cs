@@ -73,7 +73,7 @@ namespace Pyrrho.Level4
             _Needed = -401, // CTree<long,Finder>  SqlValue
             OrdSpec = -184, // CList<long>
             Periods = -185, // BTree<long,PeriodSpec>
-            UsingOperands = -464, // CTree<long,long> SqlValue
+            UsingOperands = -411, // CTree<long,long> SqlValue
             _Repl = -186, // CTree<string,string> Sql output for remote views
             RestRowSetSources = -331, // CTree<long,bool>    RestRowSet or RestRowSetUsing
             _Rows = -407, // CList<TRow> 
@@ -1930,10 +1930,10 @@ namespace Pyrrho.Level4
         /// At this stage there are three sorts of Ident here:
         ///  Identifiers that have occurred to the left of the current SELECT: may also be
         ///  only partially known but they will eventually be defined by the RowSet they are from.
-        ///  All other Idents n in N will name ix.cx.lp as their From. There are three cases:
-        ///  n is now the uid of an SqlCopy targeting a previous tablereference in the tableexpression.
-        ///  n has form f.u where f is a forward reference (the name or alias of this or a future tablereference)
-        ///  n is a simple name which may unambiguously match a column name in this tablereference
+        ///  All other Idents i in N will name ix.cx.lp as their From. There are three cases:
+        ///  i is now the uid of an SqlCopy targeting a previous tablereference in the tableexpression.
+        ///  i has form f.i where f is a forward reference (the name or alias of this or a future tablereference)
+        ///  i is a simple name which may unambiguously match a column name in this tablereference
         ///  And all of these are in cx.defs already (ambiguous references already excluded).
         ///  
         /// For this tablereference ic, we will be constructing an Instance of ob whose rowType will
@@ -1960,47 +1960,7 @@ namespace Pyrrho.Level4
         {
             var vs = BList<SqlValue>.Empty; // the resolved select list for this instance in query rowType order
             var qn = CTree<long, bool>.Empty; // the set N of identifiers in q
-            qn = q?.Needs(cx,-1L,qn);
             var dt = ob.Domains(cx, pr); // the domain of the referenced object ob
-            var tn = ic.ident; // the object name
-            var n = a ?? tn;
-            var _ix = ic.iix; // our eventual uid
-            var fu = BTree<string, long>.Empty;
-            // we begin by examining the f.u entries in cx.defs. If f matches n we will add to fu
-            if (cx.defs.Contains(tn)) // care: our name may have occurred earlier (for a different instance)
-            {
-                var (ix,ids) = cx.defs[(n, ic.iix.sd)];
-                if (cx.obs[ix.dp] is ForwardReference)
-                {
-                    _ix = ix;
-                    for (var b = ids.First(); b != null; b = b.Next())
-                        if (b.value() != BTree<int, (Iix, Ident.Idents)>.Empty)
-                            fu += (b.key(), b.value().Last().value().Item1.dp);
-                }
-            }
-            else if (a != null && cx.defs.Contains(a))
-            {
-                var (ix, ids) = cx.defs[(n, ic.iix.sd)];
-                if (cx.obs[ix.dp] is ForwardReference)
-                {
-                    if (_ix.dp != ic.iix.dp)
-                        throw new DBException("42104", a);
-                    _ix = ix;
-                    for (var b = ids.First(); b != null; b = b.Next())
-                        if (b.value() != BTree<int, (Iix, Ident.Idents)>.Empty)
-                            fu += (b.key(), b.value().Last().value().Item1.dp);
-                }
-            }
-            else // we are not yet in cx.defs: add our new instance uid and its alias if any
-            {
-                cx.defs += (ic.ident, _ix, Ident.Idents.Empty);
-                if (a != null)
-                    cx.defs += (a, _ix, Ident.Idents.Empty);
-            }
-            int d = dt.Length; // di is the Domain of the referenced object ob
-            var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
-            var tr = CTree<long,long>.Empty; // the mapping to physical positions
-            var mp = CTree<long, bool>.Empty; // the set of referenced columns
             var ma = BTree<string, DBObject>.Empty; // the set of referenceable columns in dt
             for (var b = dt.rowType.First(); b != null && b.key() < dt.display; b = b.Next())
             {
@@ -2014,6 +1974,43 @@ namespace Pyrrho.Level4
                 if (tc is SqlCopy sc && sc.alias != null)
                     ma += (sc.alias, tc);
             }
+            qn = q?.Needs(cx,-1L,qn);
+            var tn = ic.ident; // the object name
+            var n = a ?? tn;
+            var _ix = ic.iix; // our eventual uid
+            var fu = BTree<string, long>.Empty;
+            // we begin by examining the f.u entries in cx.defs. If f matches n we will add to fu
+            if (cx.defs.Contains(tn)) // care: our name may have occurred earlier (for a different instance)
+            {
+                var (ix,ids) = cx.defs[(tn, ic.iix.sd)];
+                if (cx.obs[ix.dp] is ForwardReference)
+                {
+                    _ix = ix;
+                    for (var b = ids.First(); b != null; b = b.Next())
+                        if (b.value() != BTree<int, (Iix, Ident.Idents)>.Empty)
+                            fu += (b.key(), b.value().Last().value().Item1.dp);
+                }
+            }
+            cx.defs += (tn, _ix, Ident.Idents.Empty);
+            if (a != null && cx.defs.Contains(a))
+            {
+                var (ix, ids) = cx.defs[(a, ic.iix.sd)];
+                if (cx.obs[ix.dp] is ForwardReference)
+                {
+                    if (_ix.dp != ic.iix.dp)
+                        throw new DBException("42104", a);
+                    _ix = ix;
+                    for (var b = ids.First(); b != null; b = b.Next())
+                        if (b.value() != BTree<int, (Iix, Ident.Idents)>.Empty)
+                            fu += (b.key(), b.value().Last().value().Item1.dp);
+                }
+            } 
+            if (a!=null)
+                 cx.defs += (a, _ix, Ident.Idents.Empty);
+            int d = dt.Length; // di is the Domain of the referenced object ob
+            var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
+            var tr = CTree<long,long>.Empty; // the mapping to physical positions
+            var mp = CTree<long, bool>.Empty; // the set of referenced columns
             if (cr == null || cr==BList<Ident>.Empty)
             {
                 // we want to add everything from dt that matches q.Needs with lexical uids
@@ -2040,8 +2037,15 @@ namespace Pyrrho.Level4
                             if (tc is SqlValue sc)
                                 nv = sc + (IIx, cx.Ix(uv.iix.lp, tc.defpos));
                             if (nv == null && (fu.Contains(uv.name) && fu[uv.name] == p
-                                ||cx.defs[(uv.name,_ix.sd)].Item1.dp>=0))
+                                || cx.defs[(uv.name, _ix.sd)].Item1.dp >= 0))
+                            {
+                                if (mp.Contains(tc.defpos))
+                                {
+                                    cx.Replace(uv, (SqlValue)cx.obs[tr[tc.defpos]]);
+                                    continue;
+                                }
                                 nv = new SqlCopy(uv.iix, cx, uv.name, _ix.dp, tc.defpos);
+                            }
                             if (nv == null)
                                 continue;
                             nv += (_From, _ix.dp);
@@ -2142,7 +2146,7 @@ namespace Pyrrho.Level4
             cx._Add(sd);
             var ts = ob.RowSets(ic, cx, sd, ic.iix.dp, fd);
             if (ts is SelectRowSet)
-                return ts.mem + (Name, ic.ident) + (_Domain,fd.defpos);
+                return ts.mem + (Name, ic.ident) + (_Domain,fd.defpos) + (IIx, _ix);
             var fi = ts.finder;
             for (var b = sd.rowType.First(); b != null; b = b.Next())
             {
@@ -2809,18 +2813,26 @@ namespace Pyrrho.Level4
             if (am!=BTree<long,object>.Empty)
                 r = (SelectRowSet)ApplySR(am + (AggDomain, im.domain), cx, r);
             if (cx._Dom(r).aggs.Count>0)
-            {  
-                // check for agged or grouped
-                var os = CTree<long, bool>.Empty;
-                for (var b = cx._Dom(r).rowType.First(); b != null; b = b.Next())
-                    os += ((SqlValue)cx.obs[b.value()]).Operands(cx);
-                for (var b = r.having.First(); b != null; b = b.Next())
-                    os += ((SqlValue)cx.obs[b.key()]).Operands(cx);
-                for (var b = os.First(); b != null; b = b.Next())
+            {
+                var vw = true;
+                for (var b = cx._Dom(r).aggs.First(); b != null; b = b.Next())
+                    if ((b.key() >= Transaction.TransPos && b.key() < Transaction.Executables)
+                        || b.key() >= Transaction.HeapStart)
+                        vw = false;
+                if (!vw)
                 {
-                    var v = (SqlValue)cx.obs[b.key()];
-                    if (!v.AggedOrGrouped(cx, r))
-                        throw new DBException("42170", v.alias ?? v.name);
+                    // check for agged or grouped
+                    var os = CTree<long, bool>.Empty;
+                    for (var b = cx._Dom(r).rowType.First(); b != null; b = b.Next())
+                        os += ((SqlValue)cx.obs[b.value()]).Operands(cx);
+                    for (var b = r.having.First(); b != null; b = b.Next())
+                        os += ((SqlValue)cx.obs[b.key()]).Operands(cx);
+                    for (var b = os.First(); b != null; b = b.Next())
+                    {
+                        var v = (SqlValue)cx.obs[b.key()];
+                        if (!v.AggedOrGrouped(cx, r))
+                            throw new DBException("42170", v.alias ?? v.name);
+                    }
                 }
             }
             return r;

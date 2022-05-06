@@ -470,11 +470,11 @@ namespace Pyrrho.Level4
             cx.Add(r);
             return r;
         }
-        internal override RowSet Apply(BTree<long, object> mm, Context cx,RowSet im)
+        internal override RowSet Apply(BTree<long, object> mm,Context cx,RowSet im)
         {
             var jm = (JoinRowSet)im;
-            var fi = (RowSet)cx.obs[jm.first];
-            var se = (RowSet)cx.obs[jm.second];
+            var fi = (RowSet)cx.obs[first];
+            var se = (RowSet)cx.obs[second];
             var mg = jm.matching;
             mm += (Matching, mg);
             var m = im.mem;
@@ -487,7 +487,6 @@ namespace Pyrrho.Level4
                 {
                     if (cx.obs[b.key()] is SqlValueExpr sv && sv.kind == Sqlx.EQL)
                     {
-                        var k = b.key();
                         var le = (SqlValue)cx.obs[sv.left];
                         var ri = (SqlValue)cx.obs[sv.right];
                         var lc = le.isConstant(cx);
@@ -612,7 +611,7 @@ namespace Pyrrho.Level4
                 if (ss != se.assig)
                     cx.Add(se + (Assig, ss));
                 if (gs != assig)
-                    mm += (Assig, gs);
+                    m += (Assig, gs);
             }
             return (RowSet)cx.Add((RowSet)im.New(m));
         }

@@ -113,10 +113,10 @@ namespace Pyrrho.Level3
             cx.Add(vi);
             var vn = new Ident(vi.name, cx.Ix(vi.defpos));
             cx.AddDefs(vn, cx._Dom(vi),alias);
+            var ids = cx.defs[vi.name][cx.sD].Item2;
             for (var b = q?.rowType.First(); b != null; b = b.Next())
             {
                 var sv = cx.obs[b.value()];
-                var ids = cx.defs[vi.name][cx.sD].Item2;
                 if (ids.Contains(sv.name))
                 {
                     var sp = ids[sv.name][cx.sD].Item1.dp;
@@ -183,7 +183,7 @@ namespace Pyrrho.Level3
         internal override RowSet RowSets(Ident vn,Context cx,Domain q,long fm, Domain fd)
         {
            var r = (RowSet)cx.obs[result];
-            cx.AddDefs(vn, cx._Dom(r),alias);
+     //       cx.AddDefs(vn, cx._Dom(r),alias);
             return r;
         }
         /// <summary>

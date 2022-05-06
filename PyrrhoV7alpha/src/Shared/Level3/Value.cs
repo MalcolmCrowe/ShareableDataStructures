@@ -616,6 +616,9 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(sub);
             if (sub!=ns)
                 r += (Sub, ns);
+            var na = cx.Fix(await);
+            if (await != na)
+                r += (Await, na);
             return cx.Add(r);
         }
         internal SqlValue Sources(Context cx)
@@ -802,16 +805,12 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class SqlTypeExpr : SqlValue
     {
-        internal static readonly long
-            TreatType = -312; // Domain
-        internal Domain type=>(Domain)mem[TreatType];
         /// <summary>
         /// constructor: a new Type expression
         /// </summary>
         /// <param name="ty">the type</param>
         internal SqlTypeExpr(Iix dp,Context cx,Domain ty)
-            : base(dp,BTree<long, object>.Empty + (_Domain, Domain.TypeSpec.defpos) 
-                +(TreatType,ty))
+            : base(dp,BTree<long, object>.Empty + (_Domain, ty.defpos))
         {}
         protected SqlTypeExpr(Iix iix, BTree<long, object> m) : base(iix, m) { }
         public static SqlTypeExpr operator +(SqlTypeExpr s, (long, object) x)
@@ -827,7 +826,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal override TypedValue Eval(Context cx)
         {
-            return new TTypeSpec(type);
+            return new TTypeSpec(cx._Dom(this));
         }
         /// <summary>
         /// We aren't a column reference
@@ -854,31 +853,9 @@ namespace Pyrrho.Level3
         {
             return false;
         }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" TreatType:");sb.Append(type);
-            return sb.ToString();
-        }
         internal override DBObject Relocate(long dp)
         {
             return new SqlTypeExpr(new Iix(iix,dp),mem);
-        }
-        internal override Basis _Relocate(Context cx)
-        {
-            var r = (SqlTypeExpr)base._Relocate(cx);
-            var t = (Domain)type.Relocate(cx);
-            if (t != type)
-                r += (TreatType, t);
-            return r;
-        }
-        internal override Basis _Fix(Context cx)
-        {
-            var r = (SqlTypeExpr)base._Fix(cx);
-            var t = (Domain)type.Fix(cx);
-            if (t != type)
-                r += (TreatType, t);
-            return cx.Add(r);
         }
     }
     /// <summary>
@@ -1036,6 +1013,52 @@ namespace Pyrrho.Level3
         {
             return new SqlCaseSimple(iix,m);
         }
+        internal override CTree<long, bool> Needs(Context cx)
+        {
+            var r = CTree<long, bool>.Empty;
+            for (var b = cases.First(); b != null; b = b.Next())
+            {
+                var (w, x) = b.value();
+                r += ((SqlValue)cx.obs[w]).Needs(cx);
+                r += ((SqlValue)cx.obs[x]).Needs(cx);
+            }
+            r += ((SqlValue)cx.obs[caseElse]).Needs(cx);
+            return r;
+        }
+        internal override CTree<long, RowSet.Finder> Needs(Context cx,long rs)
+        {
+            var r = CTree<long, RowSet.Finder>.Empty;
+            for (var b = cases.First(); b != null; b = b.Next())
+            {
+                var (w, x) = b.value();
+                r += ((SqlValue)cx.obs[w]).Needs(cx,rs);
+                r += ((SqlValue)cx.obs[x]).Needs(cx,rs);
+            }
+            r += ((SqlValue)cx.obs[caseElse]).Needs(cx,rs);
+            return r;
+        }
+        internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
+        {
+            return qn + Needs(cx);
+        }
+        internal override CTree<long, bool> Operands(Context cx)
+        {
+            return Needs(cx);
+        }
+        internal override bool KnownBy(Context cx, RowSet q)
+        {
+            for (var b = Needs(cx).First(); b != null; b = b.Next())
+                if (!((SqlValue)cx.obs[b.key()]).KnownBy(cx, q))
+                    return false;
+            return true;
+        }
+        internal override bool KnownBy<V>(Context cx, CTree<long, V> cs)
+        {
+            for (var b = Needs(cx).First(); b != null; b = b.Next())
+                if (!((SqlValue)cx.obs[b.key()]).KnownBy(cx, cs))
+                    return false;
+            return true;
+        }
         internal override TypedValue Eval(Context cx)
         {
             var dm = cx._Dom(this);
@@ -1142,6 +1165,52 @@ namespace Pyrrho.Level3
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlCaseSearch(iix, m);
+        }
+        internal override CTree<long, bool> Needs(Context cx)
+        {
+            var r = CTree<long, bool>.Empty;
+            for (var b=cases.First();b!=null;b=b.Next())
+            {
+                var (w, x) = b.value();
+                r += ((SqlValue)cx.obs[w]).Needs(cx);
+                r += ((SqlValue)cx.obs[x]).Needs(cx);
+            }
+            r += ((SqlValue)cx.obs[caseElse]).Needs(cx);
+            return r;
+        }
+        internal override CTree<long, RowSet.Finder> Needs(Context cx, long rs)
+        {
+            var r = CTree<long, RowSet.Finder>.Empty;
+            for (var b = cases.First(); b != null; b = b.Next())
+            {
+                var (w, x) = b.value();
+                r += ((SqlValue)cx.obs[w]).Needs(cx, rs);
+                r += ((SqlValue)cx.obs[x]).Needs(cx, rs);
+            }
+            r += ((SqlValue)cx.obs[caseElse]).Needs(cx, rs);
+            return r;
+        }
+        internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
+        {
+            return qn+ Needs(cx);
+        }
+        internal override CTree<long, bool> Operands(Context cx)
+        {
+            return Needs(cx);
+        }
+        internal override bool KnownBy(Context cx, RowSet q)
+        {
+            for (var b = Needs(cx).First(); b != null; b = b.Next())
+                if (!((SqlValue)cx.obs[b.key()]).KnownBy(cx, q))
+                    return false;
+            return true;
+        }
+        internal override bool KnownBy<V>(Context cx, CTree<long, V> cs)
+        {
+            for (var b = Needs(cx).First(); b != null; b = b.Next())
+                if (!((SqlValue)cx.obs[b.key()]).KnownBy(cx, cs))
+                    return false;
+            return true;
         }
         internal override TypedValue Eval(Context cx)
         {
@@ -3905,7 +3974,17 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
         {
-            return qn;
+            var e = (RowSet)cx.obs[expr];
+            var ed = cx._Dom(e);
+            var nd = CTree<long,bool>.Empty;
+            for (var b = ed.rowType.First(); b != null; b = b.Next())
+                nd += ((SqlValue)cx.obs[b.value()]).Needs(cx);
+            for (var b = e.where.First(); b != null; b = b.Next())
+                nd += ((SqlValue)cx.obs[b.key()]).Needs(cx);
+            for (var b = e.Sources(cx).First(); b != null; b = b.Next())
+                for (var c = ((RowSet)cx.obs[b.key()]).finder.First(); c != null; c = c.Next())
+                    nd -= c.key();
+            return qn + nd;
         }
         internal override bool LocallyConstant(Context cx, RowSet rs)
         {
@@ -5206,7 +5285,7 @@ namespace Pyrrho.Level3
                         v = vl?.Eval(cx);
                         if (v == null)
                             return null;
-                        return ((SqlTypeExpr)cx.obs[op1]).type.Coerce(cx,v);
+                        return cx._Dom(cx.obs[op1]).Coerce(cx,v);
                     }
                 case Sqlx.CEIL: goto case Sqlx.CEILING;
                 case Sqlx.CEILING:

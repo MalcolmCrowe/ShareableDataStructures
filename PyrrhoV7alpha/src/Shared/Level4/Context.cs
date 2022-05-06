@@ -75,8 +75,8 @@ namespace Pyrrho.Level4
         internal CTree<long, Iix> instances = CTree<long, Iix>.Empty;
         internal CTree<long, CTree<long,bool>> awaits = CTree<long, CTree<long,bool>>.Empty; // SqlValue,RowSet
         internal bool inHttpService = false;
-        internal BTree<int,Ident.Idents> selectDepth = BTree<int,Ident.Idents>.Empty; // saved defs for previous level
-        internal int sD => (int)selectDepth.Count; // see IncSD() and DecSD() below
+        internal BTree<int,Ident.Idents> defsStore = BTree<int,Ident.Idents>.Empty; // saved defs for previous level
+        internal int sD => (int)defsStore.Count; // see IncSD() and DecSD() below
         internal CTree<Domain, Domain> groupCols = CTree<Domain, Domain>.Empty; // GroupCols for a Domain with Aggs
         internal BTree<long,BTree<TRow,BTree<long, Register>>> funcs = BTree<long,BTree<TRow, BTree<long,Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
@@ -154,7 +154,7 @@ namespace Pyrrho.Level4
             parseStart = cx.parseStart;
             values = cx.values;
             instances = cx.instances;
-            selectDepth = cx.selectDepth;
+            defsStore = cx.defsStore;
             obs = cx.obs;
             defs = cx.defs;
             depths = cx.depths;
@@ -175,11 +175,25 @@ namespace Pyrrho.Level4
         {
             db = db + (Database.Role, r.defpos) + (Database.User, u.defpos);
         }
+        /// <summary>
+        /// This Lookup is from the ParseVarOrColumn above.
+        /// If the selectdepth has changed it is unlikely to be the right identification,
+        /// so leave it to resolved later.
+        /// </summary>
+        /// <param name="lp"></param>
+        /// <param name="n"></param>
+        /// <param name="d"></param>
+        /// <returns></returns>
         internal (DBObject, Ident) Lookup(Iix lp, Ident n, int d)
         {
-            var (ix, _, sub) = defs[(n, d)];
-            if (ix != null && obs[ix.dp] is DBObject ob)
-                return ob._Lookup(lp, this, n.ident, sub);
+            var (ix, _, sub) = defs[(n, d)]; // chain lookup
+            if (ix != null)
+            {
+                if (ix.sd < sD)
+                    return (null, n);
+                if (obs[ix.dp] is DBObject ob)
+                    return ob._Lookup(lp, this, n.ident, sub);
+            }
             return (null, sub);
         }
         internal (CTree<long, RowSet.Finder>, CTree<long, bool>)
@@ -441,32 +455,44 @@ namespace Pyrrho.Level4
         /// </summary>
         internal void IncSD()
         {
-            selectDepth += (sD, defs);
+            defsStore += (sD, defs);
         }
         internal void DecSD()
         {
-            // we don't want to lose the previous defs right away.
+            // we don't want to lose the current defs right away.
             // they will be needed for OrderBy and ForSelect bodies
             // but at least restore the Ambiguous entries in defs
-            // at level sD
+            // at level sD.
+            // Also look at any undefined symbols at the cuurent level
+            // and identify them with symbols at the lower level.
             var sd = sD;
-            for (var b=defs.First();b!=null;b=b.Next())
+            for (var b = defs.First(); b != null; b = b.Next())
             {
                 var n = b.key();
                 var t = defs[n];
-                if (t.Contains(sd))
+                if (t.Contains(sd)) // there is an entry for n at the current level
                 {
-                    var px = t[sd].Item1;
-                    if (px.dp < 0) // n is ambiguous at level sd
+                    var (px, cs) = t[sd];
+                    Iix dv = Iix.None;
+                    Ident.Idents ds = Ident.Idents.Empty;
+                    var x = defsStore.Last().value();
+                    if (x?.Contains(n) == true) // there is an entry for the previous level
+                        (dv, ds) = x[(n, sd - 1)];
+                    if (px.dp < 0) // n is ambiguous at the current level
+                        defs += (n, dv, ds);
+                    else if (dv.dp >= 0 && obs[px.dp] is SqlValue uv && obs[dv.dp] is SqlValue lv) // what is the current entry for n
                     {
-                        var s = selectDepth[sd - 1][n];
-                        var sl = s.Last().value();
-                        var (d, i) = sl;
-                        defs += (n, d, i);
+                        if (_Dom(uv).kind == Sqlx.CONTENT || uv.GetType().Name=="SqlValue") // it has unknown type
+                            Replace(uv, lv); // use it instead of uv
+                        else if (dv.dp >= Transaction.HeapStart) // was thought unreferenced at lower level
+                            Replace(uv, lv);
                     }
+                    if (cs != Ident.Idents.Empty    // re-enter forward references to be resolved at a lower level
+                        && obs[px.dp] is ForwardReference)
+                        defs += (n, new Iix(px.lp, px.sd - 1, px.dp), cs);
                 }
             }
-            selectDepth -= sd;
+            defsStore -= (sd - 1);
         }
         internal BTree<long, SqlValue> Map(CList<long> s)
         {
@@ -699,10 +725,6 @@ namespace Pyrrho.Level4
                 obs += (a.from, ra + (a.defpos, b.defpos));
             if (obs[b.from] is RowSet rb)
                 obs += (a.from, rb + (a.defpos, b.defpos));
-        }
-        internal DBObject Add(Transaction tr,long p)
-        {
-            return Add((DBObject)tr.objects[p]);
         }
         /// <summary>
         /// Update the query processing context in a cascade to implement a single replacement!

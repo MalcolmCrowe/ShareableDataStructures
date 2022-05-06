@@ -3712,6 +3712,9 @@ namespace Pyrrho.Level3
             var nt = cx.Fix(rowType);
             if (rowType!=nt)
                 r += (RowType, nt);
+            var na = cx.Fix(aggs);
+            if (aggs != na)
+                r += (Aggs, na);
             if (mem.Contains(Default))
                 r += (Default, defaultValue.Fix(cx));
             cx.obs += (np, r);
