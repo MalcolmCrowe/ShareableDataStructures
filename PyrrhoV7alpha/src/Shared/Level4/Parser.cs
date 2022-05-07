@@ -898,18 +898,22 @@ namespace Pyrrho.Level4
         ///       | OF '(' id Type {',' id Type} ')' .
         /// </summary>
         /// <returns>the executable</returns>
-        Executable ParseViewDefinition()
+        internal RowSet ParseViewDefinition(string id = null)
         {
             var op = cx.parse;
             var lp = LexPos();
-            Next();
-            var id = lxr.val.ToString();
-            Mustbe(Sqlx.ID);
-            if (cx.db.role.dbobjects.Contains(id))
-                throw new DBException("42104", id);
+            if (id == null)
+            {
+                Next();
+                id = lxr.val.ToString();
+                Mustbe(Sqlx.ID);
+                if (cx.db.role.dbobjects.Contains(id))
+                    throw new DBException("42104", id);
+            }
             var t = Domain.TableType;
             var ns = BList<string>.Empty; // named columns option 
             string tn; // explicit view type
+            var st = lxr.start;
             Table ut = null;
             bool schema = false; // will record whether a schema for GET follows
             if (Match(Sqlx.LPAREN))
@@ -939,22 +943,21 @@ namespace Pyrrho.Level4
                 }
                 schema = true;
                 cx.parse = op;
+                st = lxr.start;
             }
             Mustbe(Sqlx.AS);
             var rest = Match(Sqlx.GET);
-            var st = lxr.start;
-            var ts = CTree<long,long>.Empty;
-            Domain ud = null;
+            Domain ud;
             RowSet ur = null;
             RowSet cs = null;
             if (!rest)
             {
                 cx.parse = ExecuteStatus.Compile;
-                (ud,cs) = _ParseCursorSpecification(Domain.TableType);
+                (ud, cs) = _ParseCursorSpecification(Domain.TableType);
                 if (ns != BList<string>.Empty)
                 {
                     var ub = ud.rowType.First();
-                    for (var b=ns.First();b!=null && ub!=null;b=b.Next(),ub=ub.Next())
+                    for (var b = ns.First(); b != null && ub != null; b = b.Next(), ub = ub.Next())
                     {
                         var v = (SqlValue)cx.obs[ub.value()];
                         cx.Add(v + (DBObject._Alias, b.value()));
@@ -962,15 +965,15 @@ namespace Pyrrho.Level4
                 }
                 cx.Add(new SelectStatement(cx.GetUid(), cs));
                 cs = (RowSet)cx.obs[cs.defpos];
-                if (ns.Count>0)
+                var d = (Domain)cx.obs[cs.domain];
+                var nb = ns.First();
+                for (var b = d.rowType.First(); b != null; b = b.Next(), nb = nb?.Next())
                 {
-                    var d = (Domain)cx.obs[cs.domain];
-                    var nb = ns.First();
-                    for (var b=d.rowType.First();b!=null && nb!=null;b=b.Next(),nb=nb.Next())
-                    {
-                        var v = (SqlValue)cx.obs[b.value()];
+                    var v = (SqlValue)cx.obs[b.value()];
+                    if (cx._Dom(v).kind==Sqlx.CONTENT || v.defpos<0) // can't simply use WellDefined
+                        throw new DBException("42112", v.name);
+                    if (nb!=null)
                         cx.Add(v + (DBObject._Alias, nb.value()));
-                    }
                 }
                 cx.parse = op;
             }
@@ -984,14 +987,12 @@ namespace Pyrrho.Level4
                     op = cx.parse;
                     cx.parse = ExecuteStatus.Compile;
                     Next();
-                    (ud, ur) = ParseTableReferenceItem(lp.lp,t);
+                    (ud, ur) = ParseTableReferenceItem(lp.lp, t);
                     ut = (Table)cx.obs[ur.target];
                     cx.parse = op;
                 }
             }
             PView pv = null;
-            var np = cx.db.nextPos;
-            var cp = cs?.defpos ?? -1L;
             if (cx.parse == ExecuteStatus.Obey)
             {
                 if (rest)
@@ -1009,7 +1010,6 @@ namespace Pyrrho.Level4
                 }
                 cx.Add(pv);
             }
-            var ob = (DBObject)cx.db.objects[np]; // hmm may be null if not Obey somehow
             if (StartMetadata(Sqlx.VIEW))
             {
                 var m = ParseMetadata(Sqlx.VIEW);
@@ -1017,7 +1017,7 @@ namespace Pyrrho.Level4
                     cx.Add(new PMetadata(id, -1, pv.ppos, m, cx.db.nextPos, cx));
             }
             cx.result = -1L;
-            return null;
+            return cs;
         }
         /// <summary>
         /// Parse the CreateXmlNamespaces syntax

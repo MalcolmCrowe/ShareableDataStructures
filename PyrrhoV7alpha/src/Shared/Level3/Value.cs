@@ -3986,6 +3986,14 @@ namespace Pyrrho.Level3
                     nd -= c.key();
             return qn + nd;
         }
+        internal override bool WellDefinedOperands(Context cx)
+        {
+            var ed = cx._Dom(cx.obs[expr]);
+            for (var b = ed.rowType.First(); b != null; b = b.Next())
+                if (!((SqlValue)cx.obs[b.value()]).WellDefinedOperands(cx))
+                    return false;
+            return base.WellDefinedOperands(cx);
+        }
         internal override bool LocallyConstant(Context cx, RowSet rs)
         {
             return false;
