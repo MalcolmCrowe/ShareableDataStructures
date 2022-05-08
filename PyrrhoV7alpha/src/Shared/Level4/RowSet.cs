@@ -3094,6 +3094,7 @@ namespace Pyrrho.Level4
                     return (RowSet)New(cx, E + (_Built, true) + (_Rows, new BList<TRow>(sg)));
                 }
                 cx.finder += sce.finder;
+                cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
                 for (var rb = sce.First(cx); rb != null;
                     rb = rb.Next(cx))
                     if (!rb.IsNull)
@@ -3135,6 +3136,7 @@ namespace Pyrrho.Level4
                         next:;
                     }
                 var rws = BList<TRow>.Empty;
+                var oc = cx.cursors;
                 cx.cursors = BTree<long, Cursor>.Empty;
                 for (var b = cx.funcs[defpos]?.First(); b != null; b = b.Next())
                 {
@@ -3167,6 +3169,7 @@ namespace Pyrrho.Level4
                     rws += new TRow(dm, vs);
                 skip:;
                 }
+                cx.cursors = oc;
                 if (rws == BList<TRow>.Empty)
                     rws += new TRow(dm, CTree<long, TypedValue>.Empty);
                 return (RowSet)New(cx, E + (_Rows, rws) + (_Built, true) + (Index.Tree, null)

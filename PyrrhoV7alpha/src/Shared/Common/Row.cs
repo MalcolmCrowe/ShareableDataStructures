@@ -198,6 +198,12 @@ namespace Pyrrho.Common
                 return new TInt(dataType, value.Value + 1);
             return base.Next();
         }
+        internal override double ToDouble()
+        {
+            if (value == null)
+                return double.NaN;
+            return value.Value * 1.0;
+        }
         public override string ToString()
         {
             return value.ToString();
@@ -305,6 +311,12 @@ namespace Pyrrho.Common
         internal override Integer ToInteger()
         {
             return ivalue;
+        }
+        internal override double ToDouble()
+        {
+            if (value == null)
+                return double.NaN;
+            return (double)value;
         }
         public override bool IsNull
         {

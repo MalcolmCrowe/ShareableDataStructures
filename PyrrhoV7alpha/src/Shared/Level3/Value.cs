@@ -5151,6 +5151,7 @@ namespace Pyrrho.Level3
                 case Sqlx.RANK: return Domain.Int;
                 case Sqlx.ROW_NUMBER: return Domain.Int;
                 case Sqlx.SET: return Domain.Collection;
+                case Sqlx.SQRT: return Domain.Real;
                 case Sqlx.STDDEV_POP: return Domain.Real;
                 case Sqlx.STDDEV_SAMP: return Domain.Real;
                 case Sqlx.SUBSTRING: return Domain.Char;
@@ -5538,6 +5539,13 @@ namespace Pyrrho.Level3
                         return m.Set();
                     }
                 case Sqlx.SOME: goto case Sqlx.ANY;
+                case Sqlx.SQRT:
+                    {
+                        v = vl?.Eval(cx);
+                        if (v == null)
+                            return null;
+                        return new TReal(Math.Sqrt(v.ToDouble()));
+                    }
                 case Sqlx.STDDEV_POP:
                     {
                         if (fc.count == 0)
