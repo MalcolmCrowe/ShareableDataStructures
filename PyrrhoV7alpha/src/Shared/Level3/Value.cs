@@ -1439,7 +1439,7 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlValueExpr)base._Replace(cx,so,sv);
+            var r = (SqlValueExpr)base._Replace(cx, so, sv);
             var lf = cx.ObReplace(r.left, so, sv);
             if (lf != r.left)
                 r += (Left, lf);
@@ -1447,24 +1447,14 @@ namespace Pyrrho.Level3
             if (rg != r.right)
                 r += (Right, rg);
             var dr = cx._Dom(r);
-            if (dr.kind==Sqlx.UNION || dr.kind==Sqlx.CONTENT)
+            if ((dr.kind==Sqlx.UNION || dr.kind==Sqlx.CONTENT) && so.domain != sv.domain)
             {
-                if (cx.obs[r.sub] is SqlValue se)
-                    dr = cx._Dom(se);
-                else
-                {
-                    var ls = cx._Ob(lf) as SqlValue;
-                    var rs = cx._Ob(rg) as SqlValue;
-                    if (lf!=-1L && kind != Sqlx.DOT)
-                        dr = cx._Dom((long)(_Type(iix, cx, kind, mod, ls, rs)[_Domain]??-1L));
-                    else if (kind == Sqlx.DOT)
-                        dr = cx._Dom(rs);
-                }
-                if (dr.defpos != r.domain)
-                    r += (_Domain, dr.defpos);
+                dr = cx._Dom((long)(_Type(iix, cx, kind, mod, (SqlValue)cx.obs[lf],
+                    (SqlValue)cx.obs[rg])[_Domain] ?? -1L));
+                cx.Add(dr);
+                r += (_Domain, dr.defpos);
             }
-            if (r!=this)
-                r = (SqlValueExpr)New(cx, r.mem);
+            r = (SqlValueExpr)New(cx, r.mem);
             cx.done += (defpos, r);
             return r;
         }
@@ -1935,15 +1925,13 @@ namespace Pyrrho.Level3
                                 return null;
                             if (lf == null)
                             {
-                                var rd = cx._Dom(rg);
-                                v = rd.Eval(defpos,cx,new TInt(0), Sqlx.MINUS, tb);
+                                v = dm.Eval(defpos,cx,new TInt(0), Sqlx.MINUS, tb);
                                 return v;
                             }
                             var ta = lf.Eval(cx);
                             if (ta == null)
                                 return null;
-                            var ld = cx._Dom(lf);
-                            v = ld.Eval(defpos,cx,ta, kind, tb);
+                            v = dm.Eval(defpos,cx,ta, kind, tb);
                             return v;
                         }
                     case Sqlx.NEQ:
@@ -2013,8 +2001,7 @@ namespace Pyrrho.Level3
                             var tb = rg.Eval(cx);
                             if (ta == null || tb == null)
                                 return null;
-                            var ld = cx._Dom(lf);
-                            return ld.Eval(defpos,cx,ta, kind, tb);
+                            return dm.Eval(defpos,cx,ta, kind, tb);
                         }
                     case Sqlx.PRECEDES:
                         {
@@ -2161,10 +2148,15 @@ namespace Pyrrho.Level3
                     {
                         var dl = cx._Dom(left);
                         var dr = cx._Dom(right);
-                        if (dl.kind == Sqlx.INTERVAL && (dr.kind == Sqlx.INTEGER 
+                        if (dl.kind == Sqlx.REAL || dl.kind == Sqlx.NUMERIC)
+                            dm = dl;
+                        else if (dr.kind == Sqlx.REAL || dr.kind == Sqlx.NUMERIC)
+                            dm = dr;
+                        else if (dl.kind == Sqlx.INTERVAL && (dr.kind == Sqlx.INTEGER
                             || dr.kind == Sqlx.NUMERIC))
-                        { dm = dl; break; }
-                        dm = left.FindType(cx,Domain.UnionNumeric); break;
+                            dm = dl;
+                        else
+                            dm = left.FindType(cx, Domain.UnionNumeric); break;
                     }
                 case Sqlx.DOT: dm = cx._Dom(right); 
                     if (left!=null && left.name!="" && right.name!="")
@@ -2189,7 +2181,11 @@ namespace Pyrrho.Level3
                                 dm = cx._Dom(left);
                         }
                         else if (dl == Sqlx.INTERVAL && (dr == Sqlx.DATE || dl == Sqlx.TIMESTAMP || dl == Sqlx.TIME))
-                            dm = cx._Dom(right); 
+                            dm = cx._Dom(right);
+                        else if (dl == Sqlx.REAL || dl == Sqlx.NUMERIC)
+                            dm = cx._Dom(left);
+                        else if (dr == Sqlx.REAL || dr == Sqlx.NUMERIC)
+                            dm = cx._Dom(right);
                         else
                             dm = left.FindType(cx,Domain.UnionDateNumeric);
                         break;
@@ -2209,8 +2205,12 @@ namespace Pyrrho.Level3
                             dm = cx._Dom(left);
                         else if (dl == Sqlx.INTERVAL && (dr == Sqlx.DATE || dl == Sqlx.TIMESTAMP || dl == Sqlx.TIME))
                             dm = cx._Dom(right);
-                        else
-                            dm = left.FindType(cx,Domain.UnionDateNumeric);
+                        else if (dl == Sqlx.REAL || dl == Sqlx.NUMERIC)
+                            dm = cx._Dom(left);
+                        else if (dr == Sqlx.REAL || dr == Sqlx.NUMERIC)
+                            dm = cx._Dom(right);
+                        else 
+                            dm = left.FindType(cx, Domain.UnionDateNumeric);
                         break;
                     }
                 case Sqlx.QMARK:

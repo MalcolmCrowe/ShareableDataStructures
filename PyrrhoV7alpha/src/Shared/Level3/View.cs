@@ -96,7 +96,6 @@ namespace Pyrrho.Level3
         internal override DBObject Instance(Iix lp, Context cx, Domain q, BList<Ident> cs = null)
         {
             var od = cx.done;
-            var on = cx.defs;
             cx.done = ObTree.Empty;
             var st = framing.result;
             cx.instDFirst = (cx.parse == ExecuteStatus.Obey) ? cx.nextHeap : cx.nextStmt;
@@ -114,31 +113,16 @@ namespace Pyrrho.Level3
             var vn = new Ident(vi.name, cx.Ix(vi.defpos));
             cx.AddDefs(vn, cx._Dom(vi),alias);
             var ids = cx.defs[vi.name][cx.sD].Item2;
-            for (var b = q?.rowType.First(); b != null; b = b.Next())
+            for (var b = ids.First(); b != null; b = b.Next())
             {
-                var sv = cx.obs[b.value()];
-                if (ids.Contains(sv.name))
-                {
-                    var sp = ids[sv.name][cx.sD].Item1.dp;
-                    var so = cx.obs[cx.uids[sp]??sp];
-                    cx.Replace(so, so.Relocate(b.value())+(InstanceOf,so.defpos));
-                    if (!cx.obs.Contains(sp))
-                        cx.uids += (sp, b.value());
-                }
-                for (var c = sv.Operands(cx).First(); c != null; c = c.Next())
-                {
-                    var sx = cx.obs[c.key()];
-                    ids = cx.defs[vi.name][cx.sD].Item2;
-                    if (ids.Contains(sx.name))
-                    {
-                        var sw = ids[sx.name][cx.sD].Item1.dp;
-                        var so = cx.obs[cx.uids[sw] ?? sw];
-                        cx.Replace(so, so.Relocate(c.key()) + (InstanceOf, so.defpos));
-                        if (!cx.obs.Contains(sw))
-                            cx.uids += (sw, c.key());
-                    }
-                }
-            }
+                var c = b.key(); // a view column id
+                var vx = b.value()[cx.sD].Item1;
+                var qx = cx.defs[(c, cx.sD)].Item1; // a reference in q to this
+                if (qx.dp >= 0)  // substitute the references with the instance columns
+                    cx.Replace((SqlValue)cx.obs[qx.dp],(SqlValue)cx.obs[vx.dp]);
+                if (!cx.obs.Contains(qx.dp))
+                    cx.uids += (qx.dp, vx.dp);
+            } 
             for (var b = cs?.First(); b != null; b = b.Next())
             {
                 var iv= b.value();
@@ -149,7 +133,23 @@ namespace Pyrrho.Level3
                     cx.Replace(so, so.Relocate(iv.iix.dp)+(InstanceOf,so.defpos));
                     if (!cx.obs.Contains(sp))
                         cx.uids += (sp, iv.iix.dp);
+                } 
+            }
+            if (q != null)
+            {
+                var rs = CTree<long,Domain>.Empty;
+                var rt = CList<long>.Empty;
+                for (var b = q.rowType.First(); b != null; b = b.Next())
+                {
+                    var p = b.value();
+                    p = cx.uids[p] ?? p;
+                    var sv = (SqlValue)cx.obs[p];
+                    rt += p;
+                    rs += (p, cx._Dom(sv));
                 }
+                q += (Domain.Representation, rs);
+                q += (Domain.RowType, rt);
+                q = (Domain)cx.Add(q);
             }
             cx.instDFirst = -1L;
             var t = framing.obs.Last().key();

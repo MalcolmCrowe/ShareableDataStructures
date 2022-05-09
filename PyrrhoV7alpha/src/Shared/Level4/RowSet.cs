@@ -3069,6 +3069,8 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Build(Context cx)
         {
+            if (Built(cx))
+                return this;
             var dm = cx._Dom(this);
    //         var cx = new Context(_cx);
             cx.groupCols += (dm, groupCols);
@@ -3172,12 +3174,12 @@ namespace Pyrrho.Level4
                 cx.cursors = oc;
                 if (rws == BList<TRow>.Empty)
                     rws += new TRow(dm, CTree<long, TypedValue>.Empty);
-                return (RowSet)New(cx, E + (_Rows, rws) + (_Built, true) + (Index.Tree, null)
-                    + (Index.Keys, groupings));
+                return (RowSet)cx.Add(New(cx, E + (_Rows, rws) + (_Built, true) + (Index.Tree, null)
+                    + (Index.Keys, groupings)));
             }
             for (var b = Sources(cx).First(); b != null; b = b.Next())
                 ((RowSet)cx.obs[b.key()]).Build(cx);
-            return (RowSet)New(cx, E + (_Built, true));
+            return (RowSet)cx.Add(New(cx, E + (_Built, true)));
         }
         protected override Cursor _First(Context _cx)
         {

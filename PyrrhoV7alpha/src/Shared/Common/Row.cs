@@ -314,9 +314,9 @@ namespace Pyrrho.Common
         }
         internal override double ToDouble()
         {
-            if (value == null)
-                return double.NaN;
-            return (double)value;
+            if (ivalue == null)
+                return base.ToDouble();
+            return (double)ivalue;
         }
         public override bool IsNull
         {

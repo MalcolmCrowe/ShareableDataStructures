@@ -5461,7 +5461,8 @@ namespace Pyrrho.Level4
             var dm = ParseSelectList(lp.dp, xp);
             cx.Add(dm);
             var (_, te) = ParseTableExpression(lp, d, dm, xp);
-            (dm,te) = Resolve(dm,te); 
+            dm = (Domain)cx.obs[dm.defpos];
+            dm = Resolve(dm); 
             if (Match(Sqlx.FOR))
             {
                 Next();
@@ -5589,34 +5590,7 @@ namespace Pyrrho.Level4
             cx.Add(dm);
             xp = xp.Resolve(cx); // but maybe xp hasn't
             cx._Add(xp);
-            // DoStars
-            var di = dm.display;
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()] is SqlValue sv)
-                {
-                    if (sv is SqlStar st)
-                    {
-                        dm -= b.value();
-                        di--;
-                        var rq = cx.obs[st.prefix] ?? fm;
-                        var rd = rq.Domains(cx);
-                        var rs = dm.representation;
-                        var rt = dm.rowType;
-                        var dr = rd.display;
-                        for (var c = rd.rowType.First(); c != null && c.key() < dr; c = c.Next())
-                            if (!dm.representation.Contains(c.value()))
-                            {
-                                var p = c.value();
-                                var ob = cx.obs[p] + (DBObject.IIx, new Iix(sv.iix, p));
-                                cx.Add(ob);
-                                rs += (p, cx._Dom(ob));
-                                rt += p;
-                                di++;
-                            }
-                        dm = new Domain(cx, dm + (Domain.RowType, rt) + (Domain.Representation, rs) + (Domain.Display, di));
-                        cx.Add(dm);
-                    }
-                }
+
             var tr = CTree<long, long>.Empty; // the mapping to physical positions
             var mp = CTree<long, bool>.Empty; // the set of referenced columns
             for (var b = dm.rowType.First(); b != null && b.key() < dm.display; b = b.Next())
@@ -5685,26 +5659,38 @@ namespace Pyrrho.Level4
         }
         /// <summary>
 		/// FromClause = 	FROM TableReference { ',' TableReference } .
+        /// (before WHERE, GROUP, etc).
+        /// Each table reference will modify the select result using its known
+        /// columns, and add extra (non-display) columns for those
+        /// not immediately referenced in the select list.
+        /// 
+        /// Afrwe parsing the table references, 
+        /// display columns may still contain unknown column references
+        /// because this selectrowset may be a subquery.
+        /// 
+        /// Finally, stars in the select list are replaced by columns
+        /// from referenced tables.
         /// </summary>
-        /// <param name="q">the query being parsed</param>
-        /// <returns>The table expression</returns>
-		(Domain,RowSet) ParseFromClause(long st,Domain q)
+        /// <param name="dp">The position for the selectrowset being constructed</param>
+        /// <param name="dm">the selectlist </param>
+        /// <returns>The resolved select domain and table expression</returns>
+		(Domain,RowSet) ParseFromClause(long dp,Domain dm)
 		{
-            var oq = q;
+            var oq = dm;
             if (tok == Sqlx.FROM)
             {
                 Next();
                 RowSet rt;
-                (q, rt) = ParseTableReference(st, q);
+                (dm, rt) = ParseTableReference(dp, dm);
                 while (tok == Sqlx.COMMA)
                 {
                     var lp = LexPos();
                     Next();
                     RowSet tr;
-                    (q, tr) = ParseTableReference(st, q);
-                    rt = new JoinRowSet(lp.dp, cx, q, rt, Sqlx.CROSS, tr);
+                    (dm, tr) = ParseTableReference(dp, dm);
+                    rt = new JoinRowSet(lp.dp, cx, dm, rt, Sqlx.CROSS, tr);
                 }
-                for (var b = q.rowType.First(); b != null; b = b.Next())
+                for (var b = dm.rowType.First(); b != null; b = b.Next())
                     if (cx.obs[b.value()] is SqlValue v)
                     {
                         if (v == null)
@@ -5725,19 +5711,48 @@ namespace Pyrrho.Level4
                         if (v is SqlStar)
                             continue;
                         if (v.from < 0)
-                            cx.Add(v + (DBObject._From, st));
+                            cx.Add(v + (DBObject._From, dp));
                     }
-                if (q != oq)
-                    cx.Add(q);
-                return (q, (RowSet)cx.Add(rt));
+                if (dm != oq)
+                    cx.Add(dm);
+                // DoStars
+                var di = dm.display;
+                for (var b = dm.rowType.First(); b != null; b = b.Next())
+                    if (cx.obs[b.value()] is SqlValue sv)
+                    {
+                        if (sv is SqlStar st)
+                        {
+                            dm -= b.value();
+                            di--;
+                            var rq = cx.obs[st.prefix] ?? rt;
+                            var rd = rq.Domains(cx);
+                            var rs = dm.representation;
+                            var qt = dm.rowType;
+                            var dr = rd.display;
+                            for (var c = rd.rowType.First(); c != null && c.key() < dr; c = c.Next())
+                                if (!dm.representation.Contains(c.value()))
+                                {
+                                    var p = c.value();
+                                    var ob = cx.obs[p] + (DBObject.IIx, new Iix(sv.iix, p));
+                                    cx.Add(ob);
+                                    rs += (p, cx._Dom(ob));
+                                    qt += p;
+                                    di++;
+                                }
+                            dm = new Domain(cx, dm + (Domain.RowType, qt) + (Domain.Representation, rs) + (Domain.Display, di));
+                            cx.Add(dm);
+                        }
+                    }
+                return (dm, (RowSet)cx.Add(rt));
             }
             else
-                return (q, new TrivialRowSet(cx));
+                return (dm, new TrivialRowSet(cx));
 		}
         /// <summary>
 		/// TableReference = TableFactor Alias | JoinedTable .
         /// </summary>
-        /// <param name="q">the expected domain</param>
+        /// <param name="st">the future selectrowset defining position</param>
+        /// <param name="q">the select list for the query</param>
         /// <returns>An updated version of q, and the new table reference item</returns>
         (Domain,RowSet) ParseTableReference(long st,Domain q)
         {
@@ -5764,11 +5779,12 @@ namespace Pyrrho.Level4
         /// |   '[' docs ']' .
         /// Subquery = '(' QueryExpression ')' .
         /// </summary>
-        /// <param name="q">the expected result type for the main query</param>
-        /// <returns>partly resolved main result type, rowset for this table reference</returns>
+        /// <param name="st">the defining position of the selectrowset being constructed</param>
+        /// <param name="q">the select list for the selectrowset being constructed</param>
+        /// <returns>partly resolved select list, and the rowset for this table reference</returns>
 		(Domain,RowSet) ParseTableReferenceItem(long st,Domain q)
         {
-            RowSet rf=null;
+            RowSet rf;
             var lp = new Iix(st,cx,LexPos().dp);
             if (tok == Sqlx.ROWS) // Pyrrho specific
             {
@@ -5891,7 +5907,7 @@ namespace Pyrrho.Level4
                 }
                 var ob = (cx.db.GetObject(ic.ident) ?? cx.obs[cx.defs[ic].dp]);
                 if (ob==null || (ob is SqlValue o && 
-                    (o.domain==Domain.Content.defpos || o.from<0)))
+                    (cx._Dom(o).kind!=Sqlx.TABLE || o.from<0)))
                     throw new DBException("42107", ic.ToString());
                 if (ob is From f)
                 {
@@ -5899,12 +5915,7 @@ namespace Pyrrho.Level4
                     ob = cx.obs[f.target] as Table;
                 }
                 else
-                {
-                    var oq = q;
                     (q, rf) = _From(ic, ob, Grant.Privilege.Select, a, q);
-                    if (oq.IsStar(cx))
-                        q = oq;
-                }
                 if (Match(Sqlx.FOR))
                 {
                     var ps = ParsePeriodSpec();
@@ -5919,7 +5930,6 @@ namespace Pyrrho.Level4
                 var rx = cx.Ix(rf.defpos);
                 if (cx.dbformat < 51)
                     cx.defs += (new Ident(rf.defpos.ToString(), rx), rx);
-                q = q.Resolve(cx);
             }
             return (q,rf); // but check anyway
         }
@@ -5932,80 +5942,52 @@ namespace Pyrrho.Level4
         /// <param name="q">The expected result for the enclosing query</param>
         /// <param name="cs">Non-null for SqlInsert: empty means use all cols</param>
         /// <returns></returns>
-        (Domain,RowSet) _From(Ident ic,DBObject ob,Grant.Privilege pr,string a = null,Domain q=null,BList<Ident> cs=null)
+        (Domain, RowSet) _From(Ident ic, DBObject ob, Grant.Privilege pr, string a = null, Domain q = null, BList<Ident> cs = null)
         {
             var dp = ic.iix;
-            if (ob!=null)
+            if (ob != null)
             {
                 if (ob is View ov)
+                {
                     ob = ov.Instance(dp, cx, q, cs);
+                    if (q != null)
+                        q = (Domain)cx.obs[q.defpos];
+                }
                 ob._Add(cx);
             }
             var ff = new From(ic, cx, ob, q, pr, cs, a);
             var fm = (From)cx.Add(ff);
-            if (fm.defpos!=ic.iix.dp)
-                ic = new Ident(fm.name,fm.iix);
+            if (fm.defpos != ic.iix.dp)
+                ic = new Ident(fm.name, fm.iix);
             fm = (From)cx.Add(fm);
-            RowSet rs;
-            (q,rs) = Resolve(q,fm);
-            return (q,(From)rs);
+            q = Resolve(q);
+            return (q, fm);
         }
         /// <summary>
-        /// The columns in fm should bind more tightly than the needs of q.
-        /// The returned comain nmay have a new defpos!
+        /// Update the domain q
         /// </summary>
         /// <param name="q"></param>
         /// <param name="fm"></param>
         /// <returns></returns>
-        (Domain,RowSet) Resolve(Domain q,RowSet fm)
+        Domain Resolve(Domain q)
         {
-            var rt = CList<long>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var cr = false;
-            var ct = false;
-            var fd = cx._Dom(fm);
-            var ma = CTree<string, SqlValue>.Empty;
-            for (var b=fd.rowType.First();b!=null;b=b.Next())
-            {
-                var v = (SqlValue)cx.obs[b.value()];
-                ma += (v.name, v);
-            }
             for (var b = q?.rowType.First(); b != null; b = b.Next())
             {
                 var c = b.value();
-                var co = cx.obs[c] as SqlValue;
-                if (co == null)
-                    continue;
-                SqlValue nc;
-                if (ma.Contains(co.name) && co.iix.sd!=fm.iix.sd && co.iix.sd!=0)
-                {
-                    nc = ma[co.name];
-                    ct = true;
-                }
-                else 
-                {
-                    if (cx.defs[(co.name, fm.iix.sd)].Item1.dp < 0)
-                        continue;
-                    (nc, fm) = co?.Resolve(cx, fm) ?? (co, fm);
-                    if (co!=nc && co != null && co.from < 0 && co.WellDefinedOperands(cx))
-                    {
-                        nc += (DBObject._From, fm.defpos);
-                        cx.Replace(co, nc);
-                    }
-                }
-                rt += nc.defpos;
+                var nc = cx.obs[c] as SqlValue;
                 var dm = cx._Dom(nc);
                 if (dm != q.representation[c])
                     cr = true;
                 rs += (nc.defpos, dm);
             }
-            if (ct)
-                q = new Domain(cx.GetUid(), cx, Sqlx.TABLE, rs, rt);
-            else if (cr)
+            if (cr)
+            {
                 q += (Domain.Representation, rs);
-            if (ct||cr)
                 cx.Add(q);
-            return (q,fm);
+            }
+            return q;
         }
         /// <summary>
         /// TimePeriodSpec = 
