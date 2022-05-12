@@ -147,7 +147,7 @@ namespace Pyrrho.Level3
             cx.Add(ti);
             return ti;
         }
-        internal override DBObject Instance(Iix lp,Context cx, Domain q, BList<Ident>cs=null)
+        internal override DBObject Instance(long lp,Context cx, Domain q, BList<Ident>cs=null)
         {
             var r = base.Instance(lp,cx, q);
             for (var b = tblCols.First(); b != null; b = b.Next())
@@ -322,9 +322,9 @@ namespace Pyrrho.Level3
             for (var b = fd.rowType.First(); b != null && d-- > 0; b = b.Next())
             {
                 rc += (b.value(), true);
-                cx.instances += (b.value(), id.iix);
+                cx.instances += (b.value(), id.iix.dp);
             }
-            var rowSet = (RowSet)cx._Add(new TableRowSet(id.iix, cx, defpos, q.defpos)+(_From,fm)
+            var rowSet = (RowSet)cx._Add(new TableRowSet(id.iix.dp, cx, defpos, q.defpos)+(_From,fm)
                 +(InstanceRowSet.RdCols,rc));
 #if MANDATORYACCESSCONTROL
             Audit(cx, rowSet);

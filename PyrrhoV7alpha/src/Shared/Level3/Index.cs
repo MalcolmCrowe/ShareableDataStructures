@@ -85,7 +85,7 @@ namespace Pyrrho.Level3
             var r = BTree<long, object>.Empty;
             if (c.adapter != "")
             {
-                r += (Adapter, cx.GetProcedure(cx.GetIid(),c.adapter, 1).defpos);
+                r += (Adapter, cx.GetProcedure(cx.GetUid(),c.adapter, 1).defpos);
                 r += (References, BTree<long, BList<TypedValue>>.Empty);
             }
             if (c.reference > 0)

@@ -81,7 +81,6 @@ namespace Pyrrho.Level4
             m += (JoinKind, k);
             m += (JFirst, lr.defpos);
             m += (JSecond, rr.defpos);
-            m += (IIx, new Iix(lr.iix, dp));
             if (!m.Contains(Natural))
                 m += (Natural, Sqlx.NO);
             var nv = BList<SqlValue>.Empty;
@@ -187,7 +186,7 @@ namespace Pyrrho.Level4
                         var rv = (SqlValue)cx.obs[rc];
                         if ((lv.alias??lv.name).CompareTo(rv.alias??rv.name) == 0)
                         {
-                            var cp = new SqlValueExpr(cx.GetIid(), cx, Sqlx.EQL, lv, rv, Sqlx.NULL)
+                            var cp = new SqlValueExpr(cx.GetUid(), cx, Sqlx.EQL, lv, rv, Sqlx.NULL)
                                 +(_From,dp);
                             cx.Add(cp);
                             m += (JoinCond, cp.Disjoin(cx));
@@ -196,7 +195,7 @@ namespace Pyrrho.Level4
                             dm -= rv.defpos;
                             dm += (cx,rv); // add it at the end
                             oc += (lv.defpos, rv.defpos);
-                            var je = cx.Add(new SqlValueExpr(cx.GetIid(), cx, Sqlx.EQL, lv, rv, Sqlx.NO));
+                            var je = cx.Add(new SqlValueExpr(cx.GetUid(), cx, Sqlx.EQL, lv, rv, Sqlx.NO));
                             jc += (je.defpos,true);
                             break;
                         }
@@ -261,7 +260,7 @@ namespace Pyrrho.Level4
                         continue;
                     if (lv.IsFrom(cx, rr, true) && rv.IsFrom(cx, lr, true))
                     {
-                        cx.Replace(se, new SqlValueExpr(se.iix, cx, se.kind, rv, lv, se.mod));
+                        cx.Replace(se, new SqlValueExpr(se.defpos, cx, se.kind, rv, lv, se.mod));
                         continue;
                     }
                 }
@@ -556,7 +555,7 @@ namespace Pyrrho.Level4
                             }
                             else if (ls && rf)
                             {
-                                var ns = new SqlValueExpr(cx.GetIid(), cx, Sqlx.EQL, ri, le, Sqlx.NO);
+                                var ns = new SqlValueExpr(cx.GetUid(), cx, Sqlx.EQL, ri, le, Sqlx.NO);
                                 mm += (OnCond, onCond + (ns.left, ns.right));
                                 lo += ns.left;
                                 ro += ns.right;

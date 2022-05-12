@@ -57,19 +57,18 @@ namespace Pyrrho.Level3
         internal virtual long target => defpos;
         internal CTree<long, bool> await =>
             (CTree<long, bool>)mem[Await] ?? CTree<long, bool>.Empty;
-        public SqlValue(Ident ic) : this(ic.iix, ic.ident) { }
-        public SqlValue(Iix iix,string nm="",Domain dt=null,BTree<long,object>m=null)
-            :base(iix.dp,(m??BTree<long, object>.Empty)+(IIx,iix)
+        public SqlValue(Ident ic) : this(ic.iix.dp, ic.ident) { }
+        public SqlValue(long dp,string nm="",Domain dt=null,BTree<long,object>m=null)
+            :base(dp,(m??BTree<long, object>.Empty)
                 +(_Domain,dt?.defpos??Domain.Content.defpos)
                 +(Name,nm))
         { }
+        protected SqlValue(long dp, BTree<long, object> m) : base(dp, m) { }
         protected SqlValue(Context cx,string nm,Domain dt,long cf=-1L)
             :base(cx.GetUid(),_Mem(cf)+(Name,nm)+(_Domain,dt.defpos))
         {
             cx.Add(this);
         }
-        protected SqlValue(Iix dp, BTree<long, object> m) : base(dp.dp, m+(IIx,dp))
-        { }
         static BTree<long,object> _Mem(long cf)
         {
             var r = BTree<long, object>.Empty;
@@ -83,8 +82,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            var ix = ((Iix)m[IIx]) ?? new Iix(defpos); 
-            return new SqlValue(ix,m);
+            return new SqlValue(defpos, m);
         }
         internal override CTree<long, bool> _Rdc(Context cx)
         {
@@ -176,7 +174,7 @@ namespace Pyrrho.Level3
             {
                 var ci = cx.Inf(b.key());
                 if (ci.name == name)
-                    return new SqlCopy(iix, cx, name, defpos, ci.defpos);
+                    return new SqlCopy(defpos, cx, name, defpos, ci.defpos);
             }
             return this;
         }
@@ -256,12 +254,12 @@ namespace Pyrrho.Level3
                 return (this,q);
             if (q is From fm)
             {
-                var id = new Ident(name, iix);
+                var id = new Ident(name, new Iix(defpos));
                 var ic = new Ident(new Ident(q.name, cx.Ix(q.defpos)), id);
                 if (cx.obs[cx.defs[ic].dp] is DBObject tg)
                 {
                     var cp = (tg is SqlCopy sc) ? sc.copyFrom : tg.defpos;
-                    var nc = new SqlCopy(iix, cx, name, q.defpos, cp);
+                    var nc = new SqlCopy(defpos, cx, name, q.defpos, cp);
                     if (nc.defpos<Transaction.Executables && nc.defpos < tg.defpos)
                         cx.Replace(tg, nc);
                     else
@@ -279,7 +277,7 @@ namespace Pyrrho.Level3
                     && ob is SqlValue sb)
                 {
                     var nc = (SqlValue)cx.Replace(this,
-                        new SqlValue(iix,name,cx._Dom(sb),mem));
+                        new SqlValue(defpos,name,cx._Dom(sb),mem));
                     return (nc,q);
                 }
             }
@@ -292,7 +290,7 @@ namespace Pyrrho.Level3
                 if (sv is SqlCopy sc && alias != null && alias != sc.name)
                     ns = ns +(_Domain,sc.domain);
                 else if ((!(sv is SqlCopy)) && sv.domain != Domain.Content.defpos)
-                    ns = new SqlCopy(iix, cx, name, q.defpos, sv);
+                    ns = new SqlCopy(defpos, cx, name, q.defpos, sv);
                 var nc = (SqlValue)cx.Replace(this, ns);
                 q += (i, nc);
                 return (nc, q);
@@ -457,7 +455,7 @@ namespace Pyrrho.Level3
         }
         internal virtual SqlValue Invert(Context cx)
         {
-            return new SqlValueExpr(cx.GetIid(), cx, Sqlx.NOT, this, null, Sqlx.NO);
+            return new SqlValueExpr(cx.GetUid(), cx, Sqlx.NOT, this, null, Sqlx.NO);
         }
         internal static bool OpCompare(Sqlx op, int c)
         {
@@ -472,13 +470,13 @@ namespace Pyrrho.Level3
             }
             throw new PEException("PE61");
         }
-        internal virtual RowSet RowSetFor(Iix dp,Context cx,CList<long> us,
+        internal virtual RowSet RowSetFor(long dp,Context cx,CList<long> us,
             CTree<long,Domain> re)
         {
             if (cx.val is TRow r && !r.IsNull)
                 return new TrivialRowSet(dp,cx, r, -1L,
                     ((RowSet)cx.obs[from])?.finder?? CTree<long,RowSet.Finder>.Empty);
-            return new EmptyRowSet(dp.dp,cx,domain,us,re);
+            return new EmptyRowSet(dp,cx,domain,us,re);
         }
         internal virtual Domain FindType(Context cx,Domain dt)
         {
@@ -586,7 +584,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlValue(new Iix(iix,dp), mem);
+            return new SqlValue(dp, mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -639,23 +637,23 @@ namespace Pyrrho.Level3
         internal const long
             CopyFrom = -284; // long
         public long copyFrom => (long)mem[CopyFrom];
-        public SqlCopy(Iix dp, Context cx, string nm, long fp, long cp,
+        public SqlCopy(long dp, Context cx, string nm, long fp, long cp,
             BTree<long, object> m = null)
             : this(dp, cx, nm,fp, cx.obs[cp]??(DBObject)cx.db.objects[cp], m)
         { }
-        public SqlCopy(Iix dp, Context cx, string nm, long fp, DBObject cf,
+        public SqlCopy(long dp, Context cx, string nm, long fp, DBObject cf,
            BTree<long, object> m = null)
             : base(dp, _Mem(dp, cx, fp, m) + (CopyFrom, cf.defpos) +(Name,nm) 
                   + (_Domain,cf.domain))
         { }
-        static BTree<long,object> _Mem(Iix dp, Context cx, long fp,BTree<long,object>m)
+        static BTree<long,object> _Mem(long dp, Context cx, long fp,BTree<long,object>m)
         {
             m = m ?? BTree<long, object>.Empty;
             if (fp>=0)
                 m += (_From, fp);
             return m;
         }
-        protected SqlCopy(Iix dp, BTree<long, object> m) : base(dp, m) 
+        protected SqlCopy(long dp, BTree<long, object> m) : base(dp, m) 
         { }
         public static SqlCopy operator +(SqlCopy s, (long, object) x)
         {
@@ -663,10 +661,9 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            var ix = (Iix)m[IIx] ?? iix;
-            return new SqlCopy(ix, m);
+            return new SqlCopy(defpos, m);
         }
-        internal override (DBObject, Ident) _Lookup(Iix lp, Context cx, string nm, Ident n)
+        internal override (DBObject, Ident) _Lookup(long lp, Context cx, string nm, Ident n)
         {
             if (n == null)
                 return (this, null);
@@ -676,7 +673,7 @@ namespace Pyrrho.Level3
                 var f = (RowSet)cx.obs[from];
                 var ts = (TableRowSet)cx.obs[f.rsTargets[c.tabledefpos]];
                 var p = ts.sIMap[copyFrom];
-                var ob = new SqlField(n.iix, n.ident, defpos, oi.dataType, p);
+                var ob = new SqlField(n.iix.dp, n.ident, defpos, oi.dataType, p);
                 cx.Add(ob);
                 return (ob, n.sub);
             }
@@ -737,7 +734,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlCopy(new Iix(iix,dp), mem);
+            return new SqlCopy(dp, mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -809,17 +806,17 @@ namespace Pyrrho.Level3
         /// constructor: a new Type expression
         /// </summary>
         /// <param name="ty">the type</param>
-        internal SqlTypeExpr(Iix dp,Context cx,Domain ty)
+        internal SqlTypeExpr(long dp,Context cx,Domain ty)
             : base(dp,BTree<long, object>.Empty + (_Domain, ty.defpos))
         {}
-        protected SqlTypeExpr(Iix iix, BTree<long, object> m) : base(iix, m) { }
+        protected SqlTypeExpr(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlTypeExpr operator +(SqlTypeExpr s, (long, object) x)
         {
             return (SqlTypeExpr)s.New(s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlTypeExpr(iix, m);
+            return new SqlTypeExpr(defpos, m);
         }
         /// <summary>
         /// Lookup the type name in the context
@@ -855,7 +852,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlTypeExpr(new Iix(iix,dp),mem);
+            return new SqlTypeExpr(dp,mem);
         }
     }
     /// <summary>
@@ -872,17 +869,16 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="ty">the type</param>
         /// <param name="cx">the context</param>
-        internal SqlTreatExpr(Iix dp,SqlValue v,Domain ty, Context cx)
-            : base(dp,_Mem(dp,cx,ty,v) +(TreatExpr,v.defpos)
+        internal SqlTreatExpr(long dp,SqlValue v,Domain ty, Context cx)
+            : base(dp,_Mem(cx,ty,v) +(TreatExpr,v.defpos)
                   +(_Depth,v.depth+1))
         { }
-        protected SqlTreatExpr(Iix dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Iix dp,Context cx,Domain ty,SqlValue v)
+        protected SqlTreatExpr(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,Domain ty,SqlValue v)
         {
-            var dv = cx._Dom(v);
             var dm = (ty.kind == Sqlx.ONLY && ty.iri != null) ?
                   cx.Add(ty + (Domain.Iri, ty.iri)) : ty;
-            return new BTree<long, object>(_Domain, ty.defpos);
+            return new BTree<long, object>(_Domain, dm.defpos);
         }
         public static SqlTreatExpr operator +(SqlTreatExpr s, (long, object) x)
         {
@@ -890,11 +886,11 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlTreatExpr(iix,m);
+            return new SqlTreatExpr(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlTreatExpr(new Iix(iix,dp),mem);
+            return new SqlTreatExpr(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -1000,18 +996,18 @@ namespace Pyrrho.Level3
         public BList<(long, long)> cases =>
             (BList<(long,long)>)mem[Cases] ?? BList<(long, long)>.Empty;
         public long caseElse => (long)(mem[CaseElse] ?? -1L);
-        internal SqlCaseSimple(Iix dp, Domain dm, SqlValue vl, BList<(long, long)> cs, long el)
+        internal SqlCaseSimple(long dp, Domain dm, SqlValue vl, BList<(long, long)> cs, long el)
             : base(dp, BTree<long, object>.Empty + (_Domain, dm.defpos)
                   + (SqlFunction._Val, vl.defpos) + (Cases, cs) + (CaseElse, el))
         { }
-        protected SqlCaseSimple(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlCaseSimple(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlCaseSimple operator+(SqlCaseSimple s,(long,object)x)
         {
             return (SqlCaseSimple)s.New(s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlCaseSimple(iix,m);
+            return new SqlCaseSimple(defpos,m);
         }
         internal override CTree<long, bool> Needs(Context cx)
         {
@@ -1073,7 +1069,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlCaseSimple(new Iix(iix,dp),mem);
+            return new SqlCaseSimple(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -1103,7 +1099,7 @@ namespace Pyrrho.Level3
             if (cx.obs[val] is SqlValue ol)
                 (vl, fm) = ol.Resolve(cx, fm);
             if (vl.defpos != val)
-                r = (SqlValue)cx.Replace(this, new SqlCaseSimple(iix, cx._Dom(this), vl, cases, caseElse));
+                r = (SqlValue)cx.Replace(this, new SqlCaseSimple(defpos, cx._Dom(this), vl, cases, caseElse));
             return (r,fm);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1153,18 +1149,18 @@ namespace Pyrrho.Level3
         public BList<(long, long)> cases =>
             (BList<(long, long)>)mem[SqlCaseSimple.Cases] ?? BList<(long, long)>.Empty;
         public long caseElse => (long)(mem[SqlCaseSimple.CaseElse] ?? -1L);
-        internal SqlCaseSearch(Iix dp, Domain dm, BList<(long, long)> cs, long el)
+        internal SqlCaseSearch(long dp, Domain dm, BList<(long, long)> cs, long el)
             : base(dp, BTree<long, object>.Empty + (_Domain, dm.defpos)
                   + (SqlCaseSimple.Cases, cs) + (SqlCaseSimple.CaseElse, el))
         { }
-        protected SqlCaseSearch(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlCaseSearch(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlCaseSearch operator +(SqlCaseSearch s, (long, object) x)
         {
             return (SqlCaseSearch)s.New(s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlCaseSearch(iix, m);
+            return new SqlCaseSearch(defpos, m);
         }
         internal override CTree<long, bool> Needs(Context cx)
         {
@@ -1225,7 +1221,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlCaseSearch(new Iix(iix, dp), mem);
+            return new SqlCaseSearch(dp, mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -1290,19 +1286,19 @@ namespace Pyrrho.Level3
             Parent = -344; // long SqlValue
         public long field => (long)(mem[Field] ?? -1L);
         public long parent => (long)(mem[Parent] ?? -1L);
-        internal SqlField(Iix dp, string nm, long s, Domain dm, long c)
+        internal SqlField(long dp, string nm, long s, Domain dm, long c)
             : base(dp, BTree<long, object>.Empty + (Name, nm) 
                   + (Parent, s) + (ObInfo._DataType, dm)+(Field,c)
                   + (_Domain,dm.defpos))
         { }
-        protected SqlField(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlField(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlField operator +(SqlField s, (long, object) x)
         {
             return (SqlField)s.New(s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlField(iix, m);
+            return new SqlField(defpos, m);
         }
         internal override SqlValue Having(Context c, Domain dm)
         {
@@ -1330,16 +1326,16 @@ namespace Pyrrho.Level3
     internal class SqlElement : SqlValue
     {
         internal SqlElement(Ident nm,Context cx,Ident pn,Domain dt) 
-            : base(nm.iix,nm.ident,dt,BTree<long,object>.Empty+(_From,pn.iix.dp))
+            : base(nm.iix.dp,nm.ident,dt,BTree<long,object>.Empty+(_From,pn.iix.dp))
         { }
-        protected SqlElement(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlElement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlElement operator +(SqlElement s, (long, object) x)
         {
             return (SqlElement)s.New(s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlElement(iix,m);
+            return new SqlElement(defpos,m);
         }
         internal override SqlValue Having(Context c, Domain dm)
         {
@@ -1367,7 +1363,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlElement(new Iix(iix,dp),mem);
+            return new SqlElement(dp,mem);
         }
     }
     /// <summary>
@@ -1396,21 +1392,21 @@ namespace Pyrrho.Level3
         /// <param name="lf">the left operand</param>
         /// <param name="rg">the right operand</param>
         /// <param name="m">a modifier (e.g. DISTINCT)</param>
-        public SqlValueExpr(Iix dp, Context cx, Sqlx op, SqlValue lf, SqlValue rg, 
+        public SqlValueExpr(long dp, Context cx, Sqlx op, SqlValue lf, SqlValue rg, 
             Sqlx m, BTree<long, object> mm = null)
             : base(dp, _Type(dp, cx, op, m, lf, rg, mm)
                   + (Modifier, m) + (Domain.Kind, op) 
                   +(Dependents,new CTree<long,bool>(lf?.defpos??-1L,true)+(rg?.defpos??-1L,true))
                   +(_Depth,1+_Max((lf?.depth??0),(rg?.depth??0))))
         { }
-        protected SqlValueExpr(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlValueExpr(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlValueExpr operator +(SqlValueExpr s, (long, object) x)
         {
-            return new SqlValueExpr(s.iix, s.mem + x);
+            return new SqlValueExpr(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlValueExpr(iix, m);
+            return new SqlValueExpr(defpos, m);
         }
         internal override bool ConstantIn(Context cx, RowSet rs)
         {
@@ -1420,7 +1416,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlValueExpr(new Iix(iix,dp),mem);
+            return new SqlValueExpr(dp,mem);
         }
         internal override (SqlValue,RowSet) Resolve(Context cx, RowSet fm)
         {
@@ -1432,7 +1428,7 @@ namespace Pyrrho.Level3
             (rg,fm) = rg?.Resolve(cx, fm)??(rg,fm);
             if (lf?.defpos != left || rg?.defpos != right)
                 r = (SqlValue)cx.Replace(this,
-                    new SqlValueExpr(iix, cx, kind, lf, rg, mod, mem));
+                    new SqlValueExpr(defpos, cx, kind, lf, rg, mod, mem));
             return (r,fm);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1449,7 +1445,7 @@ namespace Pyrrho.Level3
             var dr = cx._Dom(r);
             if ((dr.kind==Sqlx.UNION || dr.kind==Sqlx.CONTENT) && so.domain != sv.domain)
             {
-                dr = cx._Dom((long)(_Type(iix, cx, kind, mod, (SqlValue)cx.obs[lf],
+                dr = cx._Dom((long)(_Type(defpos, cx, kind, mod, (SqlValue)cx.obs[lf],
                     (SqlValue)cx.obs[rg])[_Domain] ?? -1L));
                 cx.Add(dr);
                 r += (_Domain, dr.defpos);
@@ -1486,7 +1482,7 @@ namespace Pyrrho.Level3
             var su = (SqlValue)c.obs[sub];
             var nu = su?.Having(c, dm);
             return (le == nl && rg == nr && su == nu) ? this
-                : (SqlValue)c.Add(new SqlValueExpr(c.GetIid(), c, kind, nl, nr, mod) + (Sub,nu));
+                : (SqlValue)c.Add(new SqlValueExpr(c.GetUid(), c, kind, nl, nr, mod) + (Sub,nu));
         }
         internal override bool Match(Context c, SqlValue v)
         {
@@ -2108,7 +2104,7 @@ namespace Pyrrho.Level3
                 throw new DBException("22000",kind).ISO();
             }
         }
-        static BTree<long,object> _Type(Iix dp, Context cx, Sqlx kind, Sqlx mod, 
+        static BTree<long,object> _Type(long dp, Context cx, Sqlx kind, Sqlx mod, 
             SqlValue left, SqlValue right, BTree<long,object>mm = null)
         {
             mm = mm ?? BTree<long, object>.Empty;
@@ -2253,18 +2249,18 @@ namespace Pyrrho.Level3
             switch (kind)
             {
                 case Sqlx.AND:
-                    return new SqlValueExpr(iix, cx, Sqlx.OR, lv.Invert(cx),
+                    return new SqlValueExpr(defpos, cx, Sqlx.OR, lv.Invert(cx),
                         rv.Invert(cx), Sqlx.NULL);
                 case Sqlx.OR:
-                    return new SqlValueExpr(iix, cx, Sqlx.AND, lv.Invert(cx),
+                    return new SqlValueExpr(defpos, cx, Sqlx.AND, lv.Invert(cx),
                         rv.Invert(cx), Sqlx.NULL);
                 case Sqlx.NOT: return lv;
-                case Sqlx.EQL: return new SqlValueExpr(iix, cx, Sqlx.NEQ, lv, rv, Sqlx.NULL);
-                case Sqlx.GTR: return new SqlValueExpr(iix, cx, Sqlx.LEQ, lv, rv, Sqlx.NULL);
-                case Sqlx.LSS: return new SqlValueExpr(iix, cx, Sqlx.GEQ, lv, rv, Sqlx.NULL);
-                case Sqlx.NEQ: return new SqlValueExpr(iix, cx, Sqlx.EQL, lv, rv, Sqlx.NULL);
-                case Sqlx.GEQ: return new SqlValueExpr(iix, cx, Sqlx.LSS, lv, rv, Sqlx.NULL);
-                case Sqlx.LEQ: return new SqlValueExpr(iix, cx, Sqlx.GTR, lv, rv, Sqlx.NULL);
+                case Sqlx.EQL: return new SqlValueExpr(defpos, cx, Sqlx.NEQ, lv, rv, Sqlx.NULL);
+                case Sqlx.GTR: return new SqlValueExpr(defpos, cx, Sqlx.LEQ, lv, rv, Sqlx.NULL);
+                case Sqlx.LSS: return new SqlValueExpr(defpos, cx, Sqlx.GEQ, lv, rv, Sqlx.NULL);
+                case Sqlx.NEQ: return new SqlValueExpr(defpos, cx, Sqlx.EQL, lv, rv, Sqlx.NULL);
+                case Sqlx.GEQ: return new SqlValueExpr(defpos, cx, Sqlx.LSS, lv, rv, Sqlx.NULL);
+                case Sqlx.LEQ: return new SqlValueExpr(defpos, cx, Sqlx.GTR, lv, rv, Sqlx.NULL);
             }
             return base.Invert(cx);
         }
@@ -2416,7 +2412,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// constructor for a null expression
         /// </summary>
-        internal SqlNull(Iix dp)
+        internal SqlNull(long dp)
             : base(dp,new BTree<long,object>(_Domain, Domain.Null.defpos))
         { }
         /// <summary>
@@ -2472,15 +2468,15 @@ namespace Pyrrho.Level3
     // shareable as of 26 April 2021
     internal class SqlSecurity : SqlValue
     {
-        internal SqlSecurity(Iix dp) : base(dp, "SECURITY", Domain._Level) { }
-        protected SqlSecurity(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        internal SqlSecurity(long dp) : base(dp, "SECURITY", Domain._Level) { }
+        protected SqlSecurity(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlSecurity(iix,m);
+            return new SqlSecurity(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlSecurity(new Iix(iix,dp),mem);
+            return new SqlSecurity(dp,mem);
         }
         internal override SqlValue Having(Context c, Domain dm)
         {
@@ -2504,14 +2500,14 @@ namespace Pyrrho.Level3
     {
         public SqlFormal(Context cx, string nm, Domain dm, long cf=-1L)
             : base(cx, nm, dm, cf) { }
-        protected SqlFormal(Iix dp,BTree<long,object>m):base(dp,m){ }
+        protected SqlFormal(long dp,BTree<long,object>m):base(dp,m){ }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlFormal(iix,m);
+            return new SqlFormal(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlFormal(new Iix(iix,dp),mem);
+            return new SqlFormal(dp,mem);
         }
         internal override CTree<long, bool> Needs(Context cx, long r,CTree<long, bool> qn)
         {
@@ -2556,7 +2552,7 @@ namespace Pyrrho.Level3
             _Val = -317;// TypedValue
         internal TypedValue val=>(TypedValue)mem[_Val];
         internal readonly static SqlLiteral Null = 
-            new SqlLiteral(new Iix(-1L,Context._system,--_uid),
+            new SqlLiteral(--_uid,
                 Context._system,TNull.Value,StandardDataType.types[Sqlx.Null]);
         internal override long target => -1;
         /// <summary>
@@ -2565,28 +2561,28 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="ty">the kind of literal</param>
         /// <param name="v">the value of the literal</param>
-        public SqlLiteral(Iix dp, Context cx, TypedValue v, Domain td=null) 
+        public SqlLiteral(long dp, Context cx, TypedValue v, Domain td=null) 
             : base(dp,BTree<long,object>.Empty+(_Domain, (td??v.dataType).defpos)+(_Val, v))
         {
             if (td != null  && v.dataType!=null && !td.CanTakeValueOf(v.dataType))
                 throw new DBException("22000", v);
-            if (dp.dp == -1L)
+            if (dp == -1L)
                 throw new PEException("PE999");
         }
-        public SqlLiteral(Iix iix, BTree<long, object> m) : base(iix, m) 
+        public SqlLiteral(long dp, BTree<long, object> m) : base(dp, m) 
         {
-            if (iix.dp == -1L)
+            if (dp == -1L)
                 throw new PEException("PE999");
         }
         public static SqlLiteral operator+(SqlLiteral s,(long,object)x)
         {
-            return new SqlLiteral(s.iix, s.mem + x);
+            return new SqlLiteral(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlLiteral(iix,m);
+            return new SqlLiteral(defpos,m);
         }
-        public SqlLiteral(Iix dp, Domain dt) : base(dp, BTree<long, object>.Empty
+        public SqlLiteral(long dp, Domain dt) : base(dp, BTree<long, object>.Empty
             + (_Domain, dt.defpos) + (_Val, dt.defaultValue))
         { }
         internal override bool ConstantIn(Context cx, RowSet rs)
@@ -2595,7 +2591,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlLiteral(new Iix(iix,dp),mem);
+            return new SqlLiteral(dp,mem);
         }
         internal override Basis _Fix(Context cx)
         {
@@ -2753,17 +2749,17 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="op">the obs type</param>
         /// <param name="n">the string version of the date/time</param>
-        public SqlDateTimeLiteral(Iix dp, Context cx, Domain op, string n)
-            : base(dp, cx, op.Parse(dp.lp,n))
+        public SqlDateTimeLiteral(long dp, Context cx, Domain op, string n)
+            : base(dp, cx, op.Parse(dp,n))
         {}
-        protected SqlDateTimeLiteral(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlDateTimeLiteral(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlDateTimeLiteral operator+(SqlDateTimeLiteral s,(long,object)x)
         {
-            return new SqlDateTimeLiteral(s.iix, s.mem + x);
+            return new SqlDateTimeLiteral(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlDateTimeLiteral(iix,m);
+            return new SqlDateTimeLiteral(defpos,m);
         }
     }
     /// <summary>
@@ -2772,17 +2768,17 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class SqlRow : SqlValue
     {
-        public SqlRow(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        public SqlRow(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
         /// A row from the parser
         /// </summary>
         /// <param name="cx">the context</param>
         /// <param name="r">the row</param>
-        public SqlRow(Iix iix, Context cx, BList<SqlValue> vs, BTree<long, object> m = null)
-            : base(iix, _Mem(cx,vs,m) + (Dependents, _Deps(vs)) + (_Depth, cx.Depth(vs)))
+        public SqlRow(long dp, Context cx, BList<SqlValue> vs, BTree<long, object> m = null)
+            : base(dp, _Mem(cx,vs,m) + (Dependents, _Deps(vs)) + (_Depth, cx.Depth(vs)))
         { }
-        public SqlRow(Iix dp, Context cx, Domain xp, CList<long> vs, BTree<long, object> m = null)
-            : base(dp, _Inf(dp.dp, cx, m, xp, vs) + (Dependents, _Deps(vs))
+        public SqlRow(long dp, Context cx, Domain xp, CList<long> vs, BTree<long, object> m = null)
+            : base(dp, _Inf(dp, cx, m, xp, vs) + (Dependents, _Deps(vs))
                   + (_Depth, cx.Depth(vs)))
         { }
         static BTree<long, object> _Mem(Context cx,BList<SqlValue>vs,BTree<long,object> m)
@@ -2800,7 +2796,7 @@ namespace Pyrrho.Level3
             {
                 var ob = (SqlValue)cx.obs[b.value()];
                 var cd = xp.representation[cb?.value()??-1L];
-                dm += (cx,ob??new SqlNull(new Iix(b.value())));
+                dm += (cx,ob??new SqlNull(b.value()));
             }
             dm = (Domain)cx.Add(dm.Relocate(cx.GetUid()));
             return (m ?? BTree<long, object>.Empty) + (_Domain, dm.defpos);
@@ -2816,7 +2812,7 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlRow(iix, m);
+            return new SqlRow(defpos, m);
         }
         internal override bool WellDefinedOperands(Context cx)
         {
@@ -2827,7 +2823,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlRow(new Iix(iix,dp),mem);
+            return new SqlRow(dp,mem);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -2876,7 +2872,7 @@ namespace Pyrrho.Level3
                 vs += nv;
                 ch = ch || nv != v;
             }
-            return ch ? (SqlValue)c.Add(new SqlRow(c.GetIid(), c, vs)) : this;
+            return ch ? (SqlValue)c.Add(new SqlRow(c.GetUid(), c, vs)) : this;
         }
         internal override bool Match(Context c, SqlValue v)
         {
@@ -2904,7 +2900,7 @@ namespace Pyrrho.Level3
                 (v, fm) = c.Resolve(cx, fm);
                 cs += v;
             }
-            var sv = new SqlRow(iix, cx, cs);
+            var sv = new SqlRow(defpos, cx, cs);
             var r = (SqlRow)cx.Replace(this, sv);
             return (r,fm);
         }
@@ -3032,9 +3028,9 @@ namespace Pyrrho.Level3
     internal class SqlOldRow : SqlRow
     {
         internal SqlOldRow(Ident ic, Context cx, PTrigger tg, From fm)
-            : base(ic.iix, _Mem(ic,cx,fm))
+            : base(ic.iix.dp, _Mem(ic,cx,fm))
         { }
-        protected SqlOldRow(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlOldRow(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Ident ic,Context cx,From fm)
         {
             var r = BTree<long,object>.Empty;
@@ -3046,21 +3042,22 @@ namespace Pyrrho.Level3
             {
                 var cp = b.value();
                 var ci = cx.Inf(cp);
-                var f = new SqlField(cx.GetIid(), ci.name, ic.iix.dp, 
+                var f = new SqlField(cx.GetUid(), ci.name, ic.iix.dp, 
                     ci.dataType, cp);
                 cx.Add(f);
-                ids += (f.name, f.iix, Ident.Idents.Empty);
+                ids += (f.name, cx.iim[f.defpos], Ident.Idents.Empty);
             }
             cx.defs += (ic.ident, ic.iix, ids);
+            cx.iim += (ic.iix.dp, ic.iix);
             return r;
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlOldRow(iix,m);
+            return new SqlOldRow(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlOldRow(new Iix(iix,dp),mem);
+            return new SqlOldRow(dp,mem);
         }
         internal override SqlValue Having(Context c, Domain dm)
         {
@@ -3085,9 +3082,9 @@ namespace Pyrrho.Level3
     internal class SqlNewRow : SqlRow
     {
         internal SqlNewRow(Ident ic, Context cx, PTrigger tg, From fm)
-            : base(ic.iix, _Mem(ic, cx, fm))
+            : base(ic.iix.dp, _Mem(ic, cx, fm))
         { }
-        protected SqlNewRow(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlNewRow(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(Ident ic, Context cx, From fm)
         {
             var r = BTree<long, object>.Empty;
@@ -3099,21 +3096,22 @@ namespace Pyrrho.Level3
             {
                 var cp = b.value();
                 var ci = cx.Inf(cp);
-                var f = new SqlField(cx.GetIid(), ci.name, ic.iix.dp,
+                var f = new SqlField(cx.GetUid(), ci.name, ic.iix.dp,
                     ci.dataType, cp);
                 cx.Add(f);
-                ids += (f.name, f.iix, Ident.Idents.Empty);
+                ids += (f.name, cx.iim[f.defpos], Ident.Idents.Empty);
             }
             cx.defs += (ic.ident, ic.iix, ids);
+            cx.iim += (ic.iix.dp, ic.iix);
             return r;
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlNewRow(new Iix(iix,dp), mem);
+            return new SqlNewRow(dp, mem);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlNewRow(iix, m);
+            return new SqlNewRow(defpos, m);
         }
         internal override SqlValue Having(Context c, Domain dm)
         {
@@ -3141,22 +3139,22 @@ namespace Pyrrho.Level3
             Rows = -319; // CList<long> SqlValue
         internal CList<long> rows =>
             (CList<long>)mem[Rows]?? CList<long>.Empty;
-        public SqlRowArray(Iix dp,Context cx,Domain ap,CList<long> rs) 
+        public SqlRowArray(long dp,Context cx,Domain ap,CList<long> rs) 
             : base(dp, BTree<long,object>.Empty+(_Domain, ap.defpos)+(Rows, rs)
                   +(_Depth,cx.Depth(rs,ap)))
         { }
-        internal SqlRowArray(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        internal SqlRowArray(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlRowArray operator+(SqlRowArray s,(long,object)x)
         {
-            return new SqlRowArray(s.iix, s.mem + x);
+            return new SqlRowArray(s.defpos, s.mem + x);
         }
         public static SqlRowArray operator+(SqlRowArray s,SqlRow x)
         {
-            return new SqlRowArray(s.iix, s.mem + (Rows, s.rows + x.defpos));
+            return new SqlRowArray(s.defpos, s.mem + (Rows, s.rows + x.defpos));
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlRowArray(iix, m);
+            return new SqlRowArray(defpos, m);
         }
         internal override bool WellDefinedOperands(Context cx)
         {
@@ -3167,7 +3165,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlRowArray(new Iix(iix,dp),mem);
+            return new SqlRowArray(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -3282,7 +3280,7 @@ namespace Pyrrho.Level3
                 vs += cx.obs[b.value()].Eval(cx);
             return new TArray(cx._Dom(this), vs);
         }
-        internal override RowSet RowSetFor(Iix dp,Context cx,CList<long>us,
+        internal override RowSet RowSetFor(long dp,Context cx,CList<long>us,
             CTree<long,Domain> re)
         {
             var rs = BList<(long,TRow)>.Empty;
@@ -3300,8 +3298,8 @@ namespace Pyrrho.Level3
                 rs += (v.defpos,new TRow(cx,xp,y));
             }
             if (isConst)
-                return new ExplicitRowSet(dp.dp, cx, xp, rs);
-            return new SqlRowSet(dp.dp, cx, xp, rows);
+                return new ExplicitRowSet(dp, cx, xp, rs);
+            return new SqlRowSet(dp, cx, xp, rows);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
@@ -3352,32 +3350,32 @@ namespace Pyrrho.Level3
         public CList<long> children =>
             (CList<long>)mem[Children]?? CList<long>.Empty;
         public long content => (long)(mem[Content]??-1L); // will become a string literal on evaluation
-        public SqlXmlValue(Iix dp, Context cx, XmlName n, SqlValue c, BTree<long, object> m) 
+        public SqlXmlValue(long dp, Context cx, XmlName n, SqlValue c, BTree<long, object> m) 
             : base(dp, (m ?? BTree<long, object>.Empty) + (_Domain, Domain.XML.defpos) 
                   + (Element,n)+(Content,c.defpos)) { }
-        protected SqlXmlValue(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlXmlValue(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlXmlValue operator+(SqlXmlValue s,(long,object)m)
         {
-            return new SqlXmlValue(s.iix, s.mem + m);
+            return new SqlXmlValue(s.defpos, s.mem + m);
         }
         public static SqlXmlValue operator +(SqlXmlValue s, SqlXmlValue child)
         {
-            return new SqlXmlValue(s.iix, 
+            return new SqlXmlValue(s.defpos, 
                 s.mem + (Children,s.children+child.defpos));
         }
         public static SqlXmlValue operator +(SqlXmlValue s, (XmlName,SqlValue) attr)
         {
             var (n, a) = attr;
-            return new SqlXmlValue(s.iix,
+            return new SqlXmlValue(s.defpos,
                 s.mem + (Attrs, s.attrs + (n,a.defpos)));
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlXmlValue(iix,m);
+            return new SqlXmlValue(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlXmlValue(new Iix(iix,dp),mem);
+            return new SqlXmlValue(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -3555,21 +3553,21 @@ namespace Pyrrho.Level3
         internal const long
             ArrayValuedQE = -327; // long RowSet
         public long aqe => (long)(mem[ArrayValuedQE]??-1L);
-        public SqlSelectArray(Iix dp, Context cx, RowSet qe, BTree<long, object> m = null)
+        public SqlSelectArray(long dp, Context cx, RowSet qe, BTree<long, object> m = null)
             : base(dp, (m ?? BTree<long, object>.Empty + (Domain.Aggs,cx._Dom(qe).aggs)
                   + (_Domain, qe.domain) + (ArrayValuedQE, qe.defpos))) { }
-        protected SqlSelectArray(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlSelectArray(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlSelectArray operator+(SqlSelectArray s,(long,object)x)
         {
-            return new SqlSelectArray(s.iix, s.mem + x);
+            return new SqlSelectArray(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlSelectArray(iix, m);
+            return new SqlSelectArray(defpos, m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlSelectArray(new Iix(iix,dp),mem);
+            return new SqlSelectArray(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -3676,17 +3674,17 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">the context</param>
         /// <param name="a">the array</param>
-        public SqlValueArray(Iix dp,Context cx,Domain xp,CList<long> v)
+        public SqlValueArray(long dp,Context cx,Domain xp,CList<long> v)
             : base(dp,BTree<long,object>.Empty+(_Domain, xp.defpos)+(Array,v))
         { }
-        protected SqlValueArray(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlValueArray(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlValueArray operator+(SqlValueArray s,(long,object)x)
         {
-            return new SqlValueArray(s.iix, s.mem + x);
+            return new SqlValueArray(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlValueArray(iix,m);
+            return new SqlValueArray(defpos,m);
         }
         internal override CTree<long, bool> _Rdc(Context cx)
         {
@@ -3698,7 +3696,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlValueArray(new Iix(iix,dp),mem);
+            return new SqlValueArray(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -3871,22 +3869,22 @@ namespace Pyrrho.Level3
         /// </summary>
         public long expr =>(long)(mem[Expr]??-1L);
         internal bool scalar => (bool)(mem[RowSet.Scalar] ?? false);
-        public SqlValueSelect(Iix dp,Context cx,RowSet r,Domain xp)
+        public SqlValueSelect(long dp,Context cx,RowSet r,Domain xp)
             : base(dp, BTree<long,object>.Empty + (Domain.Aggs,cx._Dom(r).aggs)
                   + (Expr, r.defpos) + (_Domain, r.domain) + (RowSet.Scalar,xp.kind!=Sqlx.TABLE)
                   + (Dependents, new CTree<long, bool>(r.defpos, true))
                   + (_Depth, r.depth + 1))
         { }
-        protected SqlValueSelect(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlValueSelect(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlValueSelect operator+(SqlValueSelect s,(long,object)x)
         {
-            return new SqlValueSelect(s.iix, s.mem+x);
+            return new SqlValueSelect(s.defpos, s.mem+x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlValueSelect(iix,m);
+            return new SqlValueSelect(defpos,m);
         }
-        internal override RowSet RowSetFor(Iix dp, Context cx, CList<long> us,
+        internal override RowSet RowSetFor(long dp, Context cx, CList<long> us,
             CTree<long,Domain> re)
         {
             var r = (RowSet)cx.obs[expr];
@@ -3903,7 +3901,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlValueSelect(new Iix(iix,dp),mem);
+            return new SqlValueSelect(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -4028,16 +4026,16 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="t">the datatype</param>
         /// <param name="c">the set of TableColumns</param>
-        public ColumnFunction(Iix dp, Context cx, BList<Ident> c)
+        public ColumnFunction(long dp, Context cx, BList<Ident> c)
             : base(dp, BTree<long, object>.Empty+(_Domain, Domain.Bool.defpos)+ (Bits, c)) { }
-        protected ColumnFunction(Iix dp, BTree<long, object> m) :base(dp, m) { }
+        protected ColumnFunction(long dp, BTree<long, object> m) :base(dp, m) { }
         public static ColumnFunction operator+(ColumnFunction s,(long,object)x)
         {
-            return new ColumnFunction(s.iix, s.mem + x);
+            return new ColumnFunction(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new ColumnFunction(iix,mem);
+            return new ColumnFunction(defpos,mem);
         }
         internal override bool ConstantIn(Context cx, RowSet rs)
         {
@@ -4053,7 +4051,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new ColumnFunction(new Iix(iix,dp),mem);
+            return new ColumnFunction(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -4101,20 +4099,20 @@ namespace Pyrrho.Level3
         internal const long
             Spec = -334; // long RowSet
         internal long spec=>(long)(mem[Spec]??-1L);
-        internal SqlCursor(Iix dp, RowSet cs, string n) 
+        internal SqlCursor(long dp, RowSet cs, string n) 
             : base(dp, BTree<long,object>.Empty+
                   (_Domain, cs.domain)+(Name, n)+(Spec,cs.defpos)
                   +(Dependents,new CTree<long,bool>(cs.defpos,true))
                   +(_Depth,1+cs.depth))
         { }
-        protected SqlCursor(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlCursor(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlCursor operator+(SqlCursor s,(long,object)x)
         {
-            return new SqlCursor(s.iix, s.mem + x);
+            return new SqlCursor(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlCursor(iix,m);
+            return new SqlCursor(defpos,m);
         }
         internal override CTree<long, bool> _Rdc(Context cx)
         {
@@ -4122,7 +4120,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlCursor(new Iix(iix,dp),mem);
+            return new SqlCursor(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -4188,24 +4186,24 @@ namespace Pyrrho.Level3
         internal const long
             Call = -335; // long CallStatement
         public long call =>(long)(mem[Call]??-1L);
-        public SqlCall(Iix dp, Context cx, CallStatement c, BTree<long, object> m = null)
+        public SqlCall(long dp, Context cx, CallStatement c, BTree<long, object> m = null)
             : base(dp, m ?? BTree<long, object>.Empty
                   + (_Domain, c.domain) + (Domain.Aggs, c.aggs)
                   + (Call, c.defpos)+(Dependents,new CTree<long,bool>(c.defpos,true))
                   +(_Depth,1+c.depth)+(Name,c.name))
         {  }
-        protected SqlCall(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlCall(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlCall operator+(SqlCall c,(long,object)x)
         {
             return (SqlCall)c.New(c.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlCall(iix,m);
+            return new SqlCall(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlCall(new Iix(iix,dp),mem);
+            return new SqlCall(dp,mem);
         }
         internal override CTree<long, bool> _Rdc(Context cx)
         {
@@ -4337,19 +4335,19 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class SqlProcedureCall : SqlCall
     {
-        public SqlProcedureCall(Iix dp, Context cx, CallStatement c) : base(dp, cx, c) { }
-        protected SqlProcedureCall(Iix dp,BTree<long,object>m):base(dp,m) { }
+        public SqlProcedureCall(long dp, Context cx, CallStatement c) : base(dp, cx, c) { }
+        protected SqlProcedureCall(long dp,BTree<long,object>m):base(dp,m) { }
         public static SqlProcedureCall operator+(SqlProcedureCall s,(long,object)x)
         {
-            return new SqlProcedureCall(s.iix, s.mem + x);
+            return new SqlProcedureCall(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlProcedureCall(iix, m);
+            return new SqlProcedureCall(defpos, m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlProcedureCall(new Iix(iix,dp),mem);
+            return new SqlProcedureCall(dp,mem);
         }
         /// <summary>
         /// evaluate the procedure call
@@ -4365,7 +4363,7 @@ namespace Pyrrho.Level3
                 var proc = (Procedure)cx.obs[pp];
                 if (proc == null)
                 {
-                    proc = (Procedure)((Procedure)tr.objects[pp]).Instance(iix,cx);
+                    proc = (Procedure)((Procedure)tr.objects[pp]).Instance(defpos,cx);
                     cx.Add(proc);
                 }
                 proc.Exec(cx, c.parms);
@@ -4428,20 +4426,20 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">the context</param>
         /// <param name="c">the call statement</param>
-        public SqlMethodCall(Iix dp, Context cx, CallStatement c) : base(dp,cx,c)
+        public SqlMethodCall(long dp, Context cx, CallStatement c) : base(dp,cx,c)
         { }
-        protected SqlMethodCall(Iix dp,BTree<long, object> m) : base(dp, m) { }
+        protected SqlMethodCall(long dp,BTree<long, object> m) : base(dp, m) { }
         public static SqlMethodCall operator+(SqlMethodCall s,(long,object)x)
         {
-            return new SqlMethodCall(s.iix, s.mem + x);
+            return new SqlMethodCall(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlMethodCall(iix,m);
+            return new SqlMethodCall(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlMethodCall(new Iix(iix,dp),mem);
+            return new SqlMethodCall(dp,mem);
         }
         internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
         {
@@ -4461,7 +4459,7 @@ namespace Pyrrho.Level3
             var p = oi.methodInfos[c.name]?[(int)c.parms.Count] ?? -1L;
             var nc = c + (CallStatement.Var, v.defpos) + (CallStatement.ProcDefPos, p);
             cx.Add(nc);
-            var pr = ((DBObject)cx.db.objects[p]).Instance(iix, cx) as Procedure;
+            var pr = ((DBObject)cx.db.objects[p]).Instance(defpos, cx) as Procedure;
             mc = mc + (Call, nc.defpos) + (_Domain, pr.domain);
             return ((SqlValue)cx.Add(mc), fm);
         }
@@ -4496,7 +4494,7 @@ namespace Pyrrho.Level3
                 if (p < 0)
                     throw new DBException("42108", c.name);
             }
-            var proc = (Method)((Method)cx.db.objects[p]).Instance(c.iix,cx);
+            var proc = (Method)((Method)cx.db.objects[p]).Instance(c.defpos,cx);
             return proc.Exec(cx, c.var, c.parms).val;
         }
         internal override CTree<long, RowSet.Finder> Needs(Context cx, long rs)
@@ -4530,21 +4528,21 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="u">the type</param>
         /// <param name="c">the call statement</param>
-        public SqlConstructor(Iix dp, Context cx, CallStatement c)
+        public SqlConstructor(long dp, Context cx, CallStatement c)
             : base(dp, cx, c)
         { }
-        protected SqlConstructor(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlConstructor(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlConstructor operator+(SqlConstructor s,(long,object)x)
         {
-            return new SqlConstructor(s.iix, s.mem + x);
+            return new SqlConstructor(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlConstructor(iix,m);
+            return new SqlConstructor(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlConstructor(new Iix(iix,dp),mem);
+            return new SqlConstructor(dp,mem);
         }
         /// <summary>
         /// evaluate the constructor and return the new object
@@ -4584,15 +4582,15 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="u">the type</param>
         /// <param name="lk">the actual parameters</param>
-        public SqlDefaultConstructor(Iix dp, Context cx, Domain u, CList<long> ins)
-            : base(dp, _Mem(cx.GetIid(),cx,(UDType)u,ins))
+        public SqlDefaultConstructor(long dp, Context cx, Domain u, CList<long> ins)
+            : base(dp, _Mem(cx.GetUid(),cx,(UDType)u,ins))
         { }
-        protected SqlDefaultConstructor(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlDefaultConstructor(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlDefaultConstructor operator +(SqlDefaultConstructor s, (long, object) x)
         {
             return (SqlDefaultConstructor)s.New(s.mem + x);
         }
-        static BTree<long,object> _Mem(Iix ap,Context cx,UDType u,CList<long> ps)
+        static BTree<long,object> _Mem(long ap,Context cx,UDType u,CList<long> ps)
         {
             var rb = u.representation.First();
             for (var b = ps.First(); b != null && rb != null; b = b.Next(), rb = rb.Next())
@@ -4607,11 +4605,11 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlDefaultConstructor(iix, m);
+            return new SqlDefaultConstructor(defpos, m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlDefaultConstructor(new Iix(iix,dp),mem);
+            return new SqlDefaultConstructor(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -4768,13 +4766,13 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">the context</param>
         /// <param name="f">the function name</param>
-        public SqlFunction(Iix dp, Context cx, Sqlx f, SqlValue vl, SqlValue o1, SqlValue o2, Sqlx m,
+        public SqlFunction(long dp, Context cx, Sqlx f, SqlValue vl, SqlValue o1, SqlValue o2, Sqlx m,
             BTree<long, object> mm = null) 
             : base(dp,_Mem(f,vl,o1,o2,mm)+(_Domain,_Type(cx, f, vl, o1).defpos)
                 +(Name,f.ToString())+(Domain.Kind,f)+(Mod,m)+(Dependents,_Deps(vl,o1,o2)) 
                 +(_Depth,cx.Depth(vl,o1,o2)))
         { }
-        protected SqlFunction(Iix dp, BTree<long, object> m) : base(dp, m) 
+        protected SqlFunction(long dp, BTree<long, object> m) : base(dp, m) 
         { }
         static BTree<long,object> _Mem(Sqlx f,SqlValue vl,SqlValue o1,SqlValue o2,BTree<long,object>m)
         {
@@ -4800,11 +4798,11 @@ namespace Pyrrho.Level3
                 m += (_Domain, _Type(cx,s.kind, (SqlValue)cx.obs[(long)v], (SqlValue)cx.obs[s.op1]).defpos);
             if (a == _From && aggregates(s.kind))
                 m += (Await, v);
-            return new SqlFunction(s.iix, m);
+            return new SqlFunction(s.defpos, m);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlFunction(iix,m);
+            return new SqlFunction(defpos,m);
         }
         internal override CTree<long,bool> IsAggregation(Context cx)
         {
@@ -4845,7 +4843,7 @@ namespace Pyrrho.Level3
             var o2 = (SqlValue)c.obs[op2];
             var n2 = o2.Having(c, dm);
             return (vl == nv && o1 == n1 && o2 == n2) ? this
-                : (SqlValue)c.Add(new SqlFunction(c.GetIid(), c, kind, nv, n1, n2, mod));
+                : (SqlValue)c.Add(new SqlFunction(c.GetUid(), c, kind, nv, n1, n2, mod));
         }
         internal override bool Match(Context c, SqlValue v)
         {
@@ -4893,7 +4891,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlFunction(new Iix(iix,dp),mem);
+            return new SqlFunction(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -4976,7 +4974,7 @@ namespace Pyrrho.Level3
             if ((vl?.defpos??-1L) != val || (o1?.defpos??-1L) != op1 || 
                 (o2?.defpos??-1L) != op2 || ki==Sqlx.CONTENT || ki==Sqlx.UNION)
                 return ((SqlValue)cx.Replace(this,
-                    new SqlFunction(iix, cx, kind, vl, o1, o2, mod, mem)),fm);
+                    new SqlFunction(defpos, cx, kind, vl, o1, o2, mod, mem)),fm);
             return (this,fm);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -6453,12 +6451,12 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class SqlCoalesce : SqlFunction
     {
-        internal SqlCoalesce(Iix dp, Context cx, SqlValue op1, SqlValue op2)
+        internal SqlCoalesce(long dp, Context cx, SqlValue op1, SqlValue op2)
             : base(dp, cx, Sqlx.COALESCE, null, op1, op2, Sqlx.NO) { }
-        protected SqlCoalesce(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlCoalesce(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlCoalesce operator+(SqlCoalesce s,(long,object)x)
         {
-            return new SqlCoalesce(s.iix, s.mem + x);
+            return new SqlCoalesce(s.defpos, s.mem + x);
         }
         internal override TypedValue Eval(Context cx)
         {
@@ -6472,7 +6470,7 @@ namespace Pyrrho.Level3
             var rg = (SqlValue)c.obs[right];
             var nr = rg.Having(c, dm);
             return (le == nl && rg == nr) ? this :
-                (SqlValue)c.Add(new SqlCoalesce(c.GetIid(), c, nl, nr));
+                (SqlValue)c.Add(new SqlCoalesce(c.GetUid(), c, nl, nr));
         }
         internal override bool Match(Context c, SqlValue v)
         {
@@ -6499,20 +6497,20 @@ namespace Pyrrho.Level3
     // shareable as of 26 April 2021
     internal class SqlTypeUri : SqlFunction
     {
-        internal SqlTypeUri(Iix dp, Context cx, SqlValue op1)
+        internal SqlTypeUri(long dp, Context cx, SqlValue op1)
             : base(dp, cx, Sqlx.TYPE_URI, null, op1, null, Sqlx.NO) { }
-        protected SqlTypeUri(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlTypeUri(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlTypeUri operator+(SqlTypeUri s,(long,object)x)
         {
-            return new SqlTypeUri(s.iix, s.mem + x);
+            return new SqlTypeUri(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlTypeUri(iix,m);
+            return new SqlTypeUri(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlTypeUri(new Iix(iix,dp),mem);
+            return new SqlTypeUri(dp,mem);
         }
         internal override SqlValue Having(Context c, Domain dm)
         {
@@ -6547,18 +6545,18 @@ namespace Pyrrho.Level3
     internal class SqlStar : SqlValue
     {
         public readonly long prefix = -1L;
-        internal SqlStar(Iix dp, long pf) : base(dp, "*", Domain.Content)
+        internal SqlStar(long dp, long pf) : base(dp, "*", Domain.Content)
         {
             prefix = pf;
         }
-        protected SqlStar(Iix dp, long pf, BTree<long, object> m) : base(dp, m)
+        protected SqlStar(long dp, long pf, BTree<long, object> m) : base(dp, m)
         {
             prefix = pf;
         }
-        protected SqlStar(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected SqlStar(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlStar(iix, prefix, m);
+            return new SqlStar(defpos, prefix, m);
         }
         public static SqlStar operator +(SqlStar s, (long, object) x)
         {
@@ -6570,7 +6568,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new SqlStar(new Iix(iix,dp), mem);
+            return new SqlStar(dp, mem);
         }
         internal override (SqlValue, RowSet) Resolve(Context cx, RowSet q)
         {
@@ -6634,12 +6632,12 @@ namespace Pyrrho.Level3
         /// <param name="sv">the comparison operator, or AT</param>
         /// <param name="a">whether ALL has been specified</param>
         /// <param name="s">the rowset to test against</param>
-        internal QuantifiedPredicate(Iix iix,Context cx,SqlValue w, Sqlx o, bool a, 
+        internal QuantifiedPredicate(long dp,Context cx,SqlValue w, Sqlx o, bool a, 
             RowSet s)
-            : base(iix,_Mem(cx,w,s) + (What,w.defpos)+(Op,o)+(All,a)+(_Select,s.defpos)
+            : base(dp,_Mem(cx,w,s) + (What,w.defpos)+(Op,o)+(All,a)+(_Select,s.defpos)
                   +(Dependents,new CTree<long,bool>(w.defpos,true)+(s.defpos,true))
                   +(_Depth,1+_Max(w.depth,s.depth))) {}
-        protected QuantifiedPredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected QuantifiedPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Context cx,SqlValue w,RowSet s)
         {
             var m = BTree<long,object>.Empty;
@@ -6655,11 +6653,11 @@ namespace Pyrrho.Level3
         }
         public static QuantifiedPredicate operator+(QuantifiedPredicate s,(long,object)x)
         {
-            return new QuantifiedPredicate(s.iix, s.mem + x);
+            return new QuantifiedPredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new QuantifiedPredicate(iix, m);
+            return new QuantifiedPredicate(defpos, m);
         }
         internal override CTree<long, bool> _Rdc(Context cx)
         {
@@ -6670,7 +6668,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new QuantifiedPredicate(new Iix(iix,dp),mem);
+            return new QuantifiedPredicate(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -6731,12 +6729,12 @@ namespace Pyrrho.Level3
             var s = (RowSet)cx.obs[select];
             switch (op)
             {
-                case Sqlx.EQL: return new QuantifiedPredicate(iix, cx, w, Sqlx.NEQ, !all, s);
-                case Sqlx.NEQ: return new QuantifiedPredicate(iix, cx, w, Sqlx.EQL, !all, s);
-                case Sqlx.LEQ: return new QuantifiedPredicate(iix, cx, w, Sqlx.GTR, !all, s);
-                case Sqlx.LSS: return new QuantifiedPredicate(iix, cx, w, Sqlx.GEQ, !all, s);
-                case Sqlx.GEQ: return new QuantifiedPredicate(iix, cx, w, Sqlx.LSS, !all, s);
-                case Sqlx.GTR: return new QuantifiedPredicate(iix, cx, w, Sqlx.LEQ, !all, s);
+                case Sqlx.EQL: return new QuantifiedPredicate(defpos, cx, w, Sqlx.NEQ, !all, s);
+                case Sqlx.NEQ: return new QuantifiedPredicate(defpos, cx, w, Sqlx.EQL, !all, s);
+                case Sqlx.LEQ: return new QuantifiedPredicate(defpos, cx, w, Sqlx.GTR, !all, s);
+                case Sqlx.LSS: return new QuantifiedPredicate(defpos, cx, w, Sqlx.GEQ, !all, s);
+                case Sqlx.GEQ: return new QuantifiedPredicate(defpos, cx, w, Sqlx.LSS, !all, s);
+                case Sqlx.GTR: return new QuantifiedPredicate(defpos, cx, w, Sqlx.LEQ, !all, s);
                 default: throw new PEException("PE65");
             }
         }
@@ -6865,14 +6863,14 @@ namespace Pyrrho.Level3
         /// <param name="b">between or not between</param>
         /// <param name="a">The low end of the range</param>
         /// <param name="sv">the high end of the range</param>
-        internal BetweenPredicate(Iix iix,Context cx,SqlValue w, bool b, SqlValue a, SqlValue h)
-            : base(iix,_Mem(cx,w,a,h)
+        internal BetweenPredicate(long dp,Context cx,SqlValue w, bool b, SqlValue a, SqlValue h)
+            : base(dp,_Mem(cx,w,a,h)
                   +(QuantifiedPredicate.What,w.defpos)+(QuantifiedPredicate.Between,b)
                   +(QuantifiedPredicate.Low,a.defpos)+(QuantifiedPredicate.High,h.defpos)
                   +(Dependents,new CTree<long,bool>(w.defpos,true)+(a.defpos,true)+(h.defpos,true))
                   +(_Depth,1+_Max(w.depth,a.depth,h.depth)))
         { }
-        protected BetweenPredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected BetweenPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object>_Mem(Context cx,SqlValue w,SqlValue a,SqlValue b)
         {
             var m = BTree<long, object>.Empty;
@@ -6892,11 +6890,11 @@ namespace Pyrrho.Level3
         }
         public static BetweenPredicate operator+(BetweenPredicate s,(long,object)x)
         {
-            return new BetweenPredicate(s.iix, s.mem + x);
+            return new BetweenPredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new BetweenPredicate(iix,m);
+            return new BetweenPredicate(defpos,m);
         }
         internal override CTree<long,bool> IsAggregation(Context cx)
         {
@@ -6918,7 +6916,7 @@ namespace Pyrrho.Level3
             var hg = (SqlValue)cx.obs[high];
             var nh = hg?.Having(cx,dm);
             return (wh == nw && lw == nl && hg == nh) ? this :
-                (SqlValue)cx.Add(new BetweenPredicate(cx.GetIid(), cx, nw, between, nl, nh));
+                (SqlValue)cx.Add(new BetweenPredicate(cx.GetUid(), cx, nw, between, nl, nh));
         }
         internal override bool Match(Context cx, SqlValue v)
         {
@@ -6965,7 +6963,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new BetweenPredicate(new Iix(iix,dp),mem);
+            return new BetweenPredicate(dp,mem);
         }
         internal override CTree<long, bool> _Rdc(Context cx)
         {
@@ -7090,7 +7088,7 @@ namespace Pyrrho.Level3
         /// <returns>the new search</returns>
         internal override SqlValue Invert(Context cx)
         {
-            return new BetweenPredicate(iix,cx,(SqlValue)cx.obs[what], !between, 
+            return new BetweenPredicate(defpos,cx,(SqlValue)cx.obs[what], !between, 
                 (SqlValue)cx.obs[low], (SqlValue)cx.obs[high]);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
@@ -7193,13 +7191,13 @@ namespace Pyrrho.Level3
         /// <param name="k">like or not like</param>
         /// <param name="b">the right operand</param>
         /// <param name="e">the escape character</param>
-        internal LikePredicate(Iix dp,Context cx,SqlValue a, bool k, SqlValue b, SqlValue e)
+        internal LikePredicate(long dp,Context cx,SqlValue a, bool k, SqlValue b, SqlValue e)
             : base(dp, _Mem(cx,a,b,e) + (Left,a.defpos)+(_Like,k)+(Right,b.defpos)
                   +(_Domain,Domain.Bool.defpos)
                   +(Dependents,new CTree<long,bool>(a.defpos,true)+(b.defpos,true))
                   +(_Depth,1+_Max(a.depth,b.depth,e?.depth??0)))
         { }
-        protected LikePredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected LikePredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(Context cx, SqlValue a, SqlValue b,SqlValue e)
         {
             var m = BTree<long, object>.Empty;
@@ -7220,15 +7218,15 @@ namespace Pyrrho.Level3
         }
         public static LikePredicate operator+(LikePredicate s,(long,object)x)
         {
-            return new LikePredicate(s.iix, s.mem + x);
+            return new LikePredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new LikePredicate(iix,m);
+            return new LikePredicate(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new LikePredicate(new Iix(iix,dp),mem);
+            return new LikePredicate(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -7245,7 +7243,7 @@ namespace Pyrrho.Level3
             var es = (SqlValue)cx.obs[escape];
             var ne = es?.Having(cx, dm);
             return (le == nl && rg == nr && es == ne) ? this :
-                (SqlValue)cx.Add(new LikePredicate(cx.GetIid(), cx, nl, like, nr, ne));
+                (SqlValue)cx.Add(new LikePredicate(cx.GetUid(), cx, nl, like, nr, ne));
         }
         internal override bool Match(Context cx, SqlValue v)
         {
@@ -7379,7 +7377,7 @@ namespace Pyrrho.Level3
         /// <returns>the new search</returns>
         internal override SqlValue Invert(Context cx)
         {
-            return new LikePredicate(iix,cx,(SqlValue)cx.obs[left], !like, 
+            return new LikePredicate(defpos,cx,(SqlValue)cx.obs[left], !like, 
                 (SqlValue)cx.obs[right], (SqlValue)cx.obs[escape]);
         }
         /// <summary>
@@ -7513,11 +7511,11 @@ namespace Pyrrho.Level3
         /// A list of values to check (unless a query is supplied instead)
         /// </summary>
         public CList<long> vals => (CList<long>)mem[QuantifiedPredicate.Vals]??CList<long>.Empty;
-        public InPredicate(Iix dp,Context cx, SqlValue w, BList<SqlValue> vs = null) 
+        public InPredicate(long dp,Context cx, SqlValue w, BList<SqlValue> vs = null) 
             : base(dp, _Mem(cx,w,vs)
                   +(Dependents,_Deps(vs)+(w.defpos,true))+(_Depth,_Dep(w,vs)))
         {}
-        protected InPredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected InPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Context cx,SqlValue w,BList<SqlValue> vs)
         {
             var m = BTree<long,object>.Empty;
@@ -7565,7 +7563,7 @@ namespace Pyrrho.Level3
                 ch = ch || nv != v;
             }
             return (wh == nw && !ch) ? this :
-                (SqlValue)cx.Add(new InPredicate(cx.GetIid(), cx, nw, vs));
+                (SqlValue)cx.Add(new InPredicate(cx.GetUid(), cx, nw, vs));
         }
         internal override bool Match(Context cx, SqlValue v)
         {
@@ -7607,15 +7605,15 @@ namespace Pyrrho.Level3
         }
         public static InPredicate operator+(InPredicate s,(long,object)x)
         {
-            return new InPredicate(s.iix, s.mem + x);
+            return new InPredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new InPredicate(iix,m);
+            return new InPredicate(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new InPredicate(new Iix(iix,dp),mem);
+            return new InPredicate(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -7850,12 +7848,12 @@ namespace Pyrrho.Level3
         /// <param name="a">the left operand</param>
         /// <param name="f">found or not found</param>
         /// <param name="b">the right operand</param>
-        internal MemberPredicate(Iix dp,Context cx,SqlValue a, bool f, SqlValue b)
+        internal MemberPredicate(long dp,Context cx,SqlValue a, bool f, SqlValue b)
             : base(dp, _Mem(cx,a,b)
                   +(Lhs,a)+(Found,f)+(Rhs,b)+(_Depth,1+_Max(a.depth,b.depth))
                   +(Dependents,new CTree<long,bool>(a.defpos,true)+(b.defpos,true)))
         { }
-        protected MemberPredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected MemberPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(Context cx, SqlValue a, SqlValue b)
         {
             var m = BTree<long, object>.Empty;
@@ -7871,15 +7869,15 @@ namespace Pyrrho.Level3
         }
         public static MemberPredicate operator+(MemberPredicate s,(long,object)x)
         {
-            return new MemberPredicate(s.iix, s.mem+x);
+            return new MemberPredicate(s.defpos, s.mem+x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new MemberPredicate(iix,m);
+            return new MemberPredicate(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new MemberPredicate(new Iix(iix,dp),mem);
+            return new MemberPredicate(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -7900,7 +7898,7 @@ namespace Pyrrho.Level3
             var rh = (SqlValue)cx.obs[rhs];
             var nr = rh?.Having(cx, dm);
             return (lh == nl && rh == nr) ? this :
-                (SqlValue)cx.Add(new MemberPredicate(cx.GetIid(), cx, nl, found, nr));
+                (SqlValue)cx.Add(new MemberPredicate(cx.GetUid(), cx, nl, found, nr));
         }
         internal override bool Match(Context cx, SqlValue v)
         {
@@ -7980,7 +7978,7 @@ namespace Pyrrho.Level3
         /// <returns>the new search</returns>
         internal override SqlValue Invert(Context cx)
         {
-            return new MemberPredicate(iix,cx,(SqlValue)cx.obs[lhs], !found, 
+            return new MemberPredicate(defpos,cx,(SqlValue)cx.obs[lhs], !found, 
                 (SqlValue)cx.obs[rhs]);
         }
         internal override CTree<long, RowSet.Finder> Needs(Context cx, long rs)
@@ -8098,23 +8096,23 @@ namespace Pyrrho.Level3
         /// <param name="a">the left operand</param>
         /// <param name="f">found or not found</param>
         /// <param name="b">the right operand</param>
-        internal TypePredicate(Iix dp,SqlValue a, bool f, BList<Domain> r)
+        internal TypePredicate(long dp,SqlValue a, bool f, BList<Domain> r)
             : base(dp, new BTree<long,object>(_Domain,Domain.Bool.defpos)
                   +(MemberPredicate.Lhs,a.defpos)+(MemberPredicate.Found,f)
                   +(MemberPredicate.Rhs,r))
         {  }
-        protected TypePredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected TypePredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TypePredicate operator+(TypePredicate s,(long,object)x)
         {
-            return new TypePredicate(s.iix, s.mem + x);
+            return new TypePredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new TypePredicate(iix,m);
+            return new TypePredicate(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new TypePredicate(new Iix(iix,dp),mem);
+            return new TypePredicate(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -8163,7 +8161,7 @@ namespace Pyrrho.Level3
         /// <returns>the new search</returns>
         internal override SqlValue Invert(Context cx)
         {
-            return new TypePredicate(iix,(SqlValue)cx.obs[lhs], !found, rhs);
+            return new TypePredicate(defpos,(SqlValue)cx.obs[lhs], !found, rhs);
         }
         /// <summary>
         /// Evaluate the predicate for the current row
@@ -8210,12 +8208,12 @@ namespace Pyrrho.Level3
     internal class PeriodPredicate : SqlValue
     {
         internal Sqlx kind => (Sqlx)mem[Domain.Kind];
-        public PeriodPredicate(Iix dp,Context cx,SqlValue op1, Sqlx o, SqlValue op2) 
+        public PeriodPredicate(long dp,Context cx,SqlValue op1, Sqlx o, SqlValue op2) 
             :base(dp,_Mem(cx,op1,op2)+(Domain.Kind,o)
                  +(Dependents,new CTree<long,bool>(op1.defpos,true)+(op2.defpos,true))
                  +(_Depth,1+_Max(op1.depth,op2.depth)))
         { }
-        protected PeriodPredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected PeriodPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(Context cx, SqlValue a, SqlValue b)
         {
             var m = BTree<long, object>.Empty;
@@ -8241,15 +8239,15 @@ namespace Pyrrho.Level3
         }
         public static PeriodPredicate operator+(PeriodPredicate s,(long,object)x)
         {
-            return new PeriodPredicate(s.iix, s.mem + x);
+            return new PeriodPredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new PeriodPredicate(iix,m);
+            return new PeriodPredicate(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new PeriodPredicate(new Iix(iix,dp),mem);
+            return new PeriodPredicate(dp,mem);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -8326,7 +8324,7 @@ namespace Pyrrho.Level3
             var rg = (SqlValue)cx.obs[right];
             var nr = rg?.Having(cx, dm);
             return (le == nl && rg == nr) ? this :
-                (SqlValue)cx.Add(new PeriodPredicate(cx.GetIid(), cx,  nl, kind, nr));
+                (SqlValue)cx.Add(new PeriodPredicate(cx.GetUid(), cx,  nl, kind, nr));
         }
         internal override bool Match(Context cx, SqlValue v)
         {
@@ -8369,11 +8367,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// the base query
         /// </summary>
-        public RowSetPredicate(Iix dp,Context cx,RowSet e,BTree<long,object>m=null) 
+        public RowSetPredicate(long dp,Context cx,RowSet e,BTree<long,object>m=null) 
             : base(dp,_Mem(cx,e,m)+(RSExpr,e.defpos)
                   +(Dependents,new CTree<long,bool>(e.defpos,true))+(_Depth,1+e.depth))
         {  }
-        protected RowSetPredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected RowSetPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object>_Mem(Context cx,RowSet e,BTree<long,object>m)
         {
             m = m ?? BTree<long, object>.Empty;
@@ -8475,20 +8473,20 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class ExistsPredicate : RowSetPredicate
     {
-        public ExistsPredicate(Iix dp,Context cx,RowSet e) : base(dp,cx,e,BTree<long,object>.Empty
+        public ExistsPredicate(long dp,Context cx,RowSet e) : base(dp,cx,e,BTree<long,object>.Empty
             +(Dependents,new CTree<long,bool>(e.defpos,true))+(_Depth,1+e.depth)) { }
-        protected ExistsPredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected ExistsPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ExistsPredicate operator+(ExistsPredicate s,(long,object)x)
         {
-            return new ExistsPredicate(s.iix, s.mem + x);
+            return new ExistsPredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new ExistsPredicate(iix,m);
+            return new ExistsPredicate(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new ExistsPredicate(new Iix(iix,dp),mem);
+            return new ExistsPredicate(dp,mem);
         }
         /// <summary>
         /// The predicate is true if the rowSet has at least one element
@@ -8517,19 +8515,19 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class UniquePredicate : RowSetPredicate
     {
-        public UniquePredicate(Iix dp,Context cx,RowSet e) : base(dp,cx,e) {}
-        protected UniquePredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        public UniquePredicate(long dp,Context cx,RowSet e) : base(dp,cx,e) {}
+        protected UniquePredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         public static UniquePredicate operator +(UniquePredicate s, (long, object) x)
         {
-            return new UniquePredicate(s.iix, s.mem + x);
+            return new UniquePredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new UniquePredicate(iix,m);
+            return new UniquePredicate(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new UniquePredicate(new Iix(iix,dp),mem);
+            return new UniquePredicate(dp,mem);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -8590,12 +8588,12 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="v">the value to test</param>
         /// <param name="b">false for NOT NULL</param>
-        internal NullPredicate(Iix dp,SqlValue v, bool b)
+        internal NullPredicate(long dp,SqlValue v, bool b)
             : base(dp,new BTree<long,object>(_Domain,Domain.Bool.defpos)
                   +(NVal,v.defpos)+(NIsNull,b)+(Dependents,new CTree<long,bool>(v.defpos,true))
                   +(_Depth,1+v.depth))
         { }
-        protected NullPredicate(Iix dp, BTree<long, object> m) : base(dp, m) { }
+        protected NullPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(Context cx, SqlValue v, BTree<long, object> m)
         {
             m = m ?? BTree<long, object>.Empty;
@@ -8611,11 +8609,11 @@ namespace Pyrrho.Level3
         }
         public static NullPredicate operator+(NullPredicate s,(long,object)x)
         {
-            return new NullPredicate(s.iix, s.mem + x);
+            return new NullPredicate(s.defpos, s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new NullPredicate(iix,m);
+            return new NullPredicate(defpos,m);
         }
         internal override CTree<long,bool> IsAggregation(Context cx)
         {
@@ -8623,7 +8621,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Relocate(long dp)
         {
-            return new NullPredicate(new Iix(iix,dp),mem);
+            return new NullPredicate(dp,mem);
         }
         internal override SqlValue AddFrom(Context cx, long q)
         {
@@ -8667,7 +8665,7 @@ namespace Pyrrho.Level3
             var vl = (SqlValue)cx.obs[val];
             var nv = vl?.Having(cx, dm);
             return (vl==nv) ? this :
-                (SqlValue)cx.Add(new NullPredicate(cx.GetIid(), nv, isnull));
+                (SqlValue)cx.Add(new NullPredicate(cx.GetUid(), nv, isnull));
         }
         internal override bool Match(Context cx, SqlValue v)
         {

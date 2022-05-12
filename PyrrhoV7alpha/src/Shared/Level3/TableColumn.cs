@@ -96,7 +96,7 @@ namespace Pyrrho.Level3
         {
             return new TableColumn(defpos,m);
         }
-        internal override DBObject Instance(Iix lp,Context cx, Domain q,BList<Ident>cs=null)
+        internal override DBObject Instance(long lp,Context cx, Domain q,BList<Ident>cs=null)
         {
             var r = base.Instance(lp, cx);
             cx.instances += (r.defpos, lp);
@@ -105,7 +105,7 @@ namespace Pyrrho.Level3
                     ck.Instance(lp, cx, q);
             return r;
         }
-        internal override (DBObject, Ident) _Lookup(Iix lp, Context cx, string nm, Ident n)
+        internal override (DBObject, Ident) _Lookup(long lp, Context cx, string nm, Ident n)
         {
             var ci = cx.Inf(defpos);
             SqlValue r = new SqlCopy(lp, cx, nm,-1L,cx.obs[defpos])
@@ -118,7 +118,7 @@ namespace Pyrrho.Level3
                 {
                     var cp = ti.names[n.ident];
                     ci = cx.Inf(cp);
-                    r = new SqlField(cx.GetIid(), n.ident, r.defpos, 
+                    r = new SqlField(cx.GetUid(), n.ident, r.defpos, 
                         ci.dataType, cp);
                     cx.Add(r);
                 }
@@ -366,7 +366,7 @@ namespace Pyrrho.Level3
             { 
                 case Generation.Expression:
                     var e = cx.obs[exp];
-                    return e.Instance(cx.GetIid(),cx,cx._Dom(e)).Eval(cx);
+                    return e.Instance(cx.GetUid(),cx,cx._Dom(e)).Eval(cx);
             }// or START/END
             return null;
         }

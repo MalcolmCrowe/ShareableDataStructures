@@ -70,7 +70,7 @@ namespace Pyrrho.Level3
                     + (_Framing,m.framing),p)
                 + (Database.SchemaKey,p); // ensure call on the correct operator+
         }
-        internal override DBObject Instance(Iix lp,Context cx, Domain q = null, BList<Ident> cs=null)
+        internal override DBObject Instance(long lp,Context cx, Domain q = null, BList<Ident> cs=null)
         {
             udType.Instance(lp,cx,q);
             return base.Instance(lp,cx, q);
@@ -106,7 +106,7 @@ namespace Pyrrho.Level3
             for (var b = actIns.First(); i < n && b != null; b = b.Next(), i++)
                 acts[i] = cx.obs[b.value()].Eval(cx);
             var me = (Method)cx.db.objects[defpos];
-            me = (Method)me.Instance(cx.GetIid(),cx);
+            me = (Method)me.Instance(cx.GetUid(),cx);
             var act = new CalledActivation(cx, me, ut.defpos);
             var bd = (Executable)act.obs[me.body];
             if (targ is TRow rw)

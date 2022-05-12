@@ -171,7 +171,7 @@ namespace Pyrrho.Level4
             public static Idents operator +(Idents t, (string, Iix, Idents) x)
             {
                 var (n, iix, ids) = x;
-                if (n == null || n == "")
+                if (n == null || n == "" || iix==null)
                     return t;
                 var s = t[n]??BTree<int,(Iix,Idents)>.Empty;
                 // discard out-of-scope items
@@ -219,10 +219,6 @@ namespace Pyrrho.Level4
                 if (id.sub != null && n > 0)
                     ts = ts + (id.sub, n - 1);
                 return new Idents(t + (id.ident, s+(id.iix.sd,(id.iix, ts))));
-            }
-            public static Idents operator-(Idents t,string s)
-            {
-                return new Idents((BTree<string,BTree<int,(Iix, Idents)>>)t.Remove(s));
             }
             /// <summary>
             /// Identifier chain lookup function. Search in this
@@ -292,11 +288,11 @@ namespace Pyrrho.Level4
                         {
                             p = new Iix(p.lp,p.sd,nb.defpos);
                             for (var c = cx._Dom(nb)?.rowType.First(); c != null; c = c.Next())
-                                if (cx.done[c.value()] is SqlValue v)
+                                if (cx.done[c.value()] is SqlValue v && cx.iim[v.defpos] is Iix vix)
                                 {
                                     var ds = st[v.name] ?? BTree<int,(Iix,Idents)>.Empty;
-                                    var dd = ds[v.iix.sd].Item2??Empty;
-                                    st = new Idents(st + (v.name, ds +(v.iix.sd,(v.iix,dd))));
+                                    var dd = ds[vix.sd].Item2??Empty;
+                                    st = new Idents(st + (v.name, ds +(vix.sd,(vix,dd))));
                                 }
                         }
                         st = st?.ApplyDone(cx);

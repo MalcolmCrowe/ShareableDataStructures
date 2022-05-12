@@ -446,9 +446,9 @@ namespace Pyrrho.Level3
                                 }
                                 kn++;
                                 p++;
-                                var cond = new SqlValueExpr(cx.Ix(2), cx, Sqlx.EQL,
-                                    new SqlCopy(cx.Ix(3),cx,"",f.defpos,tc.defpos),
-                                    new SqlLiteral(cx.Ix(4), cx,kv,ft),Sqlx.NO);
+                                var cond = new SqlValueExpr(2, cx, Sqlx.EQL,
+                                    new SqlCopy(3,cx,"",f.defpos,tc.defpos),
+                                    new SqlLiteral(4, cx,kv,ft),Sqlx.NO);
                                 f = (From)f.New(cx,RowSet.E+(RowSet._Where,cond.defpos));
                             }
                             var rs = f;
@@ -624,7 +624,7 @@ namespace Pyrrho.Level3
                     ma += (c.value(), d[n]);  
                 else
                 {
-                    var sl = new SqlLiteral(cx.GetIid(), cx, d[n]);
+                    var sl = new SqlLiteral(cx.GetUid(), cx, d[n]);
                     cx._Add(sl);
                     us += (new UpdateAssignment(c.value(), sl.defpos), true);
                 }

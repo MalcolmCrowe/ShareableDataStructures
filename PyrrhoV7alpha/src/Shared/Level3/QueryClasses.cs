@@ -257,7 +257,7 @@ namespace Pyrrho.Level3
             (CTree<long,int>)mem[Members]??CTree<long,int>.Empty;
         internal CList<long> keys =>
             (CList<long>)mem[Index.Keys]??CList<long>.Empty;
-        internal Grouping(Iix dp,BTree<long,object>m=null)
+        internal Grouping(long dp,BTree<long,object>m=null)
             :base(dp,_Mem(m)) { }
         static BTree<long,object> _Mem(BTree<long,object> m)
         {
@@ -277,7 +277,7 @@ namespace Pyrrho.Level3
         }
         public static Grouping operator+(Grouping g,(long,object) x)
         {
-            return new Grouping(g.iix,g.mem+x);
+            return new Grouping(g.defpos,g.mem+x);
         }
         internal bool Has(long s)
         {
@@ -350,11 +350,11 @@ namespace Pyrrho.Level3
 
         internal override Basis New(BTree<long, object> m)
         {
-            return new Grouping(iix,m);
+            return new Grouping(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new Grouping(iix, mem);
+            return new Grouping(dp, mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -400,7 +400,7 @@ namespace Pyrrho.Level3
         /// </summary>
         internal CList<long> sets =>
             (CList<long>)mem[Sets] ?? CList<long>.Empty;
-        internal GroupSpecification(Iix lp,BTree<long, object> m) : base(lp,m) { }
+        internal GroupSpecification(long lp,BTree<long, object> m) : base(lp,m) { }
         public static GroupSpecification operator+(GroupSpecification a,GroupSpecification gs)
         {
             var s = a.sets;
@@ -433,11 +433,11 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new GroupSpecification(iix,m);
+            return new GroupSpecification(defpos,m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new GroupSpecification(iix, mem);
+            return new GroupSpecification(dp, mem);
         }
         internal override Basis _Relocate(Context cx)
         {

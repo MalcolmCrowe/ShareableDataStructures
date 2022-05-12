@@ -543,6 +543,7 @@ namespace Pyrrho.Level2
                                 var px = psr.cx.Ix(p);
                                 var ic = new Ident(psr.cx.Inf(p).name, px);
                                 psr.cx.defs += (ic, px);
+                                psr.cx.iim += (px.dp,ic.iix);
                                 psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value().defpos));
                             }
                             pm.proc = psr.ParseProcedureStatement(xp, null, null).defpos;

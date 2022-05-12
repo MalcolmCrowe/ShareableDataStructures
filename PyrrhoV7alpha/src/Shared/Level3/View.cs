@@ -93,7 +93,7 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="f"></param>
         /// <returns></returns>
-        internal override DBObject Instance(Iix lp, Context cx, Domain q, BList<Ident> cs = null)
+        internal override DBObject Instance(long lp, Context cx, Domain q, BList<Ident> cs = null)
         {
             var od = cx.done;
             cx.done = ObTree.Empty;
@@ -107,7 +107,7 @@ namespace Pyrrho.Level3
             var fo = (Framing)framing.Fix(cx);
             var ns = cx.Fix(st);
             var dt = cx.Fix(domain);
-            var vi = (View)Relocate(ni) + (ViewResult, ns) + (InstanceOf,ni) + (_From,lp.dp);
+            var vi = (View)Relocate(ni) + (ViewResult, ns) + (InstanceOf,ni) + (_From,lp);
             vi = (View)vi.Fix(cx);
             cx.Add(vi);
             var vn = new Ident(vi.name, cx.Ix(vi.defpos));
@@ -118,8 +118,13 @@ namespace Pyrrho.Level3
                 var c = b.key(); // a view column id
                 var vx = b.value()[cx.sD].Item1;
                 var qx = cx.defs[(c, cx.sD)].Item1; // a reference in q to this
-                if (qx.dp >= 0)  // substitute the references with the instance columns
-                    cx.Replace((SqlValue)cx.obs[qx.dp],(SqlValue)cx.obs[vx.dp]);
+                if (qx.dp >= 0)
+                {
+                    if (qx.sd >= vx.sd)  // substitute the references with the instance columns
+                        cx.Replace((SqlValue)cx.obs[qx.dp], (SqlValue)cx.obs[vx.dp]);
+                    else
+                        cx.iim +=(vx.dp,new Iix(vx.dp,cx.sD,vx.dp));
+                }
                 if (!cx.obs.Contains(qx.dp))
                     cx.uids += (qx.dp, vx.dp);
             } 
@@ -499,7 +504,7 @@ namespace Pyrrho.Level3
         /// <param name="q">The global select list if provided</param>
         /// <param name="cs">The insert columns if provided</param>
         /// <returns>A RestRowSet or RestRowSetUsing</returns>
-        internal override DBObject Instance(Iix lp, Context cx, Domain q, BList<Ident> cs = null)
+        internal override DBObject Instance(long lp, Context cx, Domain q, BList<Ident> cs = null)
         {
             var r = (RowSet)base.Instance(lp,cx, q, cs);
             if (q == null)
@@ -515,7 +520,7 @@ namespace Pyrrho.Level3
                       && so.defpos != s.defpos)
                     {
                         cx.Add(so);
-                        cx.Add(new SqlCopy(cx.Ix(s.defpos), cx, s.name, s.from, so)
+                        cx.Add(new SqlCopy(s.defpos, cx, s.name, s.from, so)
                             + (InstanceOf, s.defpos));
                         cx.Replace(s, so);
                     }
@@ -528,7 +533,7 @@ namespace Pyrrho.Level3
                               && sp.defpos != sn.defpos)
                             {
                                 cx.Add(sn);
-                                cx.Add(new SqlCopy(cx.Ix(sp.defpos), cx, sn.name, sn.from, sn)
+                                cx.Add(new SqlCopy(sp.defpos, cx, sn.name, sn.from, sn)
                                     + (InstanceOf, s.defpos));
                                 cx.Replace(sp, sn);
                             }

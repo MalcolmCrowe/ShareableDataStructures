@@ -29,7 +29,6 @@ namespace Pyrrho.Level3
         /// </summary>
         public readonly long defpos;
         internal const long
-            IIx = -261,  // Iix lexpos,defpos
             _Alias = -62, // string        
             Classification = -63, // Level
             Definer = -64, // long Role
@@ -42,7 +41,6 @@ namespace Pyrrho.Level3
             InstanceOf = -179, // long DBObject
             LastChange = -68, // long (formerly called Ppos)
             Sensitive = -69; // bool
-        internal Iix iix => (Iix)mem[IIx];
         /// <summary>
         /// During transaction execution, many DBObjects have aliases.
         /// Aliases do not form part of renaming machinery
@@ -82,9 +80,6 @@ namespace Pyrrho.Level3
         {
             defpos = dp;
         }
-        protected DBObject(Iix lp, BTree<long, object> m) 
-           : this(lp.dp, _Mem(lp, m))
-        { }
         protected DBObject(long pp, long dp, long dr, BTree<long, object> m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp) + (Definer, dr))
         { }
@@ -94,11 +89,6 @@ namespace Pyrrho.Level3
         public static DBObject operator +(DBObject ob, (long, object) x)
         {
             return (DBObject)ob.New(ob.mem + x);
-        }
-        static BTree<long,object> _Mem(Iix lp,BTree<long,object>m)
-        {
-            m = m ?? BTree<long,object>.Empty;
-            return (m[IIx] is Iix) ? m : (m + (IIx, lp));
         }
         /// <summary>
         /// Used for shared RowSet and RowSets to create new copies 
@@ -114,9 +104,13 @@ namespace Pyrrho.Level3
             cx.Add(r);
             return r;
         }
-        internal virtual (DBObject,Ident) _Lookup(Iix lp, Context cx,string nm, Ident n)
+        internal virtual (DBObject,Ident) _Lookup(long lp, Context cx,string nm, Ident n)
         {
             return (this,n);
+        }
+        internal Iix Iim(Context cx)
+        {
+            return cx.iim[defpos] ?? Iix.None;
         }
         internal static int _Max(params int[] x)
         {
@@ -254,8 +248,6 @@ namespace Pyrrho.Level3
         internal override Basis _Fix(Context cx)
         {
             var r = this;
-            if (iix!=null)
-                r += (IIx, new Iix(iix.dp,cx,iix.dp));
             var np = cx.Fix(defpos);
             if (np != defpos)
             {
@@ -523,7 +515,7 @@ namespace Pyrrho.Level3
         }
         internal virtual RowSet RowSets(Ident id,Context cx, Domain q, long fm, Domain fd)
         {
-            return new TrivialRowSet(id.iix, cx, new TRow(q, cx.values), -1);
+            return new TrivialRowSet(id.iix.dp, cx, new TRow(q, cx.values), -1);
         }
         /// <summary>
         /// Creates new instances of objects in framing lists.
@@ -531,7 +523,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
-        internal virtual DBObject Instance(Iix lp,Context cx,Domain q=null,BList<Ident>cs=null)
+        internal virtual DBObject Instance(long lp,Context cx,Domain q=null,BList<Ident>cs=null)
         {
             cx.Add(framing);
             return this;

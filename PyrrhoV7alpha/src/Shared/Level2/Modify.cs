@@ -125,12 +125,13 @@ namespace Pyrrho.Level2
             // instantiate everything we may need
             var oi = (ObInfo)rdr.context.db.role.infos[pr.udType.defpos];
             var odt = (UDType)oi.dataType;
-            odt.Instance(psr.LexPos(),psr.cx, Domain.Null);
+            odt.Instance(psr.LexPos().dp,psr.cx, Domain.Null);
             for (var b = pr.ins.First(); b != null; b = b.Next())
             {
                 var p = psr.cx.obs[b.value()];
                 var ip = rdr.context.Ix(p.defpos);
                 psr.cx.defs += (new Ident(p.name, ip), ip);
+                psr.cx.iim += (p.defpos, ip);
             }
             psr.cx.Install(pr, 0);
             // and parse the body

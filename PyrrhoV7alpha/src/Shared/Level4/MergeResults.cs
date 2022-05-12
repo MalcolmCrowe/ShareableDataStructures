@@ -56,7 +56,6 @@ namespace Pyrrho.Level4
             if (la != 0L && lb != 0L)
                 m += (Table.LastData, System.Math.Max(la, lb));
             m += (_Depth, cx.Depth(dm, a, b));
-            m += (IIx, new Iix(a.iix, dp));
             return m;
         }
         internal override Basis New(BTree<long, object> m)

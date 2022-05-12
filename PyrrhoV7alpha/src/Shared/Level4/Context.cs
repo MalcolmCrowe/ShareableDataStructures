@@ -72,18 +72,19 @@ namespace Pyrrho.Level4
         internal long instSLast = -1L; // last uid in framing
         internal BTree<int, ObTree> depths = BTree<int, ObTree>.Empty;
         internal CTree<long, TypedValue> values = CTree<long, TypedValue>.Empty;
-        internal CTree<long, Iix> instances = CTree<long, Iix>.Empty;
+        internal CTree<long, long> instances = CTree<long, long>.Empty;
         internal CTree<long, CTree<long,bool>> awaits = CTree<long, CTree<long,bool>>.Empty; // SqlValue,RowSet
         internal bool inHttpService = false;
         internal BTree<int,Ident.Idents> defsStore = BTree<int,Ident.Idents>.Empty; // saved defs for previous level
         internal int sD => (int)defsStore.Count; // see IncSD() and DecSD() below
         internal CTree<Domain, Domain> groupCols = CTree<Domain, Domain>.Empty; // GroupCols for a Domain with Aggs
-        internal BTree<long,BTree<TRow,BTree<long, Register>>> funcs = BTree<long,BTree<TRow, BTree<long,Register>>>.Empty; // Agg GroupCols
+        internal BTree<long, BTree<TRow, BTree<long, Register>>> funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by RowSet
         /// </summary>
         internal Ident.Idents defs = Ident.Idents.Empty;
+        internal CTree<long,Iix> iim = CTree<long,Iix>.Empty;
         /// <summary>
         /// Lexical positions to DBObjects (if dbformat<51)
         /// </summary>
@@ -184,7 +185,7 @@ namespace Pyrrho.Level4
         /// <param name="n"></param>
         /// <param name="d"></param>
         /// <returns></returns>
-        internal (DBObject, Ident) Lookup(Iix lp, Ident n, int d)
+        internal (DBObject, Ident) Lookup(long lp, Ident n, int d)
         {
             var (ix, _, sub) = defs[(n, d)]; // chain lookup
             if (ix != null)
@@ -489,7 +490,10 @@ namespace Pyrrho.Level4
                     }
                     if (cs != Ident.Idents.Empty    // re-enter forward references to be resolved at a lower level
                         && obs[px.dp] is ForwardReference)
+                    {
                         defs += (n, new Iix(px.lp, px.sd - 1, px.dp), cs);
+                        iim += (px.dp, px);
+                    }
                 }
             }
             defsStore -= (sd - 1);
@@ -629,6 +633,7 @@ namespace Pyrrho.Level4
                     rs += (b.key(), oi.dataType);
                 }
                 cx.defs += (ic, ox);
+                cx.iim += (ic.iix.dp, ox);
             }
             if (tb!=null)
              cx.Add(tb + (Table.TableCols, rs));
@@ -737,16 +742,12 @@ namespace Pyrrho.Level4
                 Add(now);
             if (was == now)
                 return now;
-            if (was.iix.lp < now.iix.lp)
-                now += (DBObject.IIx, Ix(was.iix.lp, now.iix.dp));
             _Add(now);
             done = (m??ObTree.Empty)+(now.defpos,now);
             if (was.defpos != now.defpos)
                 done += (was.defpos, now);
             // scan by depth to perform the replacement
             var ldpos = db.loadpos;
-            //     for (var cc = next; cc != null; cc = cc.next)
-            //         ldpos = cc.db.loadpos;
             for (var b = depths.First(); b != null; b = b.Next())
             {
                 var bv = b.value();
@@ -1025,6 +1026,7 @@ namespace Pyrrho.Level4
         internal void AddDefs(Ident id, Domain dm, string a=null)
         {
             defs += (id.ident, id.iix, Ident.Idents.Empty);
+            iim += (id.iix.dp, id.iix);
             for (var b = dm?.rowType.First(); b != null;// && b.key() < dm.display; 
                 b = b.Next())
             {
@@ -1037,10 +1039,16 @@ namespace Pyrrho.Level4
                 var ic = new Ident(n, px);
                 var iq = new Ident(id, ic);
                 var ox = Ix(ob.defpos);
-                if (defs[iq].dp<0)
+                if (defs[iq].dp < 0)
+                {
                     defs += (iq, ox);
-                if (defs[ic].dp<0)
+                    iim += (ob.defpos, ox);
+                }
+                if (defs[ic].dp < 0)
+                {
                     defs += (ic, ox);
+                    iim += (ob.defpos, ox); // one of them may succeed
+                }
             }
         }
         internal void AddParams(Procedure pr)
@@ -1052,8 +1060,10 @@ namespace Pyrrho.Level4
                 var p = b.value();
                 var pp = (FormalParameter)obs[p];
                 var pn = new Ident(pp.name, zx);
-                defs += (pn, pp.iix);
-                defs += (new Ident(pi, pn), pp.iix);
+                var pix = new Iix(pp.defpos);
+                defs += (pn, pix);
+                iim += (p, pix);
+                defs += (new Ident(pi, pn), pix);
                 values += (p, TNull.Value); // for KnownBy
                 Add(pp);
             }
@@ -1096,7 +1106,7 @@ namespace Pyrrho.Level4
                 k = new PRow(obs[b.value()].Eval(this), k);
             return k;
         }
-        internal Procedure GetProcedure(Iix lp,string n,int a)
+        internal Procedure GetProcedure(long lp,string n,int a)
         {
             var proc = db.GetProcedure(n, a);
             if (proc == null)
@@ -1650,8 +1660,8 @@ namespace Pyrrho.Level4
         internal Framing(Context cx) : base(_Mem(cx))
         {
             cx.oldStmt = cx.db.nextStmt;
-         }
-        static BTree<long,object> _Mem(Context cx)
+        }
+        static BTree<long, object> _Mem(Context cx)
         {
             var r = BTree<long, object>.Empty + (Result, cx.result)
                   + (Rvv.RVV, cx.affected);
@@ -1662,11 +1672,9 @@ namespace Pyrrho.Level4
                 if (k >= Transaction.HeapStart && cx.parse != ExecuteStatus.Prepare)
                     throw new PEException("PE443");
                 var v = b.value();
-                if (v.iix is Iix ix && ix.lp != ix.dp)
-                    v += (DBObject.IIx, new Iix(ix.dp));
                 os += (k, v);
             }
-            return r + (Obs,os);
+            return r + (Obs, os);
         }
         internal override Basis New(BTree<long, object> m)
         {

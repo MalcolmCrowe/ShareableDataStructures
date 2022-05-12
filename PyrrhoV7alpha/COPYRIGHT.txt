@@ -20,10 +20,10 @@ and AWebSvr.dll in any product on a royalty-free basis, provided the use
 of this code is suitably acknowledged.
 
 This is version 7.0(alpha) of the DBMS. 
-It passes tests 1 to 24 of the PyrrhoTest program.
+It passes tests 1 to 24 of the PyrrhoTest program except for 1 part of test 12 and 1 part of test16.
 
 Server binaries for Unix are in Mono folder. The rest should work cross-platform.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-9 May 2022
+12 May 2022

@@ -310,7 +310,7 @@ namespace Pyrrho.Level3
                 m += (Default, For(pd.domain.kind).defaultValue);
             return m;
         }
-        internal override DBObject Instance(Iix lp,Context cx, Domain q,BList<Ident>cs=null)
+        internal override DBObject Instance(long lp,Context cx, Domain q,BList<Ident>cs=null)
         {
             var r = base.Instance(lp,cx, q);
             for (var b = constraints.First(); b != null; b = b.Next())
@@ -424,7 +424,7 @@ namespace Pyrrho.Level3
                 if (cx.obs[b.value()] is SqlStar st
                     && (f == null || (st.prefix < 0
                     || (cx.obs[st.prefix] is SqlValue sv
-                        && cx.defs[sv.name][sv.iix.sd].Item1.dp == f.defpos))))
+                        && cx.defs[sv.name][cx.iim[sv.defpos].sd].Item1.dp == f.defpos))))
                     return true;
             }
             return false;
@@ -738,7 +738,7 @@ namespace Pyrrho.Level3
                     {
                         var dp = rdr.GetLong();
                         var ut = rdr.GetDomain(dp,pp).Item1;
-                        ut.Instance(rdr.context.Ix(dp), rdr.context,null);
+                        ut.Instance(dp, rdr.context,null);
                         var r = CTree<long, TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (var j = 0; j < n; j++)
@@ -1242,9 +1242,9 @@ namespace Pyrrho.Level3
             if (orderflags != Common.OrderCategory.None && orderflags != Common.OrderCategory.Primitive)
             {
                 var cx = Context._system;
-                var sa = new SqlLiteral(cx.GetIid(),cx,a);
+                var sa = new SqlLiteral(cx.GetUid(),cx,a);
                 cx.Add(sa);
-                var sb = new SqlLiteral(cx.GetIid(),cx,b);
+                var sb = new SqlLiteral(cx.GetUid(),cx,b);
                 cx.Add(sb);
                 if ((orderflags & Common.OrderCategory.Relative) == Common.OrderCategory.Relative)
                 {
@@ -3753,7 +3753,7 @@ namespace Pyrrho.Level3
             {
                 var od = b.value();
                 var nk = b.key();
-                var rr = (Domain)od._Replace(cx, was, now);
+                var rr = (Domain)od?._Replace(cx, was, now);
                 if (nk == was.defpos)
                     nk = now.defpos;
                 if (rr != od || nk != b.key())
@@ -4527,7 +4527,7 @@ namespace Pyrrho.Level3
         }
         internal void Defs(Context cx)
         {
-            var lp = cx.GetIid();
+            var lp = cx.GetUid();
             for (var b = representation.First(); b != null; b = b.Next())
             {
                 var dm = b.value();
@@ -4539,15 +4539,16 @@ namespace Pyrrho.Level3
                 var px = cx.Ix(p);
                 var ic = new Ident(oi.name, px);
                 cx.defs += (ic, px);
+                cx.iim += (ic.iix.dp, px);
             }
             for (var b = methods.First();b!=null;b=b.Next())
             {
                 var mp = b.key();
                 var me = (Method)cx.db.objects[mp];
-                me.Instance(lp,cx, null);
+                me.Instance(lp, cx, null);
             }
         }
-        internal override DBObject Instance(Iix lp,Context cx, Domain q, BList<Ident> cs = null)
+        internal override DBObject Instance(long lp,Context cx, Domain q, BList<Ident> cs = null)
         {
             if (cx.obs.Contains(defpos))
                 return this;

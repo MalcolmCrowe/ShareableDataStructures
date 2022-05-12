@@ -47,7 +47,7 @@ namespace Pyrrho.Common
         {
             if (td.kind == Sqlx.CONTENT)
                 td = null;
-            return new SqlLiteral(cx.Ix(dp), cx, this, td);
+            return new SqlLiteral(dp, cx, this, td);
         }
         internal virtual byte BsonType()
         {
@@ -168,7 +168,7 @@ namespace Pyrrho.Common
         }
         internal override SqlValue Build(long dp, Context cx, Domain td)
         {
-            return new SqlNull(new Iix(dp));
+            return new SqlNull(dp);
         }
         public override bool IsNull
         {
@@ -1548,15 +1548,11 @@ namespace Pyrrho.Common
         public TRow(Domain dt,CTree<long,TypedValue> vs)
             :base(dt)
         {
-            if (dt == null)
-                Console.WriteLine("Here");
             values = vs;
         }
         public TRow(Domain dt, BTree<long, long> map, BTree<long, TypedValue> vs)
             : base(dt)
         {
-            if (dt == null)
-                Console.WriteLine("Here");
             var v = CTree<long, TypedValue>.Empty;
             for (var b = map.First(); b != null; b = b.Next())
                 if (dt.representation.Contains(b.key()))
@@ -1565,8 +1561,6 @@ namespace Pyrrho.Common
         }
         public TRow(RowSet rs,Domain dm,TRow rw) : base(dm)
         {
-            if (dm == null)
-                Console.WriteLine("Here");
             var vs = CTree<long, TypedValue>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
@@ -1581,8 +1575,6 @@ namespace Pyrrho.Common
         }
         public TRow(TRow rw, Domain dm) :base(dm)
         {
-            if (dm == null)
-                Console.WriteLine("Here");
             var v = CTree<long, TypedValue>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
                 v += (b.value(), rw[b.key()] ?? TNull.Value);

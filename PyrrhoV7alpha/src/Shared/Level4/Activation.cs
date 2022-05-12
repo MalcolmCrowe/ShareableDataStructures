@@ -283,7 +283,7 @@ namespace Pyrrho.Level4
             _cx = cx;
             prov = cx._Dom(data)?.provenance;
             table = (Table)cx.db.objects[ts.target];
-            table.Instance(cx.GetIid(),this, cx._Dom(ts)); // instance the columns and their domains
+            table.Instance(cx.GetUid(),this, cx._Dom(ts)); // instance the columns and their domains
             _tgs = table.triggers;
             ts += (RowSet._Data, data.defpos);
             _trs = new TransitionRowSet(this, ts, data, iC);
@@ -312,7 +312,7 @@ namespace Pyrrho.Level4
                     var p = c.value();
                     var ci = cx.Inf(p);
                     var sc = cx.obs[p] as SqlValue;
-                    sc = new SqlCopy(GetIid(), cx, ci?.name ?? sc.alias ?? sc.name, cp, p);
+                    sc = new SqlCopy(GetUid(), cx, ci?.name ?? sc.alias ?? sc.name, cp, p);
                     obs += (sc.defpos, sc);
                     vs += sc;
                     tr += (p, sc.defpos);
@@ -333,7 +333,7 @@ namespace Pyrrho.Level4
                     var sc = (SqlCopy)cx.obs[c.key()];
                     fl += (xm[sc.copyFrom], c.value());
                 }
-                var rf = new TableRowSet(ts.iix,this, b.key(), cd.defpos);
+                var rf = new TableRowSet(ts.defpos,this, b.key(), cd.defpos);
                 var nf = new From(new Ident(ri.name, cx.Ix(cp)), this, rf, null);
                 rf += (DBObject._From, nf.defpos);
                 if (fl != CTree<long, TypedValue>.Empty)
@@ -1026,7 +1026,7 @@ namespace Pyrrho.Level4
             parent = cx.next;
             nextHeap = cx.nextHeap;
             obs = cx.obs;
-            tg = (Trigger)((Trigger)cx.db.objects[tg.defpos]).Instance(trs.iix,this);
+            tg = (Trigger)((Trigger)cx.db.objects[tg.defpos]).Instance(trs.defpos,this);
             var tb = (Table)cx.db.objects[trs.target];
             var ro = (Role)cx.db.objects[tg.definer];
             var ti = (ObInfo)ro.infos[tb.defpos];

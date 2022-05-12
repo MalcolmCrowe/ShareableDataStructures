@@ -226,8 +226,7 @@ namespace Pyrrho.Level3
         internal bool old => (bool)mem[Old];
  //       internal long trig => (long)mem[Trig];
         internal TransitionTable(Ident ic, bool old, Context cx, From fm, Trigger tg)
-                : base(ic.iix.dp,_Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos)
-                      +(IIx,new Iix(fm.iix,ic.iix.dp)))
+                : base(ic.iix.dp,_Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos))
         { }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TransitionTable operator+(TransitionTable t,(long,object)x)

@@ -320,7 +320,7 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
-            return ((Executable)target.Instance(iix,cx)).Obey(cx);
+            return ((Executable)target.Instance(defpos,cx)).Obey(cx);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -464,22 +464,22 @@ namespace Pyrrho.Level3
         /// Constructor: a procedure formal parameter from the parser
         /// </summary>
         /// <param name="m">The mode</param>
-		public FormalParameter(Iix vp, Sqlx m, string n,Domain dt)
-            : base(vp,new BTree<long, object>(ParamMode, m)+(Name,n)+(AssignmentStatement.Val,vp.dp)
+		public FormalParameter(long vp, Sqlx m, string n,Domain dt)
+            : base(vp,new BTree<long, object>(ParamMode, m)+(Name,n)+(AssignmentStatement.Val,vp)
                   +(_Domain,dt.defpos))
         { }
-        protected FormalParameter(Iix dp,BTree<long, object> m) : base(dp,m) { }
+        protected FormalParameter(long dp,BTree<long, object> m) : base(dp,m) { }
         public static FormalParameter operator +(FormalParameter s, (long, object) x)
         {
-            return new FormalParameter(s.iix,s.mem + x);
+            return new FormalParameter(s.defpos,s.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new FormalParameter(iix, m);
+            return new FormalParameter(defpos, m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new FormalParameter(new Iix(iix,dp),mem);
+            return new FormalParameter(dp,mem);
         }
         internal override Basis _Relocate(Context cx)
         {
@@ -2530,15 +2530,15 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
-        public CallStatement(Iix lp, Context cx,Procedure pr, string pn, 
+        public CallStatement(long lp, Context cx,Procedure pr, string pn, 
             CList<long> acts, SqlValue tg = null)
          : this(lp,cx, (Procedure)pr?.Instance(lp,cx), pn, acts, 
                (tg == null) ? null : 
                new BTree<long, object>(Var, tg.defpos))
         { }
-        protected CallStatement(Iix dp, Context cx,Procedure pr, string pn, CList<long> acts, 
+        protected CallStatement(long dp, Context cx,Procedure pr, string pn, CList<long> acts, 
             BTree<long, object> m = null)
-         : base(dp.dp, _Mem(cx,pr,acts,m) + (Parms, acts) + (ProcDefPos, pr?.defpos ?? -1L)
+         : base(dp, _Mem(cx,pr,acts,m) + (Parms, acts) + (ProcDefPos, pr?.defpos ?? -1L)
                + (Name, pr?.name??pn))
         { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
