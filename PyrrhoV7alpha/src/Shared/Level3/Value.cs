@@ -3044,8 +3044,10 @@ namespace Pyrrho.Level3
                 var ci = cx.Inf(cp);
                 var f = new SqlField(cx.GetUid(), ci.name, ic.iix.dp, 
                     ci.dataType, cp);
+                var cix = new Iix(f.defpos, cx, f.defpos);
                 cx.Add(f);
-                ids += (f.name, cx.iim[f.defpos], Ident.Idents.Empty);
+                ids += (f.name, cix, Ident.Idents.Empty);
+                cx.iim += (f.defpos, cix);
             }
             cx.defs += (ic.ident, ic.iix, ids);
             cx.iim += (ic.iix.dp, ic.iix);
@@ -3098,8 +3100,10 @@ namespace Pyrrho.Level3
                 var ci = cx.Inf(cp);
                 var f = new SqlField(cx.GetUid(), ci.name, ic.iix.dp,
                     ci.dataType, cp);
+                var cix = new Iix(f.defpos, cx, f.defpos);
                 cx.Add(f);
-                ids += (f.name, cx.iim[f.defpos], Ident.Idents.Empty);
+                ids += (f.name, cix, Ident.Idents.Empty);
+                cx.iim += (f.defpos, cix);
             }
             cx.defs += (ic.ident, ic.iix, ids);
             cx.iim += (ic.iix.dp, ic.iix);

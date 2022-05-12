@@ -333,6 +333,7 @@ namespace Pyrrho.Level4
                         cx = new Context(cx.tr.Rollback(), cx.conn);
                     else
                         cx.Add(e);
+                    cx.exec = e;
                     break;
                 case Sqlx.SELECT: ParseCursorSpecification(xp); break;
                 case Sqlx.SET: ParseSqlSet(); break;
@@ -2716,6 +2717,7 @@ namespace Pyrrho.Level4
                 case Sqlx.WHILE: e = ParseSqlWhile(xp, null); break;
 				default: throw new DBException("42000",lxr.Diag).ISO();
 			}
+            cx.exec = e;
             return (Executable)cx.Add(e);
 		}
         /// <summary>
@@ -2899,6 +2901,7 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.CASE);
                 var e = new SimpleCaseStatement(LexDp(),cx,op,ws,ss);
                 cx.Add(e);
+                cx.exec = e;
                 return e;
             }
         }
@@ -3051,6 +3054,7 @@ namespace Pyrrho.Level4
             var cs = new SelectStatement(dp, te);
             var ss = new SelectSingle(dp)+(ForSelectStatement.Sel,cs);
             cx.DecSD();
+            cx.exec = ss;
             return (Executable)cx.Add(ss);
         }
         /// <summary>
@@ -3271,6 +3275,7 @@ namespace Pyrrho.Level4
             if (tok == Sqlx.ID && n != null && n == lxr.val.ToString())
                 Next();
             cx = old; // old.Restore(lxr);
+            cx.exec = ws;
             return (Executable)cx.Add(ws);
         }
         /// <summary>
@@ -3292,6 +3297,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.REPEAT);
             if (tok == Sqlx.ID && n != null && n == lxr.val.ToString())
                 Next();
+            cx.exec = rs;
             return (Executable)cx.Add(rs);
         }
         /// <summary>
@@ -3368,6 +3374,7 @@ namespace Pyrrho.Level4
                     Next();
                 }
             }
+            cx.exec = r;
             return (Executable)cx.Add(r);
         }
         /// <summary>
@@ -4900,7 +4907,7 @@ namespace Pyrrho.Level4
             }
             if (r == r0) 
                 return r0; // completely standard
-            return (Domain)cx.Add(new Domain(cx.GetUid(),r.kind,r.mem)); 
+            return (Domain)cx.Add(new Domain(--Basis._uid,r.kind,r.mem));
         }
         /// <summary>
 		/// IntervalType = 	INTERVAL IntervalField [ TO IntervalField ] .
@@ -5248,6 +5255,7 @@ namespace Pyrrho.Level4
             RowSet un;
             (xp,un) = _ParseCursorSpecification(xp);
             var s = new SelectStatement(cx.GetUid(), un);
+            cx.exec = s;
             return (SelectStatement)cx.Add(s);
         }
         internal (Domain,RowSet) _ParseCursorSpecification(Domain xp)
@@ -6583,6 +6591,7 @@ namespace Pyrrho.Level4
             }
             if (cx.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
                 cx = tr.Execute(s, cx);
+            cx.exec = s;
             return (SqlInsert)cx.Add(s);
         }
         /// <summary>
@@ -6625,6 +6634,7 @@ namespace Pyrrho.Level4
             if (cx.parse == ExecuteStatus.Obey)
                 cx = ((Transaction)cx.db).Execute(qs, cx);
             cx.result = -1L;
+            cx.exec = qs;
             return (Executable)cx.Add(qs);
         }
         /// <summary>
@@ -6681,6 +6691,7 @@ namespace Pyrrho.Level4
             if (cx.parse == ExecuteStatus.Obey)
                 cx = ((Transaction)cx.db).Execute(us, cx);
             us = (UpdateSearch)cx.Add(us);
+            cx.exec = us;
             return (cx,us);
         }
         internal CTree<UpdateAssignment,bool> ParseAssignments(string sql,Domain xp)
