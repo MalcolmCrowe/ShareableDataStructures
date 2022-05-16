@@ -4907,7 +4907,15 @@ namespace Pyrrho.Level4
             }
             if (r == r0) 
                 return r0; // completely standard
-            return (Domain)cx.Add(new Domain(--Basis._uid,r.kind,r.mem));
+            // see if we know this type
+            if (cx.db.types.Contains(r))
+            {
+                r = (Domain)cx.db.objects[cx.db.types[r]];
+                return (Domain)cx.Add(r);
+            }
+            var pp = new PDomain(r, cx.db.nextPos, cx);
+            cx.Add(pp);
+            return (Domain)cx.Add(pp.domain);
         }
         /// <summary>
 		/// IntervalType = 	INTERVAL IntervalField [ TO IntervalField ] .

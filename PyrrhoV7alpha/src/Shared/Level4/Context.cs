@@ -652,7 +652,7 @@ namespace Pyrrho.Level4
                 return null;
             if (ob is Domain)
                 return (Domain)ob;
-            if (ob.defpos >=0 && ob.defpos < Transaction.Analysing &&
+            if (ob.defpos!=-1L && ob.defpos < Transaction.Analysing &&
                 ((ObInfo)role.infos[ob.defpos])?.dataType is Domain d && d.Length>0)
                 return d;
             return (Domain)obs[ob.domain] ?? (Domain)db.objects[ob.domain] ?? Domain.Content;

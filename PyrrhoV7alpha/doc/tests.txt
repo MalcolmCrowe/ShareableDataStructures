@@ -58,10 +58,10 @@ select count(c) as d from f where b<20
 create table ta(b date,c interval hour to second,d boolean)
 insert into ta values(date'2019-01-06T12:30:00',interval'02:00:00'hour to second,false)
 select * from ta
-create table td(int e,int f)
+create table td(e int,f int)
 insert into td values(2,5),(4,6),(2,7),(6,8)
-select distinct b from td
-select avg(distinct b) from td
+select distinct e from td
+select avg(distinct e) from td
 7:
 create table TB(S char,D int,C int)
 insert into TB values('Glasgow',2,43)
@@ -324,6 +324,33 @@ table p
 ->[{Q:1,R:'Forty two',A:},{Q:2,'R:'Fifty',A:21}]
 table t
 ->[{S:'Forty two',U:42},{S:'Fifty',U:50}]
+create table umsatz (kunde char(12) primary key, KdUmsatz numeric(8,2))
+insert into umsatz values ('Bosch' , 17000.00),('Boss' ,  13000.00), ('Daimler',20000.00)
+insert into umsatz values ('Siemens', 9000.00),('Porsche', 5000.00), ('VW'     , 8000.00), ('Migros' , 4000.00)
+[CREATE VIEW umsatz_V(kunde, KdUmsatz, runningSalesShare)
+ AS SELECT kunde, KdUmsatz,
+  (SELECT SUM(KdUmsatz) FROM umsatz WHERE KdUmsatz >= u.KdUmsatz) /
+   (SELECT SUM(KdUmsatz) FROM umsatz)
+FROM umsatz AS u]
+[SELECT CASE WHEN runningSalesShare <= 0.5 THEN 'A' 
+  WHEN runningSalesShare > 0.5  AND 
+   "runningSalesShare <= 0.85 THEN 'B' 
+  WHEN runningSalesShare > 0.85 THEN 'C' 
+  ELSE NULL 
+  END AS Category,
+ kunde, KdUmsatz,
+ CAST(CAST(KdUmsatz / (SELECT SUM(KdUmsatz) FROM umsatz_V) * 100 
+   as decimal(6, 2))
+  as char(6)) || ' %' AS share 
+FROM umsatz_V 
+ORDER BY KdUmsatz DESC]
+->[{CATEGORY:'A',KUNDE:'Daimler',KDUMSATZ:20000.00,SHARE:'26.32 %'},
+{CATEGORY:'A',KUNDE:'Bosch',KDUMSATZ:17000.00,SHARE:'22.37 %'},
+{CATEGORY:'B',KUNDE:'Boss',KDUMSATZ:13000.00,SHARE:'17.11 %'},
+{CATEGORY:'B',KUNDE:'Siemens',KDUMSATZ:9000.00,SHARE:'11.84 %'},
+{CATEGORY:'C',KUNDE:'VW',KDUMSATZ:8000.00,SHARE:'10.53 %'},
+{CATEGORY:'C',KUNDE:'Porsche',KDUMSATZ:5000.00,SHARE:'6.58 %'},
+{CATEGORY:'C',KUNDE:'Migros',KDUMSATZ:4000.00,SHARE:'5.26 %'}]
 13:
 create table ad(a int,b char)
 insert into ad values(20,'Twenty')

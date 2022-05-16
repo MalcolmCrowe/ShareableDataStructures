@@ -28,7 +28,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("20 April 2022 Repeatable tests");
+                Console.WriteLine("16 May 2022 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -228,6 +228,10 @@ namespace Test
             Act(61,"insert into ta values(date'2019-01-06T12:30:00',interval'02:00:00'hour to second,false)");
             var d = new DateTime(2019, 1, 6);
             CheckResults(6, 1, "select * from ta", "[{B:\""+d.ToString("d")+"\",C:\"2h\",D:\"False\"}]");
+            Act(611, "create table td(e int,f int)");
+            Act(612, "insert into td values(2,5),(4,6),(2,7),(6,8)");
+            CheckResults(6, 2, "select distinct e from td", "[{E:2},{E:4},{E:6}]");
+            CheckResults(6, 3, "select avg(distinct e) from td", "[{AVG:4}]");
             Rollback();
         }
         void Test7()
@@ -236,57 +240,86 @@ namespace Test
                 return;
             testing = 7;
             Begin();
-            Act(70,"create table TB(S char,D int,C int)");
-            Act(71,"insert into TB values('Glasgow',2,43)");
-            Act(72,"insert into TB values('Paisley',3,82)");
-            Act(73,"insert into TB values('Glasgow',4,29)");
+            Act(70, "create table TB(S char,D int,C int)");
+            Act(71, "insert into TB values('Glasgow',2,43)");
+            Act(72, "insert into TB values('Paisley',3,82)");
+            Act(73, "insert into TB values('Glasgow',4,29)");
             CheckResults(7, 1, "select S,count(C) as occ,sum(C) as total from TB group by S",
                 "[{S:\"Glasgow\",OCC:2,TOTAL:72},{S:\"Paisley\",OCC:1,TOTAL:82}]");
             // contributed by Fritz Laux
             Act(400, "CREATE TABLE people (Id INT(11) NOT NULL, Name VARCHAR(50) , Salary NUMERIC(7,2), "
-                +"country VARCHAR(50), city VARCHAR(50) , PRIMARY KEY (Id) )");
+                + "country VARCHAR(50), city VARCHAR(50) , PRIMARY KEY (Id) )");
             /* UK*/
-            Act(401,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(1, 'Tom', 50000, 'UK', 'London')");
-            Act(402,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(2, 'Alex', 60000, 'UK', 'London')");
-            Act(403,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(3, 'Bob', 66000, 'UK', 'London')");
-            Act(404,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(4, 'Anne', 62000, 'UK', 'London')");
-            Act(405,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(5, 'Pam', 72000, 'UK', 'London')");
-            Act(406,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(6, 'Liz', 52000, 'UK', 'London')");
+            Act(401, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(1, 'Tom', 50000, 'UK', 'London')");
+            Act(402, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(2, 'Alex', 60000, 'UK', 'London')");
+            Act(403, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(3, 'Bob', 66000, 'UK', 'London')");
+            Act(404, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(4, 'Anne', 62000, 'UK', 'London')");
+            Act(405, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(5, 'Pam', 72000, 'UK', 'London')");
+            Act(406, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(6, 'Liz', 52000, 'UK', 'London')");
 
-            Act(407,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(7, 'Anne', 62000, 'UK', 'Glasgow')"); 
-            Act(408,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(8, 'Claire', 62000, 'UK', 'Glasgow')");
-            Act(409,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(9, 'Marc', 58000, 'UK', 'Glasgow')");
-            Act(410,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(10, 'Carla', 62000, 'UK', 'Glasgow')");
-            Act(411,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(11, 'Mary', 64000, 'UK', 'Glasgow')");
-            Act(412,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(12, 'Martha', 63000, 'UK', 'Glasgow')");
+            Act(407, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(7, 'Anne', 62000, 'UK', 'Glasgow')");
+            Act(408, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(8, 'Claire', 62000, 'UK', 'Glasgow')");
+            Act(409, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(9, 'Marc', 58000, 'UK', 'Glasgow')");
+            Act(410, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(10, 'Carla', 62000, 'UK', 'Glasgow')");
+            Act(411, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(11, 'Mary', 64000, 'UK', 'Glasgow')");
+            Act(412, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(12, 'Martha', 63000, 'UK', 'Glasgow')");
 
-            Act(413,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(20, 'Mike', 62000, 'UK', 'Liverpool')");
-            Act(414,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(21, 'Paul', 62000, 'UK', 'Liverpool')");
-            Act(415,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(22, 'John', 62000, 'UK', 'Liverpool')");
+            Act(413, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(20, 'Mike', 62000, 'UK', 'Liverpool')");
+            Act(414, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(21, 'Paul', 62000, 'UK', 'Liverpool')");
+            Act(415, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(22, 'John', 62000, 'UK', 'Liverpool')");
 
             /* Germany*/
-            Act(416,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(61, 'Tom', 50000, 'GER', 'Berlin')");
-            Act(417,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(62, 'Alex', 60000, 'GER', 'Berlin')");
-            Act(418,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(63, 'Bob', 66000, 'GER', 'Berlin')");
-            Act(419,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(64, 'Anne', 62000, 'GER', 'Berlin')");
-            Act(420,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(65, 'Pam', 72000, 'GER', 'Berlin')");
-            Act(421,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(66, 'Liz', 52000, 'GER', 'Berlin')");
+            Act(416, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(61, 'Tom', 50000, 'GER', 'Berlin')");
+            Act(417, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(62, 'Alex', 60000, 'GER', 'Berlin')");
+            Act(418, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(63, 'Bob', 66000, 'GER', 'Berlin')");
+            Act(419, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(64, 'Anne', 62000, 'GER', 'Berlin')");
+            Act(420, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(65, 'Pam', 72000, 'GER', 'Berlin')");
+            Act(421, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(66, 'Liz', 52000, 'GER', 'Berlin')");
 
-            Act(422,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(67, 'Anne', 62000, 'GER', 'Munich')");
-            Act(423,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(68, 'Claire', 62000, 'GER', 'Munich')");
-            Act(424,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(69, 'Marc', 58000, 'GER', 'Munich')");
-            Act(425,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(70, 'Carla', 62000, 'GER', 'Munich')");
-            Act(426,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(71, 'Mary', 64000, 'GER', 'Munich')");
-            Act(427,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(72, 'Martha', 63000, 'GER', 'Munich')");
+            Act(422, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(67, 'Anne', 62000, 'GER', 'Munich')");
+            Act(423, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(68, 'Claire', 62000, 'GER', 'Munich')");
+            Act(424, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(69, 'Marc', 58000, 'GER', 'Munich')");
+            Act(425, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(70, 'Carla', 62000, 'GER', 'Munich')");
+            Act(426, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(71, 'Mary', 64000, 'GER', 'Munich')");
+            Act(427, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(72, 'Martha', 63000, 'GER', 'Munich')");
 
-            Act(428,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(80, 'Mike', 62000, 'GER', 'Tuebingen')");
-            Act(429,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(81, 'Paul', 62000, 'GER', 'Tuebingen')");
-            Act(430,"INSERT INTO people(Id, Name, Salary, country, city) VALUES(82, 'John', 62000, 'GER', 'Tuebingen')");
+            Act(428, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(80, 'Mike', 62000, 'GER', 'Tuebingen')");
+            Act(429, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(81, 'Paul', 62000, 'GER', 'Tuebingen')");
+            Act(430, "INSERT INTO people(Id, Name, Salary, country, city) VALUES(82, 'John', 62000, 'GER', 'Tuebingen')");
 
             /* Queries */
 
-            CheckResults(7,2,"select city, avg(Salary), count(*) as numPeople from people where country = 'GER' group by city having count(*) > 4",
+            CheckResults(7, 2, "select city, avg(Salary), count(*) as numPeople from people where country = 'GER' group by city having count(*) > 4",
                 "[{CITY:'Berlin',AVG:60333.3333333333,NUMPEOPLE:6},{CITY:'Munich',AVG:61833.3333333333,NUMPEOPLE:6}]");
+            /* MariaDB examples 
+            Act(431, "CREATE TABLE student (\"name\" CHAR, test CHAR, score INT)");
+            Act(432, "INSERT INTO student VALUES" +
+              "('Chun', 'SQL', 75), ('Chun', 'Tuning', 73)," +
+              "('Esben', 'SQL', 43), ('Esben', 'Tuning', 31)," +
+              "('Kaolin', 'SQL', 56), ('Kaolin', 'Tuning', 88)," +
+              "('Tatiana', 'SQL', 87), ('Tatiana', 'Tuning', 83)");
+            CheckResults(7, 3, "SELECT \"name\", test, score, " +
+                "AVG(score) OVER (PARTITION BY test) AS average_by_test," +
+                "AVG(score) OVER (PARTITION BY name) AS average_by_name FROM student",
+                "[{name:'Chun',TEST:'SQL',SCORE:75,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:74}," +
+                "{name:'Chun',TEST:'Tuning',SCORE:73,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:74}," +
+                "{name:'Esben',TEST:'SQL',SCORE:43,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:37}," +
+                "{name:'Esben',TEST:'Tuning',SCORE:31,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:37}," +
+                "{name:'Kaolin',TEST:'SQL',SCORE:56,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:72}," +
+                "{name:'Kaolin',TEST:'Tuning',SCORE:88,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:72}," +
+                "{name:'Tatiana',TEST:'SQL',SCORE:87,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:85,}" +
+                "{name:'Tatiana',TEST:'Tuning',SCORE:83,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:85}]");
+            Act(433, "CREATE TABLE users (email CHAR,first_name CHAR, last_name CHAR,  account_type CHAR)");
+            Act(434, "INSERT INTO users VALUES ('admin@boss.org', 'Admin', 'Boss', 'admin')," +
+                "('bob.carlsen@foo.bar', 'Bob', 'Carlsen','regular'),('eddie.stevens@data.org', 'Eddie', 'Stevens', 'regular')," +
+                "('john.smith@xyz.org', 'John', 'Smith','regular'),('root@boss.org', 'Root', 'Chief', 'admin')");
+            CheckResults(7, 4, "SELECT row_number() OVER (PARTITION BY account_type ORDER BY email) AS rnum, " +
+                "email, first_name, last_name. account_type FROM users", 
+                "[{RNUM:1,EMAIL:admin@boss.org',FIRST_NAME:'Admin',LAST_NAME:'Boss',ACCOUNT_TYPE:'admin'},"+
+                "{RNUM:2,EMAIL:root@boss.org',FIRST_NAME:'Root',LAST_NAME:'Chief',ACCOUNT_TYPE:'admin'}" +
+                "{RNUM:1,EMAIL:'bob.carlsen@foo.bar',FIRST_NAME:'Bob',LAST_NAME:'Carlsen',ACCOUNT_TYPE:'regular'},"+
+                "{RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'},"+
+                "{RNUM:3,EMAIL:'jphn.smaith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'}]"); */
             Rollback();
         }
         void Test8()
@@ -534,49 +567,77 @@ namespace Test
                 return;
             testing = 12;
             Begin();
-            Act(139,"create table sce(a int primary key,b char)");
-            Act(140,"insert into sce values(12,'Zodiac')");
-            Act(141,"insert into sce values(13,'Bakers')");
-            Act(142,"insert into sce values(14,'Fortnight')");
-            Act(143,"create table dst(c int)");
-            Act(144,"insert into dst (select a from sce where b<'H')");
+            Act(139, "create table sce(a int primary key,b char)");
+            Act(140, "insert into sce values(12,'Zodiac')");
+            Act(141, "insert into sce values(13,'Bakers')");
+            Act(142, "insert into sce values(14,'Fortnight')");
+            Act(143, "create table dst(c int)");
+            Act(144, "insert into dst (select a from sce where b<'H')");
             CheckResults(12, 1, "select * from dst", "[{C:13},{C:14}]");
             CheckResults(12, 2, "select a from sce where b in('Fortnight','Zodiac')",
                "[{A:12},{A:14}]");
             CheckResults(12, 3, "select * from dst where c in (select a from sce where b='Bakers')",
                 "[{C:13}]");
-            Act(145,"insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')");
+            Act(145, "insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')");
             CheckResults(12, 4, "select * from dst", "[{C:13},{C:14},{C:18}]");
-            Act(146,"insert into dst (select min(x.c)-3 from dst x)");
-            CheckResults(12, 5, "select * from dst", "[{C:13},{C:14},{C:18},{C:10}]"); 
+            Act(146, "insert into dst (select min(x.c)-3 from dst x)");
+            CheckResults(12, 5, "select * from dst", "[{C:13},{C:14},{C:18},{C:10}]");
             if (commit)
             {
-                Prepare(147,"Ins1", "insert into sce values(?,?)");
-                Prepare(148,"Upd1", "update sce set a=? where b=?");
-                Prepare(149,"Del1", "delete from dst where c>?");
-                Prepare(150,"Ins2", "insert into dst (select char_length(b) from sce where a=?)");
-                Prepare(151,"Sel1", "select * from dst where c<?");
-                Execute(152,"Ins1", "" + 5, "'HalfDozen'");
-                Execute(153,"Upd1", "" + 6, "'HalfDozen'");
-                Execute(154,"Del1", "" + 10);
-                Execute(156,"Ins2", "" + 6);
+                Prepare(147, "Ins1", "insert into sce values(?,?)");
+                Prepare(148, "Upd1", "update sce set a=? where b=?");
+                Prepare(149, "Del1", "delete from dst where c>?");
+                Prepare(150, "Ins2", "insert into dst (select char_length(b) from sce where a=?)");
+                Prepare(151, "Sel1", "select * from dst where c<?");
+                Execute(152, "Ins1", "" + 5, "'HalfDozen'");
+                Execute(153, "Upd1", "" + 6, "'HalfDozen'");
+                Execute(154, "Del1", "" + 10);
+                Execute(156, "Ins2", "" + 6);
                 CheckResults(12, 6, "select * from sce where a=6", "[{A:6,B:'HalfDozen'}]");
                 CheckResults(12, 7, "select * from dst", "[{C:10},{C:9}]");
                 CheckExecuteResults(12, 8, "[{C:9}]", "Sel1", "" + 10);
             }
-            Act(157,"create table p(q int primary key,r char,a int)");
-            Act(158,"create view v as select q,r as s,a from p");
-            Act(159,"insert into v(s) values('Twenty'),('Thirty')");
-            Act(160,"update v set s='Forty two' where q=1");
+            Act(157, "create table p(q int primary key,r char,a int)");
+            Act(158, "create view v as select q,r as s,a from p");
+            Act(159, "insert into v(s) values('Twenty'),('Thirty')");
+            Act(160, "update v set s='Forty two' where q=1");
             CheckResults(12, 9, "select r from p", "[{R:'Forty two'},{R:'Thirty'}]");
-            Act(161,"delete from v where s='Thirty'");
-            Act(162,"insert into p(r) values('Fifty')");
-            Act(163,"create table t(s char,u int)");
-            Act(164,"insert into t values('Forty two',42),('Fifty',48)");
-            Act(165,"create view w as select * from t natural join v");
-            Act(166,"update w set u=50,a=21 where q=2");
-            CheckResults(12,10,"table p", "[{Q:1,R:'Forty two'},{Q:2,R:'Fifty',A:21}]");
-            CheckResults(12,11, "table t", "[{S:'Forty two',U:42},{S:'Fifty',U:50}]");
+            Act(161, "delete from v where s='Thirty'");
+            Act(162, "insert into p(r) values('Fifty')");
+            Act(163, "create table t(s char,u int)");
+            Act(164, "insert into t values('Forty two',42),('Fifty',48)");
+            Act(165, "create view w as select * from t natural join v");
+            Act(166, "update w set u=50,a=21 where q=2");
+            CheckResults(12, 10, "table p", "[{Q:1,R:'Forty two'},{Q:2,R:'Fifty',A:21}]");
+            CheckResults(12, 11, "table t", "[{S:'Forty two',U:42},{S:'Fifty',U:50}]");
+            /* Fritz Laux example */
+            Act(450, "create table umsatz (kunde char(12) primary key, KdUmsatz numeric(8,2))");
+            Act(451, "insert into umsatz values ('Bosch' , 17000.00),('Boss' ,  13000.00), ('Daimler',20000.00)");
+            Act(452, "insert into umsatz values ('Siemens', 9000.00),('Porsche', 5000.00), ('VW'     , 8000.00), ('Migros' , 4000.00)");
+            Act(453, "CREATE VIEW umsatz_V(kunde, KdUmsatz, runningSalesShare)" +
+                "AS SELECT kunde, KdUmsatz," +
+                        "(SELECT SUM(KdUmsatz) FROM umsatz WHERE KdUmsatz >= u.KdUmsatz) /" +
+                    "(SELECT SUM(KdUmsatz) FROM umsatz)" +
+                "FROM umsatz AS u");
+            CheckResults(12, 12, "SELECT CASE WHEN runningSalesShare <= 0.5 THEN 'A' "+
+                            "WHEN runningSalesShare > 0.5  AND "+
+                                 "runningSalesShare <= 0.85 THEN 'B' "+
+                            "WHEN runningSalesShare > 0.85 THEN 'C' "+
+                            "ELSE NULL "+
+                            "END AS Category,"+
+                       "kunde, KdUmsatz,"+
+                       "CAST(CAST(KdUmsatz / (SELECT SUM(KdUmsatz) FROM umsatz_V) * 100 "+
+                            "as decimal(6, 2))"+
+                       "as char(6)) || ' %' AS share "+
+                "FROM umsatz_V "+
+                "ORDER BY KdUmsatz DESC", 
+                "[{CATEGORY:'A',KUNDE:'Daimler',KDUMSATZ:20000.00,SHARE:'26.32 %'},"+
+                "{CATEGORY:'A',KUNDE:'Bosch',KDUMSATZ:17000.00,SHARE:'22.37 %'}," +
+                "{CATEGORY:'B',KUNDE:'Boss',KDUMSATZ:13000.00,SHARE:'17.11 %'}," +
+                "{CATEGORY:'B',KUNDE:'Siemens',KDUMSATZ:9000.00,SHARE:'11.84 %'}," +
+                "{CATEGORY:'C',KUNDE:'VW',KDUMSATZ:8000.00,SHARE:'10.53 %'}," +
+                "{CATEGORY:'C',KUNDE:'Porsche',KDUMSATZ:5000.00,SHARE:'6.58 %'}," +
+                "{CATEGORY:'C',KUNDE:'Migros',KDUMSATZ:4000.00,SHARE:'5.26 %'}]");
             Rollback();
         }
         void Test13()

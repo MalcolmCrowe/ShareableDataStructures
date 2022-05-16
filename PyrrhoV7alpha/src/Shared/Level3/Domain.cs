@@ -556,6 +556,16 @@ namespace Pyrrho.Level3
             }
             if (mem.Contains(Structure))
             { sb.Append(" structure="); sb.Append(Uid(structure)); }
+            if (mem.Contains(Constraints))
+            { 
+                var cm = " constraints=("; 
+                for (var b=constraints.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key()));
+                }
+                if (cm == ",") sb.Append(")");
+            }
             return sb.ToString();
         }
         internal static Sqlx Equivalent(Sqlx kind)
@@ -3715,7 +3725,7 @@ namespace Pyrrho.Level3
             var na = cx.Fix(aggs);
             if (aggs != na)
                 r += (Aggs, na);
-            if (mem.Contains(Default))
+            if (mem.Contains(Default) && defaultValue?.dataType!=null)
                 r += (Default, defaultValue.Fix(cx));
             cx.obs += (np, r);
             cx.done += (np, r);

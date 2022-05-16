@@ -2140,5 +2140,6 @@ namespace Pyrrho.Common
     /// The OrderCategory enumeration. Row of this type are placed in the database so the following values cannot be changed.
     /// </summary>
     [Flags]
-    internal enum OrderCategory { None = 0, Equals = 1, Full = 2, Relative = 4, Map = 8, State = 16, Primitive = 32 };
+    internal enum OrderCategory 
+    { None = 0, Equals = 1, Full = 2, Relative = 4, Map = 8, State = 16, Primitive = 32 };
 }

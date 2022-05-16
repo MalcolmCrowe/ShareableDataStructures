@@ -111,7 +111,7 @@ namespace Pyrrho.Level2
                     }
                 }
             }
-            domain = dt + (DBObject._Depth,d);
+            domain = (Domain)dt.Relocate(pp) + (DBObject._Depth,d);
         }
         /// <summary>
         /// Constructor: a new Domain definition from the buffer
@@ -302,7 +302,8 @@ namespace Pyrrho.Level2
         /// <param name="pr">the precision</param>
         /// <param name="sc">the scale</param>
         /// <param name="dv">the default value</param>
-        /// <param name="pb">the local database</param>
+        /// <param name="pp">the physical position</param>
+        /// <param name="cx">the context</param>
         public PDateType(string nm, Sqlx ki, Sqlx st, Sqlx en, int pr, byte sc, string dv, 
             long pp, Context cx)
             : base(Type.PDateType,nm,ki,pr,sc,CharSet.UCS,"",dv,

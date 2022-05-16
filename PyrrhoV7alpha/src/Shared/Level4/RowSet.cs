@@ -1076,6 +1076,9 @@ namespace Pyrrho.Level4
             var ts = cx.FixV(rsTargets);
             if (ts!=rsTargets)
                 r += (RSTargets, ts);
+            var tg = cx.Fix(target);
+            if (tg != target)
+                r += (From.Target, tg);
             var ag = cx.Fix(assig);
             if (ag != assig)
                 r += (Assig, ag);
@@ -1956,6 +1959,7 @@ namespace Pyrrho.Level4
             {
                 var p = b.value();
                 var tc = (DBObject)cx.db.objects[p] ?? cx.obs[p];
+                var s = tc.ToString();
                 var ci = (ObInfo)cx.role.infos[tc.defpos];
                 var nm = ci?.name ?? ((SqlValue)tc).name;
                 ma += (nm, tc);
@@ -2163,6 +2167,20 @@ namespace Pyrrho.Level4
                    + (RSTargets, new CTree<long, long>(op, ts.defpos))
                    + (Asserts, fa)
                    + (_Depth,cx.Depth(fd,ts,ob));
+            if (ts is TableRowSet tt)
+            {
+                if (tt.indexes != CTree<CList<long>, long>.Empty)
+                    r += (Table.Indexes, tt.indexes);
+                if (tt.skeys.Count>0)
+                {
+                    var ks = CList<long>.Empty;
+                    for (var b = tt.skeys.First(); b != null; b = b.Next())
+                        ks += tt.sIMap[b.value()];
+                    r += (Index.Keys, ks);
+                }
+            }
+            if (ts.keys != CList<long>.Empty)
+                r += (Index.Keys, ts.keys);
             if (a!=null)
                 r += (_Alias,a);
             return r;
@@ -2297,6 +2315,38 @@ namespace Pyrrho.Level4
             base.Show(sb);
             if (mem.Contains(_Alias)) { sb.Append(" Alias "); sb.Append(alias); }
             if (mem.Contains(Target)) { sb.Append(" Target="); sb.Append(Uid(target)); }
+            if (mem.Contains(Table.Indexes)) 
+            {   
+                var indexes = (CTree<CList<long>, long>)mem[Table.Indexes];
+                if (indexes.Count > 0)
+                {
+                    sb.Append(" Indexes=[");
+                    var cm = "";
+                    for (var b = indexes.First(); b != null; b = b.Next())
+                    {
+                        sb.Append(cm); cm = ",";
+                        var cn = "(";
+                        for (var c = b.key().First(); c != null; c = c.Next())
+                        {
+                            sb.Append(cn); cn = ",";
+                            sb.Append(Uid(c.value()));
+                        }
+                        sb.Append(")"); sb.Append(Uid(b.value()));
+                    }
+                }
+                sb.Append("]");
+            }
+            if (mem.Contains(Index.Keys) && keys.Count>0)
+            {
+                sb.Append(" Keys=(");
+                var cm = "";
+                for (var b=keys.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.value()));
+                }
+                sb.Append(")");
+            }
         }
         // shareable as of 26 April 2021
         internal class FromCursor : Cursor
@@ -2738,6 +2788,35 @@ namespace Pyrrho.Level4
             var ma = (CTree<long, CTree<long, bool>>)m[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
             if (ma.Count > 0 || r.matching.Count > 0)
                 m += (Matching, r.CombineMatching(ma, r.matching));
+            for (var b = r.rsTargets.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is TableRowSet tt)
+                {
+                    // see what indexes we can use
+                    if (tt.indexes != CTree<CList<long>, long>.Empty)
+                    {
+                        var xs = CTree<CList<long>,long>.Empty;
+                        for (var x = tt.indexes.First();x!=null;x=x.Next())
+                        {
+                            var k = x.key();
+                            for (var c = k.First(); c != null; c = c.Next())
+                                if (!fi.Contains(c.value()))
+                                    goto next;
+                            xs += (k, x.value());
+                            next:;
+                        }
+                        m += (Table.Indexes, xs);
+                    }
+                    if (tt.skeys.Count > 0)
+                    {
+                        var ks = CList<long>.Empty;
+                        for (var c = tt.skeys.First(); c != null; c = c.Next())
+                            if (fi.Contains(c.value()))
+                                ks += tt.sIMap[c.value()];
+                        m += (Index.Keys, ks);
+                    }
+                }
+            if (r.keys != CList<long>.Empty)
+                m += (Index.Keys, r.keys);
             return m + (_Finder, fi)+(_Domain,dm.defpos)+(_Source,r.defpos) + (RSTargets,r.rsTargets)
                 +(_Depth,cx.Depth(dm,r));
         }
@@ -3869,7 +3948,7 @@ namespace Pyrrho.Level4
         internal override Basis _Fix(Context cx)
         {
             var r = (TableRowSet)base._Fix(cx);
-            r += (Table.Indexes, ((Table)cx.db.objects[target]).IIndexes(r.iSMap));
+            r += (Table.Indexes, ((Table)cx.db.objects[r.target]).IIndexes(r.iSMap));
             cx.Add(r);
             return r;
         }

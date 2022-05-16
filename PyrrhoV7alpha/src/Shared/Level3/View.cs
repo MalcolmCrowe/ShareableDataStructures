@@ -360,6 +360,20 @@ namespace Pyrrho.Level3
         {
             return new View(dp, mem);
         }
+        internal override Database Drop(Database d, Database nd, long p)
+        {
+            for (var b = d.roles.First(); b != null; b = b.Next())
+            {
+                var ro = (Role)d.objects[b.value()];
+                if (ro.infos[defpos] is ObInfo oi)
+                {
+                    ro -= oi;
+                    ro += (Role.DBObjects, ro.dbobjects - oi.name);
+                    nd += (ro, p);
+                }
+            }
+            return base.Drop(d, nd, p);
+        }
         /// <summary>
         /// a readable version of the View
         /// </summary>

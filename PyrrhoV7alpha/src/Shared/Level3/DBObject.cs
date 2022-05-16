@@ -710,7 +710,10 @@ namespace Pyrrho.Level3
             if (domain < -1L)
             {
                 sb.Append(' ');
-                sb.Append(((Domain)Context._system.db.objects[domain]).kind);
+                if (Context._system.db.objects[domain] is Domain dm)
+                    sb.Append(dm.kind);
+                else
+                    sb.Append(Uid(domain));
             }
             else if (domain>0)
             { sb.Append(" Domain "); sb.Append(Uid(domain)); }
