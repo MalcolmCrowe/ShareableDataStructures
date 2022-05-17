@@ -876,6 +876,8 @@ namespace Pyrrho.Level4
         {
             var ab = a?.First();
             var bb = b?.First();
+            if (a.CompareTo(b) == 0)
+                return true;
             for (; ab != null && bb != null; ab = ab.Next(), bb = bb.Next())
                 if (((SqlValue)cx.obs[ab.value()])._MatchExpr(cx, (SqlValue)cx.obs[bb.value()], this))
                     return false;
@@ -2309,6 +2311,20 @@ namespace Pyrrho.Level4
             var trs = new TableRowSet(cx.GetUid(), cx, target, domain);
             if (trs.First(cx) != null)
                 throw new DBException("44000", c.check).ISO();
+        }
+        internal override RowSet Sort(Context cx, CList<long> os, bool dct)
+        {
+            if (SameOrder(cx, os, rowOrder) && ((!dct) || dct==distinct))
+                return this;
+            var sce = (RowSet)cx.obs[source];
+            var ns = sce.Sort(cx, os, dct);
+            if (ns.SameOrder(cx, os, ns.rowOrder) && ((!dct) || dct == ns.distinct))
+            {
+                var r = this + (_Source, ns.defpos) + (RowOrder, os) + (Distinct, dct)
+                    + (_Finder, ns.finder);
+                return (RowSet)cx.Add(r);
+            }
+            return base.Sort(cx, os, dct);
         }
         internal override void Show(StringBuilder sb)
         {
@@ -4071,6 +4087,21 @@ namespace Pyrrho.Level4
             return new BTree<long, TargetActivation>(target,
                 new TableActivation(cx, this, fm, PTrigger.TrigType.Delete));
         }
+        internal override RowSet Sort(Context cx, CList<long> os, bool dct)
+        {
+            if (indexes.Contains(os))
+            {
+                var ot = (RowSet)cx.Add(this + (Index.Keys, os) + (RowOrder, os));
+                if (!dct)
+                    return ot;
+                var ix = (Index)cx.obs[indexes[os]];
+                if (ix.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
+                    ix.flags.HasFlag(PIndex.ConstraintType.Unique))
+                    return ot;
+                return (RowSet)cx.Add(new DistinctRowSet(cx, ot));
+            }
+            return base.Sort(cx, os, dct);
+        }
         internal override void Show(StringBuilder sb)
         {
             base.Show(sb);
@@ -4667,39 +4698,38 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Build(Context cx)
         {
-            var _cx = new Context(cx);
-            _cx.result = cx.result;
             var sce = (RowSet)cx.obs[source];
-            _cx.finder += sce.finder;
-            var dm = new Domain(Sqlx.ROW,cx, keys);
-            var tree = new RTree(sce.defpos,cx,dm, 
+            var oc = cx.finder;
+            cx.finder += sce.finder;
+            var dm = new Domain(Sqlx.ROW, cx, keys);
+            var tree = new RTree(sce.defpos, cx, dm,
                 distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, TreeBehaviour.Allow);
-            for (var e = sce.First(_cx); e != null; e = e.Next(_cx))
+            for (var e = sce.First(cx); e != null; e = e.Next(cx))
             {
-                var vs = CTree<long,TypedValue>.Empty;
-                _cx.cursors += (sce.defpos, e);
+                var vs = CTree<long, TypedValue>.Empty;
+                cx.cursors += (sce.defpos, e);
                 for (var b = rowOrder.First(); b != null; b = b.Next())
                 {
                     var s = cx.obs[b.value()];
-                    vs += (s.defpos,s.Eval(_cx));
+                    vs += (s.defpos, s.Eval(cx));
                 }
                 var rw = new TRow(dm, vs);
-                RTree.Add(ref tree, rw, SourceCursors(_cx));
+                RTree.Add(ref tree, rw, SourceCursors(cx));
             }
-            cx._Add(_cx.obs[sce.defpos]); 
-            return (RowSet)New(cx,E+(_Built,true)+(Index.Tree,tree.mt)+(_RTree,tree));
+            cx.finder = oc;
+            return (RowSet)New(cx, E + (_Built, true) + (Index.Tree, tree.mt) + (_RTree, tree));
         }
-        protected override Cursor _First(Context _cx)
+        protected override Cursor _First(Context cx)
         {
             if (rtree == null || rtree.rows.Count == 0L)
                 return null;
-            return OrderedCursor.New(_cx, this, RTreeBookmark.New(_cx, rtree));
+            return OrderedCursor.New(cx, this, RTreeBookmark.New(cx, rtree));
         }
-        protected override Cursor _Last(Context _cx)
+        protected override Cursor _Last(Context cx)
         {
             if (rtree == null || rtree.rows.Count == 0L)
                 return null;
-            return OrderedCursor.New(_cx, this, RTreeBookmark.New(rtree, _cx));
+            return OrderedCursor.New(cx, this, RTreeBookmark.New(rtree, cx));
         }
         // shareable as of 26 April 2021
         internal class OrderedCursor : Cursor

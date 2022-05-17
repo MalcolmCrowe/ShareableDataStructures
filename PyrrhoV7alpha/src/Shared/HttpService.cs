@@ -114,9 +114,9 @@ namespace Pyrrho
             string url,bool etags)
         {
             var r = (RowSet)cx.obs[cx.result];
-            if (r!=null)
+            if (r != null)
                 cx.finder += r.finder;
-            Cursor e = r?.First(cx);
+             Cursor e = r?.First(cx);
             ETag et = ETag.Empty;
             if (e!=null && etags)
             {
@@ -124,7 +124,7 @@ namespace Pyrrho
                     et = e._Rvv(cx);
                 cx.funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty;
                 e = r.First(cx);
-            }
+             }
             Header(rs, tr, cx, url,et.assertMatch.ToString());
             if (r!=null)
             {
