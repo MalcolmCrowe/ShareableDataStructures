@@ -1445,16 +1445,7 @@ namespace Pyrrho.Level4
             {
                 sb.Append(":"); sb.Append(Uid(domain));
             }
-            var cm = "(";
-            if (needed != null && needed != CTree<long, Finder>.Empty)
-            {
-                sb.Append(" NEEDED: "); cm = "";
-                for (var b = needed.First(); b != null; b = b.Next())
-                {
-                    sb.Append(cm); cm = ",";
-                    sb.Append(Uid(b.key()));
-                }
-            }
+            var cm = "";
             if (keys.Count != 0)
             {
                 cm = " key (";
@@ -2071,7 +2062,9 @@ namespace Pyrrho.Level4
                         ?? throw new DBException("42112", c.ident);
                     while (tc is SqlCopy sc)
                         tc = cx.obs[sc.copyFrom]??(DBObject)cx.db.objects[sc.copyFrom];
-                    var sv = new SqlCopy(c.iix.dp, cx, c.ident, ic.iix.dp, tc.defpos);
+                    var sv = (tc is TableColumn) ?
+                        new SqlCopy(c.iix.dp, cx, c.ident, ic.iix.dp, tc.defpos) :
+                        (SqlValue)tc;
                     cx.Add(sv);
                     tr += (tc.defpos, sv.defpos);
                     vs += sv;

@@ -28,7 +28,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("16 May 2022 Repeatable tests");
+                Console.WriteLine("19 May 2022 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -403,15 +403,8 @@ namespace Test
             if (commit || (test > 0 && test != 10)) //This test runs if commit is false
                 return;
             testing = 10;
-            try
-            {
-                Act(1,"create table RWC(A int primary key,B char,C int)");
-                Act(2,"create table RRC(D char primary key,E int references RWC)");
-            }
-            catch (Exception) {
-            }
-            Act(100,"delete from RWC");
-            Act(101,"delete from RRC");
+            Act(100,"create table RWC(A int primary key,B char,C int)");
+            Act(101,"create table RRC(D char primary key,E int references RWC)");
             Act(102,"insert into RWC values(42,'Life, the Universe',1)");
             Act(103,"insert into RWC values(52,'Weeks in the year',2)");
             Act(104,"insert into RRC values('Douglas Adams',42)");

@@ -645,7 +645,10 @@ namespace Pyrrho.Level3
            BTree<long, object> m = null)
             : base(dp, _Mem(dp, cx, fp, m) + (CopyFrom, cf.defpos) +(Name,nm) 
                   + (_Domain,cf.domain))
-        { }
+        { 
+            if (dp == cf.defpos) // someone has forgotten the from clause
+                throw new DBException("42112", nm);
+        }
         static BTree<long,object> _Mem(long dp, Context cx, long fp,BTree<long,object>m)
         {
             m = m ?? BTree<long, object>.Empty;

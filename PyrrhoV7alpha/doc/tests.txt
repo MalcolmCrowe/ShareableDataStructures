@@ -359,8 +359,10 @@ alter table ad add c char not null
 alter table ad add c char default 'XX'
 insert into ad(a,b) values(2,'Two')
 select * from ad
+->[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]
 alter table ad drop b
 select * from ad
+->[{A:20},{A:2,C:'XX'}]
 alter table ad add primary key(a)
 insert into ad values(21,'AB')
 create table de (d int references ad)
@@ -374,8 +376,10 @@ drop ad
 drop de cascade
 alter table ad drop primary key(a)
 select * from ad
+->[{A:20},{A:2,C:'XX'},{A:21,C:'AB'}]
 insert into ad(a) values(13)
 select * from ad
+->[{A:20},{A:2,C:'XX'},{A:21,C:'AB'},{A:13,C:'XX'}]
 drop ad
 select * from ad
  -> Table AD undefined

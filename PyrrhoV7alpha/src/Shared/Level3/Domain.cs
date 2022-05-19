@@ -19,8 +19,8 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// In this work a Domain includes details of columns of structured types. 
-    /// Parsing results in construction of many "ad-hoc" domains, and when database 
-    /// objects are committed, the Domain.Create method checks for a similar data type
+    /// Parsing results in construction of many "ad-hoc" domains with heap uids or -1L. 
+    /// When database objects are committed, the Domain.Create method checks for a similar data type
     /// already in the database. The Domain.CompareTo method supports this comparison.
     /// Column uids in SqlValues and RowSets are SqlValues that include
     /// evaluation instructions: Domain.rowType comparsion checks for matching columns
@@ -320,6 +320,9 @@ namespace Pyrrho.Level3
         }
         public static Domain operator+(Domain d,(long,object)x)
         {
+            var (k, v) = x;
+            if (v!=null && !(v is IComparable))
+                throw new PEException("PE900");
             return (Domain)d.New(d.mem + x);
         }
         public static Domain operator-(Domain d,long x)
@@ -491,7 +494,8 @@ namespace Pyrrho.Level3
             { sb.Append(" elType="); sb.Append(elType); }
             if (mem.Contains(End)) { sb.Append(" End="); sb.Append(end); }
             // if (mem.Contains(Names)) { sb.Append(' '); sb.Append(names); } done in Columns
-            if (mem.Contains(OrderCategory) && orderflags != Common.OrderCategory.None)
+            if (mem.Contains(OrderCategory) && orderflags != Common.OrderCategory.None
+                && orderflags!=Common.OrderCategory.Primitive)
             { sb.Append(' '); sb.Append(orderflags); }
             if (mem.Contains(OrderFunc)) { sb.Append(" OrderFunc="); sb.Append(orderFunc); }
             if (mem.Contains(Precision) && prec != 0) { sb.Append(" Prec="); sb.Append(prec); }
@@ -508,10 +512,6 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(GetType().Name);
-            if (defpos>=0)
-            {
-                sb.Append(" ");sb.Append(Uid(defpos));
-            }
             if (name != "")
             {
                 sb.Append(" "); sb.Append(name);
@@ -1137,102 +1137,82 @@ namespace Pyrrho.Level3
         }
         public virtual int CompareTo(object obj)
         {
+            if (obj == null)
+                return 1;
             var that = (Domain)obj;
-            if (that == null)
-                return 1;
-            if (this is UDType ut)
-            {
-                if (that is UDType tt)
-                    return ut.name.CompareTo(tt.name);
-                return -1;
-            }
-            if (that is UDType)
-                return 1;
-            var c = ((int)kind).CompareTo((int)that.kind);
+            var c = kind.CompareTo(that.kind);
             if (c != 0)
                 return c;
-            c = elType.CompareTo(that.elType);
-            if (c != 0)
-                return c;
-            c = prec.CompareTo(that.prec);
-            if (c != 0)
-                return c; 
-            c = scale.CompareTo(that.scale);
-            if (c != 0)
-                return c; 
-            c = start.CompareTo(that.start);
-            if (c != 0)
-                return c; 
-            c = end.CompareTo(that.end);
-            if (c != 0)
-                return c; 
-            c = AscDesc.CompareTo(that.AscDesc);
-            if (c != 0)
-                return c; 
-            c = notNull.CompareTo(that.notNull);
-            if (c != 0)
-                return c; 
-            c = nulls.CompareTo(that.nulls);
-            if (c != 0)
-                return c; 
-            c = Comp(charSet, that.charSet);
-            if (c != 0)
-                return c; 
-            c = Comp(culture?.ToString(), that.culture?.ToString());
-            if (c != 0)
-                return c; 
-            c = Comp(elType, that.elType);
-            if (c != 0)
-                return c; 
-            c = Comp(defaultValue, that.defaultValue);
-            if (c != 0)
-                return c; 
-            c = Comp(defaultString, that.defaultString);
-            if (c != 0)
-                return c; 
-            c = display.CompareTo(that.display);
-            if (c != 0)
-                return c; 
-            c = Comp(abbrev, that.abbrev);
-            if (c != 0)
-                return c; 
-            c = Comp(constraints, that.constraints);
-            if (c != 0)
-                return c; 
             c = Comp(iri, that.iri);
             if (c != 0)
-                return c; 
-            c = Comp(provenance, that.provenance);
+                return c;
+            c = Comp(abbrev, that.abbrev);
             if (c != 0)
                 return c;
-   // This routine is used most importantly in Domain.Create where structure is
-   // more important than representation. See Sourcentro sec 3.2.5
-   //         c = Comp(representation, that.representation); 
-   //         if (c != 0)
-   //             return c;
-            c = Comp(rowType, that.rowType);
+            c = Comp(constraints, that.constraints);
             if (c != 0)
                 return c;
-            c = Comp(structure, that.structure);
+            c = Comp(defaultString, that.defaultString);
             if (c != 0)
                 return c;
-            c = Comp(orderFunc?.defpos, that.orderFunc?.defpos); 
+            c = Compare(defaultValue, that.defaultValue);
             if (c != 0)
                 return c;
-            c = orderflags.CompareTo(that.orderflags); 
-            if (c != 0)
-                return c;
-            c = Comp(unionOf, that.unionOf); if (c != 0)
-                return c;
-            if (name!="" && that.name!="")
-                c = Comp(name, that.name);
-            if (c != 0)
-                return c;
-            c = sensitive.CompareTo(that.sensitive);
-            return c;
-        }
+            switch (kind) {
+                case Sqlx.Null:
+                case Sqlx.VALUE:
+                case Sqlx.CONTENT:
+                case Sqlx.BLOB:
+                case Sqlx.BOOLEAN:
+                case Sqlx.XML: 
+                    return 0;
+                case Sqlx.UNION:
+                case Sqlx.TABLE:
+                case Sqlx.ROW:
+                    return defpos.CompareTo(that.defpos);
+                case Sqlx.TYPE:
+                    return name.CompareTo(that.name);
+                case Sqlx.CHAR:
+                case Sqlx.NCHAR:
+                case Sqlx.PASSWORD:
+                case Sqlx.CLOB:
+                case Sqlx.NCLOB:
+                    c = Comp(culture.Name, that.culture.Name);
+                    if (c != 0)
+                        return c;
+                    c = Comp(prec, that.prec);
+                    return c;
+                case Sqlx.NUMERIC:
+                case Sqlx.DECIMAL:
+                case Sqlx.DEC:
+                    c = Comp(scale, that.scale);
+                    if (c != 0)
+                        return c;
+                    goto case Sqlx.INT;
+                case Sqlx.INT:
+                case Sqlx.SMALLINT:
+                case Sqlx.BIGINT:
+                case Sqlx.INTEGER:
+                case Sqlx.FLOAT:
+                case Sqlx.DOUBLE:
+                case Sqlx.REAL:
+                    c = Comp(prec, that.prec);
+                    return c;
+                case Sqlx.DATE:
+                case Sqlx.TIME:
+                case Sqlx.TIMESTAMP:
+                case Sqlx.INTERVAL:
+                    c = Comp(start, that.start);
+                    if (c != 0)
+                        return c;
+                    c = Comp(end, that.end);
+                    return c;
+                default:
+                    return ToString().CompareTo(that.ToString());
+            }
+        } 
         /// <summary>
-        /// Compare two values of this obs type.
+        /// Compare two values of this type.
         /// (v5.1 allow the second to have type Document in all cases)
         /// </summary>
         /// <param name="a">the first value</param>
@@ -3986,13 +3966,13 @@ namespace Pyrrho.Level3
                 u += (OrderCategory, oc);
             return u;
         }
-        public override int CompareTo(object obj)
+     /*   public override int CompareTo(object obj)
         {
             var that = (Domain)obj;
             if (that == null)
                 return 1;
             return defpos.CompareTo(that.defpos);
-        }
+        } */
         public override string ToString()
         {
             return kind.ToString();

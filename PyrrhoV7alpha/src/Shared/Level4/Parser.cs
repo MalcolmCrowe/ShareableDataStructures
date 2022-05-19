@@ -4796,10 +4796,10 @@ namespace Pyrrho.Level4
                     Mustbe(Sqlx.SET);
                     var o = new Ident(this);
                     Mustbe(Sqlx.ID);
-                    r+=(Domain.Charset,(CharSet)Enum.Parse(typeof(CharSet), o.ident, false));
+                    r += (Domain.Charset, (CharSet)Enum.Parse(typeof(CharSet), o.ident, false));
                 }
                 if (tok == Sqlx.COLLATE)
-                    r+=(Domain.Culture, new CultureInfo(ParseCollate()));
+                    r += (Domain.Culture, new CultureInfo(ParseCollate()));
             }
             else if (Match(Sqlx.NATIONAL, Sqlx.NCHAR))
             {
@@ -4824,7 +4824,7 @@ namespace Pyrrho.Level4
                 Next();
                 r = ParsePrecScale(r);
             }
-            else if (Match(Sqlx.FLOAT, Sqlx.REAL ,Sqlx.DOUBLE))
+            else if (Match(Sqlx.FLOAT, Sqlx.REAL, Sqlx.DOUBLE))
             {
                 r = r0 = Domain.Real;
                 if (tok == Sqlx.DOUBLE)
@@ -4832,7 +4832,7 @@ namespace Pyrrho.Level4
                 Next();
                 r = ParsePrecPart(r);
             }
-            else if (Match(Sqlx.INT, Sqlx.INTEGER ,Sqlx.BIGINT,Sqlx.SMALLINT))
+            else if (Match(Sqlx.INT, Sqlx.INTEGER, Sqlx.BIGINT, Sqlx.SMALLINT))
             {
                 r = r0 = Domain.Int;
                 Next();
@@ -4855,7 +4855,7 @@ namespace Pyrrho.Level4
                 r = r0 = Domain.Char;
                 Next();
             }
-            else if (Match(Sqlx.BLOB,Sqlx.XML))
+            else if (Match(Sqlx.BLOB, Sqlx.XML))
             {
                 r = r0 = Domain.Blob;
                 Next();
@@ -4863,7 +4863,7 @@ namespace Pyrrho.Level4
             else if (Match(Sqlx.DATE, Sqlx.TIME, Sqlx.TIMESTAMP, Sqlx.INTERVAL))
             {
                 Domain dr = r0 = Domain.Timestamp;
-                switch(tok)
+                switch (tok)
                 {
                     case Sqlx.DATE: dr = Domain.Date; break;
                     case Sqlx.TIME: dr = Domain.Timespan; break;
@@ -4905,7 +4905,9 @@ namespace Pyrrho.Level4
                 r = r0 = Domain.ObjectId;
                 Next();
             }
-            if (r == r0) 
+            if (r == null)
+                return null; // not a standard type
+            if (r == r0)
                 return r0; // completely standard
             // see if we know this type
             if (cx.db.types.Contains(r))
@@ -6565,11 +6567,12 @@ namespace Pyrrho.Level4
                 us = CList<long>.Empty;
                 for (var b = cs.First(); b != null; b = b.Next())
                 {
-                    var sc = (SqlCopy)cx.obs[b.value().iix.dp];
-                    ns += (sc.defpos, true);
-                    us += sc.defpos;
-                    re += (sc.defpos, cx._Dom(sc));
-                    iC += sc.copyFrom;
+                    var sd = (SqlValue)cx.obs[b.value().iix.dp];
+                    ns += (sd.defpos, true);
+                    us += sd.defpos;
+                    re += (sd.defpos, cx._Dom(sd));
+                    if (sd is SqlCopy sc)
+                        iC += sc.copyFrom;
                 }
             }
             SqlValue sv;

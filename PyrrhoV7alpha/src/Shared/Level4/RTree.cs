@@ -108,7 +108,7 @@ namespace Pyrrho.Level4
             :base(cx,rt.defpos,rt.domain,pos,rr._ds,rr)
         { 
             _rt = rt; _mb = mb; _cs = cs;
-            _key = new TRow(new Domain(Sqlx.ROW,cx,_rt.keyType), mb.key());
+            _key = new TRow(rt.domain, mb.key());
         }
         RTreeBookmark(Context cx, RTree rt, int pos, MTreeBookmark mb,
             BTree<long, Cursor> cs)

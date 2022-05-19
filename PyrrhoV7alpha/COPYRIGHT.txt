@@ -22,8 +22,6 @@ of this code is suitably acknowledged.
 This is version 7.0(alpha) of the DBMS. 
 It passes tests 1 to 24 of the PyrrhoTest program.
 
-Server binaries for Unix are in Mono folder. The rest should work cross-platform.
-
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-17 May 2022
+19 May 2022
