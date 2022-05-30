@@ -1890,6 +1890,25 @@ namespace Pyrrho.Level4
                                 m += (t, lxr.val);
                             break;
                         }
+                    case Sqlx.HISTOGRAM:
+                    case Sqlx.LINE:
+                    case Sqlx.PIE:
+                    case Sqlx.POINTS:
+                        {
+                            m += (tok, o);
+                            Next();
+                            if (tok==Sqlx.LPAREN)
+                            {
+                                Next();
+                                m += (Sqlx.X, lxr.val);
+                                Mustbe(Sqlx.ID);
+                                Mustbe(Sqlx.COMMA);
+                                m += (Sqlx.Y, lxr.val);
+                                Mustbe(Sqlx.ID);
+                             } else
+                                continue;
+                            break;
+                        }
                     default:
                         m += (tok, o);
                         ds = null;
@@ -8569,8 +8588,8 @@ namespace Pyrrho.Level4
 				Mustbe(Sqlx.BY);
                 oi = ParseSqlValueList(Domain.Char);
                 pt = (int)oi.Count;
-                w += (WindowSpecification.Order, oi);
-      //         w += (WindowSpecification.Partition, pt);
+       //         w += (WindowSpecification.Order, oi);
+                w += (WindowSpecification.Partition, pt);
 			}
 			if (tok==Sqlx.ORDER)
 				w +=(WindowSpecification.Order,ParseOrderClause(CList<long>.Empty,false));

@@ -328,31 +328,43 @@ namespace Pyrrho.Level3
         /// <param name="path">The URL</param>
         /// <param name="mime">The mime type in the header</param>
         /// <param name="sdata">The posted obs if any</param>
-        internal Context Execute(Context cx, string method, string id, string dn, string[] path, string mime, 
-            string sdata)
+        internal Context Execute(Context cx, string method, string id, string dn, string[] path, 
+            string query, string mime, string sdata)
         {
             var db = this;
             cx.inHttpService = true;
             if (path.Length >= 4)
             {
+                RowSet fm = new TrivialRowSet(cx);
+                var tn = path[3];
+                if (cx.db.role.dbobjects.Contains(tn))
+                {
+                    var p = cx.db.role.dbobjects[tn];
+                    if (cx.db.objects[p] is Table t)
+                    {
+                        var dp = cx.GetUid();
+                        var ts = new TableRowSet(dp, cx, p, t.domain);
+                        fm = new From(new Ident(tn, new Iix(dp)), cx, ts);
+                    }
+                }
                 switch (method)
                 {
                     case "HEAD":
                         cx.result = -1L;
                         break;
                     case "GET":
-                        db.Execute(cx, new TrivialRowSet(cx), method, dn, path, 2);
+                        db.Execute(cx, fm, method, dn, path, query, 2);
                         break;
                     case "DELETE":
-                        db.Execute(cx, new TrivialRowSet(cx), method, dn, path, 2);
+                        db.Execute(cx, fm, method, dn, path, query, 2);
                         cx = db.Delete(cx, (TableRowSet)cx.obs[cx.result]);
                         break;
                     case "PUT":
-                        db.Execute(cx, new TrivialRowSet(cx), method, dn, path, 2);
+                        db.Execute(cx, fm, method, dn, path, query, 2);
                         cx = db.Put(cx,(TableRowSet)cx.obs[cx.result], sdata);
                         break;
                     case "POST":
-                        db.Execute(cx, new TrivialRowSet(cx), id + ".", dn, path, 2);
+                        db.Execute(cx, fm, id + ".", dn, path, query, 2);
                         cx = db.Post(cx, (TableRowSet)cx.obs[cx.result],sdata);
                         break;
                 }
@@ -374,7 +386,7 @@ namespace Pyrrho.Level3
         /// <param name="ro"></param>
         /// <param name="path"></param>
         /// <param name="p"></param>
-        internal void Execute(Context cx, RowSet f,string method, string dn, string[] path, int p)
+        internal void Execute(Context cx, RowSet f,string method, string dn, string[] path, string query, int p)
         {
             if (p >= path.Length || path[p] == "")
             {
@@ -420,11 +432,13 @@ namespace Pyrrho.Level3
                     }
                 case "key":
                     {
+                        var ts = f as TableRowSet ?? cx.obs[f.target] as TableRowSet;
                         var ix = (objects[f.target] as Table)?.FindPrimaryIndex(this);
                         if (ix != null)
                         {
                             var kt = (ObInfo)role.infos[ix.defpos];
                             var kn = 0;
+                            var fl = CTree<long, TypedValue>.Empty;
                             while (kn < ix.keys.Count && p < path.Length)
                             {
                                 var sk = path[p];
@@ -433,7 +447,7 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                                 sk = WebUtility.UrlDecode(sk);
 #endif
-                                var tc = (TableColumn)kt.dataType.ObjFor(cx,sk);
+                                var tc = (TableColumn)cx.obs[ix.keys[kn]];
                                 TypedValue kv = null;
                                 var ft = cx._Dom(tc);
                                 try
@@ -446,12 +460,9 @@ namespace Pyrrho.Level3
                                 }
                                 kn++;
                                 p++;
-                                var cond = new SqlValueExpr(2, cx, Sqlx.EQL,
-                                    new SqlCopy(3,cx,"",f.defpos,tc.defpos),
-                                    new SqlLiteral(4, cx,kv,ft),Sqlx.NO);
-                                f = (From)f.New(cx,RowSet.E+(RowSet._Where,cond.defpos));
+                                fl += (ts.iSMap[tc.defpos], kv);
                             }
-                            var rs = f;
+                            var rs = (RowSet)cx.Add(f + (RowSet._Matches,fl));
                             cx.result = rs.defpos;
                             break;
                         }
@@ -557,7 +568,7 @@ namespace Pyrrho.Level3
                         else if (ob is Role ro)
                         {
                             cx.db += (Role, ro.defpos);
-                            Execute(cx, f, method, dn, path, p + 1);
+                            Execute(cx, f, method, dn, path, query, p + 1);
                             return;
                         }
                         if (cn.Contains(":"))
@@ -581,8 +592,28 @@ namespace Pyrrho.Level3
                                 goto case "procedure";
                             }
                         }
-                        if (f is From fa && objects[fa.target] is Table ta)
+                        if (f is TableRowSet fa && objects[fa.target] is Table ta)
                         {
+                            var cs = sp[0].Split(',');
+                            var dm = cx._Dom(ta);
+                            var ns = CTree<string, long>.Empty;
+                            var ss = CList<long>.Empty;
+                            for (var c = dm.rowType.First();c!=null;c=c.Next())
+                            {
+                                var ci = (ObInfo)role.infos[c.value()];
+                                ns += (ci.name, c.value());
+                            }
+                            for (var i = 0; i<cs.Length &&  ns.Contains(cs[i]);i++)
+                            {
+                                ss += fa.iSMap[ns[cs[i]]];
+                            }
+                            if (ss!=CList<long>.Empty)
+                            {
+                                var df = cx._Dom(f);
+                                var fd = new Domain(cx.GetUid(),cx,df.kind,df.representation,ss);
+                                f = new SelectedRowSet(cx, fd.defpos, f);
+                                break;
+                            }
                             var ix = ta.FindPrimaryIndex(this);
                             if (ix != null)
                             {
@@ -598,7 +629,7 @@ namespace Pyrrho.Level3
                         throw new DBException("42107", sp[0]).Mix();
                     }
             }
-            Execute(cx, f, method, dn, path, p + 1);
+            Execute(cx, f, method, dn, path, query, p + 1);
         }
         internal override Context Put(Context cx, TableRowSet rs, string s)
         {

@@ -94,6 +94,7 @@ namespace Pyrrho.Level3
             Low = -224,// WindowBound
             Order = -225, // CList<long>
             OrderWindow = -226, // string
+            Partition = -126, // CList<long>
             PartitionType = -229, // Domain
             Units = -230, // Sqlx
             WQuery = -231; // long RowSet
@@ -108,12 +109,13 @@ namespace Pyrrho.Level3
         /// <summary>
         /// a specified ordering
         /// </summary>
-        internal CList<long> order => (CList<long>)mem[Order];
+        internal CList<long> order => (CList<long>)mem[Order]??CList<long>.Empty;
         /// <summary>
         /// The partitionType is the partition columns for the window.
         /// NB this a Domain, not an ObInfo as we treat the TRow as a single value for once
         /// </summary>
         internal Domain partitionType => (Domain)mem[PartitionType];
+        internal CList<long> partition => (CList<long>)mem[Partition] ?? CList<long>.Empty;
         /// <summary>
         /// ROW or RANGE if have window frame
         /// </summary>

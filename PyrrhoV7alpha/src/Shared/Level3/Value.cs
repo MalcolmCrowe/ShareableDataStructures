@@ -4813,7 +4813,10 @@ namespace Pyrrho.Level3
         }
         internal override CTree<long,bool> IsAggregation(Context cx)
         {
+
             var r = CTree<long, bool>.Empty;
+            if (window != null) // Window functions do not aggregate rows!
+                return r; 
             if (aggregates(kind))
                 r += (defpos, true);
             if (cx.obs[val] is SqlValue vl)
@@ -5183,13 +5186,11 @@ namespace Pyrrho.Level3
             Register fc = null;
             if (window != null)
             {
+                var key = TRow.Empty;
                 PRow ks = null;
-                var aw = (RowSet)cx.obs[await.First().key()];
-                var gc = cx.groupCols[cx._Dom(aw)];
-                var key = (gc == null) ? TRow.Empty : new TRow(gc, cx.values);
-                fc = cx.funcs[from]?[key]?[defpos] ?? StartCounter(cx, key);
                 for (var b = window.order.Last(); b != null; b = b.Previous())
                     ks = new PRow(cx.obs[b.value()].Eval(cx), ks);
+                fc = cx.funcs[from]?[key]?[defpos] ?? StartCounter(cx, key);
                 fc.wrb = firstTie = fc.wtree.PositionAt(cx, ks); 
                 for (var b = fc.wtree.First(cx);
                     b != null; b = b.Next(cx) as RTreeBookmark)
@@ -5198,6 +5199,7 @@ namespace Pyrrho.Level3
                         switch (window.exclude)
                         {
                             case Sqlx.NO:
+                            case Sqlx.Null:
                                 AddIn(b,cx);
                                 break;
                             case Sqlx.CURRENT:

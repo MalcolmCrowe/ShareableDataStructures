@@ -574,7 +574,7 @@ namespace Pyrrho
                                 var vb = tcp.GetString();
                                 var url = tcp.GetString();
                                 var jo = tcp.GetString();
-                                tr.Execute(cx, vb, "R", db.name, url.Split('/'), "application/json", jo);
+                                tr.Execute(cx, vb, "R", db.name, url.Split('/'), "", "application/json", jo);
                                 tcp.PutWarnings(cx);
                                 var ocx = cx;
                                 db = db.RdrClose(ref cx);
@@ -1274,7 +1274,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (19 May 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (30 May 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }
