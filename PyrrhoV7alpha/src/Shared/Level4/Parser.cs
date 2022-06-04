@@ -3814,14 +3814,14 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.ID);
                 ob = cx.db.GetObject(ic.ident) ??
                     throw new DBException("42135", ic.ident);
-                if (cx.tr.role.Denied(cx, Grant.Privilege.AdminRole))
+                if (cx.tr.role.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105", cx.db.role.name ?? "").Mix();
                 var m = ParseMetadata(Sqlx.COLUMN);
                 cx.Add(new PMetadata(ic.ident, 0, ob.defpos, m, cx.db.nextPos, cx));
             }
             if (StartMetadata(kind) || Match(Sqlx.ADD))
             {
-                if (tr.role.Denied(cx, Grant.Privilege.AdminRole))
+                if (tr.role.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105", cx.db.role.name ?? "").Mix();
                 if (tok == Sqlx.ALTER)
                     Next();
@@ -3908,7 +3908,7 @@ namespace Pyrrho.Level4
                 else if (StartMetadata(Sqlx.DOMAIN) || Match(Sqlx.ADD, Sqlx.DROP))
                 {
                     if (tr.role == null || 
-                        tr.role.Denied(cx, Grant.Privilege.AdminRole))
+                        tr.role.Denied(cx, Grant.Privilege.Metadata))
                         throw new DBException("42105", tr.role.name ?? "").Mix();
                    var m = ParseMetadata(Sqlx.DOMAIN);
                    cx.Add(new PMetadata(d.name, -1, 0, m, dp, cx));
@@ -3926,7 +3926,7 @@ namespace Pyrrho.Level4
             }
             else if (StartMetadata(Sqlx.DOMAIN) || Match(Sqlx.ADD, Sqlx.DROP))
             {
-                if (tr.role.Denied(cx, Grant.Privilege.AdminRole))
+                if (tr.role.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105", cx.db.role.name??"").Mix();
                 cx.Add(new PMetadata(d.name,0,cx.db.types[d],ParseMetadata(Sqlx.DOMAIN), 
                     tr.nextPos, cx));
@@ -4098,7 +4098,7 @@ namespace Pyrrho.Level4
                                     if (StartMetadata(Sqlx.TABLE))
                                     {
                                         var ti = tr.role.infos[tb.defpos] as ObInfo;
-                                        if (tr.role.Denied(cx, Grant.Privilege.AdminRole))
+                                        if (tr.role.Denied(cx, Grant.Privilege.Metadata))
                                             throw new DBException("42105", cx.db.role.name ?? "").Mix();
                                         cx.Add(new PMetadata(ti.name,0,tb.defpos, 
                                             ParseMetadata(Sqlx.TABLE), 
@@ -4214,8 +4214,8 @@ namespace Pyrrho.Level4
                         if (cx.parse == ExecuteStatus.Obey)
                         {
                             var oi = tr.role.infos[tb.defpos] as ObInfo;
-                            if (tb.Denied(cx, Grant.Privilege.AdminRole))
-                                throw new DBException("42015",oi.name);
+                            if (tb.Denied(cx, Grant.Privilege.Metadata))
+                                throw new DBException("42105",oi.name);
                             cx.Add(new PMetadata(oi.name, 0,tb.defpos, 
                                 ParseMetadata(Sqlx.TABLE), 
                                 tr.nextPos, cx));
@@ -4270,7 +4270,7 @@ namespace Pyrrho.Level4
                 Next();
                 if (StartMetadata(Sqlx.COLUMN))
                 {
-                    if (tb.Denied(cx, Grant.Privilege.AdminRole))
+                    if (tb.Denied(cx, Grant.Privilege.Metadata))
                         throw new DBException("42105", ti.name).Mix();
                     cx.Add(new PMetadata(nm, 0,tc.defpos,
                         ParseMetadata(Sqlx.COLUMN), tr.nextPos, cx));
@@ -4355,7 +4355,7 @@ namespace Pyrrho.Level4
                 Next();
                 if (StartMetadata(Sqlx.COLUMN))
                 {
-                    if (tb.Denied(cx, Grant.Privilege.AdminRole))
+                    if (tb.Denied(cx, Grant.Privilege.Metadata))
                         throw new DBException("42105", ti.name ?? "").Mix();
                     new PMetadata(nm, 0, tc.defpos,
                             ParseMetadata(Sqlx.COLUMN), 
@@ -4515,7 +4515,7 @@ namespace Pyrrho.Level4
             }
             if (StartMetadata(Sqlx.COLUMN))
             {
-                if (tb.Denied(cx, Grant.Privilege.AdminRole))
+                if (tb.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105", ti.name ?? "").Mix();
                 var md = ParseMetadata(Sqlx.COLUMN);
                 new PMetadata(nm, 0, tc.defpos, md, tr.nextPos, cx);
@@ -5464,6 +5464,25 @@ namespace Pyrrho.Level4
             cx.DecSD();
             return ord;
 		}
+        /// <summary>
+        /// This version is for WindowSpecifications
+        /// </summary>
+        /// <param name="ord"></param>
+        /// <returns></returns>
+        CList<long> ParseOrderClause(CList<long> ord)
+        {
+            if (tok != Sqlx.ORDER)
+                return ord;
+            Next();
+            Mustbe(Sqlx.BY);
+            ord += ParseOrderItem(false);
+            while (tok == Sqlx.COMMA)
+            {
+                Next();
+                ord += ParseOrderItem(false);
+            }
+            return ord;
+        }
         /// <summary>
 		/// CList<long> =  TypedValue [ ASC | DESC ] [ NULLS ( FIRST | LAST )] .
         /// </summary>
@@ -6487,10 +6506,10 @@ namespace Pyrrho.Level4
                 WindowSpecification ow = tree[r.orderWindow];
                 if (ow==null)
                     throw new DBException("42135", r.orderWindow).Mix();
-                if (ow.order.Count != 0)
-                    throw new DBException("42000", "7.11 SR10c").ISO();
                 if (ow.order != null && r.order != null)
-                    throw new DBException("42000", "7.11 SR10d").ISO();
+                    throw new DBException("42000", "7.11 SR10d").ISO(); 
+                if (ow.order!= null)
+                    throw new DBException("42000", "7.11 SR10c").ISO();
                 if (ow.units != Sqlx.NO || ow.low != null || ow.high != null)
                     throw new DBException("42000", "7.11 SR10e").ISO();
             }
@@ -7747,24 +7766,24 @@ namespace Pyrrho.Level4
                             cp = cx._Dom(v);
                         }
                         var cs = BList<(long, long)>.Empty;
-                        var ws = BList<long>.Empty;
+                        var wh = BList<long>.Empty;
                         while (Mustbe(Sqlx.WHEN, Sqlx.ELSE) == Sqlx.WHEN)
                         {
                             var w = ParseSqlValue(cp);
                             cx.Add(w);
-                            ws += w.defpos;
+                            wh += w.defpos;
                             while (v != null && tok == Sqlx.COMMA)
                             {
                                 Next();
                                 w = ParseSqlValue(cp);
                                 cx.Add(w);
-                                ws += w.defpos;
+                                wh+= w.defpos;
                             }
                             Mustbe(Sqlx.THEN);
                             var x = ParseSqlValue(xp); 
                             cx.Add(x);
                             rd = rd.Constrain(cx, lp.dp, cx._Dom(x));
-                            for (var b = ws.First(); b != null; b = b.Next())
+                            for (var b = wh.First(); b != null; b = b.Next())
                                 cs += (b.value(), x.defpos);
                         }
                         var el = ParseSqlValue(xp);
@@ -7810,7 +7829,7 @@ namespace Pyrrho.Level4
             SqlValue op2 = null;
             CTree<long,bool> filter = null;
             Sqlx mod = Sqlx.NO;
-            WindowSpecification window = null;
+            WindowSpecification ws = null;
             Ident windowName = null;
             lp = LexPos();
             switch (tok)
@@ -7924,13 +7943,18 @@ namespace Pyrrho.Level4
                             }
                             else
                             {
-                                window = ParseWindowSpecificationDetails();
-                                window += (Basis.Name, "U" + DBObject.Uid(cx.GetUid()));
+                                ws = ParseWindowSpecificationDetails();
+                                ws += (Basis.Name, "U" + DBObject.Uid(cx.GetUid()));
                             }
                         }
-                        var sf = new SqlFunction(lp.dp, cx, kind, val, op1, op2, mod, BTree<long, object>.Empty
-                            + (SqlFunction.Filter, filter) + (SqlFunction.Window, window)
-                            + (SqlFunction.WindowId, windowName));
+                        var m = BTree<long, object>.Empty;
+                        if (filter !=CTree<long,bool>.Empty)
+                            m += (SqlFunction.Filter, filter);
+                        if (ws != null)
+                            m += (SqlFunction.Window, ws.defpos);
+                        if (windowName!=null)
+                            m += (SqlFunction.WindowId, windowName);
+                        var sf = new SqlFunction(lp.dp, cx, kind, val, op1, op2, mod, m);
                         return (SqlValue)cx.Add(sf);
                     }
 #if OLAP
@@ -8160,11 +8184,11 @@ namespace Pyrrho.Level4
                             }
                             else
                             {
-                                window = ParseWindowSpecificationDetails();
-                                window+=(Basis.Name,"U"+ cx.db.uid);
+                                ws = ParseWindowSpecificationDetails();
+                                ws+=(Basis.Name,"U"+ cx.db.uid);
                             }
                             return (SqlValue)cx.Add(new SqlFunction(lp.dp, cx, kind, val, op1, op2, mod, BTree<long,object>.Empty
-                            +(SqlFunction.Filter,filter)+(SqlFunction.Window,window)
+                            +(SqlFunction.Filter,filter)+(SqlFunction.Window,ws.defpos)
                              +(SqlFunction.WindowId,windowName)));
                         }
                         var v = new CList<long>(cx.Add(ParseSqlValue(xp)).defpos);
@@ -8176,7 +8200,7 @@ namespace Pyrrho.Level4
                         Mustbe(Sqlx.RPAREN);
                         val = new SqlRow(LexPos().dp, cx, xp, v);
                         var f = new SqlFunction(lp.dp, cx, kind, val, op1, op2, mod, BTree<long, object>.Empty
-                            + (SqlFunction.Window, ParseWithinGroupSpecification())
+                            + (SqlFunction.Window, ParseWithinGroupSpecification().defpos)
                             + (SqlFunction.WindowId,"U"+ cx.db.uid));
                         return (SqlValue)cx.Add(f);
                     }
@@ -8512,7 +8536,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.WITHIN);
             Mustbe(Sqlx.GROUP);
             Mustbe(Sqlx.LPAREN);
-            r+=(WindowSpecification.Order,ParseOrderClause(r.order,false));
+            r+=(WindowSpecification.Order,ParseOrderClause(r.order.rowType,false));
             Mustbe(Sqlx.RPAREN);
             return r;
         }
@@ -8580,19 +8604,32 @@ namespace Pyrrho.Level4
                 w+=(WindowSpecification.OrderWindow,lxr.val.ToString());
                 Next();
             }
-            CList<long> oi;
-            int pt;
-			if (tok==Sqlx.PARTITION)
+            var oi = CList<long>.Empty;
+            var os = CTree<long, Domain>.Empty;
+            if (tok==Sqlx.PARTITION)
 			{
 				Next();
 				Mustbe(Sqlx.BY);
-                oi = ParseSqlValueList(Domain.Char);
-                pt = (int)oi.Count;
-       //         w += (WindowSpecification.Order, oi);
-                w += (WindowSpecification.Partition, pt);
+                oi = ParseSqlValueList(Domain.Content);
+                for (var b = oi.First(); b != null; b = b.Next())
+                {
+                    var p = b.value();
+                    var o = cx.obs[p];
+                    os += (p,cx._Dom(o));
+                }
+                w += (WindowSpecification.PartitionType, new Domain(cx.GetUid(),cx,Sqlx.ROW,os,oi));
 			}
-			if (tok==Sqlx.ORDER)
-				w +=(WindowSpecification.Order,ParseOrderClause(CList<long>.Empty,false));
+            if (tok == Sqlx.ORDER)
+            {
+                oi = ParseOrderClause(oi); // NB start with the partition cols if any
+                for (var b = oi.First(); b != null; b = b.Next())
+                {
+                    var p = b.value();
+                    var o = cx.obs[p];
+                    os += (p, cx._Dom(o));
+                }
+                w += (WindowSpecification.Order, new Domain(cx.GetUid(), cx, Sqlx.ROW, os, oi));
+            }
 			if (Match(Sqlx.ROWS,Sqlx.RANGE))
 			{
 				w+=(WindowSpecification.Units,tok);
@@ -8633,6 +8670,7 @@ namespace Pyrrho.Level4
                 }
 			}
 			Mustbe(Sqlx.RPAREN);
+            cx.Add(w);
 			return w;
 		}
         /// <summary>

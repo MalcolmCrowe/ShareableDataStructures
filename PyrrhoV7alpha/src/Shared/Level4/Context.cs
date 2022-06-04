@@ -1756,10 +1756,6 @@ namespace Pyrrho.Level4
     internal class Register
     {
         /// <summary>
-        /// The current partition: type is window.partitionType
-        /// </summary>
-        internal TRow profile = null;
-        /// <summary>
         /// The current partition
         /// </summary>
         internal RTree wtree = null;
@@ -1770,6 +1766,10 @@ namespace Pyrrho.Level4
         /// the result of COUNT
         /// </summary>
         internal long count = 0L;
+        /// <summary>
+        /// The row number
+        /// </summary>
+        internal long row = -1L;
         /// <summary>
         /// the results of MAX, MIN, FIRST, LAST, ARRAY
         /// </summary>
@@ -1809,18 +1809,18 @@ namespace Pyrrho.Level4
         internal Register(Context cx,TRow key,SqlFunction sf)
         {
             var oc = cx.cursors;
-            if (sf.window != null)
+            if (sf.window >=0L)
             {
                 var t1 = cx.funcs[sf.from] ?? BTree<TRow, BTree<long, Register>>.Empty;
                 var t2 = t1[key] ?? BTree<long, Register>.Empty;
                 t2 += (sf.defpos, this);
                 t1 += (key, t2);
                 cx.funcs += (sf.from, t1);  // prevent stack oflow
-                var dp = sf.window.defpos;
-                var os = sf.window.order;
-                if (os != CList<long>.Empty)
+                var dp = sf.window;
+                var ws = (WindowSpecification)cx.obs[dp];
+                var dm = ws.order;
+                if (dm != null)
                 {
-                    var dm = new Domain(Sqlx.ROW, cx, os);
                     wtree = new RTree(dp, cx, dm,
                        TreeBehaviour.Allow, TreeBehaviour.Allow);
                     var fm = (RowSet)cx.obs[sf.from];
@@ -1829,7 +1829,7 @@ namespace Pyrrho.Level4
                     {
                         var vs = CTree<long, TypedValue>.Empty;
                         cx.cursors += (dp, e);
-                        for (var b = os.First(); b != null; b = b.Next())
+                        for (var b = dm.rowType.First(); b != null; b = b.Next())
                         {
                             var s = cx.obs[b.value()];
                             vs += (s.defpos, s.Eval(cx));
@@ -1844,10 +1844,17 @@ namespace Pyrrho.Level4
         public override string ToString()
         {
             var s = new StringBuilder("{");
-            if (count != 0L) s.Append(count);
-            if (sb != null) s.Append(sb);
+            if (count != 0L) { s.Append(count); s.Append(" "); }
+            if (sb != null) { s.Append(sb); s.Append(" "); }
+            if (row>=0) { s.Append(row); s.Append(" "); }
             switch (sumType.kind)
             {
+                case Sqlx.COLLECT:
+                case Sqlx.EVERY:
+                case Sqlx.FUSION:
+                case Sqlx.INTERSECTION:
+                    if (mset!=null) s.Append(mset);
+                    break;
                 case Sqlx.INT:
                 case Sqlx.INTEGER:
                     if (sumInteger is Integer i)
@@ -1861,6 +1868,14 @@ namespace Pyrrho.Level4
                     s.Append(sumDecimal); break;
                 case Sqlx.BOOLEAN:
                     s.Append(bval); break;
+                case Sqlx.MAX:
+                case Sqlx.MIN:
+                    s.Append(acc); break;
+                case Sqlx.STDDEV_POP:
+                case Sqlx.STDDEV_SAMP:
+                    s.Append(sum1); s.Append(" ");
+                    s.Append(acc1); 
+                    break;
             }
             s.Append("}");
             return s.ToString();

@@ -1397,14 +1397,22 @@ namespace Pyrrho.Level3
                         TRow rb = b as TRow;
                         if (ra == null || rb == null)
                             throw new DBException("22004").ISO();
-                        if (ra.Length != rb.Length)
-                            throw new DBException("22202").Mix()
-                                   .AddType(ra.dataType).AddValue(rb.dataType);
                         c = 0;
-                        for (var cb = ra.dataType.representation.First(); c == 0 && cb != null;
-                            cb = cb.Next())
-                            c = Context._system._Dom(cb.value()).Compare(ra.values[cb.key()], rb[cb.key()]);
-                        break;
+                        var bb = rb.dataType.rowType.First();
+                        var cb = ra.dataType.rowType.First();
+                        for (;c == 0 && cb != null && bb!=null;cb = cb.Next(),bb=bb.Next())
+                        {
+                            var k = cb.key();
+                            var dm = ra.dataType.representation[cb.value()];
+                            c = dm.Compare(ra[k], rb[k]);
+                        }
+                        if (c != 0)
+                            return c;
+                        if (cb != null)
+                            return 1;
+                        if (bb != null)
+                            return -1;
+                        return 0;
                     }
                 case Sqlx.PERIOD:
                     {
@@ -1433,6 +1441,16 @@ namespace Pyrrho.Level3
             }
             ret:
             return (AscDesc==Sqlx.DESC)?-c:c;
+        }
+        internal int Compare(CTree<long,TypedValue> a,CTree<long,TypedValue>b)
+        {
+            int c = 0;
+            for (var bm=rowType.First();c==0 && bm!=null;bm=bm.Next())
+            {
+                var p = bm.value();
+                c = representation[p].Compare(a[p], b[p]);
+            }
+            return c;
         }
         /// <summary>
         /// Creator: Add the given array at the end of this
@@ -2975,6 +2993,9 @@ namespace Pyrrho.Level3
                                     case Sqlx.EVERY:
                                         fc.bval = fc.bval && (bool)ra[0].Value;
                                         break;
+                                    case Sqlx.ROW_NUMBER:
+                                        fc.row = (long)ra[0].Value;
+                                        break;
                                 }
                                 var t1 = cx.funcs[sf.from] ?? BTree<TRow, BTree<long, Register>>.Empty;
                                 var t2 = t1[key] ?? BTree<long, Register>.Empty;
@@ -3742,13 +3763,16 @@ namespace Pyrrho.Level3
             for (var b = representation.First(); b != null; b = b.Next())
             {
                 var od = b.value();
-                var nk = b.key();
+                var k = b.key();
                 var rr = (Domain)od?._Replace(cx, was, now);
-                if (nk == was.defpos)
-                    nk = now.defpos;
-                if (rr != od || nk != b.key())
+                if (k == was.defpos)
+                {
+                    k = now.defpos;
+                    rr = (Domain)(cx.done[now.domain]??cx._Dom(now)); 
+                }
+                if (rr != od || k != b.key())
                     ch = true;
-                rs += (nk, rr);
+                rs += (k, rr);
             }
             if (ch)
                 r += (Representation, rs);

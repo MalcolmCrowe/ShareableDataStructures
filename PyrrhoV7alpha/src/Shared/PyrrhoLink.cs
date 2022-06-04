@@ -33,7 +33,8 @@ namespace Pyrrho
 #if EMBEDDED
         internal Connection db;
 #else
-        internal string hostName = "::1";
+        internal string hostName;
+        internal string hostAddress = "::1";
         internal Socket socket = null;
         internal Crypt crypt;
         public Stream stream;
@@ -46,7 +47,7 @@ namespace Pyrrho
         internal List<DatabaseError> warnings = new List<DatabaseError>();
         Thread transaction = null; // if both are non-null they will be equal
         Thread execution = null;
-        static int _cid = 0, _tid = 0, _req = 0;
+        static int _cid = 0, _req = 0;
         int cid = ++_cid;
         public static StreamWriter reqs = null;
         static DateTime start = DateTime.Now;
@@ -603,11 +604,6 @@ namespace Pyrrho
                 rc.version = GetString();
                 b = stream.ReadByte();
             }
-            if (b==4)
-            {
-                rc.readCheck = GetString();
-                b = stream.ReadByte();
-            }
             if (b == 0)
                 return cell;
             if (b == 2)
@@ -986,8 +982,7 @@ CallingConventions.HasThis, new Type[0], null);
             isOpen = true;
 #else
             string[] names = GetConnectionValues(connectionString, "Host");
-            if (names != null)
-                hostName = names[0];
+            hostName = (names != null)?names[0]:"localhost";
             int port = 5433;
             string[] ports = GetConnectionValues(connectionString, "Port");
             if (ports != null)
@@ -1742,14 +1737,15 @@ CallingConventions.HasThis, new Type[0], null);
         }
     }
 #endif
-    public class Versioned
+    public class Versioned // Normally only for Entities: all fields initially null
     {
-        public string version ="";
-        public string readCheck ="";
+        public PyrrhoConnect conn; // null if committed or new instance
+        public string entity;      // url or /dbname/rolename/tablename/defpos
+        public string version;     // ppos or etag null if new instance 
     }
     public sealed class SchemaAttribute : Attribute
     {
-        public long key;
+        public long key;  // can be verified against tablelastChange
         public SchemaAttribute(long k) { key = k; }
     }
     public sealed class ReferredAttribute : Attribute { }

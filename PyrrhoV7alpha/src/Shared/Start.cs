@@ -440,9 +440,10 @@ namespace Pyrrho
                         case Protocol.Get: // GET rurl
                             {
                                 string[] path = tcp.GetString().Split('/');
-                                db = db.Transact(db.nextId, "",conn);
+                                var tr = db.Transact(db.nextId, "",conn);
+                                db = tr;
                                 cx = new Context(db,cx);
-                                db.Execute(db.role, "G", path, 1, "");
+                                tr.Execute(cx, "GET", "G", db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
                                 if (cx.result>0)
                                 {
@@ -460,9 +461,10 @@ namespace Pyrrho
                         case Protocol.Get2: // GET rurl version for weakly-typed languages
                             {
                                 string[] path = tcp.GetString().Split('/');
-                                db = db.Transact(db.nextId, "",conn);
+                                var tr = db.Transact(db.nextId, "",conn);
+                                db = tr;
                                 cx = new Context(db,cx);
-                                db.Execute(db.role, "G", path, 1, "");
+                                tr.Execute(cx, "GET", "G", db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
                                 if (cx.result>0)
                                 {
@@ -885,7 +887,7 @@ namespace Pyrrho
             nextCell = rb[nextCol++];
             if (nextCol == ds)
                 lookAheadDone = false;
-            //      tcp.PutCheck(db);
+     //       tcp.PutCheck(cx, rb);
             tcp.PutCell(cx, dc, nextCell);
             var dt = rb.dataType;
             for (; ; )
@@ -901,6 +903,7 @@ namespace Pyrrho
                     nextCol = 0;
                     if (!more)
                         break;
+        //            tcp.PutCheck(cx, rb);
                 }
                 nextCell = rb[nextCol];
                 int len = lc + DataLength(cx, nextCell);
@@ -1274,7 +1277,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (30 May 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (4 June 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

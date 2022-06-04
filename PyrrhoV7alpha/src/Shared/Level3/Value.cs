@@ -924,13 +924,43 @@ namespace Pyrrho.Level3
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
-            var r = (SqlTreatExpr)base._Replace(cx,so,sv);
-            var v = cx.ObReplace(r.val,so,sv);
+            var r = (SqlTreatExpr)base._Replace(cx, so, sv);
+            var v = cx.ObReplace(r.val, so, sv);
             if (v != r.val)
                 r += (TreatExpr, v);
-            if (r!=this)
+            // watch out for changes required to the target Domain 
+            // (this algorithm really only works for a simple TreatExpr)
+            if (so.defpos == r.val)
+            {
+                var dm = cx._Dom(this);
+                var od = cx._Dom(so);
+                var vd = cx._Dom(sv);
+                if (dm.defpos >= Transaction.HeapStart && od.CompareTo(vd) != 0)
+                    cx.Replace(dm,(Domain)dm.New(vd.mem + Diff(od, dm)));
+            }
+            if (r != this)
                 r = (SqlTreatExpr)New(cx, r.mem);
             cx.done += (defpos, r);
+            return r;
+        }
+        BTree<long,object> Diff(Domain a,Domain b)
+        {
+            var r = a.mem;
+            for (var bm=b.mem.First();bm!=null;bm=bm.Next())
+            {
+                var k = bm.key();
+                var v = bm.value();
+                switch(k)
+                {
+                    case _Depth:
+                    case Name:
+                    case Domain.Kind:
+                        r -= k;
+                        continue;
+                }    
+                if ((!r.Contains(k)) || a.mem[k]!=v)
+                    r += (k, v);
+            }
             return r;
         }
         internal override CTree<long,bool> IsAggregation(Context cx)
@@ -961,7 +991,8 @@ namespace Pyrrho.Level3
             if (cx.obs[val].Eval(cx) is TypedValue tv)
             {
                 if (!cx._Dom(this).HasValue(cx,tv))
-                    throw new DBException("2200G", cx._Ob(domain).ToString(), cx._Ob(val).ToString()).ISO();
+                    throw new DBException("2200G", cx._Dom(this).ToString(), 
+                        cx._Dom(cx.obs[val]).ToString()).ISO();
                 return tv;
             }
             return null;
@@ -4763,7 +4794,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// the window for a window function
         /// </summary>
-        public WindowSpecification window => (WindowSpecification)mem[Window];
+        public long window => (long)(mem[Window]??-1L);
         /// <summary>
         /// Check for monotonic
         /// </summary>
@@ -4815,7 +4846,7 @@ namespace Pyrrho.Level3
         {
 
             var r = CTree<long, bool>.Empty;
-            if (window != null) // Window functions do not aggregate rows!
+            if (window>=0) // Window functions do not aggregate rows!
                 return r; 
             if (aggregates(kind))
                 r += (defpos, true);
@@ -4877,7 +4908,7 @@ namespace Pyrrho.Level3
                     return false; 
                 if (c.obs[val] is SqlValue vl && !vl.Match(c, (SqlValue)c.obs[f.val]))
                     return false;
-                if (window!=null || f.window!=null)
+                if (window>=0 || f.window>=0)
                     return false;
                 return true;
             }
@@ -5023,24 +5054,13 @@ namespace Pyrrho.Level3
                 if (dm!=null && dm!= dt)
                     r += (cx,_Domain, dm.defpos);
             }
+            var fw = cx.ObReplace(r.window,so,sv);
+            if (fw != r.window)
+                r += (cx, Window, fw);
             if (r!=this)
                 r = (SqlFunction)New(cx, r.mem);
             cx.done += (defpos, r);
             return cx.Add(r);
-        }
-        /// <summary>
-        /// Prepare Window Function evaluation
-        /// </summary>
-        /// <param name="tr"></param>
-        /// <param name="q"></param>
-        internal SqlFunction RowSets(Context cx,RowSet q)
-        {
-            // we first compute the needs of this window function
-            // The key for registers will consist of partition/grouping columns
-            // Each register has a rowset ordered by the order columns if any
-            // for the moment we just use the whole source row
-            // We build all of the WRS's at this stage for saving in f
-            return this+(cx,Window,window +(WindowSpecification.PartitionType, Domain.Row));
         }
         internal override bool Grouped(Context cx,GroupSpecification gs)
         {
@@ -5184,19 +5204,35 @@ namespace Pyrrho.Level3
             if (cx.values.Contains(defpos))
                 return cx.values[defpos];
             Register fc = null;
-            if (window != null)
+            WindowSpecification ws = null;
+            if (window>=0L)
             {
-                var key = TRow.Empty;
-                PRow ks = null;
-                for (var b = window.order.Last(); b != null; b = b.Previous())
-                    ks = new PRow(cx.obs[b.value()].Eval(cx), ks);
-                fc = cx.funcs[from]?[key]?[defpos] ?? StartCounter(cx, key);
-                fc.wrb = firstTie = fc.wtree.PositionAt(cx, ks); 
-                for (var b = fc.wtree.First(cx);
-                    b != null; b = b.Next(cx) as RTreeBookmark)
+                var kv = CTree<long, TypedValue>.Empty;
+                PRow os = null, ks = null;
+                ws = (WindowSpecification)cx.obs[window];
+                var pn = ws.partition?.rowType.Length ?? 0;
+                for (var b = ws.order?.rowType.Last(); b != null && b.key()>=pn; b = b.Previous())
+                    os = new PRow(cx.obs[b.value()].Eval(cx), ks);
+                for (var b= ws.partition?.rowType.Last();b!=null;b=b.Previous())
                 {
+                    var p = b.value();
+                    var vv = cx.obs[p].Eval(cx);
+                    ks = new PRow(vv, ks);
+                    os = new PRow(vv, os);
+                    kv += (p, vv);
+                }
+                var key = (pn>0)?new TRow(ws.partition, kv):TRow.Empty;
+                fc = cx.funcs[from]?[key]?[defpos] ?? StartCounter(cx, key);
+                firstTie = fc.wtree.PositionAt(cx, ks);
+                var oc = cx.finder;
+                var ov = cx.values;
+                cx.finder = CTree<long, RowSet.Finder>.Empty;
+                for (var b = fc.wtree.First(cx);
+                    b != null; b = (RTreeBookmark)b.Next(cx))
+                {
+                    cx.values = b.values+b._key.values;
                     if (InWindow(cx,b,fc))
-                        switch (window.exclude)
+                        switch (ws.exclude)
                         {
                             case Sqlx.NO:
                             case Sqlx.Null:
@@ -5212,6 +5248,52 @@ namespace Pyrrho.Level3
                                 break;
                         }
                 }
+                switch (kind)
+                {
+                    case Sqlx.RANK:
+                        {
+                            var ob = fc.wtree.PositionAt(cx, os);
+                            var ra = 0;
+                            var ti = 1;
+                            var ovs = CTree<long,TypedValue>.Empty;
+                            for (var pb = fc.wtree.PositionAt(cx, ks); pb != null;
+                                pb = (RTreeBookmark)pb.Next(cx))
+                            {
+                                var nvs = pb.values+pb._key.values;
+                                var c = ws.order.Compare(ovs, nvs);
+                                if (c == 0)
+                                    ti++;
+                                else
+                                {
+                                    ra += ti;
+                                    ti = 1;
+                                    ovs = nvs;
+                                }
+                                if (ob._mb.Value() == pb._mb.Value())
+                                {
+                                    fc.row = ra;
+                                    break;
+                                }
+                            }
+                            break;
+                        }
+                    case Sqlx.ROW_NUMBER:
+                        {
+                            var ob = fc.wtree.PositionAt(cx, os);
+                            var rn = 1;
+                            for (var pb = fc.wtree.PositionAt(cx, ks); pb != null;
+                                pb = (RTreeBookmark)pb.Next(cx), rn++)
+                            {
+                                var o = ob._mb.Value();
+                                var p = pb._mb.Value();
+                                if (ob._mb.Value() == pb._mb.Value())
+                                    fc.row = rn;
+                            }
+                            break;
+                        }
+                }
+                cx.finder = oc;
+                cx.values = ov;
             }
             else if (aggregates(kind))
             {
@@ -5263,7 +5345,7 @@ namespace Pyrrho.Level3
                 case Sqlx.ANY: return TBool.For(fc.bval);
                 case Sqlx.ARRAY: // Mongo $push
                     {
-                        if (window == null || fc.mset == null || fc.mset.Count == 0)
+                        if (ws == null || fc.mset == null || fc.mset.Count == 0)
                             return fc.acc;
                         fc.acc = new TArray(
                             (Domain)cx.Add(new Domain(cx.GetUid(),Sqlx.ARRAY, 
@@ -5531,8 +5613,8 @@ namespace Pyrrho.Level3
                 case Sqlx.PROVENANCE:
                     return cx.cursors[from]?[Domain.Provenance]??TNull.Value;
                 case Sqlx.RANK:
-                    return new TInt(firstTie._pos + 1);
-                case Sqlx.ROW_NUMBER: return new TInt(fc.wrb._pos+1);
+                case Sqlx.ROW_NUMBER:
+                    return new TInt(fc.row);
                 case Sqlx.SECURITY:
                     return cx.cursors[from]?[Classification]?? TLevel.D;
                 case Sqlx.SET:
@@ -5818,13 +5900,13 @@ namespace Pyrrho.Level3
                     fc.mset = new TMultiset(cx._Dom(vl));
                     break;
                 case Sqlx.XMLAGG:
-                    if (window != null)
+                    if (window>=0)
                         goto case Sqlx.COLLECT;
                     fc.sb = new StringBuilder();
                     break;
                 case Sqlx.SOME:
                 case Sqlx.ANY:
-                    if (window != null)
+                    if (window>=0)
                         goto case Sqlx.COLLECT;
                     fc.bval = false;
                     break;
@@ -5843,17 +5925,17 @@ namespace Pyrrho.Level3
                     break;
                 case Sqlx.MAX:
                 case Sqlx.MIN:
-                    if (window != null)
+                    if (window>=0L)
                         goto case Sqlx.COLLECT;
                     fc.sumType = Domain.Content;
                     fc.acc = null;
                     break;
                 case Sqlx.STDDEV_POP:
+                case Sqlx.STDDEV_SAMP:
                     fc.acc1 = 0.0;
                     fc.sum1 = 0.0;
                     fc.count = 0L;
                     break; 
-                case Sqlx.STDDEV_SAMP: goto case Sqlx.STDDEV_POP;
                 case Sqlx.SUM:
                     fc.sumType = Domain.Content;
                     fc.sumLong = 0L;
@@ -5891,7 +5973,7 @@ namespace Pyrrho.Level3
                     goto case Sqlx.SUM;
                 case Sqlx.ANY:
                     {
-                        if (window != null)
+                        if (window>=0)
                             goto case Sqlx.COLLECT;
                         var v = vl.Eval(cx);
                         if (v != null)
@@ -6067,11 +6149,14 @@ namespace Pyrrho.Level3
                         break;
                     }
             }
-            var t1 = cx.funcs[from] ?? BTree<TRow, BTree<long, Register>>.Empty;
-            var t2 = t1[key] ?? BTree<long,Register>.Empty;
-            t2 += (defpos, fc);
-            t1 += (key, t2);
-            cx.funcs += (from, t1);
+            if (window<0)
+            {
+                var t1 = cx.funcs[from] ?? BTree<TRow, BTree<long, Register>>.Empty;
+                var t2 = t1[key] ?? BTree<long, Register>.Empty;
+                t2 += (defpos, fc);
+                t1 += (key, t2);
+                cx.funcs += (from, t1);
+            }
         }
         /// <summary>
         /// Window Functions: bmk is a bookmark in cur.wrs
@@ -6082,11 +6167,10 @@ namespace Pyrrho.Level3
         {
             if (bmk == null)
                 return false;
-            var tr = cx.db;
-            var wn = window;
-            if (wn.units == Sqlx.RANGE && !(TestStartRange(cx,bmk,fc) && TestEndRange(cx,bmk,fc)))
+            var ws = (WindowSpecification)cx.obs[window];
+            if (ws.units == Sqlx.RANGE && !(TestStartRange(cx,bmk,fc) && TestEndRange(cx,bmk,fc)))
                 return false;
-            if (wn.units == Sqlx.ROWS && !(TestStartRows(cx,bmk,fc) && TestEndRows(cx,bmk,fc)))
+            if (ws.units == Sqlx.ROWS && !(TestStartRows(cx,bmk,fc) && TestEndRows(cx,bmk,fc)))
                 return false;
             return true;
         }
@@ -6096,16 +6180,16 @@ namespace Pyrrho.Level3
         /// <returns>whether the window is in the range</returns>
         bool TestEndRows(Context cx, RTreeBookmark bmk,Register fc)
         {
-            var wn = window;
-            if (wn.high == null || wn.high.unbounded)
+            var ws = (WindowSpecification)cx.obs[window];
+            if (ws.high == null || ws.high.unbounded)
                 return true;
             long limit;
-            if (wn.high.current)
+            if (ws.high.current)
                 limit = fc.wrb._pos;
-            else if (wn.high.preceding)
-                limit = fc.wrb._pos - (wn.high.distance?.ToLong()??0);
+            else if (ws.high.preceding)
+                limit = fc.wrb._pos - (ws.high.distance?.ToLong()??0);
             else
-                limit = fc.wrb._pos + (wn.high.distance?.ToLong()??0);
+                limit = fc.wrb._pos + (ws.high.distance?.ToLong()??0);
             return bmk._pos <= limit; 
         }
         /// <summary>
@@ -6114,16 +6198,16 @@ namespace Pyrrho.Level3
         /// <returns>whether the window is in the range</returns>
         bool TestStartRows(Context cx, RTreeBookmark bmk,Register fc)
         {
-            var wn = window;
-            if (wn.low == null || wn.low.unbounded)
+            var ws = (WindowSpecification)cx.obs[window];
+            if (ws.low == null || ws.low.unbounded)
                 return true;
             long limit;
-            if (wn.low.current)
+            if (ws.low.current)
                 limit =fc.wrb._pos;
-            else if (wn.low.preceding)
-                limit = fc.wrb._pos - (wn.low.distance?.ToLong() ?? 0);
+            else if (ws.low.preceding)
+                limit = fc.wrb._pos - (ws.low.distance?.ToLong() ?? 0);
             else
-                limit = fc.wrb._pos + (wn.low.distance?.ToLong() ?? 0);
+                limit = fc.wrb._pos + (ws.low.distance?.ToLong() ?? 0);
             return bmk._pos >= limit;
         }
 
@@ -6133,8 +6217,8 @@ namespace Pyrrho.Level3
         /// <returns>whether the window is in the range</returns>
         bool TestEndRange(Context cx, RTreeBookmark bmk, Register fc)
         {
-            var wn = window;
-            if (wn.high == null || wn.high.unbounded)
+            var ws = (WindowSpecification)cx.obs[window];
+            if (ws.high == null || ws.high.unbounded)
                 return true;
             var n = val;
             var kt = cx._Dom(val);
@@ -6143,14 +6227,14 @@ namespace Pyrrho.Level3
             var tr = cx.db as Transaction;
             if (tr == null)
                 return false;
-            if (wn.high.current)
+            if (ws.high.current)
                 limit = wrv;
-            else if (wn.high.preceding)
+            else if (ws.high.preceding)
                 limit = kt.Eval(defpos,cx,wrv, (kt.AscDesc == Sqlx.ASC) ? Sqlx.MINUS : Sqlx.PLUS, 
-                    wn.high.distance);
+                    ws.high.distance);
             else
                 limit = kt.Eval(defpos,cx,wrv, (kt.AscDesc == Sqlx.ASC) ? Sqlx.PLUS : Sqlx.MINUS, 
-                    wn.high.distance);
+                    ws.high.distance);
             return kt.Compare(bmk[n], limit) <= 0; 
         }
         /// <summary>
@@ -6159,8 +6243,8 @@ namespace Pyrrho.Level3
         /// <returns>whether the window is in the range</returns>
         bool TestStartRange(Context cx, RTreeBookmark bmk,Register fc)
         {
-            var wn = window;
-            if (wn.low == null || wn.low.unbounded)
+            var ws = (WindowSpecification)cx.obs[window];
+            if (ws.low == null || ws.low.unbounded)
                 return true;
             var n = val;
             var kt = cx._Dom(val);
@@ -6169,14 +6253,14 @@ namespace Pyrrho.Level3
             var tr = cx.db as Transaction;
             if (tr == null)
                 return false;
-            if (wn.low.current)
+            if (ws.low.current)
                 limit = tv;
-            else if (wn.low.preceding)
+            else if (ws.low.preceding)
                 limit = kt.Eval(defpos,cx,tv, (kt.AscDesc != Sqlx.DESC) ? Sqlx.PLUS : Sqlx.MINUS, 
-                    wn.low.distance);
+                    ws.low.distance);
             else
                 limit = kt.Eval(defpos,cx,tv, (kt.AscDesc != Sqlx.DESC) ? Sqlx.MINUS : Sqlx.PLUS, 
-                    wn.low.distance);
+                    ws.low.distance);
             return kt.Compare(bmk[n], limit) >= 0; // OrderedKey comparison
         }
         /// <summary>
@@ -6194,6 +6278,7 @@ namespace Pyrrho.Level3
                 qn = ((SqlValue)cx.obs[op1])?.Needs(cx, r, qn) ?? qn;
                 qn = ((SqlValue)cx.obs[op2])?.Needs(cx, r, qn) ?? qn;
             }
+            qn = ((WindowSpecification)cx.obs[window])?.Needs(cx, r, qn) ?? qn;
             return qn;
         }
         internal override bool LocallyConstant(Context cx, RowSet rs)
@@ -6424,8 +6509,8 @@ namespace Pyrrho.Level3
                 }
                 sb.Append(")");
             }
-            if (window!=null)
-                sb.Append(window);
+            if (window >= 0L)
+            { sb.Append(" Window "); sb.Append(Uid(window)); }
             return sb.ToString();
         }
         internal static bool aggregates(Sqlx kind)

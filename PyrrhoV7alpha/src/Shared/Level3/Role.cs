@@ -72,7 +72,7 @@ namespace Pyrrho.Level3
         { }
         public Role(PRole p, Database db, bool first)
             : base(p.name, p.ppos, p.ppos, db.role.defpos,
-                 (first ? db.schema.mem : db.guest.mem) + (LastChange, p.ppos)
+                 (first ? db.role.mem : db.guest.mem) + (LastChange, p.ppos)
                  + (DBObjects, first ? db.schema.dbobjects : db.guest.dbobjects)
                  + (Procedures, first ? db.schema.procedures : db.guest.procedures))
         { }

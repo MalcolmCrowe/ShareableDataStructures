@@ -256,7 +256,7 @@ namespace Pyrrho.Level3
                 }
                 if (physicals.Count == 0)
                     return Rollback();
-                var pt = new PTransaction((int)physicals.Count, user.defpos, role.defpos,
+                var pt = new PTransaction((int)physicals.Count, user.defpos, db._role,
                         nextPos, cx);
                 cx.Add(pt);
                 wr.segment = wr.file.Position;

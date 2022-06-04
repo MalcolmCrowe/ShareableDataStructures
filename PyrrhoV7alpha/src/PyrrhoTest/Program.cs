@@ -28,7 +28,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("19 May 2022 Repeatable tests");
+                Console.WriteLine("4 June 2022 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -291,7 +291,7 @@ namespace Test
 
             CheckResults(7, 2, "select city, avg(Salary), count(*) as numPeople from people where country = 'GER' group by city having count(*) > 4",
                 "[{CITY:'Berlin',AVG:60333.3333333333,NUMPEOPLE:6},{CITY:'Munich',AVG:61833.3333333333,NUMPEOPLE:6}]");
-            /* MariaDB examples 
+            /* MariaDB examples */ 
             Act(431, "CREATE TABLE student (\"name\" CHAR, test CHAR, score INT)");
             Act(432, "INSERT INTO student VALUES" +
               "('Chun', 'SQL', 75), ('Chun', 'Tuning', 73)," +
@@ -300,26 +300,26 @@ namespace Test
               "('Tatiana', 'SQL', 87), ('Tatiana', 'Tuning', 83)");
             CheckResults(7, 3, "SELECT \"name\", test, score, " +
                 "AVG(score) OVER (PARTITION BY test) AS average_by_test," +
-                "AVG(score) OVER (PARTITION BY name) AS average_by_name FROM student",
+                "AVG(score) OVER (PARTITION BY \"name\") AS average_by_name FROM student",
                 "[{name:'Chun',TEST:'SQL',SCORE:75,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:74}," +
                 "{name:'Chun',TEST:'Tuning',SCORE:73,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:74}," +
                 "{name:'Esben',TEST:'SQL',SCORE:43,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:37}," +
                 "{name:'Esben',TEST:'Tuning',SCORE:31,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:37}," +
                 "{name:'Kaolin',TEST:'SQL',SCORE:56,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:72}," +
                 "{name:'Kaolin',TEST:'Tuning',SCORE:88,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:72}," +
-                "{name:'Tatiana',TEST:'SQL',SCORE:87,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:85,}" +
+                "{name:'Tatiana',TEST:'SQL',SCORE:87,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:85}," +
                 "{name:'Tatiana',TEST:'Tuning',SCORE:83,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:85}]");
             Act(433, "CREATE TABLE users (email CHAR,first_name CHAR, last_name CHAR,  account_type CHAR)");
             Act(434, "INSERT INTO users VALUES ('admin@boss.org', 'Admin', 'Boss', 'admin')," +
                 "('bob.carlsen@foo.bar', 'Bob', 'Carlsen','regular'),('eddie.stevens@data.org', 'Eddie', 'Stevens', 'regular')," +
                 "('john.smith@xyz.org', 'John', 'Smith','regular'),('root@boss.org', 'Root', 'Chief', 'admin')");
             CheckResults(7, 4, "SELECT row_number() OVER (PARTITION BY account_type ORDER BY email) AS rnum, " +
-                "email, first_name, last_name. account_type FROM users", 
-                "[{RNUM:1,EMAIL:admin@boss.org',FIRST_NAME:'Admin',LAST_NAME:'Boss',ACCOUNT_TYPE:'admin'},"+
-                "{RNUM:2,EMAIL:root@boss.org',FIRST_NAME:'Root',LAST_NAME:'Chief',ACCOUNT_TYPE:'admin'}" +
-                "{RNUM:1,EMAIL:'bob.carlsen@foo.bar',FIRST_NAME:'Bob',LAST_NAME:'Carlsen',ACCOUNT_TYPE:'regular'},"+
-                "{RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'},"+
-                "{RNUM:3,EMAIL:'jphn.smaith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'}]"); */
+                "email, first_name, last_name, account_type FROM users",
+                "[{RNUM:1,EMAIL:'admin@boss.org',FIRST_NAME:'Admin',LAST_NAME:'Boss',ACCOUNT_TYPE:'admin'}," +
+                "{RNUM:1,EMAIL:'bob.carlsen@foo.bar',FIRST_NAME:'Bob',LAST_NAME:'Carlsen',ACCOUNT_TYPE:'regular'}," +
+                "{RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'}," +
+                "{RNUM:3,EMAIL:'john.smith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'}," +
+                "{RNUM:2,EMAIL:'root@boss.org',FIRST_NAME:'Root',LAST_NAME:'Chief',ACCOUNT_TYPE:'admin'}]");
             Rollback();
         }
         void Test8()
@@ -907,6 +907,8 @@ namespace Test
         }
         public void Test21()
         {
+            if (!commit) // not allowed to set role during transaction
+                return;
             if (test > 0 && test != 21)
                 return;
             testing = 21;

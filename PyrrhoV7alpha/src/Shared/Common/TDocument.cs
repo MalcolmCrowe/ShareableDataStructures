@@ -272,6 +272,8 @@ namespace Pyrrho.Common
                         a.Add((++n).ToString(), b.key());
                 tv = a;
             }
+            else if (r.row >= 0)
+                tv = new TInt(r.row);
             else
             {
                 switch (r.sumType.kind)

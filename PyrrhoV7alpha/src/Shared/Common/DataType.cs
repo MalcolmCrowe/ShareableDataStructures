@@ -830,6 +830,7 @@ namespace Pyrrho.Common
         internal const long
             RVV = -193; // Rvv
         internal new static Rvv Empty = new Rvv();
+        internal long version => First()?.value()?.Last()?.value() ?? 0L;
         Rvv() : base()
         { }
         protected Rvv(CTree<long, CTree<long, long>> t) : base(t.root) { }

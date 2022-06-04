@@ -103,12 +103,15 @@ namespace Pyrrho.Level2
             // it becomes the schema role and also the current role
             var first = cx.db.roles.Count == Database._system.roles.Count;
             var nr = new Role(this, cx.db, first);
-            if (first) // give the new Role the Schema uid
-                nr = (Role)nr.Relocate(cx.db._role);
+            if (first) // make the new Role the Schema role
+                cx.db += (Database._Schema, nr.defpos);
             // give the current role privileges on the new Role
             var ri = new ObInfo(nr.defpos, name, Domain.Role,Role.use|Role.admin);
-            nr += (ri, true);
+            nr += (nr.defpos, ri);
             var ro = cx.db.role + (nr.defpos, ri) + (ri,true);
+            var ns = cx.db.role.dbobjects + (name, nr.defpos);
+            ro += (Role.DBObjects, ns);
+            nr += (Role.DBObjects, ns);
             cx.db = cx.db+(ro,p)+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

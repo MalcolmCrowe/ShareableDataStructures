@@ -405,22 +405,20 @@ namespace Pyrrho.Level3
         internal override TRow RoleClassValue(Context cx, DBObject from, 
             ABookmark<long, object> _enu)
         {
-            var ob = (DBObject)_enu.value();
-            var md = (ObInfo)cx.db.role.infos[ob.defpos];
+            var md = (ObInfo)cx.db.role.infos[defpos];
             var ro = cx.db.role;
-            var versioned = true;
+            var versioned = md.metadata.Contains(Sqlx.ENTITY);
             var key = BuildKey(cx.db, out Index ix);
             var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
-            sb.Append("\r\n[Schema("); sb.Append(from.lastChange); sb.Append(")]");
+            sb.Append("\r\n[Schema("); sb.Append(lastChange); sb.Append(")]");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// Class " + md.name + " from Database " + cx.db.name 
                 + ", Role " + ro.name + "\r\n");
             if (md.description != "")
                 sb.Append("/// " + md.description + "\r\n");
             sb.Append("/// </summary>\r\n");
-            sb.Append("public class " + md.name + ((versioned) ? " : Versioned" : "") + " {\r\n");
-            var rt = cx.db.role.infos[from.defpos] as ObInfo;
-            for (var b = rt.dataType.representation.First();b!=null;b=b.Next())
+            sb.Append("public class " + md.name + (versioned ? " : Versioned" : "") + " {\r\n");
+            for (var b = md.dataType.representation.First();b!=null;b=b.Next())
             {
                 var p = b.key();
                 var dt = b.value();
@@ -440,7 +438,7 @@ namespace Pyrrho.Level3
                 sb.Append("\r\n");
             }
             sb.Append("}\r\n");
-            return new TRow(cx,rt,new TChar(md.name),new TChar(key),
+            return new TRow(cx,cx._Dom(from),new TChar(md.name),new TChar(key),
                 new TChar(sb.ToString()));
         } 
         /// <summary>
@@ -452,8 +450,7 @@ namespace Pyrrho.Level3
         internal override TRow RoleJavaValue(Context cx, DBObject from, 
             ABookmark<long, object> _enu)
         {
-            var ob = (DBObject)_enu.value();
-            var md = (ObInfo)cx.db.role.infos[ob.defpos];
+            var md = (ObInfo)cx.db.role.infos[defpos];
             var versioned = true;
             var sb = new StringBuilder();
             sb.Append("/*\r\n * "); sb.Append(md.name); sb.Append(".java\r\n *\r\n * Created on ");
@@ -467,8 +464,7 @@ namespace Pyrrho.Level3
             if (md.description != "")
                 sb.Append("/* " + md.description + "*/\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " extends Versioned" : "") + " {\r\n");
-            var rt = cx.db.role.infos[from.defpos] as ObInfo;
-            for(var b = rt.dataType.rowType.First();b!=null;b=b.Next())
+            for(var b = md.dataType.rowType.First();b!=null;b=b.Next())
             {
                 var p = b.key();
                 var cd = tblCols[b.value()];
@@ -489,7 +485,7 @@ namespace Pyrrho.Level3
                 sb.Append("\r\n");
             }
             sb.Append("}\r\n");
-            return new TRow(cx,rt,new TChar(md.name),new TChar(key),
+            return new TRow(cx,cx._Dom(from),new TChar(md.name),new TChar(key),
                 new TChar(sb.ToString()));
         }
         /// <summary>
@@ -500,8 +496,7 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal override TRow RolePythonValue(Context cx, DBObject from, ABookmark<long, object> _enu)
         {
-            var tb = (Table)_enu.value();
-            var md = (ObInfo)cx.db.role.infos[tb.defpos];
+            var md = (ObInfo)cx.db.role.infos[defpos];
             var ro = cx.db.role;
             var versioned = true;
             var sb = new StringBuilder();
@@ -515,8 +510,7 @@ namespace Pyrrho.Level3
             sb.Append(" def __init__(self):\r\n");
             if (versioned)
                 sb.Append("  super().__init__('','')\r\n");
-            var rt = cx.db.role.infos[from.defpos] as ObInfo;
-            for(var b = rt.dataType.representation.First();b!=null;b=b.Next())
+            for(var b = md.dataType.representation.First();b!=null;b=b.Next())
             {
                 var p = b.key();
                 var dt = b.value();
@@ -538,7 +532,7 @@ namespace Pyrrho.Level3
                 }
                 sb.Append("]\r\n");
             }
-            return new TRow(cx,rt, new TChar(md.name),new TChar(key),
+            return new TRow(cx,cx._Dom(from), new TChar(md.name),new TChar(key),
                 new TChar(sb.ToString()));
         }
         string BuildKey(Database db,out Index ix)

@@ -6296,22 +6296,19 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Build(Context cx)
         {
-            var w = wf.window;
+            var w = (WindowSpecification)cx.obs[wf.window];
             // we first compute the needs of this window function
             // The key will consist of partition/grouping and order columns
             // The value part consists of the parameter of the window function
             // (There may be an argument for including the rest of the row - might we allow triggers?)
             // We build the whole WRS at this stage for saving in f
-            var wd = cx._Dom(w);
-            var kd = new Domain(cx.GetUid(),cx,Sqlx.ROW, wd.representation, w.order);
-            var tree = new RTree(source,cx,kd,
-                TreeBehaviour.Allow, TreeBehaviour.Disallow);
+            var tree = new RTree(source,cx,w.order,TreeBehaviour.Allow, TreeBehaviour.Disallow);
             var values = new TMultiset((Domain)cx.Add(new Domain(cx.GetUid(), Sqlx.MULTISET, cx._Dom(wf))));
             for (var rw = ((RowSet)cx.obs[source]).First(cx); rw != null; 
                 rw = rw.Next(cx))
             {
                 var v = rw[wf.val];
-                RTree.Add(ref tree, new TRow(kd, rw.values), cx.cursors);
+                RTree.Add(ref tree, new TRow(w.order, rw.values), cx.cursors);
                 values.Add(v);
             }
             return (RowSet)New(cx,E+(Multi,values)+(_Built,true)+(Index.Tree,tree.mt));

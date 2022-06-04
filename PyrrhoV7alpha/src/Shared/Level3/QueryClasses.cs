@@ -92,9 +92,8 @@ namespace Pyrrho.Level3
             Exclude = -222,// Sqlx
             High = -223, //WindowBound
             Low = -224,// WindowBound
-            Order = -225, // CList<long>
+            Order = -225, // Domain (extends the partition type)
             OrderWindow = -226, // string
-            Partition = -126, // CList<long>
             PartitionType = -229, // Domain
             Units = -230, // Sqlx
             WQuery = -231; // long RowSet
@@ -107,15 +106,13 @@ namespace Pyrrho.Level3
         /// </summary>
         internal string orderWindow => (string)mem[OrderWindow];
         /// <summary>
-        /// a specified ordering
+        /// a specified ordering, extending the partition if any
         /// </summary>
-        internal CList<long> order => (CList<long>)mem[Order]??CList<long>.Empty;
+        internal Domain order => (Domain)mem[Order]??partition;
         /// <summary>
-        /// The partitionType is the partition columns for the window.
-        /// NB this a Domain, not an ObInfo as we treat the TRow as a single value for once
+        /// The partitionType is the partition columns for the window if any
         /// </summary>
-        internal Domain partitionType => (Domain)mem[PartitionType];
-        internal CList<long> partition => (CList<long>)mem[Partition] ?? CList<long>.Empty;
+        internal Domain partition => (Domain)mem[PartitionType];
         /// <summary>
         /// ROW or RANGE if have window frame
         /// </summary>
@@ -137,10 +134,26 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="q"></param>
         internal WindowSpecification(long lp) : base(lp,BTree<long, object>.Empty) { }
-        protected WindowSpecification(long dp,BTree<long, object> m) : base(dp,m) { }
+        protected WindowSpecification(long dp,BTree<long, object> m) 
+            : base(dp,_Mem(m)) { }
+        static BTree<long,object> _Mem(BTree<long,object> m)
+        {
+            var d = 1;
+            if (m[PartitionType] is Domain p)
+                d = p.depth + 1;
+            if (m[Order] is Domain o)
+                d = o.depth + 1;
+            return m + (_Depth,d);
+        }
         public static WindowSpecification operator+(WindowSpecification w,(long,object)x)
         {
             return (WindowSpecification)w.New(w.mem + x);
+        }
+        internal CTree<long,bool> Needs(Context cx,long r,CTree<long,bool> qn)
+        {
+            for (var b = order.rowType.First(); b != null; b = b.Next())
+                qn = ((SqlValue)cx.obs[b.value()]).Needs(cx, r, qn);
+            return qn;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -150,13 +163,30 @@ namespace Pyrrho.Level3
         {
             return new WindowSpecification(dp, mem);
         }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            if (cx.done.Contains(defpos))
+                return cx.done[defpos];
+            var r = (WindowSpecification)base._Replace(cx, so, sv);
+            var np = r.partition?._Replace(cx, so, sv);
+            if (np != r.partition)
+                r += (PartitionType, np);
+            var no = r.order?._Replace(cx, so, sv);
+            if (no != r.order)
+                r += (Order, no);
+            r = (WindowSpecification)New(cx, r.mem);
+            cx.done += (defpos, r);
+            return r;
+        }
         internal override Basis _Relocate(Context cx)
         {
             var r = (WindowSpecification)base._Relocate(cx);
             r += (High, high?._Relocate(cx));
             r += (Low, low?._Relocate(cx));
-            r += (Order, cx.Fix(order));
-            r += (PartitionType, partitionType.Fix(cx));
+            if (order!=null)
+                r += (Order, order.Fix(cx));
+            if (partition!=null)
+                r += (PartitionType, partition.Fix(cx));
             r += (WQuery, cx.Fix(query));
             return r;
         }
@@ -169,11 +199,11 @@ namespace Pyrrho.Level3
             var nl = low?.Fix(cx);
             if (nl != low)
                 r += (Low, nl);
-            var no = cx.Fix(order);
+            var no = order?.Fix(cx);
             if (no != order)
                 r += (Order, no);
-            var np = partitionType.Fix(cx);
-            if (np != partitionType)
+            var np = partition?.Fix(cx);
+            if (np!=partition)
                 r += (PartitionType, np);
             var nq = cx.Fix(query);
             if (nq != query)
@@ -220,16 +250,23 @@ namespace Pyrrho.Level3
             sb.Append(Uid(defpos));
             if (query >= 0) { sb.Append(" Query "); sb.Append(Uid(query));  }
             if (orderWindow!=null) { sb.Append(" OWin "); sb.Append(orderWindow); }
-            var cm = "";
-            if (order!=null && order.Count>0) 
+            var pn = 0;
+            if (partition != null) 
             { 
-                sb.Append(" Order ["); 
-                for (var b=order.First();b!=null;b=b.Next())
+                sb.Append(" Partition "); sb.Append(partition); 
+                pn = partition.rowType.Length;
+            }
+            // order is prefixed by partition if any
+            if (order != null && order.rowType.Length>pn) 
+            { 
+                sb.Append(" Order ("); sb.Append(order);
+                var cm = "";
+                for (var b=order.rowType.PositionAt(pn);b!=null;b=b.Next())
                 {
                     sb.Append(cm); cm = ",";
                     sb.Append(Uid(b.value()));
                 }
-                sb.Append("]");
+                sb.Append(")");
             }
             if (units != Sqlx.NO) { sb.Append(" Units "); sb.Append(units); }
             if (low!=null) { sb.Append(" Low "); sb.Append(low); }

@@ -138,7 +138,8 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect | 
                 Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences | 
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
-                Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger;
+                Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger |
+                Grant.Privilege.Metadata | Grant.Privilege.GrantMetadata;
             var tb = (name[0]=='(')?new VirtualTable(this,ro,cx):new Table(this,ro);
             var ti = tb._ObInfo(ppos, name, priv);
             ro = ro + (ti,true) + (Role.DBObjects, ro.dbobjects + (name, ppos));

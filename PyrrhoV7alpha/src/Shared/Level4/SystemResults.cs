@@ -5417,7 +5417,7 @@ namespace Pyrrho.Level4
                     if ((tb is Table || tb is View) && !(tb is RestView))
                     {
                         var rb = new RoleClassBookmark(_cx,res, _pos + 1, enu);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 }
@@ -5429,7 +5429,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Value(Context _cx,SystemRowSet res,ABookmark<long,object>e)
             {
-                return ((Table)e.value()).RoleClassValue(_cx,res.sysFrom, e);
+                return ((Table)e.value()).RoleClassValue(_cx,res, e);
             }
         }
 
@@ -6017,7 +6017,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Value(Context _cx, SystemRowSet rs, ABookmark<long,object>e)
             {
-                return ((DBObject)e.value()).RoleJavaValue(_cx,rs.sysFrom, e);
+                return ((DBObject)e.value()).RoleJavaValue(_cx,rs, e);
             }
         }
         /// <summary>
@@ -6072,7 +6072,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Value(Context _cx, SystemRowSet rs, ABookmark<long, object> e)
             {
-                return ((DBObject)e.value()).RolePythonValue(_cx,rs.sysFrom, e);
+                return ((DBObject)e.value()).RolePythonValue(_cx,rs, e);
             }
         }
         /// <summary>

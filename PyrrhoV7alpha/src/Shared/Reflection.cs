@@ -56,7 +56,7 @@ namespace Pyrrho
                 if (vo!=null)
                 {
                     vo.version = rdr.version.version;
-                    vo.readCheck = rdr.version.readCheck;
+                    vo.entity= rdr.version.entity;
                 }
                 list.Add(ob);
             }

@@ -29,10 +29,11 @@ namespace Pyrrho.Level2
 			NoPrivilege=0x000000, 
             Select=0x000001, Insert=0x000002, Delete=0x000004, Update=0x000008, 
 			References=0x000010, Execute=0x000020, Owner=0x000040, UseRole=0x000080, 
-            Usage=0x000100, Under=0x000200, Trigger=0x000400, NotUsed=0x000800,
+            Usage=0x000100, Under=0x000200, Trigger=0x000400, Metadata=0x000800,
             GrantSelect=0x001000, GrantInsert=0x002000, GrantDelete=0x004000, GrantUpdate=0x008000, 
             GrantReferences=0x010000, GrantExecute=0x020000, GrantOwner=0x040000, AdminRole=0x080000, 
-            GrantUsage=0x100000, GrantUnder=0x200000,  GrantTrigger=0x400000
+            GrantUsage=0x100000, GrantUnder=0x200000,  GrantTrigger=0x400000,
+            GrantMetadata=0x800000
 		};
 		public static Privilege AllPrivileges = (Privilege)0x7fffff;
         /// <summary>

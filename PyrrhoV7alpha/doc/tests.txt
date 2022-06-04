@@ -133,8 +133,17 @@ CREATE TABLE users (email CHAR,first_name CHAR, last_name CHAR,  account_type CH
  ('john.smith@xyz.org', 'John', 'Smith','regular'),
  ('root@boss.org', 'Root', 'Chief', 'admin')]
 [SELECT row_number() OVER (PARTITION BY account_type ORDER BY email) AS rnum,
-  email, first_name, last_name. account_type FROM users]
-->[{RNUM:1,EMAIL:admin@boss.org',FIRST_NAME:'Admin',LAST_NAME:'Boss',ACCOUNT_TYPE:'admin'},            {RNUM:2,EMAIL:root@boss.org',FIRST_NAME:'Root',LAST_NAME:'Chief',ACCOUNT_TYPE:'admin'},            {RNUM:1,EMAIL:'bob.carlsen@foo.bar',FIRST_NAME:'Bob',LAST_NAME:'Carlsen',ACCOUNT_TYPE:'regular'},              {RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'},                {RNUM:3,EMAIL:'jphn.smaith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'}]
+  email, first_name, last_name, account_type FROM users]
+->[{RNUM:1,EMAIL:admin@boss.org',FIRST_NAME:'Admin',LAST_NAME:'Boss',ACCOUNT_TYPE:'admin'},            {RNUM:1,EMAIL:'bob.carlsen@foo.bar',FIRST_NAME:'Bob',LAST_NAME:'Carlsen',ACCOUNT_TYPE:'regular'},              {RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'},                {RNUM:3,EMAIL:'jphn.smaith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'},
+{RNUM:2,EMAIL:root@boss.org',FIRST_NAME:'Root',LAST_NAME:'Chief',ACCOUNT_TYPE:'admin'}]
+/* LearnSQL examples */
+create table employee(employee_id int,full_name char,Department char,salary numeric(8,2))
+[insert into employee values(100,'Mary Johns','SALES',1000.00),
+(101,'Sean Moldy','IT',1500.00),(102,'Peter Dugan','SALES',2000.00),
+(103,'Lilian Penn','SALES',1700.00),(104,'Milton Kowarsky','IT',1800.00),
+(105,'Moreen Bisset','ACCOUNTS',1200.00),(106,'Airton Graue','ACCOUNTS',1100.00)]
+[select rank() over (partition by department order by salary desc) as dept_ranking,
+department,employee_id,full_name,salary from employee]
 8:
 create table JA(B int,C int,D int)
 insert into JA values(4,2,43)

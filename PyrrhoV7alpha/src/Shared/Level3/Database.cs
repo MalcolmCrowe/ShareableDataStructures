@@ -331,7 +331,7 @@ namespace Pyrrho.Level3
         public static Database operator +(Database d,(Role,long) x)
         {
             var (ro, p) = x;
-            return d+(ro.defpos,ro)+(SchemaKey,p);
+            return d.New(p,d.mem+(ro.defpos,ro)+(SchemaKey,p));
         }
         public static Database operator+(Database d,(long,Domain,long)x)
         {
@@ -605,8 +605,6 @@ namespace Pyrrho.Level3
         {
             return new Reader(new Context(this),pos).Create();
         }
-        internal virtual void Execute(Role r, string id,string[] path, int p, string etag)
-        { }
         internal virtual Context Post(Context cx, TableRowSet  r, string s)
         { return cx;  }
         internal virtual Context Put(Context cx, TableRowSet r, string s)
