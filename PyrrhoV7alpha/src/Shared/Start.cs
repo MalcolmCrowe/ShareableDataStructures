@@ -887,7 +887,7 @@ namespace Pyrrho
             nextCell = rb[nextCol++];
             if (nextCol == ds)
                 lookAheadDone = false;
-     //       tcp.PutCheck(cx, rb);
+            tcp.PutCheck(cx, rb);
             tcp.PutCell(cx, dc, nextCell);
             var dt = rb.dataType;
             for (; ; )
@@ -903,7 +903,7 @@ namespace Pyrrho
                     nextCol = 0;
                     if (!more)
                         break;
-        //            tcp.PutCheck(cx, rb);
+                    tcp.PutCheck(cx, rb);
                 }
                 nextCell = rb[nextCol];
                 int len = lc + DataLength(cx, nextCell);
@@ -1277,7 +1277,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (4 June 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (8 June 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

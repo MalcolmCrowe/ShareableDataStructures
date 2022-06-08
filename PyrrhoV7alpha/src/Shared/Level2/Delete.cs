@@ -24,7 +24,8 @@ namespace Pyrrho.Level2
         public long delpos;
         public long tabledefpos;
         public TableRow delrec;
-        public BTree<long, (CList<long>,CList<long>)> deC = BTree<long,(CList<long>,CList<long>)>.Empty;
+        public CTree<long,CTree<CList<long>,CList<long>>> deC 
+            = CTree<long,CTree<CList<long>,CList<long>>>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
             var dp = wr.cx.Fix(delpos);

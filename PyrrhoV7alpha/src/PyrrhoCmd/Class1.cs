@@ -209,13 +209,13 @@ namespace PyrrhoCmd
                 {
                     str = InsertBlobs(str); // ~file or ~URL is replaced by a binary large object string
                     cmd.CommandText = str;
-                    str = str.Trim().Trim(';').ToLower();
-                    if (str.StartsWith("begin"))
+                    str = str.Trim().Trim(';');
+                    if (str.ToLower().StartsWith("begin"))
                         str = str.Substring(5).Trim();
-                    if (str.StartsWith("set"))
+                    if (str.ToLower().StartsWith("set"))
                     {
                         var s1 = str.Substring(3).Trim();
-                        if (s1.StartsWith("role"))
+                        if (s1.ToLower().StartsWith("role"))
                         {
                             var rn = s1.Substring(4).Trim();
                             db.SetRole(rn);
@@ -242,13 +242,17 @@ namespace PyrrhoCmd
                             transaction = null;
                             continue;
                         case "commit":
-                            if (transaction == null)
                             {
-                                Console.WriteLine(Format("0018"));
-                                continue;
+                                if (transaction == null)
+                                {
+                                    Console.WriteLine(Format("0018"));
+                                    continue;
+                                }
+                                var c = transaction.Commit();
+                                if (c > 0)
+                                    Console.WriteLine("" + c + Format("0020")+files);
+                                transaction = null;
                             }
-                            transaction.Commit();
-                            transaction = null;
                             continue;
                         case "show diagnostics":
                             if (lasterr == null)
@@ -269,10 +273,11 @@ namespace PyrrhoCmd
                     {
                         var n = cmd.ExecuteNonQuery();
                         ShowWarnings(db);
+                        var tr = (transaction != null) ? "0023" : "0020";
                         if (n < 0) // For cascade actions we don't get #affected rows
                             Console.WriteLine(Format("0019")); // OK
                         else
-                            Console.WriteLine("" + n + Format("0020")+files);
+                            Console.WriteLine("" + n + Format(tr)+files);
                     }
                     else
                     {
@@ -461,7 +466,7 @@ namespace PyrrhoCmd
 		}
 		static string InsertBlob(string source)
 		{
-			Stream str = null;
+			Stream str;
 			try 
 			{
 				if (source.StartsWith("http://"))
@@ -757,7 +762,7 @@ namespace PyrrhoCmd
 			}
 			Console.Write("|");
             if (checks && v != null)
-                Console.Write(v.version + " "+v.readCheck);
+                Console.Write(v.version + " "+v.entity);
             Console.WriteLine();
 		}
 		static Hashtable dict = null;
@@ -822,7 +827,8 @@ namespace PyrrhoCmd
                 dict.Add("0020", " records affected in ");
                 dict.Add("0021", "Usage: [-s] [-e:command|-f:file] [-c:locale] database ...");
                 dict.Add("0022", "  -v  Show version and readCheck information for each row of data");
-			}
+                dict.Add("0023", " records in transaction ");
+            }
 		}
 		public static string Format(string sig,params string[] obs)
 		{

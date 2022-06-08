@@ -333,19 +333,15 @@ namespace Pyrrho.Level3
         {
             var db = this;
             cx.inHttpService = true;
-            if (path.Length >= 4)
+            var j = (id == "G") ? 1 : 2;
+            if (path.Length >= j+2)
             {
                 RowSet fm = new TrivialRowSet(cx);
-                var tn = path[3];
+                var tn = path[j+1];
                 if (cx.db.role.dbobjects.Contains(tn))
                 {
-                    var p = cx.db.role.dbobjects[tn];
-                    if (cx.db.objects[p] is Table t)
-                    {
-                        var dp = cx.GetUid();
-                        var ts = new TableRowSet(dp, cx, p, t.domain);
-                        fm = new From(new Ident(tn, new Iix(dp)), cx, ts);
-                    }
+                    var t = (Table)cx.db.objects[cx.db.role.dbobjects[tn]];
+                    fm = new From(new Ident(tn, cx.GetIid()), cx, t);
                 }
                 switch (method)
                 {
@@ -353,18 +349,18 @@ namespace Pyrrho.Level3
                         cx.result = -1L;
                         break;
                     case "GET":
-                        db.Execute(cx, fm, method, dn, path, query, 2);
+                        db.Execute(cx, fm, method, dn, path, query, j);
                         break;
                     case "DELETE":
-                        db.Execute(cx, fm, method, dn, path, query, 2);
+                        db.Execute(cx, fm, method, dn, path, query, j);
                         cx = db.Delete(cx, (TableRowSet)cx.obs[cx.result]);
                         break;
                     case "PUT":
-                        db.Execute(cx, fm, method, dn, path, query, 2);
+                        db.Execute(cx, fm, method, dn, path, query, j);
                         cx = db.Put(cx,(TableRowSet)cx.obs[cx.result], sdata);
                         break;
                     case "POST":
-                        db.Execute(cx, fm, id + ".", dn, path, query, 2);
+                        db.Execute(cx, fm, id + ".", dn, path, query, j);
                         cx = db.Post(cx, (TableRowSet)cx.obs[cx.result],sdata);
                         break;
                 }
@@ -381,11 +377,27 @@ namespace Pyrrho.Level3
             return cx;
         }
         /// <summary>
-        /// REST service implementation
+        /// HTTP service implementation
+        /// See sec 3.8.2 of the Pyrrho manual. The URL format is very flexible, with
+        /// keywords such as table, procedure all optional. 
+        /// URL encoding is used so that at this stage the URL can contain spaces etc.
+        /// The URL is case-sensitive throughout, so use capitals a lot,
+        /// except for the keywords specified in 3.8.2.
+        /// Single quotes around string values and double quotes around identifiers
+        /// are optional (they can be used to disambiguate column names from string values,
+        /// or to include commas etc in string values).
+        /// Expressions are allowed in procedure argument values,
+        /// Where conditions can only be simple column compareop value (can be chained),
+        /// and no other expressions are allowed.
+        /// The query part of the URL is used for metadata flags, see section 7.2.
         /// </summary>
-        /// <param name="ro"></param>
-        /// <param name="path"></param>
-        /// <param name="p"></param>
+        /// <param name="cx">The context</param>
+        /// <param name="f">The rowset so far</param>
+        /// <param name="method">GET, PUT, POST or DELETE</param>
+        /// <param name="dn">The database name</param>
+        /// <param name="path">The URL split into segments by /</param>
+        /// <param name="query">The metadata flags part of the query</param>
+        /// <param name="p">Where we are in the path</param>
         internal void Execute(Context cx, RowSet f,string method, string dn, string[] path, string query, int p)
         {
             if (p >= path.Length || path[p] == "")
@@ -395,7 +407,7 @@ namespace Pyrrho.Level3
                 cx.result = rs.defpos;
                 return;
             }
-            string cp = path[p];
+            string cp = path[p]; // Testcp against Selector and Processing specification in 3.8.2
             int off = 0;
             string[] sp = cp.Split(' ');
             CallStatement fc = null;
@@ -410,6 +422,12 @@ namespace Pyrrho.Level3
                         var tbn = new Ident(tbs, cx.Ix(0));
                         var tb = objects[cx.db.role.dbobjects[tbn.ident]] as Table
                             ?? throw new DBException("42107", tbn).Mix();
+                        if (f.target == tb.defpos)
+                        {
+                            if (f is From)
+                                f = (RowSet)cx.obs[f.rsTargets[tb.defpos]];
+                            break;
+                        }
                         var lp = cx.Ix(uid + 6 + off);
                         var fm = new From(new Ident("", lp), cx, tb);
                         f = (TableRowSet)cx.obs[fm.source];
@@ -450,14 +468,8 @@ namespace Pyrrho.Level3
                                 var tc = (TableColumn)cx.obs[ix.keys[kn]];
                                 TypedValue kv = null;
                                 var ft = cx._Dom(tc);
-                                try
-                                {
-                                    kv = ft.Parse(uid,sk);
-                                }
-                                catch (System.Exception)
-                                {
+                                if (ft.TryParse(new Scanner(uid,sk.ToCharArray(),0), out kv) != null)
                                     break;
-                                }
                                 kn++;
                                 p++;
                                 fl += (ts.iSMap[tc.defpos], kv);
@@ -555,10 +567,40 @@ namespace Pyrrho.Level3
                         // ??
                         return; // do not break;
                     }
+                case "select":
+                    {
+                        sp[0] = sp[0].Trim(' ');
+                        if (f is TableRowSet fa && objects[fa.target] is Table ta)
+                        {
+                            var cs = sp[0].Split(',');
+                            var dm = cx._Dom(ta);
+                            var ns = CTree<string, long>.Empty;
+                            var ss = CList<long>.Empty;
+                            for (var c = dm.rowType.First(); c != null; c = c.Next())
+                            {
+                                var ci = (ObInfo)role.infos[c.value()];
+                                ns += (ci.name, c.value());
+                            }
+                            for (var i = 0; i < cs.Length && ns.Contains(cs[i]); i++)
+                            {
+                                ss += fa.iSMap[ns[cs[i]]];
+                            }
+                            if (ss != CList<long>.Empty)
+                            {
+                                var df = cx._Dom(f);
+                                var fd = new Domain(cx.GetUid(), cx, df.kind, df.representation, ss);
+                                f = new SelectedRowSet(cx, fd.defpos, f);
+                                break;
+                            }
+                        }
+                        throw new DBException("420000", cp);
+                    }
                 default:
                     {
                         var cn = sp[0];
                         cn = WebUtility.UrlDecode(cn);
+                        if (QuotedIdent(cn))
+                            cn = cn.Trim('"');
                         var ob = GetObject(cn);
                         if (ob is Table tb)
                         {
@@ -571,26 +613,20 @@ namespace Pyrrho.Level3
                             Execute(cx, f, method, dn, path, query, p + 1);
                             return;
                         }
+                        else if (ob is Procedure pn)
+                        {
+                            off = -10;
+                            goto case "procedure";
+                        }
                         if (cn.Contains(":"))
                         {
                             off -= 4;
                             goto case "rvv";
                         }
-                        if (cn.Contains("="))
+                        if (cn.Contains("=")||cn.Contains("<")||cn.Contains(">"))
                         {
                             off = -6;
                             goto case "where";
-                        }
-                        var sv = new Parser(cx).ParseSqlValueItem(cn,Domain.Content);
-                        if (sv is SqlProcedureCall pr)
-                        {
-                            fc = (CallStatement)cx.obs[pr.call];
-                            var proc = cx.db.role.procedures[fc.name]?[(int)fc.parms.Count];
-                            if (proc != null)
-                            {
-                                off = -10;
-                                goto case "procedure";
-                            }
                         }
                         if (f is TableRowSet fa && objects[fa.target] is Table ta)
                         {
@@ -630,6 +666,32 @@ namespace Pyrrho.Level3
                     }
             }
             Execute(cx, f, method, dn, path, query, p + 1);
+        }
+        bool QuotedIdent(string s)
+        {
+            var cs = s.ToCharArray();
+            var n = cs.Length;
+            if (n <= 3 || cs[0] != '"' || cs[n-1]!='"')
+                return false;
+            for (var i = 1; i < n - 1; i++)
+                if (!char.IsLetterOrDigit(cs[i]) && cs[i] != '_')
+                    return false;
+            return true;
+        }
+        bool QuotedString(string s)
+        {
+            var cs = s.ToCharArray();
+            var n = cs.Length;
+            if (n <= 3 || cs[0] != '\'' || cs[n - 1] != '\'')
+                return false;
+            for (var i = 1; i < n - 1; i++)
+            {
+                if (i < n - 2 && cs[i] == '\'' && cs[i + 1] == '\'')
+                    i++;
+                else if (!char.IsLetterOrDigit(cs[i]) && cs[i] != '_')
+                    return false;
+            }
+            return true;
         }
         internal override Context Put(Context cx, TableRowSet rs, string s)
         {

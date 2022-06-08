@@ -178,7 +178,18 @@ namespace Pyrrho.Level4
         }
         internal override BList<TableRow> Rec()
         {
-            throw new DBException("2F003");
+            var s = BTree<long, TableRow>.Empty;
+            var r = BList<TableRow>.Empty;
+            for (var b = _cs.First(); b != null; b = b.Next())
+                for (var c = b.value().Rec().First(); c != null; c = c.Next())
+                {
+                    var d = c.value();
+                    if (!s.Contains(d.ppos))
+                        s += (d.ppos, d);
+                }
+            for (var b = s.First(); b != null; b = b.Next())
+                r += b.value();
+            return r;
         }
         internal override Cursor _Fix(Context cx)
         {

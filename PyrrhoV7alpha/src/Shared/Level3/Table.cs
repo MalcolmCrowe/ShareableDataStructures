@@ -31,7 +31,7 @@ namespace Pyrrho.Level3
             Indexes = -264, // CTree<CList<long>,long> TableColumn,Index
             KeyCols = -320, // CTree<long,bool> TableColumn (over all indexes)
             LastData = -258, // long
-            RefIndexes = -250, // BTree<long,(CList<long>,CList<long>)> referencing Table,TableColumn,referencing TableColumn
+            RefIndexes = -250, // CTree<long,CTree<CList<long>,CList<long>>> referencing Table,referencing TableColumns,referenced TableColumns
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // BTree<long,bool> Check
             TableCols = -332, // BTree<long,Domain> TableColumn
@@ -55,9 +55,9 @@ namespace Pyrrho.Level3
         internal long applicationPS => (long)(mem[ApplicationPS] ?? -1L);
         internal string iri => (string)mem[Domain.Iri];
         internal long systemPS => (long)(mem[SystemPS] ?? -1L);
-        internal BTree<long,(CList<long>,CList<long>)> rindexes =>
-            (BTree<long, (CList<long>,CList<long>)>)mem[RefIndexes] 
-            ?? BTree<long, (CList<long>,CList<long>)>.Empty;
+        internal CTree<long,CTree<CList<long>,CList<long>>> rindexes =>
+            (CTree<long,CTree<CList<long>,CList<long>>>)mem[RefIndexes] 
+            ?? CTree<long,CTree<CList<long>,CList<long>>>.Empty;
         internal CTree<long, bool> tableChecks => 
             (CTree<long, bool>)mem[TableChecks]??CTree<long,bool>.Empty;
         internal CTree<PTrigger.TrigType, CTree<long,bool>> triggers =>
@@ -396,6 +396,13 @@ namespace Pyrrho.Level3
             if (triggers.Count!=0) { sb.Append(" Triggers:"); sb.Append(triggers); }
             return sb.ToString();
         }
+        string ToCamel(string s)
+        {
+            var sb = new StringBuilder();
+            sb.Append(char.ToLower(s[0]));
+            sb.Append(s.Substring(1));
+            return sb.ToString();
+        }
         /// <summary>
         /// Generate a row for the Role$Class table: includes a C# class definition
         /// </summary>
@@ -405,8 +412,8 @@ namespace Pyrrho.Level3
         internal override TRow RoleClassValue(Context cx, DBObject from, 
             ABookmark<long, object> _enu)
         {
-            var md = (ObInfo)cx.db.role.infos[defpos];
             var ro = cx.db.role;
+            var md = (ObInfo)ro.infos[defpos];
             var versioned = md.metadata.Contains(Sqlx.ENTITY);
             var key = BuildKey(cx.db, out Index ix);
             var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
@@ -434,8 +441,57 @@ namespace Pyrrho.Level3
                 }
                 FieldType(cx,sb, dt);
                 var ci = (ObInfo)cx.db.role.infos[p];
-                sb.Append("  public " + tn + " " + ci.name + ";");
-                sb.Append("\r\n");
+                for (var d=ci.metadata.First();d!=null;d=d.Next())
+                    switch (d.key())
+                    {
+                        case Sqlx.X:
+                        case Sqlx.Y:
+                            sb.Append(" [" + d.key().ToString() + "]\r\n");
+                            break;
+                    }
+                if (ci.description?.Length > 1)
+                    sb.Append("  // " + ci.description + "\r\n");
+                sb.Append("  public " + tn + " " + ci.name + ";\r\n");
+            }
+            for (var b=indexes.First();b!=null;b=b.Next())
+            {
+                var x = (Index)cx.db.objects[b.value()];
+                if (x.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+                {
+                    var sa = new StringBuilder();
+                    var cm = "";
+                    for (var c=b.key().First();c!=null;c=c.Next())
+                    {
+                        sa.Append(cm); cm = ",";
+                        var ci = (ObInfo)ro.infos[c.value()];
+                        sa.Append(ci.name);
+                    }
+                    var rx = (Index)cx.db.objects[x.refindexdefpos];
+                    var rt = (ObInfo)cx.db.role.infos[rx.tabledefpos];
+                    sb.Append("  public " + rt.name + " " + ToCamel(rt.name) 
+                        + "=> conn.FindOne<"+rt.name+">("+sa.ToString()+");\r\n");
+                }
+            }
+            for (var b = rindexes.First(); b != null; b = b.Next())
+            {
+                var rt = (ObInfo)cx.db.role.infos[b.key()];
+                var sa = new StringBuilder();
+                var cm = "\"\\\"";
+                for (var c=b.value().First();c!=null;c=c.Next())
+                {
+                    var rb = c.value().First();
+                    for (var xb = c.key().First(); xb != null && rb != null; xb = xb.Next(), rb = rb.Next())
+                    {
+                        sa.Append(cm);cm = ",\\\"";
+                        var ci = (ObInfo)cx.db.role.infos[rb.value()];
+                        var bi = (ObInfo)cx.db.role.infos[xb.value()];
+                        sa.Append(ci.name); sa.Append("\\\"=");
+                        sa.Append(bi.name);
+                    }
+                }
+                sa.Append("\"");
+                sb.Append("  public " + rt.name + "[] " + ToCamel(rt.name) 
+                    + "s => conn.FindWith<"+rt.name+">("+sa.ToString()+");\r\n");
             }
             sb.Append("}\r\n");
             return new TRow(cx,cx._Dom(from),new TChar(md.name),new TChar(key),

@@ -98,11 +98,10 @@ namespace Pyrrho.Level2
                         var de = (Delete)that;
                         if (de.delpos == defpos)
                             return new DBException("40029", defpos, that, ct);
-                        for (var b = de.deC.First();b!=null;b=b.Next())
+                        for (var b = de.deC[tabledefpos]?.First();b!=null;b=b.Next())
                         {
                             var tb = (Table)db.objects[tabledefpos];
-                            var (_, cs) = b.value();
-                            var x = (Index)db.objects[tb.indexes[cs]];
+                            var x = (Index)db.objects[tb.indexes[b.key()]];
                             if (x.rows.Contains(x.MakeKey(fields)))
                                 return new DBException("40085", de.delpos);
                         }
@@ -112,12 +111,11 @@ namespace Pyrrho.Level2
                 case Type.Update:
                     {
                         var u = (Update)that;
-                        if (u.riC.Contains(tabledefpos))
+                        for (var b = u.riC[tabledefpos]?.First(); b != null; b = b.Next())
                         {
-                            var (cs, rs) = u.riC[tabledefpos];
-                            // conflict if our old values are referenced by a new foreign key
-                            if (u.prevrec.MakeKey(rs).CompareTo(MakeKey(cs)) == 0)
-                                throw new DBException("40014", u.prevrec.ToString());
+                            if (u.prevrec.MakeKey(b.value()).CompareTo(MakeKey(b.key())) == 0 )
+                                // conflict if our old values are referenced by a new foreign key
+                                    throw new DBException("40014", u.prevrec.ToString());
                         }
                         var tb = (Table)cx.db.objects[u.tabledefpos];
                         for (var b = tb.indexes.First(); b != null; b = b.Next())

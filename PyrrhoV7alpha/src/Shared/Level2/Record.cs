@@ -50,7 +50,8 @@ namespace Pyrrho.Level2
         // Insert and ReferenceInsert constraints: {keys} , tabledefpos->{(keys,fkeys)}
         public CTree<CList<long>,long> inC = CTree<CList<long>,long>.Empty;
         public CTree<long, bool> refs = CTree<long, bool>.Empty;
-        public BTree<long,(CList<long>,CList<long>)> riC = BTree<long,(CList<long>,CList<long>)>.Empty;
+        public CTree<long,CTree<CList<long>,CList<long>>> riC 
+            = CTree<long,CTree<CList<long>,CList<long>>>.Empty;
         public long triggeredAction;
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -225,10 +226,9 @@ namespace Pyrrho.Level2
                 case Type.Delete:
                     {
                         var del = (Delete)that;
-                        if (del.deC.Contains(tabledefpos))
+                        for (var b = del.deC[tabledefpos]?.First(); b != null; b = b.Next())
                         {
-                            var (cs, rs) = del.deC[tabledefpos];
-                            if (del.delrec.MakeKey(cs).CompareTo(MakeKey(rs))==0)
+                            if (del.delrec.MakeKey(b.key()).CompareTo(MakeKey(b.value())) == 0)
                                 return new DBException("40075", that);
                         }
                         break;

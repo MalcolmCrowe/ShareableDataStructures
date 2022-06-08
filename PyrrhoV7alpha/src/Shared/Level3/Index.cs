@@ -253,13 +253,16 @@ namespace Pyrrho.Level3
             }
             if (nd.objects[reftabledefpos] is Table rt)
             {
-                var xs = BTree<long,(CList<long>,CList<long>)>.Empty;
+                var xs = CTree<long,CTree<CList<long>,CList<long>>>.Empty;
                 for (var b = rt.rindexes.First(); b != null; b = b.Next())
-                    if (b.key() != tabledefpos)
+                    if (b.key() == tabledefpos)
                     {
-                        var cs = b.key();
-                        xs += (cs, b.value());
-                    }
+                        var nx = b.value() - keys;
+                        if (nx.Count>0)
+                            xs += (tabledefpos, nx);
+                    } 
+                    else
+                        xs += (tabledefpos, b.value());
                 rt += (Table.RefIndexes, xs);
                 nd += (rt, p);
             }

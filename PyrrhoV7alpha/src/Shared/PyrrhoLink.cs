@@ -604,6 +604,11 @@ namespace Pyrrho
                 rc.version = GetString();
                 b = stream.ReadByte();
             }
+            if (b==4)
+            {
+                rc.entity = GetString();
+                b = stream.ReadByte();
+            }
             if (b == 0)
                 return cell;
             if (b == 2)
@@ -1740,7 +1745,7 @@ CallingConventions.HasThis, new Type[0], null);
     public class Versioned // Normally only for Entities: all fields initially null
     {
         public PyrrhoConnect conn; // null if committed or new instance
-        public string entity;      // url or /dbname/rolename/tablename/defpos
+        public string entity = ""; // [info{,info}] where info is /dbname/rolename/tablename/defpos
         public string version;     // ppos or etag null if new instance 
     }
     public sealed class SchemaAttribute : Attribute
@@ -1754,6 +1759,11 @@ CallingConventions.HasThis, new Type[0], null);
         public int seq;
         public KeyAttribute() { seq = 0; }
         public KeyAttribute(int s) { seq = s; }
+    }
+    public sealed class ForeignKeyAttribute : Attribute
+    {
+        public string[] rkey;
+        public ForeignKeyAttribute(params string[] s) { rkey = s; }
     }
     public sealed class FieldAttribute : Attribute
     {
@@ -1771,7 +1781,7 @@ CallingConventions.HasThis, new Type[0], null);
     public class PyrrhoReader
     {
         PyrrhoCommand cmd;
-        bool active = true, bOF = true;
+        bool active = true;
         internal PyrrhoTable schema;
 #if MONO1
         IEnumerator local = null;
@@ -2650,7 +2660,7 @@ CallingConventions.HasThis, new Type[0], null);
     }
     public class PyrrhoTable 
 	{
-        public new string TableName;
+        public string TableName;
 #if EMBEDDED
         internal SqlDataType nominalDataType;
 #endif
@@ -2663,8 +2673,8 @@ CallingConventions.HasThis, new Type[0], null);
         internal Hashtable columns = new Hashtable();
         public Hashtable Instances = new Hashtable();
 #else
-        public new List<PyrrhoColumn> Columns = new List<PyrrhoColumn>();
-        public new List<PyrrhoRow> Rows = new List<PyrrhoRow>();
+        public List<PyrrhoColumn> Columns = new List<PyrrhoColumn>();
+        public List<PyrrhoRow> Rows = new List<PyrrhoRow>();
         internal Dictionary<string, int> columns = new Dictionary<string, int>();
 #endif
         public bool ReadOnly

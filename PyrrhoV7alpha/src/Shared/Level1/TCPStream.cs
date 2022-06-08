@@ -800,17 +800,44 @@ namespace Pyrrho.Level1
             Flush();
         }
         /// <summary>
-        /// Send a key.
-        /// Used in server-server comms to collect traversal conditions,
-        /// and thus reduce the amount of obs transferred
+        /// Send ReadCheck information if present
         /// </summary>
-        /// <param name="link"></param>
-        internal void PutKey(Context _cx, PRow key)
+        /// <param name="rs"></param>
+        internal void PutCheck(Context cx, Cursor rb)
         {
-            PutLong(key.Length);
-            var vs = new TypedValue[key.Length];
-            for (int i = key.Length - 1; i >= 0; i--)
-                PutCell(_cx,key[i].dataType, key[i]);
+            var rv = rb._Rvv(cx);
+            if (rv != null)
+            {
+                WriteByte(3);
+                PutString(rv.ToString());
+            }
+            var rec = rb.Rec();
+            if (rec != null && rec!=BList<TableRow>.Empty)
+            {
+                var sb = new StringBuilder();
+                var cm = "";
+                for (var b = rec.First(); b != null; b = b.Next())
+                {
+                    var tr = b.value();
+                    var md = (ObInfo)cx.db.role.infos[tr.tabledefpos];
+                    if (!md.metadata.Contains(Sqlx.ENTITY))
+                        continue;
+                    sb.Append(cm); cm = ",";
+                    sb.Append("/");
+                    sb.Append(tr.provenance ?? cx.db.name);
+                    sb.Append("/");
+                    sb.Append(tr.tabledefpos);
+                    sb.Append("/");
+                    sb.Append(tr.defpos);
+                    sb.Append("/");
+                    sb.Append(tr.ppos);
+                }
+                if (sb.Length > 0)
+                {
+                    WriteByte(4);
+                    PutString(sb.ToString());
+                }
+            }
         }
         /// <summary>
         /// Send a obs cell.

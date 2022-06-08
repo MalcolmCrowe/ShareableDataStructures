@@ -1716,19 +1716,21 @@ namespace Pyrrho.Level4
             {
                 if ((ts.where == CTree<long, bool>.Empty && ts.matches == CTree<long, TypedValue>.Empty)
                  || cx._Dom(ts).aggs != CTree<long, bool>.Empty)
-                    rvv += (ts.target, (-1L, ((Table)cx.obs[ts.target]).lastData));
+                    rvv += (ts.target, (-1L, ((Table)cx._Ob(ts.target)).lastData));
                 else
                     rvv += (ts.target, cx.cursors[ts.defpos]);
-            } else
-            for (var b = rs.rsTargets.First(); b != null; b = b.Next())
-            {
-                var tg = (RowSet)cx.obs[b.value()];
-                if ((tg.where == CTree<long, bool>.Empty && tg.matches == CTree<long, TypedValue>.Empty)
-                    || cx._Dom(tg).aggs != CTree<long, bool>.Empty)
-                    rvv += (tg.target, (-1L, ((Table)cx.obs[b.key()]).lastData));
-                else
-                    rvv += (tg.target, cx.cursors[b.value()]);
             }
+            else
+                for (var b = rs.rsTargets.First(); b != null; b = b.Next())
+                {
+                    var tg = (RowSet)cx.obs[b.value()];
+                    if (((tg.where == CTree<long, bool>.Empty && tg.matches == CTree<long, TypedValue>.Empty)
+                        || cx._Dom(tg).aggs != CTree<long, bool>.Empty)
+                        && cx.obs[b.value()] is TableRowSet t) 
+                        rvv += (tg.target, (-1L, ((Table)cx._Ob(t.target)).lastData));
+                    else
+                        rvv += (tg.target, cx.cursors[b.value()]);
+                }
             return new ETag(cx.db,rvv);
         }
         internal bool Matches(Context cx)
@@ -4384,7 +4386,7 @@ namespace Pyrrho.Level4
             }
             internal override BList<TableRow> Rec()
             {
-                return new BList<TableRow>(_bmk.value());
+                return new BList<TableRow>(_rec);
             }
             internal override Cursor _Fix(Context cx)
             {
@@ -4569,7 +4571,7 @@ namespace Pyrrho.Level4
             }
             internal override BList<TableRow> Rec()
             {
-                throw new NotImplementedException();
+                return BList<TableRow>.Empty;
             }
         }
     }
@@ -4973,7 +4975,7 @@ namespace Pyrrho.Level4
             }
             internal override BList<TableRow> Rec()
             {
-                throw new NotImplementedException();
+                return BList<TableRow>.Empty;
             }
             internal override Cursor _Fix(Context cx)
             {
@@ -5572,11 +5574,11 @@ namespace Pyrrho.Level4
             }
             protected override Cursor _Previous(Context cx)
             {
-                throw new NotImplementedException(); // never
+                return null; // never
             }
             internal override Cursor _Fix(Context cx)
             {
-                throw new NotImplementedException();
+                return this;
             }
             internal override BList<TableRow> Rec()
             {
@@ -5796,19 +5798,19 @@ namespace Pyrrho.Level4
             }
             protected override Cursor _Next(Context cx)
             {
-                throw new NotImplementedException();
+                return null;
             }
             protected override Cursor _Previous(Context cx)
             {
-                throw new NotImplementedException();
+                return null;
             }
             internal override BList<TableRow> Rec()
             {
-                throw new NotImplementedException();
+                return BList<TableRow>.Empty;
             }
             internal override Cursor _Fix(Context cx)
             {
-                throw new NotImplementedException();
+                return this;
             }
         }
     }
@@ -6105,11 +6107,11 @@ namespace Pyrrho.Level4
             }
             internal override BList<TableRow> Rec()
             {
-                throw new NotImplementedException();
+                return _rb.Rec();
             }
             internal override Cursor _Fix(Context cx)
             {
-                throw new NotImplementedException();
+                return this;
             }
         }
     }
@@ -6220,7 +6222,7 @@ namespace Pyrrho.Level4
             }
             internal override BList<TableRow> Rec()
             {
-                throw new NotImplementedException();
+                return BList<TableRow>.Empty;
             }
         }
     }
@@ -7510,7 +7512,7 @@ namespace Pyrrho.Level4
             }
             internal override BList<TableRow> Rec()
             {
-                throw new NotImplementedException();
+                return new BList<TableRow>(_tc._rec);
             }
 
             internal override Cursor _Fix(Context cx)

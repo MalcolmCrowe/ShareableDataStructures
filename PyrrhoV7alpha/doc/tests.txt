@@ -343,7 +343,7 @@ insert into umsatz values ('Siemens', 9000.00),('Porsche', 5000.00), ('VW'     ,
 FROM umsatz AS u]
 [SELECT CASE WHEN runningSalesShare <= 0.5 THEN 'A' 
   WHEN runningSalesShare > 0.5  AND 
-   "runningSalesShare <= 0.85 THEN 'B' 
+   runningSalesShare <= 0.85 THEN 'B' 
   WHEN runningSalesShare > 0.85 THEN 'C' 
   ELSE NULL 
   END AS Category,

@@ -6,7 +6,7 @@ using Pyrrho.Common;
 
 namespace Pyrrho
 {
-    class Reflection
+    public class Reflection
     {
         PyrrhoConnect conn;
         internal Reflection(PyrrhoConnect c)
@@ -14,7 +14,7 @@ namespace Pyrrho
             conn = c;
         }
 
-        public C[] Get<C>(string rurl) where C:new()
+        public C[] Get<C>(string rurl) where C : new()
         {
             if (rurl[0] != '/')
                 throw new DatabaseError("2E304");
@@ -28,7 +28,7 @@ namespace Pyrrho
 #endif
             return Get0<C>();
         }
-        C[] Get0<C>() where C:new()
+        C[] Get0<C>() where C : new()
         {
             var rdr = PyrrhoReader.New(new PyrrhoCommand(conn));
             if (rdr == null)
@@ -53,10 +53,11 @@ namespace Pyrrho
                         f.SetValue(ob, iv);
                 }
                 var vo = ob as Versioned;
-                if (vo!=null)
+                if (vo != null)
                 {
+                    vo.conn = conn;
                     vo.version = rdr.version.version;
-                    vo.entity= rdr.version.entity;
+                    vo.entity = rdr.version.entity;
                 }
                 list.Add(ob);
             }

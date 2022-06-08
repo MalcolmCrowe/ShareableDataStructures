@@ -1625,13 +1625,22 @@ namespace Pyrrho.Level3
         /// <returns>a typedvalue</returns>
         public TypedValue Parse(Scanner lx, bool union = false)
         {
+            TypedValue v;
+            int start = lx.pos;
+            if (TryParse(lx, out v, union) is DBException ex)
+                throw ex;
+            return v;
+        }
+        public DBException TryParse(Scanner lx,out TypedValue v,bool union=false)
+        {
+            v = TNull.Value;
             if (lx.len == 0)
-                return new TRow(lx._cx,this);
+            { v = new TRow(lx._cx, this); return null; }
             if (sensitive)
-                return new TSensitive(this, Parse(lx, union));
+            { v = new TSensitive(this, Parse(lx, union)); return null; }
             int start = lx.pos;
             if (lx.Match("null"))
-                return TNull.Value;
+            { v = TNull.Value; return null; }
             switch (Equivalent(kind))
             {
                 case Sqlx.Null:
@@ -1642,13 +1651,13 @@ namespace Pyrrho.Level3
                         var lxr = new Lexer(str);
                         lx.pos += lxr.pos;
                         lx.ch = (lxr.pos>=lxr.input.Length)?(char)0:lxr.input[lxr.pos];
-                        return lxr.val;
+                        { v = lxr.val; return null; }
                     }
                 case Sqlx.BOOLEAN:
                     if (lx.MatchNC("TRUE"))
-                        return TBool.True;
+                    { v = TBool.True; return null; }
                     if (lx.MatchNC("FALSE"))
-                        return TBool.False;
+                    { v = TBool.False; return null; }
                     break;
                 case Sqlx.CHAR:
                     {
@@ -1677,7 +1686,7 @@ namespace Pyrrho.Level3
                         {
                             for (var i = 0; i < 4; i++)
                                 lx.Advance();
-                            return TNull.Value;
+                            v =TNull.Value; return null;
                         }
                         else
                         {
@@ -1687,7 +1696,7 @@ namespace Pyrrho.Level3
                         if (prec != 0 && prec < str.Length)
                             str = str.Substring(0, prec);
                         if (charSet == CharSet.UCS || Check(str))
-                            return new TChar(str);
+                        { v = new TChar(str); return null; }
                         break;
                     }
                 case Sqlx.CONTENT:
@@ -1698,7 +1707,7 @@ namespace Pyrrho.Level3
                         var c = TDocument.GetValue(null, s, s.Length, ref i);
                         lx.pos = lx.pos + i;
                         lx.ch = (lx.pos < lx.input.Length) ? lx.input[lx.pos] : '\0';
-                        return c.Item2;
+                        { v = c.Item2; return null; }
                     }
                 case Sqlx.PASSWORD: goto case Sqlx.CHAR;
                 /*                case Sqlx.XML:
@@ -1755,9 +1764,9 @@ namespace Pyrrho.Level3
                                 {
                                     Integer x = Integer.Parse(str);
                                     if (kind == Sqlx.NUMERIC)
-                                        return new TNumeric(this, new Common.Numeric(x, 0));
+                                    { v = new TNumeric(this, new Common.Numeric(x, 0)); return null; }
                                     if (kind == Sqlx.REAL)
-                                        return new TReal(this, (double)x);
+                                    { v = new TReal(this, (double)x); return null; }
                                     if (lx.ch == '.') // tolerate .00000
                                     {
                                         if (union)
@@ -1776,15 +1785,15 @@ namespace Pyrrho.Level3
                                         while (char.IsDigit(lx.ch))
                                             lx.Advance();
                                     }
-                                    return new TInt(this, x);
+                                    v = new TInt(this, x); return null;
                                 }
                                 else
                                 {
                                     long x = long.Parse(str);
                                     if (kind == Sqlx.NUMERIC)
-                                        return new TNumeric(this, new Common.Numeric(x));
+                                    { v = new TNumeric(this, new Common.Numeric(x)); return null; }
                                     if (kind == Sqlx.REAL)
-                                        return new TReal(this, (double)x);
+                                    { v = new TReal(this, (double)x); return null; }
                                     if (lx.ch == '.') // tolerate .00000
                                     {
                                         //            if (union)
@@ -1803,7 +1812,7 @@ namespace Pyrrho.Level3
                                         while (char.IsDigit(lx.ch))
                                             lx.Advance();
                                     }
-                                    return new TInt(this, x);
+                                    v = new TInt(this, x); return null;
                                 }
                             }
                             if ((lx.ch != 'e' && lx.ch != 'E') || kind == Sqlx.NUMERIC)
@@ -1811,19 +1820,22 @@ namespace Pyrrho.Level3
                                 str = lx.String(start, lx.pos - start);
                                 Common.Numeric x = Common.Numeric.Parse(str);
                                 if (kind == Sqlx.REAL)
-                                    return new TReal(this, (double)x);
-                                return new TNumeric(this, x);
+                                    v = new TReal(this, (double)x);
+                                else
+                                    v = new TNumeric(this, x);
+                                return null;
                             }
                             lx.Advance();
                             if (lx.ch == '-' || lx.ch == '+')
                                 lx.Advance();
                             if (!char.IsDigit(lx.ch))
-                                throw new DBException("22107").Mix();
+                                return new DBException("22107").Mix();
                             lx.Advance();
                             while (char.IsDigit(lx.ch))
                                 lx.Advance();
                             str = lx.String(start, lx.pos - start);
-                            return new TReal(this, (double)Common.Numeric.Parse(str));
+                            v = new TReal(this, (double)Common.Numeric.Parse(str));
+                            return null;
                         }
                     }
                     break;
@@ -1838,21 +1850,22 @@ namespace Pyrrho.Level3
                             lx.Advance();
                             GetTime(lx, st);
                         }
-                        return new TDateTime(this, da);
+                        v = new TDateTime(this, da);
+                        return null;
                     }
-                case Sqlx.TIME: return new TTimeSpan(this, GetTime(lx, lx.pos));
-                case Sqlx.TIMESTAMP: return new TDateTime(this, GetTimestamp(lx, lx.pos));
-                case Sqlx.INTERVAL: return new TInterval(this, GetInterval(lx));
+                case Sqlx.TIME: v = new TTimeSpan(this, GetTime(lx, lx.pos)); return null;
+                case Sqlx.TIMESTAMP: v = new TDateTime(this, GetTimestamp(lx, lx.pos)); return null;
+                case Sqlx.INTERVAL: v = new TInterval(this, GetInterval(lx)); return null;
                 case Sqlx.TYPE:
                 case Sqlx.TABLE:
                 case Sqlx.VIEW:
-                    return (this+(Kind,Sqlx.ROW)).ParseList(lx);
+                    v = (this+(Kind,Sqlx.ROW)).ParseList(lx); return null;
                 case Sqlx.ROW:
                     {
                         if (lx.mime == "text/xml")
                         {
                             // tolerate missing values and use of attributes
-                            var cols = CTree<long,TypedValue>.Empty;
+                            var cols = CTree<long, TypedValue>.Empty;
                             var xd = new XmlDocument();
                             xd.LoadXml(new string(lx.input));
                             var xc = xd.FirstChild;
@@ -1861,7 +1874,7 @@ namespace Pyrrho.Level3
                             if (xc == null)
                                 goto bad;
                             bool blank = true;
-                            for (var b=rowType.First(); b!=null; b=b.Next())
+                            for (var b = rowType.First(); b != null; b = b.Next())
                             {
                                 var p = b.value();
                                 var cn = (lx._cx.db.role.infos[p] is ObInfo co) ? co.name
@@ -1873,7 +1886,7 @@ namespace Pyrrho.Level3
                                 {
                                     var att = xc.Attributes[cn];
                                     if (att != null)
-                                        item = cd.Parse(0, att.InnerXml, lx.mime,lx._cx);
+                                        item = cd.Parse(0, att.InnerXml, lx.mime, lx._cx);
                                 }
                                 if (item == null)
                                     for (int j = 0; j < xc.ChildNodes.Count; j++)
@@ -1881,23 +1894,25 @@ namespace Pyrrho.Level3
                                         var xn = xc.ChildNodes[j];
                                         if (xn.Name == (cn))
                                         {
-                                            item = cd.Parse(0, xn.InnerXml, lx.mime,lx._cx);
+                                            item = cd.Parse(0, xn.InnerXml, lx.mime, lx._cx);
                                             break;
                                         }
                                     }
                                 blank = blank && (item == null);
-                                cols+=(b.value(),item);
+                                cols += (b.value(), item);
                             }
                             if (blank)
-                                return TXml.Null;
-                            return new TRow(this, cols);
+                                v = TXml.Null;
+                            else
+                                v = new TRow(this, cols);
+                            return null;
                         }
                         else
                             if (lx.mime == "text/csv")
                         {
                             // we expect all columns, separated by commas, without string quotes
                             var vs = CTree<long, TypedValue>.Empty;
-                            for (var b=rowType.First();b!=null;b=b.Next())
+                            for (var b = rowType.First(); b != null; b = b.Next())
                             {
                                 // for this mime type we only understand primitive types
                                 var cd = representation[b.value()] ?? Content;
@@ -1955,10 +1970,10 @@ namespace Pyrrho.Level3
                                     while (lx.ch != '\0' && lx.ch != ',' && lx.ch != '\r' && lx.ch != '\n')
                                         lx.Advance();
                                 }
-                                if (b.Next()!=null)
+                                if (b.Next() != null)
                                 {
                                     if (lx.ch != ',')
-                                        throw new DBException("42101", lx.ch).Mix();
+                                        return new DBException("42101", lx.ch).Mix();
                                     lx.Advance();
                                 }
                                 else
@@ -1966,13 +1981,14 @@ namespace Pyrrho.Level3
                                     if (lx.ch == ',')
                                         lx.Advance();
                                     if (lx.ch != '\0' && lx.ch != '\r' && lx.ch != '\n')
-                                        throw new DBException("42101", lx.ch).Mix();
+                                        return new DBException("42101", lx.ch).Mix();
                                     while (lx.ch == '\r' || lx.ch == '\n')
                                         lx.Advance();
                                 }
-                                vs += (b.value(),vl);
+                                vs += (b.value(), vl);
                             }
-                            return new TRow(this, vs);
+                            v = new TRow(this, vs);
+                            return null;
                         }
                         else
                         {
@@ -1988,10 +2004,10 @@ namespace Pyrrho.Level3
                             }
                             if (lx.ch == '[')
                                 goto case Sqlx.TABLE;
-                            var cols = CTree<long,TypedValue>.Empty;
+                            var cols = CTree<long, TypedValue>.Empty;
                             var names = CTree<string, long>.Empty;
                             var b = rowType.First();
-                            for (;b!=null;b=b.Next())
+                            for (; b != null; b = b.Next())
                             {
                                 var p = b.value();
                                 var dm = representation[p];
@@ -2016,44 +2032,45 @@ namespace Pyrrho.Level3
                             while (lx.ch == comma)
                             {
                                 if (b == null)
-                                    throw new DBException("22207");
+                                    return new DBException("22207");
                                 lx.Advance();
                                 lx.White();
                                 var n = lx.GetName();
                                 long p = b.value();
                                 if (n == null) // no name supplied
                                 {
-                                    if (b==null || !unnamedOk)
-                                        throw new DBException("22208").Mix();
+                                    if (b == null || !unnamedOk)
+                                        return new DBException("22208").Mix();
                                     namedOk = false;
                                     b = b.Next();
                                 }
                                 else // column name supplied
                                 {
                                     if (lx.ch != ':')
-                                        throw new DBException("42124").Mix();
+                                        return new DBException("42124").Mix();
                                     else
                                         lx.Advance();
                                     if (!namedOk)
-                                        throw new DBException("22208").Mix()
+                                        return new DBException("22208").Mix()
                                             .Add(Sqlx.COLUMN_NAME, new TChar(n));
                                     unnamedOk = false;
-                                    if (names[n]!=p)
+                                    if (names[n] != p)
                                         p = names[n];
                                 }
                                 lx.White();
-                                cols += (p, (representation[p]??Content).Parse(lx));
+                                cols += (p, (representation[p] ?? Content).Parse(lx));
                                 comma = ',';
                                 lx.White();
                             }
                             if (lx.ch != end)
                                 break;
                             lx.Advance();
-                            return new TRow(this, cols);
+                            v = new TRow(this, cols);
+                            return null;
                         }
                     }
                 case Sqlx.ARRAY:
-                    return lx._cx._Dom(elType).ParseList(lx);
+                    { v = lx._cx._Dom(elType).ParseList(lx); return null; }
                 case Sqlx.UNION:
                     {
                         int st = lx.pos;
@@ -2061,14 +2078,12 @@ namespace Pyrrho.Level3
                         for (var b = mem.First(); b != null; b = b.Next())
                             if (b.value() is Domain dt)
                             {
-                                try
-                                {
-                                    var v = dt.Parse(lx, true);
+                                if (dt.TryParse(lx, out v, true)==null)
+                                { 
                                     lx.White();
                                     if (lx.ch == ']' || lx.ch == ',' || lx.ch == '}')
-                                        return v;
+                                        return null;
                                 }
-                                catch (Exception) { }
                                 lx.pos = st;
                                 lx.ch = ch;
                             }
@@ -2107,18 +2122,21 @@ namespace Pyrrho.Level3
                                 lx.White();
                             }
                         }
-                        return TLevel.New(new Level((byte)min, (byte)max, gps, rfs));
+                        v = TLevel.New(new Level((byte)min, (byte)max, gps, rfs));
+                        return null;
                     }
             }
             if (lx.pos + 4 < lx.len && new string(lx.input, start, 4).ToLower() == "null")
             {
                 for (int i = 0; i < 4; i++)
                     lx.Advance();
-                return TNull.Value;
+                v = TNull.Value;
+                return null;
             }
-            bad:
+        bad:
             var xs = new string(lx.input, start, lx.pos - start);
-            throw new DBException("22005E", ToString(), xs).ISO()
+            v = TNull.Value;
+            return new DBException("22005E", ToString(), xs).ISO()
                 .AddType(this).AddValue(new TChar(xs));
         }
         TypedValue ParseList(Scanner lx)
@@ -4651,6 +4669,41 @@ namespace Pyrrho.Level3
                 return;
             }
             base.PutDataType(nt, wr);
+        }
+        /// <summary>
+        /// Generate a row for the Role$Class table: includes a C# class definition
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="from"></param>
+        /// <param name="_enu"></param>
+        /// <returns></returns>
+        internal override TRow RoleClassValue(Context cx, DBObject from, ABookmark<long, object> _enu)
+        {
+            var ro = cx.db.role;
+            var md = (ObInfo)ro.infos[defpos];
+            var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
+            sb.Append("\r\n/// <summary>\r\n");
+            sb.Append("/// Class " + md.name + " from Database " + cx.db.name
+                + ", Role " + ro.name + "\r\n");
+            if (md.description != "")
+                sb.Append("/// " + md.description + "\r\n");
+            sb.Append("/// </summary>\r\n");
+            sb.Append("public class " + md.name + ((super!=null)?" : "+super.name:"") + " {\r\n");
+            for (var b = md.dataType.representation.First(); b != null; b = b.Next())
+            {
+                var p = b.key();
+                var dt = b.value();
+                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
+                FieldType(cx, sb, dt);
+                var ci = (ObInfo)cx.db.role.infos[p];
+                if (ci.description?.Length > 1)
+                    sb.Append("  // " + ci.description + "\r\n");
+                sb.Append("  public " + tn + " " + ci.name + ";");
+                sb.Append("\r\n");
+            }
+            sb.Append("}\r\n");
+            return new TRow(cx, cx._Dom(from), new TChar(md.name), new TChar(""),
+                new TChar(sb.ToString()));
         }
         public override string ToString()
         {

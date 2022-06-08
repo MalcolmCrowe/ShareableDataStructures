@@ -319,87 +319,89 @@ namespace Pyrrho.Level4
                 }
                 var cd = new Domain(GetUid(), cx, Sqlx.TABLE, vs);
                 obs += (cd.defpos, cd);
-                var (cs, rs) = b.value();
-                var x = (Index)cx.db.objects[table.indexes[cs]];
-                var rx = (Index)cx.db.objects[rt.indexes[rs]];
-                var fl = CTree<long, TypedValue>.Empty;
-                var xm = BTree<long, long>.Empty;
-                var pb = rx.keys.First();
-                for (var rb = x.keys.First(); pb != null && rb != null;
-                    pb = pb.Next(), rb = rb.Next())
-                    xm += (rb.value(), pb.value());
-                for (var c = ts.matches.First(); c != null; c = c.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
                 {
-                    var sc = (SqlCopy)cx.obs[c.key()];
-                    fl += (xm[sc.copyFrom], c.value());
-                }
-                var rf = new TableRowSet(ts.defpos,this, b.key(), cd.defpos);
-                var nf = new From(new Ident(ri.name, cx.Ix(cp)), this, rf, null);
-                rf += (DBObject._From, nf.defpos);
-                if (fl != CTree<long, TypedValue>.Empty)
-                    rf += (RowSet.Filter,fl);
-                obs += (rx.defpos, rx);
-                obs += (nf.defpos, nf);
-                obs += (rt.defpos, rt);
-                for (var xb = _Dom(rf).rowType.First(); xb != null; xb = xb.Next())
-                {
-                    var xc = (SqlCopy)obs[xb.value()];
-                    obs += (xc.copyFrom, (TableColumn)db.objects[xc.copyFrom]);
-                }
-                TableActivation ra = null;
-                if (tt != PTrigger.TrigType.Insert)
-                {
-                    var da = (RowSet)(obs[nf.data] ?? obs[nf.source]);
-                    ra = new TableActivation(this, rf, da, tt);
-                    ra._tty = PTrigger.TrigType.Update;
-                }
-                if (tt == PTrigger.TrigType.Update)
-                    switch (rx.flags & PIndex.Updates)
+                    var x = (Index)cx.db.objects[table.indexes[c.value()]];
+                    var rx = (Index)cx.db.objects[rt.indexes[c.key()]];
+                    var fl = CTree<long, TypedValue>.Empty;
+                    var xm = BTree<long, long>.Empty;
+                    var pb = rx.keys.First();
+                    for (var rb = x.keys.First(); pb != null && rb != null;
+                        pb = pb.Next(), rb = rb.Next())
+                        xm += (rb.value(), pb.value());
+                    for (var d = ts.matches.First(); d != null; d = d.Next())
                     {
-                       case PIndex.ConstraintType.CascadeUpdate:
-                            break;
-                        case PIndex.ConstraintType.SetDefaultUpdate:
-                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
-                            {
-                                var p = kb.value();
-                                var sc = (SqlValue)ra.obs[p];
-                                ra.updates += (p, new UpdateAssignment(p, cx._Dom(sc).defaultValue));
-                            }
-                            break;
-                        case PIndex.ConstraintType.SetNullUpdate:
-                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
-                            {
-                                var p = kb.value();
-                                ra.updates += (p, new UpdateAssignment(p, TNull.Value));
-                            }
-                            break;
+                        var sc = (SqlCopy)cx.obs[d.key()];
+                        fl += (xm[sc.copyFrom], d.value());
                     }
-                else if (tt==PTrigger.TrigType.Delete)
-                    switch (rx.flags & PIndex.Deletes)
+                    var rf = new TableRowSet(ts.defpos, this, b.key(), cd.defpos);
+                    var nf = new From(new Ident(ri.name, cx.Ix(cp)), this, rf, null);
+                    rf += (DBObject._From, nf.defpos);
+                    if (fl != CTree<long, TypedValue>.Empty)
+                        rf += (RowSet.Filter, fl);
+                    obs += (rx.defpos, rx);
+                    obs += (nf.defpos, nf);
+                    obs += (rt.defpos, rt);
+                    for (var xb = _Dom(rf).rowType.First(); xb != null; xb = xb.Next())
                     {
-                        case PIndex.ConstraintType.RestrictDelete:
-                        case PIndex.ConstraintType.CascadeDelete:
-                            ra._tty = PTrigger.TrigType.Delete;
-                            break;
-                        case PIndex.ConstraintType.SetDefaultDelete:
-                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
-                            {
-                                var p = kb.value();
-                                var sc = (SqlValue)ra.obs[p];
-                                ra.updates += (p, new UpdateAssignment(p, _Dom(sc).defaultValue));
-                            }
-                            break;
-                        case PIndex.ConstraintType.SetNullDelete:
-                            for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
-                            {
-                                var p = kb.value();
-                                ra.updates += (p, new UpdateAssignment(p, TNull.Value));
-                            }
-                            break;
+                        var xc = (SqlCopy)obs[xb.value()];
+                        obs += (xc.copyFrom, (TableColumn)db.objects[xc.copyFrom]);
+                    }
+                    TableActivation ra = null;
+                    if (tt != PTrigger.TrigType.Insert)
+                    {
+                        var da = (RowSet)(obs[nf.data] ?? obs[nf.source]);
+                        ra = new TableActivation(this, rf, da, tt);
+                        ra._tty = PTrigger.TrigType.Update;
+                    }
+                    if (tt == PTrigger.TrigType.Update)
+                        switch (rx.flags & PIndex.Updates)
+                        {
+                            case PIndex.ConstraintType.CascadeUpdate:
+                                break;
+                            case PIndex.ConstraintType.SetDefaultUpdate:
+                                for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
+                                {
+                                    var p = kb.value();
+                                    var sc = (SqlValue)ra.obs[p];
+                                    ra.updates += (p, new UpdateAssignment(p, cx._Dom(sc).defaultValue));
+                                }
+                                break;
+                            case PIndex.ConstraintType.SetNullUpdate:
+                                for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
+                                {
+                                    var p = kb.value();
+                                    ra.updates += (p, new UpdateAssignment(p, TNull.Value));
+                                }
+                                break;
+                        }
+                    else if (tt == PTrigger.TrigType.Delete)
+                        switch (rx.flags & PIndex.Deletes)
+                        {
+                            case PIndex.ConstraintType.RestrictDelete:
+                            case PIndex.ConstraintType.CascadeDelete:
+                                ra._tty = PTrigger.TrigType.Delete;
+                                break;
+                            case PIndex.ConstraintType.SetDefaultDelete:
+                                for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
+                                {
+                                    var p = kb.value();
+                                    var sc = (SqlValue)ra.obs[p];
+                                    ra.updates += (p, new UpdateAssignment(p, _Dom(sc).defaultValue));
+                                }
+                                break;
+                            case PIndex.ConstraintType.SetNullDelete:
+                                for (var kb = rx.keys.Last(); kb != null; kb = kb.Previous())
+                                {
+                                    var p = kb.value();
+                                    ra.updates += (p, new UpdateAssignment(p, TNull.Value));
+                                }
+                                break;
 
-                    }
-                cx.nextHeap = nextHeap;
-                casc += (rx.defpos, ra);
+                        }
+                    cx.nextHeap = nextHeap;
+                    casc += (rx.defpos, ra);
+                }
             }
             for (var b = table.indexes.First(); index == null && b != null; b = b.Next())
             {
