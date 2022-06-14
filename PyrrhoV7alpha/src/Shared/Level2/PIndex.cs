@@ -268,8 +268,11 @@ namespace Pyrrho.Level2
                 kc += (tc,true);
             }
             tb += (Table.KeyCols, kc);
-            var r = cx.db.role + (ppos,new ObInfo(ppos,"",new Domain(Sqlx.ROW,cx,cs),
-                Grant.Privilege.Execute));
+            var ti = (ObInfo)cx.db.role.infos[tb.defpos];
+            ti += (ObInfo.SchemaKey, p);
+            var oi =new ObInfo(ppos, "", new Domain(Sqlx.ROW, cx, cs),
+                Grant.Privilege.Execute);
+            var r = cx.db.role + (ppos,oi) + (tb.defpos,ti);
             cx.db += (r, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

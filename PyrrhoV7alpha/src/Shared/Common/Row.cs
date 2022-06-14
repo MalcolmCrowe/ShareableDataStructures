@@ -1307,9 +1307,8 @@ namespace Pyrrho.Common
     internal class TRvv : TypedValue
     {
         internal readonly Rvv rvv;
-        internal TRvv(Context cx,string match) : base (Domain.Rvv)
+        internal TRvv(string match) : base (Domain.Rvv)
         {
-            var tr = cx.db as Transaction;
             rvv = Rvv.Parse(match);
         }
         internal TRvv(Rvv r) : base(Domain.Rvv)

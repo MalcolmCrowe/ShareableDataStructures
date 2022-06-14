@@ -201,6 +201,7 @@ namespace Pyrrho.Level2
             var tc = new TableColumn(table, this, dataType,cx.role);
             cx.Add(table);
             var ti = cx.Inf(table.defpos);
+            ti += (ObInfo.SchemaKey, p);
             var dm = new Domain(-1L, cx, Sqlx.TABLE,
                 ti.dataType.representation + (tc.defpos, dataType),
                 ti.dataType.rowType + tc.defpos);

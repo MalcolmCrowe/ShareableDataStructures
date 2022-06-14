@@ -197,7 +197,6 @@ namespace Pyrrho.Level3
             _Role = -302, // long: role.defpos, initially set to the session role
             Roles = -60, // BTree<string,long>
             _Schema = -291, // long: (always the same as _system._role) the owner role for the database
-            SchemaKey = -286, // long: highwatermark for schema changes
             Types = -61, // CTree<Domain,long>
             User = -277, // User: always the connection user
             _User = -301,// long: user.defpos, always the connection user, maybe uncommitted
@@ -224,7 +223,6 @@ namespace Pyrrho.Level3
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal int format => (int)(mem[Format] ?? 0);
-        internal long schemaKey => (long)(mem[SchemaKey] ?? 0L);
         public BTree<Domain, long> types => (BTree<Domain, long>)mem[Types];
         public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
         public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
@@ -331,7 +329,7 @@ namespace Pyrrho.Level3
         public static Database operator +(Database d,(Role,long) x)
         {
             var (ro, p) = x;
-            return d.New(p,d.mem+(ro.defpos,ro)+(SchemaKey,p));
+            return d.New(p,d.mem+(ro.defpos,ro));
         }
         public static Database operator+(Database d,(long,Domain,long)x)
         {

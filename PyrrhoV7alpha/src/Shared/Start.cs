@@ -100,7 +100,7 @@ namespace Pyrrho
                         wr.PutInt(777);
                         wr.PutInt(51);
                         wr.PutBuf();
-                        if (user!=Environment.UserDomainName+"\\"+Environment.UserName)
+                        if (user != Environment.UserDomainName + "\\" + Environment.UserName)
                         {
                             db = new Database(fn, fp, fs);
                             var _cx = new Context(db, conn);
@@ -187,7 +187,7 @@ namespace Pyrrho
                                 var cmd = tcp.GetString();
                                 db = db.Transact(db.nextId, cmd, conn);
                                 long t = 0;
-                                cx = new Context(db,cx);
+                                cx = new Context(db, cx);
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = (Transaction)db;
                                 var tn = DateTime.Now.Ticks;
@@ -198,7 +198,7 @@ namespace Pyrrho
                                 tcp.Write(Responses.Done);
                                 tcp.PutInt(db.AffCount(cx));
                                 var r = cx.rdC;
-                                cx = new Context(db,conn);
+                                cx = new Context(db, conn);
                                 cx.rdC = r;
                                 break;
                             }
@@ -207,7 +207,7 @@ namespace Pyrrho
                                 var cmd = tcp.GetString();
                                 db = db.Transact(db.nextId, cmd, conn);
                                 long t = 0;
-                                cx = new Context(db,cx);
+                                cx = new Context(db, cx);
                                 var ts = db.loadpos;
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = db;
@@ -235,10 +235,10 @@ namespace Pyrrho
                         // start a new transaction
                         case Protocol.BeginTransaction:
                             {
-                                db = db.Transact(db.nextId, "", conn,false);
+                                db = db.Transact(db.nextId, "", conn, false);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("Begin Transaction " + db.uid);
-                                cx = new Context(db,conn);
+                                cx = new Context(db, conn);
                                 break;
                             }
                         // commit
@@ -277,9 +277,9 @@ namespace Pyrrho
                         // rollback
                         case Protocol.Rollback:
                             if (db is Transaction && PyrrhoStart.DebugMode)
-                                Console.WriteLine("Rollback on Request " +  db.uid);
+                                Console.WriteLine("Rollback on Request " + db.uid);
                             db = db.Rollback();
-                            cx = new Context(db,conn);
+                            cx = new Context(db, conn);
                             tcp.Write(Responses.Done);
                             break;
                         // close the connection
@@ -294,18 +294,18 @@ namespace Pyrrho
                         case Protocol.ResetReader:
                             rb = ((RowSet)cx.obs[cx.result]).First(cx);
                             tcp.Write(Responses.Done);
-                            tcp.Flush(); 
+                            tcp.Flush();
                             break;
                         case Protocol.ReaderData:
                             if (recovering)
                                 continue;
                             ReaderData();
-                            tcp.Flush(); 
+                            tcp.Flush();
                             break;
                         case Protocol.TypeInfo:
                             {
                                 string dts = "";
-                                db = db.Transact(db.nextId, "",conn);
+                                db = db.Transact(db.nextId, "", conn);
                                 try
                                 {
                                     var dm = db.role.dbobjects[tcp.GetString()];
@@ -320,7 +320,7 @@ namespace Pyrrho
                             {
                                 var nm = tcp.GetString();
                                 var sql = tcp.GetString();
-                                db = db.Transact(db.nextId, sql,conn);
+                                db = db.Transact(db.nextId, sql, conn);
                                 cx = new Context(db, conn);
                                 cx.parse = ExecuteStatus.Prepare;
                                 db = new Parser(cx).ParseSql(sql, Domain.Content);
@@ -346,12 +346,12 @@ namespace Pyrrho
                                 if (!conn.prepared.Contains(nm))
                                     throw new DBException("33000", nm);
                                 var cmp = sb.ToString();
-                                db = db.Transact(db.nextId, cmp,conn);
-                                cx = new Context(db,cx);
+                                db = db.Transact(db.nextId, cmp, conn);
+                                cx = new Context(db, cx);
                                 db = new Parser(cx).ParseSql(conn.prepared[nm], cmp);
                                 cx.db = db;
                                 tcp.PutWarnings(cx);
-                                if (cx.result<=0L)
+                                if (cx.result <= 0L)
                                 {
                                     db = db.RdrClose(ref cx);
                                     tcp.Write(Responses.Done);
@@ -383,11 +383,11 @@ namespace Pyrrho
                                 var cmp = sb.ToString();
                                 db = db.Transact(db.nextId, cmp, conn);
                                 var ts = db.loadpos;
-                                cx = new Context(db,cx);
+                                cx = new Context(db, cx);
                                 db = new Parser(cx).ParseSql(conn.prepared[nm], cmp);
                                 cx.db = (Transaction)db;
                                 tcp.PutWarnings(cx);
-                                if (cx.result<0L)
+                                if (cx.result < 0L)
                                 {
                                     db = db.RdrClose(ref cx);
                                     tcp.Write(Responses.DoneTrace);
@@ -397,7 +397,7 @@ namespace Pyrrho
                                 }
                                 else
                                     tcp.PutSchema(cx);
-                                 Console.WriteLine(nm + " " + (DateTime.Now.Ticks - st.Ticks));
+                                Console.WriteLine(nm + " " + (DateTime.Now.Ticks - st.Ticks));
                                 break;
                             }
                         case Protocol.ExecuteReader: // ExecuteReader
@@ -407,7 +407,7 @@ namespace Pyrrho
                                 nextCol = 0; // discard anything left over from ReaderData
                                 var cmd = tcp.GetString();
                                 db = db.Transact(db.nextId, cmd, conn);
-                                cx = new Context(db,cx);
+                                cx = new Context(db, cx);
                                 //           Console.WriteLine(cmd);
                                 db = new Parser(cx).ParseSql(cmd, Domain.TableType);
                                 cx.db = db;
@@ -439,13 +439,15 @@ namespace Pyrrho
                             }
                         case Protocol.Get: // GET rurl
                             {
+                                var k = tcp.GetLong();
+                                if (k == 0) k = 1; // someone chancing it?
                                 string[] path = tcp.GetString().Split('/');
-                                var tr = db.Transact(db.nextId, "",conn);
+                                var tr = db.Transact(db.nextId, "", conn);
                                 db = tr;
-                                cx = new Context(db,cx);
-                                tr.Execute(cx, "GET", "G", db.name, path, "", "", "");
+                                cx = new Context(db, cx);
+                                tr.Execute(cx, k, "GET", db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
-                                if (cx.result>0)
+                                if (cx.result > 0)
                                 {
                                     tcp.PutSchema(cx);
                                     rb = ((RowSet)cx.obs[cx.result]).First(cx);
@@ -461,12 +463,12 @@ namespace Pyrrho
                         case Protocol.Get2: // GET rurl version for weakly-typed languages
                             {
                                 string[] path = tcp.GetString().Split('/');
-                                var tr = db.Transact(db.nextId, "",conn);
+                                var tr = db.Transact(db.nextId, "", conn);
                                 db = tr;
-                                cx = new Context(db,cx);
-                                tr.Execute(cx, "GET", "G", db.name, path, "", "", "");
+                                cx = new Context(db, cx);
+                                tr.Execute(cx, 0L, "GET",  db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
-                                if (cx.result>0)
+                                if (cx.result > 0)
                                 {
                                     var rs = (RowSet)cx.obs[cx.result];
                                     tcp.PutSchema1(cx, rs);
@@ -483,7 +485,7 @@ namespace Pyrrho
                         case Protocol.GetInfo: // for a table or structured type name for database[0]
                             {
                                 string tname = tcp.GetString();
-                                db = db.Transact(db.nextId, "",conn);
+                                db = db.Transact(db.nextId, "", conn);
                                 var tr = (Transaction)db;
                                 tcp.PutWarnings(cx);
                                 var tb = tr.GetObject(tname) as Table;
@@ -501,72 +503,211 @@ namespace Pyrrho
                                 break;
                             }
                         case Protocol.Post:
-                            {
-                                db = db.Transact(db.nextId, "",conn);
+                            {   // we go to a lot of trouble to set things up like SqlInsert.Obey()
+                                // so that the trigger and cascade machinery gets called if necessary
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
-                                db += (Database.SchemaKey, k);
                                 var s = tcp.GetString();
-                                cx = new Context(db,cx);
+                                db = db.Transact(db.nextId, "", conn);
+                                cx = new Context(db, cx);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("POST " + s);
-                                var psr = new Parser(db,conn);
-                                psr.ParseSqlInsert(s);
-                                cx = psr.cx;
-                                var trs = cx.obs[cx.result-1];
-                                tcp.PutWarnings(cx);
-                                tcp.PutSchema(cx);
-                                var recs = rb.Rec();
-                                var dt = rb.dataType;
-                                rb = null;
+                                var ss = s.Split('/');
+                                if (ss.Length < 3)
+                                    throw new DBException("Protocol error");
+                                var t = long.Parse(ss[1]);
+                                var tb = (Table)db.objects[t];
+                                var ti = (ObInfo)db.role.infos[t];
+                                var dm = (Domain)cx.Add((Domain)ti.dataType.Relocate(cx.GetUid()));
+                                var f = new TableRowSet(1L, cx, t, dm.defpos);
+                                BTree<long, TargetActivation> ans = null;
+                                CTree<long, TypedValue> old, vs;
+                                vs = dm.Parse(cx, ss[2]);
+                                var data = new TrivialRowSet(cx.GetUid(), cx, new TRow(dm, vs));
+                                ans = f.Insert(cx, data, false, dm.rowType);
+                                var ib = data.First(cx);
+                                old = ib.values;
+                                var ta = (TableActivation)ans.First().value();
+                                ta.cursors += (ta._fm.defpos, ib);
+                                ta.EachRow(ib._pos);
+                                cx.db = ta.db;
+                                ta.Finish();
+                                vs = ta.newRow;
+                                cx.affected += ta.affected;
+                                var oc = cx;
                                 db = db.RdrClose(ref cx);
-                                for (var rb=recs.First();rb!=null;rb=rb.Next())
-                                    PutCur(rb.value(), dt);
-                                tcp.Write(Responses.Done);
+                                if (cx?.affected is Rvv rv && rv.Contains(t))
+                                {
+                                    var ep = rv[t].Last().value();
+                                    var en = 0;
+                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    {
+                                        var a = b.value();
+                                        var dt = dm.representation[a];
+                                        if (dt.Compare(old[a], vs[a]) != 0)
+                                            en++;
+                                    }
+                                    tcp.Write(Responses.Entity);
+                                    tcp.PutInt(en);
+                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    {
+                                        var a = b.value();
+                                        var dt = dm.representation[a];
+                                        if (dt.Compare(old[a], vs[a]) != 0)
+                                        {
+                                            var ci = (ObInfo)cx.db.role.infos[a];
+                                            tcp.PutString(ci.name);
+                                            tcp.PutInt(dt.Typecode());
+                                            tcp.PutData(cx, vs[a]);
+                                        }
+                                    }
+                                    tcp.PutLong(ep);
+                                    tcp.Write(Responses.Done);
+                                }
+                                else
+                                    tcp.Write(Responses.NoData);
                                 tcp.Flush();
                                 break;
                             }
                         case Protocol.Put:
-                            {
+                            {   // we go to a lot of trouble to set things up like UpdateSearch.Obey()
+                                // so that the trigger and cascade machinery gets called if necessary
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
                                 var s = tcp.GetString();
-                                db = db.Transact(db.nextId, s, conn) + (Database.SchemaKey, k);
-                                cx = new Context(db,conn);
+                                db = db.Transact(db.nextId, s, conn);
+                                cx = new Context(db, conn);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("PUT " + s);
-                                cx = new Parser(db,conn).ParseSqlUpdate(cx, s);
-                                var rs = (RowSet)cx.obs[cx.result];
-                                if (rs != null)
-                                    rb = rs.First(cx);
-                                tcp.PutWarnings(cx);
-                                tcp.PutSchema(cx);
-                                var recs = rb.Rec();
-                                var dt = rb.dataType;
+                                var ss = s.Split('/');
+                                long t = 0;
+                                if (ss.Length < 5)
+                                    throw new DBException("Protocol error");
+                                if (!long.TryParse(ss[1], out t))
+                                    throw new DBException("42161", "entity", ss[1]);
+                                var tb = (Table)db.objects[t];
+                                var ro = db.role;
+                                var ti = (ObInfo)ro.infos[t];
+                                var dm = (Domain)cx.Add((Domain)ti.dataType.Relocate(cx.GetUid()));
+                                var f = new TableRowSet(1L, cx, t, dm.defpos);
+                                long dp = 0, pp = 0;
+                                BTree<long, TargetActivation> ans = null;
+                                CTree<long, TypedValue> old = null, vs = null;
+                                if (long.TryParse(ss[2], out dp) && long.TryParse(ss[3], out pp)
+                                    && tb.tableRows[dp] is TableRow tr && tr.ppos == pp)
+                                {
+                                    old = tr.vals;
+                                    var ib = TableRowSet.TableCursor.New(cx,f,dp);
+                                    vs = dm.Parse(cx, ss[4]);
+                                    var us = BTree<long,UpdateAssignment>.Empty;
+                                    for (var b=dm.rowType.First();b!=null;b=b.Next())
+                                    {
+                                        var c = b.value();
+                                        var ov = ib.values[c];
+                                        var nv = vs[c];
+                                        var dt = dm.representation[c];
+                                        if (dt.Compare(ov, nv) != 0)
+                                        {
+                                            var ns = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), cx, nv));
+                                            us += (c,new UpdateAssignment(c, ns.defpos));
+                                        }
+                                    }
+                                    ans = f.Update(cx, f, false);
+                                    var ta = (TableActivation)ans.First().value();
+                                    ta.updates = us;
+                                    ta.cursors += (ta._fm.defpos, ib);
+                                    old = vs;
+                                    ta.EachRow(ib._pos);
+                                    cx.db = ta.db;
+                                    ta.Finish();
+                                    vs = ta.newRow;
+                                    cx.affected += ta.affected;
+                                }
+                                var oc = cx;
                                 db = cx.db.RdrClose(ref cx);
-                                for (var rb=recs.First();rb!=null;rb=rb.Next())
-                                    PutCur(rb.value(), dt);
-                                rb = null;
-                                tcp.Write(Responses.Done);
+                                if (cx?.affected is Rvv rv && rv.Contains(t))
+                                {
+                                    var ep = rv[t].Last().value();
+                                    var en = 0;
+                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    {
+                                        var a = b.value();
+                                        var dt = dm.representation[a];
+                                        if (vs.Contains(a) && dt.Compare(old[a], vs[a]) != 0)
+                                            en++;
+                                    }
+                                    tcp.Write(Responses.Entity);
+                                    tcp.PutInt(en);
+                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    {
+                                        var a = b.value();
+                                        var dt = dm.representation[a];
+                                        if (vs.Contains(a) && dt.Compare(old[a], vs[a]) != 0)
+                                        {
+                                            var ci = (ObInfo)cx.db.role.infos[a];
+                                            tcp.PutString(ci.name);
+                                            tcp.PutInt(dt.Typecode());
+                                            tcp.PutData(cx, vs[a]);
+                                        }
+                                    }
+                                    tcp.PutLong(ep);
+                                    tcp.Write(Responses.Done);
+                                }
+                                else
+                                    tcp.Write(Responses.NoData);
+                                tcp.Flush();
+                                break;
+                            }
+                        case Protocol.Delete:
+                            {   // we go to a lot of trouble to set things up like QuerySearch.Obey()
+                                // so that the trigger and cascade machinery gets called if necessary
+                                var k = tcp.GetLong();
+                                if (k == 0) k = 1; // someone chancing it?
+                                var s = tcp.GetString();
+                                db = db.Transact(db.nextId, s, conn);
+                                cx = new Context(db, conn);
+                                if (PyrrhoStart.DebugMode)
+                                    Console.WriteLine("DELETE " + s);
+                                var ss = s.Split('/');
+                                long t = 0;
+                                if (ss.Length < 4)
+                                    throw new DBException("Protocol error");
+                                if (!long.TryParse(ss[1], out t))
+                                    throw new DBException("42161", "entity", ss[2]);
+                                var tb = (Table)db.objects[t];
+                                var ro = db.role;
+                                var ti = (ObInfo)ro.infos[t];
+                                var dm = (Domain)cx.Add((Domain)ti.dataType.Relocate(cx.GetUid()));
+                                var f = new TableRowSet(1L, cx, t, dm.defpos);
+                                long dp = 0, pp = 0;
+                                BTree<long, TargetActivation> ans = null;
+                                if (long.TryParse(ss[2], out dp) && long.TryParse(ss[3], out pp)
+                                    && tb.tableRows[dp] is TableRow tr && tr.ppos == pp)
+                                {
+                                    var r = new TRow(dm, tr.vals);
+                                    var ib = TableRowSet.TableCursor.New(cx, f, dp);
+                                    ans = f.Delete(cx, f, false);
+                                    var ta = (TableActivation)ans.First().value();
+                                    ta.cursors += (ta._fm.defpos, ib);
+                                    ta.EachRow(ib._pos);
+                                    cx.db = ta.db;
+                                    ta.Finish();
+                                    cx.affected += ta.affected;
+                                }
+                                db = cx.db.RdrClose(ref cx);
+                                if (ans != BTree<long, TargetActivation>.Empty)
+                                    tcp.Write(Responses.Done);
+                                else
+                                    tcp.Write(Responses.NoData);
                                 tcp.Flush();
                                 break;
                             }
                         case Protocol.Get1:
                             {
-                                var tr = db.Transact(db.nextId, "",conn);
-                                var k = tcp.GetLong();
-                                if (k == 0) k = 1; // someone chancing it?
-                                tr += (Database.SchemaKey, k);
-                                db = tr;
-                                goto case Protocol.Get;
-                            }
-                        case Protocol.Delete:
-                            {
                                 db = db.Transact(db.nextId, "",conn);
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
-                                db += (Database.SchemaKey, k);
-                                goto case Protocol.ExecuteNonQuery;
+                                goto case Protocol.Get;
                             }
                         case Protocol.Rest:
                             {
@@ -576,7 +717,7 @@ namespace Pyrrho
                                 var vb = tcp.GetString();
                                 var url = tcp.GetString();
                                 var jo = tcp.GetString();
-                                tr.Execute(cx, vb, "R", db.name, url.Split('/'), "", "application/json", jo);
+                                tr.Execute(cx, 0L, vb, db.name, url.Split('/'), "", "application/json", jo);
                                 tcp.PutWarnings(cx);
                                 var ocx = cx;
                                 db = db.RdrClose(ref cx);
@@ -1084,12 +1225,12 @@ namespace Pyrrho
         /// <param name="tr"></param>
         internal void PutReport(Context cx)
         {
-            var tr = cx?.db ?? db;
-            tcp.PutLong(tr.schemaKey);
+            tcp.PutLong(0L);
             tcp.PutInt((cx?.affected==null)?0:(int)cx.affected.Count);
             for (var tb = cx?.affected?.First(); tb != null; tb = tb.Next())
                 for (var b = tb.value().First(); b != null; b = b.Next())
                 {
+                    tcp.PutString(DBObject.Uid(tb.key()));
                     tcp.PutLong(b.key());
                     tcp.PutLong(b.value());
                 }
@@ -1277,7 +1418,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (8 June 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (14 June 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
         };
 	}
 }

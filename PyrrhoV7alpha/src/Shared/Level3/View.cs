@@ -344,7 +344,7 @@ namespace Pyrrho.Level3
         }
         internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db + (this + (ViewDef, m.source.ident), p) + (Database.SchemaKey,p);
+            cx.db = cx.db + (this + (ViewDef, m.source.ident), p);
         }
         internal override Basis New(BTree<long, object> m)
         {

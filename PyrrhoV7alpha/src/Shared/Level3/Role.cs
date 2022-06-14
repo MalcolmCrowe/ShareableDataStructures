@@ -179,6 +179,7 @@ namespace Pyrrho.Level3
             Inverts = -353, // long SqlProcedure
             MethodInfos = -252, // CTree<string, CTree<int,long>> Method
             Names = -282, // CTree<string,long> TableColumn
+            SchemaKey = -286, // long (highwatermark for schema changes)
             Privilege = -253; // Grant.Privilege
         public string description => mem[Description]?.ToString() ?? "";
         public Grant.Privilege priv => (Grant.Privilege)mem[Privilege];
@@ -192,6 +193,7 @@ namespace Pyrrho.Level3
             (CTree<Sqlx, TypedValue>)mem[_Metadata] ?? CTree<Sqlx, TypedValue>.Empty;
         internal CTree<string,long> names =>
             (CTree<string,long>)mem[Names]??CTree<string,long>.Empty;
+        internal long schemaKey => (long)(mem[SchemaKey] ?? -1L);
         ObInfo() : base(-1, BTree<long, object>.Empty) { }
         /// <summary>
         /// ObInfo for Table, TableColumn, Procedure etc have role-specific RowType in domains

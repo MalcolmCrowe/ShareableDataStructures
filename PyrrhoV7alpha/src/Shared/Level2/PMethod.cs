@@ -162,6 +162,7 @@ namespace Pyrrho.Level2
             var mi = new ObInfo(defpos, nameAndArity, dataType, priv);
             var oi = (ObInfo)ro.infos[udt.defpos] ??
                 throw new PEException("PE918");
+            oi += (ObInfo.SchemaKey, p);
             oi += (mt,name);
             ro = ro + mt + (oi,true) + (mi,false);
             udt += (Database.Procedures, udt.methods + (mt.defpos, nameAndArity));

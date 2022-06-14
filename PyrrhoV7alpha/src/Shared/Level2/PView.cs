@@ -102,9 +102,11 @@ namespace Pyrrho.Level2
                 var psr = new Parser(rdr, 
                     new Ident(viewdef, rdr.context.Ix(ppos + 2)), null);
                 psr.cx.nextStmt = rdr.context.nextStmt;
-                var cs = psr.ParseCursorSpecification(Domain.TableType);
-                dataType = psr.cx._Dom(psr.cx.obs[cs.union]);
+                var un = psr.ParseViewDefinition(name);
+         //       var cs = psr.ParseCursorSpecification(Domain.TableType);
+                dataType = psr.cx._Dom(psr.cx.obs[un.defpos]); // was cs.union
                 rdr.context.nextStmt = psr.cx.nextStmt;
+                psr.cx.result = un.defpos;
                 framing = new Framing(psr.cx);
             }
         }
@@ -176,6 +178,7 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var vw = new View(this,cx);
             var ti = new ObInfo(ppos, name, dataType, priv);
+            ti += (ObInfo.SchemaKey, p);
             ro = ro + (ti, true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + (ro,p)+ (vw,p);
             if (cx.db.mem.Contains(Database.Log))
@@ -266,6 +269,7 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantInsert |
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var ti = new ObInfo(ppos, name, dataType, priv);
+            ti += (ObInfo.SchemaKey, p);
             var vt = (VirtualTable)cx.db.objects[structpos] + (VirtualTable._RestView,ppos)
                 +(ObInfo._DataType,dataType);
             var vi = (ObInfo)ro.infos[structpos]+(ObInfo._DataType,dataType);

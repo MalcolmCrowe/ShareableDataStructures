@@ -417,7 +417,7 @@ namespace Pyrrho.Level1
         public long GetLong()
         {
             byte[] bytes = new byte[8];
-            Read(bytes, 0, 4);
+            Read(bytes, 0, 8);
             long n = 0;
             for (int j = 0; j < 8; j++)
                 n = (n << 8) + bytes[j];
@@ -823,8 +823,6 @@ namespace Pyrrho.Level1
                     if (!md.metadata.Contains(Sqlx.ENTITY))
                         continue;
                     sb.Append(cm); cm = ",";
-                    sb.Append("/");
-                    sb.Append(tr.provenance ?? cx.db.name);
                     sb.Append("/");
                     sb.Append(tr.tabledefpos);
                     sb.Append("/");

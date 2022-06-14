@@ -416,14 +416,14 @@ namespace Pyrrho.Level3
             var md = (ObInfo)ro.infos[defpos];
             var versioned = md.metadata.Contains(Sqlx.ENTITY);
             var key = BuildKey(cx.db, out Index ix);
-            var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
-            sb.Append("\r\n[Schema("); sb.Append(lastChange); sb.Append(")]");
+            var sb = new StringBuilder("\r\nusing System;\r\nusing Pyrrho;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// Class " + md.name + " from Database " + cx.db.name 
                 + ", Role " + ro.name + "\r\n");
             if (md.description != "")
                 sb.Append("/// " + md.description + "\r\n");
             sb.Append("/// </summary>\r\n");
+            sb.Append("[Table("); sb.Append(defpos);  sb.Append(","); sb.Append(md.schemaKey); sb.Append(")]\r\n");
             sb.Append("public class " + md.name + (versioned ? " : Versioned" : "") + " {\r\n");
             for (var b = md.dataType.representation.First();b!=null;b=b.Next())
             {
@@ -437,8 +437,24 @@ namespace Pyrrho.Level3
                         if (ix.keys[j] == p)
                             break;
                     if (j < ix.keys.Count)
+                    {
                         sb.Append("  [Key(" + j + ")]\r\n");
+                        if (tn == "Int64")
+                            tn = "Int64?"; // unless it is also a reference, see below
+                    }
                 }
+                for (var d = indexes.First(); d != null; d = d.Next())
+                    if (cx.db.objects[d.value()] is Index x)
+                    {
+                        if (x.flags.HasFlag(PIndex.ConstraintType.Unique))
+                            for (var c = d.key().First(); c != null; c = c.Next())
+                                if (c.value() == p)
+                                    sb.Append("  [Unique(" + d.value() + "," + c.key() + ")]\r\n");
+                        if (x.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+                            for (var c = d.key().First(); c != null; c = c.Next())
+                                if (c.value() == p && tn == "Int64?")
+                                    tn = "Int64";
+                    }
                 FieldType(cx,sb, dt);
                 var ci = (ObInfo)cx.db.role.infos[p];
                 for (var d=ci.metadata.First();d!=null;d=d.Next())
@@ -451,6 +467,8 @@ namespace Pyrrho.Level3
                     }
                 if (ci.description?.Length > 1)
                     sb.Append("  // " + ci.description + "\r\n");
+                if (tn == "Int64?")
+                    sb.Append("  // autoKey enabled\r\n");
                 sb.Append("  public " + tn + " " + ci.name + ";\r\n");
             }
             for (var b=indexes.First();b!=null;b=b.Next())
@@ -476,20 +494,20 @@ namespace Pyrrho.Level3
             {
                 var rt = (ObInfo)cx.db.role.infos[b.key()];
                 var sa = new StringBuilder();
-                var cm = "\"\\\"";
+                var cm = "(\"";
                 for (var c=b.value().First();c!=null;c=c.Next())
                 {
                     var rb = c.value().First();
                     for (var xb = c.key().First(); xb != null && rb != null; xb = xb.Next(), rb = rb.Next())
                     {
-                        sa.Append(cm);cm = ",\\\"";
+                        sa.Append(cm);cm = "),(\"";
                         var ci = (ObInfo)cx.db.role.infos[rb.value()];
                         var bi = (ObInfo)cx.db.role.infos[xb.value()];
-                        sa.Append(ci.name); sa.Append("\\\"=");
-                        sa.Append(bi.name);
+                        sa.Append(bi.name); sa.Append("\",");
+                        sa.Append(ci.name);
                     }
                 }
-                sa.Append("\"");
+                sa.Append(")");
                 sb.Append("  public " + rt.name + "[] " + ToCamel(rt.name) 
                     + "s => conn.FindWith<"+rt.name+">("+sa.ToString()+");\r\n");
             }

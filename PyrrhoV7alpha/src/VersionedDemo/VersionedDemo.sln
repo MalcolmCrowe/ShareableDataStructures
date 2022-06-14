@@ -1,0 +1,31 @@
+﻿
+Microsoft Visual Studio Solution File, Format Version 12.00
+# Visual Studio Version 17
+VisualStudioVersion = 17.2.32526.322
+MinimumVisualStudioVersion = 10.0.40219.1
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "VersionedDemo", "VersionedDemo.csproj", "{FC0CA9A4-EB05-402A-A1B6-3C9933177F86}"
+EndProject
+Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PyrrhoLink", "E:\PyrrhoDB70\Pyrrho\src\Shared\PyrrhoLink.csproj", "{893E315D-E6CA-4DB3-AE08-2D28788D3693}"
+EndProject
+Global
+	GlobalSection(SolutionConfigurationPlatforms) = preSolution
+		Debug|Any CPU = Debug|Any CPU
+		Release|Any CPU = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(ProjectConfigurationPlatforms) = postSolution
+		{FC0CA9A4-EB05-402A-A1B6-3C9933177F86}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{FC0CA9A4-EB05-402A-A1B6-3C9933177F86}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{FC0CA9A4-EB05-402A-A1B6-3C9933177F86}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{FC0CA9A4-EB05-402A-A1B6-3C9933177F86}.Release|Any CPU.Build.0 = Release|Any CPU
+		{893E315D-E6CA-4DB3-AE08-2D28788D3693}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{893E315D-E6CA-4DB3-AE08-2D28788D3693}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{893E315D-E6CA-4DB3-AE08-2D28788D3693}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{893E315D-E6CA-4DB3-AE08-2D28788D3693}.Release|Any CPU.Build.0 = Release|Any CPU
+	EndGlobalSection
+	GlobalSection(SolutionProperties) = preSolution
+		HideSolutionNode = FALSE
+	EndGlobalSection
+	GlobalSection(ExtensibilityGlobals) = postSolution
+		SolutionGuid = {00659353-8FDF-4BFF-A570-F2EF7590A2EF}
+	EndGlobalSection
+EndGlobal

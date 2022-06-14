@@ -1281,7 +1281,18 @@ namespace Pyrrho.Level3
                     else
                         c = ((Integer)a.Val()).CompareTo((Integer)b.Val());
                     break;
-                case Sqlx.NUMERIC: c = ((Numeric)a.Val()).CompareTo(b.Val()); break;
+                case Sqlx.NUMERIC:
+                    if (a.Val() is long)
+                    {
+                        if (b.Val() is long)
+                            c = a.ToLong().Value.CompareTo(b.ToLong().Value);
+                        else
+                            c = new Numeric(a.ToLong().Value).CompareTo(b.Val());
+                    }
+                    else if (b.Val() is long)
+                        c = ((Numeric)a.Val()).CompareTo(new Numeric(b.ToLong().Value));
+                    else
+                        c = ((Numeric)a.Val()).CompareTo(b.Val()); break;
                 case Sqlx.REAL:
                     var da = a.ToDouble();
                     var db = b.ToDouble();
@@ -1603,6 +1614,47 @@ namespace Pyrrho.Level3
                 return new TMetadata(new Parser(Database._system,new Connection())
                     .ParseMetadata(s,(int)off,Sqlx.VIEW));
             return Parse(new Scanner(off,s.ToCharArray(), 0));
+        }
+        public CTree<long, TypedValue> Parse(Context cx, string s)
+        {
+            var psr = new Parser(cx, s);
+            var vs = CTree<long, TypedValue>.Empty;
+            if (psr.tok == Sqlx.LPAREN)
+                psr.Next();
+            // might be named or positional
+            var ns = CTree<string, long>.Empty;
+            for (var b = rowType.First(); b != null; b = b.Next())
+            {
+                var rp = b.value();
+                var ci = (ObInfo)cx.db.role.infos[rp];
+                ns += (ci.name, rp);
+            }
+            for (var j = 0; j < rowType.Length;)
+            {
+                var a = psr.lxr.val.ToString();
+                if (psr.lxr.val is TChar tx && ns.Contains(tx.value))
+                {
+                    psr.Next();
+                    psr.Mustbe(Sqlx.EQL);
+                        if (!ns.Contains(a))
+                            throw new DBException("42000", a);
+                        var p = ns[a];
+                        if (psr.ParseSqlValueItem(representation[p], false) is SqlLiteral sl)
+                            vs += (p, sl.val);
+                        else throw new DBException("42000", a);
+                }
+                else
+                {
+                    var rj = rowType[j++];
+                    var sv = psr.ParseSqlValueItem(representation[rj], false);
+                    if (sv is SqlLiteral v)
+                        vs += (rj, v.val);
+                }
+                if (psr.tok != Sqlx.COMMA)
+                    break;
+                psr.Next();
+            }
+            return vs;
         }
         public virtual TypedValue Parse(long off,string s, string m, Context cx)
         {
@@ -2136,7 +2188,7 @@ namespace Pyrrho.Level3
         bad:
             var xs = new string(lx.input, start, lx.pos - start);
             v = TNull.Value;
-            return new DBException("22005E", ToString(), xs).ISO()
+            return new DBException("2E303", ToString(), xs).Pyrrho()
                 .AddType(this).AddValue(new TChar(xs));
         }
         TypedValue ParseList(Scanner lx)
@@ -3082,7 +3134,7 @@ namespace Pyrrho.Level3
                     case Sqlx.ONLY: return (this as UDType)?.super?.SystemType;
                     case Sqlx.NULL: return typeof(DBNull);
                     case Sqlx.INTEGER: return typeof(long);
-                    case Sqlx.NUMERIC: return typeof(Decimal);
+                    case Sqlx.NUMERIC: return typeof(decimal);
                     case Sqlx.BLOB: return typeof(byte[]);
                     case Sqlx.NCHAR: goto case Sqlx.CHAR;
                     case Sqlx.CLOB: goto case Sqlx.CHAR;

@@ -328,20 +328,24 @@ namespace Pyrrho.Level3
         /// <param name="path">The URL</param>
         /// <param name="mime">The mime type in the header</param>
         /// <param name="sdata">The posted obs if any</param>
-        internal Context Execute(Context cx, string method, string id, string dn, string[] path, 
+        internal Context Execute(Context cx, long sk, string method, string dn, string[] path, 
             string query, string mime, string sdata)
         {
             var db = this;
             cx.inHttpService = true;
-            var j = (id == "G") ? 1 : 2;
-            if (path.Length >= j+2)
+            var j = (sk!=0L) ? 1 : 2;
+            var ln = (sk != 0L) ? 2 : 4;
+            if (path.Length >= ln)
             {
-                RowSet fm = new TrivialRowSet(cx);
-                var tn = path[j+1];
-                if (cx.db.role.dbobjects.Contains(tn))
+                RowSet fm = null;
+                long t;
+                if (long.TryParse(path[j],out t) && cx.db.objects[t] is Table tb)
                 {
-                    var t = (Table)cx.db.objects[cx.db.role.dbobjects[tn]];
-                    fm = new From(new Ident(tn, cx.GetIid()), cx, t);
+                    var ti = (ObInfo)cx.db.role.infos[t];
+                    if (sk != 0L && ti.schemaKey > sk)
+                        throw new DBException("2E307", ti.name);
+                    fm = new From(new Ident(ti.name, cx.GetIid()), cx, tb);
+                    j++;
                 }
                 switch (method)
                 {
@@ -360,7 +364,7 @@ namespace Pyrrho.Level3
                         cx = db.Put(cx,(TableRowSet)cx.obs[cx.result], sdata);
                         break;
                     case "POST":
-                        db.Execute(cx, fm, id + ".", dn, path, query, j);
+                        db.Execute(cx, fm, method, dn, path, query, j);
                         cx = db.Post(cx, (TableRowSet)cx.obs[cx.result],sdata);
                         break;
                 }
@@ -407,7 +411,7 @@ namespace Pyrrho.Level3
                 cx.result = rs.defpos;
                 return;
             }
-            string cp = path[p]; // Testcp against Selector and Processing specification in 3.8.2
+            string cp = path[p]; // Test cp against Selector and Processing specification in 3.8.2
             int off = 0;
             string[] sp = cp.Split(' ');
             CallStatement fc = null;
@@ -422,6 +426,8 @@ namespace Pyrrho.Level3
                         var tbn = new Ident(tbs, cx.Ix(0));
                         var tb = objects[cx.db.role.dbobjects[tbn.ident]] as Table
                             ?? throw new DBException("42107", tbn).Mix();
+                        if (f==null)
+                            f = new From(tbn, cx, tb);
                         if (f.target == tb.defpos)
                         {
                             if (f is From)
@@ -478,16 +484,7 @@ namespace Pyrrho.Level3
                             cx.result = rs.defpos;
                             break;
                         }
-                        string ks = cp.Substring(4 + off);
-#if (!SILVERLIGHT) && (!ANDROID)
-                        ks = WebUtility.UrlDecode(ks);
-#endif
-                        TRow key = null;
-                        var dt = cx.val.dataType;
-                        if (dt == null)
-                            throw new DBException("42111", cp).Mix();
-                        key = (TRow)dt.Parse(new Scanner(uid,ks.ToCharArray(),0));
-                        break;
+                        goto case "where";
                     }
                 case "where":
                     {
@@ -504,10 +501,10 @@ namespace Pyrrho.Level3
                             sk = ks.Split(',');
                         var n = sk.Length;
                         var psr = new Parser(cx);
-                        var iix = cx.Ix(cp.Length + Analysing);
-                        f += (RowSet._Where,
-                            psr.ParseSqlValue(new Ident(sk[0],iix), Domain.Bool).Disjoin(cx));
-                        cx.Add(f);
+                        var wt = CTree<long, bool>.Empty;
+                        for (var si = 0; si<n; si++)
+                          wt += psr.ParseSqlValue(new Ident(sk[si],cx.GetIid()), Domain.Bool).Disjoin(cx);
+                        cx.Add(f + (RowSet._Where,wt));
                         break;
                     }
                 case "distinct":
@@ -657,12 +654,13 @@ namespace Pyrrho.Level3
                                 goto case "key";
                             }
                         }
-                        if (cx.val != null)
+                        if (cx.val != null && !cx.val.IsNull)
                         {
                             off = -4;
                             goto case "key";
                         }
-                        throw new DBException("42107", sp[0]).Mix();
+                        break;
+                    //    throw new DBException("42107", sp[0]).Mix();
                     }
             }
             Execute(cx, f, method, dn, path, query, p + 1);

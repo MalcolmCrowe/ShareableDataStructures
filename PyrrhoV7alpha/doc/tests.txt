@@ -577,81 +577,81 @@ Reset A:> delete from D
 Reset A:> insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')
 B> create view WW of (e int, f char, g char) as get etag 'http://localhost:8180/A/A/D'
 B> select * from ww
- -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}] 1
+ -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}]
 B> create table H (e int primary key, k char, m int)
 B> insert into H values (1,'Cleaner',12500), (2,'Manager',31400)
 B> create view VV as select * from ww natural join H
 B> select e, f, m from VV where e=1
- -> [{E:1,F:'Joe',M:12500}] 2
+ -> [{E:1,F:'Joe',M:12500}] 
 B> insert into ww values(3,'Fred','Bloggs')
 B> select * from ww
- -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'},{E:3,F:'Fred',G:'Bloggs'}] 3
+ -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'},{E:3,F:'Fred',G:'Bloggs'}] 
 B> update vv set f='Elizabeth' where e=2
 B> select * from ww where e=2
- -> [{E:2,F:'Elizabeth',G:'Boop'}] 4
+ -> [{E:2,F:'Elizabeth',G:'Boop'}] 
 Reset A>
 B> begin transaction
 B> select * from ww where e=2
 A> update d set f='Liz' where e=2
 B> commit
- -> ETag validation failure 5
+ -> ETag validation failure
 Reset A>
 B> begin transaction
 B> select * from ww where e=2
 A> delete from d where e=2
 B> commit
- -> ETag validation failure 6
+ -> ETag validation failure
 Reset A>
 B> begin transaction
 B> select * from ww where e=1
 A> update d set f='Liz' where e=2
 B> commit
 B> select * from ww
- -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Liz',G:'Boop'}] 7
+ -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Liz',G:'Boop'}]
 Reset A>
 B> begin transaction
 B> select * from ww where e=1
 A> delete from d where e=2 
 B> commit
 B> select * from ww
- -> [{E:1,F:'Joe',G:'Soap'}] 8
+ -> [{E:1,F:'Joe',G:'Soap'}]
 Reset A>
 B> begin transaction
 B> update ww set f='Liz' where e=2
 A> update d set f='Eliza' where e=2
 B> commit
- -> ETag validation failure 9
+ -> ETag validation failure
 Reset A>
 B> begin transaction
 B> insert into ww values (3,'Fred','Bloggs')
 A> insert into d values (3,'Anyone','Else')
 B> commit
-  -> Integrity constraint 10
+  -> Integrity constraint
 Reset A>
 B> begin transaction
 B> update ww set f='Liz' where e=2
 A> delete from d where e=2
 B> commit
-  -> ETag validation failure 11
+  -> ETag validation failure
 Reset A>
 B> begin transaction
 B> delete from ww where e=2
 A> update d set f='Eliza' where e=2
 B> commit
--> ETag validation failure 12
+-> ETag validation failure
 Reset A>
 B> begin transaction
 B> delete from ww where e=2
 A> delete from d where e=2
 B> commit
--> ETag validation failure 13
+-> ETag validation failure
 Reset A>
 B> begin transaction
 B> update ww set f='Joseph' where e=1
 A> update d set f='Eliza' where e=2
 B> commit
 B> select * from w
- -> [{E:1,F:'Joseph',G:'Soap'},{E:2,F:'Eliza',G:'Boop'}] 14
+ -> [{E:1,F:'Joseph',G:'Soap'},{E:2,F:'Eliza',G:'Boop'}]
 Reset A>
 B> begin transaction
 B> insert into ww values (4,'Some','Other')

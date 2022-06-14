@@ -65,10 +65,9 @@ namespace Pyrrho.Level3
         }
         internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db 
-                + (this + (Body, m.proc) + (Params,m.parms) 
-                    + (_Framing,m.framing),p)
-                + (Database.SchemaKey,p); // ensure call on the correct operator+
+            cx.db = cx.db
+                + (this + (Body, m.proc) + (Params, m.parms)
+                    + (_Framing, m.framing), p);
         }
         internal override DBObject Instance(long lp,Context cx, Domain q = null, BList<Ident> cs=null)
         {

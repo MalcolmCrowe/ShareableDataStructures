@@ -40,7 +40,8 @@
         TableData = 53, TableDone = 54, Prepare = 55, Request = 56, Committed = 57, Serialisable = 58,
         Primary = 60, Secondary = 61, Begin = 62, Valid = 63, Invalid = 64, TransactionReport = 65,
         RemoteTransactionReport = 66, PostReport = 67, Warning = 68, TransactionReason = 69,
-        DataLength = 70, Columns = 71, Schema1 = 72, DoneTrace = 76, TransactionReportTrace = 77
+        DataLength = 70, Columns = 71, Schema1 = 72, DoneTrace = 76, TransactionReportTrace = 77,
+        Entity = 79
     }
     /// <summary>
     /// Connection strings are sent using a binary encrypted format. 

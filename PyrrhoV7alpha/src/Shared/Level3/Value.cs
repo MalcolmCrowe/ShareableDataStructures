@@ -5732,7 +5732,7 @@ namespace Pyrrho.Level3
                         if (vl !=null)
                         {
                             vcx.result = vl.defpos;
-                            return new TRvv(vcx,"");
+                            return new TRvv("");
                         }
                         vcx.result = from;
                         var p = -1L;

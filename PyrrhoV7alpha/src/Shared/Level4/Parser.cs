@@ -134,7 +134,7 @@ namespace Pyrrho.Level4
         /// Move to the next token
         /// </summary>
         /// <returns></returns>
-		Sqlx Next()
+		internal Sqlx Next()
         {
             tok = lxr.Next();
             return tok;
@@ -166,7 +166,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="t">the list of token types</param>
         /// <returns>the token that matched</returns>
-		Sqlx Mustbe(params Sqlx[] t)
+		internal Sqlx Mustbe(params Sqlx[] t)
         {
             int j;
             string s = "";
@@ -1435,6 +1435,12 @@ namespace Pyrrho.Level4
                     ns = ParseClassification(ta.defpos,ns);
                 if (tok == Sqlx.SCOPE)
                     ns = ParseEnforcement(ta.defpos,ns);
+            }
+            if (StartMetadata(Sqlx.TABLE))
+            {
+                var dp = LexDp();
+                var md = ParseMetadata(Sqlx.TABLE);
+                cx.Add(new PMetadata(name.ident,dp,ta.defpos,md,cx.db.nextPos,cx));
             }
             return null;
         }
@@ -7461,7 +7467,7 @@ namespace Pyrrho.Level4
         /// <param name="t">the expected obs type</param>
         /// <param name="wfok">whether a window function is allowed</param>
         /// <returns>the sql value</returns>
-        SqlValue ParseSqlValueItem(Domain xp,bool wfok)
+        internal SqlValue ParseSqlValueItem(Domain xp,bool wfok)
         {
             SqlValue r;
             var lp = LexPos();

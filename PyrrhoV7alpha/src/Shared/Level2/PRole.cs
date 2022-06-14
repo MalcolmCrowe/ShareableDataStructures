@@ -296,6 +296,7 @@ namespace Pyrrho.Level2
             var ni = oi + this;
             if (oi != ni)
             {
+                ni += (ObInfo.SchemaKey, p);
                 var ro = cx.db.role + (ni, false);
                 cx.db = cx.db+(ro, p);
             }

@@ -142,6 +142,7 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Metadata | Grant.Privilege.GrantMetadata;
             var tb = (name[0]=='(')?new VirtualTable(this,ro,cx):new Table(this,ro);
             var ti = tb._ObInfo(ppos, name, priv);
+            ti += (ObInfo.SchemaKey, p);
             ro = ro + (ti,true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
             ro += (Role.TypeTracker,
                 ro.typeTracker + (defpos, new CTree<long,(Domain,CTree<string,long>)>

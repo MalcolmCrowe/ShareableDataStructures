@@ -764,7 +764,7 @@ namespace Pyrrho
                 else
                      throw new DBException("40084");
                 var cx = new Context(db);
-                db.Execute(cx, client.Request.HttpMethod, "H", cx.db.name, pathbits, query,
+                db.Execute(cx, 0L, client.Request.HttpMethod, cx.db.name, pathbits, query,
                     client.Request.Headers["Content-Type"], sb);
                 var ocx = cx;
                 cx = new Context(cx.db.Commit(cx));

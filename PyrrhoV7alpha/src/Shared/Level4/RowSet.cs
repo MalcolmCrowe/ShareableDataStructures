@@ -219,7 +219,13 @@ namespace Pyrrho.Level4
         protected static BTree<long,object> _Mem(Context cx,BTree<long,object>m)
         {
             var dp = (long)(m[_Domain] ?? -1L);
-            var dm = (Domain)(cx.obs[dp]??cx.db.objects[dp]);
+            var dm = (Domain)(cx.obs[dp] ?? cx.db.objects[dp]);
+            if (dm == null)
+            {
+                dp = (long)(m[From.Target] ?? -1L);
+                var ob = cx._Ob(dp);
+                dm = cx._Dom(ob);
+            }
             var a = Assertions.SimpleCols;
             var sce = (RowSet)cx.obs[(long)(m[_Source]??m[_Data]??-1L)];
             var sd = cx._Dom(sce);
@@ -2474,6 +2480,11 @@ namespace Pyrrho.Level4
         {
             cx.Add(this);
         }
+        internal TrivialRowSet(long dp, Context cx, Domain dm, TRow r)
+            : base(dp, cx, _Mem(dp, cx, dm) + (Singleton, r))
+        {
+            cx.Add(this);
+        }
         protected TrivialRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(long dp,Context cx,Domain dm)
         {
@@ -4042,6 +4053,10 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Prepare an Insert on a single table including trigger operation.
         /// </summary>
+        /// <param name="cx">The context</param>
+        /// <param name="fm">The source rowset</param>
+        /// <param name="iter">whether the operation affects multiple rows</param>
+        /// <returns>The activations for the changes made</returns>
         internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, bool iter,
             CList<long> iC)
         {
@@ -4062,11 +4077,11 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Execute an Update operation on the Table, including triggers
         /// </summary>
-        /// <param name="f">The Update statement</param>
-        /// <param name="ur">The update row identifiers may be explicit</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        /// <param name="rs">The target rowset may be explicit</param>
-        internal override BTree<long, TargetActivation>Update(Context cx, RowSet fm, bool iter)
+        /// <param name="cx">The context</param>
+        /// <param name="fm">The source rowset</param>
+        /// <param name="iter">whether the operation affects multiple rows</param>
+        /// <returns>The activations for the changes made</returns>
+        internal override BTree<long, TargetActivation> Update(Context cx, RowSet fm, bool iter)
         {
             return new BTree<long, TargetActivation>(target,
                 new TableActivation(cx, this, fm, PTrigger.TrigType.Update));
@@ -4074,10 +4089,11 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Prepare a Delete on a Table, including triggers
         /// </summary>
-        /// <param name="f">The Delete operation</param>
-        /// <param name="ds">A set of delete strings may be explicit</param>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal override BTree<long, TargetActivation>Delete(Context cx, RowSet fm, bool iter)
+        /// <param name="cx">The context</param>
+        /// <param name="fm">The source rowset</param>
+        /// <param name="iter">whether the operation affects multiple rows</param>
+        /// <returns>the activation for the changes made</returns>
+        internal override BTree<long, TargetActivation> Delete(Context cx, RowSet fm, bool iter)
         {
             return new BTree<long, TargetActivation>(target,
                 new TableActivation(cx, this, fm, PTrigger.TrigType.Delete));
@@ -4180,6 +4196,12 @@ namespace Pyrrho.Level4
                     ws += (p, v);
                 }
                 return new TRow(dm, ws);
+            }
+            internal static TableCursor New(Context cx,TableRowSet trs,long defpos)
+            {
+                var table = cx.db.objects[trs.target] as Table;
+                var rec = table.tableRows[defpos];
+                return new TableCursor(cx, trs, table, 0, rec, null, null, null);
             }
             internal static TableCursor New(Context _cx, TableRowSet trs, PRow key = null)
             {

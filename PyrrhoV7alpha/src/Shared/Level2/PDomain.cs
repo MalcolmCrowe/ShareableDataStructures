@@ -265,6 +265,7 @@ namespace Pyrrho.Level2
             cx.Add(dt);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(ppos, domain.name, domain, priv);
+            oi += (ObInfo.SchemaKey, p);
             ro += (oi,true);
             var st = CTree<string, long>.Empty;
             for (var b=dt.rowType.First();b!=null; b=b.Next())

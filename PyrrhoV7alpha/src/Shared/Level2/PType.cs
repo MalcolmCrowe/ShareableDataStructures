@@ -194,6 +194,7 @@ namespace Pyrrho.Level2
             var udt = new UDType(this, cx);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(ppos, name, udt, priv);
+            oi += (ObInfo.SchemaKey, p);
             var st = CTree<string, long>.Empty;
             for (var b=udt.rowType.First();b!=null;b=b.Next())
             {
