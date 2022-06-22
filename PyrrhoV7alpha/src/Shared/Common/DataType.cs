@@ -815,7 +815,7 @@ namespace Pyrrho.Common
         }
     }
     /// <summary>
-    /// Row Version cookie (Sqlx.CHECK). See Laiho/Laux 2010.
+    /// Row Version cookie (Sqlx.VERSIONING). See Laiho/Laux 2010.
     /// Check allows transactions to find out if another transaction has overritten the row.
     /// RVV is calculated only when required: see affected in Context.
     /// Modified in V7 to conform to RFC 7232.
@@ -969,9 +969,27 @@ namespace Pyrrho.Common
             {
                 var tt = t.Split(',');
                 if (tt.Length > 2)
-                    r += (long.Parse(tt[0]), (long.Parse(tt[1]), long.Parse(tt[2])));
+                    r += (UidParse(tt[0]), (UidParse(tt[1]), UidParse(tt[2])));
             }
             return r;
+        }
+        static long UidParse(string u)
+        {
+            if (u.Length == 0)
+                return -1L; // should not occur
+            if (char.IsDigit(u[0]))
+                return long.Parse(u);
+            if (u.Length == 1) // happens with _
+                return -1L;
+            var v = long.Parse(u.Substring(1));
+            switch(u[0])
+            {
+                case '%': return v + Transaction.HeapStart;
+                case '`': return v + Transaction.Executables;
+                case '#': return v + Transaction.Analysing;
+                case '!': return v + Transaction.TransPos;
+            }
+            return -1L; // should not occur
         }
         /// <summary>
         /// String version of an rvv
@@ -984,12 +1002,12 @@ namespace Pyrrho.Common
             for (var b = First(); b != null; b = b.Next())
             {
                 sb.Append(sc); sc = "\",\"";
-                sb.Append(b.key()); 
+                sb.Append(DBObject.Uid(b.key())); 
                 for (var c = b.value().First(); c != null; c = c.Next())
                 {
                     sb.Append(",");
-                    sb.Append(c.key()); sb.Append(",");
-                    sb.Append(c.value());
+                    sb.Append(DBObject.Uid(c.key())); sb.Append(",");
+                    sb.Append(DBObject.Uid(c.value()));
                 }
                 sb.Append("\"");
             }

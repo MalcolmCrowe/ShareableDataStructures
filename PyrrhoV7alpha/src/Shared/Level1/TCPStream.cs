@@ -447,6 +447,11 @@ namespace Pyrrho.Level1
             PutInt(b.Length);
             Write(b, 0, b.Length);
         }
+        internal void PutRaw(string n)
+        {
+            byte[] b = Encoding.UTF8.GetBytes(n);
+            Write(b, 0, b.Length);
+        }
         /// <summary>
         /// send a numeric 
         /// </summary>
@@ -803,15 +808,12 @@ namespace Pyrrho.Level1
         /// Send ReadCheck information if present
         /// </summary>
         /// <param name="rs"></param>
-        internal void PutCheck(Context cx, Cursor rb)
+        internal (string,string) Check(Context cx, Cursor rb)
         {
-            var rv = rb._Rvv(cx);
-            if (rv != null)
-            {
-                WriteByte(3);
-                PutString(rv.ToString());
-            }
+            if (!cx.versioned)
+                return (null, null);
             var rec = rb.Rec();
+            string rc = null;
             if (rec != null && rec!=BList<TableRow>.Empty)
             {
                 var sb = new StringBuilder();
@@ -830,12 +832,9 @@ namespace Pyrrho.Level1
                     sb.Append("/");
                     sb.Append(tr.ppos);
                 }
-                if (sb.Length > 0)
-                {
-                    WriteByte(4);
-                    PutString(sb.ToString());
-                }
+                rc = sb.ToString();
             }
+            return (rb._Rvv(cx).ToString(),rc);
         }
         /// <summary>
         /// Send a obs cell.
@@ -845,9 +844,20 @@ namespace Pyrrho.Level1
         /// </summary>
         /// <param name="nt"></param>
         /// <param name="tv"></param>
-        internal void PutCell(Context _cx, Domain dt, TypedValue p)
+        internal void PutCell(Context _cx, Domain dt, TypedValue p, string rv=null, string rc=null)
         {
             p = dt.Coerce(_cx, p);
+            if (rv!=null && rv!="")
+            {
+                WriteByte(3);
+                PutString(rv);
+            } 
+            if (rc!=null && rc!="")
+            {
+                WriteByte(4);
+                PutString(rc);
+            }
+
             if (p == null || p.IsNull)
             {
                 WriteByte(0);
@@ -919,7 +929,7 @@ namespace Pyrrho.Level1
                     break;
                 case Sqlx.PASSWORD: PutString("********"); break;
                 case Sqlx.POSITION:
-                    PutString(DBObject.Uid(tv.ToLong().Value)); break;
+                    PutString(tv.ToString()); break;
                 case Sqlx.DATE:
                     if (tv.Val() is long)
                         PutDateTime(new DateTime(tv.ToLong().Value));

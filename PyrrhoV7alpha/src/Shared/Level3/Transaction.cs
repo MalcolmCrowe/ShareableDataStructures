@@ -945,7 +945,7 @@ namespace Pyrrho.Level3
             if (refs == null || refs.Count == 0)
                 rx = rt.FindPrimaryIndex(this);
             else
-                rx = rt.FindIndex(this,refs);
+                rx = rt.FindIndex(this, refs)?[0];
             if (rx == null)
                 throw new DBException("42111").Mix();
             if (rx.keys.Count != key.Count)

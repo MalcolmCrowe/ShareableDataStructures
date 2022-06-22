@@ -2172,7 +2172,7 @@ namespace Pyrrho.Level4
                    + (_Depth,cx.Depth(fd,ts,ob));
             if (ts is TableRowSet tt)
             {
-                if (tt.indexes != CTree<CList<long>, long>.Empty)
+                if (tt.indexes != CTree<CList<long>, CTree<long,bool>>.Empty)
                     r += (Table.Indexes, tt.indexes);
                 if (tt.skeys.Count>0)
                 {
@@ -2334,21 +2334,22 @@ namespace Pyrrho.Level4
             if (mem.Contains(Target)) { sb.Append(" Target="); sb.Append(Uid(target)); }
             if (mem.Contains(Table.Indexes)) 
             {   
-                var indexes = (CTree<CList<long>, long>)mem[Table.Indexes];
+                var indexes = (CTree<CList<long>, CTree<long,bool>>)mem[Table.Indexes];
                 if (indexes.Count > 0)
                 {
                     sb.Append(" Indexes=[");
                     var cm = "";
                     for (var b = indexes.First(); b != null; b = b.Next())
+                        for (var c=b.value().First();c!=null;c=c.Next())
                     {
                         sb.Append(cm); cm = ",";
                         var cn = "(";
-                        for (var c = b.key().First(); c != null; c = c.Next())
+                        for (var d = b.key().First(); d != null; d = d.Next())
                         {
                             sb.Append(cn); cn = ",";
-                            sb.Append(Uid(c.value()));
+                            sb.Append(Uid(d.value()));
                         }
-                        sb.Append(")"); sb.Append(Uid(b.value()));
+                        sb.Append(")"); sb.Append(Uid(c.key()));
                     }
                 }
                 sb.Append("]");
@@ -2814,16 +2815,17 @@ namespace Pyrrho.Level4
                 if (cx.obs[b.value()] is TableRowSet tt)
                 {
                     // see what indexes we can use
-                    if (tt.indexes != CTree<CList<long>, long>.Empty)
+                    if (tt.indexes != CTree<CList<long>, CTree<long,bool>>.Empty)
                     {
-                        var xs = CTree<CList<long>,long>.Empty;
+                        var xs = CTree<CList<long>,CTree<long,bool>>.Empty;
                         for (var x = tt.indexes.First();x!=null;x=x.Next())
                         {
                             var k = x.key();
                             for (var c = k.First(); c != null; c = c.Next())
                                 if (!fi.Contains(c.value()))
                                     goto next;
-                            xs += (k, x.value());
+                            var t = tt.indexes[k] ?? CTree<long, bool>.Empty;
+                            xs += (k, t+x.value());
                             next:;
                         }
                         m += (Table.Indexes, xs);
@@ -3739,15 +3741,17 @@ namespace Pyrrho.Level4
             _Index = -410, // long Index
             SKeys = -453; // CList<long> TableColumn
         public long index => (long)(mem[_Index] ?? -1L);
-        public CTree<CList<long>, long> indexes =>
-            (CTree<CList<long>, long>)mem[Table.Indexes] ?? CTree<CList<long>, long>.Empty;
+        public CTree<CList<long>, CTree<long,bool>> indexes =>
+            (CTree<CList<long>, CTree<long,bool>>)mem[Table.Indexes] ?? CTree<CList<long>, CTree<long,bool>>.Empty;
         public CList<long> skeys => (CList<long>)mem[SKeys] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a rowset defined by a base table
         /// </summary>
         internal TableRowSet(long lp,Context cx, long t, long dm)
             : base(cx.GetUid(), cx, _Mem(cx.GetPrevUid(),lp,cx,t, dm) +(From.Target,t))
-        { }
+        {
+            var s = ToString();
+        }
         protected TableRowSet(long dp, BTree<long, object> m) : base(dp, m) 
         { }
         static BTree<long, object> _Mem(long dp,long lp, Context cx, long t, long f)
@@ -3855,7 +3859,7 @@ namespace Pyrrho.Level4
                     for (var b = trs.indexes.First(); b != null; b = b.Next())
                     {
                         var k = b.key();
-                        if (b.value() == index.defpos)
+                        if (b.value().Contains(index.defpos))
                             m += (Index.Keys, k);
                     }
                 }
@@ -3871,8 +3875,9 @@ namespace Pyrrho.Level4
             Index index = null;
             int bs = 0;      // score for best index
             for (var p = indexes.First(); p != null; p = p.Next())
+                for (var c=p.value().First();c!=null;c=c.Next())
             {
-                var x = (Index)cx.db.objects[p.value()];
+                var x = (Index)cx.db.objects[c.key()];
                 if (x == null || x.flags != PIndex.ConstraintType.PrimaryKey
                     || x.tabledefpos != target)
                     continue;
@@ -3885,11 +3890,11 @@ namespace Pyrrho.Level4
                 var j = dt.dataType.Length - 1;
                 for (var b = dt.dataType.rowType.Last(); b != null; b = b.Previous(), j--)
                 {
-                    var c = b.value();
+                    var d = b.value();
                     for (var fd = filter.First(); fd != null; fd = fd.Next())
                     {
                         if (cx.obs[fd.key()] is SqlCopy co
-                            && co.copyFrom == c)
+                            && co.copyFrom == d)
                         {
                             sc += 9 - j;
                             nm++;
@@ -3919,8 +3924,9 @@ namespace Pyrrho.Level4
             Index index = null;
             int bs = 0;      // score for best index
             for (var p = indexes.First(); p != null; p = p.Next())
+                for (var c=p.value().First();c!=null;c=c.Next())
             {
-                var x = (Index)cx.db.objects[p.value()];
+                var x = (Index)cx.db.objects[c.key()];
                 if (x == null || x.flags != PIndex.ConstraintType.PrimaryKey
                     || x.tabledefpos != defpos)
                     continue;
@@ -4105,14 +4111,22 @@ namespace Pyrrho.Level4
                 var ot = (RowSet)cx.Add(this + (Index.Keys, os) + (RowOrder, os));
                 if (!dct)
                     return ot;
-                var ix = (Index)cx.obs[indexes[os]];
-                if (ix.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
-                    ix.flags.HasFlag(PIndex.ConstraintType.Unique))
+                if (FindIndex(cx.db,os)!=null)
                     return ot;
                 return (RowSet)cx.Add(new DistinctRowSet(cx, ot));
             }
             return base.Sort(cx, os, dct);
         }
+
+        private Index FindIndex(Database db, CList<long> os,
+            PIndex.ConstraintType fl = (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique))
+        {
+            for (var b = indexes[os].First(); b != null; b = b.Next())
+                if (db.objects[b.key()] is Index x && (x.flags&fl)!=0)
+                    return x;
+            return null;
+        }
+
         internal override void Show(StringBuilder sb)
         {
             base.Show(sb);
@@ -4124,14 +4138,20 @@ namespace Pyrrho.Level4
                 for (var b=indexes.First();b!=null;b=b.Next())
                 {
                     var k = b.key();
-                    sb.Append(cm); cm = ",(";
+                    sb.Append(cm); cm = ";(";
                     var cc = "";
-                    for (var c=k.First();c!=null;c=c.Next())
+                    for (var d=k.First();d!=null;d=d.Next())
                     {
                         sb.Append(cc); cc = ",";
-                        sb.Append(Uid(c.value()));
+                        sb.Append(Uid(d.value()));
                     }
-                    sb.Append(")="); sb.Append(Uid(b.value()));
+                    sb.Append(")=");
+                    cc = "";
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                    {
+                        sb.Append(cc); cc = ",";
+                        sb.Append(Uid(c.key()));
+                    }
                 }
                 sb.Append("]");
             }
@@ -4211,9 +4231,12 @@ namespace Pyrrho.Level4
                 if (trs.keys!=CList<long>.Empty)
                 {
                     var t = (trs.index >= 0) ? ((Index)_cx.db.objects[trs.index]).rows : null;
-                    if (t==null && trs.indexes.Contains(trs.keys) 
-                            && _cx.db.objects[trs.indexes[trs.keys]] is Index ix)
-                        t = ix.rows;
+                    if (t == null && trs.indexes.Contains(trs.keys))
+                        for (var b = trs.indexes[trs.keys]?.First(); b != null; b = b.Next())
+                        if (_cx.db.objects[b.key()] is Index ix){ 
+                            t = ix.rows;
+                                break;
+                        }
                     if (t!=null)
                     for (var bmk = t.PositionAt(key);bmk != null;bmk=bmk.Next())
                     {
@@ -5407,8 +5430,9 @@ namespace Pyrrho.Level4
             }
             var fk = CTree<long, bool>.Empty;
             for (var b = t?.indexes.First();b!=null;b=b.Next())
+                for (var c=b.value().First();c!=null;c=c.Next())
             {
-                var p = b.value();
+                var p = c.key();
                 var ix = (Index)cx.db.objects[p];
                 if (ix.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
                     fk += (p, true);
@@ -6404,6 +6428,7 @@ namespace Pyrrho.Level4
         {
             cx.Add(this);
             cx.restRowSets += (lp.dp, true);
+            cx.versioned = true;
         }
         protected RestRowSet(long dp, BTree<long, object> m) : base(dp, m) 
         { }

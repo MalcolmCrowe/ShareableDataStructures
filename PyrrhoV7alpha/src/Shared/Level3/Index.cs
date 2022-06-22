@@ -85,7 +85,7 @@ namespace Pyrrho.Level3
             var r = BTree<long, object>.Empty;
             if (c.adapter != "")
             {
-                r += (Adapter, cx.GetProcedure(cx.GetUid(),c.adapter, 1).defpos);
+                r += (Adapter, c.adapter);
                 r += (References, BTree<long, BList<TypedValue>>.Empty);
             }
             if (c.reference > 0)
@@ -227,27 +227,30 @@ namespace Pyrrho.Level3
             for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.value()] is Table tb)
                     for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
+                        for (var c=xb.value().First();c!=null;c=c.Next())
                     {
-                        var rx = (Index)cx.db.objects[xb.value()];
+                        var rx = (Index)cx.db.objects[c.key()];
                         if (rx == null || rx.refindexdefpos != defpos)
                             continue;
                         rx.Cascade(cx, a, u);
                     }
         }
-        internal override Database Drop(Database d, Database nd, long p)
+        internal override Database Drop(Database db, Database nd, long p)
         {
             if (nd.objects[tabledefpos] is Table tb)
             {
-                var xs = CTree<CList<long>, long>.Empty;
+                var xs = CTree<CList<long>, CTree<long,bool>>.Empty;
                 var ks = CList<long>.Empty;
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
-                    if (b.value() != defpos)
-                    {
-                        var cs = b.key();
-                        for (var c = cs.First(); c != null; c = c.Next())
-                            ks += c.value();
-                        xs += (ks, b.value());
-                    }
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                        if (c.key() != defpos)
+                        {
+                            var cs = b.key();
+                            for (var d = cs.First(); d != null; d = d.Next())
+                                ks += d.value();
+                            var t = tb.indexes[ks] ?? CTree<long, bool>.Empty;
+                            xs += (ks, t + (c.key(), true));
+                        }
                 tb += (Table.Indexes, xs);
                 nd += (tb, p);
             }
@@ -266,7 +269,7 @@ namespace Pyrrho.Level3
                 rt += (Table.RefIndexes, xs);
                 nd += (rt, p);
             }
-            return base.Drop(d, nd, p);
+            return base.Drop(db, nd, p);
         }
         /// <summary>
         /// A readable version of the Index

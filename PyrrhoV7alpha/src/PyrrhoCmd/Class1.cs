@@ -724,7 +724,7 @@ namespace PyrrhoCmd
 			ShowHeads(cols);
 			DrawLine(cols);
 			for (j=0;j<rows.Count;j++)
-				ShowRow((string[])rows[j],cols,(Versioned)checks[j]);
+				ShowRow((string[])rows[j],cols,(string)checks[j]);
 			DrawLine(cols);
 		}
 		static void DrawLine(ArrayList a)
@@ -750,7 +750,7 @@ namespace PyrrhoCmd
 			}
 			Console.WriteLine("|");
 		}
-		static void ShowRow(string[] r, ArrayList a, Versioned v)
+		static void ShowRow(string[] r, ArrayList a, string v)
 		{
 			for (int j=0;j<a.Count;j++)
 			{
@@ -762,7 +762,7 @@ namespace PyrrhoCmd
 			}
 			Console.Write("|");
             if (checks && v != null)
-                Console.Write(v.version + " "+v.entity);
+                Console.Write(v);
             Console.WriteLine();
 		}
 		static Hashtable dict = null;

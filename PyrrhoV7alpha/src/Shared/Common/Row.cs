@@ -251,10 +251,10 @@ namespace Pyrrho.Common
     // shareable
     internal class TPosition : TInt
     {
-        internal TPosition(long? p) : base(Domain.Position, p) { }
+        internal TPosition(long p) : base(Domain.Position, p) { }
         public override string ToString()
         {
-            if (value == null)
+            if (value.Value==-1L)
                 return "";
             return DBObject.Uid(value.Value);
         }

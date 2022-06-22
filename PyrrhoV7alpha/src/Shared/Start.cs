@@ -445,6 +445,7 @@ namespace Pyrrho
                                 var tr = db.Transact(db.nextId, "", conn);
                                 db = tr;
                                 cx = new Context(db, cx);
+                                cx.versioned = true;
                                 tr.Execute(cx, k, "GET", db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
                                 if (cx.result > 0)
@@ -1028,12 +1029,10 @@ namespace Pyrrho
             nextCell = rb[nextCol++];
             if (nextCol == ds)
                 lookAheadDone = false;
-            tcp.PutCheck(cx, rb);
-            tcp.PutCell(cx, dc, nextCell);
-            var dt = rb.dataType;
+            var (rv,rc) = tcp.Check(cx, rb);
+            tcp.PutCell(cx, dc, nextCell, rv, rc);
             for (; ; )
             {
-                var lc = 0;
                 if (nextCol == ds)
                 {
                     if (!lookAheadDone)
@@ -1044,10 +1043,10 @@ namespace Pyrrho
                     nextCol = 0;
                     if (!more)
                         break;
-                    tcp.PutCheck(cx, rb);
+                    (rv,rc) = tcp.Check(cx, rb);
                 }
                 nextCell = rb[nextCol];
-                int len = lc + DataLength(cx, nextCell);
+                int len = DataLength(cx, nextCell,rv,rc);
                 dc = domains[nextCol];
                 if (nextCell != null && dc.CompareTo(nextCell.dataType)!=0)
                 {
@@ -1058,7 +1057,7 @@ namespace Pyrrho
                 }
                 if (tcp.wcount + len + 1 >= TCPStream.bSize)
                     break;
-                tcp.PutCell(cx, dc, nextCell);
+                tcp.PutCell(cx, dc, nextCell, rv, rc);
                 if (++nextCol == ds)
                     lookAheadDone = false;
                 ncells++;
@@ -1072,10 +1071,16 @@ namespace Pyrrho
                 tcp.wcount = owc;
             }
         }
-        int DataLength(Context cx, TypedValue tv)
+        int DataLength(Context cx, TypedValue tv, string rv = null, string rc=null)
         {
+
+            var lc = 0;
+            if (rv != null)
+                lc += 1 + StringLength(rv);
+            if (rc != null)
+                lc += 1 + StringLength(rc);
             if (tv == null || tv==TNull.Value)
-                return 1;
+                return lc+1; 
             object o = tv.Val();
             switch (tv.dataType.kind)
             {
@@ -1089,40 +1094,40 @@ namespace Pyrrho
                     break;
                 case Sqlx.REAL:
                     if (o is Common.Numeric)
-                        return 1 + StringLength(o);
+                        return lc+ 1 + StringLength(o);
                     return 1 + StringLength(new Common.Numeric((double)o).DoubleFormat());
                 case Sqlx.DATE:
-                    return 9; // 1+long
+                    return lc+9; // 1+long
                 case Sqlx.TIME:
-                    return 9;
+                    return lc+9;
                 case Sqlx.TIMESTAMP:
-                    return 9;
+                    return lc+9;
                 case Sqlx.BLOB:
-                    return 5 + ((byte[])o).Length;
+                    return lc+5 + ((byte[])o).Length;
                 case Sqlx.ROW:
                     {
                         if (o is TRow r)
-                            return 1 + RowLength(cx, r);
-                        return 1 + RowLength(cx, ((RowSet)o).First(cx));
+                            return lc+1 + RowLength(cx, r);
+                        return lc+1 + RowLength(cx, ((RowSet)o).First(cx));
                     }
                 case Sqlx.ARRAY:
-                    return 1 + ArrayLength(cx, (TArray)tv);
+                    return lc+1 + ArrayLength(cx, (TArray)tv);
                 case Sqlx.MULTISET:
-                    return 1 + MultisetLength(cx, (TMultiset)o);
+                    return lc+1 + MultisetLength(cx, (TMultiset)o);
                 case Sqlx.TABLE:
                     if (o is Cursor c)
-                        return 1 + TableLength(cx, (RowSet)cx.obs[c._rowsetpos]);
-                    return 1 + TableLength(cx, (RowSet)o);
+                        return lc+1 + TableLength(cx, (RowSet)cx.obs[c._rowsetpos]);
+                    return lc+1 + TableLength(cx, (RowSet)o);
                 case Sqlx.INTERVAL:
-                    return 10; // 1+ 1byte + (1long or 2xint)
+                    return lc+10; // 1+ 1byte + (1long or 2xint)
                 case Sqlx.TYPE:
                     {
                         var tn = tv.dataType.name;
-                        return 1 + tn.Length + ((TRow)o).Length;
+                        return lc+1 + tn.Length + ((TRow)o).Length;
                     }
                 case Sqlx.XML: break;
             }
-            return 1 + StringLength(o);
+            return lc+1 + StringLength(o);
         }
         int StringLength(object o)
         {
@@ -1418,7 +1423,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (14 June 2022)", " www.pyrrhodb.com https://pyrrhodb.uws.ac.uk"
+            "7.0 alpha"," (22 June 2022)", "http://www.pyrrhodb.com"
         };
 	}
 }

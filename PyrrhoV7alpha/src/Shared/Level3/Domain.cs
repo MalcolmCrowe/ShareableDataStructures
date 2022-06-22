@@ -576,9 +576,9 @@ namespace Pyrrho.Level3
                 case Sqlx.CLOB:
                 case Sqlx.NCLOB:
                 case Sqlx.VARCHAR: return Sqlx.CHAR;
-                case Sqlx.POSITION:
                 case Sqlx.INT:
                 case Sqlx.BIGINT:
+                case Sqlx.POSITION:
                 case Sqlx.SMALLINT: return Sqlx.INTEGER;
                 case Sqlx.DECIMAL:
                 case Sqlx.DEC: return Sqlx.NUMERIC;

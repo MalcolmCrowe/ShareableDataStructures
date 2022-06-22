@@ -271,7 +271,7 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var tb = (Table)cx.db.objects[target];
             var tg = new Trigger(this,cx.db.role); // complete version of trigger with def, but framing not quite right
-            tb = tb.AddTrigger(tg, cx.db);
+            tb = tb.AddTrigger(tg);
             ro = ro + (new ObInfo(defpos, name, Domain.Null,Grant.Privilege.Execute),true);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
@@ -288,7 +288,7 @@ namespace Pyrrho.Level2
                 + (DBObject._Framing, pt.framing) + (Trigger.OldRow,pt.oldRow?.iix.dp??-1L)
                 +(Trigger.NewRow,pt.newRow?.iix.dp??-1) + (Trigger.OldTable,pt.oldTable?.iix.dp??-1)
                 +(Trigger.NewTable,pt.newTable?.iix.dp??-1L);
-            var co = ((Table)tr.objects[target]).AddTrigger((Trigger)tg, tr);
+            var co = ((Table)tr.objects[target]).AddTrigger((Trigger)tg);
             wr.cx.instDFirst = -1;
             return ((Transaction)(tr + (tg, tr.loadpos) + (co, tr.loadpos)),ph);
         }

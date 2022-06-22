@@ -143,6 +143,7 @@ namespace Pyrrho
             Context cx, string url,string etags)
         {
             rs.StatusCode = 200;
+            cx.versioned = true;
             var r = (RowSet)cx.obs[cx.result];
             if (r == null && cx.exec is QuerySearch us)
                 r = (RowSet)cx.obs[us.source];
@@ -157,13 +158,13 @@ namespace Pyrrho
                 if (cx.obs[r.target] is Table tb)
                     rs.AddHeader("LastData", tb.lastData.ToString());
             }
-            if (etags!="")
-            {
+       //     if (etags!="") According to RFC 7232 we should always send an etag
+       //     {
        //         var s = cx.db.etags?.cons[url]?.etag??"";
                 rs.AddHeader("ETag", etags);
                 if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                     Console.WriteLine("Returning ETag: "+etags);
-            }
+       //     }
         }
         /// <summary>
         /// Footer for the page
@@ -259,6 +260,7 @@ namespace Pyrrho
             sbuild.Append("<!DOCTYPE HTML>\r\n");
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
+            cx.versioned = true;
             var rs = (RowSet)cx.obs[cx.result];
             var fm = rs as TableRowSet ?? cx.obs[rs.source] as TableRowSet;
             var om = tr.objects[fm.target] as DBObject;
@@ -577,6 +579,7 @@ namespace Pyrrho
             string dn,string etags)
         {
             rs.AddHeader("Content-Type", "application/json");
+            cx.versioned = true;
             base.Header(rs, tr, cx, dn,etags);
         }
         public override void BeforeResults()
@@ -639,6 +642,7 @@ namespace Pyrrho
             string dn, string etags)
         {
             rs.AddHeader("Content-Type", "application/xml");
+            cx.versioned = true;
             base.Header(rs, tr, cx, dn, etags);
         }
         /*        /// <summary>
@@ -702,6 +706,8 @@ namespace Pyrrho
                 if (path.Length <= 2)
                     return;
                 var dbn = new Ident(pathbits[1], Iix.None);
+                if (dbn.ident.EndsWith("favicon.ico"))
+                    return;
                 if (dbn.ident.EndsWith(".htm"))
                 {
                     var rdr = new StreamReader(PyrrhoStart.path + path);
@@ -856,7 +862,7 @@ namespace Pyrrho
             if (sbuild != null && client.Response.StatusCode == 200)
                 try
                 {
-                    var bs = Encoding.UTF8.GetBytes(sbuild.ToString());
+                    var bs = Encoding.Default.GetBytes(sbuild.ToString());
                     client.Response.ContentLength64 = bs.Length;
                     client.Response.OutputStream.Write(bs, 0, bs.Length);
                 }

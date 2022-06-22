@@ -321,8 +321,10 @@ namespace Pyrrho.Level4
                 obs += (cd.defpos, cd);
                 for (var c = b.value().First(); c != null; c = c.Next())
                 {
-                    var x = (Index)cx.db.objects[table.indexes[c.value()]];
-                    var rx = (Index)cx.db.objects[rt.indexes[c.key()]];
+                    var x = table.FindIndex(db, c.value())?[0];
+                    var rx = rt.FindIndex(db, c.key(), PIndex.ConstraintType.ForeignKey)?[0];
+                    if (x == null || rx==null)
+                        continue; 
                     var fl = CTree<long, TypedValue>.Empty;
                     var xm = BTree<long, long>.Empty;
                     var pb = rx.keys.First();
@@ -404,8 +406,9 @@ namespace Pyrrho.Level4
                 }
             }
             for (var b = table.indexes.First(); index == null && b != null; b = b.Next())
+                for (var c=b.value().First();c!=null;c=c.Next())
             {
-                var x = (Index)cx.db.objects[b.value()];
+                var x = (Index)cx.db.objects[c.key()];
                 if (x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey))
                     index = x;
             }
@@ -757,7 +760,8 @@ namespace Pyrrho.Level4
                     // the values list supplied must identify the url
                     var ut = (TableRowSet)obs[ru.usingTableRowSet];
                     for (var b = ut.indexes.First(); b != null; b = b.Next())
-                        if (db.objects[b.value()] is Index nx
+                        for (var c=b.value().First();c!=null;c=c.Next())
+                        if (db.objects[c.key()] is Index nx
                                 && nx.flags.HasFlag(PIndex.ConstraintType.PrimaryKey))
                         {
                             var tb = (Table)db.objects[ut.target];

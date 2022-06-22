@@ -5188,7 +5188,7 @@ namespace Pyrrho.Level3
                 case Sqlx.TYPE_URI: return Domain.Char;
                 case Sqlx.TRIM: return Domain.Char;
                 case Sqlx.UPPER: return Domain.Char;
-                case Sqlx.VERSIONING: return (val==null)?Domain.Int:Domain.Rvv;
+                case Sqlx.VERSIONING: cx.versioned = true;  return (val==null)?Domain.Int:Domain.Rvv;
                 case Sqlx.WHEN: return cx._Dom(val);
                 case Sqlx.XMLCAST: return cx._Dom(op1);
                 case Sqlx.XMLAGG: return Domain.Char;

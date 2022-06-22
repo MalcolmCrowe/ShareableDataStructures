@@ -251,8 +251,9 @@ namespace Pyrrho.Level3
             base.Cascade(cx, a, u);
             var tb = (Table)cx.db.objects[tabledefpos];
             for (var b = tb?.indexes.First(); b != null; b = b.Next())
-                for (var c = b.key().First(); c != null; c = c.Next())
-                    if (c.value() == defpos && cx.db.objects[b.value()] is Index x)
+                for (var c=b.value().First(); c!=null;c=c.Next())
+                for (var d = b.key().First(); d != null; d = d.Next())
+                    if (d.value() == defpos && cx.db.objects[c.key()] is Index x)
                         x.Cascade(cx,a,u);      
         }
         internal override Database Drop(Database d, Database nd,long p)
@@ -528,9 +529,10 @@ namespace Pyrrho.Level3
             //       var fr = (TableRowSet)cx.next.obs[cx._fm.defpos];
             var tb = (Table)cx.obs[cx._fm.target];
             for (var ib = tb.indexes.First(); ib != null; ib = ib.Next())
+                for (var c= ib.value().First();c!=null;c=c.Next())
             {
                 var ik = ib.key();
-                var rx = (Index)db.objects[ib.value()];
+                var rx = (Index)db.objects[c.key()];
                 if (db.objects[rx.refindexdefpos] is Index _rx)
                 {
                     var pk = _rx.MakeKey(vals);

@@ -246,7 +246,8 @@ namespace Pyrrho.Level2
         {
             var x = new Index(this, cx).Build(cx.db);
             var tb = (Table)cx.db.objects[tabledefpos];
-            tb += (Table.Indexes, tb.indexes + (x.keys, x.defpos));
+            var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
+            tb += (Table.Indexes, tb.indexes + (x.keys, t+(x.defpos,true)));
             cx.Install(x,p);
             if (reference>=0)
             {
@@ -344,7 +345,7 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            return base.ToString() + ((adapter!="")?" USING ":"")+adapter;
+            return base.ToString() + ((adapter != "") ? ("USING: " + adapter) : "");
         }
     }
     /// <summary>

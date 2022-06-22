@@ -48,7 +48,7 @@ namespace Pyrrho.Level2
         /// </summary>
         public string provenance;
         // Insert and ReferenceInsert constraints: {keys} , tabledefpos->{(keys,fkeys)}
-        public CTree<CList<long>,long> inC = CTree<CList<long>,long>.Empty;
+        public CTree<CList<long>,CTree<long,bool>> inC = CTree<CList<long>,CTree<long,bool>>.Empty;
         public CTree<long, bool> refs = CTree<long, bool>.Empty;
         public CTree<long,CTree<CList<long>,CList<long>>> riC 
             = CTree<long,CTree<CList<long>,CList<long>>>.Empty;
@@ -246,8 +246,9 @@ namespace Pyrrho.Level2
             var tb = (Table)cx.db.objects[tabledefpos];
             var now = new TableRow(this,cx.db);
             for (var xb=tb.indexes.First();xb!=null;xb=xb.Next())
+                for (var c=xb.value().First();c!=null;c=c.Next())
             {
-                var x = (Index)cx.db.objects[xb.value()];
+                var x = (Index)cx.db.objects[c.key()];
                 var k = x.MakeKey(now.vals);
                 if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
                     x.flags.HasFlag(PIndex.ConstraintType.Unique))

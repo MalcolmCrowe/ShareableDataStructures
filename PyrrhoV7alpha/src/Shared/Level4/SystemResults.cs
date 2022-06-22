@@ -93,7 +93,8 @@ namespace Pyrrho.Level4
                     }
             var x = new SystemIndex(defpos, ks);
             Database._system += (x.defpos, x);
-            return this + (Indexes, indexes + (ks, x.defpos));
+            var t = indexes[ks] ?? CTree<long, bool>.Empty;
+            return this + (Indexes, indexes + (ks, t+(x.defpos,true)));
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -263,15 +264,16 @@ namespace Pyrrho.Level4
             SystemIndex sx = null;
             var sf = BList<SystemFilter>.Empty;
             for (var b = f.indexes.First(); b != null; b = b.Next())
+                for (var c=b.value().First();c!=null;c=c.Next())
             {
-                var x = (SystemIndex)Database._system.objects[b.value()];
+                var x = (SystemIndex)Database._system.objects[c.key()];
                 var xf = BList<SystemFilter>.Empty;
                 for (var sb = x.keys.First(); sb != null; sb = sb.Next())
                 {
                     var sc = sb.value();
-                    for (var c = mf.First(); c != null; c = c.Next())
+                    for (var d = mf.First(); d != null; d = d.Next())
                     {
-                        var fn = c.value();
+                        var fn = d.value();
                         if (sc == fn.col)
                             xf += fn;
                     }
@@ -561,15 +563,9 @@ namespace Pyrrho.Level4
             {
                 res = r;
             }
-            protected static TypedValue Pos(long p)
+            protected static TypedValue Pos(long? p)
             {
-                if (p == -1)
-                    return TNull.Value;
-                return new TPosition(p);
-      /*          if (p < Transaction.TransPos)
-                    return new TChar("" + p);
-                return new TChar("'" + (p - Transaction.TransPos));
-      */
+                return new TPosition(p??-1L);
             }
             internal override BList<TableRow> Rec()
             {
@@ -2460,7 +2456,7 @@ namespace Pyrrho.Level4
             t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
             t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
             t+=(cx,new SystemTableColumn(t, "Table", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Flags", Domain.Int,0));
+            t+=(cx,new SystemTableColumn(t, "Flags", Domain.Char,0));
             t+=(cx,new SystemTableColumn(t, "Reference", Domain.Position,0));
             t+=(cx,new SystemTableColumn(t, "Adapter", Domain.Position,0));
             t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
@@ -2514,7 +2510,7 @@ namespace Pyrrho.Level4
                         var rb = new LogIndexBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -2529,7 +2525,7 @@ namespace Pyrrho.Level4
                         var rb = new LogIndexBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -5793,27 +5789,30 @@ namespace Pyrrho.Level4
             /// enumerate the indexes
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<CList<long>, long> _inner;
+            readonly ABookmark<CList<long>, CTree<long,bool>> _middle;
+            readonly ABookmark<long, bool> _inner;
             /// <summary>
             /// craete the Sys$Index enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<CList<long>,long>inner)
-                : base(_cx,res,pos,inner.value(),((Index)_cx.db.objects[inner.value()]).lastChange,
-                      _Value(_cx,res,inner.value()))
+                ABookmark<CList<long>,CTree<long,bool>>middle, ABookmark<long,bool>inner)
+                : base(_cx,res,pos,inner.key(),((Index)_cx.db.objects[inner.key()]).lastChange,
+                      _Value(_cx,res,inner.key()))
             {
                 _outer = outer;
+                _middle = middle;
                 _inner = inner;
             }
             internal static RoleIndexBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table tb)
-                        for (var inner = tb.indexes.First(); inner != null; inner = inner.Next())
+                        for (var middle = tb.indexes.First(); middle != null; middle = middle.Next())
+                            for (var inner = middle.value().First();inner!=null;inner=inner.Next())
                         {
-                            var rb = new RoleIndexBookmark(_cx,res, 0, outer,inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            var rb = new RoleIndexBookmark(_cx,res, 0, outer,middle,inner);
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
                 return null;
@@ -5846,18 +5845,27 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
+                var middle = _middle;
                 var inner = _inner;
                 for (inner=inner.Next();inner!=null;inner=inner.Next())
                 {
-                    var rb = new RoleIndexBookmark(_cx,res, _pos + 1, outer, inner);
-                    if (RowSet.Eval(res.where, _cx))
+                    var rb = new RoleIndexBookmark(_cx,res, _pos + 1, outer, middle, inner);
+                    if (Eval(res.where, _cx))
                         return rb;
                 }
+                for (middle = middle.Next();middle!=null;middle=middle.Next())
+                    for (inner = middle.value().First(); inner != null; inner = inner.Next())
+                    {
+                        var rb = new RoleIndexBookmark(_cx, res, _pos + 1, outer, middle, inner);
+                        if (Eval(res.where, _cx))
+                            return rb;
+                    }
                 for (outer=outer.Next();outer!=null;outer=outer.Next())
                     if (outer.value() is Table tb)
-                        for (inner=tb.indexes.First();inner!=null;inner=inner.Next())
+                        for (middle=tb.indexes.First();middle!=null;middle=middle.Next())
+                        for (inner=middle.value().First();inner!=null;inner=inner.Next())
                         {
-                            var rb = new RoleIndexBookmark(_cx,res, _pos + 1, outer, inner);
+                            var rb = new RoleIndexBookmark(_cx,res, _pos + 1, outer, middle, inner);
                             if (rb.Match(res) && RowSet.Eval(res.where, _cx))
                                 return rb;
                         }
@@ -5889,30 +5897,36 @@ namespace Pyrrho.Level4
         internal class RoleIndexKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<CList<long>, long> _middle;
+            readonly ABookmark<CList<long>, CTree<long,bool>> _second;
+            readonly ABookmark<long,bool> _third;
             readonly ABookmark<int, long> _inner;
             /// <summary>
             /// create the Role$IndexKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexKeyBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<CList<long>,long> middle, ABookmark<int,long> inner)
-                : base(_cx,res,pos,inner.value(),0,
-                      _Value(_cx,res,inner.key(),(TableColumn)_cx.db.objects[inner.value()]))
+                ABookmark<CList<long>,CTree<long,bool>> second, ABookmark<long,bool> third, 
+                ABookmark<int,long> inner)
+                : base(_cx,res,pos,inner.value(),0,_Value(_cx,res,inner.key(),
+                      (TableColumn)_cx.db.objects[inner.value()]))
             {
-                _outer = outer; _middle = middle; _inner = inner;
+                _outer = outer; _second = second; _third = third; _inner = inner;
             }
             internal static RoleIndexKeyBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table tb)
-                        for (var middle = tb.indexes.First(); middle != null; middle = middle.Next())
-                            for (var inner = middle.key().First(); 
-                                inner != null; inner = inner.Next())
+                        for (var second = tb.indexes.First(); second != null; second = second.Next())
+                            for (var third = second.value().First(); third != null; third = third.Next())
                             {
-                                var rb = new RoleIndexKeyBookmark(_cx,res, 0, outer,middle,inner);
-                                if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                                    return rb;
+                                var x = (Index)_cx.db.objects[third.key()];
+                                for (var inner = x.keys.First();
+                                    inner != null; inner = inner.Next())
+                                {
+                                    var rb = new RoleIndexKeyBookmark(_cx, res, 0, outer, second, third, inner);
+                                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                                        return rb;
+                                }
                             }
                 return null;
             }
@@ -5934,28 +5948,39 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context _cx)
             {
                 var outer = _outer;
-                var middle = _middle;
+                var second = _second;
+                var third = _third;
                 var inner = _inner;
                 for (inner = inner.Next();inner!=null;inner=inner.Next())
                 {
-                    var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                    var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, second, third, inner);
+                    if (rb.Match(res) && Eval(res.where, _cx))
                         return rb;
                 }
-                for (middle=middle.Next();middle!=null;middle=middle.Next())
-                    for (inner=middle.key().First();inner!=null;inner=inner.Next())
+                for (third = third.Next();third!=null;third=third.Next())
+                    for (inner=((Index)_cx.db.objects[third.key()]).keys.First();
+                        inner!=null;inner=inner.Next())
                     {
-                        var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, second, third, inner);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
+                for (second=second.Next();second!=null;second=second.Next())
+                    for (third = second.value().First();third!=null;third=third.Next())
+                    for (inner=((Index)_cx.db.objects[third.key()]).keys.First();inner!=null;inner=inner.Next())
+                    {
+                        var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, second, third, inner);
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 for (outer = outer.Next(); outer!=null;outer=outer.Next())
                     if (outer.value() is Table tb)
-                        for (middle = tb.indexes.First(); middle != null; middle = middle.Next())
-                            for (inner = middle.key().First(); inner != null;
+                        for (second = tb.indexes.First(); second != null; second = second.Next())
+                            for (third=second.value().First();third!=null;third=third.Next())
+                            for (inner = ((Index)_cx.db.objects[third.key()]).keys.First(); inner != null;
                                 inner = inner.Next())
                             {
-                                var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, middle, inner);
+                                var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, second, third, inner);
                                 if (rb.Match(res) && RowSet.Eval(res.where, _cx))
                                     return rb;
                             }

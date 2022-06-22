@@ -202,15 +202,12 @@ namespace Pyrrho.Level3
         /// <param name="name"></param>
         /// <param name="rt"></param>
         /// <param name="m"></param>
-        public ObInfo(long lp, string name, Domain rt, Grant.Privilege pr,
+        public ObInfo(long lp, string name, Domain rt, Grant.Privilege pr=0,
             BTree<long, object> m = null)
             : this(lp, (m ?? BTree<long, object>.Empty) + (Name, name)
           + (_DataType,rt) + (_Domain, rt.defpos) + (Privilege, pr)) { }
-        public ObInfo(long lp, string name, Context cx, CList<long> rt,
-            Grant.Privilege pr, BTree<long, object> m = null)
-            : this(lp, (m ?? BTree<long, object>.Empty) + (Name, name)
-                  + (Privilege, pr)
-                + (_DataType, cx._Dom(lp,rt)))
+        public ObInfo(long lp, string name) // for View Definition only
+            : this(lp, new BTree<long, object>(Name, name))
         { }
         protected ObInfo(long dp, BTree<long, object> m) : base(dp, m)
         { }

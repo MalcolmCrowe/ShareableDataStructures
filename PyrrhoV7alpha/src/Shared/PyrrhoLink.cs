@@ -308,6 +308,22 @@ namespace Pyrrho
             }
             return Get<C>(sb.ToString());
         }
+        public C[] FindIn<C>(string sel) where C : new()
+        {
+            var cmd = CreateCommand();
+            cmd.CommandText = sel;
+            var r = new List<C>();
+            var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
+            {
+                var w = new IComparable[rdr.FieldCount];
+                for (var i = 0; i < rdr.FieldCount; i++)
+                    w[i] = (IComparable)rdr[i];
+                r.Add(FindOne<C>(w));
+            }
+            rdr.Close();
+            return r.ToArray();
+        }
         public C[] FindAll<C>() where C : new()
         {
             return Get<C>();

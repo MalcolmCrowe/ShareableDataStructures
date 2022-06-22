@@ -102,6 +102,7 @@ namespace Pyrrho.Level2
                 var psr = new Parser(rdr, 
                     new Ident(viewdef, rdr.context.Ix(ppos + 2)), null);
                 psr.cx.nextStmt = rdr.context.nextStmt;
+                psr.Next(); psr.Next();  // VIEW name
                 var un = psr.ParseViewDefinition(name);
          //       var cs = psr.ParseCursorSpecification(Domain.TableType);
                 dataType = psr.cx._Dom(psr.cx.obs[un.defpos]); // was cs.union
@@ -253,8 +254,7 @@ namespace Pyrrho.Level2
             var psr = new Parser(rdr.context, tb.name);
             var op = rdr.context.parse;
             psr.cx.parse = ExecuteStatus.Parse;
-            dataType = new Domain(psr.cx,
-                psr.ParseRowTypeSpec(Sqlx.VIEW)+(Domain.Structure,structpos));
+            dataType = psr.ParseRestViewSpec(structpos);
             rdr.context.parse = op;
             rdr.context.nextStmt = psr.cx.nextStmt;
             framing = new Framing(psr.cx);

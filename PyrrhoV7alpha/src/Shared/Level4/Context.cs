@@ -120,6 +120,14 @@ namespace Pyrrho.Level4
         internal BTree<long, ReadConstraint> rdC = BTree<long, ReadConstraint>.Empty; // copied to and from Transaction
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
         public int rconflicts = 0, wconflicts = 0;
+        /// <summary>
+        /// We only send versioned information if 
+        /// a) the pseudocolumn VERSIONING has been requested or
+        /// b) Protocol.Get has been used (POCO Versioned library) or
+        /// c) there is a RestRowSet or
+        /// d) we are preparing an HttpService Response
+        /// </summary>
+        internal bool versioned = false;
         internal Context(Database db, Connection con = null)
         {
             next = null;
@@ -1524,6 +1532,20 @@ namespace Pyrrho.Level4
                 r += (p, v);
             }
             return ch ? r : ma;
+        }
+        internal CTree<CList<long>,CTree<long,bool>> Fix(CTree<CList<long>,CTree<long,bool>> xs)
+        {
+            var r = CTree<CList<long>, CTree<long, bool>>.Empty;
+            var ch = false;
+            for (var b = xs?.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var p = Fix(k);
+                var v = Fix(b.value());
+                ch = ch || p != k || v != b.value();
+                r += (p, v);
+            }
+            return ch ? r : xs;
         }
         internal ObTree Fix(ObTree os)
         {

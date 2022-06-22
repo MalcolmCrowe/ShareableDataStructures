@@ -132,8 +132,9 @@ namespace Pyrrho.Level2
                             return new DBException("40029", delpos, that, ct);
                         // conflict if we refer to the deleted row
                         for (var b = u.inC.First(); b != null; b = b.Next())
+                            for (var c= b.value().First();c!=null;c=c.Next())
                             {
-                                var x = (Index)db.objects[b.value()];
+                                var x = (Index)db.objects[c.key()];
                                 if (x.reftabledefpos==tabledefpos)
                                 {
                                     var rx = (Index)db.objects[x.refindexdefpos];
@@ -152,8 +153,9 @@ namespace Pyrrho.Level2
                         var dr = (TableRow)db.objects[delpos];
                         var r = (Record)that;
                         for (var b = r.inC.First(); b != null; b = b.Next())
-                        {
-                            var x = (Index)db.objects[b.value()];
+                            for (var c = b.value().First(); c != null; c = c.Next())
+                            {
+                            var x = (Index)db.objects[c.key()];
                             if (x.reftabledefpos == tabledefpos)
                             {
                                 var rx = (Index)db.objects[x.refindexdefpos];
@@ -182,8 +184,9 @@ namespace Pyrrho.Level2
                 {
                     var delRow = tb.tableRows[delpos];
                     for (var b = tb.indexes.First(); b != null; b = b.Next())
+                        for (var c=b.value().First();c!=null; c = c.Next())
                     {
-                        var ix = (Index)cx.db.objects[b.value()];
+                        var ix = (Index)cx.db.objects[c.key()];
                         var inf = ix.rows.info;
                         var key = delRow.MakeKey(ix);
                         ix -= key;
@@ -252,8 +255,9 @@ namespace Pyrrho.Level2
             var delRow = tb.tableRows[delpos];
     //        delRow.Cascade(cx.db, cx, cx.role, p); moved to TransitionRowSet
             for (var b = tb.indexes.First(); b != null; b = b.Next())
+                for (var c=b.value().First();c!=null;c=c.Next())
             {
-                var ix = (Index)cx.db.objects[b.value()];
+                var ix = (Index)cx.db.objects[c.key()];
                 var inf = ix.rows.info;
                 var key = delRow.MakeKey(ix);
                 ix -= (key,delpos);

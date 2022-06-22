@@ -903,6 +903,7 @@ namespace Pyrrho.Level4
         {
             var op = cx.parse;
             var lp = LexPos();
+            var sl = lxr.start;
             if (id == null)
             {
                 Next();
@@ -912,9 +913,8 @@ namespace Pyrrho.Level4
                     throw new DBException("42104", id);
             }
             var t = Domain.TableType;
-            var ns = BList<string>.Empty; // named columns option 
+            var ts = BTree<long, ObInfo>.Empty;
             string tn; // explicit view type
-            var st = lxr.start;
             Table ut = null;
             bool schema = false; // will record whether a schema for GET follows
             if (Match(Sqlx.LPAREN))
@@ -923,8 +923,9 @@ namespace Pyrrho.Level4
                 for (var i=0;;i++ )
                 {
                     var n = lxr.val.ToString();
+                    var np = LexPos();
                     Mustbe(Sqlx.ID);
-                    ns += n;
+                    ts += (np.dp,new ObInfo(np.dp,n));
                     if (Mustbe(Sqlx.COMMA, Sqlx.RPAREN) == Sqlx.RPAREN)
                         break;
                 }
@@ -933,9 +934,17 @@ namespace Pyrrho.Level4
             {
                 cx.parse = ExecuteStatus.Compile;
                 Next();
-                if (Match(Sqlx.LPAREN)) // inline type def
-                    t = (Domain)cx.Add(ParseRowTypeSpec(Sqlx.VIEW));
-                else
+                lp = LexPos();
+                sl = lxr.start;
+                if (Match(Sqlx.LPAREN)) // inline type def (RestView only)
+                {
+                    var vn = new string(lxr.input, sl, lxr.input.Length - sl - 1);
+                    var x = vn.IndexOf(")");
+                    vn = vn.Substring(0, x+1);
+                    var tb = new VirtualTable(new Ident(vn, lp), cx);
+                    cx.Add(tb);
+                    t = ParseRestViewSpec(tb.defpos);
+                } else
                 {
                     tn = lxr.val.ToString();
                     Mustbe(Sqlx.ID);
@@ -944,7 +953,6 @@ namespace Pyrrho.Level4
                 }
                 schema = true;
                 cx.parse = op;
-                st = lxr.start;
             }
             Mustbe(Sqlx.AS);
             var rest = Match(Sqlx.GET);
@@ -955,26 +963,26 @@ namespace Pyrrho.Level4
             {
                 cx.parse = ExecuteStatus.Compile;
                 (ud, cs) = _ParseCursorSpecification(Domain.TableType);
-                if (ns != BList<string>.Empty)
+                if (ts != BTree<long,ObInfo>.Empty)
                 {
                     var ub = ud.rowType.First();
-                    for (var b = ns.First(); b != null && ub != null; b = b.Next(), ub = ub.Next())
+                    for (var b = ts.First(); b != null && ub != null; b = b.Next(), ub = ub.Next())
                     {
                         var v = (SqlValue)cx.obs[ub.value()];
-                        cx.Add(v + (DBObject._Alias, b.value()));
+                        cx.Add(v + (DBObject._Alias, b.value().name));
                     }
                 }
                 cx.Add(new SelectStatement(cx.GetUid(), cs));
                 cs = (RowSet)cx.obs[cs.defpos];
                 var d = (Domain)cx.obs[cs.domain];
-                var nb = ns.First();
+                var nb = ts.First();
                 for (var b = d.rowType.First(); b != null; b = b.Next(), nb = nb?.Next())
                 {
                     var v = (SqlValue)cx.obs[b.value()];
                     if (cx._Dom(v).kind==Sqlx.CONTENT || v.defpos<0) // can't simply use WellDefined
                         throw new DBException("42112", v.name);
                     if (nb!=null)
-                        cx.Add(v + (DBObject._Alias, nb.value()));
+                        cx.Add(v + (DBObject._Alias, nb.value().name));
                 }
                 cx.parse = op;
             }
@@ -1006,7 +1014,7 @@ namespace Pyrrho.Level4
                 else
                 {
                     cx.Add(cs);
-                    pv = new PView(id, new string(lxr.input, st, lxr.pos - st),cx._Dom(cs),
+                    pv = new PView(id, new string(lxr.input, sl, lxr.pos - sl),cx._Dom(cs),
                         cx.db.nextPos, cx);
                 }
                 cx.Add(pv);
@@ -1564,8 +1572,9 @@ namespace Pyrrho.Level4
             {
                 var fl = (vi == 0) ? PIndex.ConstraintType.SystemTimeIndex : PIndex.ConstraintType.ApplicationTimeIndex;
                 for (var e = ta.indexes.First(); e != null; e = e.Next())
+                    for (var c=e.value().First();c!=null;c=c.Next())
                 {
-                    var px = cx.db.objects[e.value()] as PIndex;
+                    var px = cx.db.objects[c.key()] as Index;
                     if (px.tabledefpos == t && (px.flags & fl) == fl)
                         cx.Add(new Drop(px.defpos, tr.nextPos, cx));
                 }
@@ -1808,6 +1817,169 @@ namespace Pyrrho.Level4
             if (type != null && tok == Sqlx.COLLATE)
                 dom = new Domain(pc.ppos,type.kind,type.mem+(Domain.Culture,new CultureInfo(ParseCollate())));
             return ns;
+        }
+        internal Domain ParseRestViewSpec(long st)
+        {
+            Next();
+            var ns = BList<SqlValue>.Empty;
+            ns = ParseRestViewItem(st, ns);
+            while (tok == Sqlx.COMMA)
+            {
+                Next();
+                ns = ParseRestViewItem(st, ns);
+            }
+            var t = new Domain(Sqlx.TABLE, cx, ns) + (Domain.Structure, st);
+            cx.Add(t);
+            Mustbe(Sqlx.RPAREN);
+            return t;
+        }
+        BList<SqlValue> ParseRestViewItem(long t,BList<SqlValue> ns)
+        {
+            if (tok == Sqlx.ID)
+                ns = ParseRestViewColDefin(t, ns);
+            else
+                ParseRestViewConstraintDefin(t);
+            return ns;
+        }
+        void ParseRestViewConstraintDefin(long t)
+        {
+            Ident name = null;
+            if (tok == Sqlx.CONSTRAINT)
+            {
+                Next();
+                name = new Ident(this, t);
+                Mustbe(Sqlx.ID);
+            }
+            else
+                name = new Ident(this, t);
+            Sqlx s = Mustbe(Sqlx.UNIQUE, Sqlx.PRIMARY, Sqlx.FOREIGN);
+            switch (s)
+            {
+                case Sqlx.UNIQUE: ParseUniqueConstraint(t, name); break;
+                case Sqlx.PRIMARY: ParsePrimaryConstraint(t, name); break;
+                case Sqlx.FOREIGN: ParseReferentialConstraint(t, name); break;
+            }
+            cx.result = -1L;
+        }
+        BList<SqlValue> ParseRestViewColDefin(long t,BList<SqlValue> ns)
+        {
+            Domain type = null;
+            Domain dom = null;
+            if (Match(Sqlx.COLUMN))
+                Next();
+            var colname = new Ident(this, t);
+            var lp = LexPos();
+            Mustbe(Sqlx.ID);
+            if (tok == Sqlx.ID)
+            {
+                var op = cx.db.role.dbobjects[new Ident(this, t).ident];
+                type = cx.db.objects[op] as Domain
+                    ?? throw new DBException("42119", lxr.val.ToString());
+                Next();
+            }
+            else if (Match(Sqlx.CHARACTER, Sqlx.CHAR, Sqlx.VARCHAR, Sqlx.NATIONAL, Sqlx.NCHAR,
+                Sqlx.BOOLEAN, Sqlx.NUMERIC, Sqlx.DECIMAL,
+                Sqlx.DEC, Sqlx.FLOAT, Sqlx.REAL, Sqlx.DOUBLE,
+                Sqlx.INT, Sqlx.INTEGER, Sqlx.BIGINT, Sqlx.SMALLINT, Sqlx.PASSWORD,
+                Sqlx.BINARY, Sqlx.BLOB, Sqlx.NCLOB, Sqlx.CLOB, Sqlx.XML,
+                Sqlx.DATE, Sqlx.TIME, Sqlx.TIMESTAMP, Sqlx.INTERVAL,
+                Sqlx.DOCUMENT, Sqlx.DOCARRAY, Sqlx.CHECK,
+#if MONGO
+                Sqlx.OBJECT, // v5.1
+#endif
+                Sqlx.ROW, Sqlx.TABLE, Sqlx.REF))
+                type = ParseSqlDataType();
+            dom = type;
+            if (Match(Sqlx.ARRAY))
+            {
+                dom = (Domain)cx.Add(new Domain(cx.GetUid(), Sqlx.ARRAY, type));
+                Next();
+            }
+            else if (Match(Sqlx.MULTISET))
+            {
+                dom = (Domain)cx.Add(new Domain(cx.GetUid(), Sqlx.MULTISET, type));
+                Next();
+            }
+            if (dom == null)
+                throw new DBException("42120", colname.ident);
+            dom = (Domain)cx.Add(dom);
+            var tb = (Table)cx.db.objects[t];
+            var sv = new SqlValue(colname.iix.dp, colname.ident, dom,
+                new BTree<long, object>(DBObject._From, t));
+            cx.Add(sv);
+            var cix = cx.Ix(sv.defpos);
+            cx.defs += (colname, cix);
+            cx.iim += (sv.defpos, cix);
+            cx.Add(sv);
+            tb = (Table)cx.obs[t];
+            ns += sv;
+            while (Match(Sqlx.REFERENCES, Sqlx.UNIQUE, Sqlx.PRIMARY))
+                ParseRestViewColConstraintDefin(t, sv);
+            return ns;
+        }
+        void ParseRestViewColConstraintDefin(long t, SqlValue sv)
+        {
+            var c = sv.defpos;
+            var key = new CList<long>(c);
+            string nm = "";
+            switch (tok)
+            {
+                case Sqlx.REFERENCES:
+                    {
+                        Next();
+                        var rn = lxr.val.ToString();
+                        var rt = cx.db.GetObject(rn) as Table ??
+                            throw new DBException("42107", rn).Mix();
+                        CList<long> cols = null;
+                        Mustbe(Sqlx.ID);
+                        if (tok == Sqlx.LPAREN)
+                            cols = ParseColsList(rt);
+                        string afn = "";
+                        if (tok == Sqlx.USING)
+                        {
+                            Next();
+                            int st = lxr.start;
+                            if (tok == Sqlx.ID)
+                            {
+                                Next();
+                                var ni = new Ident(this, t);
+                                var pr = cx.GetProcedure(LexPos().dp, ni.ident, 1);
+                                afn = "\"" + pr.defpos + "\"";
+                            }
+                            else
+                            {
+                                var sp = LexPos();
+                                Mustbe(Sqlx.LPAREN);
+                                ParseSqlValueList(Domain.Content);
+                                Mustbe(Sqlx.RPAREN);
+                                afn = new string(lxr.input, st, lxr.start - st);
+                            }
+                        }
+                        var ct = ParseReferentialAction();
+                        cx.tr.AddReferentialConstraint(cx,
+                            (Table)cx.obs[t], new Ident("", cx.Ix(0)), key, rt, cols, ct, afn);
+                        break;
+                    }
+                case Sqlx.UNIQUE:
+                    {
+                        Next();
+                        var tr = cx.db as Transaction ?? throw new DBException("2F003");
+                        cx.Add(new PIndex(nm, t, key, PIndex.ConstraintType.Unique, -1L,
+                            tr.nextPos, cx));
+                        break;
+                    }
+                case Sqlx.PRIMARY:
+                    {
+                        var tb = (Table)(cx.obs[t] ?? cx.db.objects[t]);
+                        var ti = (ObInfo)cx.db.role.infos[t];
+                        Next();
+                        Mustbe(Sqlx.KEY);
+                        var tr = cx.db as Transaction ?? throw new DBException("2F003");
+                        cx.Add(new PIndex(ti.name, t, key, PIndex.ConstraintType.PrimaryKey,
+                            -1L, tr.nextPos, cx));
+                        break;
+                    }
+            }
         }
         /// <summary>
         /// Detect start of TableMetadata or ColumnMetatdata
@@ -2125,7 +2297,6 @@ namespace Pyrrho.Level4
 		/// |	FOREIGN KEY Cols REFERENCES Table_id [ Cols ] { ReferentialAction } .
         /// </summary>
         /// <param name="tb">the table</param>
-        /// <returns>the updated table</returns>
 		BTree<long,ObInfo> ParseTableConstraintDefin(long t,BTree<long,ObInfo>ns)
         {
             Ident name = null;
@@ -2135,7 +2306,7 @@ namespace Pyrrho.Level4
                 name = new Ident(this,t);
                 Mustbe(Sqlx.ID);
             }
-            else
+            else if (tok==Sqlx.ID)
                 name = new Ident(this,t);
             Sqlx s = Mustbe(Sqlx.UNIQUE, Sqlx.PRIMARY, Sqlx.FOREIGN, Sqlx.CHECK);
             switch (s)
@@ -2157,7 +2328,7 @@ namespace Pyrrho.Level4
         void ParseUniqueConstraint(long t, Ident name)
         {
             var tr = cx.db as Transaction ?? throw new DBException("2F003");
-            cx.Add(new PIndex(name.ident, t, ParseColsList((Table)cx.obs[t]), 
+            cx.Add(new PIndex(name?.ident??"", t, ParseColsList((Table)cx.obs[t]), 
                 PIndex.ConstraintType.Unique, -1L, tr.nextPos, cx));
         }
         /// <summary>
@@ -2175,7 +2346,7 @@ namespace Pyrrho.Level4
             if (x != null)
                 throw new DBException("42147", ti.name).Mix();
             Mustbe(Sqlx.KEY);
-            cx.Add(new PIndex(name.ident, t, ParseColsList(tb), 
+            cx.Add(new PIndex(name?.ident??"", t, ParseColsList(tb), 
                 PIndex.ConstraintType.PrimaryKey, -1L, tr.nextPos, cx));
         }
         /// <summary>
@@ -4040,7 +4211,7 @@ namespace Pyrrho.Level4
                                     var cols = ParseColsList(tb);
                                     if (tb != null)
                                     {
-                                        Index x = tb.FindIndex(cx.db, cols);
+                                        Index x = tb.FindIndex(cx.db, cols)?[0];
                                         if (x != null && cx.parse == ExecuteStatus.Obey)
                                             new Drop1(x.defpos, act, cx.tr.nextPos, cx);
                                         return ns;
@@ -4063,7 +4234,7 @@ namespace Pyrrho.Level4
                                         ParseColsList(rt); //??
                                     if (cx.parse == ExecuteStatus.Obey)
                                     {
-                                        var x = tb.FindIndex(cx.db,cols);
+                                        var x = tb.FindIndex(cx.db, cols)?[0];
                                         if (x != null)
                                         {
                                             cx.Add(new Drop(x.defpos, cx.tr.nextPos,cx));
@@ -4081,7 +4252,7 @@ namespace Pyrrho.Level4
                                     var cols = ParseColsList(tb);
                                     if (cx.parse == ExecuteStatus.Obey)
                                     {
-                                        var x = tb.FindIndex(cx.db,cols);
+                                        var x = tb.FindIndex(cx.db, cols)?[0];
                                         if (x != null)
                                         {
                                             cx.Add(new Drop(x.defpos, cx.tr.nextPos, cx));
@@ -4207,7 +4378,7 @@ namespace Pyrrho.Level4
                             ct = ParseReferentialAction();
                         if (cx.parse == ExecuteStatus.Obey)
                         {
-                            var x = tb.FindIndex(cx.db, cols);
+                            var x = tb.FindIndex(cx.db, cols, PIndex.ConstraintType.ForeignKey)?[0];
                             if (x != null)
                             {
                                 cx.Add(new RefAction(x.defpos, ct, tr.nextPos, cx));
@@ -4431,8 +4602,9 @@ namespace Pyrrho.Level4
                     Table rt = null;
                     ObInfo ri = null;
                     for (var p = tb.indexes.First();p!= null;p=p.Next())
+                        for (var c=p.value().First();c!=null;c=c.Next())
                     {
-                        var x = (Index)cx.db.objects[p.value()];
+                        var x = (Index)cx.db.objects[c.key()];
                         if (x.keys.Count != 1 || x.keys[0] != tc.defpos)
                             continue;
                         rt = cx.db.objects[x.reftabledefpos] as Table;
@@ -4456,8 +4628,9 @@ namespace Pyrrho.Level4
                     Next();
                     Index dx = null;
                     for (var p =tb.indexes.First();p!= null;p=p.Next())
+                        for (var c=p.value().First();c!=null;c=c.Next())
                     {
-                        var x = (Index)cx.db.objects[p.value()];
+                        var x = (Index)cx.db.objects[c.key()];
                         if (x.keys.Count != 1 
                             || x.keys[0] != tc.defpos)
                             continue;
@@ -5033,8 +5206,6 @@ namespace Pyrrho.Level4
                 cx.Add(t);
                 st = t.defpos;
             }
-            else if (d==Sqlx.VIEW) // RESTView OnLoad
-                st = cx.db.objects.Last().key();
             var ms = CTree<long, Domain>.Empty;
             var rt = CList<long>.Empty;
             var j = 0;
@@ -5062,17 +5233,6 @@ namespace Pyrrho.Level4
                     ms += (se.defpos, dm);
                     rt += se.defpos;
                     cx.defs += (new Ident(pn, nm), pn.iix);
-                }
-                else // RestView
-                {
-                    var sv = new SqlValue(nm.iix.dp, nm.ident, dm,
-                        new BTree<long, object>(DBObject._From, st));
-                    cx.Add(sv);
-                    ms += (sv.defpos, dm);
-                    rt += sv.defpos;
-                    var cix = cx.Ix(sv.defpos);
-                    cx.defs += (nm, cix);
-                    cx.iim += (sv.defpos, cix);
                 }
             }
             return new Domain(lp.dp, d, BTree<long, object>.Empty

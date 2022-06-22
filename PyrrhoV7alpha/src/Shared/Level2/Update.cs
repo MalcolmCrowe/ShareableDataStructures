@@ -101,8 +101,8 @@ namespace Pyrrho.Level2
                         for (var b = de.deC[tabledefpos]?.First();b!=null;b=b.Next())
                         {
                             var tb = (Table)db.objects[tabledefpos];
-                            var x = (Index)db.objects[tb.indexes[b.key()]];
-                            if (x.rows.Contains(x.MakeKey(fields)))
+                            var x = tb.FindIndex(db, b.key())?[0];
+                            if (x!=null && x.rows.Contains(x.MakeKey(fields)))
                                 return new DBException("40085", de.delpos);
                         }
                         break;
@@ -121,11 +121,12 @@ namespace Pyrrho.Level2
                         for (var b = tb.indexes.First(); b != null; b = b.Next())
                         {
                             // conflict if this updated one of our foreign keys
-                            var x = (Index)cx.db.objects[b.value()];
-                            for (var xb = ((Index)cx.db.objects[x.refindexdefpos])?.keys.First(); 
-                                    xb != null; xb = xb.Next())
-                                if (fields.Contains(xb.value()))
-                                    throw new DBException("40086", u.ToString());
+                            var x = tb.FindIndex(db, b.key())?[0];
+                            if (x != null)
+                                for (var xb = ((Index)cx.db.objects[x.refindexdefpos])?.keys.First();
+                                        xb != null; xb = xb.Next())
+                                    if (fields.Contains(xb.value()))
+                                        throw new DBException("40086", u.ToString());
                         }
                         // conflict on columns in matching rows
                         if (defpos != u.defpos)
@@ -169,8 +170,9 @@ namespace Pyrrho.Level2
             if (same)
                 return now;
             for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
+                for (var c=xb.value().First();c!=null;c=c.Next())
             {
-                var x = (Index)cx.db.objects[xb.value()];
+                var x = (Index)cx.db.objects[c.key()];
                 var ok = x.MakeKey(was.vals);
                 var nk = x.MakeKey(now.vals);
                 if (ok._CompareTo(nk) != 0)
