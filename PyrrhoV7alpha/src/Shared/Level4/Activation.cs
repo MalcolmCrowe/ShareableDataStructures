@@ -239,6 +239,7 @@ namespace Pyrrho.Level4
                             }
                             break;
                     }
+                cx.db = tr;
             }
             if (PyrrhoStart.HTTPFeedbackMode)
                 Console.WriteLine("--> " + rp.StatusCode);
@@ -249,7 +250,6 @@ namespace Pyrrho.Level4
                 if (s.StartsWith("SQL Error: "))
                 {
                     var sig = s.Substring(11, 5);
-                    var ix = s.IndexOf('\n');
                     throw new DBException(sig, s.Substring(16));
                 }
                 throw new DBException("23000");

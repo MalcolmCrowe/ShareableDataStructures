@@ -65,12 +65,12 @@ namespace Pyrrho.Level3
         /// <param name="sce"></param>
         /// <param name="auto"></param>
         internal Transaction(Database db,long t,string sce,bool auto) 
-            :base(db.loadpos,db.mem+(NextId,t+1)
+            :base(db.loadpos,db.mem+(NextId,t+1) + (StartTime, DateTime.Now) 
             +(AutoCommit,auto)+(SelectStatement.SourceSQL,sce))
-        { }
+        {  }
         protected Transaction(Transaction t,long p, BTree<long, object> m)
             : base(p, m)
-        { }
+        {  }
         internal override Basis New(BTree<long, object> m)
         {
             return new Transaction(this,loadpos, m);
@@ -119,7 +119,11 @@ namespace Pyrrho.Level3
         }
         public static Transaction operator +(Transaction d, (long, object) x)
         {
-            return new Transaction(d,d.loadpos, d.mem + x);
+            var (dp, ob) = x;
+            var m = d.mem;
+            if (d.mem[dp] == ob)
+                return d;
+            return new Transaction(d,d.loadpos, m+x);
         }
         /// <summary>
         /// Default action for adding a DBObject
@@ -333,8 +337,14 @@ namespace Pyrrho.Level3
         {
             var db = this;
             cx.inHttpService = true;
-            var j = (sk!=0L) ? 1 : 2;
-            var ln = (sk != 0L) ? 2 : 4;
+            int j, ln;
+            if (sk!=0L)
+            {
+                j = 1; ln = 2;
+            } else
+            {
+                j = 2; ln = 4;
+            }
             if (path.Length >= ln)
             {
                 RowSet fm = null;
@@ -457,7 +467,7 @@ namespace Pyrrho.Level3
                 case "key":
                     {
                         var ts = f as TableRowSet ?? cx.obs[f.target] as TableRowSet;
-                        var ix = (objects[f.target] as Table)?.FindPrimaryIndex(this);
+                        var ix = (objects[f.target] as Table)?.FindPrimaryIndex(cx);
                         if (ix != null)
                         {
                             var kt = (ObInfo)role.infos[ix.defpos];
@@ -647,7 +657,7 @@ namespace Pyrrho.Level3
                                 f = new SelectedRowSet(cx, fd.defpos, f);
                                 break;
                             }
-                            var ix = ta.FindPrimaryIndex(this);
+                            var ix = ta.FindPrimaryIndex(cx);
                             if (ix != null)
                             {
                                 off -= 4;
@@ -695,7 +705,7 @@ namespace Pyrrho.Level3
         {
             var da = new TDocArray(s);
             var tb = (Table)objects[rs.target];
-            var ix = tb.FindPrimaryIndex(this);
+            var ix = tb.FindPrimaryIndex(cx);
             var us = rs.assig;
             var ma = CTree<long,TypedValue>.Empty;
             var d = da[0];
@@ -927,32 +937,44 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Called from the Parser.
         /// Create a new level 2 index associated with a referential constraint definition.
-        /// We defer adding the Index to the Participant until we are sure all Columns are set up.
         /// </summary>
         /// <param name="tb">A table</param>
         /// <param name="name">The name for the index</param>
         /// <param name="key">The set of TableColumns defining the foreign key</param>
-        /// <param name="refTable">The referenced table</param>
+        /// <param name="rt">The referenced table</param>
         /// <param name="refs">The set of TableColumns defining the referenced key</param>
         /// <param name="ct">The constraint type</param>
         /// <param name="afn">The adapter function if specified</param>
         /// <param name="cl">The set of Physicals being gathered by the parser</param>
-        public void AddReferentialConstraint(Context cx,Table tb, Ident name,
+        public PIndex ReferentialConstraint(Context cx,Table tb, Ident name,
             CList<long> key,Table rt, CList<long> refs, PIndex.ConstraintType ct, 
             string afn)
         {
             Index rx = null;
             if (refs == null || refs.Count == 0)
-                rx = rt.FindPrimaryIndex(this);
+                rx = rt.FindPrimaryIndex(cx);
             else
                 rx = rt.FindIndex(this, refs)?[0];
             if (rx == null)
                 throw new DBException("42111").Mix();
             if (rx.keys.Count != key.Count)
                 throw new DBException("22207").Mix();
-            var pc = new PIndex2(name.ident, tb.defpos, key, ct, rx.defpos, afn,0,
+            return new PIndex1(name.ident, tb.defpos, key, ct, rx.defpos, afn,
                 nextPos,cx);
-            cx.Add(pc);
+        }
+        public VIndex ReferentialConstraint(Context cx, Table tb, Ident name,
+    CList<int> key, Table rt, CList<long> refs, PIndex.ConstraintType ct, int c)
+        {
+            Index rx = null;
+            if (refs == null || refs.Count == 0)
+                rx = rt.FindPrimaryIndex(cx);
+            else
+                rx = rt.FindIndex(this, refs)?[0];
+            if (rx == null)
+                throw new DBException("42111").Mix();
+            if (rx.keys.Count != key.Count)
+                throw new DBException("22207").Mix();
+            return new VIndex(name.ident, tb.defpos, key, ct, rx.defpos, nextPos+c+1, cx);
         }
     }
     /// <summary>

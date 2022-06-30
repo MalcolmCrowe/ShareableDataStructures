@@ -4958,7 +4958,8 @@ namespace Pyrrho.Level4
             }
             static TRow _Row(Context cx,SqlRowSet rs,int p)
             {
-                var dm = new Domain(cx.GetUid(), Sqlx.ROW, cx._Dom(rs).mem);
+                var dt = cx._Dom(rs);
+                var dm = new Domain(cx.GetUid(), cx, Sqlx.ROW, dt.representation, dt.rowType, dt.display);
                 var vs = CTree<long, TypedValue>.Empty;
                 var rv = (SqlRow)cx.obs[rs.sqlRows[p]];
                 var rd = cx._Dom(rv);
@@ -5404,7 +5405,7 @@ namespace Pyrrho.Level4
             m += (From.Target, ta);
             m += (RSTargets, new CTree<long,long>(ts.target,ts.defpos));
             var t = tr.objects[ta] as Table;
-            m += (IxDefPos, t?.FindPrimaryIndex(tr)?.defpos ?? -1L);
+            m += (IxDefPos, t?.FindPrimaryIndex(cx)?.defpos ?? -1L);
             var ti = (ObInfo)tr.schema.infos[ta];
             // check now about conflict with generated columns
             if (t!=null && t.Denied(cx, Grant.Privilege.Insert))
@@ -5723,7 +5724,9 @@ namespace Pyrrho.Level4
                 for (var b = trc._trs.foreignKeys.First(); b != null; b = b.Next())
                 {
                     var ix = (Index)cx.db.objects[b.key()];
-                    var rx = (Index)cx.db.objects[ix.refindexdefpos]; 
+                    var rx = (Index)cx.db.objects[ix.refindexdefpos];
+                    if (rx is VirtualIndex)
+                        continue;
                     var k = ix.MakeKey(r._rec.vals);
                     if (k._head == null)
                         continue;
@@ -6410,14 +6413,12 @@ namespace Pyrrho.Level4
     {
         internal const long
             DefaultUrl = -370,  // string 
-            ETag = -416, // string
             _RestView = -459,    // long RestView
             RestValue = -457,   // TArray
             SqlAgent = -458; // string
         internal TArray aVal => (TArray)mem[RestValue];
         internal long restView => (long)(mem[_RestView] ?? -1L);
         internal string defaultUrl => (string)mem[DefaultUrl];
-        internal string etag => (string)mem[ETag] ?? "";
         internal string sqlAgent => (string)mem[SqlAgent] ?? "Pyrrho";
         internal CTree<long, string> namesMap =>
             (CTree<long, string>)mem[RestView.NamesMap] ?? CTree<long, string>.Empty;
@@ -6449,9 +6450,9 @@ namespace Pyrrho.Level4
             for (var b = vw.framing.obs.First(); b != null; b = b.Next())
             {
                 var c = b.value();
-                if (c is SqlValue sv)
+                if (c is SqlValue  sc)
                 {
-                    ma += (c.name, sv);
+                    ma += (c.name, sc);
                     mn += (c.name, c.defpos);
                 }
             }
@@ -6988,7 +6989,6 @@ namespace Pyrrho.Level4
                 cx._Add(r);
                 if (et != null && et != "" && rq.Method == "POST") // Pyrrho manual 3.8.1
                 {
-                    r += (ETag, et);
                     var vwdesc = cx.url ?? defaultUrl;
                     var tr = (Transaction)cx.db;
                     cx.db = tr + (Transaction._ETags,tr.etags+(vwdesc,et));

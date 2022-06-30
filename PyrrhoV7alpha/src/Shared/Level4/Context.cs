@@ -117,7 +117,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal BList<Ident> viewAliases = BList<Ident>.Empty;
         internal ExecuteStatus parse = ExecuteStatus.Obey;
-        internal BTree<long, ReadConstraint> rdC = BTree<long, ReadConstraint>.Empty; // copied to and from Transaction
+        internal BTree<long, ReadConstraint> rdC = BTree<long, ReadConstraint>.Empty; 
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
@@ -531,6 +531,8 @@ namespace Pyrrho.Level4
         }
         internal void Add(Physical ph, long lp = 0)
         {
+            if (ph == null)
+                return;
             if (lp == 0)
                 lp = db.loadpos;
             if (PyrrhoStart.DebugMode && db is Transaction)
@@ -1692,7 +1694,7 @@ namespace Pyrrho.Level4
             {
                 var k = b.key();
                 if (k >= Transaction.HeapStart && cx.parse != ExecuteStatus.Prepare)
-                    throw new PEException("PE443");
+                    continue;
                 var v = b.value();
                 os += (k, v);
             }
@@ -1939,7 +1941,6 @@ namespace Pyrrho.Level4
             AssertMatch = -453,  // string Rvv for If-Match
             HighWaterMark = -463, // DB length for If-Match W/
             AssertUnmodifiedSince = -451; // HttpDate
-        internal string etag => (string)mem[RestRowSet.ETag]; // RFC7232 Rvv string
         internal long highWaterMark => (long)(mem[HighWaterMark] ?? -1L); // Database length
         internal THttpDate assertUnmodifiedSince => (THttpDate)mem[AssertUnmodifiedSince];
         internal Rvv assertMatch => (Rvv)mem[AssertMatch]??Rvv.Empty;

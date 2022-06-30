@@ -116,15 +116,20 @@ namespace Pyrrho
             var r = (RowSet)cx.obs[cx.result];
             if (r != null)
                 cx.finder += r.finder;
-             Cursor e = r?.First(cx);
+            Cursor e = r?.First(cx);
             ETag et = ETag.Empty;
-            if (e!=null && etags)
+            if (etags)
             {
-                for (; e != null; e = e.Next(cx))
-                    et = e._Rvv(cx);
-                cx.funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty;
-                e = r.First(cx);
-             }
+                if (cx.affected!=null)
+                    et = new ETag(cx.db, cx.affected);
+                else if (e != null)
+                {
+                    for (; e != null; e = e.Next(cx))
+                        et = e._Rvv(cx);
+                    cx.funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty;
+                    e = r.First(cx);
+                } 
+            }
             Header(rs, tr, cx, url,et.assertMatch.ToString());
             if (r!=null)
             {
@@ -140,7 +145,7 @@ namespace Pyrrho
         /// Header for the page
         /// </summary>
         public virtual void Header(HttpListenerResponse rs, Transaction tr,
-            Context cx, string url,string etags)
+            Context cx, string url, string etags)
         {
             rs.StatusCode = 200;
             cx.versioned = true;
@@ -149,7 +154,7 @@ namespace Pyrrho
                 r = (RowSet)cx.obs[us.source];
             if (r == null && cx.exec is SqlInsert si)
                 r = (RowSet)cx.obs[si.source];
-            if (r!=null && cx.db.role.infos[r.target] is ObInfo oi)
+            if (r != null && cx.db.role.infos[r.target] is ObInfo oi)
             {
                 if (oi.description is string ds && ds != "")
                     rs.AddHeader("Description", ds);
@@ -158,13 +163,9 @@ namespace Pyrrho
                 if (cx.obs[r.target] is Table tb)
                     rs.AddHeader("LastData", tb.lastData.ToString());
             }
-       //     if (etags!="") According to RFC 7232 we should always send an etag
-       //     {
-       //         var s = cx.db.etags?.cons[url]?.etag??"";
-                rs.AddHeader("ETag", etags);
-                if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
-                    Console.WriteLine("Returning ETag: "+etags);
-       //     }
+            rs.AddHeader("ETag", etags);
+            if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
+                Console.WriteLine("Returning ETag: " + etags);
         }
         /// <summary>
         /// Footer for the page

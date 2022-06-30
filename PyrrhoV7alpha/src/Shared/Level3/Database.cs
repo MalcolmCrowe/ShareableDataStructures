@@ -302,6 +302,9 @@ namespace Pyrrho.Level3
         }
         public static Database operator +(Database d, (long, object) x)
         {
+            var (dp, ob) = x;
+            if (d.mem[dp] == ob)
+                return d;
             return d.New(d.loadpos, d.mem + x);
         }
         public static Database operator -(Database d,long x)
@@ -318,7 +321,10 @@ namespace Pyrrho.Level3
         public static Database operator +(Database d, (DBObject, long) x)
         {
             var (ob,curpos) = x;
-            return d.New(curpos,d.mem+(ob.defpos,ob));
+            var m = d.mem;
+            if (d.mem[ob.defpos] != ob)
+                m += (ob.defpos, ob);
+            return d.New(curpos,m);
         }
         public static Database operator +(Database d, (Level, long) x)
         {
@@ -458,8 +464,7 @@ namespace Pyrrho.Level3
             else
                 ro = guest;
             done:
-            var tr = new Transaction(r, t, sce, auto ?? autoCommit)
-                + (Transaction.StartTime,DateTime.Now);
+            var tr = new Transaction(r, t, sce, auto ?? autoCommit);
             if (u.defpos==-1L) // make a PUser for ad-hoc User, in case of Audit or Grant
             { 
                 var cx = new Context(tr);

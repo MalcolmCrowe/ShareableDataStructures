@@ -257,7 +257,7 @@ namespace Pyrrho.Level2
                 if (x.reftabledefpos>=0)
                 {
                     var rx = (Index)cx.db.objects[x.refindexdefpos];
-                    if (!rx.rows.Contains(k))
+                    if (!(rx is VirtualIndex) && !rx.rows.Contains(k))
                         throw new DBException("23000", "missing foreign key ", k);
                 }
                 x += (k, defpos);
@@ -281,6 +281,7 @@ namespace Pyrrho.Level2
                         + e.objects[1].ToString());
                 throw e;
             }
+            tb += (DBObject.LastChange, ppos);
             cx.Install(tb, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

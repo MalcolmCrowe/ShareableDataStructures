@@ -427,6 +427,7 @@ namespace Pyrrho
                                         while (rb != null && rb.IsNull)
                                             rb = rb.Next(cx);
                                     }
+                                    db = cx.db;
                                 }
                                 else
                                 {
@@ -1423,7 +1424,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.0 alpha"," (22 June 2022)", "http://www.pyrrhodb.com"
+            "7.0 alpha"," (30 June 2022)", "http://www.pyrrhodb.com"
         };
 	}
 }

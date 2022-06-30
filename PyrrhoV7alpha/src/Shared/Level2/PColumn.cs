@@ -220,6 +220,7 @@ namespace Pyrrho.Level2
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);
             table += (cx,tc); // NB: table.domain is not updated
+            table += (DBObject.LastChange, ppos);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
