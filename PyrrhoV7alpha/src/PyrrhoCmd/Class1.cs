@@ -209,13 +209,14 @@ namespace PyrrhoCmd
                 {
                     str = InsertBlobs(str); // ~file or ~URL is replaced by a binary large object string
                     cmd.CommandText = str;
-                    str = str.Trim().Trim(';');
-                    if (str.ToLower().StartsWith("begin"))
+                    var str0 = str.Trim().Trim(';');
+                    str = str0.ToLower();
+                    if (str.StartsWith("begin"))
                         str = str.Substring(5).Trim();
-                    if (str.ToLower().StartsWith("set"))
+                    if (str.StartsWith("set"))
                     {
-                        var s1 = str.Substring(3).Trim();
-                        if (s1.ToLower().StartsWith("role"))
+                        var s1 = str0.Substring(3).Trim();
+                        if (s1.StartsWith("role"))
                         {
                             var rn = s1.Substring(4).Trim();
                             db.SetRole(rn);
@@ -466,7 +467,7 @@ namespace PyrrhoCmd
 		}
 		static string InsertBlob(string source)
 		{
-			Stream str;
+			Stream str = null;
 			try 
 			{
 				if (source.StartsWith("http://"))
@@ -724,7 +725,7 @@ namespace PyrrhoCmd
 			ShowHeads(cols);
 			DrawLine(cols);
 			for (j=0;j<rows.Count;j++)
-				ShowRow((string[])rows[j],cols,(string)checks[j]);
+				ShowRow((string[])rows[j],cols,(Versioned)checks[j]);
 			DrawLine(cols);
 		}
 		static void DrawLine(ArrayList a)
@@ -750,7 +751,7 @@ namespace PyrrhoCmd
 			}
 			Console.WriteLine("|");
 		}
-		static void ShowRow(string[] r, ArrayList a, string v)
+		static void ShowRow(string[] r, ArrayList a, Versioned v)
 		{
 			for (int j=0;j<a.Count;j++)
 			{
@@ -762,7 +763,7 @@ namespace PyrrhoCmd
 			}
 			Console.Write("|");
             if (checks && v != null)
-                Console.Write(v);
+                Console.Write(v.version + " "+v.entity);
             Console.WriteLine();
 		}
 		static Hashtable dict = null;
