@@ -387,8 +387,6 @@ namespace Pyrrho.Common
         internal static TChar Empty = new TChar("");
         internal TChar(Domain dt, string s) : base(dt) { value = s; }
         internal TChar(string s) : this(Domain.Char, s) { }
-        internal TChar(DBObject n,Database d) : this((n == null) ? "" : 
-            ((ObInfo)d.role.infos[n.defpos]).name) { }
         internal TChar(Ident n) : this((n == null) ? "" : n.ident) { }
         internal override TypedValue New(Domain t)
         {
@@ -1015,7 +1013,7 @@ namespace Pyrrho.Common
         }
         internal override TypedValue Fix(Context cx)
         {
-            return new TPartial(cx.Fix(value));
+            return new TPartial(cx.FixTlb(value));
         }
         internal override object Val()
         {
@@ -1053,7 +1051,7 @@ namespace Pyrrho.Common
         internal override TypedValue Fix(Context cx)
         {
             return new TArray((Domain)dataType.Fix(cx),
-                cx.Fix(list));
+                cx.FixBV(list));
         }
         internal override object Val()
         {
@@ -1315,13 +1313,19 @@ namespace Pyrrho.Common
         {
             rvv = r;
         }
-        internal TRvv(Context cx,CTree<long,TypedValue>vs) : base(Domain.Rvv)
+        /// <summary>
+        /// Remote data may contain extra columns for Rvv info:
+        /// if not, use -1 default indicating no information (disallow updates)
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="vs"></param>
+        internal TRvv(Context cx, CTree<long, TypedValue> vs) : base(Domain.Rvv)
         {
             var r = Rvv.Empty;
             var dp = vs[DBObject.Defpos]?.ToLong() ?? -1L;
             var pp = vs[DBObject.LastChange]?.ToLong() ?? -1L;
-            if (dp>=0 && pp>=0)
-                r += (cx.result,(dp,pp));
+            if (dp >= 0 && pp >= 0)
+                r += (cx.result, (dp, pp));
             rvv = r;
         }
         internal override TypedValue New(Domain t)
@@ -1572,6 +1576,14 @@ namespace Pyrrho.Common
             }
             values = vs;
         }
+        public TRow(Domain dm,CList<long> cols,TRow rw) :base(dm)
+        {
+            var vs = CTree<long,TypedValue>.Empty;
+            var rb = rw.columns.First();
+            for (var b = (cols??dm.rowType).First(); b != null && rb!=null; b = b.Next(),rb=rb.Next())
+                vs += (b.value(), rw[rb.value()]);
+            values = vs;
+        }
         public TRow(TRow rw, Domain dm) :base(dm)
         {
             var v = CTree<long, TypedValue>.Empty;
@@ -1580,7 +1592,6 @@ namespace Pyrrho.Common
             values = v;
         }
         public TRow(SqlValue sv, CTree<long, TypedValue> vs) : this(Context._system._Dom(sv), vs) { }
-        public TRow(ObInfo oi, CTree<long, TypedValue> vs) : this(oi.dataType, vs) { }
         /// <summary>
         /// Constructor: values by columns
         /// </summary>
@@ -1598,7 +1609,6 @@ namespace Pyrrho.Common
             }
             values = vals;
         }
-        public TRow(Context cx,ObInfo oi, params TypedValue[] v) : this(cx, oi.dataType, v) { }
         internal TRow(Domain dm, PRow v) : base(dm)
         {
             var vals = CTree<long, TypedValue>.Empty;
@@ -1619,7 +1629,7 @@ namespace Pyrrho.Common
         }
         internal override TypedValue Fix(Context cx)
         {
-            return new TRow((Domain)dataType.Fix(cx),cx.Fix(values));
+            return new TRow((Domain)dataType.Fix(cx),cx.FixTlV(values));
         }
         public static TRow operator+(TRow rw,(long,TypedValue)x)
         {
@@ -1762,7 +1772,7 @@ namespace Pyrrho.Common
         internal override TypedValue Fix(Context cx)
         {
             return new TMultiset((Domain)dataType.Fix(cx),
-                cx.Fix(tree),count);
+                cx.FixTVl(tree),count);
         }
         /// <summary>
         /// Mutator: Add n copies of object a
@@ -1803,7 +1813,11 @@ namespace Pyrrho.Common
         }
         internal MultisetBookmark First()
         {
-            return new MultisetBookmark(this);
+            return new MultisetBookmark(this,0,tree.First());
+        }
+        internal MultisetBookmark Last()
+        {
+            return new MultisetBookmark(this, count-1, tree.Last());
         }
         // shareable as of 26 April 2021
         internal class MultisetBookmark : IBookmark<TypedValue>
@@ -1833,7 +1847,23 @@ namespace Pyrrho.Common
                         return null;
                 }
             }
-
+            public MultisetBookmark Previous()
+            {
+                var bmk = _bmk;
+                var rep = _rep;
+                for (; ; )
+                {
+                    if (rep.HasValue)
+                    {
+                        var rp = _rep.Value;
+                        if (rp > 0)
+                            return new MultisetBookmark(_set, _pos - 1, bmk, rp - 1);
+                    }
+                    bmk = ABookmark<TypedValue, long>.Previous(bmk, _set.tree);
+                    if (bmk == null)
+                        return null;
+                }
+            }
             public long Position()
             {
                 return _pos;
@@ -2053,7 +2083,7 @@ namespace Pyrrho.Common
         }
         internal override TypedValue Fix(Context cx)
         {
-            return new TXml(name,cx.Fix(attributes),content,cx.Fix(children));
+            return new TXml(name,cx.FixTsV(attributes),content,cx.FixLX(children));
         }
         internal override object Val()
         {

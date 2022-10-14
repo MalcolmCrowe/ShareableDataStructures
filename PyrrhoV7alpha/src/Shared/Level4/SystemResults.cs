@@ -21,13 +21,20 @@ namespace Pyrrho.Level4
     internal class SystemTable : Table
     {
         internal const long
-            Cols = -175; // BTree<long,TableColumn>
-        public BTree<long, TableColumn> tableCols =>
-            (BTree<long, TableColumn>)mem[Cols] ?? BTree<long, TableColumn>.Empty;
+            SysCols = -175; // BTree<long,TableColumn>
+        public BTree<long, TableColumn> sysCols =>
+            (BTree<long, TableColumn>)mem[SysCols] ?? BTree<long, TableColumn>.Empty;
+        public string name => (string)mem[ObInfo.Name];
+        public CList<long> sRowType => (CList<long>)mem[InstanceRowSet.SRowType] ?? CList<long>.Empty;
         internal SystemTable(string n)
-            : base(--_uid, new BTree<long, object>(Name, n) 
-                  + (_Domain,Domain.TableType.defpos))
-        { }
+            : base(--_uid, new BTree<long, object>(ObInfo.Name, n) 
+                  + (_Domain,--_uid)
+                  + (Infos, new BTree<long, ObInfo>(
+                      n.StartsWith("Log$") ? Database._system.role.defpos : Database._system.guest.defpos,
+                      new ObInfo(n, Grant.AllPrivileges))))
+        { 
+            Database._system = Database._system + (this, 0) + (Domain.TableType.Relocate(_uid), 0); 
+        }
         protected SystemTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SystemTable operator+(SystemTable s,(long,object)x)
         {
@@ -43,17 +50,9 @@ namespace Pyrrho.Level4
         public static SystemTable operator+(SystemTable s,(Context,SystemTableColumn) x)
         {
             var (cx, c) = x;
-            return s + (Cols, s.tableCols + (c.defpos, c))
-                + (TableCols, s.tblCols + (c.defpos, cx._Dom(c)));
-        }
-
-        internal override ObInfo Inf(Context cx)
-        {
-            var rt = CList<long>.Empty;
-            for (var b = tblCols.Last(); b != null; b = b.Previous())
-                rt += b.key();
-            var dt = new Domain(-1L,cx,Sqlx.TABLE, tblCols, rt);
-            return new ObInfo(defpos,name,dt,Grant.AllPrivileges);
+            return s + (SysCols, s.sysCols + (c.defpos, c))
+                + (InstanceRowSet.SRowType, s.sRowType + c.defpos)
+                + (TableCols, s.tableCols + (c.defpos, cx._Dom(c)));
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -85,7 +84,7 @@ namespace Pyrrho.Level4
         {
             var ks = CList<long>.Empty;
             foreach (var c in k)
-                for (var b = tableCols.First(); b != null; b = b.Next())
+                for (var b = sysCols.First(); b != null; b = b.Next())
                     if (((SystemTableColumn)b.value()).name == c)
                     {
                         ks += b.key();
@@ -100,9 +99,17 @@ namespace Pyrrho.Level4
         {
             return new SystemTable(defpos,m);
         }
-        internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm, Domain fd)
+        internal override string NameFor(Context cx)
         {
-            return new SystemRowSet(cx, q, this, null)+(_From,fm);
+            if (Denied(cx, Grant.Privilege.Select))
+                throw new DBException("42105");
+            return name;
+        }
+        internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
+            Grant.Privilege pr = Grant.Privilege.Select, string a=null)
+        {
+            return new SystemRowSet(cx, q, this, null)+(_From,fm)+(_Alias,a)
+                +(_Ident,id);
         }
     }
     // shareable as of 26 April 2021
@@ -112,6 +119,7 @@ namespace Pyrrho.Level4
             Key = -389;
         public readonly bool DBNeeded = true;
         public int isKey => (int)mem[Key];
+        public string name => (string)mem[ObInfo.Name];
         /// <summary>
         /// A table column for a System or Log table
         /// </summary>
@@ -120,19 +128,26 @@ namespace Pyrrho.Level4
         /// <param name="sq">the ordinal position</param>
         /// <param name="t">the dataType</param>
         internal SystemTableColumn(SystemTable t, string n, Domain dt, int k)
-            : base(--_uid, BTree<long, object>.Empty + (Name, n) + (_Table, t.defpos) 
-                  + (_Domain, dt.defpos) + (Key,k))
+            : base(--_uid, BTree<long, object>.Empty + (ObInfo.Name, n) + (_Table, t.defpos) 
+                  + (_Domain, dt.defpos) + (Key,k)
+                  + (Infos, new BTree<long, ObInfo>(Database._system.role.defpos,
+                      new ObInfo(n, Grant.AllPrivileges))))
         {
-            var oc = new ObInfo(defpos, n, dt, Grant.AllPrivileges);
-            var ro = Database._system.role + (oc,false);
-            t +=  (Table.TableCols,t.tblCols + (defpos, dt));
-            t += (SystemTable.Cols, t.tableCols + (defpos, this));
-            Database._system = Database._system + (this, 0)+(t,0)+(ro,0);
+            var td = (Domain)Database._system.objects[t.domain];
+            td += (Domain.RowType, td.rowType + defpos);
+            td += (Domain.Representation, td.representation + (defpos, dt));
+            t += (Table.TableCols, t.tableCols + (defpos, dt));
+            t += (SystemTable.SysCols, t.sysCols + (defpos, this));
+            Database._system = Database._system + (this, 0)+(t,0)+(td,0);
         }
         protected SystemTableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SystemTableColumn operator+(SystemTableColumn s,(long,object) x)
         {
             return new SystemTableColumn(s.defpos, s.mem + x);
+        }
+        internal override string NameFor(Context cx)
+        {
+            return name;
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -233,7 +248,7 @@ namespace Pyrrho.Level4
     /// Perform selects from virtual 'system tables'
     /// // shareable as of 26 April 2021
     /// </summary>
-    internal class SystemRowSet : InstanceRowSet
+    internal class SystemRowSet : TableRowSet
     {
         internal const long
             SysFilt = -455, // BList<SysFilter>
@@ -249,15 +264,12 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         internal SystemRowSet(Context cx, Domain dm,SystemTable f, CTree<long, bool> w = null)
-            : base(cx.GetUid(), cx, _Mem(cx, dm, f, w))
+            : base(cx.GetUid(), cx, f.defpos, _Mem(cx, dm, f, w))
         { }
         protected SystemRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(Context cx, Domain dm,SystemTable f, CTree<long, bool> w)
         {
             var dp = cx.GetPrevUid();
-            var fi = CTree<long, Finder>.Empty;
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
-                fi += (b.value(), new Finder(b.value(), dp));
             var mf = BTree<long,SystemFilter>.Empty;
             for (var b = w?.First(); b != null; b = b.Next())
                 mf = cx.obs[b.key()].SysFilter(cx, mf);
@@ -284,8 +296,8 @@ namespace Pyrrho.Level4
                     sx = x;
                 }
             }
-           return BTree<long,object>.Empty+(_Finder,fi)
-                + (_Domain,dm.defpos) +(SRowType,f.Domains(cx).rowType)+(SysTable, f) 
+           return BTree<long,object>.Empty
+                + (_Domain,dm.defpos) +(SRowType,cx._Dom(f).rowType)+(SysTable, f) 
                 + (SysIx, sx) + (SysFilt, sf);
         }
         internal override Basis New(BTree<long, object> m)
@@ -390,6 +402,10 @@ namespace Pyrrho.Level4
             ProfileRecordColumnResults();
             ProfileTableResults();
 #endif
+        }
+        public override Cursor First(Context _cx)
+        {
+            return _First(_cx);
         }
         /// <summary>
         /// Create the required bookmark
@@ -4293,7 +4309,7 @@ namespace Pyrrho.Level4
                         var us = _cx.db.objects[inner.value()] as User;
                         if (us == null)
                             continue;
-                        var dm = (ObInfo)_cx.db.role.infos[us.defpos];
+                        var dm = us.infos[_cx.role.defpos];
                         if (dm != null & dm.priv.HasFlag(Grant.Privilege.Usage))
                         {
                             var sb = new SysRoleUserBookmark(_cx, res, rb, inner, 0);
@@ -4312,7 +4328,7 @@ namespace Pyrrho.Level4
                 {
                     inner = inner.Next();
                     var us = _cx.db.objects[inner.value()] as User;
-                    var dm = (us != null) ? (ObInfo)_cx.db.role.infos[us.defpos]:null;
+                    var dm = (us != null) ? us.infos[_cx.role.defpos]:null;
                     if (dm!=null && dm.priv.HasFlag(Grant.Privilege.Usage))
                     {
                         var sb = new SysRoleUserBookmark(_cx,res, rbmk, inner, _pos+1);
@@ -4330,7 +4346,7 @@ namespace Pyrrho.Level4
                         inner = ro.dbobjects.First();
                     }
                     us = _cx.db.objects[inner.value()] as User;
-                    dm = (us != null) ? (ObInfo)_cx.db.role.infos[us.defpos] : null;
+                    dm = (us != null) ? us.infos[_cx.role.defpos] : null;
                     if (dm!=null && dm.priv.HasFlag(Grant.Privilege.Usage))
                     {
                         var sb = new SysRoleUserBookmark(_cx,res, rbmk, inner, _pos + 1);
@@ -4806,7 +4822,7 @@ namespace Pyrrho.Level4
             {
                 var sb = new StringBuilder();
                 var t = (Table)ob;
-                var oi = (ObInfo)cx.db.role.infos[t.defpos];
+                var oi = t.infos[cx.role.defpos];
                 Enforcement.Append(sb, t.enforcement);
                 return new TRow(cx, cx._Dom(rs), new TChar(oi.name),
                     new TChar(sb.ToString()));
@@ -4889,15 +4905,14 @@ namespace Pyrrho.Level4
                     var tb = (Table)_cx.db.objects[ur.target];
                     if (tb != null)
                     {
-                        var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
+                        var oi = tb.infos[_cx.role.defpos];
                         us = oi.name;
                     }
 
                 }
                 var vw = (View)ob;
-                var ot = (ObInfo)_cx.role.infos[vw.viewTable];
-                st = ot?.name ?? "";
-                var ov = (ObInfo)_cx.db.role.infos[vw.defpos];
+                st = _cx._Ob(vw.viewTable).NameFor(_cx);
+                var ov = vw.infos[_cx.role.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                     Pos(pos),
                     new TChar(ov.name),
@@ -5095,7 +5110,7 @@ namespace Pyrrho.Level4
             {
                 var ch = (Check)ck;
                 return new TRow(_cx,_cx._Dom(rs), Pos(ch.defpos),
-                    new TChar(((ObInfo)_cx.db.role.infos[ch.checkobjpos]).name),
+                    new TChar(_cx._Ob(ch.checkobjpos).NameFor(_cx)),
                     new TChar(ch.name),
                     new TChar(ch.source));
             }
@@ -5203,17 +5218,19 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object tb, bool sys)
             {
                 var t = (Table)tb;
-                var oi = (ObInfo)_cx.db.role.infos[t.defpos];
+                var dm = _cx._Dom(t);
+                var oi = t.infos[_cx.role.defpos];
                 var pd = (PeriodDef)_cx.db.objects[sys ? t.systemPS : t.applicationPS];
-                var op = (ObInfo)_cx.db.role.infos[pd.defpos];
+                var op = pd.infos[_cx.role.defpos];
                 string sn="", en="";
-                for (var b=oi.dataType.rowType.First();b!=null;b=b.Next())
+                for (var b=dm.rowType.First();b!=null;b=b.Next())
                 {
                     var p = b.value();
+                    var ci = _cx._Ob(p).infos[_cx.role.defpos];
                     if (p == pd.startCol)
-                        sn = _cx.Inf(p).name;
+                        sn = ci.name;
                     if (p == pd.endCol)
-                        en = _cx.Inf(p).name;
+                        en = ci.name;
                 }
                 return new TRow(_cx,_cx._Dom(rs), Pos(t.defpos),
                     new TChar(oi.name),
@@ -5305,8 +5322,8 @@ namespace Pyrrho.Level4
                     outer = outer.Next())
                     if (outer.value() is Table tb)
                     {
-                        var rt = _cx.db.role.infos[tb.defpos] as ObInfo;
-                        for (var inner = rt.dataType.representation.First(); inner != null;
+                        var rt = _cx._Dom(tb);
+                        for (var inner = rt.representation.First(); inner != null;
                                 inner = inner.Next())
                         {
                             var rb = new RoleColumnBookmark(_cx, res, 0, outer, inner);
@@ -5322,9 +5339,9 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet rs, object ta, int i,long p,Domain d)
             {
                 var tb = ta as Table;
-                var oi = (ObInfo)cx.db.role.infos[tb.defpos];
+                var oi = tb.infos[cx.role.defpos];
                 var tc = (TableColumn)cx.db.objects[p];
-                var si = (ObInfo)cx.db.role.infos[p];
+                var si = tc.infos[cx.role.defpos];
                 var dp = cx.db.types[d];
                 return new TRow(cx,cx._Dom(rs),
                     Pos(p),
@@ -5348,15 +5365,15 @@ namespace Pyrrho.Level4
                 for (; outer != null; outer = outer.Next())
                     if (outer.value() is Table tb)
                     {
-                        var rt = _cx.db.role.infos[tb.defpos] as ObInfo;
+                        var rt = _cx._Dom(tb);
                         if (inner == null)
-                            inner = rt.dataType.representation.First();
+                            inner = rt.representation.First();
                         else
                             inner = inner.Next();
                         for (; inner != null; inner = inner.Next())
                         {
                             var rb = new RoleColumnBookmark(_cx, res, _pos + 1, outer, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
                         inner = null;
@@ -5395,7 +5412,7 @@ namespace Pyrrho.Level4
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                 {
                     var t = outer.value();
-                    if (((t is Table) || (t is View)) && !(t is RestView))
+                    if (t is Table || t is View)
                     {
                         var rb = new RoleClassBookmark(_cx,res, 0, outer);
                         if (rb.Match(res) && RowSet.Eval(res.where, _cx))
@@ -5410,7 +5427,7 @@ namespace Pyrrho.Level4
                 for (enu = enu.Next(); enu != null; enu = enu.Next())
                 {
                     var tb = enu.value();
-                    if ((tb is Table || tb is View) && !(tb is RestView))
+                    if (tb is Table || tb is View)
                     {
                         var rb = new RoleClassBookmark(_cx,res, _pos + 1, enu);
                         if (rb.Match(res) && Eval(res.where, _cx))
@@ -5425,7 +5442,7 @@ namespace Pyrrho.Level4
             }
             static TRow _Value(Context _cx,SystemRowSet res,ABookmark<long,object>e)
             {
-                return ((Table)e.value()).RoleClassValue(_cx,res, e);
+                return ((DBObject)e.value()).RoleClassValue(_cx,res, e);
             }
         }
 
@@ -5476,8 +5493,8 @@ namespace Pyrrho.Level4
                     outer = outer.Next())
                     if (outer.value() is Table tb)
                     {
-                        var rt = cx.db.role.infos[tb.defpos] as ObInfo;
-                        for (var middle = rt.dataType.representation.First(); middle != null;
+                        var rt = cx._Dom(tb);
+                        for (var middle = rt.representation.First(); middle != null;
                                 middle = middle.Next())
                         {
                             var p = middle.key();
@@ -5501,8 +5518,8 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ta,long tc,long ck)
             {
                 var tb = ta as Table;
-                var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
-                var ci = (ObInfo)_cx.db.role.infos[tc];
+                var oi = tb.infos[_cx.role.defpos];
+                var ci = _cx._Ob(tc).infos[_cx.role.defpos];
                 var ch = (Check)_cx.db.objects[ck];
                 return new TRow(_cx,_cx._Dom(rs), Pos(ch.defpos),
                     new TChar(oi.name),
@@ -5524,7 +5541,7 @@ namespace Pyrrho.Level4
                     if (inner != null && (inner = inner.Next()) != null)
                     {
                         var rb = new RoleColumnCheckBookmark(_cx, res, _pos + 1, outer, middle, inner);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                         continue;
                     }
@@ -5540,8 +5557,8 @@ namespace Pyrrho.Level4
                     var tb = outer.value() as Table;
                     if (tb == null)
                         continue;
-                    var ft = _cx.db.role.infos[tb.defpos] as ObInfo;
-                    middle = ft.dataType.representation.First();
+                    var ft = _cx._Dom(tb);
+                    middle = ft.representation.First();
                     if (inner != null)
                     {
                         var rb = new RoleColumnCheckBookmark(_cx, res, _pos + 1, outer, middle, inner);
@@ -5612,9 +5629,9 @@ namespace Pyrrho.Level4
             {
                 var ro = rb as Role;
                 var tc = cb as TableColumn;
-                var dc = (ObInfo)ro.infos[tc.defpos];
+                var dc = tc.infos[ro.defpos];
                 var tb = _cx.db.objects[tc.tabledefpos] as Table;
-                var dt = (ObInfo)ro.infos[tb.defpos];
+                var dt = tb.infos[ro.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                     new TChar(dt.name),
                     new TChar(dc.name),
@@ -5824,10 +5841,10 @@ namespace Pyrrho.Level4
             {
                 Index x = (Index)_cx.db.objects[xp];
                 Table t = (Table)_cx.db.objects[x.tabledefpos];
-                var oi = (ObInfo)_cx.db.role.infos[t.defpos];
+                var oi = t.infos[_cx.role.defpos];
                 Index rx = (Index)_cx.db.objects[x.refindexdefpos];
-                var ri = (ObInfo)_cx.db.role.infos[x.reftabledefpos];
-                var ai = (ObInfo)_cx.db.role.infos[x.adapter];
+                var ri = _cx._Ob(x.reftabledefpos).infos[_cx.role.defpos];
+                var ai = _cx._Ob(x.adapter).infos[_cx.role.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                    Pos(x.defpos),
                    new TChar(oi.name),
@@ -5935,7 +5952,7 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, int i, TableColumn tc)
             {
-                var oi = (ObInfo)_cx.db.role.infos[tc.defpos];
+                var oi = tc.infos[_cx.role.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                     Pos(tc.defpos),
                     new TChar(oi.name),
@@ -6156,11 +6173,11 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob)
             {
                 Procedure p = (Procedure)ob;
-                var oi = (ObInfo)_cx.db.role.infos[p.defpos];
+                var oi = p.infos[_cx.db.role.defpos];
                 var s = oi.name;
                 string inv = "";
                 if (p.inverse>0)
-                    inv = ((ObInfo)_cx.db.role.infos[((DBObject)_cx.db.objects[p.inverse]).defpos]).name;
+                    inv = _cx._Ob(p.inverse).NameFor(_cx);
                 return new TRow(_cx,_cx._Dom(rs),
                     Pos(p.defpos),
                     new TChar(s),
@@ -6336,7 +6353,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object oo, long xp,int sq)
             {
                 var ob = (DBObject)oo;
-                var oi = (ObInfo)_cx.db.role.infos[ob.defpos];
+                var oi = ob.infos[_cx.role.defpos];
                 var ox = (DBObject)_cx.db.objects[xp];
                 return new TRow(_cx,_cx._Dom(rs),
                     Pos(ob.defpos),
@@ -6422,7 +6439,7 @@ namespace Pyrrho.Level4
             internal static RoleTableBookmark New(Context _cx, SystemRowSet res)
             {
                 for (var b = _cx.db.objects.PositionAt(0); b != null; b = b.Next())
-                    if (b.value() is Table t && t.name[0]!='(')
+                    if (b.value() is Table t && t.infos[_cx.role.defpos].name[0]!='(')
                     {
                         var rb =new RoleTableBookmark(_cx,res, 0, b);
                         if (rb.Match(res) && Eval(res.where, _cx))
@@ -6436,11 +6453,11 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob)
             {
                 Table t = (Table)ob;
-                var rt = _cx.db.role.infos[t.defpos] as ObInfo;
+                var rt = _cx._Dom(t);
                 return new TRow(_cx,_cx._Dom(rs),
                     Pos(t.defpos),
                     new TChar(rt.name),
-                    new TInt(rt.dataType.Length),
+                    new TInt(rt.Length),
                     new TInt(t.tableRows.Count),
                     new TInt(t.triggers.Count),
                     new TInt(t.tableChecks.Count),
@@ -6455,7 +6472,7 @@ namespace Pyrrho.Level4
             {
                 var en = _en;
                 for (en=en.Next();en!=null;en=en.Next())
-                    if (en.value() is Table t && t.name[0]!='(')
+                    if (en.value() is Table t && t.infos[_cx.role.defpos].name[0]!='(')
                     {
                         var rb =new RoleTableBookmark(_cx,res, _pos + 1, en);
                         if (rb.Match(res) && RowSet.Eval(res.where, _cx))
@@ -6529,7 +6546,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob, Trigger tg)
             {
                 Table tb = (Table)ob;
-                var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
+                var oi = tb.infos[_cx.role.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                     Pos(tg.defpos),
                     new TChar(tg.name),
@@ -6635,9 +6652,9 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob,Trigger tg,long cp)
             {
                 TableColumn tc = (TableColumn)_cx.db.objects[cp];
-                var ci = (ObInfo)_cx.db.role.infos[tc.defpos];
+                var ci = tc.infos[_cx.role.defpos];
                 Table tb = (Table)ob;
-                var ti = (ObInfo)_cx.db.role.infos[tb.defpos];
+                var ti = tb.infos[_cx.role.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                     Pos(tg.defpos),
                     new TChar(ti.name),
@@ -6751,7 +6768,7 @@ namespace Pyrrho.Level4
             {
                 var t = (Domain)ob;
                 var fp = t.orderFunc;
-                var fn = fp?.name;
+                var fn = fp.infos[_cx.role.defpos]?.name;
                 return new TRow(_cx,_cx._Dom(rs),
                     Pos(-1L),
                     new TChar(t.name),
@@ -6827,7 +6844,7 @@ namespace Pyrrho.Level4
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Domain ut && ut.kind == Sqlx.TYPE)
                     {
-                        var oi = (ObInfo)_cx.db.role.infos[ut.defpos];
+                        var oi = ut.infos[_cx.role.defpos];
                         for (var middle = oi.methodInfos.First(); middle != null; 
                             middle = middle.Next())
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
@@ -6846,7 +6863,7 @@ namespace Pyrrho.Level4
             {
                 var t = (Domain)ob;
                 var p = (Method)_cx.db.objects[mp];
-                var mi = (ObInfo)_cx.db.role.infos[p.defpos];
+                var mi = p.infos[_cx.role.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                    new TChar(t.name),
                    new TChar(mi.name),
@@ -6880,7 +6897,7 @@ namespace Pyrrho.Level4
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
                     if (outer.value() is Domain ut && ut.kind == Sqlx.TYPE)
                     {
-                        var oi = (ObInfo)_cx.db.role.infos[ut.defpos];
+                        var oi = ut.infos[_cx.role.defpos];
                         for (middle = oi.methodInfos.First(); middle != null; middle = middle.Next())
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
@@ -6958,7 +6975,7 @@ namespace Pyrrho.Level4
             {
                 var ro = _cx.db.objects[e.value()] as Role;
                 var t = (DBObject)ob;
-                var oi = (ObInfo)_cx.db.role.infos[t.defpos];
+                var oi = t.infos[_cx.role.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                     new TChar(t.GetType().Name),
                     new TChar(oi.name),
@@ -7048,7 +7065,7 @@ namespace Pyrrho.Level4
                 for (var bm = _cx.db.objects.PositionAt(0); bm != null; bm = bm.Next())
                 {
                     var ob = (DBObject)bm.value();
-                    var oi = _cx.db.role.infos[ob.defpos] as ObInfo;
+                    var oi = ob.infos[_cx.role.defpos];
                     if (oi == null)
                         continue;
                     var rb = new RoleObjectBookmark(_cx,res, 0, bm);
@@ -7063,7 +7080,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object oo)
             {
                 var ob = (DBObject)oo;
-                var oi = (ObInfo)_cx.db.role.infos[ob.defpos];
+                var oi = ob.infos[_cx.role.defpos];
                 var dm = ob as Domain;
                 return new TRow(_cx,_cx._Dom(rs),
                     new TChar(ob.GetType().Name),
@@ -7082,14 +7099,14 @@ namespace Pyrrho.Level4
                 for (en=en.Next();en!=null ;en=en.Next())
                 {
                     var ob = (DBObject)en.value();
-                    var oi = _cx.db.role.infos[ob.defpos] as ObInfo;
+                    var oi = ob.infos[_cx.role.defpos];
                     if (oi == null)
                         continue;
                     var ou = ObInfo.Metadata(oi.metadata,oi.description);
                     if (ou=="" && oi.description=="")
                         continue;
                     var rb = new RoleObjectBookmark(_cx,res, _pos+1, en);
-                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                    if (rb.Match(res) && Eval(res.where, _cx))
                         return rb;
                 }
                 return null;
@@ -7136,7 +7153,7 @@ namespace Pyrrho.Level4
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table t)
-                    for (var inner = t.FindPrimaryIndex(_cx.db).keys.First(); inner != null; inner = inner.Next())
+                    for (var inner = t.FindPrimaryIndex(_cx).keys.First(); inner != null; inner = inner.Next())
                     {
                             var rb = new RolePrimaryKeyBookmark(_cx,res, 0, outer, inner);
                             if (rb.Match(res) && RowSet.Eval(res.where, _cx))
@@ -7150,8 +7167,8 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob, ABookmark<int,long> e)
             {
                 var tb = (Table)ob;
-                var oi = (ObInfo)_cx.db.role.infos[tb.defpos];
-                var ci = (ObInfo)_cx.db.role.infos[e.value()];
+                var oi = tb.infos[_cx.role.defpos];
+                var ci = _cx._Ob(e.value()).infos[_cx.role.defpos];
                 return new TRow(_cx,_cx._Dom(rs),
                     new TChar(oi.name),
                     new TInt(e.key()),
@@ -7173,7 +7190,7 @@ namespace Pyrrho.Level4
                 }
                 for (outer=outer.Next();outer!=null;outer=outer.Next())
                     if (outer.value() is Table t)
-                        for (inner = t.FindPrimaryIndex(_cx.db).keys.First(); inner != null; inner = inner.Next())
+                        for (inner = t.FindPrimaryIndex(_cx).keys.First(); inner != null; inner = inner.Next())
                         {
                             var rb = new RolePrimaryKeyBookmark(_cx,res, _pos + 1, outer, inner);
                             if (rb.Match(res) && RowSet.Eval(res.where, _cx))

@@ -169,50 +169,28 @@ namespace Pyrrho.Level2
         /// <returns></returns>
         internal override void Install(Context cx, long p)
         {
-            var gee = (DBObject)cx.db.objects[grantee];
-            var ro = cx.db.role;
-            var oi = ro.infos[obj] as ObInfo;
-            if (oi == null)
-                throw new DBException("42105");
+            var ob = (DBObject)cx.db.objects[obj];
             // limit any grant to PUBLIC 
-            if (gee is Role r)
-            {
-                ro = r;
-                if (ro.defpos == Database.Public)
-                    priv = (Privilege)((int)priv & 0xfff);
-            }
-    //        if (gee is User u && u.initialRole==Database.Public)
-    //            ro += (User.InitialRole, obj);
-            var ci = ro.infos[obj] as ObInfo;
-            var cp = ci?.priv ?? Privilege.NoPrivilege;
-            var rt = CList<long>.Empty;
+            if (grantee == Database.Guest)
+                priv = (Privilege)((int)priv & 0xfff);
+            var oi = ob.infos[grantee] ?? (ob.infos[ob.definer]+(ObInfo.Privilege,Privilege.NoPrivilege));
+            var cp = oi.priv;
             // limit grant to the request, then add the requested privilege (as limited)
-            var pr = (oi.priv & cp) | priv;
-            // if its a table, modify grantees privileges on columns too
-            if (cx.db.objects[obj] is Table tb)
+            var pr = cp | priv;
+            var rg = (Role)cx.db.objects[grantee];
+            // if its a procedure, add it to the role's list of procedures
+            if (cx.db.objects[obj] is Procedure proc && !(proc is Method))
             {
-                if (priv.HasFlag(Privilege.Select))
-                {
-                    rt = oi.dataType.rowType;
-                    for (var b = tb.Domains(cx).rowType.First(); b != null; b = b.Next())
-                    {
-                        var c = b.value();
-                        var ic = (ObInfo)cx.db.role.infos[c];
-                        ro += (new ObInfo(c, ic.name, ic.dataType, pr), false);
-                    }
-                }
-                else
-                    for (var b = tb.Domains(cx).rowType.First(); b != null; b = b.Next())
-                    {
-                        var c = b.value();
-                        if (ro.infos[c] is ObInfo ic &&
-                                ic.priv.HasFlag(Privilege.Select))
-                            rt += c;
-                    }
+                var nm = proc.infos[proc.definer].name;
+                var ps = rg.procedures[nm]??CTree<int,long>.Empty;
+                ps += (proc.arity, obj);
+                rg += (Role.Procedures, rg.procedures+(nm,ps));
+                cx.db += (grantee, rg);
             }
             // install the privilege on the target object
-            ro += (new ObInfo(obj, oi.name, oi.dataType + (Domain.RowType,rt),pr),true);
-            cx.db += (ro, p);
+            oi += (ObInfo.Privilege, pr);
+            ob += (DBObject.Infos,ob.infos + (grantee, oi));
+            cx.db += (ob, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

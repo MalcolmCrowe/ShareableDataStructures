@@ -40,7 +40,7 @@ namespace Pyrrho.Level2
             name = nm.ident;
             under = un;
             structure = dm;
-            framing = new Framing(cx);
+            framing = new Framing(cx,nst);
         }
         public PType(Ident nm, Domain dm, Domain un, long pp, Context cx)
             : this(Type.PType, nm, dm, un, pp, cx) { }
@@ -122,7 +122,7 @@ namespace Pyrrho.Level2
                 m += (Domain.DefaultString, ds);
             }
             var st = rdr.GetLong();
-            var dt = ((ObInfo)rdr.context.db.role.infos[st]).dataType;
+            var dt = rdr.context._Dom(rdr.context._Ob(st));
             m = m + (Domain.Structure,st)
                 + (Domain.Representation,dt.representation)
                 + (Domain.RowType, dt.rowType);
@@ -193,19 +193,12 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var udt = new UDType(this, cx);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var oi = new ObInfo(ppos, name, udt, priv);
+            var oi = new ObInfo(name, priv);
             oi += (ObInfo.SchemaKey, p);
-            var st = CTree<string, long>.Empty;
-            for (var b=udt.rowType.First();b!=null;b=b.Next())
-            {
-                var ci = (ObInfo)ro.infos[b.value()];
-                st += (ci.name, b.value());
-            }
+            udt += (DBObject.Infos, new BTree<long, ObInfo>(Database._system._role, oi));
             ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
-            ro += (oi, true);
-            var tt = cx.db.role.typeTracker[ppos] ?? CTree<long, (Domain,CTree<string,long>)>.Empty
-                + (ppos, (udt,st));
-            ro += (Role.TypeTracker, cx.db.role.typeTracker + (ppos, tt));
+            udt += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
+            cx.Add(udt);
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + ppos, ppos));
             cx.db = cx.db + (ro, p) + (ppos, udt, p);

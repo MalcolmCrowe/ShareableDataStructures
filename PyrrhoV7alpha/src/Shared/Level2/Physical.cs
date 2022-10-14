@@ -51,7 +51,7 @@ namespace Pyrrho.Level2
             Reference1, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
-            Update1, Delete1, Drop1, RefAction, Post // 71-75
+            Update1, Delete1, Drop1, RefAction, Post, VIndex // 71-76
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -119,10 +119,8 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Many Physicals affect another: we expose this in Log tables
         /// </summary>
-        public virtual long Affects
-        {
-            get { return ppos; }
-        }
+        public virtual long Affects => ppos;
+        public virtual long _Table => -1L;
         public virtual bool Committed(Writer wr,long pos)
         {
             return pos < wr.Length || wr.cx.uids.Contains(pos);
@@ -204,6 +202,10 @@ namespace Pyrrho.Level2
             return null;
         }
         public virtual DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        {
+            return null;
+        }
+        public virtual DBException Conflicts(CTree<long,bool> t,PTransaction ct)
         {
             return null;
         }
@@ -436,7 +438,7 @@ namespace Pyrrho.Level2
             for (var b = cx.db.roles.First(); b != null; b = b.Next())
             {
                 var ro = (Role)cx.db.objects[b.value()];
-                if (ro.infos[obj] is ObInfo oi)
+                if (ob.infos[ro.defpos] is ObInfo oi)
                     cx.db += (ro + (obj, oi + (DBObject.Classification, classification)), p);
             }
             cx.db += (ob+(DBObject.Classification,classification), p);
@@ -445,17 +447,18 @@ namespace Pyrrho.Level2
         }
     }
     /// <summary>
-    /// Compiled objects are Modify, PColumn, PCheck, PProcedure, PTrigger, PView
+    /// Compiled objects are Modify, PColumn, PCheck, PProcedure, PTrigger, PView, PTable
     /// </summary>
     internal abstract class Compiled : Physical
     {
         internal Framing framing;
+        public long nst = Transaction.Executables;
         internal Domain dataType = null;
         protected Compiled(Type tp, long pp, Context cx, long tgt, Domain dom)
             : base(tp, pp, cx)
         {
             var oc = cx.parse;
-            framing = new Framing(cx);
+            framing = new Framing(cx,nst);
             dataType = cx._Dom(framing.obs[framing.result]) ?? cx._Dom(cx.obs[tgt]) ?? dom;
             cx.parse = oc;
         }
@@ -463,6 +466,7 @@ namespace Pyrrho.Level2
             : base(tp, pp, cx)
         {
             dataType = dm;
+            nst = cx.db.nextStmt;
         }
         protected Compiled(Type tp, Reader rdr) : base(tp, rdr)
         {
@@ -473,7 +477,8 @@ namespace Pyrrho.Level2
         {
             var oc = wr.cx.parse;
             wr.cx.parse = ExecuteStatus.Compile;
-            framing = (Framing)ph.framing._Relocate(wr.cx);
+            wr.cx.offset = ppos - ph.ppos;
+            framing = (Framing)ph.framing?._Relocate(wr.cx);
             dataType = (Domain)ph.dataType._Relocate(wr.cx);
             wr.cx.parse = oc;
         }
@@ -516,6 +521,7 @@ namespace Pyrrho.Level2
             _vw = vw;
             tp = t;
             _cx = cx;
+            cx.db += (Transaction.Posts, true);
         }
         HttpWebRequest GetRequest()
         {
@@ -544,7 +550,7 @@ namespace Pyrrho.Level2
                 var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
                 rq.Headers.Add("Authorization: Basic " + d);
             }
-            var vi = (ObInfo)_cx.db.role.infos[vw.viewPpos];
+            var vi = vw.infos[_cx.role.defpos];
             if (vi.metadata.Contains(Sqlx.ETAG))
             {
                 if (_cx.obs[_cx.result] is RowSet rs && rs.First(_cx) is Cursor cu)

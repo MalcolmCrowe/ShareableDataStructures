@@ -41,7 +41,7 @@ namespace Pyrrho.Level3
         /// An ad-hoc guest user (will be reified by Transaction constructor)
         /// </summary>
         /// <param name="n"></param>
-        public User(string n):base(-1L, BTree<long, object>.Empty + (Name,n)) { }
+        public User(string n):base(-1L, BTree<long, object>.Empty + (ObInfo.Name,n)) { }
         public User(long defpos, BTree<long, object> m) : base(defpos, m) { }
         internal override Basis New(BTree<long, object> m)
         {

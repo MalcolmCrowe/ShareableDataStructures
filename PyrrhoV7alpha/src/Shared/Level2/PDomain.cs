@@ -24,8 +24,9 @@ namespace Pyrrho.Level2
         /// </summary>
 		public virtual long defpos { get { return ppos; } }
         internal Domain domain;
+        internal Domain element = null, structure=null, under = null;
         internal string name;
-        internal long domdefpos = -1L, eldefpos = -1L, underdefpos = -1L;
+        internal long domdefpos = -1L;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (domain.orderFunc != null && !Committed(wr, domain.orderFunc.defpos))
@@ -46,25 +47,29 @@ namespace Pyrrho.Level2
         /// <param name="sd">The base structure definition if any</param>
         /// <param name="pb">The local database</param>
         public PDomain(Type t, string nm, Sqlx dt, int dl, int sc, CharSet ch,
-            string co, string dv, long sd, long pp, Context cx)
+            string co, string dv, Domain sd, long pp, Context cx)
             : base(t, pp, cx)
         {
             long k;
             if (dt == Sqlx.ARRAY || dt == Sqlx.MULTISET)
             {
                 k = Domain.Element;
-                eldefpos = sd;
+                element = sd;
             }
-            else k = Domain.Structure;
+            else
+            {
+                k = Domain.Structure;
+                structure = sd;
+            }
             var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv);
             domdefpos = pp;
             name = nm;
-            domain = new Domain(-1L, dt, BTree<long, object>.Empty
+            domain = new Domain(-1L, dt, DBObject._Deps(1,structure,element,under)
                 + (Domain.Precision, dl) + (Domain.Scale, sc)
-                + (Domain.Charset, ch) 
+                + (Domain.Charset, ch) + (DBObject.LastChange,pp)
                 + (Domain.Culture, CultureInfo.GetCultureInfo(co))
                 + (Domain.DefaultString, dv)
-                + (Domain.Default, v) + (k, sd) + (Basis.Name, nm));
+                + (Domain.Default, v) + (k, sd.defpos) + (ObInfo.Name, nm));
         }
         public PDomain(string nm, Domain dt, long pp, Context cx)
             : this(Type.PDomain, nm, dt, pp, cx) { }
@@ -72,7 +77,7 @@ namespace Pyrrho.Level2
         protected PDomain(Type t, string nm, Domain dt, long pp, Context cx)
         : base(t, pp, cx)
         {
-            domain = dt + (Basis.Name, nm);
+            domain = dt + (ObInfo.Name, nm);
         }
         /// <summary>
         /// This routine is called from Domain.Create().
@@ -104,7 +109,7 @@ namespace Pyrrho.Level2
                         dt += (Domain.Structure, dc.defpos);
                         break;
                     }
-                    else if (ob.Domains(cx) is Domain db && _Match(cx, cs, db))
+                    else if (cx._Dom(ob) is Domain db && _Match(cx, cs, db))
                     {
                         dt += (Domain.Structure, db.defpos);
                         break;
@@ -181,8 +186,8 @@ namespace Pyrrho.Level2
         {
             name = rdr.GetString();
             var kind = (Sqlx)rdr.GetInt();
-            domain = new Domain(-1L, kind, BTree<long, object>.Empty
-                + (Basis.Name, name)
+            domain = Domain.New(rdr.context,BTree<long, object>.Empty
+                + (ObInfo.Name, name) + (Domain.Kind,kind)
                 + (Domain.Precision, rdr.GetInt())
                 + (Domain.Scale, rdr.GetInt())
                 + (Domain.Charset, (CharSet)rdr.GetInt())
@@ -194,7 +199,11 @@ namespace Pyrrho.Level2
                 ds = "'" + ds + "'";
                 domain += (Domain.DefaultString, ds);
             }
-            eldefpos = rdr.GetLong(); // will be fixed by rdr.Setup
+            var sd = (Domain)rdr.context._Ob(rdr.GetLong());
+            if (kind == Sqlx.TYPE)
+                structure = sd;
+            else
+                element = sd;
             base.Deserialise(rdr);
             rdr.Setup(this);
         }
@@ -261,16 +270,16 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var dt = new Domain(this);
+            var dt = domain;
             cx.Add(dt);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var oi = new ObInfo(ppos, domain.name, domain, priv);
-            oi += (ObInfo.SchemaKey, p);
-            ro += (oi,true);
+            var oi = new ObInfo(domain.name, priv);
+            dt += (DBObject.LastChange, p);
+            dt += (DBObject.Infos,new BTree<long,ObInfo>(ro.defpos, oi));
             var st = CTree<string, long>.Empty;
             for (var b=dt.rowType.First();b!=null; b=b.Next())
             {
-                var ci = (ObInfo)ro.infos[b.value()];
+                var ci = cx._Ob(b.value()).infos[ro.defpos];
                 st += (ci.name, b.value());
             }
             if (domain.name != "")
@@ -278,9 +287,6 @@ namespace Pyrrho.Level2
             if (cx.db.format<51 && domain.structure > 0)
                 ro += (Role.DBObjects, ro.dbobjects 
                     + ("" + domain.structure, domain.structure));
-            var tt = cx.db.role.typeTracker[defpos] ?? CTree<long, (Domain,CTree<string,long>)>.Empty
-                + (ppos, (dt,st));
-            ro += (Role.TypeTracker, cx.db.role.typeTracker+(defpos,tt)); 
             cx.db = cx.db + (ro,p) + (ppos,dt,p);
             cx.db += (Database.Types, cx.db.types + (dt-Domain.Representation, ppos));
             if (cx.db.mem.Contains(Database.Log))
@@ -308,7 +314,7 @@ namespace Pyrrho.Level2
         public PDateType(string nm, Sqlx ki, Sqlx st, Sqlx en, int pr, byte sc, string dv, 
             long pp, Context cx)
             : base(Type.PDateType,nm,ki,pr,sc,CharSet.UCS,"",dv,
-                  -1L, pp, cx)
+                  null, pp, cx)
         {
             domain = domain + (Domain.Start, st) + (Domain.End, en);
         }

@@ -2,6 +2,7 @@ using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
+using System.Threading;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -103,13 +104,30 @@ namespace Pyrrho.Level2
             // it becomes the schema role and also the current role
             var first = cx.db.roles.Count == Database._system.roles.Count;
             var nr = new Role(this, cx.db, first);
-            if (first) // make the new Role the Schema role
+            if (first) // make the new Role the Schema role, and the definer of all objects so far
+            {
                 cx.db += (Database._Schema, nr.defpos);
-            // give the current role privileges on the new Role
-            var ri = new ObInfo(nr.defpos, name, Domain.Role,Role.use|Role.admin);
-            nr += (nr.defpos, ri);
-            var ro = cx.db.role + (nr.defpos, ri) + (ri,true);
-            var ns = cx.db.role.dbobjects + (name, nr.defpos);
+                for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
+                {
+                    var k = b.key();
+                    var ob = (DBObject)b.value();
+                    if (ob is Domain) // but Domains always belong to Database._system._role
+                        continue;
+                    var os = ob.infos;
+                    var oi = os[-502];
+                    os -= -502;
+                    os += (nr.defpos, oi);
+                    cx.db += (k, ob + (DBObject.Definer, nr.defpos)
+                          +(DBObject.Infos,os));
+                }
+            }
+            // give the current role and current user privileges on the new Role
+            var ri = new ObInfo(name, Role.use|Role.admin);
+            var ru = new ObInfo(name, Role.use);
+            nr += (DBObject.Infos, nr.infos + (cx.role.defpos, ri) + (cx.db._user,ru)
+                +(ppos,ri)); 
+            var ro = cx.db.role;
+            var ns = ro.dbobjects + (name, nr.defpos);
             ro += (Role.DBObjects, ns);
             nr += (Role.DBObjects, ns);
             cx.db = cx.db+(ro,p)+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));
@@ -219,7 +237,7 @@ namespace Pyrrho.Level2
                         sb.Append(b.key());
                         sb.Append(' ');
                         var ob = (DBObject)wr.cx.db.objects[b.value().ToLong() ?? -1L];
-                        sb.Append(ob.name);
+                        sb.Append(ob.infos[wr.cx.role.defpos].name);
                         sb.Append(' ');
                         break;
                     default:
@@ -292,15 +310,7 @@ namespace Pyrrho.Level2
         /// <param name="p"></param>
         internal override void Install(Context cx, long p)
         {
-            var oi = (ObInfo)cx.db.role.infos[defpos];
-            var ni = oi + this;
-            if (oi != ni)
-            {
-                ni += (ObInfo.SchemaKey, p);
-                var ro = cx.db.role + (ni, false);
-                cx.db = cx.db+(ro, p);
-            }
-            cx.db = ((DBObject)cx.db.objects[defpos]).Add(cx.db,this, p);
+            cx._Ob(defpos).Add(cx,this, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

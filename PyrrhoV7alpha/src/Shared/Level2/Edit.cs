@@ -36,7 +36,7 @@ namespace Pyrrho.Level2
         public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
                   dt.culture.Name,dt.defaultString,
-                  ((dt as UDType)?.super?.defpos??-1L),pp,cx)
+                  (dt as UDType)?.super,pp,cx)
         {
             _defpos = cx.db.types[old];
             prev = old;

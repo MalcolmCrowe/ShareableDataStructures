@@ -196,31 +196,42 @@ namespace Pyrrho.Level2
         }
         internal override void Install(Context cx, long p)
         {
-            var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
+            var ro = (table is VirtualTable)?Database._system.role:cx.db.role;
+            cx.Install(dataType, p);
             var tc = new TableColumn(table, this, dataType,cx.role);
-            cx.Add(table);
-            var ti = cx.Inf(table.defpos);
-            ti += (ObInfo.SchemaKey, p);
-            var dm = new Domain(-1L, cx, Sqlx.TABLE,
-                ti.dataType.representation + (tc.defpos, dataType),
-                ti.dataType.rowType + tc.defpos);
-            ti += (ObInfo._DataType,dm);
-            ti += (ObInfo.Names, ti.names + (name, tc.defpos));
-            var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(ppos, name, dataType,priv);
-            ro = ro + (oc,false) + (ti,false); // table name will already be known
-            var tl = ro.typeTracker[table.defpos].Last().value().Item2;
-            ro += (Role.TypeTracker, ro.typeTracker 
-                + (defpos,CTree<long,(Domain,CTree<string,long>)>.Empty
-                    + (p,(dataType,CTree<string,long>.Empty)))
-                + (table.defpos, ro.typeTracker[table.defpos] 
-                    + (p, (ti.dataType, tl+(name,defpos)))));
-            if (cx.db.format < 51)
-                ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            cx.db += (ro, p);
-            table += (cx,tc); // NB: table.domain is not updated
+            var rp = ro.defpos;
+            var priv = table.infos[rp].priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
+            var oc = new ObInfo(name, priv);
+            tc += (DBObject.Infos, tc.infos + (rp, oc)); // table name will already be known
+            cx.Add(tc);
+            if (table.defpos<0)
+                throw new DBException("42105");
+            var op = cx.parse;
+            cx.parse = ExecuteStatus.Compile;
+            var dm = cx._Dom(table);
+            if (dm.defpos < 0)
+            {
+                dm = (Domain)dm.Relocate(cx.GetUid());
+                cx.Add(dm);
+                table += (DBObject._Domain, dm.defpos); 
+            }
+            dm = new Domain(table.domain, cx, Sqlx.TABLE,
+                dm.representation + (tc.defpos, dataType), dm.rowType + tc.defpos);
+            cx.Add(dm);
+            table += (cx,tc); 
+            table += (DBObject._Framing,table.framing+dm);
             table += (DBObject.LastChange, ppos);
+            cx.parse = op;
+            if (cx.db is Transaction tr && tr.physicals[table.defpos] is Compiled pt)
+                pt.framing = table.framing;
+            cx.Add(table);
+            cx.obs += table.framing.obs;
+            if (cx.db.format < 51)
+            {
+                ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
+                cx.db += (ro, p);
+            }
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
@@ -318,7 +329,7 @@ namespace Pyrrho.Level2
             {
                 if (gn != Generation.Expression)
                 {
-                    var dm = rdr.GetDomain(domdefpos,ppos).Item1;
+                    var dm = (Domain)rdr.context.db.objects[domdefpos];
                     dataType = dm+ (Domain.Default,dm.Parse(rdr.Position, dfs))
                         +(Domain.DefaultString,dfs);
                 }
@@ -333,10 +344,10 @@ namespace Pyrrho.Level2
             {
                 table = (Table)rdr.context.db.objects[table.defpos];
                 var psr = new Parser(rdr, new Ident(dfs, rdr.context.Ix(ppos + 1)), table); // calls ForConstraintParse
+                var nst = psr.cx.db.nextStmt;
                 var sv = psr.ParseSqlValue(dataType);
                 psr.cx.Add(sv);
-                rdr.context.nextStmt = psr.cx.nextStmt;
-                framing = new Framing(psr.cx);
+                framing = new Framing(psr.cx,nst);
                 generated += (GenerationRule.GenExp, sv.defpos);
             }
         }

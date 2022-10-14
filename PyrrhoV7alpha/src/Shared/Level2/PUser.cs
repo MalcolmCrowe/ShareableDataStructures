@@ -101,8 +101,8 @@ namespace Pyrrho.Level2
             var pr = Grant.Privilege.Select;
             if (first)
                 pr = pr | Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
-            var ui = new ObInfo(nu.defpos, nu.name, Domain.Null, pr);
-            ro += (ui,false);
+            var ui = new ObInfo(nu.name, pr);
+            ro += (nu.defpos, ui);
             cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             cx.db += (Database.Users, cx.db.users + (name, ppos));
             if (cx.db.log!=Common.BTree<long, Type>.Empty)

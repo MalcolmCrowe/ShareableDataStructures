@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4; // for rename/drop
 using Pyrrho.Common;
 using System.Text;
+using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -77,8 +78,9 @@ namespace Pyrrho.Level3
         /// <param name="tb">The level 3 database</param>
         /// <param name="c">The level 2 index</param>
         public Index(PIndex c, Context cx)
-            : base(c.name, c.ppos, c.defpos, cx.db.role.defpos, _IndexProps(c, cx)
-                 + (TableDefPos, c.tabledefpos) + (IndexConstraint, c.flags))
+            : base(c.ppos, c.defpos, cx.db.role.defpos, _IndexProps(c, cx)
+                 + (TableDefPos, c.tabledefpos) + (IndexConstraint, c.flags)
+                  + (ObInfo.Name, c.name))
         { }
         static BTree<long, object> _IndexProps(PIndex c, Context cx)
         {
@@ -88,21 +90,19 @@ namespace Pyrrho.Level3
                 r += (Adapter, c.adapter);
                 r += (References, BTree<long, BList<TypedValue>>.Empty);
             }
-            if (c.reference > 0)
+            if (c.reference > 0 && cx.db.objects[c.reference] is Index rx)
             {
-                var rx = (Index)cx.db.objects[c.reference];
                 var rp = rx.tabledefpos;
                 var rt = (Table)cx.db.objects[rp];
-                if (rx!=null)
+                if (rx != null)
                 {
                     r += (RefIndex, rx.defpos);
                     r += (RefTable, rx.tabledefpos);
                 }
             }
             var cols = CList<long>.Empty;
-            var ds = ObTree.Empty;
             var tb = (Table)cx.obs[c.tabledefpos];
-            for (var b=c.columns.First();b!=null;b=b.Next())
+            for (var b = c.columns.First(); b != null; b = b.Next())
             {
                 var pos = b.value();
                 if (pos == 0)
@@ -110,8 +110,6 @@ namespace Pyrrho.Level3
                     var pd = (PeriodDef)cx.db.objects[tb.systemPS];
                     pos = pd.startCol;
                 }
-                var ob = (DBObject)cx.db.objects[pos];
-                ds += (ob.defpos, ob);
                 cols += pos;
             }
             TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?
@@ -149,13 +147,13 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="db">The database</param>
         /// <returns>the new Index</returns>
-        public Index Build(Database db)
+        public Index Build(Context cx)
         {
-            Table tb = (Table)db.objects[tabledefpos];
+            Table tb = (Table)cx.db.objects[tabledefpos];
             MTree rs = rows;
             bool rx = ((flags & PIndex.ConstraintType.ForeignKey) == PIndex.ConstraintType.ForeignKey);
             bool ux = ((flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != PIndex.ConstraintType.NoType);
-            Index px = tb.FindPrimaryIndex(db);
+            Index px = tb.FindPrimaryIndex(cx);
             if (px != null)
                 for (var d = px.rows.First(); d != null; d = d.Next())
                 {
@@ -165,10 +163,10 @@ namespace Pyrrho.Level3
                     if (m != null)
                     {
                         if (rx)
-                            CheckRef(db, m);
+                            CheckRef(cx.db, m);
                         if (ux && rs.Contains(m))
                         {
-                            var oi = (ObInfo)db.role.infos[tb.defpos];
+                            var oi = tb.infos[cx.role.defpos];
                             throw new DBException("44002", "PRIMARY/UNIQUE", oi.name).Mix()
                                 .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                                 .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
@@ -181,15 +179,15 @@ namespace Pyrrho.Level3
                 // there is no primary index, so we do it from the tableRows information
                 for (var pp = tb.tableRows.PositionAt(0); pp != null; pp = pp.Next())
                 {
-                    var r = pp.value() as TableRow;
+                    var r = pp.value();
                     var m = r.MakeKey(this);
                     if (m != null)
                     {
                         if (rx)
-                            CheckRef(db, m);
+                            CheckRef(cx.db, m);
                         if (ux && rs.Contains(m))
                         {
-                            var oi = (ObInfo)db.role.infos[tb.defpos];
+                            var oi = tb.infos[cx.role.defpos];
                             throw new DBException("44002", "PRIMARY/UNIQUE").Mix()
                                   .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                                   .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
@@ -209,10 +207,12 @@ namespace Pyrrho.Level3
             if (!(db is Transaction))
                 return;
             Index rx = (Index)db.objects[refindexdefpos];
+ /*           if (rx is VirtualIndex)
+                return; */
             var tb = (Table)db.objects[reftabledefpos];
             if (!rx.rows.Contains(m))
             {
-                var oi = (ObInfo)db.role.infos[tb.defpos];
+                var oi = tb.infos[db.role.defpos];
                 throw new DBException("44002", "REFERENCES", oi.name).Mix()
                     .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                     .Add(Sqlx.CONSTRAINT_NAME, new TChar("REFERENCES"));
@@ -223,7 +223,7 @@ namespace Pyrrho.Level3
         {
             base.Cascade(cx, a, u);
             if (reftabledefpos >= 0 && cx.db.objects[reftabledefpos] is Table ta)
-                ta.FindPrimaryIndex(cx.db).Cascade(cx, a, u);
+                ta.FindPrimaryIndex(cx).Cascade(cx, a, u);
             for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.value()] is Table tb)
                     for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
@@ -305,7 +305,7 @@ namespace Pyrrho.Level3
         {
             var r = (Index)base._Relocate(cx);
             r += (Adapter, cx.Fix(adapter));
-            r += (Keys, cx.Fix(keys));
+            r += (Keys, cx.FixLl(keys));
             r += (References, cx.Fix(references));
             r += (RefIndex, cx.Fix(refindexdefpos));
             r += (RefTable, cx.Fix(reftabledefpos));
@@ -317,7 +317,7 @@ namespace Pyrrho.Level3
             var na = cx.Fix(adapter);
             if (na!=adapter)
             r += (Adapter, na);
-            var nk = cx.Fix(keys);
+            var nk = cx.FixLl(keys);
             if (nk!=keys)
             r += (Keys, nk);
             var nr = cx.Fix(references);
@@ -332,4 +332,48 @@ namespace Pyrrho.Level3
             return r;
         }
     }
+/*    /// <summary>
+    /// A VirtualTable can have virtual indexs: they are for navigation properties
+    /// and do not attempt to act as constraints on the remote table
+    /// </summary>
+    internal class VirtualIndex : Index
+    {
+        public VirtualIndex(VIndex pt,Context cx) :base(pt.defpos,_Mem(cx,pt))
+        { }
+        public VirtualIndex(long dp,BTree<long,object> m) : base(dp,m)
+        { }
+        static BTree<long,object> _Mem(Context cx,VIndex px)
+        {
+            var r = BTree<long, object>.Empty;
+            r += (TableDefPos, px.tabledefpos);
+            r += (IndexConstraint, px.flags);
+            if (px.reference > 0 && cx.db.objects[px.reference] is Index rx)
+            {
+                r += (RefIndex, rx.defpos);
+                r += (RefTable, rx.tabledefpos);
+            }
+            var cols = CList<long>.Empty;
+            var tb = (Table)cx.obs[px.tabledefpos];
+            cx.obs += tb.framing.obs;
+            var dm = cx._Dom(tb);
+            for (var b = px.seqs.First(); b != null; b = b.Next())
+            {
+                var seq = b.value();
+                cols += dm.rowType[seq];
+            }
+            r += (Keys, cols);
+            return r;
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new VirtualIndex(defpos, m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new VirtualIndex(dp, mem);
+        }
+        internal override void Cascade(Context cx, Drop.DropAction a = Level2.Drop.DropAction.Restrict, BTree<long, TypedValue> u = null)
+        {
+        }
+    } */
 }

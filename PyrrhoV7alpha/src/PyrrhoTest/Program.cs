@@ -2,6 +2,9 @@
 using Pyrrho;
 using System.Threading.Tasks;
 using System.Collections.Generic;
+using Pyrrho.Common;
+using System.Collections.Concurrent;
+using System.Security.Cryptography;
 
 namespace Test
 {
@@ -28,7 +31,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("4 June 2022 Repeatable tests");
+                Console.WriteLine("10 October 2022 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -138,9 +141,9 @@ namespace Test
             Act(10,"create table A(B int,C int,D char,primary key(B,C))");
             Act(11,"insert into A values(2,3,'TwentyThree')");
             Act(12,"insert into A values(1,9,'Nineteen')");
-            CheckResults(1,1,"select * from A", "[{B:2,C:3,D:'TwentyThree'},{B:1,C:9,D:'Nineteen'}]");
+            CheckResults(1,1,"select * from A", "[{B:1,C:9,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
             Act(13,"update A set C=19 where C=9");
-            CheckResults(1,2, "select * from A", "[{B:2,C:3,D:'TwentyThree'},{B:1,C:19,D:'Nineteen'}]");
+            CheckResults(1,2, "select * from A", "[{B:1,C:19,D:'Nineteen'},{B:2,C:3,D:'TwentyThree'}]");
             Act(14,"delete from A where C=19");
             CheckResults(1,3, "select * from A", "[{B:2,C:3,D:'TwentyThree'}]");
             Act(15,"insert into A(B,D) (select E.B,upper(E.D) from A E)");
@@ -174,7 +177,7 @@ namespace Test
             Act(30,"create table b(c int primary key,d char)");
             Act(31,"insert into b values(45,'DE')");
             Act(32,"insert into b values(-23,'HC')");
-            CheckResults(3,1,"select * from b", "[{C:45,D:'DE'},{C:-23,D:'HC'}]");
+            CheckResults(3,1,"select * from b", "[{C:-23,D:'HC'},{C:45,D:'DE'}]");
             CheckResults(3,2,"select * from b where c=-23", "[{C:-23,D:'HC'}]");
             Rollback();
         }
@@ -187,10 +190,10 @@ namespace Test
             Act(40,"create table e(f int,g char,primary key(g,f))");
             Act(41,"insert into e values(23,'XC')");
             Act(42,"insert into e values(45,'DE')");
-            CheckResults(4,1,"select * from e", "[{F:23,G:'XC'},{F:45,G:'DE'}]");
+            CheckResults(4,1,"select * from e", "[{F:45,G:'DE'},{F:23,G:'XC'}]");
             Act(43,"insert into e(g) values('DE')");
             CheckResults(4,2,"select * from e",
-                "[{F:23,G:'XC'},{F:45,G:'DE'},{F:46,G:'DE'}]");
+                "[{F:45,G:'DE'},{F:46,G:'DE'},{F:23,G:'XC'}]");
             // the EvalRowSet loop in the next test should execute only once
             CheckResults(4,3,"select count(f) from e where g='DE' and f<=45",
                 "[{COUNT:1}]");
@@ -320,6 +323,21 @@ namespace Test
                 "{RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'}," +
                 "{RNUM:3,EMAIL:'john.smith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'}," +
                 "{RNUM:2,EMAIL:'root@boss.org',FIRST_NAME:'Root',LAST_NAME:'Chief',ACCOUNT_TYPE:'admin'}]");
+             /* LearnSQL examples: our result has rows in table order which is ok! */
+            Act(435, "create table employee(employee_id int, full_name char, Department char, salary numeric(8, 2))");
+            Act(436, "insert into employee values(100, 'Mary Johns', 'SALES', 1000.00)," +
+            "(101, 'Sean Moldy', 'IT', 1500.00), (102, 'Peter Dugan', 'SALES', 2000.00)," +
+            "(103, 'Lilian Penn', 'SALES', 1700.00), (104, 'Milton Kowarsky', 'IT', 1800.00)," +
+            "(105, 'Mareen Bisset', 'ACCOUNTS', 1200.00), (106, 'Airton Graue', 'ACCOUNTS', 1100.00)");
+            CheckResults(7, 5, "select rank() over(partition by department order by salary desc) as dept_ranking," +
+            "department, employee_id, full_name, salary from employee",
+            "[{DEPT_RANKING:3,DEPARTMENT:'SALES',EMPLOYEE_ID:100,FULL_NAME:'Mary Johns',SALARY:1000.00}," +
+            "{DEPT_RANKING:2,DEPARTMENT:'IT',EMPLOYEE_ID:101,FULL_NAME:'Sean Moldy',SALARY:1500.00}," +
+            "{DEPT_RANKING:1,DEPARTMENT:'SALES',EMPLOYEE_ID:102,FULL_NAME:'Peter Dugan',SALARY:2000.00}," +
+            "{DEPT_RANKING:2,DEPARTMENT:'SALES',EMPLOYEE_ID:103,FULL_NAME:'Lilian Penn',SALARY:1700.00}," +
+            "{DEPT_RANKING:1,DEPARTMENT:'IT',EMPLOYEE_ID:104,FULL_NAME:'Milton Kowarsky',SALARY:1800.00}," +
+            "{DEPT_RANKING:1,DEPARTMENT:'ACCOUNTS',EMPLOYEE_ID:105,FULL_NAME:'Mareen Bisset',SALARY:1200.00}," +
+            "{DEPT_RANKING:2,DEPARTMENT:'ACCOUNTS',EMPLOYEE_ID:106,FULL_NAME:'Airton Graue',SALARY:1100.00}]");
             Rollback();
         }
         void Test8()
@@ -363,7 +381,7 @@ namespace Test
             CheckResults(8, 11, "select c,sum(f),g from JA natural join JE group by g,c having sum(f)<6",
                 "[{C:3,SUM:4,G:22}]");
             CheckResults(8, 12, "select c,sum(d),sum(f),g from JA natural join JE group by g,c",
-                "[{C:2,SUM:43,Col2:7,G:31},{ C: 3,SUM: 82,Col2: 4,G: 22},{ C: 4,SUM: 29,Col2: 11,G: 10}]");
+                "[{C:2,SUM:43,Col2:7,G:31},{C:3,SUM:82,Col2:4,G: 22},{C:4,SUM:29,Col2:11,G:10}]");
             // Test for lateral join (the keyword LATERAL is not required and not supported)
             Act(88,"create table SalesPerson(pid int primary key)");
             Act(89,"insert into SalesPerson values(1),(2),(3)"); 
@@ -923,19 +941,20 @@ namespace Test
             Act(267,"create procedure agree(p int)"
               + "update played set agreed=true "
                + "where winner=agree.p and loser in"
-                + "(select m.id from members m where current_user like '%'||firstname escape '^')");
-            Act(268,"insert into members(firstname) values(current_user)");
-            CheckResults(21, 1, "select id from members where current_user like '%'||firstname escape'^'",
+                + "(select m.id from members m where user like '%'||firstname escape '^')");
+            Act(268,"insert into members(firstname) values(user)");
+            CheckResults(21, 1, "select id from members where user like '%'||firstname escape'^'",
               "[{ID:1}]");
             Act(269,"insert into members(firstname) values('Fred')");
             Act(270,"insert into played(winner,loser) values(2,1)");
-            Act(271,"create role membergames");
-            Act(272,"grant execute on procedure claim(int,int) to role membergames");
-            Act(273,"grant execute on procedure agree(int) to role membergames");
-            Act(274,"grant membergames to public");
-            Act(275,"set role membergames");
-            Act(276,"call agree(2)");
-            Act(277,"call claim(1,2)");
+            Act(271, "create role admin");
+            Act(272,"create role membergames");
+            Act(273,"grant execute on procedure claim(int,int) to role membergames");
+            Act(274,"grant execute on procedure agree(int) to role membergames");
+            Act(275,"grant membergames to public");
+            Act(276,"set role membergames");
+            Act(277,"call agree(2)");
+            Act(278,"call claim(1,2)");
             CheckResults(21, 2, "table played", "[{ID:1,WINNER:2,LOSER:1,AGREED:true},{ID:2,WINNER:1,LOSER:2}]");
             Rollback();
         }
@@ -945,7 +964,7 @@ namespace Test
                 return;
             testing = 22;
             Begin();
-            Act(278,"create view WU of (e int, f char, g char) as get " +
+            Act(478,"create view WU of (e int, f char, g char) as get " +
                 "etag url 'http://localhost:8180/A/A/D'");
             CheckResults(22, 1, "select * from wu", "[{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}]");
             Act(279,"create table HU (e int primary key, k char, m int)");

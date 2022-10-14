@@ -32,12 +32,10 @@ namespace Pyrrho.Level3
     internal abstract class Basis
     {
         internal static long _uid = -500;
-        internal const long Name = -50; // string
         static long _dbg = 0;
         internal readonly long dbg = ++_dbg;
         // negative keys are for system obs, positive for user-defined obs
         internal readonly BTree<long, object> mem;
-        public string name => (string)mem[Name]??"";
         public virtual long lexeroffset => 0;
         protected Basis (BTree<long,object> m)
         {
@@ -113,9 +111,7 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            var sb = new StringBuilder(GetType().Name);
-            if (mem.Contains(Name)) { sb.Append(" Name="); sb.Append(name); }
-            return sb.ToString();
+            return GetType().Name;
         }
         [Flags]
         internal enum Remotes { None=0, Selects=1, Operands=2 }
@@ -196,12 +192,13 @@ namespace Pyrrho.Level3
             Role = -285, // Role: the current role (e.g. an executable's definer)
             _Role = -302, // long: role.defpos, initially set to the session role
             Roles = -60, // BTree<string,long>
-            _Schema = -291, // long: (always the same as _system._role) the owner role for the database
+            _Schema = -291, // long: the owner role for the database
             Types = -61, // CTree<Domain,long>
             User = -277, // User: always the connection user
             _User = -301,// long: user.defpos, always the connection user, maybe uncommitted
             Users = -287; // BTree<string,long> users defined in the database
         internal virtual long uid => -1;
+        public string name => (string)mem[ObInfo.Name];
         internal FileStream df => dbfiles[name];
         internal long curated => (long)(mem[Curated]??-1L);
         internal long nextStmt => (long)(mem[NextStmt] ?? 
@@ -239,7 +236,7 @@ namespace Pyrrho.Level3
         /// </summary>
         static Database()
         {
-            var su = new User(--_uid, new BTree<long, object>(Name,
+            var su = new User(--_uid, new BTree<long, object>(ObInfo.Name,
                     Environment.UserDomainName + "\\" + Environment.UserName));
             var sr = new Role("$Schema",--_uid,BTree<long, object>.Empty +
                     (_User, su.defpos) +  (Owner, su.defpos));
@@ -259,7 +256,7 @@ namespace Pyrrho.Level3
         /// <param name="gu"></param>
         Database(string n,User su,Role sr,Role gu) 
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
-                  (Name,n),(sr.defpos,sr),(su.defpos,su),(gu.defpos,gu),
+                  (ObInfo.Name,n),(sr.defpos,sr),(su.defpos,su),(gu.defpos,gu),
                   // the 7 entries without defaults start here
                   (_Role,sr.defpos),(Role, sr),(DBObject.Definer,sr.defpos),
                   (_User,su.defpos),(User,su),(Owner,su.defpos),
@@ -275,7 +272,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="n"></param>
         /// <param name="f"></param>
-        public Database(string n,string path,FileStream f):base(_system.mem+(Name,n)
+        public Database(string n,string path,FileStream f):base(_system.mem+(ObInfo.Name,n)
             +(Format,_Format(f))+(LastModified,File.GetLastWriteTimeUtc(path))
             +(NextStmt,Transaction.Executables))
         {
@@ -340,7 +337,7 @@ namespace Pyrrho.Level3
         public static Database operator+(Database d,(long,Domain,long)x)
         {
             var (dp, dm, curpos) = x;
-            return d.New(curpos, d.mem + (dp, dm));
+            return d.New(curpos, d.mem + (dp, dm) + (Types,d.types+(dm,dp)));
         }
         internal virtual void Add(Context cx,Physical ph,long lp)
         {
@@ -432,6 +429,9 @@ namespace Pyrrho.Level3
             {
                 ro = (Role)objects[roles[rn]]
                     ?? throw new DBException("42105"); // 3a
+                if (role.infos[_user] is ObInfo ou
+                        && ou.priv.HasFlag(Grant.Privilege.UseRole)) // user has usage
+                    goto done;
                 if (role.infos[guest.defpos] is ObInfo oi
                     && oi.priv.HasFlag(Grant.Privilege.UseRole)) // 3b public role
                     goto done;
@@ -480,10 +480,6 @@ namespace Pyrrho.Level3
         public DBObject GetObject(string n)
         {
             return objects[role.dbobjects[n]] as DBObject;
-        }
-        public ObInfo GetObInfo(string n)
-        {
-            return role.infos[role.dbobjects[n]] as ObInfo;
         }
         public Procedure GetProcedure(string n,int a)
         {
@@ -535,7 +531,7 @@ namespace Pyrrho.Level3
                         rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
                 }
             }
-            var d = rdr.context.db + (NextStmt,rdr.context.nextStmt);
+            var d = rdr.context.db;
             if (PyrrhoStart.VerboseMode)
                 Console.WriteLine("Database " + name + " loaded to " + rdr.Position);
             lock (_lock)

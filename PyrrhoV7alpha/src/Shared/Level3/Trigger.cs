@@ -32,7 +32,8 @@ namespace Pyrrho.Level3
             TrigPpos = -299, // long Trigger
             TrigType = -297, // PTrigger.TrigType
             UpdateCols = -298; // CList<long> SqlValue
-        public long table => (long)mem[From.Target];
+        public long table => (long)mem[RowSet.Target];
+        public string name => (string)mem[ObInfo.Name] ?? "";
         /// <summary>
         /// The trigger type (flags)
         /// </summary>
@@ -61,9 +62,9 @@ namespace Pyrrho.Level3
         /// </summary>
 		public Trigger(PTrigger p,Role ro)
             : base(p.ppos, 
-                  _Mem(p) + (Action,p.def) + (Name,p.name)
+                  _Mem(p) + (Action,p.def) + (ObInfo.Name,p.name)
                   + (Definer, ro.defpos) + (_From, p.from) + (TrigPpos, p.ppos)
-                  + (_Framing, p.framing) + (From.Target, p.target) + (TrigType, p.tgtype)
+                  + (_Framing, p.framing) + (RowSet.Target, p.target) + (TrigType, p.tgtype)
                   + (UpdateCols, p.cols) + (LastChange, p.ppos))
 		{ }
         public Trigger(long defpos, BTree<long, object> m) : base(defpos, m) 
@@ -127,7 +128,7 @@ namespace Pyrrho.Level3
                 return cx.done[defpos];
             var r = base._Replace(cx, so, sv);
             if (table == so.defpos)
-                r += (From.Target, sv.defpos);
+                r += (RowSet.Target, sv.defpos);
             var a = cx.ObReplace(action, so, sv);
             if (a != action)
                 r += (Action, a);
@@ -196,7 +197,7 @@ namespace Pyrrho.Level3
             var nu = cx.Fix(oldTable);
             if (oldTable != nu)
                 r += (OldTable, nu);
-            var nc = cx.Fix(cols);
+            var nc = cx.FixLl(cols);
             if (nc != cols)
                 r += (UpdateCols, nc);
             return r;
@@ -209,14 +210,14 @@ namespace Pyrrho.Level3
             r += (NewTable, cx.Fix(newTable));
             r += (OldRow, cx.Fix(oldRow));
             r += (OldTable, cx.Fix(oldTable));
-            r += (UpdateCols, cx.Fix(cols));
+            r += (UpdateCols, cx.FixLl(cols));
             return r;
         }
     }
     /// <summary>
     /// Transition tables are not listed in roles but referred to in triggers
     /// </summary>
-    internal class TransitionTable : From
+    internal class TransitionTable : RowSet
     {
         internal const long
             ColIds = -304, // CList<long> TableColumn
@@ -225,7 +226,7 @@ namespace Pyrrho.Level3
         internal CList<long> colIds => (CList<long>)mem[ColIds] ?? CList<long>.Empty;
         internal bool old => (bool)mem[Old];
  //       internal long trig => (long)mem[Trig];
-        internal TransitionTable(Ident ic, bool old, Context cx, From fm, Trigger tg)
+        internal TransitionTable(Ident ic, bool old, Context cx, RowSet fm, Trigger tg)
                 : base(ic.iix.dp,_Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos))
         { }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -237,7 +238,7 @@ namespace Pyrrho.Level3
         {
             return new TransitionTable(defpos,m);
         }
-        static BTree<long,object> _Mem(Context cx,Ident ic,From fm)
+        static BTree<long,object> _Mem(Context cx,Ident ic,RowSet fm)
         {
             var cs = CList<long>.Empty;
             var vs = BList<SqlValue>.Empty;
@@ -258,7 +259,7 @@ namespace Pyrrho.Level3
             var nd = new Domain(cx.GetUid(),cx,Sqlx.ROW,vs);
             cx.Add(nd); */
             return BTree<long, object>.Empty + (_Domain, fm.domain) 
-                    + (Name, ic.ident)
+                    + (ObInfo.Name, ic.ident)
                   + (Dependents, ds) + (_Depth, d) + (ColIds, cs)
                   + (Target, fm.target);
         }
@@ -270,7 +271,7 @@ namespace Pyrrho.Level3
         {
             var r =  (TransitionTable)base._Relocate(cx);
      //       r += (Trig, cx.Fix(trig));
-            r += (ColIds, cx.Fix(colIds));
+            r += (ColIds, cx.FixLl(colIds));
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -279,21 +280,29 @@ namespace Pyrrho.Level3
     //        var nt = cx.Fix(trig);
     //        if (nt != trig)
     //            r += (Trig, nt);
-            var nc = cx.Fix(colIds);
+            var nc = cx.FixLl(colIds);
             if (nc != colIds)
                 r += (ColIds, nc);
             return r;
         }
-   /*     internal override void _Add(Context cx)
+        protected override Cursor _First(Context cx)
         {
-            // don't call the base
-            var tg = (Trigger)(cx.obs[trig]);
-            var tb = ((Table)cx.db.objects[tg.table]);
-            cx.Add(tb);
-            cx.obs += (defpos, this);
-            var dp = cx.depths[depth] ?? ObTree.Empty;
-            cx.depths += (depth, dp + (defpos, this));
-        } */
+            throw new NotImplementedException();
+        }
+        protected override Cursor _Last(Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        /*     internal override void _Add(Context cx)
+             {
+                 // don't call the base
+                 var tg = (Trigger)(cx.obs[trig]);
+                 var tb = ((Table)cx.db.objects[tg.table]);
+                 cx.Add(tb);
+                 cx.obs += (defpos, this);
+                 var dp = cx.depths[depth] ?? ObTree.Empty;
+                 cx.depths += (depth, dp + (defpos, this));
+             } */
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());

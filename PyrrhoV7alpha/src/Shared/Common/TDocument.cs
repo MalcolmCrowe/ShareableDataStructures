@@ -50,8 +50,9 @@ namespace Pyrrho.Common
             for (var b=r.dataType.rowType.First();b!=null;b=b.Next())
             {
                 var v = (SqlValue)cx.obs[b.value()];
-                n += (v.name, (int)n.Count);
-                c += (v.name, r[b.value()]);
+                var vi = v.infos[cx.role.defpos];
+                n += (vi.name, (int)n.Count);
+                c += (vi.name, r[b.value()]);
             }
             content = c;
             names = n;

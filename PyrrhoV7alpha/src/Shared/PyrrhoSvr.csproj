@@ -73,6 +73,7 @@
     <Compile Include="Common\Interfaces.cs" />
     <Compile Include="Common\Pyrrho.cs" />
     <Compile Include="Common\Row.cs" />
+    <Compile Include="GlobalSuppressions.cs" />
     <Compile Include="Level4\ParseClasses.cs" />
     <Compile Include="Level4\Symbols.cs" />
     <Compile Include="Common\TDocument.cs" />
@@ -119,7 +120,6 @@
     <Compile Include="Level3\Method.cs" />
     <Compile Include="Level3\Procedure.cs" />
     <Compile Include="Level3\Profile.cs" />
-    <Compile Include="Level3\ReadConstraint.cs" />
     <Compile Include="Level3\Role.cs" />
     <Compile Include="Level3\Table.cs" />
     <Compile Include="Level3\TableColumn.cs" />
@@ -143,6 +143,7 @@
     <Compile Include="Start.cs" />
   </ItemGroup>
   <ItemGroup>
+    <None Include=".editorconfig" />
     <None Include="App.config" />
     <None Include="packages.config" />
   </ItemGroup>

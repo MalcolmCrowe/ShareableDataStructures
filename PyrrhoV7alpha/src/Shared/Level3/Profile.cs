@@ -5,6 +5,7 @@ using System.IO;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
+using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -247,7 +248,7 @@ namespace Pyrrho.Level3
         internal void Save(Database db,XmlWriter w)
         {
             Table tb = db.objects[tab] as Table;
-            var ti = db.role.infos[tb.defpos] as ObInfo;
+            var ti = tb.infos[db.role.defpos];
             w.WriteStartElement("Table");
             w.WriteAttributeString("Name", ti.name);
             w.WriteAttributeString("Pos", tab.ToString());
@@ -260,10 +261,10 @@ namespace Pyrrho.Level3
             {
                 TableColumn tc = db.objects[s.key()] as TableColumn;
                 var i = 0;
-                for (var b=ti.dataType.rowType.First();b!=null;b=b.Next(),i++)
-                    if (b.value() == s.key())
+                for (var b=tb.tableCols.First();b!=null;b=b.Next(),i++)
+                    if (b.key() == s.key())
                         break;
-                var ci = (ObInfo)db.role.infos[tc.defpos];
+                var ci = tc.infos[db.role.defpos];
                 w.WriteStartElement("Read");
                 w.WriteAttributeString("ColPos", s.key().ToString());
                 w.WriteAttributeString("ReadCol", ci.name);
@@ -427,7 +428,7 @@ namespace Pyrrho.Level3
             for (var s = fields.PositionAt(0);s!= null;s=s.Next())
             {
                 TableColumn tc = db.objects[s.key()] as TableColumn;
-                var ci = db.role.infos[tc.defpos] as ObInfo;
+                var ci = tc.infos[db.role.defpos];
                 w.WriteStartElement("Field");
                 w.WriteAttributeString("ColPos", s.key().ToString());
                 w.WriteAttributeString("RecCol", ci.name);

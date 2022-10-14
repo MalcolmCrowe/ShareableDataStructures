@@ -31,7 +31,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The name excluding the arity
         /// </summary>
-        public string name; 
+        public Ident name; 
         /// <summary>
         /// the target type
         /// </summary>

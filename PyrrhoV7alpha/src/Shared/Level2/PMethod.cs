@@ -108,12 +108,7 @@ namespace Pyrrho.Level2
         internal override void OnLoad(Reader rdr)
         {
             udt = (UDType)rdr.context.db.objects[_udt];
-            var psr = new Parser(rdr.context, source);
-            var mnm = new Ident(name,rdr.context.Ix(rdr.context.nextStmt));
-            parameters = psr.ParseParameters(mnm);
-            dataType = psr.ParseReturnsClause(mnm);
-            rdr.context.nextStmt = psr.cx.nextStmt;
-            framing = new Framing(psr.cx);
+            base.OnLoad(rdr);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -155,19 +150,20 @@ namespace Pyrrho.Level2
         }
         internal override void Install(Context cx, long p)
         {
-            var ro = cx.db.role;
+            var rp = Database._system._role;
             var mt = new Method(this,cx);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            var mi = new ObInfo(defpos, nameAndArity, dataType, priv);
-            var oi = (ObInfo)ro.infos[udt.defpos] ??
-                throw new PEException("PE918");
-            oi += (ObInfo.SchemaKey, p);
-            oi += (mt,name);
-            ro = ro + mt + (oi,true) + (mi,false);
-            udt += (Database.Procedures, udt.methods + (mt.defpos, nameAndArity));
-            cx.db += (ro, p);
+            var ui = udt.infos[Database._system._role];
+            var um = ui.methodInfos;
+            var om = um[name] ?? CTree<int, long>.Empty;
+            um += (name, om+(arity, mt.defpos));
+            ui += (ObInfo.MethodInfos, um);
+            var mi = new ObInfo(nameAndArity, priv);
+            mt += (DBObject.Infos, new BTree<long, ObInfo>(rp, mi));
+            udt += (DBObject.Infos, new BTree<long, ObInfo>(rp, ui));
             cx.db += (udt.defpos, udt);
+            cx.db += (mt.defpos, mt);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(mt,p);

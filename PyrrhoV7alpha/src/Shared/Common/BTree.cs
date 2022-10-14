@@ -101,6 +101,12 @@ namespace Pyrrho.Common
         {
             return (BTree<K, V>)tree?.Remove(k);
         }
+        public static BTree<K,V> operator-(BTree<K,V> tree,BList<K> ks)
+        {
+            for (var b = ks.First(); b != null; b = b.Next())
+                tree -= b.value();
+            return tree;
+        }
         /// <summary>
         /// Creator: Create a new BTree that has a new association in the BTree
         /// May have reorganised buckets or greater depth than this BTree
@@ -230,7 +236,7 @@ namespace Pyrrho.Common
         /// <returns>true iff the key is in our subtree</returns>
         public override bool Contains(ATree<K,V> t, K k)
         {
-            int j = PositionFor(t, k, out bool m);
+            int j = PositionFor(t, k, out bool _);
             if (j == count)
                 return gtr.Contains(t, k);
             return slots[j].Value.Contains(t, k);
@@ -243,7 +249,7 @@ namespace Pyrrho.Common
         /// <returns>the object found (or null of not there)</returns>
         public override V Lookup(ATree<K,V> t, K k)
         {
-            int j = PositionFor(t, k, out bool m);
+            int j = PositionFor(t, k, out bool _);
             if (j == count)
                 return gtr.Lookup(t, k);
             return slots[j].Value.Lookup(t, k);
@@ -299,7 +305,7 @@ namespace Pyrrho.Common
         /// <returns>The new Bucket</returns>
         public override Bucket<K,V> Update(ATree<K,V> t, K k, V v)
         {
-            int j = PositionFor(t, k, out bool m);
+            int j = PositionFor(t, k, out bool _);
             if (j == count)
                 return new Inner<K,V>(gtr.Update(t, k, v),total, slots);
             else
@@ -322,7 +328,7 @@ namespace Pyrrho.Common
         {
             // by the time we get here we have made sure there is at least one empty Slot
             // in the current bucket
-            int j = PositionFor(t, k, out bool m); // (j<count && k<=slots[j]) || j==count
+            int j = PositionFor(t, k, out bool _); // (j<count && k<=slots[j]) || j==count
             Bucket<K,V> b;
             if (j < count)
             {
@@ -388,7 +394,7 @@ namespace Pyrrho.Common
         /// <returns>The new Bucket</returns>
         public override Bucket<K, V> Remove(ATree<K, V> t, K k)
         {
-            int nj = PositionFor(t, k, out bool mm);
+            int nj = PositionFor(t, k, out bool _);
             Bucket<K,V> nb;
             int m = ATree<K,V>.Size >> 1;
             if (nj < count)
@@ -415,13 +421,13 @@ namespace Pyrrho.Common
             {
                 b = (j == nj) ? nb : slots[j].Value;
                 b.Add(ab);
-                if (b is Inner<K, V>)
-                    ab.Add(new KeyValuePair<K, Bucket<K, V>>(slots[j].Key, ((Inner<K, V>)b).gtr));
+                if (b is Inner<K, V> bj)
+                    ab.Add(new KeyValuePair<K, Bucket<K, V>>(slots[j].Key, bj.gtr));
             }
             b = (count == nj) ? nb : gtr;
             b.Add(ab);
-            if (b is Inner<K,V>)
-                g = ((Inner<K,V>)b).gtr;
+            if (b is Inner<K,V> bi)
+                g = bi.gtr;
             var s = ab.ToArray();
             if (g == null) // we use Size entries from s for each new Bucket (all Leaves)
             {
@@ -596,7 +602,7 @@ namespace Pyrrho.Common
         {
             int j = PositionFor(t, k, out bool b);
             if (!b)
-                return default(V);
+                return default;
             return slots[j].Value;
         }
         /// <summary>
@@ -625,7 +631,7 @@ namespace Pyrrho.Common
         {
             // by the time we get here we have made sure there is at least one empty Slot
             // in the current bucket
-            int j = PositionFor(t, k, out bool b); // (j<count && k<=slots[j]) || j==count
+            int j = PositionFor(t, k, out bool _); // (j<count && k<=slots[j]) || j==count
             return new Leaf<K,V>(Add(j, new KeyValuePair<K,V>(k, v)));
         }
         /// <summary>
@@ -782,7 +788,7 @@ namespace Pyrrho.Common
     /// If you want to replace an item, use new BList(BList old,int k,V v)
     /// </summary>
     /// <typeparam name="V"></typeparam>
-    internal class BList<V> : BTree<int, V>
+    public class BList<V> : BTree<int, V>
     {
         public new static readonly BList<V> Empty = new BList<V>();
         public int Length => (int)Count;

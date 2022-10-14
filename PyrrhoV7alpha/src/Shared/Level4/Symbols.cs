@@ -4,6 +4,7 @@ using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Common;
 using Pyrrho.Level2;
+using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -22,17 +23,9 @@ namespace Pyrrho.Level4
         internal readonly long dp; // defining
         internal static Iix None = new Iix(-1L);
         internal Iix(long u) { lp = u; sd = 0;  dp = u;  }
-        internal Iix(long l,int s,long u) { lp = l; sd = s; dp = u; }
+        internal Iix(long l,int s,long u) { lp = l; sd = s; dp = u;  }
         internal Iix(Iix ix,long u) { lp = ix.lp; sd = ix.sd; dp = u; }
-        internal Iix(long l,Context cx,long u) { lp = l; sd = cx.sD; dp = u; }
-        public static Iix operator+(Iix u,int j)
-        {
-            return new Iix(u.lp + j, u.sd, u.dp + j);
-        }
-        internal Iix Fix(Context cx)
-        {
-            return new Iix(dp);
-        }
+        internal Iix(long l,Context cx,long u) { lp = l; sd = cx.sD; dp = u;  }
         public int CompareTo(object obj)
         {
             if (obj == null)
@@ -162,12 +155,17 @@ namespace Pyrrho.Level4
                 return -1;
             return 0;
         }
-        // shareable as of 26 April 2021
+        /// <summary>
+        /// The class is used for identifiers that have columns or are columns.
+        /// Therefore used for select lists as it consists of columns in the result.
+        /// shareable as of 26 April 2021
+        /// </summary>
         internal class Idents : BTree<string, BTree<int,(Iix, Idents)>>
         {
             public new static Idents Empty = new Idents();
             Idents() : base() { }
-            Idents(BTree<string, BTree<int,(Iix, Idents)>> b) : base(b.root) { }
+            Idents(BTree<string, BTree<int,(Iix, Idents)>> b) : base(b.root) 
+            { }
             public static Idents operator +(Idents t, (string, Iix, Idents) x)
             {
                 var (n, iix, ids) = x;
@@ -288,11 +286,10 @@ namespace Pyrrho.Level4
                         {
                             p = new Iix(p.lp,p.sd,nb.defpos);
                             for (var c = cx._Dom(nb)?.rowType.First(); c != null; c = c.Next())
-                                if (cx.done[c.value()] is SqlValue v && cx.iim[v.defpos] is Iix vix)
+                                if (cx.done[c.value()] is SqlValue v)
                                 {
                                     var ds = st[v.name] ?? BTree<int,(Iix,Idents)>.Empty;
-                                    var dd = ds[vix.sd].Item2??Empty;
-                                    st = new Idents(st + (v.name, ds +(vix.sd,(vix,dd))));
+                                    st = new Idents(st + (v.name, ds +(p.sd,(new Iix(v.defpos,p.sd,v.defpos),Empty))));
                                 }
                         }
                         st = st?.ApplyDone(cx);

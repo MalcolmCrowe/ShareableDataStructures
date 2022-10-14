@@ -67,7 +67,7 @@ namespace Pyrrho.Level4
         protected Activation(Context cx,DBObject pr)
             : base(cx,cx.db.objects[pr.definer] as Role,cx.user)
         {
-            label = ((ObInfo)db.role.infos[pr.defpos]).name;
+            label = cx._Ob(pr.defpos).infos[cx.role.defpos].name;
             next = cx;
         }
         internal override Context SlideDown()
@@ -79,7 +79,6 @@ namespace Pyrrho.Level4
                     next.values += (k, values[k]);
             }
             next.val = val;
-            next.nextStmt = nextStmt;
             next.nextHeap = nextHeap;
             next.db = db; // adopt the transaction changes done by this
             return next;
@@ -114,44 +113,38 @@ namespace Pyrrho.Level4
     internal class CalledActivation : Activation
     {
         internal Procedure proc = null;
-        internal Domain udt = null;
+        internal UDType udt = null;
         internal Method cmt = null;
-        internal ObInfo udi = null;
+        internal Domain rdt = null;
         public CalledActivation(Context cx, Procedure p, long dm)
             : base(cx, p)
         { 
-            proc = p; udt = cx._Dom(dm);
+            proc = p; 
             for (var b = p.ins.First(); b != null; b = b.Next())
                 locals += (b.value(),true);
             if (p is Method mt)
             {
                 cmt = mt;
-                for (var b = udt.rowType.First(); b != null; b = b.Next())
+                for (var b = mt.udType.rowType.First(); b != null; b = b.Next())
                 {
-                    var iv = cx.Inf(b.value());
-                    locals += (iv.defpos, true);
-                    cx.Add(iv);
+                    var c = b.value();
+                    locals += (c, true);
                 }
             }
         }
         internal override TypedValue Ret()
         {
-            if (udi!=null)
-                return new TRow(udi,values);
+            if (rdt!=null)
+                return new TRow(rdt,values);
             return base.Ret();
-        }
-        protected override void Debug(System.Text.StringBuilder sb)
-        {
-            sb.Append(" " + proc.name);
         }
     }
     internal class TargetActivation : Activation
     {
         internal Context _cx;
         internal readonly RowSet _fm;
-        internal readonly ObInfo _ti;
+        internal readonly Domain _td;
         internal long _tgt;
-        internal readonly CTree<long, RowSet.Finder> _finder;
         internal PTrigger.TrigType _tty; // may be Insert
         internal int count = 0;
         internal TargetActivation(Context cx, RowSet fm, PTrigger.TrigType tt)
@@ -161,23 +154,7 @@ namespace Pyrrho.Level4
             _tty = tt; // guaranteed to be Insert, Update or Delete
             _fm = fm;
             _tgt = fm.target;
-            var ob = (DBObject)_cx.db.objects[_tgt];
-            var ro = (Role)_cx.db.objects[ob.definer];
-            _ti = (ObInfo)ro.infos[_tgt];
-            var fi = CTree<long, RowSet.Finder>.Empty;
-            var fb = cx._Dom(fm).rowType.First();
-            for (var b = _ti.dataType.rowType.First(); b != null&&fb!=null; b = b.Next(),fb=fb.Next())
-            {
-                var fp = fb.value();
-                var f = new RowSet.Finder(fp, _tgt);
-                fi += (fp, f);
-                fi += (b.value(), f);
-            }
-            _finder = fi;
-        }
-        protected override void Debug(System.Text.StringBuilder sb)
-        {
-            sb.Append(" " + _ti.name);
+            _td = cx._Dom(cx._Ob(_tgt));
         }
         internal virtual void EachRow(int pos)
         { }
@@ -206,7 +183,7 @@ namespace Pyrrho.Level4
             }
             HttpWebResponse rp = null;
             rp = RestRowSet.GetResponse(rq);
-            var vi = (ObInfo)cx.db.role.infos[vp];
+            var vi = cx._Ob(vp).infos[cx.role.defpos];
             var post = rq.Method == "POST";
             if (vi.metadata.Contains(Sqlx.ETAG)) // see Pyrrho manual sec 3.8.1
             {
@@ -273,6 +250,7 @@ namespace Pyrrho.Level4
         internal string prov = null;
         internal Level level = Level.D;
         internal SqlValue security = null;
+        internal readonly CList<long> insertCols;
         internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
         internal CTree<long, CTree<long, TypedValue>> pending =
             CTree<long, CTree<long, TypedValue>>.Empty;
@@ -282,11 +260,12 @@ namespace Pyrrho.Level4
         {
             _cx = cx;
             prov = cx._Dom(data)?.provenance;
+            insertCols = iC;
             table = (Table)cx.db.objects[ts.target];
-            table.Instance(cx.GetUid(),this, cx._Dom(ts)); // instance the columns and their domains
+            table.Instance(cx.GetUid(),this); // instance the columns and their domains
             _tgs = table.triggers;
             ts += (RowSet._Data, data.defpos);
-            _trs = new TransitionRowSet(this, ts, data, iC);
+            _trs = new TransitionRowSet(this, ts, data);
             acts = BTree<long, TriggerActivation>.Empty;
             for (var b = _tgs.First(); b != null; b = b.Next())
                 if (b.key().HasFlag(tt))
@@ -303,14 +282,15 @@ namespace Pyrrho.Level4
             for (var b = table.rindexes.First(); b != null; b = b.Next())
             {
                 var rt = (Table)cx.db.objects[b.key()];
-                var ri = (ObInfo)cx.db.role.infos[rt.defpos];
+                var ri = rt.infos[cx.role.defpos];
+                var rd = cx._Dom(rt);
                 var cp = GetUid();
                 var vs = BList<SqlValue>.Empty;
                 var tr = CTree<long, long>.Empty; 
-                for (var c = ri.dataType.rowType.First(); c != null; c = c.Next())
+                for (var c = rd.rowType.First(); c != null; c = c.Next())
                 {
                     var p = c.value();
-                    var ci = cx.Inf(p);
+                    var ci = cx._Ob(p).infos[cx.role.defpos];
                     var sc = cx.obs[p] as SqlValue;
                     sc = new SqlCopy(GetUid(), cx, ci?.name ?? sc.alias ?? sc.name, cp, p);
                     obs += (sc.defpos, sc);
@@ -336,13 +316,10 @@ namespace Pyrrho.Level4
                         var sc = (SqlCopy)cx.obs[d.key()];
                         fl += (xm[sc.copyFrom], d.value());
                     }
-                    var rf = new TableRowSet(ts.defpos, this, b.key(), cd.defpos);
-                    var nf = new From(new Ident(ri.name, cx.Ix(cp)), this, rf, null);
-                    rf += (DBObject._From, nf.defpos);
+                    var rf = new TableRowSet(ts.defpos, this, b.key());
                     if (fl != CTree<long, TypedValue>.Empty)
                         rf += (RowSet.Filter, fl);
                     obs += (rx.defpos, rx);
-                    obs += (nf.defpos, nf);
                     obs += (rt.defpos, rt);
                     for (var xb = _Dom(rf).rowType.First(); xb != null; xb = xb.Next())
                     {
@@ -352,7 +329,7 @@ namespace Pyrrho.Level4
                     TableActivation ra = null;
                     if (tt != PTrigger.TrigType.Insert)
                     {
-                        var da = (RowSet)(obs[nf.data] ?? obs[nf.source]);
+                        var da = (RowSet)(obs[rf.data] ?? obs[rf.defpos]);
                         ra = new TableActivation(this, rf, da, tt);
                         ra._tty = PTrigger.TrigType.Update;
                     }
@@ -416,7 +393,7 @@ namespace Pyrrho.Level4
             {
                 case PTrigger.TrigType.Insert:
                     if (table.Denied(cx, Grant.Privilege.Insert))
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+                        throw new DBException("42105", table.NameFor(cx));
 #if MANDATORYACCESSCONTROL
                     // parameter cl is only supplied when d_User.defpos==d.owner
                     // otherwise check if we should compute it
@@ -425,7 +402,7 @@ namespace Pyrrho.Level4
                     {
                         var uc = cx.db.user.clearance;
                         if (!uc.ClearanceAllows(table.classification))
-                            throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+                            throw new DBException("42105", table.NameFor(cx));
                         // The new record’s classification will have the user’s minimum clearance level:
                         // if this is above D, the groups will be the subset of the user’s groups 
                         // that are in the table classification, 
@@ -434,12 +411,10 @@ namespace Pyrrho.Level4
                         level = uc.ForInsert(table.classification);
                     }
 #endif
-                    //       var ckc = new ConstraintChecking(tr, trs, this);
-                    finder = cx.finder + _finder; // the activation finder takes precedence
                     break;
                 case PTrigger.TrigType.Update:
                     if (table.Denied(cx, Grant.Privilege.Update))
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+                        throw new DBException("42105", table.NameFor(cx));
                     for (var ass = ts.assig.First(); ass != null; ass = ass.Next())
                     {
                         var ua = ass.key();
@@ -453,9 +428,9 @@ namespace Pyrrho.Level4
                             while (vb is SqlCopy sc) // Views have indirection here
                                 vb = (DBObject)cx.db.objects[sc.copyFrom];
                             if (vb is TableColumn tc && tc.generated != GenerationRule.None)
-                                throw cx.db.Exception("0U000", vb.name).Mix();
+                                throw cx.db.Exception("0U000", vb.infos[cx.role.defpos].name).Mix();
                             if (vb.Denied(cx, Grant.Privilege.Update))
-                                throw new DBException("42105", vb.name);
+                                throw new DBException("42105", vb.infos[cx.role.defpos].name);
                             updates += (vb.defpos, ua);
                         }
                     }
@@ -471,7 +446,6 @@ namespace Pyrrho.Level4
                     // and are made at this point.)
                     // E. Update tgc from vs.
                     level = cx.db.user?.clearance ?? Level.D;
-                    cx.finder += _finder; // the activation finder takes precedence
                     if ((level != null || updates.Count > 0))
                     {
                         var fi = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
@@ -482,7 +456,7 @@ namespace Pyrrho.Level4
                     trigFired = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
                     break;
                 case PTrigger.TrigType.Delete:
-                    var targetInfo = (ObInfo)cx.db.role.infos[ts.target];
+                    var targetInfo = cx._Ob(ts.target).infos[cx.role.defpos];
                     if (table.Denied(cx, Grant.Privilege.Delete)
 #if MANDATORYACCESSCONTROL
                         ||
@@ -492,9 +466,8 @@ namespace Pyrrho.Level4
                         cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel))
 #endif
                         )
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[table.defpos]).name);
+                        throw new DBException("42105", table.NameFor(cx));
                     level = cx.db.user.clearance;
-                    cx.finder += _finder; // the activateion finder takes precedence
                     trigFired = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
                     if (trigFired != true)
                         trigFired = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachStatement);
@@ -514,7 +487,7 @@ namespace Pyrrho.Level4
         internal override void EachRow(int pos)
         {
             var cu = next.cursors[(_trs.data>=0)?_trs.data : _trs.from];
-            var trc = (cu!=null)?new TransitionRowSet.TransitionCursor(this, _trs, cu, pos)
+            var trc = (cu!=null)?new TransitionRowSet.TransitionCursor(this, _trs, cu, pos, insertCols)
                 : (TransitionRowSet.TransitionCursor)cursors[_trs.defpos];
             var tgc = trc._tgc;
             var rc = tgc._rec;
@@ -673,7 +646,6 @@ namespace Pyrrho.Level4
             for (var a=acts.First();r!=true && a!=null;a=a.Next())
             {
                 var ta = a.value();
-                ta.finder = finder + ta._finder; // the activation finder takes precedence
                 ta.cursors = cursors;
                 ta.values = values;
                 ta.db = db;
@@ -683,10 +655,6 @@ namespace Pyrrho.Level4
             SlideDown(); // get next to adopt our changes
             return r;
         }
-        protected override void Debug(System.Text.StringBuilder sb)
-        {
-            sb.Append(" " + _ti.name);
-        }
     }
     internal class RESTActivation : TargetActivation
     {
@@ -694,8 +662,8 @@ namespace Pyrrho.Level4
         internal RestView _vw;
         internal WebRequest _rq;
         internal string _targetName;
-        internal StringBuilder _sql = new StringBuilder();
         internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
+        internal BList<(string, string, string)> actions = BList<(string, string, string)>.Empty;
         internal RESTActivation(Context cx, RowSet ts, PTrigger.TrigType tgt)
             : base(cx, ts, tgt)
         {
@@ -703,10 +671,10 @@ namespace Pyrrho.Level4
             _rr = (RestRowSet)((r0 is RestRowSetUsing ru)?cx.obs[ru.template]:r0);
             _vw = (RestView)cx.db.objects[ts.target];
             _tgt = _rr.defpos;
-            var vi = (ObInfo)db.role.infos[_vw.viewPpos];
-            if (_rr == r0)
-            {
-                (url, _targetName, _sql) = _rr.GetUrl(this, vi);
+            var vi = _vw.infos[db.role.defpos];
+            (url, _targetName) = _rr.GetUrl(this, vi);
+            if (_targetName != null)
+            { 
                 url += "/" + _targetName;
                 var ub = new StringBuilder(url);
                 for (var b = _rr.matches.First(); b != null; b = b.Next())
@@ -723,13 +691,11 @@ namespace Pyrrho.Level4
             {
                 case PTrigger.TrigType.Insert:
                     if (_vw.Denied(cx, Grant.Privilege.Insert))
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[vi.defpos]).name);
-                    if (r0 == _rr)
-                        _rq.ContentType = "text/plain";
+                        throw new DBException("42105", _Ob(ts.target).infos[cx.role.defpos].name);
                     break;
                 case PTrigger.TrigType.Update:
                     if (_vw.Denied(cx, Grant.Privilege.Update))
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[vi.defpos]).name);
+                        throw new DBException("42105", _Ob(ts.target).infos[cx.role.defpos].name);
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
                     {
                         var c = (SqlValue)cx.obs[ass.key().vbl];
@@ -745,40 +711,43 @@ namespace Pyrrho.Level4
                     break;
                 case PTrigger.TrigType.Delete:
                     if (_vw.Denied(cx, Grant.Privilege.Delete))
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[_rr.defpos]).name);
+                        throw new DBException("42105", _rr.NameFor(cx));
                     break;
             }
         }
         internal override void EachRow(int pos)
         {
             var cu = _cx.cursors[_fm.defpos];
+            var _sql = new StringBuilder(); 
+            var assig = _rr.assig;
             if (_cx.obs[_fm.rsTargets.First().value()] is RestRowSetUsing ru)
             {
+                assig = ru.assig;
                 var u = obs[ru.urlCol].Eval(this);
                 if (u == null || u == TNull.Value) // can happen for Insert with a named column list, and for Delete
                 {
                     // the values list supplied must identify the url
                     var ut = (TableRowSet)obs[ru.usingTableRowSet];
                     for (var b = ut.indexes.First(); b != null; b = b.Next())
-                        for (var c=b.value().First();c!=null;c=c.Next())
-                        if (db.objects[c.key()] is Index nx
-                                && nx.flags.HasFlag(PIndex.ConstraintType.PrimaryKey))
-                        {
-                            var tb = (Table)db.objects[ut.target];
-                            var p = nx.rows.PositionAt(nx.MakeKey(cu.values));
-                            if (p == null || p.Value() == null)
-                                return;
-                            var rc = tb.tableRows[p.Value().Value];
-                            var sc = (SqlCopy)obs[ru.urlCol];
-                            u = rc.vals[sc.copyFrom];
-                        }
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                            if (db.objects[c.key()] is Index nx
+                                    && nx.flags.HasFlag(PIndex.ConstraintType.PrimaryKey))
+                            {
+                                var tb = (Table)db.objects[ut.target];
+                                var p = nx.rows.PositionAt(nx.MakeKey(cu.values));
+                                if (p == null || p.Value() == null)
+                                    return;
+                                var rc = tb.tableRows[p.Value().Value];
+                                var sc = (SqlCopy)obs[ru.urlCol];
+                                u = rc.vals[sc.copyFrom];
+                            }
                     if (u == null || u == TNull.Value)
                         return;
                 }
                 url = u.ToString();
                 var ix = url.LastIndexOf('/');
-                _targetName = url.Substring(ix+1);
-                var vi = (ObInfo)db.role.infos[_vw.viewPpos];
+                _targetName = url.Substring(ix + 1);
+                var vi = _Ob(_vw.viewPpos).infos[role.defpos];
                 var ub = new StringBuilder(url);
                 for (var b = _rr.matches.First(); b != null; b = b.Next())
                 {
@@ -794,42 +763,33 @@ namespace Pyrrho.Level4
             switch (_tty & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:
-                    var vs = cu.values;
-                    _sql.Append("insert into "); _sql.Append(_targetName);
-                    _sql.Append(" values");
-                    var cm = "(";
-                    for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
-                        if (vs[b.value()] is TypedValue tv)
-                        {
-                            _sql.Append(cm); cm = ",";
-                            if (tv.dataType.kind == Sqlx.CHAR)
+                    {
+                        var vs = cu.values;
+                        _sql.Append("insert into "); _sql.Append(_targetName);
+                        _sql.Append(" values");
+                        var cm = "(";
+                        for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
+                            if (vs[b.value()] is TypedValue tv)
                             {
-                                _sql.Append("'");
-                                _sql.Append(tv.ToString().Replace("'", "'''"));
-                                _sql.Append("'");
+                                _sql.Append(cm); cm = ",";
+                                if (tv.dataType.kind == Sqlx.CHAR)
+                                {
+                                    _sql.Append("'");
+                                    _sql.Append(tv.ToString().Replace("'", "'''"));
+                                    _sql.Append("'");
+                                }
+                                else
+                                    _sql.Append(tv);
                             }
-                            else
-                                _sql.Append(tv);
-                        }
-                    _sql.Append(");");
-                    break;
-            }
-        }
-        internal override Context Finish()
-        {
-            var assig = _rr.assig;
-            if (_cx.obs[_fm.rsTargets.First().value()] is RestRowSetUsing ru)
-                assig = ru.assig;
-            switch (_tty & (PTrigger.TrigType)7)
-            {
-                case PTrigger.TrigType.Insert:
-                    _cx.AddPost(url, _targetName, _sql.ToString(), db.user.name, _vw.defpos, _tty);
-                    break;
+                        _sql.Append(");");
+                        break;
+                    }
                 case PTrigger.TrigType.Update:
                     {
+
                         var cm = " set ";
                         if (assig.Count == 0)
-                            return _cx;
+                            break;
                         _sql.Append("update "); _sql.Append(_targetName);
                         for (var b = assig.First(); b != null; b = b.Next())
                         {
@@ -848,15 +808,14 @@ namespace Pyrrho.Level4
                         }
                         if (_rr.where.Count > 0 || _rr.matches.Count > 0)
                         {
-                            var sw = _rr.WhereString(_cx,_rr.namesMap);
+                            var sw = _rr.WhereString(_cx, _rr.namesMap);
                             if (sw.Length > 0)
                             {
                                 _sql.Append(" where ");
                                 _sql.Append(sw);
                             }
                         }
-                        _cx.AddPost(url, _targetName, _sql.ToString(), db.user.name, _vw.defpos, _tty);
-                    }
+                     }
                     break;
                 case PTrigger.TrigType.Delete:
                     {
@@ -864,16 +823,25 @@ namespace Pyrrho.Level4
                         _sql.Append("delete from "); _sql.Append(_targetName);
                         if (_rr.where.Count > 0 || _rr.matches.Count > 0)
                         {
-                            var sw = _rr.WhereString(_cx,_rr.namesMap);
+                            var sw = _rr.WhereString(_cx, _rr.namesMap);
                             if (sw.Length > 0)
                             {
                                 _sql.Append(" where ");
                                 _sql.Append(sw);
                             }
                         }
-                        _cx.AddPost(url, _targetName, _sql.ToString(), db.user.name, _vw.defpos, _tty);
                     }
                     break;
+            }
+            actions += (url, _targetName, _sql.ToString());
+        }
+        internal override Context Finish()
+        {
+            string str;
+            for (var ab = actions.First(); ab != null; ab = ab.Next())
+            {
+                (url, _targetName, str) = ab.value();
+                _cx.AddPost(url, _targetName, str, db.user.name, _vw.defpos, _tty);
             }
             return _cx;
         }
@@ -893,11 +861,11 @@ namespace Pyrrho.Level4
             {
                 case PTrigger.TrigType.Insert:
                     if (_vw.Denied(cx, Grant.Privilege.Insert))
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[_rr.defpos]).name);
+                        throw new DBException("42105", _rr.NameFor(cx));
                     break;
                 case PTrigger.TrigType.Update:
                     if (_vw.Denied(cx, Grant.Privilege.Update))
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[_rr.defpos]).name);
+                        throw new DBException("42105", _rr.NameFor(cx));
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
                     {
                         var c = (SqlValue)cx.obs[ass.key().vbl];
@@ -915,7 +883,7 @@ namespace Pyrrho.Level4
                     break;
                 case PTrigger.TrigType.Delete:
                     if (_vw.Denied(cx, Grant.Privilege.Delete))
-                        throw new DBException("42105", ((ObInfo)cx.db.role.infos[_rr.defpos]).name);
+                        throw new DBException("42105", _rr.NameFor(cx));
                     break;
             }
         }
@@ -924,8 +892,9 @@ namespace Pyrrho.Level4
         {
             var cu = cursors[_fm.defpos];
             var vs = cu.values;
-            var vi = (ObInfo)db.role.infos[_vw.viewPpos];
-            var (url, targetName, sql) = _rr.GetUrl(this, vi);
+            var vi = _Ob(_vw.viewPpos).infos[role.defpos];
+            var (url, _) = _rr.GetUrl(this, vi);
+            var sql = new StringBuilder();
             var rq = _rr.GetRequest(this, url, vi);
                         var np = _cx.db.nextPos;
             switch (_tty & (PTrigger.TrigType)7)
@@ -946,7 +915,7 @@ namespace Pyrrho.Level4
                             : v.ToString());
                     }
                     sql.Append("}]");
-                    RoundTrip(this, vi.defpos, _tty, rq, url, sql);
+                    RoundTrip(this, _vw.defpos, _tty, rq, url, sql);
                     var nr = new RemoteTableRow(np, vs, url, _rr);
                     var ns = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
                     _cx.newTables += (_vw.defpos, ns + (nr.defpos, nr));
@@ -974,7 +943,7 @@ namespace Pyrrho.Level4
                     for (var b = _rr.remoteCols.First(); b != null; b = b.Next(), tb = tb.Next())
                     {
                         sql.Append(cm); cm = ",";
-                        sql.Append('"'); sql.Append(obs[b.value()].name);
+                        sql.Append('"'); sql.Append(obs[b.value()].NameFor(this));
                         var tv = vs[tb.value()];
                         sql.Append("\":");
                         if (tv.dataType.kind == Sqlx.CHAR)
@@ -987,7 +956,7 @@ namespace Pyrrho.Level4
                             sql.Append(tv);
                     }
                     sql.Append("}]");
-                    RoundTrip(this, vi.defpos, _tty, rq, url, sql);
+                    RoundTrip(this, _vw.defpos, _tty, rq, url, sql);
                     var ur = new RemoteTableRow(np, vs, url, _rr);
                     var us = _cx.newTables[_vw.defpos] ?? BTree<long, TableRow>.Empty;
                     _cx.newTables += (_vw.defpos, us + (ur.defpos, ur));
@@ -996,7 +965,7 @@ namespace Pyrrho.Level4
                     for (var rb = cu.Rec().First(); rb != null; rb = rb.Next())
                     {
                         rq.Method = "DELETE";
-                        RoundTrip(this, vi.defpos, _tty, rq, url, sql);
+                        RoundTrip(this, _vw.defpos, _tty, rq, url, sql);
                         count++;
                     }
                     break;
@@ -1018,7 +987,6 @@ namespace Pyrrho.Level4
         /// The trigger definition
         /// </summary>
         internal readonly Trigger _trig;
-        internal readonly CTree<long, RowSet.Finder> _finder;
         internal readonly BTree<long, long> trigTarget, targetTrig; // trigger->target, target->trigger
         /// <summary>
         /// Prepare for multiple executions of this trigger
@@ -1034,39 +1002,23 @@ namespace Pyrrho.Level4
             obs = cx.obs;
             tg = (Trigger)((Trigger)cx.db.objects[tg.defpos]).Instance(trs.defpos,this);
             var tb = (Table)cx.db.objects[trs.target];
-            var ro = (Role)cx.db.objects[tg.definer];
-            var ti = (ObInfo)ro.infos[tb.defpos];
+            var dm = cx._Dom(tb);
             obs += (tb.defpos, tb);
             _trig = tg;
-            (trigTarget,targetTrig) = _Map(this, ti, tg);
+            (trigTarget,targetTrig) = _Map(this, dm, tg);
             defer = _trig.tgType.HasFlag(PTrigger.TrigType.Deferred);
             if (cx.obs[tg.oldTable] is TransitionTable tt)
                 new TransitionTableRowSet(tt.defpos,cx,trs,
-                    tg.framing.obs[tt.defpos].Domains(cx),true);
+                    cx._Dom(tt),true);
             if (defer)
                 cx.deferred += this;
-            // Recall that activation finders supplement rowset finders and take precedence
-            var fi = CTree<long, RowSet.Finder>.Empty;
-            for (var b = trigTarget.First(); b != null; b = b.Next())
-            {
-                var f = new RowSet.Finder(b.key(), _trs.defpos);
-                fi += (b.value(), f);
-                fi += (b.key(), f);
-            }
-            var o = _trig.oldRow;
-            var n = _trig.newRow;
-            if (o != -1L)
-                fi += (o, new RowSet.Finder(o, _trs.defpos));
-            if (n != -1L)
-                fi += (n, new RowSet.Finder(n, _trs.defpos));
-            _finder = fi;
         }
-        static (BTree<long,long>,BTree<long,long>) _Map(Context cx,ObInfo oi,Trigger tg)
+        static (BTree<long,long>,BTree<long,long>) _Map(TriggerActivation ta,Domain dm,Trigger tg)
         {
             var ma = BTree<long, long>.Empty;
             var rm = BTree<long, long>.Empty;
-            var sb = cx._Dom(tg).rowType.First();
-            for (var b = oi.dataType.rowType.First(); b != null && sb != null; b = b.Next(),
+            var sb = ((Domain)tg.framing.obs[tg.domain]).rowType.First();
+            for (var b = dm.rowType.First(); b != null && sb != null; b = b.Next(),
                 sb = sb.Next())
             {
                 var tp = sb.value();
@@ -1155,11 +1107,11 @@ namespace Pyrrho.Level4
         }
         internal override TriggerActivation FindTriggerActivation(long tabledefpos)
         {
-            var fm = (From)obs[obs[_trs.defpos].from];
+            var fm = (RowSet)obs[obs[_trs.defpos].from];
             var t = tr.objects[fm.target] as Table;
             return (t.defpos == tabledefpos) ? this : base.FindTriggerActivation(tabledefpos);
         }
-        protected override void Debug(System.Text.StringBuilder sb)
+        protected override void Debug(StringBuilder sb)
         { }
         internal override Context SlideDown()
         {

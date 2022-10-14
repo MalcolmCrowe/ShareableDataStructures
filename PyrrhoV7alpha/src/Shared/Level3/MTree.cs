@@ -870,7 +870,7 @@ namespace Pyrrho.Level3
             if (off < (int)cols.Count)
             {
                 head = cols[off];
-                headType = (cx.obs[head]??(DBObject)cx.db.objects[head]).Domains(cx);
+                headType = cx._Dom(head);
             }
             onDuplicate = d;
             onNullKey = n;

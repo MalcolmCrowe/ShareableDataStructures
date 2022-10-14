@@ -58,8 +58,8 @@ namespace Pyrrho.Level3
             {
                 try
                 {
-                    var x = (Executable)cx.obs[b.value()];
-                    nx = x.Obey(cx);
+                    var x = (Executable)cx._Ob(b.value());
+                    nx = x.Obey(a);
                     if (a==nx && a.signal != null)
                         a.signal.Throw(a);
                     if (cx != nx)
@@ -93,7 +93,7 @@ namespace Pyrrho.Level3
             var nm = GetType().Name;
             var sb = new StringBuilder(nm);
             if (mem.Contains(Label)) { sb.Append(" "); sb.Append(label); }
-            if (mem.Contains(Name)) { sb.Append(" "); sb.Append(name); }
+            if (mem.Contains(ObInfo.Name)) { sb.Append(" "); sb.Append(mem[ObInfo.Name]); }
             sb.Append(" ");sb.Append(Uid(defpos));
             if (mem.Contains(Stmt)) { sb.Append(" Stmt:"); sb.Append(stmt); }
             return sb.ToString();
@@ -234,13 +234,13 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (CompoundStatement)base._Relocate(cx);
-            r += (Stms,cx.Fix(stms));
+            r += (Stms,cx.FixLl(stms));
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (CompoundStatement)base._Fix(cx);
-            var nc = cx.Fix(stms);
+            var nc = cx.FixLl(stms);
             if (nc != stms)
                 r += (Stms, nc);
             return r;
@@ -271,7 +271,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (CompoundStatement)base._Replace(cx, so, sv);
-            var ns = cx.Replaced(r.stms);
+            var ns = cx.ReplacedLl(r.stms);
             if (ns!=r.stms)
                 r += (Stms, ns);
             cx.done += (defpos, r);
@@ -299,9 +299,9 @@ namespace Pyrrho.Level3
         internal CList<long> qMarks =>
            (CList<long>)mem[QMarks] ?? CList<long>.Empty;
         internal Executable target => (Executable)mem[Target];
-        public PreparedStatement(Context cx)
+        public PreparedStatement(Context cx,long nst)
             : base(cx.GetUid(), BTree<long, object>.Empty
-                 + (Target, cx.exec) + (QMarks, cx.qParams) + (_Framing, new Framing(cx)))
+                 + (Target, cx.exec) + (QMarks, cx.qParams) + (_Framing, new Framing(cx,nst)))
         { }
         protected PreparedStatement(long dp,BTree<long,object> m)
             :base(dp,m)
@@ -327,7 +327,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (PreparedStatement)base._Replace(cx, so, sv);
-            var nq = cx.Replaced(r.qMarks);
+            var nq = cx.ReplacedLl(r.qMarks);
             if (nq!=r.qMarks)
                 r += (QMarks,nq);
             cx.done += (defpos, r);
@@ -416,9 +416,9 @@ namespace Pyrrho.Level3
             cx.AddValue(vb, tv); // We expect a==cx, but if not, tv will be copied to a later
             return cx;
         }
-        internal override CTree<long, RowSet.Finder> Needs(Context context, long rs)
+        internal override CTree<long, bool> Needs(Context context, long rs)
         {
-            return CTree<long, RowSet.Finder>.Empty;
+            return CTree<long, bool>.Empty;
         }
         internal override bool LocallyConstant(Context cx, RowSet rs)
         {
@@ -465,7 +465,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="m">The mode</param>
 		public FormalParameter(long vp, Sqlx m, string n,Domain dt)
-            : base(vp,new BTree<long, object>(ParamMode, m)+(Name,n)+(AssignmentStatement.Val,vp)
+            : base(vp,new BTree<long, object>(ParamMode, m)+(ObInfo.Name,n)+(AssignmentStatement.Val,vp)
                   +(_Domain,dt.defpos))
         { }
         protected FormalParameter(long dp,BTree<long, object> m) : base(dp,m) { }
@@ -494,11 +494,11 @@ namespace Pyrrho.Level3
                 r += (AssignmentStatement.Val, vl);
             return r;
         }
-        internal override bool KnownBy(Context cx, RowSet q)
+        internal override bool KnownBy(Context cx, RowSet q, bool ambient=false)
         {
             return true;
         }
-        internal override bool KnownBy<V>(Context cx, CTree<long,V> cs)
+        internal override bool KnownBy<V>(Context cx, CTree<long,V> cs, bool ambient=false)
         {
             return true;
         }
@@ -506,9 +506,9 @@ namespace Pyrrho.Level3
         {
             return cx.values[defpos];
         }
-        internal override CTree<long, RowSet.Finder> Needs(Context context, long rs)
+        internal override CTree<long, bool> Needs(Context context, long rs)
         {
-            return CTree<long, RowSet.Finder>.Empty;
+            return CTree<long, bool>.Empty;
         }
         internal override bool LocallyConstant(Context cx, RowSet rs)
         {
@@ -627,6 +627,7 @@ namespace Pyrrho.Level3
         /// The handler type: CONTINUE, EXIT, or UNDO
         /// </summary>
 		public Sqlx htype => (Sqlx)(mem[HType]??Sqlx.EXIT);
+        public string name => (string)mem[ObInfo.Name] ?? "";
         /// <summary>
         /// A list of condition names, SQLSTATE codes, "SQLEXCEPTION", "SQLWARNING", or "NOT_FOUND"
         /// </summary>
@@ -641,7 +642,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="t">CONTINUE, EXIT or UNDO</param>
 		public HandlerStatement(long dp, Sqlx t, string n)
-            : base(dp, BTree<long, object>.Empty + (HType, t) + (Name, n)) { }
+            : base(dp, BTree<long, object>.Empty + (HType, t) + (ObInfo.Name, n)) { }
         protected HandlerStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static HandlerStatement operator+(HandlerStatement s,(long,object)x)
         {
@@ -912,7 +913,7 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var vb = cx.obs[vbl];
+            var vb = cx.obs[vbl] ?? (DBObject) cx.db.objects[vbl];
             var dm = cx._Dom(vb);
             if (val != -1L)
             {
@@ -1009,7 +1010,7 @@ namespace Pyrrho.Level3
         {
             var r = (MultipleAssignment)base._Relocate(cx);
             r += (LhsType, cx.Fix(lhsType));
-            r +=(List, cx.Fix(list));
+            r +=(List, cx.FixLl(list));
             r += (Rhs, cx.Fix(rhs));
             return r;
         }
@@ -1019,7 +1020,7 @@ namespace Pyrrho.Level3
             var nt = cx.Fix(lhsType);
             if (nt != lhsType)
                 r += (LhsType, nt);
-            var nl = cx.Fix(list);
+            var nl = cx.FixLl(list);
             if (nl != list)
                 r += (List, nl);
             var nr = cx.Fix(rhs);
@@ -1052,7 +1053,7 @@ namespace Pyrrho.Level3
             var nd = ((Domain)cx.obs[lhsType])._Replace(cx, so, sv).defpos;
             if (nd != r.lhsType)
                 r += (LhsType, nd);
-            var nl = cx.Replaced(r.list);
+            var nl = cx.ReplacedLl(r.list);
             if (nl != r.list)
                 r += (List, nl);
             var na = ((SqlValue)cx.obs[rhs])._Replace(cx, so, sv).defpos;
@@ -1219,21 +1220,21 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (SimpleCaseStatement)base._Relocate(cx);
-            r += (Else, cx.Fix(els));
+            r += (Else, cx.FixLl(els));
             r += (_Operand, cx.Fix(operand));
-            r += (Whens, cx.Fix(whens));
+            r += (Whens, cx.FixLl(whens));
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (SimpleCaseStatement)base._Fix(cx);
-            var ne = cx.Fix(els);
+            var ne = cx.FixLl(els);
             if (ne!=els)
             r += (Else, ne);
             var no = cx.Fix(operand);
             if (no!=operand)
             r += (_Operand, no);
-            var nw = cx.Fix(whens);
+            var nw = cx.FixLl(whens);
             if (nw!=whens)
             r += (Whens, nw);
             return r;
@@ -1266,10 +1267,10 @@ namespace Pyrrho.Level3
             var no = ((SqlValue)cx.obs[r.operand])._Replace(cx, so, sv).defpos;
             if (no != r.operand)
                 r += (_Operand, no);
-            var nw = cx.Replaced(r.whens);
+            var nw = cx.ReplacedLl(r.whens);
             if (nw != r.whens)
                 r += (Whens, nw);
-            var ne = cx.Replaced(r.els);
+            var ne = cx.ReplacedLl(r.els);
             if (ne != r.els)
                 r += (Else, ne);
             cx.done += (defpos, r);
@@ -1349,17 +1350,17 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (SearchedCaseStatement)base._Relocate(cx);
-            r += (SimpleCaseStatement.Else,cx.Fix(els));
-            r += (SimpleCaseStatement.Whens, cx.Fix(whens));
+            r += (SimpleCaseStatement.Else,cx.FixLl(els));
+            r += (SimpleCaseStatement.Whens, cx.FixLl(whens));
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (SearchedCaseStatement)base._Fix(cx);
-            var ne = cx.Fix(els);
+            var ne = cx.FixLl(els);
             if (ne != els)
                 r += (SimpleCaseStatement.Else, ne);
-            var nw = cx.Fix(whens);
+            var nw = cx.FixLl(whens);
             if (nw != whens)
                 r += (SimpleCaseStatement.Whens, nw);
             return r;
@@ -1393,10 +1394,10 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SearchedCaseStatement)base._Replace(cx, so, sv);
-            var nw = cx.Replaced(r.whens);
+            var nw = cx.ReplacedLl(r.whens);
             if (nw != r.whens)
                 r += (SimpleCaseStatement.Whens, nw);
-            var ne = cx.Replaced(r.els);
+            var ne = cx.ReplacedLl(r.els);
             if (ne != r.els)
                 r += (SimpleCaseStatement.Else, ne);
             cx.done += (defpos, r);
@@ -1462,7 +1463,7 @@ namespace Pyrrho.Level3
         {
             var r = (WhenPart)base._Relocate(cx);
             r += (Cond, cx.Fix(cond));
-            r += (Stms, cx.Fix(stms));
+            r += (Stms, cx.FixLl(stms));
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -1471,7 +1472,7 @@ namespace Pyrrho.Level3
             var nc = cx.Fix(cond);
             if (cond != nc)
                 r += (Cond, nc);
-            var ns = cx.Fix(stms);
+            var ns = cx.FixLl(stms);
             if (ns != stms)
                 r += (Stms, ns);
             return r;
@@ -1499,7 +1500,7 @@ namespace Pyrrho.Level3
             var no = ((SqlValue)cx.obs[r.cond])._Replace(cx, so, sv).defpos;
             if (no != r.cond)
                 r += (Cond, no);
-            var nw = cx.Replaced(r.stms);
+            var nw = cx.ReplacedLl(r.stms);
             if (nw != r.stms)
                 r += (Stms, nw);
             cx.done += (defpos, r);
@@ -1585,9 +1586,9 @@ namespace Pyrrho.Level3
         {
             var r = (IfThenElse)base._Relocate(cx);
             r += (Search, cx.Fix(search));
-            r += (Then,cx.Fix(then));
-            r += (Else, cx.Fix(els)); 
-            r += (Elsif, cx.Fix(elsif)); 
+            r += (Then,cx.FixLl(then));
+            r += (Else, cx.FixLl(els)); 
+            r += (Elsif, cx.FixLl(elsif)); 
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -1596,13 +1597,13 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (Search, ns);
-            var nt = cx.Fix(then);
+            var nt = cx.FixLl(then);
             if (nt != then)
                 r += (Then, nt);
-            var ne = cx.Fix(els);
+            var ne = cx.FixLl(els);
             if (els != ne)
                 r += (Else, ne);
-            var ni = cx.Fix(elsif);
+            var ni = cx.FixLl(elsif);
             if (ni != elsif)
                 r += (Elsif, ni);
             return r;
@@ -1635,13 +1636,13 @@ namespace Pyrrho.Level3
             var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
             if (no != r.search)
                 r += (Search, no);
-            var nt = cx.Replaced(r.then);
+            var nt = cx.ReplacedLl(r.then);
             if (nt != r.then)
                 r += (Then, nt);
-            var ni = cx.Replaced(r.elsif);
+            var ni = cx.ReplacedLl(r.elsif);
             if (ni != r.elsif)
                 r += (Elsif, ni);
-            var ne = cx.Replaced(r.els);
+            var ne = cx.ReplacedLl(r.els);
             if (ne != r.els)
                 r += (Else, ne);
             cx.done += (defpos, r);
@@ -1761,7 +1762,7 @@ namespace Pyrrho.Level3
         {
             var r = (WhileStatement)base._Relocate(cx);
             r += (Search, cx.Fix(search));
-            r += (What, cx.Fix(what));
+            r += (What, cx.FixLl(what));
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -1770,7 +1771,7 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (Search, ns);
-            var nw = cx.Fix(what);
+            var nw = cx.FixLl(what);
             if (nw != what)
                 r += (What, nw);
             return r;
@@ -1809,7 +1810,7 @@ namespace Pyrrho.Level3
             var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
             if (no != r.search)
                 r += (Search, no);
-            var nw = cx.Replaced(r.what);
+            var nw = cx.ReplacedLl(r.what);
             if (nw != r.what)
                 r += (What, nw);
             cx.done += (defpos, r);
@@ -1865,7 +1866,7 @@ namespace Pyrrho.Level3
         {
             var r = (RepeatStatement)base._Relocate(cx);
             r += (WhileStatement.Search, cx.Fix(search));
-            r += (WhileStatement.What, cx.Fix(what));
+            r += (WhileStatement.What, cx.FixLl(what));
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -1874,7 +1875,7 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (WhileStatement.Search, ns);
-            var nw = cx.Fix(what);
+            var nw = cx.FixLl(what);
             if (nw != what)
                 r += (WhileStatement.What, nw);
             return r;
@@ -1913,7 +1914,7 @@ namespace Pyrrho.Level3
             var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
             if (no != r.search)
                 r += (WhileStatement.Search, no);
-            var nw = cx.Replaced(r.what);
+            var nw = cx.ReplacedLl(r.what);
             if (nw != r.what)
                 r += (WhileStatement.What, nw);
             cx.done += (defpos, r);
@@ -1941,8 +1942,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: an iterate statement from the parser
         /// </summary>
-        /// <param name="n">The name of the iterator</param>
-		public IterateStatement(long dp,string n,long i):base(dp,BTree<long,object>.Empty
+        /// <param name="n">The name of the iterated SQL-statement</param>
+		public IterateStatement(long dp,string n):base(dp,BTree<long,object>.Empty
             +(Label,n))
 		{ }
         protected IterateStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2002,13 +2003,13 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (LoopStatement)base._Relocate(cx);
-            r += (WhenPart.Stms, cx.Fix(stms));
+            r += (WhenPart.Stms, cx.FixLl(stms));
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (LoopStatement)base._Fix(cx);
-            var ns = cx.Fix(stms);
+            var ns = cx.FixLl(stms);
             if (ns != stms)
                 r += (WhenPart.Stms, ns);
             return r;
@@ -2048,7 +2049,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (LoopStatement)base._Replace(cx, so, sv);
-            var nw = cx.Replaced(r.stms);
+            var nw = cx.ReplacedLl(r.stms);
             if (nw != r.stms)
                 r += (WhenPart.Stms, nw);
             cx.done += (defpos, r);
@@ -2121,7 +2122,7 @@ namespace Pyrrho.Level3
         {
             var r = (ForSelectStatement)base._Relocate(cx);
             r += (Sel, cx.Fix(sel));
-            r += (Stms, cx.Fix(stms));
+            r += (Stms, cx.FixLl(stms));
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -2130,7 +2131,7 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(sel);
             if (ns != sel)
                 r += (Sel, ns);
-            var nn = cx.Fix(stms);
+            var nn = cx.FixLl(stms);
             if (nn != stms)
                 r += (Stms, nn);
             return r;
@@ -2151,7 +2152,8 @@ namespace Pyrrho.Level3
             for (var rb = qs.First(ac); rb != null; rb = rb.Next(ac))
             {
                 ac.Add(qs);
-                ac.finder = ((RowSet)cx.obs[qs.defpos]).finder;
+                cx.cursors += (qs.defpos, rb);
+                ac.values += cx.cursors[qs.defpos].values;
                 ac.brk = cx as Activation;
                 ac.cont = ac;
                 ac = (Activation)ObeyList(stms, ac);
@@ -2168,7 +2170,7 @@ namespace Pyrrho.Level3
             var no = ((RowSet)cx.obs[r.sel])._Replace(cx, so, sv).defpos;
             if (no != r.sel)
                 r += (Sel, no);
-            var nw = cx.Replaced(r.stms);
+            var nw = cx.ReplacedLl(r.stms);
             if (nw != r.stms)
                 r += (Stms, nw);
             cx.done += (defpos, r);
@@ -2384,7 +2386,7 @@ namespace Pyrrho.Level3
         {
             var r = (FetchStatement)base._Relocate(cx);
             r += (Cursor, cx.Fix(cursor));
-            r += (Outs, cx.Fix(outs));
+            r += (Outs, cx.FixLl(outs));
             r += (Where, cx.Fix(where));
             return r;
         }
@@ -2394,7 +2396,7 @@ namespace Pyrrho.Level3
             var nc = cx.Fix(cursor);
             if (nc != cursor)
                 r += (Cursor, nc);
-            var no = cx.Fix(outs);
+            var no = cx.FixLl(outs);
             if (outs != no)
                 r += (Outs, no);
             var nw = cx.Fix(where);
@@ -2475,7 +2477,7 @@ namespace Pyrrho.Level3
             var nc = ((SqlValue)cx.obs[r.cursor])._Replace(cx, so, sv).defpos;
             if (nc != r.cursor)
                 r += (Cursor, nc);
-            var no = cx.Replaced(r.outs);
+            var no = cx.ReplacedLl(r.outs);
             if (no != r.outs)
                 r += (Outs, no);
             cx.done += (defpos, r);
@@ -2517,6 +2519,10 @@ namespace Pyrrho.Level3
         /// </summary>
 		public long var => (long)(mem[Var] ?? -1L);
         /// <summary>
+        /// We need to allow the Call to have a name because we may not have resolved the target object
+        /// </summary>
+        public string name => (string)mem[ObInfo.Name];
+        /// <summary>
         /// The proc/method to call
         /// </summary>
 		public long procdefpos => (long)mem[ProcDefPos];
@@ -2532,14 +2538,14 @@ namespace Pyrrho.Level3
         /// </summary>
         public CallStatement(long lp, Context cx,Procedure pr, string pn, 
             CList<long> acts, SqlValue tg = null)
-         : this(lp,cx, (Procedure)pr?.Instance(lp,cx), pn, acts, 
+         : this(lp,cx, (Procedure)cx.Add(pr?.Instance(lp,cx)), pn, acts, 
                (tg == null) ? null : 
-               new BTree<long, object>(Var, tg.defpos))
+               new BTree<long, object>(Var, tg.defpos) + (_Domain,pr?.domain??Domain.Content.defpos))
         { }
         protected CallStatement(long dp, Context cx,Procedure pr, string pn, CList<long> acts, 
             BTree<long, object> m = null)
          : base(dp, _Mem(cx,pr,acts,m) + (Parms, acts) + (ProcDefPos, pr?.defpos ?? -1L)
-               + (Name, pr?.name??pn))
+               + (ObInfo.Name, pr?.infos[cx.role.defpos]?.name ?? pn))
         { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Context cx,Procedure pr,CList<long> acts,BTree<long,object>m)
@@ -2576,7 +2582,7 @@ namespace Pyrrho.Level3
         {
             var r = (CallStatement)base._Relocate(cx);
             r += (ProcDefPos, cx.Fix(procdefpos));
-            r += (Parms, cx.Fix(parms));
+            r += (Parms, cx.FixLl(parms));
             r += (Var, cx.Fix(var));
             return r;
         }
@@ -2586,7 +2592,7 @@ namespace Pyrrho.Level3
             var np = cx.Fix(procdefpos);
             if (np != procdefpos)
                 r += (ProcDefPos, np);
-            var ns = cx.Fix(parms);
+            var ns = cx.FixLl(parms);
             if (parms != ns)
                 r += (Parms, ns);
             var va = cx.Fix(var);
@@ -3029,7 +3035,7 @@ namespace Pyrrho.Level3
         {
             var r = (SelectSingle)base._Relocate(cx);
             r += (ForSelectStatement.Sel, cx.Fix(sel));
-            r += (Outs, cx.Fix(outs));
+            r += (Outs, cx.FixLl(outs));
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -3038,7 +3044,7 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(sel);
             if (ns != sel)
                 r += (ForSelectStatement.Sel, ns);
-            var no = cx.Fix(outs);
+            var no = cx.FixLl(outs);
             if (no != outs)
                 r += (Outs, no);
             return r;
@@ -3069,7 +3075,7 @@ namespace Pyrrho.Level3
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SelectSingle)base._Replace(cx, so, sv);
-            var no = cx.Replaced(r.outs);
+            var no = cx.ReplacedLl(r.outs);
             if (no != r.outs)
                 r += (Outs, no);
             cx.done += (defpos, r);
@@ -3090,20 +3096,16 @@ namespace Pyrrho.Level3
 
     }
     /// <summary>
-    /// The interesting bit here is that if we have something like "insert into a(b,c) select d,e from f"
-    /// the table-valued subquery silently gets its columns renamed to b,c and types coerced to match a, 
-    /// and then the resulting columns get reordered to become candidate rows of a so that trigger processing
-    /// etc can proceed.
-    /// This is a bit more complex than "insert into a values(..." and requires some planning.
-    /// The current approach is that in the above example domain is a's row type, nominaltype is for (b,c)
-    /// and rows is a subquery before the renaming. 
-    /// The renaming, reordering and coercion steps complicate the coding.
+    /// The Insert columns list if provided is an ordered list of some or all of the from's columns.
+    /// This will match the row type of the data rowset. 
+    /// If present the data rowset needs to have its columns reordered and expanded by nulls to
+    /// match the from row set.
     /// shareable
     /// </summary>
     internal class SqlInsert : Executable
     {
         internal const long
-            InsCols = -241, // CList<long> TableColumn
+            InsCols = -241, // CList<long> SqlValue
             Provenance = -155, //string
             Value = -156; // long RowSet
         internal long source => (long)(mem[RowSet._Source] ?? -1L);
@@ -3178,7 +3180,7 @@ namespace Pyrrho.Level3
             for (var it = tg.rsTargets.First(); it != null; it = it.Next())
             {
                 var tb = cx.obs[it.value()];
-                ts += tb.Insert(cx, data, true, insCols);
+                ts += tb.Insert(cx, data, insCols);
             }
             for (var ib = data.First(cx); ib != null; ib = ib.Next(cx))
                 for (var it = ts.First(); it != null; it = it.Next())
@@ -3285,7 +3287,7 @@ namespace Pyrrho.Level3
             for (var it = tg.rsTargets.First(); it != null; it = it.Next())
             {
                 var tb = cx.obs[it.value()];
-                ts += tb.Delete(cx, tg, true);
+                ts += tb.Delete(cx, tg);
             }
             for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
                 for (var it = ts.First(); it != null; it = it.Next())
@@ -3350,7 +3352,7 @@ namespace Pyrrho.Level3
             for (var it = tg.rsTargets.First(); it != null; it = it.Next())
             {
                 var tb = cx.obs[it.value()];
-                ts += tb.Update(cx, tg, true);
+                ts += tb.Update(cx, tg);
             }
             for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
                 for (var it = ts.First(); it != null; it = it.Next())

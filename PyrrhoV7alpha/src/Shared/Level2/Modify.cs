@@ -55,12 +55,18 @@ namespace Pyrrho.Level2
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
         public Modify(string nm, long dp, Procedure me, Ident sce, long pp, Context cx)
-            : base(Type.Modify,pp,cx,me.body,cx._Dom(me))
+            : base(Type.Modify,pp,_Pre(cx),me.body,cx._Dom(me))
 		{
             modifydefpos = dp;
-            nameAndArity = me.name+"$"+me.arity;
+            nameAndArity = me.infos[cx.role.defpos].name;
             source = sce;
             proc = me.body;
+            nst = me.framing.obs.First()?.key() ?? nst;
+        }
+        static Context _Pre(Context cx) // hack to keep our formalparameters in framing
+        {
+            cx.db += (Database.NextStmt, Transaction.Executables);
+            return cx;
         }
         public Modify(string nm, long dp, RowSet rs, Ident sce, long pp, Context cx)
     : base(Type.Modify, pp, cx, rs.defpos, cx._Dom(rs))
@@ -81,7 +87,7 @@ namespace Pyrrho.Level2
             modifydefpos = wr.cx.Fix(x.modifydefpos);
             nameAndArity = x.nameAndArity;
             source = x.source;
-            parms = wr.cx.Fix(x.parms);
+            parms = wr.cx.FixLl(x.parms);
             proc = wr.cx.Fix(x.proc);
         }
         protected override Physical Relocate(Writer wr)
@@ -118,35 +124,26 @@ namespace Pyrrho.Level2
         {
             var pr = (Method)rdr.context.db.objects[modifydefpos];
             var psr = new Parser(rdr.context, source);
-            var ns = rdr.context.nextStmt;
+            nst = psr.cx.db.nextStmt;
             psr.cx.obs = ObTree.Empty;
-        //    new Ident(psr, nameAndArity);
-        //    psr.LexPos(); //synchronise with CREATE
             // instantiate everything we may need
-            var oi = (ObInfo)rdr.context.db.role.infos[pr.udType.defpos];
-            var odt = (UDType)oi.dataType;
-            odt.Instance(psr.LexPos().dp,psr.cx, Domain.Null);
+            var odt = pr.udType;
+            pr.Instance(psr.LexPos().dp, psr.cx);
+            odt.Instance(psr.LexPos().dp,psr.cx);
             for (var b = pr.ins.First(); b != null; b = b.Next())
             {
-                var p = psr.cx.obs[b.value()];
+                var p = (FormalParameter)psr.cx.obs[b.value()];
                 var ip = rdr.context.Ix(p.defpos);
                 psr.cx.defs += (new Ident(p.name, ip), ip);
-                psr.cx.iim += (p.defpos, ip);
             }
             psr.cx.Install(pr, 0);
             // and parse the body
-            var bd = psr.ParseProcedureStatement(rdr.context._Dom(pr), null, null);
+            var bd = psr.ParseProcedureStatement(rdr.context._Dom(pr));
             proc = bd.defpos;
-            rdr.context.nextStmt = psr.cx.nextStmt;
-            // the framing is all of the new bits
-            var os = pr.framing.obs;
-            for (var b = psr.cx.obs.PositionAt(ns);
-                b != null; b = b.Next())
-                os += (b.key(), b.value());
-            var fr = framing = Framing.Empty+(Framing.Obs,os);
-            // 
+            framing = new Framing(psr.cx,nst);
+            framing += (Framing.Obs, pr.framing.obs + framing.obs);
             pr += (Procedure.Body, proc);
-            pr += (DBObject._Framing,fr);
+            pr += (DBObject._Framing,framing);
             rdr.context.Install(pr, rdr.Position);
         }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -188,8 +185,8 @@ namespace Pyrrho.Level2
             var pr = (Method)cx.db.objects[modifydefpos];
             pr = pr + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc);
-            ro = ro + (new ObInfo(modifydefpos, nameAndArity, dataType,
-                Grant.Privilege.Execute | Grant.Privilege.GrantExecute), true) + pr;
+            pr += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(nameAndArity,
+                Grant.Privilege.Execute | Grant.Privilege.GrantExecute)));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + modifydefpos, ppos));
             cx.db = cx.db + (ro, p) + (pr, p);

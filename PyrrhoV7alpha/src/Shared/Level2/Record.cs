@@ -41,7 +41,8 @@ namespace Pyrrho.Level2
         /// serialised only for transaction master: to check against conflicting delete/keyUpdate
         /// </summary>
         protected Level _classification = Level.D;
-        public virtual Level classification { get { return _classification; } }
+        public virtual Level classification => _classification;
+        public override long _Table => tabledefpos;
         public long subType = -1;
         /// <summary>
         /// A relative URI (base is given in PImportTransaction)
@@ -161,7 +162,7 @@ namespace Pyrrho.Level2
         internal virtual void PutFields(Writer wr)  //LOCKED
         {
             wr.PutLong(fields.Count);
-            var cs = ((Table) wr.cx.db.objects[tabledefpos]).tblCols;
+            var cs = ((Table) wr.cx.db.objects[tabledefpos]).tableCols;
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
             {
                 var k = d.key();
@@ -257,7 +258,8 @@ namespace Pyrrho.Level2
                 if (x.reftabledefpos>=0)
                 {
                     var rx = (Index)cx.db.objects[x.refindexdefpos];
-                    if (!(rx is VirtualIndex) && !rx.rows.Contains(k))
+        /*            if (!(rx is VirtualIndex) && */
+                    if (!rx.rows.Contains(k)) 
                         throw new DBException("23000", "missing foreign key ", k);
                 }
                 x += (k, defpos);
@@ -275,13 +277,12 @@ namespace Pyrrho.Level2
             }
             catch (DBException e)
             {
-                var oi = cx.role.infos[tb.defpos] as ObInfo;
+                var oi = tb.infos[cx.role.defpos];
                 if (e.signal == "23000")
                     throw new DBException(e.signal, e.objects[0].ToString() + oi.name 
                         + e.objects[1].ToString());
                 throw e;
             }
-            tb += (DBObject.LastChange, ppos);
             cx.Install(tb, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

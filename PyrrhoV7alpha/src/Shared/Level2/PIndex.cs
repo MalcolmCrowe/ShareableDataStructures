@@ -78,9 +78,8 @@ namespace Pyrrho.Level2
             if (!Committed(wr,tabledefpos)) return tabledefpos;
             for (var b=columns.First();b!=null;b=b.Next())
                 if (!Committed(wr,b.value())) return b.value();
-            if (reference >= 0)
+            if (reference >= 0 && wr.cx.db.objects[reference] is Index xr)
             {
-                var xr = (Index)wr.cx.db.objects[reference];
                 var reftable = xr.tabledefpos;
                 if (!Committed(wr, reftable)) return reftable;
                 if (!Committed(wr, reference)) return reference;
@@ -100,9 +99,7 @@ namespace Pyrrho.Level2
         public PIndex(string nm, long tb, CList<long> cl,
             ConstraintType fl, long rx, long pp, Context cx) :
             this(Type.PIndex, nm, tb, cl, fl, rx, pp, cx)
-        {
-
-        }
+        {  }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
         /// </summary>
@@ -192,6 +189,12 @@ namespace Pyrrho.Level2
             reference = rdr.GetLong();
             base.Deserialise(rdr);
         }
+        public override bool Committed(Writer wr, long pos)
+        {
+            if (pos >= Transaction.Executables && pos < Transaction.HeapStart)
+                return true;
+            return base.Committed(wr, pos);
+        }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
@@ -244,16 +247,16 @@ namespace Pyrrho.Level2
         }
         internal override void Install(Context cx, long p)
         {
-            var x = new Index(this, cx).Build(cx.db);
             var tb = (Table)cx.db.objects[tabledefpos];
+            var x = new Index(this, cx).Build(cx);
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
             tb += (Table.Indexes, tb.indexes + (x.keys, t+(x.defpos,true)));
+            x += (DBObject.Infos, x.infos+(cx.db._role,new ObInfo("", Grant.Privilege.Execute)));
             cx.Install(x,p);
-            if (reference>=0)
+            if (reference>=0 && cx.db.objects[x.refindexdefpos] is Index rx)
             {
-                var rx = (Index)cx.db.objects[x.refindexdefpos];
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
-                var rt = (Table)cx.db.objects[x.reftabledefpos];
+                var rt = (Table)(cx.obs[x.reftabledefpos]??cx.db.objects[x.reftabledefpos]);
                 var at = rt.rindexes[x.defpos] ?? CTree<CList<long>, CList<long>>.Empty;
                 rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at+(x.keys,rx.keys)));
                 cx.Install(rt, p);
@@ -269,12 +272,6 @@ namespace Pyrrho.Level2
                 kc += (tc,true);
             }
             tb += (Table.KeyCols, kc);
-            var ti = (ObInfo)cx.db.role.infos[tb.defpos];
-            ti += (ObInfo.SchemaKey, p);
-            var oi =new ObInfo(ppos, "", new Domain(Sqlx.ROW, cx, cs),
-                Grant.Privilege.Execute);
-            var r = cx.db.role + (ppos,oi) + (tb.defpos,ti);
-            cx.db += (r, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb, p);
@@ -350,6 +347,7 @@ namespace Pyrrho.Level2
     }
     /// <summary>
     /// PIndex2 is used for adding metadata flags to an integrity or referential constraint
+    /// (not used as of v7)
     /// </summary>
     internal class PIndex2 : PIndex1
     {
@@ -401,6 +399,139 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
         }
     }
+/*    /// <summary>
+    /// VIndex: Index for Virtual Table
+    /// allows definition of navigation properties for RestViews.
+    /// Not a constraint on CRUD operations
+    /// </summary>
+    internal class VIndex : Physical
+    {
+        public virtual long defpos => ppos;
+        public string name;
+        public long tabledefpos;
+        public CList<int> seqs = CList<int>.Empty;
+        public PIndex.ConstraintType flags = 0;
+        public long reference;
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            if (defpos != ppos && !Committed(wr, defpos)) return defpos;
+            if (!Committed(wr, tabledefpos)) return tabledefpos;
+            if (reference >= 0 && wr.cx.db.objects[reference] is Index xr)
+            {
+                var reftable = xr.tabledefpos;
+                if (!Committed(wr, reftable)) return reftable;
+                if (!Committed(wr, reference)) return reference;
+            }
+            return -1;
+        }
+        /// <summary>
+        /// Constructor: A new VIndex request from the Parser
+        /// </summary>
+        /// <param name="nm">The name of the index</param>
+        /// <param name="tb">The defining position of the table being indexed</param>
+        /// <param name="cl">The rowType positions of key TableColumns</param>
+        /// <param name="fl">The constraint flags</param>
+        /// <param name="rx">The defining position of the referenced index (or -1)</param>
+        /// <param name="db">The database</param>
+        public VIndex(string nm, long tb, CList<int> cl,
+            PIndex.ConstraintType fl, long rx, long pp, Context cx) :
+            this(Type.VIndex, nm, tb, cl, fl, rx, pp, cx)
+        {
+        }
+        protected VIndex(Type t, string nm, long tb, CList<int> cl,
+            PIndex.ConstraintType fl, long rx, long pp, Context cx)
+            : base(t, pp, cx)
+        {
+            name = nm;
+            tabledefpos = tb;
+            seqs = cl;
+            flags = fl;
+            reference = rx;
+        }
+        /// <summary>
+        /// Constructor: A new PIndex request from the buffer
+        /// </summary>
+        /// <param name="bp">The buffer</param>
+        /// <param name="pos">Position in the buffer</param>
+        public VIndex(Reader rdr) : base(Type.PIndex2, rdr) { }
+        protected VIndex(Type t, Reader rdr) : base(t, rdr) { }
+        protected VIndex(VIndex x, Writer wr) : base(x, wr)
+        {
+            name = x.name;
+            tabledefpos = wr.cx.Fix(x.tabledefpos);
+            seqs = x.seqs;
+            flags = x.flags;
+            reference = wr.cx.Fix(x.reference);
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return new VIndex(this, wr);
+        }
+        public override void Serialise(Writer wr) //LOCKED
+        {
+            tabledefpos = wr.cx.Fix(tabledefpos);
+            wr.PutString(name.ToString());
+            wr.PutLong(tabledefpos);
+            wr.PutInt((int)seqs.Count);
+            for (int j = 0; j < seqs.Count; j++)
+                wr.PutInt(seqs[j]);
+            wr.PutInt((int)flags);
+            reference = wr.cx.Fix(reference);
+            wr.PutLong(reference);
+            base.Serialise(wr);
+        }
+        public override void Deserialise(Reader rdr)
+        {
+            name = rdr.GetString();
+            tabledefpos = rdr.GetLong();
+            int n = rdr.GetInt();
+            if (n > 0)
+            {
+                seqs = CList<int>.Empty;
+                for (int j = 0; j < n; j++)
+                    seqs += (j, rdr.GetInt());
+            }
+            flags = (PIndex.ConstraintType)rdr.GetInt();
+            reference = rdr.GetLong();
+            base.Deserialise(rdr);
+        }
+        /// <summary>
+        /// A readable version of this Physical
+        /// </summary>
+        /// <returns>The string representation</returns>
+        public override string ToString()
+        {
+            string r = GetType().Name + " " + name;
+            r = r + " on " + Pos(tabledefpos) + "(";
+            for (int j = 0; j < seqs.Count; j++)
+                r += ((j > 0) ? "," : "") + seqs[j];
+            r += ") " + flags.ToString();
+            if (reference >= 0)
+                r += " refers to [" + Pos(reference) + "]";
+            return r;
+        }
+        internal override void Install(Context cx, long p)
+        {
+            var tb = (Table)(cx.obs[tabledefpos]??cx.db.objects[tabledefpos]);
+            var x = new VirtualIndex(this, cx);
+            var xs = tb.indexes ?? CTree<CList<long>, CTree<long, bool>>.Empty;
+            var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
+            tb += (Table.Indexes, xs + (x.keys, t + (x.defpos, true)));
+            cx.Install(x, p);
+            if (reference >= 0 && cx.db.objects[x.refindexdefpos] is Index rx)
+            {
+                rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
+                var rt = (Table)(cx.obs[x.reftabledefpos] ?? cx.db.objects[x.reftabledefpos]);
+                var at = rt.rindexes[x.defpos] ?? CTree<CList<long>, CList<long>>.Empty;
+                rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at + (x.keys, rx.keys)));
+                cx.Install(rt, p);
+                cx.Install(rx, p);
+            }
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.Install(tb, p);
+        }
+    } */
     internal class RefAction : Physical
     {
         public PIndex.ConstraintType ctype;

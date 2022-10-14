@@ -158,6 +158,13 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
+        public override DBException Conflicts(CTree<long, bool> t,PTransaction ct)
+        {
+            for (var b = t.First(); b != null; b = b.Next())
+                if (fields.Contains(b.key()))
+                    return new DBException("40006",b.key(),this,ct).Mix();
+            return null;
+        }
         internal override TableRow AddRow(Context cx)
         {
             var tb = (Table)cx.db.objects[tabledefpos];

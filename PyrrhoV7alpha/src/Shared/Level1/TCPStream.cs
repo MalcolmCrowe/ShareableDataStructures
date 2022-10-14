@@ -564,7 +564,7 @@ namespace Pyrrho.Level1
             for (var b=r.columns.First();b!=null;b=b.Next(), j++)
             {
                 var p = b.value();
-                var d = _cx._Dom(_cx.obs[p]);
+                var d = _cx._Dom(_cx.obs[p] ?? (DBObject)_cx.db.objects[p]);
                 PutString(r.dataType.NameFor(_cx,p,b.key()));
                 var c = r[p];
                 if (c is TArray ta && ta.Length>=1)
@@ -621,7 +621,7 @@ namespace Pyrrho.Level1
             var dm = cx._Dom(r);
             for (var e = r.First(cx); e != null; e = e.Next(cx))
                 for (var b = dm.rowType.First(); b!=null; b=b.Next())
-                    PutCell(cx,cx.Inf(b.value()).dataType, e[b.key()]);
+                    PutCell(cx,cx._Dom(b.value()), e[b.key()]);
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -685,6 +685,8 @@ namespace Pyrrho.Level1
             var dm = cx._Dom(result);
             var dt = dm.rowType;
             int m = cx._Dom(result).display;
+            if (m == 0)
+                m = dt.Length;
             PutInt(m);
             if (m == 0)
             {
@@ -738,7 +740,7 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema1);
 #endif
-            if (cx.obs[result.defpos] is From fm) // compute the schemakey
+            if (cx.obs[result.defpos] is RowSet fm) // compute the schemakey
                 PutLong(fm.lastChange);
             else
                 PutLong(0);
@@ -757,7 +759,7 @@ namespace Pyrrho.Level1
                 var j = 0;
                 for (var b=dt.representation.First();b!=null;b=b.Next(),j++)
                 {
-                    var n = cx.Inf(b.key()).name;
+                    var n = cx._Ob(b.key()).infos[cx.role.defpos].name;
                     PutString(n);
                     var k = cx._Dom(b.value()).kind;
                     switch (k)
@@ -821,7 +823,7 @@ namespace Pyrrho.Level1
                 for (var b = rec.First(); b != null; b = b.Next())
                 {
                     var tr = b.value();
-                    var md = (ObInfo)cx.db.role.infos[tr.tabledefpos];
+                    var md = cx._Ob(tr.tabledefpos).infos[cx.role.defpos];
                     if (!md.metadata.Contains(Sqlx.ENTITY))
                         continue;
                     sb.Append(cm); cm = ",";

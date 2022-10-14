@@ -69,10 +69,10 @@ namespace Pyrrho.Level3
                 + (this + (Body, m.proc) + (Params, m.parms)
                     + (_Framing, m.framing), p);
         }
-        internal override DBObject Instance(long lp,Context cx, Domain q = null, BList<Ident> cs=null)
+        internal override DBObject Instance(long lp,Context cx, BList<Ident> cs=null)
         {
-            udType.Instance(lp,cx,q);
-            return base.Instance(lp,cx, q);
+            udType.Instance(lp,cx);
+            return base.Instance(lp,cx);
         }
         /// <summary>
         /// Execute a Method
@@ -87,12 +87,13 @@ namespace Pyrrho.Level3
         /// <returns>The return value</returns>
         public Context Exec(Context cx, long var, CList<long> actIns)
         {
-            var oi = (ObInfo)cx.db.role.infos[defpos];
+            var oi = infos[cx.role.defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105");
             var a = cx.GetActivation();
             a.var = (SqlValue)cx.obs[var];
             var ut = (UDType)cx.db.objects[udType.defpos];
+            cx.Add(cx._Dom(ut).Instance(ut.defpos, cx));
             var targ = a.var?.Eval(cx) ?? ut.defaultValue;
             for (var b=ut.representation.First();b!=null;b=b.Next())
             {
@@ -105,8 +106,8 @@ namespace Pyrrho.Level3
             for (var b = actIns.First(); i < n && b != null; b = b.Next(), i++)
                 acts[i] = cx.obs[b.value()].Eval(cx);
             var me = (Method)cx.db.objects[defpos];
-            me = (Method)me.Instance(cx.GetUid(),cx);
             var act = new CalledActivation(cx, me, ut.defpos);
+            me = (Method)me.Instance(act.GetUid(),act);
             var bd = (Executable)act.obs[me.body];
             if (targ is TRow rw)
                 for (var b = rw.values.First(); b != null; b = b.Next())
@@ -164,23 +165,28 @@ namespace Pyrrho.Level3
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
-            var ms = CTree<string, CTree<int, long>>.Empty;
-            var oi = (ObInfo)d.role.infos[udType.defpos];
-            for (var b=oi.methodInfos.First();b!=null;b=b.Next())
+            var udt = (UDType)udType;
+            var oi = BTree<long, ObInfo>.Empty;
+            for (var u = udt.infos.First(); u != null; u = u.Next())
             {
-                var sm = CTree<int, long>.Empty;
-                var ch = false;
-                for (var c = b.value().First(); c != null; c = c.Next())
-                    if (c.value() != defpos)
-                        sm += (c.key(), c.value());
-                    else
-                        ch = true;
-                if (ch)
-                    ms += (b.key(), sm);
+                var ms = CTree<string, CTree<int, long>>.Empty;
+                for (var b = u.value().methodInfos.First(); b != null; b = b.Next())
+                {
+                    var sm = CTree<int, long>.Empty;
+                    var ch = false;
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                    {
+                        if (c.value() != defpos)
+                            sm += (c.key(), c.value());
+                        else
+                            ch = true;
+                    }
+                    if (ch)
+                        ms += (b.key(), sm);
+                }
+                oi += (u.key(), u.value() + (ObInfo.MethodInfos, ms));
             }
-            nd += (nd.role+(d.types[udType],oi+(ObInfo.MethodInfos,ms)),p);
-            var udt = udType as UDType;
-            udt += (Database.Procedures, udt.methods - defpos);
+            udt += (Infos, oi);
             nd += (udt.defpos, udt);
             return base.Drop(d, nd, p);
         }

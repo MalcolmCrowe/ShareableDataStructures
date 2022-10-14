@@ -1,4 +1,5 @@
 using System;
+using System.Configuration;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -142,10 +143,10 @@ namespace Pyrrho.Level2
                 for (var b = x.cols.First(); b!=null; b=b.Next())
                     cs += cx.Fix(b.value());
             cols = cs;
-            oldRow = cx.Fix(x.oldRow);
-            newRow = cx.Fix(x.newRow);
-            oldTable = cx.Fix(x.oldTable);
-            newTable = cx.Fix(x.newTable);
+            oldRow = cx.FixI(x.oldRow);
+            newRow = cx.FixI(x.newRow);
+            oldTable = cx.FixI(x.oldTable);
+            newTable = cx.FixI(x.newTable);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -192,6 +193,7 @@ namespace Pyrrho.Level2
             var cols = CList<long>.Empty;
 			while (n-->0)
                 cols += rdr.GetLong();
+            nst = rdr.context.db.nextStmt;
 			oldRow = rdr.GetIdent();
 			newRow = rdr.GetIdent();
             oldTable = rdr.GetIdent();
@@ -204,7 +206,6 @@ namespace Pyrrho.Level2
             var ob = ((DBObject)rdr.context.db.objects[target]);
             var psr = new Parser(rdr, 
                 new Ident(src.ident, rdr.context.Ix(ppos + 1)), ob);
-            psr.cx.nextStmt = rdr.context.nextStmt;
             def = psr.ParseTriggerDefinition(this);
         }
         /// <summary>
@@ -269,10 +270,11 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var tb = (Table)cx.db.objects[target];
+            var tb = (DBObject)cx.db.objects[target];
             var tg = new Trigger(this,cx.db.role); // complete version of trigger with def, but framing not quite right
             tb = tb.AddTrigger(tg);
-            ro = ro + (new ObInfo(defpos, name, Domain.Null,Grant.Privilege.Execute),true);
+            var oi = new ObInfo(name, Grant.Privilege.Execute);
+            tg += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

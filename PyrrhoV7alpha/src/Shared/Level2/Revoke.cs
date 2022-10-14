@@ -52,11 +52,17 @@ namespace Pyrrho.Level2
         }
         internal override void Install(Context cx, long p)
         {
-            var ro = cx.db.role;
-            var oi = (ObInfo)ro.infos[obj];
+            var ob = cx._Ob(obj);
+            var oi = ob.infos[cx.db._role];
             oi += (ObInfo.Privilege, oi.priv & ~priv);
-            ro += (oi,false);
-            cx.db += (ro, p);
+            if (oi.priv == Privilege.NoPrivilege)
+            {
+                ob += (DBObject.Infos, ob.infos - cx.db._role);
+                cx._Ob(obj).Cascade(cx,Drop.DropAction.Cascade);
+            }
+            else
+                ob += (DBObject.Infos, ob.infos + (cx.db._role, oi));
+            cx.db += (ob, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

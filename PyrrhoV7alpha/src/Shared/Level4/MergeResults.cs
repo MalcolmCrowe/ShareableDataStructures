@@ -88,65 +88,55 @@ namespace Pyrrho.Level4
             r += (_Right, cx.Fix(right));
             return r;
         }
-        internal override (CTree<long, Finder>,CTree<long,bool>) AllWheres(Context cx,
-            (CTree<long,Finder>,CTree<long,bool>)ln)
+        internal override CTree<long, bool> AllWheres(Context cx,CTree<long,bool> nd)
         {
-            var (nd,rc) = cx.Needs(ln,this,where);
+            nd = cx.Needs(nd,this,where);
             if (cx.obs[left] is RowSet lf)
             {
-                var (ns, ss) = lf.AllWheres(cx, ln);
+                var ns = lf.AllWheres(cx, nd);
                 for (var b = ns.First(); b != null; b = b.Next())
                 {
                     var u = b.key();
                     nd += (u, b.value());
-                    rc += (u, true);
                 }
-                rc += ss;
             }
             if (cx.obs[right] is RowSet rs)
             {
-                var (ns, ss) = rs.AllWheres(cx, ln);
+                var ns = rs.AllWheres(cx, nd);
                 for (var b = ns.First(); b != null; b = b.Next())
                 {
                     var u = b.key();
                     nd += (u, b.value());
-                    ss += (u, true);
                 }
-                rc += ss;
             }
-            return (nd, rc);
+            return nd;
         }
-        internal override (CTree<long, Finder>,CTree<long,bool>) AllMatches(Context cx,
-            (CTree<long,Finder>,CTree<long,bool>)ln)
+        internal override CTree<long, bool> AllMatches(Context cx,CTree<long,bool> nd)
         {
-            var (nd, rc) = cx.Needs(ln, this, where);
+            nd = cx.Needs(nd, this, where);
             if (cx.obs[left] is RowSet lf)
             {
-                var (ns, ss) = lf.AllMatches(cx, ln);
+                var ns = lf.AllMatches(cx, nd);
                 for (var b = ns.First(); b != null; b = b.Next())
                 {
                     var u = b.key();
                     nd += (u, b.value());
-                    rc += (u, true);
                 }
-                rc += ss;
             }
             if (cx.obs[right] is RowSet rs)
             {
-                var (ns,ss) = rs.AllMatches(cx, ln);
+                var ns = rs.AllMatches(cx, nd);
                 for (var b = ns.First(); b != null; b = b.Next())
                 {
                     var u = b.key();
                     nd += (u, b.value());
-                    rc += (u, true);
                 }
-                rc += ss;
             }
-            return (nd, rc);
+            return nd;
         }
-        internal override bool Knows(Context cx, long rp)
+        internal override bool Knows(Context cx, long rp, bool ambient=false)
         {
-            return rp==left || rp==right || base.Knows(cx,rp);
+            return rp==left || rp==right || base.Knows(cx,rp,ambient);
         }
         internal override CTree<long, bool> Sources(Context cx)
         {

@@ -51,11 +51,10 @@ namespace Pyrrho.Level3
         /// Constructor: Build a level 3 procedure from a level 2 procedure
         /// </summary>
         /// <param name="p">The level 2 procedure</param>
-		public Procedure(PProcedure p, Context cx,BTree<long,object> m=null)
-            : base( p.ppos, p.defpos, cx.role.defpos, (m??BTree<long,object>.Empty)
+		public Procedure(PProcedure p, Context cx,BTree<long,object> m)
+            : base( p.ppos, p.defpos, cx.role.defpos, m
                   + (Params, p.parameters) +(_Domain,p.dataType.defpos) 
-                  + (Body, p.proc) 
-                  + (Name,p.name) + (Clause, p.source.ident) + (LastChange, p.ppos))
+                  + (Body, p.proc) + (Clause, p.source.ident) + (LastChange, p.ppos))
         { }
         /// <summary>
         /// Constructor: a new Procedure/Function from the parser
@@ -64,9 +63,9 @@ namespace Pyrrho.Level3
         /// <param name="ps"></param>
         /// <param name="rt"></param>
         /// <param name="m"></param>
-        public Procedure(long defpos,string n,CList<long> ps, Domain dt, 
-            BTree<long, object> m=null) : base(defpos, (m??BTree<long,object>.Empty)
-                +(Params,ps)+(_Domain,dt.defpos)+(Name,n)) { }
+        public Procedure(long defpos,Context cx,string n,CList<long> ps, Domain dt, long definer,
+            BTree<long, object> m) : base(defpos, m +(Params,ps)+(_Domain,dt.defpos))
+        { }
         protected Procedure(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Procedure operator+(Procedure p,(long,object)v)
         {
@@ -74,15 +73,6 @@ namespace Pyrrho.Level3
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
-            for (var b = d.roles.First(); b != null; b = b.Next())
-            {
-                var ro = (Role)d.objects[b.value()];
-                if (ro.infos[defpos] is ObInfo oi)
-                {
-                    ro -= oi;
-                    nd += (ro,p);
-                }
-            }
             nd += (Database.Procedures, d.procedures - defpos);
             return base.Drop(d, nd, p);
         }
@@ -93,7 +83,7 @@ namespace Pyrrho.Level3
         /// <returns>The possibily modified Transaction</returns>
         public Context Exec(Context cx, CList<long> actIns)
         {
-            var oi = (ObInfo)cx.db.role.infos[defpos];
+            var oi = infos[cx.role.defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105");
             var n = (int)ins.Count;
@@ -153,14 +143,14 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (Procedure)base._Relocate(cx);
-            r += (Params, cx.Fix(ins));
+            r += (Params, cx.FixLl(ins));
             r += (Body, cx.Fix(body));
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = base._Fix(cx);
-            var np = cx.Fix(ins);
+            var np = cx.FixLl(ins);
             if (np!=ins)
                 r += (Params, np);
             var nb = cx.Fix(body);
@@ -212,7 +202,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" "); sb.Append(name);
+            sb.Append(" "); sb.Append(infos[definer].name);
             sb.Append(" Arity="); sb.Append(arity); sb.Append(" ");
             if (domain!=Domain.Null.defpos) sb.Append(Uid(domain));
             sb.Append(" Params");

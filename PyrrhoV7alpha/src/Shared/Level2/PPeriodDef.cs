@@ -163,13 +163,14 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var pd = new PeriodDef(ppos, tabledefpos, startcol, endcol,cx.db);
             var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = (ObInfo)cx.db.role.infos[tb.defpos];
+            var ti = tb.infos[ro.defpos];
             ti += (ObInfo.SchemaKey, p);
+            tb += (DBObject.Infos, tb.infos + (ro.defpos,ti));
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
-            var oc = new ObInfo(ppos, periodname, Domain.Period, priv);
-            var oi = (ObInfo)ro.infos[tabledefpos];
-            ro = ro + (oc,false) + (oi + (ppos,oc.domain),false)+(tb.defpos,ti);
-            cx.db += (ro, p);
+            var oc = new ObInfo(periodname, priv);
+            pd += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oc));
+            ro += (periodname, ppos);
+            cx.db = cx.db + (tb, p) + (pd, p) + (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(pd, p);

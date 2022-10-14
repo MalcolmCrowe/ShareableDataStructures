@@ -55,13 +55,13 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
-            var ti = (ObInfo)ro.infos[table.defpos];
+            var ti = table.infos[ro.defpos];
             ti += (ObInfo.SchemaKey, p);
             var tc = new TableColumn(table, this, dataType, cx.role);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var ci = new ObInfo(defpos, name, dataType, priv);
-            ro = ro + (defpos,ci) + (ti + (tc.defpos,ci),false);
+            var ci = new ObInfo(name, priv);
+            tc += (DBObject.Infos,new BTree<long,ObInfo>(ro.defpos, ci));
             table += (cx,tc);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
@@ -118,13 +118,13 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
-            var ti = (ObInfo)ro.infos[table.defpos];
+            var ti = table.infos[ro.defpos];
             ti += (ObInfo.SchemaKey, p);
             var tc = new TableColumn(table, this, dataType, cx.role);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var ci = new ObInfo(defpos, name, dataType, priv);
-            ro = ro + (defpos, ci) + (ti + (tc.defpos, ci)+(ObInfo.Privilege,priv),false);
+            var ci = new ObInfo(name, priv);
+            table += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci)); 
             table += (cx,tc);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
@@ -198,13 +198,13 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             table = (Table)cx.db.objects[table.defpos];
-            var ti = (ObInfo)ro.infos[table.defpos];
+            var ti = table.infos[ro.defpos];
             ti += (ObInfo.SchemaKey, p);
             var tc = new TableColumn(table, this, dataType, cx.role);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
-            var oc = new ObInfo(defpos, name, dataType, priv);
-            ro = ro + (oc.defpos, oc) + (ti + (defpos, oc),true);
+            var oc = new ObInfo(name, priv);
+            tc += (cx.db._role, oc);
             table += (cx,tc);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))

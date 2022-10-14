@@ -4,6 +4,7 @@ using Pyrrho.Level3;
 using System;
 using System.IO;
 using System.Net;
+using System.Reflection;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -20,26 +21,28 @@ namespace Pyrrho.Level4
     /// A RowSet is the result of a stage of query processing: left to right semantics
     /// means that its construction should be delayed until the end of all dependent
     /// clauses for its syntax (i.e. all wheres, group by, orderings etc).
-    /// The Domain by this stage will have uids for all columns in the target
-    /// whether mentioned explicitly or not: at the top level, the display will be 
-    /// the columns that will be sent to the client.
-    /// The finder assists with looking up the values of row entries specified by
-    /// the Domain: it says which RowSet computed (or can compute) the value for a uid.
-    /// Finder must be updated in Review, Replace and Relocate.
+    /// The _Domain by this stage will have uids for all columns in the result (the display)
+    /// or available for use in filtering/ordering clauses.
+    /// 
+    /// The where-condition in the query syntax is not quite the same the _Where property.
+    /// The syntax allows:
+    ///     a: columns from the _Domain. These can be operands in the _Where property.
+    ///     b: columns from completed scopes to the left at this level, or in enclosing scopes
+    ///         possibly accessed using a forward reference chain. These can be
+    ///         operands in the _Where property.
+    ///     c: aggregation operands. these are not in the domain of the aggregating selectrowset, 
+    ///         but will be in the domain of one of the sources. These cannot be operands in the
+    ///         _Where property, so expressions containing these must be passed to sources. 
+    /// 
+    /// The _Where and some other properties are determined after rowset creation:
+    /// candidate properties to be added are supplied to the Apply method.
+    /// The New method replaces all of the properties of the rowset other than defpos and type.
     /// 
     /// RowSets must not contain any physical uids in their column uids
     /// or within their domain's representation. See InstanceRowSet for how to avoid.
     /// 
     /// An aggregation E has a unique "home" rowset A that computes it: such that no source of A has E.
     /// A is always a SelectRowSet or RestRowSet, and E.from must be A.
-    /// 
-    /// Validity:
-    /// V1. All operands of non-aggregating expressions and all column ids must be in the finder.
-    /// V2. For an aggregating expression E in R's rowType, E must be in the finder.
-    /// V3. If a rowType has an aggregation, then all columns must be aggregations or be grouped.
-    /// V4. If a rowset R has a grouping, then the group columns must be in the select list (and finder)
-    /// V5. If R has a grouping, the select list must include at least one aggregation E 
-    /// (R is then not necessarily the home rowset of E, so R need not be SelectRowSrt or RestRowSet)
     /// 
     /// IMMUTABLE
     ///     /// shareable as of 26 April 2021
@@ -52,7 +55,8 @@ namespace Pyrrho.Level4
                 SimpleCols=1, // columns are all SqlCopy or SqlLiteral
                 MatchesTarget=2, // RowType is equal to sce.Rowtype
                 AssignTarget=4, // RowType is statically assignment compatible to domain
-                ProvidesTarget=8 } // RowType's uids are in sce.RowType in some order
+                ProvidesTarget=8,// RowType's uids are in sce.RowType in some order
+                SpecificRows=16 } // RowSet's rows correspond to specific records in the database
         internal const long
             AggDomain = -465, // Domain temporary during SplitAggs
             Asserts = -212, // Assertions
@@ -62,32 +66,47 @@ namespace Pyrrho.Level4
             _Data = -368, // long RowSet
             Distinct = -239, // bool
             Filter = -180, // CTree<long,TypedValue> matches to be imposed by this query
-            _Finder = -403, // CTree<long,Finder> SqlValue
             Group = -199, // long GroupSpecification
             Groupings = -406,   //CList<long>   Grouping
             GroupCols = -461, // Domain
-            GroupIds = -462, // CTree<long,Domain> temporary during SplitAggs
+            GroupIds = -408, // CTree<long,Domain> temporary during SplitAggs
             Having = -200, // CTree<long,bool> SqlValue
+            ISMap = -213, // CTree<long,long> SqlValue,TableColumn
             _Matches = -182, // CTree<long,TypedValue> matches guaranteed elsewhere
             Matching = -183, // CTree<long,CTree<long,bool>> SqlValue SqlValue (symmetric)
-            _Needed = -401, // CTree<long,Finder>  SqlValue
+            _Needed = -401, // CTree<long,bool>  SqlValue
             OrdSpec = -184, // CList<long>
             Periods = -185, // BTree<long,PeriodSpec>
             UsingOperands = -411, // CTree<long,long> SqlValue
+            Referenced = -378, // CTree<long,bool> SqlValue (referenced columns)
             _Repl = -186, // CTree<string,string> Sql output for remote views
             RestRowSetSources = -331, // CTree<long,bool>    RestRowSet or RestRowSetUsing
             _Rows = -407, // CList<TRow> 
             RowOrder = -404, //CList<long> SqlValue 
-            RSTargets = -197, // CTree<long,long> Table/View RowSet 
-            SimpleTableQuery = -247, //bool
+            RSTargets = -197, // CTree<long,long> Table TableRowSet 
+            SIMap = -214, // CTree<long,long> TableColumn,SqlValue
             Scalar = -95, // bool
             _Source = -151, // RowSet
             Static = -152, // RowSet (defpos for STATIC)
             Stem = -211, // CTree<long,bool> RowSet 
+            Target = -153, // long (a table or view for simple IDU ops)
             _Where = -190, // CTree<long,bool> Boolean conditions to be imposed by this query
             Windows = -201; // CTree<long,bool> WindowSpecification
         internal Assertions asserts => (Assertions)(mem[Asserts] ?? Assertions.None);
-        internal CList<long> keys => (CList<long>)mem[Index.Keys] ?? CList<long>.Empty;
+        internal string name => (string)mem[ObInfo.Name];
+        internal CTree<string, long> names => // -> SqlValue
+    (CTree<string, long>)mem[ObInfo.Names] ?? CTree<string, long>.Empty;
+        /// <summary>
+        /// indexes are added where the targets are selected from tables, restviews, and INNER or CROSS joins.
+        /// indexes are not added for unions or outer joins
+        /// </summary>
+        internal CTree<CList<long>, CTree<long, bool>> indexes => // as defined for tables and restview targets
+            (CTree<CList<long>, CTree<long, bool>>)mem[Table.Indexes]??CTree<CList<long>, CTree<long, bool>>.Empty;
+        /// <summary>
+        /// keys are added where the current set of columns includes all the keys from a target index or ordering.
+        /// At most one keys entry is currently allowed: ordering if available, then target index
+        /// </summary>
+        internal CList<long> keys => (CList<long>)mem[Index.Keys] ?? CList<long>.Empty; 
         internal CList<long> ordSpec => (CList<long>)mem[OrdSpec] ?? CList<long>.Empty;
         internal BTree<long, PeriodSpec> periods =>
             (BTree<long, PeriodSpec>)mem[Periods] ?? BTree<long, PeriodSpec>.Empty;
@@ -102,32 +121,28 @@ namespace Pyrrho.Level4
         internal CTree<long, CTree<long, bool>> matching =>
             (CTree<long, CTree<long, bool>>)mem[Matching]
             ?? CTree<long, CTree<long, bool>>.Empty;
-        internal CTree<long,Finder> needed =>
-            (CTree<long,Finder>)mem[_Needed]; // must be initially null
+        internal CTree<long,bool> needed =>
+            (CTree<long,bool>)mem[_Needed]; // must be initially null
         internal long groupSpec => (long)(mem[Group] ?? -1L);
-        internal long target => (long)(mem[From.Target] // for table-focussed RowSets
+        internal long target => (long)(mem[Target] // for table-focussed RowSets
             ?? rsTargets.First()?.key() ?? -1L); // for safety
         internal CTree<long, long> rsTargets =>
             (CTree<long, long>)mem[RSTargets] ?? CTree<long, long>.Empty;
+        internal int selectDepth => (int)(mem[SqlValue.SelectDepth] ?? -1);
         internal long source => (long)(mem[_Source] ??  -1L);
         internal bool distinct => (bool)(mem[Distinct] ?? false);
         internal CTree<UpdateAssignment, bool> assig =>
             (CTree<UpdateAssignment, bool>)mem[Assig]
             ?? CTree<UpdateAssignment, bool>.Empty;
+        internal CTree<long, long> iSMap =>
+            (CTree<long, long>)mem[ISMap] ?? CTree<long, long>.Empty;
+        internal CTree<long, long> sIMap =>
+            (CTree<long, long>)mem[SIMap] ?? CTree<long, long>.Empty;
         internal BList<TRow> rows =>
             (BList<TRow>)mem[_Rows] ?? BList<TRow>.Empty;
         internal long lastData => (long)(mem[Table.LastData] ?? 0L);
         internal CList<long> remoteCols =>
-            (CList<long>)mem[RestView.RemoteCols] ?? CList<long>.Empty;
-        /// <summary>
-        /// Whether we have a simple table query
-        /// </summary>
-        internal bool simpletablequery => (bool)(mem[SimpleTableQuery] ?? false);
-        /// <summary>
-        /// List of rowsets whose cursors are constant during traversal of this rowset
-        /// </summary>
-        internal CTree<long, bool> stem =>
-            (CTree<long, bool>)mem[Stem] ?? CTree<long, bool>.Empty;
+            (CList<long>)mem[RestRowSet.RemoteCols] ?? CList<long>.Empty;
         /// <summary>
         /// The group specification
         /// </summary>
@@ -147,51 +162,11 @@ namespace Pyrrho.Level4
             (CTree<long, bool>)mem[Windows] ?? CTree<long, bool>.Empty;
         internal MTree tree => (MTree)mem[Index.Tree];
         internal bool scalar => (bool)(mem[Scalar] ?? false);
-        internal readonly struct Finder : IComparable
-        {
-            public readonly long col;
-            public readonly long rowSet;
-            public Finder(long c, long r)
-            {
-                col = c; rowSet = r;
-            }
-            internal Finder Fix(Context cx)
-            {
-                var c = cx.Fix(col);
-                var r = cx.Fix(rowSet);
-                return (c != col || r != rowSet) ? new Finder(c, r) : this;
-            }
-            public override string ToString()
-            {
-                return Uid(rowSet) + "[" + Uid(col) + "]";
-            }
-
-            public int CompareTo(object obj)
-            {
-                var that = (Finder)obj;
-                var c = rowSet.CompareTo(that.rowSet);
-                if (c != 0)
-                    return c;
-                return col.CompareTo(that.col);
-            }
-        }
-        /// <summary>
-        /// The finder maps the list of SqlValues whose values are in cursors,
-        /// to a Finder.
-        /// In a Context there may be several rowsets being calculated independently
-        /// (e.g. a join of subqueries), and it can combine sources into a from association
-        /// saying which rowset (and so which cursor) contains the current values.
-        /// We could simply search along cx.obs to pick the rowset we want.
-        /// Before we compute a Cursor, we place the source finder in the  Context, 
-        /// so that the evaluation can use values retrieved from the source cursors.
-        /// </summary>
-        internal CTree<long, Finder> finder =>
-            (CTree<long, Finder>)mem[_Finder] ?? CTree<long, Finder>.Empty;
         /// <summary>
         /// Constructor: a new or modified RowSet
         /// </summary>
         /// <param name="dp">The uid for the RowSet</param>
-        /// <param name="cx">The ptocessing environment</param>
+        /// <param name="cx">The processing environment</param>
         /// <param name="m">The properties list</param>
         protected RowSet(long dp, Context cx, BTree<long, object> m)
             : base(dp, _Mem(cx,m))
@@ -199,14 +174,14 @@ namespace Pyrrho.Level4
             cx.Add(this);
         }
         /// <summary>
-        /// special version for From constructors that compute asserts
+        /// special version for RowSet constructors that compute asserts
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="dp"></param>
         /// <param name="m"></param>
         protected RowSet(Context cx,long dp,BTree<long,object>m) :base(dp,m)
         {
-            cx.Add(this);
+             cx.Add(this);
         }
         /// <summary>
         /// Constructor: relocate a rowset with no property changes
@@ -214,25 +189,29 @@ namespace Pyrrho.Level4
         /// <param name="dp"></param>
         /// <param name="m"></param>
         protected RowSet(long dp, BTree<long, object> m) : base(dp, m)
-        {  }
+        { }
         // Compute assertions. Also watch for Matching info from sources
-        protected static BTree<long,object> _Mem(Context cx,BTree<long,object>m)
+        protected static BTree<long, object> _Mem(Context cx, BTree<long, object> m)
         {
             var dp = (long)(m[_Domain] ?? -1L);
             var dm = (Domain)(cx.obs[dp] ?? cx.db.objects[dp]);
+            var de = (int)(m[_Depth]??1);
+            var md = de;
             if (dm == null)
             {
-                dp = (long)(m[From.Target] ?? -1L);
+                dp = (long)(m[Target] ?? -1L);
                 var ob = cx._Ob(dp);
                 dm = cx._Dom(ob);
+                if (dm!=null)
+                    de = Math.Max(de, dm.depth + 1);
             }
-            var a = Assertions.SimpleCols;
+            var a = Assertions.SimpleCols | 
+                (((Assertions)(m[Asserts] ?? Assertions.None)) & Assertions.SpecificRows);
             var sce = (RowSet)cx.obs[(long)(m[_Source]??m[_Data]??-1L)];
+            if (sce!=null)
+                de = Math.Max(de, sce.depth + 1);
             var sd = cx._Dom(sce);
             var sb = sd?.rowType.First();
-            if (sce != null)
-                a |= Assertions.AssignTarget | Assertions.ProvidesTarget |
-                    Assertions.MatchesTarget;
             for (var b = dm.rowType.First(); b != null; b = b.Next(), sb=sb?.Next())
             {
                 var p = b.value();
@@ -249,9 +228,11 @@ namespace Pyrrho.Level4
                     a &= ~Assertions.ProvidesTarget;
             }
             m += (Asserts, a);
-            var ma = (CTree<long, CTree<long, bool>>)m[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
-            if (sce!=null && (ma.Count > 0 || sce.matching.Count > 0))
-                m += (Matching, sce.CombineMatching(ma, sce.matching));
+            //   var ma = (CTree<long, CTree<long, bool>>)m[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
+            //   if (sce!=null && (ma.Count > 0 || sce.matching.Count > 0))
+            //       m += (Matching, sce.CombineMatching(ma, sce.matching));
+            if (de != md)
+                m += (_Depth, de);
             return m;
         }
         internal virtual Assertions Requires => Assertions.None;
@@ -260,14 +241,12 @@ namespace Pyrrho.Level4
             return (RowSet)rs.New(rs.mem + x);
         }
         internal virtual BList<long> SourceProps => BList<long>.FromArray(_Source,
-            JoinRowSet.JFirst,JoinRowSet.JSecond,
-            MergeRowSet._Left,MergeRowSet._Right,
+            JoinRowSet.JFirst, JoinRowSet.JSecond,
+            MergeRowSet._Left, MergeRowSet._Right,
             RestRowSetUsing.RestTemplate,RestView.UsingTableRowSet);
         static BList<long> pre = BList<long>.FromArray(Having,Matching, _Where, _Matches);
-        static BList<long> can = BList<long>.FromArray(Having,OrdSpec, _Where, _Matches);
         static BTree<long, bool> prt = new BTree<long, bool>(Having, true) 
             + (_Where, true) + (Matching, true) + (_Matches, true);
-        static BTree<long, bool> pres = BTree<long, bool>.FromList(pre);
         internal virtual CTree<long,Domain> _RestSources(Context cx)
         {
             var r = CTree<long,Domain>.Empty;
@@ -284,41 +263,21 @@ namespace Pyrrho.Level4
                     r += rs._ProcSources(cx);
             return r;
         }
-        internal override DBObject New(Context cx,BTree<long,object>mm)
-        {
-            return Apply(mm, cx, this);
-        }
-        internal RowSet MaybeApply(BTree<long, object> mm, Context cx, RowSet im)
-        {
-            mm -= _Built; // never passed to sources
-            mm -= JoinRowSet.OnCond;
-            mm -= JoinRowSet.JoinCond;
-            mm -= JoinRowSet.JoinKind;
-            mm -= Matching;
-            // Apply is sometimes called with a full set of mem changes. The following should never be
-            // passed to sources
-            mm -= _Domain;
-            mm -= _Depth;
-            mm -= Name;
-            mm -= _Finder;
-            mm -= Asserts;
-            if (mm == BTree<long, object>.Empty)
-                return im;
-            var m = mm;
-            for (var b = can.First(); b != null; b = b.Next())
-                m = CanApply(m, b.value(), cx, im);
-            return Apply(m, cx, im);
-        }
         internal override (DBObject, Ident) _Lookup(long lp, Context cx, string nm, Ident n)
         {
-            var oi = cx.Inf(defpos);
-            if (oi.names.Contains(n.ident))
+            var dm = cx._Dom(defpos);
+            for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
-                var p = oi.names[n.ident];
-                var ob = new SqlValue(n.iix.dp, n.ident, oi.dataType.representation[p],
-                    new BTree<long, object>(_From,defpos));
-                cx.Add(ob);
-                return (ob, n.sub);
+                var p = b.value();
+                var co = cx._Ob(p);
+                var ci = (ObInfo)co.mem[cx.db._role];
+                if (ci.name == nm)
+                {
+                    var ob = new SqlValue(n, dm.representation[p],
+                        new BTree<long, object>(_From, defpos));
+                    cx.Add(ob);
+                    return (ob, n.sub);
+                }
             }
             return base._Lookup(lp, cx, nm, n);
         }
@@ -354,12 +313,13 @@ namespace Pyrrho.Level4
                         a += (k, true);
                     else // allow lateral
                     {
+                        if (r.id!=null)
                         for (var c = sv.Needs(cx,r.defpos).First(); c != null; c = c.Next())
-                            if (!(cx.iim[cx.instances[c.key()]] is Iix ix 
-                                && ix.sd < r.Iim(cx).sd && ix.CompareTo(r.Iim(cx)) <= 0))
+                            if (sv.id.iix.lp<0 || sv.id.iix.lp>r.id.iix.lp)
                                 goto no;
                         a += (k, true);
-                    no:;
+                    no:
+                        cx.forReview += (k, (cx.forReview[k] ?? CTree<long, bool>.Empty) + (defpos, true));
                     }
                 }
                 mm = (a == tv) ? mm : (a.Count == 0) ? (mm - p) : (mm + (p, a));
@@ -394,9 +354,6 @@ namespace Pyrrho.Level4
         /// A change to some properties requiring further actions in general.
         /// For most properties, we can readily check that it can be
         /// applied to this rowset. 
-        /// IMPORTANT: Initially, im is this. 
-        /// In any override it is (this + properties already applied). 
-        /// Do not access any properties of this: use im instead.
         /// 
         /// Passing expressions down to source rowsets:
         /// A non-aggregating expression R (in the select list or a where condition) can be passed down to 
@@ -404,32 +361,30 @@ namespace Pyrrho.Level4
         /// An aggregating expression E in R can be passed down to a SelectRowSet or RestRowSet source S if 
         /// all its operands are all known to S (for rowsets T between R and S in the pipeline see P1)
         /// 
-        /// When a set of aggregations E are passed down from R to S (satisfying V1 and V2):
-        /// P1. The donain of S (and any T) must be transformed according to validity test V3 and V4.
+        /// When a set of aggregations E are passed down from R to S 
+        /// P1. The domain of S (and any T) must be transformed
         /// P2. Any group ids of E known to S must become grouped in S, and all other ids of E in S must also be grouped.
-        /// P3. If a where expression E is passed down to its home rowset, it becomes a having expression 
-        /// (and vice versa if it is moved down further).
         /// 
         /// </summary>
         /// <param name="mm">The properties to be applied</param>
         /// <param name="cx">The context</param>
-        /// <param name="im">The current state of the rowset to modify</param>
+        /// <param name="m">PRIVATE: For accumulating properties of the result</param>
         /// <returns>updated rowset</returns>
-        internal virtual RowSet Apply(BTree<long, object> mm,Context cx,RowSet im)
+        internal virtual RowSet Apply(BTree<long, object> mm,Context cx,BTree<long,object> m = null)
         {
+            m = m ?? mem;
             for (var b=mm.First();b!=null;b=b.Next())
             {
                 var k = b.key();
-                if (mem[k] == mm[k])
+                if (m[k] == mm[k])
                     mm -= k;
             }
             if (mm == BTree<long, object>.Empty)
-                return im;
+                return (RowSet)New(cx,m);
             var od = cx.done;
             cx.done = ObTree.Empty;
-            var dm = cx._Dom(im);
+            var dm = cx._Dom((long)(m[_Domain]??-1L));
             var recompute = false;
-            var m = im.mem;
             for (var mb = pre.First(); mb != null; mb = mb.Next())
             {
                 var p = mb.value();
@@ -441,7 +396,7 @@ namespace Pyrrho.Level4
                         case Matching:
                             {
                                 var mg = (CTree<long, CTree<long, bool>>)v;
-                                var rm = im.matching;
+                                var rm = (CTree<long,CTree<long,bool>>)m[Matching]??CTree<long,CTree<long,bool>>.Empty;
                                 for (var b = mg.First(); b != null; b = b.Next())
                                 {
                                     var x = b.key();
@@ -464,7 +419,7 @@ namespace Pyrrho.Level4
                                         mg -= x;
                                     }
                                 }
-                                m += (Matching, CombineMatching(im.matching,mg));
+                                m += (Matching, mg);
                                 mm -= Matching; // but not further down
                                 break;
                             }
@@ -473,10 +428,8 @@ namespace Pyrrho.Level4
                                 var w = (CTree<long, bool>)v;
                                 var ma = (CTree<long, TypedValue>)mm[_Matches] ?? CTree<long, TypedValue>.Empty;
                                 var oa = ma;
-                                var mw = (CTree<long,bool>)m[_Where] ?? CTree<long, bool>.Empty;
-                                var ow = mw;
-                                var mh = (CTree<long, bool>)m[_Where] ?? CTree<long, bool>.Empty;
-                                var oh = mh;
+                                var mw = (CTree<long,bool>)mm[_Where] ?? CTree<long, bool>.Empty;
+                                var mh = (CTree<long, bool>)mm[Having] ?? CTree<long, bool>.Empty;
                                 for (var b = w.First(); b != null; b = b.Next())
                                 {
                                     var k = b.key();
@@ -486,38 +439,47 @@ namespace Pyrrho.Level4
                                     {
                                         var le = (SqlValue)cx.obs[se.left];
                                         var ri = (SqlValue)cx.obs[se.right];
-                                        if (le.isConstant(cx) && !im.matches.Contains(ri.defpos))
+                                        var im = (CTree<long, TypedValue>)m[_Matches]??CTree<long,TypedValue>.Empty;
+                                        if (le.isConstant(cx) && !im.Contains(ri.defpos))
                                         {
                                             matched = true;
                                             ma += (ri.defpos, le.Eval(cx));
                                         }
-                                        if (ri.isConstant(cx) && !im.matches.Contains(le.defpos))
+                                        if (ri.isConstant(cx) && !im.Contains(le.defpos))
                                         {
                                             matched = true;
                                             ma += (le.defpos, ri.Eval(cx));
                                         }
                                     }
-                                    if (sv.KnownBy(cx, this))
+                                    if (sv.KnownBy(cx, this, true)) // allow ambient values
                                     {
-                                        if (sv.IsAggregation(cx) != CTree<long, bool>.Empty) 
+                                        if (sv.IsAggregation(cx) != CTree<long, bool>.Empty)
                                             mh += (k, true);
                                         else if (!matched)
                                             mw += (k, true);
-                                    } 
+                                    }
+                                    else
+                                    {
+                                        mw -= k;
+                                        cx.forReview += (k, (cx.forReview[k] ?? CTree<long, bool>.Empty) + (defpos, true));
+                                    }
                                 }
                                 if (ma != oa)
                                     mm += (_Matches, ma);
-                                if (mw != ow)
-                                    m += (_Where, mw);
-                                if (mh != oh)
-                                    m += (Having, mh);
+                                var ow = (CTree<long, bool>)m[_Where]??CTree<long,bool>.Empty;
+                                if (mw.CompareTo(ow)!=0)
+                                    m += (_Where, ow+mw);
+                                var oh = (CTree<long, bool>)m[Having] ?? CTree<long, bool>.Empty;
+                                if (mh.CompareTo(oh)!=0)
+                                    m += (Having, mh+oh);
                                 break;
                             }
                         case _Matches:
                             {
                                 var ma = (CTree<long, TypedValue>)v ?? CTree<long, TypedValue>.Empty;
                                 var ms = (CTree<long, TypedValue>)m[_Matches] ?? CTree<long, TypedValue>.Empty;
-                                var ng = im.matching + (CTree<long, CTree<long, bool>>)m[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
+                                var im = (CTree<long, CTree<long, bool>>)m[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
+                                var ng = im + (CTree<long, CTree<long, bool>>)m[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
                                 for (var b = ma.First(); b != null; b = b.Next())
                                     for (var c = ng[b.key()]?.First(); c != null; c = c.Next())
                                         ma += (c.key(), b.value());
@@ -567,22 +529,6 @@ namespace Pyrrho.Level4
                         {
                             recompute = true;
                             m += (p, v);
-                            if (!(im is From))
-                                mm -= p;
-                            else if (im.where != CTree<long, bool>.Empty)
-                            {
-                                var w = im.where;
-                                var d = (Domain)cx.obs[(long)v];
-                                for (var b = w.First(); b != null; b = b.Next())
-                                {
-                                    var s = b.key();
-                                    var sv = (SqlValue)cx.obs[s];
-                                    if (!sv.KnownBy(cx, d.representation))
-                                        w -= s;
-                                }
-                                if (w != im.where)
-                                    m += (_Where,w);
-                            }
                             break;
                         }
                     case _Source:
@@ -598,46 +544,19 @@ namespace Pyrrho.Level4
                             for (var b = sg?.First(); b != null; b = b.Next())
                             {
                                 var ua = b.key();
-                                if (!(finder.Contains(ua.vbl) && im.finder[ua.vbl] is Finder fi)
-                                    || !((SqlValue)cx.obs[ua.val]).KnownBy(cx, im))
+                                if ((!Knows(cx,ua.vbl,true))
+                                    || !((SqlValue)cx.obs[ua.val]).KnownBy(cx, this,true))
                                     sg -= b.key();
-                                for (var tb = ((CTree<long, long>)m[RSTargets]).First(); tb != null; tb = tb.Next())
-                                {
-                                    var ts = (RowSet)cx.obs[tb.value()];
-                                    var td = cx._Dom(ts);
-                                    if (ts.assig.Contains(ua))
-                                        sg -= ua;
-                                    if (td.representation.Contains(ua.vbl))
-                                    {
-                                        sg -= ua;
-                                        cx.Add(ts + (Assig, ts.assig + (ua, true)));
-                                        if (im.defpos == ts.defpos)
-                                        {
-                                            im = (RowSet)cx.obs[im.defpos];
-                                            m += (Assig, im.assig);
-                                        }
-                                    }
-                                }
                             }
                             if (sg == CTree<UpdateAssignment, bool>.Empty)
                                 mm -= Assig;
                             else
-                                mm += (Assig, sg);
-                            break;
-                        }
-                    case _Finder:
-                        {
-                            var fi = (CTree<long, Finder>)v;
-                            var of = (CTree<long, Finder>)m[_Finder] ?? CTree<long, Finder>.Empty;
-                            m += (p, of + fi);
-                            if (!(im is From))
-                                mm -= _Finder;
+                                m += (Assig, sg);
                             break;
                         }
                     case UsingOperands:
                         {
                             var nr = (CTree<long, long>)v;
-                            var rf = (CTree<long, Finder>)m[_Finder];
                             var rd = (Domain)cx.obs[(long)m[_Domain]];
                             // We need to ensure that the source rowset supplies all of the restOperands
                             // we now know about.
@@ -648,14 +567,13 @@ namespace Pyrrho.Level4
                                 if (!rd.representation.Contains(bp))
                                 {
                                     rd += (cx, (SqlValue)cx.obs[bp]);
-                                    rf += (bp, new Finder(bp, b.value()));
                                     ch = true;
                                 }
                             }
                             if (ch)
                             {
                                 cx.Add(rd);
-                                m = m + (_Domain, rd.defpos) + (_Finder, rf);
+                                m = m + (_Domain, rd.defpos);
                             }
                             // but don't go further down (??)
                             mm -= UsingOperands;
@@ -667,39 +585,45 @@ namespace Pyrrho.Level4
                         break;
                 }
             }
+            // Anything in mm that can't be passed to sources must have raised an exception by now
             if (mm != BTree<long, object>.Empty && mm.First().key() < 0)
                 // Recursively apply any remaining changes to sources
                 // On return mm may contain pipeline changes
                 for (var b = SourceProps.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
-                    if (m.Contains(p))
+                    if (m.Contains(p)) // we have this kind of source rowset
                     {
                         var sp = (long)m[p];
+                        if (sp < 0)
+                            continue;
+                        var ms = mm;
+                        if (p == RestView.UsingTableRowSet)
+                            ms = ms - Target - _Domain;
                         var sc = (RowSet)cx.obs[sp];
-                        sc = sc.MaybeApply(mm, cx, sc);
+                        sc = sc.Apply(ms, cx);
                         if (sc.defpos!=sp) 
                             m += (p, sc.defpos);
                     }
                 }
-             if (recompute)
+            if (recompute)
                 m = _Mem(cx, m);
-            if (m != im.mem)
+            var r = this;
+            if (m != mem)
             {
-                im = (RowSet)im.New(m);
-                cx.Add(im);
+                r = (RowSet)New(cx,m);
+                cx.Add(r);
             }
             cx.done = od;
-            return im;
+            return r;
         }
         /// <summary>
         /// Implemented for SelectRowSet and RestRowSet
         /// </summary>
         /// <param name="mm"></param>
         /// <param name="cx"></param>
-        /// <param name="im"></param>
         /// <returns></returns>
-        internal virtual RowSet ApplySR(BTree<long,object> mm,Context cx,RowSet im)
+        internal virtual RowSet ApplySR(BTree<long, object> mm, Context cx)
         {
             return this;
         }
@@ -711,18 +635,17 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="nd"></param>
-        internal void ApplyT(Context cx,RowSet sa, CTree<long,Domain> es)
+        internal void ApplyT(Context cx, RowSet sa, CTree<long, Domain> es)
         {
             for (var b = Sources(cx).First(); b != null; b = b.Next())
             {
                 var s = (RowSet)cx.obs[b.key()];
-                if (s is SelectRowSet || s is RestRowSet 
-                    || (this is RestRowSetUsing ru && ru.usingTableRowSet==s.defpos)
+                if (s is SelectRowSet || s is RestRowSet
+                    || (this is RestRowSetUsing ru && ru.usingTableRowSet == s.defpos)
                     || !s.AggSources(cx).Contains(sa.defpos))
                     continue;
                 var rc = CList<long>.Empty;
                 var rs = CTree<long, Domain>.Empty;
-                var fi = CTree<long, Finder>.Empty;
                 var kb = s.KnownBase(cx);
                 for (var c = es.First(); c != null; c = c.Next())
                     for (var d = ((SqlValue)cx.obs[c.key()]).KnownFragments(cx, kb).First();
@@ -734,7 +657,6 @@ namespace Pyrrho.Level4
                             continue;
                         rc += p;
                         rs += (p, cx._Dom(v));
-                        fi += (p, new Finder(p, s.defpos));
                     }
                 if (s is RestRowSetUsing)
                     for (var c = cx._Dom(sa).aggs.First(); c != null; c = c.Next())
@@ -743,11 +665,10 @@ namespace Pyrrho.Level4
                             var v = (SqlValue)cx.obs[c.key()];
                             rc += v.defpos;
                             rs += (v.defpos, cx._Dom(v));
-                            fi += (v.defpos, new Finder(v.defpos, s.defpos));
                         }
                 var sd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, rs, rc);
                 cx.Add(sd);
-                cx.Add(s + (_Domain, sd.defpos) + (_Finder, fi));
+                cx.Add(s + (_Domain, sd.defpos));
                 s.ApplyT(cx, sa, es);
             }
         }
@@ -797,31 +718,6 @@ namespace Pyrrho.Level4
         {
             return false;
         }
-        // For matching columns, we trace back through source, maybe add more matching uids
-        internal CTree<long, CTree<long, bool>> AddMatching(Context cx, CTree<long, CTree<long, bool>> ma)
-        {
-            for (var b=ma.First();b!=null;b=b.Next())
-            {
-                var c = b.key();
-                for (var r=this;r!=null;r=(RowSet)cx.obs[r.source])
-                {
-                    var f = r.finder[c];
-                    if (f.col!=c && f.col!=0L)
-                    {
-                        ma = Pair(c, f.col, ma);
-                        ma = Pair(f.col, c, ma);
-                        break;
-                    }
-                }
-            }
-            return ma;
-        }
-
-        private CTree<long, CTree<long, bool>> Pair(long c, long col, CTree<long, CTree<long, bool>> ma)
-        {
-            var m = ma[c]??CTree<long,bool>.Empty;
-            return m.Contains(col) ? ma : ma + (c, m + (col, true));
-        }
         protected virtual bool CanAssign()
         {
             return true; // but see SelectRowSet, EvalRowSet, GroupRowSet, OrderedRowSet
@@ -836,9 +732,9 @@ namespace Pyrrho.Level4
                 return new TRow(dm, sce.values);
             if (CanAssign() && a.HasFlag(Assertions.AssignTarget))
                 return new TRow(sce, dm);
-            var ox = cx.finder;
-            cx.finder += finder;
             var vs = CTree<long, TypedValue>.Empty;
+            var oc = cx.values;
+            cx.values = sce.values;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
                 var s = cx.obs[b.value()];
@@ -848,14 +744,15 @@ namespace Pyrrho.Level4
                     v = tv;  // happens for SqlFormal e.g. in LogRowsRowSet 
                 vs += (b.value(), v);
             }
-            cx.finder = ox;
+            cx.values = oc;
             return new TRow(dm, vs);
         }
         internal virtual string DbName(Context cx)
         {
             return cx.db.name;
         }
-        internal override RowSet RowSets(Ident id,Context cx, Domain q, long fm, Domain fd)
+        internal override RowSet RowSets(Ident id,Context cx, Domain q, long fm,
+            Grant.Privilege pr = Grant.Privilege.Select, string a=null)
         {
             return (fm>=0)?this+(_From,fm):this;
         }
@@ -889,64 +786,41 @@ namespace Pyrrho.Level4
                     return false;
             return ab==null; //  if b is not null, b is finer ordering
         }
-        internal virtual RowSet Relocate1(Context cx)
-        {
-            var rs = this;
-            var ts = rs.rsTargets;
-            for (var c = ts.First(); c != null; c = c.Next())
-            {
-                var or = c.value();
-                var nr = cx.Fix(or);
-                if (or != nr)
-                    ts += (c.key(), nr);
-            }
-            var fi = rs.finder;
-            for (var c = fi.First(); c != null; c = c.Next())
-            {
-                var f = c.value();
-                var or = f.rowSet;
-                var nr = cx.Fix(or);
-                if (or != nr)
-                    fi += (c.key(), new Finder(f.col, nr));
-            }
-            return rs + (_Finder, fi) + (RSTargets, ts);
-        }
         internal RowSet AddUpdateAssignment(Context cx, UpdateAssignment ua)
         {
             var s = (long)(mem[_Source] ?? -1L);
-            if (cx.obs[s] is RowSet rs && rs.finder.Contains(ua.vbl)
+            if (cx.obs[s] is RowSet rs && rs.Knows(cx,ua.vbl)
                 && (ua.val == -1L || ((SqlValue)cx.obs[ua.val]).KnownBy(cx, rs)))
                 rs.AddUpdateAssignment(cx, ua);
             var r = this + (Assig, assig + (ua, true));
             cx.Add(r);
             return r;
         }
-        internal override BTree<long, TargetActivation>Insert(Context cx, RowSet ts, bool iter,
-            CList<long> rt)
+        internal override BTree<long, TargetActivation>Insert(Context cx, RowSet ts, CList<long> rt)
         {
             if (rsTargets == CTree<long, long>.Empty)
                 throw new DBException("42174");
-            var r = base.Insert(cx, ts, iter, rt);
+            var r = base.Insert(cx, ts, rt);
             for (var b = rsTargets.First(); b != null; b = b.Next())
-                r += cx.obs[b.value()]?.Insert(cx, ts, false, rt);
+                r += cx.obs[b.value()]?.Insert(cx, ts, rt);
             return r;
         }
-        internal override BTree<long, TargetActivation>Update(Context cx, RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation>Update(Context cx, RowSet fm)
         {
             if (rsTargets == CTree<long, long>.Empty)
                 throw new DBException("42174");
-            var r = base.Update(cx, fm, iter);
+            var r = base.Update(cx, fm);
             for (var b = rsTargets.First(); b != null; b = b.Next())
-                r += cx.obs[b.value()]?.Update(cx, fm, false);
+                r += cx.obs[b.value()]?.Update(cx, fm);
             return r;
         }
-        internal override BTree<long, TargetActivation>Delete(Context cx, RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation>Delete(Context cx, RowSet fm)
         {
             if (rsTargets == CTree<long, long>.Empty)
                 throw new DBException("42174");
-            var r = base.Delete(cx, fm, iter);
+            var r = base.Delete(cx, fm);
             for (var b = rsTargets.First(); b != null; b = b.Next())
-                r += cx.obs[b.value()]?.Delete(cx, fm, false);
+                r += cx.obs[b.value()]?.Delete(cx, fm);
             return r;
         }
         internal virtual bool Built(Context cx)
@@ -959,22 +833,25 @@ namespace Pyrrho.Level4
                 return this;
             var r = (RowSet)New(mem + (_Built, true));
             cx._Add(r);
-            return (r.defpos == defpos)? r:r.MaybeBuild(cx);
+            return r;
         }
         internal virtual RowSet ComputeNeeds(Context cx, Domain xp = null)
         {
             if (needed != null)// || source <0)
                 return this;
-            var rd = _Rdc(cx);
-            var ln = (CTree<long, Finder>.Empty,rd);
+            var ln = CTree<long, bool>.Empty;
             ln = cx.Needs(ln, this, xp);
             ln = cx.Needs(ln, this, keys);
             ln = cx.Needs(ln, this, rowOrder);
             ln = AllWheres(cx, ln);
             ln = AllMatches(cx, ln);
-            var (nd, rc) = ln;
-            var r = this + (_Needed,nd)+(InstanceRowSet.RdCols, rc)+
-                (_Finder,finder+nd);
+            for(var b=ln.First();b!=null;b=b.Next())
+            {
+                var s = cx.obs[b.key()];
+                if (Sources(cx).Contains(s.from))
+                    ln -= b.key();
+            }    
+            var r = this + (_Needed,ln);
             return (RowSet)cx.Add(r);
         }
         internal override CTree<long,bool>_Rdc(Context cx)
@@ -990,35 +867,6 @@ namespace Pyrrho.Level4
                 rc += cx.obs[b.value()]._Rdc(cx);
             return rc;
         }
-        /// <summary>
-        /// Deal with RowSet prequisites (a kind of implementation of LATERAL).
-        /// We can't calculate these earlier since the source rowsets haven't been constructed.
-        /// Cursors will contain corresponding values of prerequisites.
-        /// Once First()/Next() has been called, we need to see if they
-        /// have been evaluated/changed. Either we can't or we must build this RowSet.
-        /// </summary>
-        /// <returns></returns>
-        internal RowSet MaybeBuild(Context cx)
-        {
-            RowSet r = this;
-            do
-                r = r.ComputeNeeds(cx);
-            while (r.needed == null);
-            // We cannot Build if Needs not met by now.
-            var ox = cx.finder;
-            var bd = true;
-            for (var b = r.needed?.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                cx.finder += (p, b.value()); // enable build
-                if (cx.obs[p].Eval(cx) == null)
-                    bd = false;
-            }
-            cx.finder = ox;
-            if (bd) // all prerequisites are ok
-                r = r.Build(cx);  // we can Build (will set built to true)
-            return r;
-        }
         internal virtual int Cardinality(Context cx)
         {
             var r = 0;
@@ -1032,68 +880,52 @@ namespace Pyrrho.Level4
                 r++;
             return r;
         }
-        protected RowSet Fixup(Context cx, RowSet now)
-        {
-            var fi = CTree<long, Finder>.Empty;
-            for (var b = finder.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var f = b.value();
-                if (f.rowSet == defpos)
-                    fi += (p, new Finder(f.col, now.defpos));
-                else
-                    fi += (p, f);
-            }
-            now += (_Finder, fi);
-            cx.Add(now);
-            for (var b = cx.obs.First(); b != null; b = b.Next())
-                if (b.value() == this)
-                    cx.obs += (b.key(), now);
-            return now;
-        }
         internal override Basis _Fix(Context cx)
         {
             var r = (RowSet)base._Fix(cx);
-            var gs = cx.Fix(groupSpec);
-            if (gs != groupSpec)
+            var gs = cx.Fix(r.groupSpec);
+            if (gs != r.groupSpec)
                 r += (Group, gs);
-            var ng = cx.Fix(groupings);
-            if (ng != groupings)
+            var ng = cx.FixLl(r.groupings);
+            if (ng != r.groupings)
                 r += (Groupings, ng);
-            var nf = cx.Fix(finder);
-            if (nf.CompareTo(finder) != 0)
-                r += (_Finder, nf);
-            var nk = cx.Fix(keys);
-            if (nk != keys)
+            var nk = cx.FixLl(r.keys);
+            if (nk != r.keys)
                 r += (Index.Keys, nk);
-            var fl = cx.Fix(filter);
-            if (filter != fl)
+            var xs = cx.FixTLTllb(r.indexes);
+            if (xs != r.indexes)
+                r += (Table.Indexes, xs);
+            var fl = cx.FixTlV(r.filter);
+            if (r.filter != fl)
                 r += (Filter, fl);
-            var no = cx.Fix(rowOrder);
-            if (no != rowOrder)
+            var no = cx.FixLl(r.rowOrder);
+            if (no != r.rowOrder)
                 r += (RowOrder, no);
-            var nw = cx.Fix(where);
-            if (nw != where)
+            var nw = cx.FixTlb(r.where);
+            if (nw != r.where)
                 r += (_Where, nw);
-            var nm = cx.Fix(matches);
-            if (nm != matches)
+            var nm = cx.FixTlV(r.matches);
+            if (nm != r.matches)
                 r += (_Matches, nm);
-            var mg = cx.Fix(matching);
-            if (mg != matching)
+            var mg = cx.FixTTllb(r.matching);
+            if (mg != r.matching)
                 r += (Matching, mg);
-            var ts = cx.FixV(rsTargets);
-            if (ts!=rsTargets)
+            var ts = cx.FixV(r.rsTargets);
+            if (ts!=r.rsTargets)
                 r += (RSTargets, ts);
-            var tg = cx.Fix(target);
-            if (tg != target)
-                r += (From.Target, tg);
-            var ag = cx.Fix(assig);
-            if (ag != assig)
+            var tg = cx.Fix(r.target);
+            if (tg != r.target)
+                r += (Target, tg);
+            var ag = cx.FixTub(r.assig);
+            if (ag != r.assig)
                 r += (Assig, ag);
             var s = (long)(mem[_Source] ?? -1L);
             var ns = cx.Fix(s);
             if (ns != s)
                 r += (_Source, ns);
+            var na = cx.FixTsl(r.names);
+            if (na != r.names)
+                r += (ObInfo.Names, na);
             if (tree?.info != null)
             {
                 var inf = tree.info.Fix(cx);
@@ -1102,6 +934,7 @@ namespace Pyrrho.Level4
                     ks += t.head;
                 r = r + (Index.Tree, new MTree(inf)) + (Index.Keys,ks);
             }
+            r += (Domain.Representation, cx._Dom(r).representation);
             r += (Asserts, asserts);
             return r;
         }
@@ -1110,16 +943,15 @@ namespace Pyrrho.Level4
             //        if (wr.rss.Contains(defpos)) If you uncomment: representation will sometimes be incorrect
             //            return wr.rss[defpos];
             var r = (RowSet)base._Relocate(cx);
-            r += (_Finder, cx.Fix(finder));
-            r += (Index.Keys, cx.Fix(keys));
-            r += (RowOrder, cx.Fix(rowOrder));
-            r += (Filter, cx.Fix(filter));
-            r += (_Where, cx.Fix(where));
-            r += (_Matches, cx.Fix(matches));
+            r += (Index.Keys, cx.FixLl(keys));
+            r += (RowOrder, cx.FixLl(rowOrder));
+            r += (Filter, cx.FixTlV(filter));
+            r += (_Where, cx.FixTlb(where));
+            r += (_Matches, cx.FixTlV(matches));
             r += (Group, cx.Fix(groupSpec));
-            r += (Groupings, cx.Fix(groupings));
+            r += (Groupings, cx.FixLl(groupings));
             r += (RSTargets, cx.FixV(rsTargets));
-            r += (Assig, cx.Fix(assig));
+            r += (Assig, cx.FixTub(assig));
             if (tree != null)
             {
                 var inf = tree.info.Relocate(cx);
@@ -1136,35 +968,40 @@ namespace Pyrrho.Level4
         {
             if (cx.done.Contains(defpos)) // includes the case was==this
                 return cx.done[defpos];
-            var de = 0;
-            var rs = cx._Dom(this);
-            if (rs.representation.Contains(so.defpos))
-                de = _Max(de, sv.depth);
             var r = (RowSet)base._Replace(cx, so, sv);
+            var de = r.depth;
+            var rs = cx._Dom(r);
             rs = (Domain)rs._Replace(cx, so, sv);
+            de = _Max(de, rs.depth + 1);
+            if (cx.obs[r.source] is RowSet sc)
+                de = _Max(de, sc.depth + 1);
             if (rs.defpos != r.domain)
                 r += (_Domain, rs.defpos);
-            var fi = cx.Replaced(r.finder);
-            if (fi!=r.finder)
-                r += (_Finder, fi);
-            var fl = cx.Replace(r.filter,so,sv);
-            if (fl!=r.filter)
+            var fl = cx.ReplaceTlT(r.filter, so, sv);
+            if (fl != r.filter)
                 r += (Filter, fl);
-            var ks = cx.Replaced(keys);
-            if (ks!=keys)
+            var xs = cx.ReplacedTLllb(r.indexes);
+            if (xs != r.indexes)
+                r += (Table.Indexes, xs);
+            var ks = cx.ReplacedLl(r.keys);
+            if (ks != r.keys)
                 r += (Index.Keys, ks);
+            r += (SIMap, cx.ReplacedTll(r.sIMap));
+            r += (ISMap, cx.ReplacedTll(r.iSMap));
+            if (r.mem[ObInfo.Names] is CTree<string, long> ns)
+                r += (ObInfo.Names, cx.ReplacedTsl(ns));
             var os = r.ordSpec;
             for (var b = os?.First(); b != null; b = b.Next())
             {
                 var ow = (SqlValue)cx._Replace(b.value(), so, sv);
                 if (b.value() != ow.defpos)
                     os += (b.key(), ow.defpos);
-                de = Math.Max(de, ow.depth);
+                de = Math.Max(de, ow.depth + 1);
             }
             if (os != r.ordSpec)
                 r += (OrdSpec, os);
-            var ro = cx.Replaced(rowOrder);
-            if (ro!=r.rowOrder)
+            var ro = cx.ReplacedLl(r.rowOrder);
+            if (ro != r.rowOrder)
                 r += (RowOrder, ro);
             var w = r.where;
             for (var b = w.First(); b != null; b = b.Next())
@@ -1196,19 +1033,19 @@ namespace Pyrrho.Level4
                     var ma = b.value();
                     for (var c = ma.First(); c != null; c = c.Next())
                         if (c.key() == so.defpos)
-                            ma = ma - so.defpos + (sv.defpos,true);
+                            ma = ma - so.defpos + (sv.defpos, true);
                     mg = mg - b.key() + (a, ma);
                 }
             if (mg != r.matching)
                 r += (Matching, mg);
-            if (tree != null)
+            if (r.tree != null)
             {
-                var tre = tree.Replaced(cx, so, sv);
-                r = r + (Index.Tree,tre) + (Index.Keys,tre.Keys());
+                var tre = r.tree.Replaced(cx, so, sv);
+                r = r + (Index.Tree, tre) + (Index.Keys, tre.Keys());
             }
             var ch = false;
             var ts = CTree<long, long>.Empty;
-            for (var b = rsTargets.First(); b != null; b = b.Next())
+            for (var b = r.rsTargets.First(); b != null; b = b.Next())
             {
                 var v = b.value();
                 if (v == defpos)
@@ -1218,34 +1055,55 @@ namespace Pyrrho.Level4
                 if (p != b.value() || k != b.key())
                     ch = true;
                 ts += (k, p);
+                de = Math.Max(de, cx.obs[p].depth + 1);
             }
             if (ch)
                 r += (RSTargets, ts);
+            r += (Domain.Representation, cx._Dom(r).representation);
             if (mem.Contains(_Source))
             {
                 var s = (long)mem[_Source];
-                var ns = cx.ObReplace(s, so, sv);
-                if (s!=ns)
-                    r = (RowSet)r.New(cx,E+(_Source, ns));
+                var n = cx.ObReplace(s, so, sv);
+                if (s != n)
+                    r = (RowSet)r.New(cx, E + (_Source, n));
+                de = Math.Max(de, cx.obs[n].depth);
             }
-            if (cx.done.Contains(groupSpec))
+            if (cx.done.Contains(r.groupSpec))
             {
-                var ng = cx.done[groupSpec].defpos;
-                if (ng!=groupSpec)
+                var ng = cx.done[r.groupSpec].defpos;
+                if (ng != r.groupSpec)
                     r += (Group, ng);
-                r += (Groupings, cx.Replaced(groupings));
-                if (r.groupings.CompareTo(groupings)!=0)
-                    r += (GroupCols,cx.GroupCols(r.groupings));
+                var og = r.groupings;
+                r += (Groupings, cx.ReplacedLl(og));
+                if (r.groupings.CompareTo(og) != 0)
+                    r += (GroupCols, cx.GroupCols(r.groupings));
             }
-            r += (_Depth, de + 1);
-            cx.Add(r);
+            ch = (r != this);
+            if (cx._Replace(r.target, so, sv) is RowSet tg && tg.defpos != r.target)
+            {
+                ch = true;
+                r += (Target, tg);
+            }
+            var ua = CTree<UpdateAssignment, bool>.Empty;
+            for (var b = r.assig?.First(); b != null; b = b.Next())
+            {
+                var na = b.key().Replace(cx, so, sv);
+                ua += (na, true);
+                de = Math.Max(de, Math.Max(cx.obs[na.vbl].depth, cx.obs[na.val].depth) + 1);
+            }
+            if (ua != r.assig)
+                r += (Assig, ua);
+            r += (_Depth, de);
+            if (ch)
+                cx.Add(r);
+            cx.done += (defpos, r);
             return r;
         }
         public string NameFor(Context cx, int i)
         {
             var dm = cx._Dom(this);
             var p = dm.rowType[i];
-            if (cx.role.infos[p] is ObInfo ci)
+            if (cx._Ob(p).infos[cx.role.defpos] is ObInfo ci)
                 return ci.name;
             if (cx.obs[p] is SqlValue sv && (sv.alias ?? sv.name) is string n)
                 return n;
@@ -1283,43 +1141,55 @@ namespace Pyrrho.Level4
                 r += (_Matches, m);
             return r;
         }
-        internal virtual bool Knows(Context cx, long rp)
+        /// <summary>
+        /// Can this calculate the value of reference rp?
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="rp"></param>
+        /// <param name="ambient">allow ambient values (never allowed for Apply)</param>
+        /// <returns></returns>
+        internal virtual bool Knows(Context cx, long rp, bool ambient=false)
         {
+            if (rp == defpos)
+                return true;
             var dm = cx._Dom(this);
-            return finder.Contains(rp) || rp == defpos
-        //        || dm.representation.Contains(rp)
-        //        || (cx.obs[source] is RowSet rs && rs.Knows(cx, rp))
-                || (cx.obs[rp] is SqlValue sv && sv.isConstant(cx));
+       //     var ds = dm.display;
+       //     if (ds == 0)
+       //         ds = dm.Length;
+            for (var b = dm.rowType.First(); b != null // && b.key()<ds
+                    ; b = b.Next())
+                if (b.value() == rp)
+                    return true;
+            if (ambient && cx.obs[rp] is SqlValue sv 
+                && (sv.from < defpos || sv.defpos < defpos) && sv.selectDepth<selectDepth)
+                return true;
+            return false;
         }
         internal virtual CList<long> Keys()
         {
             return null;
         }
-        internal virtual (CTree<long, Finder>,CTree<long,bool>) AllWheres(Context cx, 
-            (CTree<long, Finder>,CTree<long,bool>) ln)
+        internal virtual CTree<long, bool> AllWheres(Context cx, CTree<long, bool> nd)
         {
-            var (nd,rc) = cx.Needs(ln, this, where);
+            nd = cx.Needs(nd, this, where);
             if (cx.obs[source] is RowSet sce)
             {
-                var (ns,ss) = sce.AllWheres(cx, ln);
+                var ns = sce.AllWheres(cx, nd);
                 for (var b = ns.First(); b != null; b = b.Next())
                     nd += (b.key(), b.value());
-                rc += ss;
             }
-            return (nd,rc);
+            return nd;
         }
-        internal virtual (CTree<long, Finder>,CTree<long,bool>) AllMatches(Context cx, 
-            (CTree<long, Finder>,CTree<long,bool>) ln)
+        internal virtual CTree<long, bool> AllMatches(Context cx, CTree<long, bool>nd)
         {
-            var (nd,rc) = cx.Needs(ln, this, matches);
+            nd = cx.Needs(nd, this, matches);
             if (cx.obs[source] is RowSet sce)
             {
-                var (ns, ss) = sce.AllMatches(cx, ln);
+                var ns = sce.AllMatches(cx, nd);
                 for (var b = ns.First(); b != null; b = b.Next())
                         nd += (b.key(), b.value());
-                rc += ss;
             }
-            return (nd,rc);
+            return nd;
         }
         /// <summary>
         /// Test if the given source RowSet matches the requested ordering
@@ -1339,7 +1209,7 @@ namespace Pyrrho.Level4
         internal void Schema(Context cx, int[] flags)
         {
             var dm = cx._Dom(this);
-            int m = dm.rowType.Length;
+       //     int m = dm.rowType.Length;
             bool addFlags = true;
             var adds = new int[flags.Length];
             // see if we are going to add index flags stuff
@@ -1377,17 +1247,12 @@ namespace Pyrrho.Level4
         protected abstract Cursor _Last(Context cx);
         public virtual Cursor First(Context cx)
         {
-            var rs = MaybeBuild(cx);
-            if (!rs.Built(cx))
-            {
-                var sv = (SqlValue)cx.obs[rs.needed.First().key()];
-                throw new DBException("42112", sv.name);
-            }
+            var rs = Build(cx);
             return rs._First(cx);
         }
         public virtual Cursor Last(Context cx)
         {
-            var rs = MaybeBuild(cx);
+            var rs = Build(cx);
             if (!rs.Built(cx))
             {
                 var sv = (SqlValue)cx.obs[rs.needed.First().key()];
@@ -1451,7 +1316,25 @@ namespace Pyrrho.Level4
             {
                 sb.Append(":"); sb.Append(Uid(domain));
             }
-            var cm = "";
+            string cm;
+            if (indexes.Count > 0)
+            {
+                sb.Append(" Indexes=[");
+                cm = "";
+                for (var b = indexes.First(); b != null; b = b.Next())
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                    {
+                        sb.Append(cm); cm = ",";
+                        var cn = "(";
+                        for (var d = b.key().First(); d != null; d = d.Next())
+                        {
+                            sb.Append(cn); cn = ",";
+                            sb.Append(Uid(d.value()));
+                        }
+                        sb.Append(")"); sb.Append(Uid(c.key()));
+                    }
+                sb.Append("]");
+            }
             if (keys.Count != 0)
             {
                 cm = " key (";
@@ -1486,6 +1369,17 @@ namespace Pyrrho.Level4
             {
                 cm = " where (";
                 for (var b = where.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key()));
+                }
+                sb.Append(")");
+            }
+            if (having!=CTree<long,bool>.Empty)
+            {
+                sb.Append(" having (");
+                cm = "";
+                for (var b = having.First(); b != null; b = b.Next())
                 {
                     sb.Append(cm); cm = ",";
                     sb.Append(Uid(b.key()));
@@ -1572,20 +1466,6 @@ namespace Pyrrho.Level4
             {  sb.Append(" Source: "); sb.Append(Uid(source)); }
             if (data >0)
             { sb.Append(" Data: "); sb.Append(Uid(data)); }
-            if (PyrrhoStart.VerboseMode && finder != CTree<long, Finder>.Empty)
-            {
-                cm = "(";
-                sb.Append(" Finder: ");
-                for (var b = finder.First(); b != null; b = b.Next())
-                {
-                    sb.Append(cm); cm = "],";
-                    sb.Append(Uid(b.key()));
-                    var f = b.value();
-                    sb.Append("="); sb.Append(Uid(f.rowSet));
-                    sb.Append('['); sb.Append(Uid(f.col));
-                }
-                sb.Append("])");
-            }
             if (assig.Count > 0) { sb.Append(" Assigs:"); sb.Append(assig); }
             var ro = (CTree<long, long>)mem[UsingOperands];
             if (ro != null && ro.Count>0)
@@ -1638,7 +1518,7 @@ namespace Pyrrho.Level4
         public readonly BTree<long, (long,long)> _ds;   // target->(defpos,ppos)
         public readonly int display;
         protected Cursor(Context cx, RowSet rs, int pos, BTree<long,(long,long)> ds, 
-            TRow rw, BTree<long, object> m = null) : base(cx._Dom(rs), rw.values)
+            TRow rw) : base(cx._Dom(rs), rw.values)
         {
             _rowsetpos = rs.defpos;
             _dom = cx._Dom(rs);
@@ -1646,6 +1526,7 @@ namespace Pyrrho.Level4
             _ds = ds;
             display = _dom.display;
             cx.cursors += (rs.defpos, this);
+            cx.values += values;
             if (cx.result!=rs.defpos)
                 cx.funcs -= rs.defpos;
         }
@@ -1658,17 +1539,19 @@ namespace Pyrrho.Level4
             _ds = ds;
             display = _dom.display;
             cx.cursors += (rs.defpos, this);
+            cx.values += values;
             cx.funcs -= rs.defpos;
         }
         protected Cursor(Context cx, Cursor cu)
-            : base((Domain)cu.dataType.Fix(cx), cx.Fix(cu.values))
+            : base((Domain)cu.dataType.Fix(cx), cx.FixTlV(cu.values))
         {
             _rowsetpos = cx.Fix(cu._rowsetpos);
             _dom = cu._dom;
             _pos = cu._pos;
-            _ds = cx.Fix(cu._ds);
+            _ds = cx.FixBlll(cu._ds);
             display = cu.display;
             cx.cursors += (cu._rowsetpos, this);
+            cx.values += values;
             cx.funcs -= cu._rowsetpos;
         }
         // a more detailed version for trigger-side transition cursors
@@ -1680,6 +1563,7 @@ namespace Pyrrho.Level4
             _pos = pos;
             _ds = ds;
             cx.cursors += (rd, this);
+            cx.values += values;
             cx.funcs -= rd;
         }
         protected Cursor(Cursor cu, Context cx, long p, TypedValue v)
@@ -1691,6 +1575,7 @@ namespace Pyrrho.Level4
             _ds = cu._ds;
             display = cu.display;
             cx.cursors += (cu._rowsetpos, this);
+            cx.values += values;
             cx.funcs -= cu._rowsetpos;
         }
         public static Cursor operator +(Cursor cu, (Context, long, TypedValue) x)
@@ -1716,7 +1601,7 @@ namespace Pyrrho.Level4
         internal ETag _Rvv(Context cx)
         {
             var rs = (RowSet)cx.obs[_rowsetpos];
-            var dn = rs.DbName(cx);
+        //    var dn = rs.DbName(cx);
             var rvv = Rvv.Empty;
             if (rs is TableRowSet ts)
             {
@@ -1751,7 +1636,7 @@ namespace Pyrrho.Level4
                     return false;
             }
             for (var b = rs.where.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()].Eval(cx) == TBool.False)
+                if (cx.obs[b.key()].Eval(cx) != TBool.True)
                     return false;
             return true;
         }
@@ -1780,7 +1665,7 @@ namespace Pyrrho.Level4
         }
         internal string NameFor(Context cx, int i)
         {
-            var rs = (RowSet)cx.obs[_rowsetpos];
+    //        var rs = (RowSet)cx.obs[_rowsetpos];
             var p = _dom.rowType[i];
             return (cx.obs[p] is SqlValue sv)?sv.name:"";
         }
@@ -1791,7 +1676,7 @@ namespace Pyrrho.Level4
             return sb.ToString();
         }
     }
-    /// <summary>
+/*    /// <summary>
     /// From is named after the SQL reserved word (explicit in most syntax)
     /// which is followed by a table or view reference, called the source.
     /// INSERT INTO also has a From, as does a routine call.
@@ -1818,8 +1703,6 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class From : RowSet
     {
-        internal const long
-            Target = -153; // long (a table or view for simple IDU ops)
         internal override Assertions Requires => Assertions.SimpleCols;
         /// <summary>
         /// Contructor 
@@ -1854,50 +1737,16 @@ namespace Pyrrho.Level4
         /// <param name="ob">The object to be instanced</param>
         /// <param name="q">The value list if any</param>
         /// <param name="pr">The access required if not Select</param>
-        /// <param name="a">An alias if any</param>
-        /// <param name="cr">NonNull for SqlInsert, an explicit column list if not empty</param>
-        public From(Ident ic, Context cx, DBObject ob, Domain q = null,
-            Grant.Privilege pr = Grant.Privilege.Select, BList<Ident> cr = null,
-            string a = null)
-            : this(ic, cx, _Mem(ic, cx, ob, q, pr, cr, a)) { }
+        public From(Ident ic, Context cx, DBObject ob, 
+            Grant.Privilege pr = Grant.Privilege.Select,string a=null)
+            : this(ic, cx, _Mem(ic, cx, ob, pr, a)) { }
         From(Ident ic, Context cx, BTree<long, object> m)
             : base(cx, ic.iix.dp, m)
         {
-            var ids = cx.defs[(alias ?? name, cx.sD)].Item2;
-            var dm = cx._Dom(this);
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
-            {
-                // update defs with the newly defined entries and their aliases
-                var c = (SqlValue)cx.obs[b.value()];
-                if (c.name != "")
-                {
-                    var cix = new Iix(ic.iix.lp,cx,c.defpos);
-                    ids += (c.name, cix, Ident.Idents.Empty);
-                    if ((!cx.defs.Contains(c.name)) ||
-                        cx.defs[c.name][cix.sd].Item1 is Iix ix && ix.dp >= 0 &&
-                        (ix.dp < Transaction.TransPos || ix.sd < ic.iix.sd))
-                    {
-                        cx.defs += (c.name, cix, Ident.Idents.Empty);
-                        cx.iim += (cix.dp, cix);
-                    }
-          /*          else if (cx.defs[c.name].Contains(c.iix.sd)) cf test8:10
-                    {
-                        var x = cx.defs[c.name][c.iix.sd].Item1;
-                        if (x.dp>=0 && x.dp!=c.defpos)
-                            cx.defs += (c.name, new Iix(-1L, cx, -1L), Ident.Idents.Empty);
-                    } */
-                    if (c.alias != null)
-                    {
-                        ids += (c.alias, cix, Ident.Idents.Empty);
-                        cx.defs += (c.alias, cix, Ident.Idents.Empty);
-                    }
-                }
-            }
-            cx.defs += (alias??name, ic.iix, ids);
-            cx.iim += (ic.iix.dp, ic.iix);
+            cx.UpdateDefs(ic, this, (string)m[_Alias]);
         }
-        public From(long dp, Context cx, SqlCall pc, Domain q, CList<long> cr = null)
-            : base(dp,cx, _Mem(dp, cx, pc, q, cr))
+        public From(long dp, Context cx, SqlCall pc, CList<long> cr = null)
+            : base(dp,cx, _Mem(dp, cx, pc, cr))
         { }
         public From(long dp, Context cx, RowSet rs, string a)
             : base(dp, cx, _Mem(cx, rs, dp, a))
@@ -1916,27 +1765,25 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// Workshop for the CRUD From constructor
-        /// If q is non-null, it will be a TABLE domain with a set of columns (the display)
+        /// If q is non-null, it will be a TABLE domain with a set of Value columns (the display)
         /// and if there are no stars will know how many there are, and maybe their names or aliases.
         /// We probably won't know their Domains (but they may be literal values, simple names,
         /// expressions or function calls with a a constrained Union Domain result).
         /// Consider instead the set of non-star Ident operands N in these expressions. 
-        /// At this stage there are three sorts of Ident here:
-        ///  Identifiers that have occurred to the left of the current SELECT: may also be
-        ///  only partially known but they will eventually be defined by the RowSet they are from.
-        ///  All other Idents i in N will name ix.cx.lp as their From. There are three cases:
-        ///  i is now the uid of an SqlCopy targeting a previous tablereference in the tableexpression.
+        /// We process them recursively, using Resolve.
+        /// At this stage there are four sorts of Ident here:
+        ///  (1) Identifiers that have occurred to the left of the current SELECT: may also be
+        ///  only partially known but they will eventually be defined by the RowSet they reference.
+        ///  (2) Identifiers that reference previous tables in the tableexpression.
+        ///  (3) Identifiers i that will be satisfied from the current ob. There are two cases:
         ///  i has form f.i where f is a forward reference (the name or alias of this or a future tablereference)
         ///  i is a simple name which may unambiguously match a column name in this tablereference
-        ///  And all of these are in cx.defs already (ambiguous references already excluded).
-        ///  
-        /// For this tablereference ic, we will be constructing an Instance of ob whose rowType will
-        /// contain uids in the above collection N, including all the f.u idents where f names ic or its alias a,
-        /// and any unabiguous references to the names of ob; and heap uids for any unreferenced columns
-        /// in case they are referenced later: these will be in the display if q contains a star.
-        /// Where we have constructed this RowSet, all of these references will be to SqlCopy 
-        /// targeting this tablereference and (for a base table) with a copyFrom field identifying the base column.
-        /// 
+        ///  (4) identifiers that will be satisfied from a later table in the tableexpression.
+        ///  And all of these identifiers are in cx.defs already (ambiguous references already excluded).
+        /// For each instancerowset T in the target list, we traverse q and identify references to T.
+        /// We will replace unknown SqlValues by SqlCopy as we go.
+        /// Remember that at the end of the From clause we still have where conditions etc which may
+        /// create more references to T.
         /// </summary>
         /// <param name="ic">Lexical identifier: ic.ident the name if any,
         ///  ic.iix.lp will be the SELECT uid if different from ic.iix.dp, 
@@ -1949,246 +1796,30 @@ namespace Pyrrho.Level4
         /// <param name="a">The alias for this tablereference if any</param>
         /// <returns>The properties for this instance rowset</returns>
         /// <exception cref="DBException"></exception>
-        internal static BTree<long, object> _Mem(Ident ic,Context cx, DBObject ob, Domain q,
-           Grant.Privilege pr, BList<Ident> cr,string a)
+        internal static BTree<long, object> _Mem(Ident ic, Context cx, DBObject ob, Grant.Privilege pr, string a)
         {
-            var vs = BList<SqlValue>.Empty; // the resolved select list for this instance in query rowType order
-            var qn = CTree<long, bool>.Empty; // the set N of identifiers in q
-            var dt = ob.Domains(cx, pr); // the domain of the referenced object ob
-            var ma = BTree<string, DBObject>.Empty; // the set of referenceable columns in dt
-            for (var b = dt.rowType.First(); b != null && b.key() < dt.display; b = b.Next())
-            {
-                var p = b.value();
-                var tc = (DBObject)cx.db.objects[p] ?? cx.obs[p];
-                var s = tc.ToString();
-                var ci = (ObInfo)cx.role.infos[tc.defpos];
-                var nm = ci?.name ?? ((SqlValue)tc).name;
-                ma += (nm, tc);
-                if (ci?.alias != null)
-                    ma += (ci.alias, tc);
-                if (tc is SqlCopy sc && sc.alias != null)
-                    ma += (sc.alias, tc);
-            }
-            qn = q?.Needs(cx,-1L,qn);
-            var tn = ic.ident; // the object name
-            var n = a ?? tn;
-            var _ix = ic.iix; // our eventual uid
-            var fu = BTree<string, long>.Empty;
-            // we begin by examining the f.u entries in cx.defs. If f matches n we will add to fu
-            if (cx.defs.Contains(tn)) // care: our name may have occurred earlier (for a different instance)
-            {
-                var (ix,ids) = cx.defs[(tn, ic.iix.sd)];
-                if (cx.obs[ix.dp] is ForwardReference)
-                {
-                    _ix = ix;
-                    for (var b = ids.First(); b != null; b = b.Next())
-                        if (b.value() != BTree<int, (Iix, Ident.Idents)>.Empty)
-                            fu += (b.key(), b.value().Last().value().Item1.dp);
-                }
-            }
-            cx.defs += (tn, _ix, Ident.Idents.Empty);
-            cx.iim += (ic.iix.dp, ic.iix);
-            if (a != null && cx.defs.Contains(a))
-            {
-                var (ix, ids) = cx.defs[(a, ic.iix.sd)];
-                if (cx.obs[ix.dp] is ForwardReference)
-                {
-                    if (_ix.dp != ic.iix.dp)
-                        throw new DBException("42104", a);
-                    _ix = ix;
-                    for (var b = ids.First(); b != null; b = b.Next())
-                        if (b.value() != BTree<int, (Iix, Ident.Idents)>.Empty)
-                            fu += (b.key(), b.value().Last().value().Item1.dp);
-                }
-            }
-            if (a != null)
-                cx.defs += (a, _ix, Ident.Idents.Empty);
-            int d = dt.Length; // di is the Domain of the referenced object ob
+            var ts = ob.RowSets(ic, cx, cx._Dom(ob), ic.iix.dp, pr,a); // get the target rowset
+            var m = ts.mem;
+            var rt = ts.rsTargets;
             var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
-            var tr = CTree<long,long>.Empty; // the mapping to physical positions
-            var mp = CTree<long, bool>.Empty; // the set of referenced columns
-            if (cr == null || cr==BList<Ident>.Empty)
-            {
-                // we want to add everything from dt that matches q.Needs with lexical uids
-                if (q!= null)
-                {
-                    for (var b = qn.First(); b != null; b = b.Next())
-                    {
-                        var p = b.key();
-                        if (cx.obs[p] is SqlValue uv 
-                                && uv.Iim(cx).sd>=cx.sD
-                                && (!dt.rowType.Has(p)) 
-                                &&!(uv is SqlCopy))// && dt.rowType.Has(uc.copyFrom))))
-                        {
-                            if (uv is SqlStar)
-                            {
-                                vs += uv;
-                                mp += (uv.defpos, true);
-                                continue;
-                            }
-                            var tc = ma[uv.name];
-                            if (tc == null || (tc is TableColumn && cx.obs[uv.from] is VirtualTable)) //??
-                                continue;
-                            SqlValue nv = null;
-                            if (tc is SqlValue sc)
-                                nv = (SqlValue)sc.Relocate(tc.defpos);
-                            if (nv == null && (fu.Contains(uv.name) && fu[uv.name] == p
-                                || cx.defs[(uv.name, _ix.sd)].Item1.dp >= 0))
-                            {
-                                if (mp.Contains(tc.defpos))
-                                {
-                                    cx.Replace(uv, (SqlValue)cx.obs[tr[tc.defpos]]);
-                                    continue;
-                                }
-                                nv = new SqlCopy(uv.defpos, cx, uv.name, _ix.dp, tc.defpos);
-                            }
-                            if (nv == null)
-                                continue;
-                            nv += (_From, _ix.dp);
-                            if (uv.alias != null)
-                                nv += (_Alias, uv.alias);
-                            cx.Replace(uv, nv); // update the context (but not q)
-                            if (nv is SqlCopy su && cx.obs[su.copyFrom] is SqlCopy)
-                            {
-                                var mgu = mg[su.copyFrom] ?? CTree<long, bool>.Empty;
-                                var mgp = mg[p] ?? CTree<long, bool>.Empty;
-                                mg = mg + (uv.defpos, mgu + (p, true))
-                                    + (p, mgp + (su.copyFrom, true));
-                            }
-                            vs += nv;
-                            tr += (tc.defpos, nv.defpos);
-                            mp += (tc.defpos, true);
-                        }
-                    }
-                }
-            }
-            else
-                for (var b = cr.First(); b != null; b = b.Next())
-                {
-                    var c = b.value();
-                    var tc = cx.obs[cx.defs[c].dp]
-                        ?? throw new DBException("42112", c.ident);
-                    while (tc is SqlCopy sc)
-                        tc = cx.obs[sc.copyFrom]??(DBObject)cx.db.objects[sc.copyFrom];
-                    var sv = (tc is TableColumn) ?
-                        new SqlCopy(c.iix.dp, cx, c.ident, ic.iix.dp, tc.defpos) :
-                        (SqlValue)tc;
-                    cx.Add(sv);
-                    tr += (tc.defpos, sv.defpos);
-                    vs += sv;
-                    mp += (tc.defpos, true);
-                }
-            if (vs.Length != 0)
-                d = vs.Length;
-            if (ob is Table)
-                for (var b = dt.rowType.First(); b != null && b.key() < dt.display; b = b.Next())
-                {
-                    var p = b.value();
-                    var co = cx.obs[p] ?? (DBObject)cx.db.objects[p];
-                    SqlCopy sc = null;
-                    while (co is SqlCopy)
-                    {
-                        sc = co as SqlCopy;
-                        co = cx.obs[sc.copyFrom] ?? (DBObject)cx.db.objects[sc.copyFrom];
-                    }
-                    p = co.defpos;
-                    if (tr.Contains(p))
-                    {
-                        var aa = true;
-                        for (var c = vs.First(); aa && c != null; c = c.Next())
-                            aa = tr[p] != c.value().defpos;
-                        if (aa)
-                            vs += (SqlValue)cx.obs[tr[p]];
-                        continue;
-                    }
-                    var ci = cx.Inf(p);
-                    if (sc == null && cx.defs.Contains(ci.name))
-                    {
-                        var ix = cx.defs[(ci.name,cx.sD)].Item1;
-                        var so = cx.obs[ix.dp];
-                        if (so?.GetType().Name == "SqlValue" && ix.sd>=cx.sD)
-                        {
-                            sc = new SqlCopy(ix.dp, cx, ci.name, ic.iix.dp, co,
-                                new BTree<long, object>(_Alias, so.alias));
-                            cx.Add(sc);
-                        }
-                    }
-                    if (sc == null || !(ob is RowSet))
-                    {
-                        sc = new SqlCopy(cx.GetUid(), cx, ci?.name ?? co.alias ?? co.name, ic.iix.dp, co);
-                        cx.Add(sc);
-                    }
-                    vs += sc;
-                    tr += (p, sc.defpos);
-                }
-            else
-                for (var b = dt.rowType.First(); b != null; b = b.Next())
-                {
-                    var p = b.value();
-                    var sc = (SqlValue)cx.obs[p];
-                    if (vs.Has(sc))
-                        continue;
-                    vs += sc;
-                    tr += (p, sc.defpos);
-                }
-            var rt = CList<long>.Empty;
-            if (ob.defpos<0) // system tables have columns in the wrong order!
-                for (var b = tr.Last(); b != null; b = b.Previous())
-                    rt += b.value();
-            else
-                for (var b = tr.First(); b != null; b = b.Next())
-                    rt += b.value();
-            var fd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, vs) + (Domain.Display, d);
-            cx._Add(fd);
-            var sd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, vs)+(Domain.RowType,rt);
-            cx._Add(sd);
-            var ts = ob.RowSets(ic, cx, sd, ic.iix.dp, fd);
-            if (ts is SelectRowSet)
-                return ts.mem + (Name, ic.ident) + (_Domain,fd.defpos);
-            var fi = ts.finder;
-            for (var b = sd.rowType.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                if (!fi.Contains(p))
-                    fi += (p, new Finder(p, ic.iix.dp));
-            }
-            if (cr!=null) // SqlInsert: columns are now assignment compatible
-            {
-                var qb = fd.rowType.First();
-                for (var b = sd.rowType.First(); b != null && qb != null; b = b.Next(), qb = qb.Next())
-                    fi += (qb.value(), new Finder(b.value(), ic.iix.dp));
-            }
-            var op = ob.defpos;
-            if (ob is RestRowSet rrs)
-                op = ((RestView)cx.obs[rrs.restView]).viewPpos;
-            var fa = (pr==Grant.Privilege.Select)? Assertions.None: 
-                (cr == null) ? Assertions.AssignTarget : Assertions.ProvidesTarget;
-            var r = BTree<long, object>.Empty + (Name, tn)
-                   + (Target, ts.target) + (_Domain,fd.defpos)
-                   + (_Finder, fi) 
+            var tn = ic.ident; // the object name
+            cx.iim += (ic.iix.dp, ic.iix);
+            var dm = (Domain)cx.obs[(long)m[_Domain]];
+            var fa = (pr == Grant.Privilege.Select) ? Assertions.None : Assertions.AssignTarget;
+            fa |= ts.asserts & Assertions.SpecificRows;
+            m = m + (ObInfo.Name, tn)
+                   + (Target, ts.target) + (_Domain, dm.defpos)
                    + (_Source, ts.defpos) + (Matching, mg)
-                   + (RSTargets, new CTree<long, long>(op, ts.defpos))
-                   + (Asserts, fa)
-                   + (_Depth,cx.Depth(fd,ts,ob));
-            if (ts is TableRowSet tt)
-            {
-                if (tt.indexes != CTree<CList<long>, CTree<long,bool>>.Empty)
-                    r += (Table.Indexes, tt.indexes);
-                if (tt.skeys.Count>0)
-                {
-                    var ks = CList<long>.Empty;
-                    for (var b = tt.skeys.First(); b != null; b = b.Next())
-                        ks += tt.sIMap[b.value()];
-                    r += (Index.Keys, ks);
-                }
-            }
+                   + (RSTargets, rt) + (Asserts, fa) 
+                   + (Domain.Representation, dm.representation)
+                   + (_Depth, cx.Depth(dm, ts, ob));
+            if (a != null)
+                m += (_Alias, a);
             if (ts.keys != CList<long>.Empty)
-                r += (Index.Keys, ts.keys);
-            if (a!=null)
-                r += (_Alias,a);
-            return r;
+                m += (Index.Keys, ts.keys);
+            return m;
         }
-        static BTree<long, object> _Mem(long dp, Context cx, SqlCall ca, Domain q, CList<long> cr = null)
+        static BTree<long, object> _Mem(long dp, Context cx, SqlCall ca, CList<long> cr = null)
         {
             var pc = (CallStatement)cx.obs[ca.call];
             var proc = (Procedure)((Procedure)cx.db.objects[pc.procdefpos]).Instance(dp,cx);
@@ -2197,13 +1828,16 @@ namespace Pyrrho.Level4
             var ma = CTree<string,long>.Empty;
             for (var b=cx._Dom(proc).rowType.First();b!=null;b=b.Next())
                 ma += (((SqlValue)cx.obs[b.value()]).name,b.value());
-            for (var b = q.rowType.First(); b != null; b = b.Next())
+            for (var b = cx._Dom(prs).rowType.First(); b != null; b = b.Next())
                 if (cx.obs[b.value()] is SqlValue sv &&
                     sv.domain == Domain.Content.defpos && ma.Contains(sv.name))
                     cx.obs += (sv.defpos, new SqlCopy(sv.defpos, cx, sv.name, ca.defpos, ma[sv.name]));
-            return BTree<long, object>.Empty
-                + (Target, pc.procdefpos) + (_Depth, 1 + ca.depth)
-                + (_Domain, proc.domain) + (Name, proc.name)
+            var pi = proc.infos[cx.role.defpos];
+            var m = BTree<long, object>.Empty;
+            if (pi.names != CTree<string, long>.Empty)
+                m += (ObInfo.Names, pi.names);
+            return m + (Target, pc.procdefpos) + (_Depth, 1 + ca.depth)
+                + (_Domain, proc.domain) + (ObInfo.Name, pi.name)
                 + (_Source, prs.defpos)
                 + (_Depth, cx.Depth(ca,proc,prs));
         }
@@ -2211,7 +1845,8 @@ namespace Pyrrho.Level4
         {
             var r =  BTree<long, object>.Empty
                 + (Target, rs.defpos) + (_Depth, 1 + rs.depth)
-                + (_Domain, rs.domain) + (Name, a);
+                + (_Domain, rs.domain) + (ObInfo.Name, a)
+                + (ISMap, rs.iSMap) + (SIMap,rs.sIMap) + (ObInfo.Names,rs.names);
             var ma = (CTree<long, CTree<long, bool>>)r[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
             if (rs != null && (ma.Count > 0 || rs.matching.Count > 0))
                 r += (Matching, rs.CombineMatching(ma, rs.matching));
@@ -2273,8 +1908,6 @@ namespace Pyrrho.Level4
                 r += (Assig, ua);
             if (ch)
                 cx.Add(r);
-            if (r != this)
-                r = (From)New(cx, r.mem);
             cx.done += (defpos, r);
             return r;
         }
@@ -2309,7 +1942,7 @@ namespace Pyrrho.Level4
         internal void TableCheck(Context _cx, PCheck c)
         {
             var cx = new Context(_cx.db);
-            var trs = new TableRowSet(cx.GetUid(), cx, target, domain);
+            var trs = new TableRowSet(cx.GetUid(), cx, target);
             if (trs.First(cx) != null)
                 throw new DBException("44000", c.check).ISO();
         }
@@ -2321,8 +1954,7 @@ namespace Pyrrho.Level4
             var ns = sce.Sort(cx, os, dct);
             if (ns.SameOrder(cx, os, ns.rowOrder) && ((!dct) || dct == ns.distinct))
             {
-                var r = this + (_Source, ns.defpos) + (RowOrder, os) + (Distinct, dct)
-                    + (_Finder, ns.finder);
+                var r = this + (RowOrder, os) + (Distinct, dct);
                 return (RowSet)cx.Add(r);
             }
             return base.Sort(cx, os, dct);
@@ -2330,41 +1962,7 @@ namespace Pyrrho.Level4
         internal override void Show(StringBuilder sb)
         {
             base.Show(sb);
-            if (mem.Contains(_Alias)) { sb.Append(" Alias "); sb.Append(alias); }
-            if (mem.Contains(Target)) { sb.Append(" Target="); sb.Append(Uid(target)); }
-            if (mem.Contains(Table.Indexes)) 
-            {   
-                var indexes = (CTree<CList<long>, CTree<long,bool>>)mem[Table.Indexes];
-                if (indexes.Count > 0)
-                {
-                    sb.Append(" Indexes=[");
-                    var cm = "";
-                    for (var b = indexes.First(); b != null; b = b.Next())
-                        for (var c=b.value().First();c!=null;c=c.Next())
-                    {
-                        sb.Append(cm); cm = ",";
-                        var cn = "(";
-                        for (var d = b.key().First(); d != null; d = d.Next())
-                        {
-                            sb.Append(cn); cn = ",";
-                            sb.Append(Uid(d.value()));
-                        }
-                        sb.Append(")"); sb.Append(Uid(c.key()));
-                    }
-                }
-                sb.Append("]");
-            }
-            if (mem.Contains(Index.Keys) && keys.Count>0)
-            {
-                sb.Append(" Keys=(");
-                var cm = "";
-                for (var b=keys.First(); b != null; b = b.Next())
-                {
-                    sb.Append(cm); cm = ",";
-                    sb.Append(Uid(b.value()));
-                }
-                sb.Append(")");
-            }
+            if (alias!=null && alias!="") { sb.Append(" Alias "); sb.Append(alias); }
         }
         // shareable as of 26 April 2021
         internal class FromCursor : Cursor
@@ -2391,7 +1989,7 @@ namespace Pyrrho.Level4
                 var ox = cx.finder;
                 var sce = (RowSet)cx.obs[trs.source];
                 if (sce!=null)
-                    cx.finder += sce.finder;
+                    cx.finder = sce.defpos;
                 for (var bmk = sce?.First(cx); bmk != null; bmk = bmk.Next(cx))
                 {
                     var rb = new FromCursor(cx, trs, bmk, 0);
@@ -2408,7 +2006,7 @@ namespace Pyrrho.Level4
             {
                 var ox = cx.finder;
                 var sce = (RowSet)cx.obs[trs.source];
-                cx.finder += sce.finder;
+                cx.finder = sce.defpos;
                 for (var bmk = sce.Last(cx); bmk != null; bmk = bmk.Previous(cx))
                 {
                     var rb = new FromCursor(cx, trs, bmk, 0);
@@ -2424,7 +2022,7 @@ namespace Pyrrho.Level4
             protected override Cursor _Next(Context cx)
             {
                 var ox = cx.finder;
-                cx.finder += ((RowSet)cx.obs[_trs.source]).finder;
+                cx.finder = _trs.source;
                 for (var bmk = _bmk.Next(cx); bmk != null; bmk = bmk.Next(cx))
                 {
                     var rb = new FromCursor(cx, _trs, bmk, _pos + 1);
@@ -2440,7 +2038,7 @@ namespace Pyrrho.Level4
             protected override Cursor _Previous(Context cx)
             {
                 var ox = cx.finder;
-                cx.finder += ((RowSet)cx.obs[_trs.source]).finder;
+                cx.finder = _trs.source;
                 for (var bmk = _bmk.Previous(cx); bmk != null; bmk = bmk.Previous(cx))
                 {
                     var rb = new FromCursor(cx, _trs, bmk, _pos + 1);
@@ -2467,7 +2065,7 @@ namespace Pyrrho.Level4
                 return _bmk.Mb();
             }
         }
-    }
+    } */
     // shareable as of 26 April 2021
     internal class TrivialRowSet: RowSet
     {
@@ -2476,24 +2074,25 @@ namespace Pyrrho.Level4
         internal TRow row => (TRow)mem[Singleton];
         internal TrivialRowSet(Context cx) 
             : this(cx.GetUid(),cx,TRow.Empty) { }
-        internal TrivialRowSet(long dp, Context cx, TRow r, long rc=-1L, CTree<long,Finder>fi=null)
-            : base(dp, cx, _Mem(dp,cx,r.dataType)+(Singleton,r))
-        {
-            cx.Add(this);
-        }
-        internal TrivialRowSet(long dp, Context cx, Domain dm, TRow r)
-            : base(dp, cx, _Mem(dp, cx, dm) + (Singleton, r))
+        internal TrivialRowSet(long dp, Context cx, TRow r,
+            Grant.Privilege pr=Grant.Privilege.Select,string a=null)
+            : base(dp, cx, _Mem(dp,cx,r.dataType)+(Singleton,r)+(_Alias,a)
+                  +(_Ident,new Ident(a,new Iix(dp))))
         {
             cx.Add(this);
         }
         protected TrivialRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(long dp,Context cx,Domain dm)
         {
-            var fi = CTree<long, Finder>.Empty;
+            var ns = CTree<string, long>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
-                fi += (b.key(), new Finder(b.key(), dp));
-            return BTree<long, object>.Empty + (_Domain, dm.defpos) + (_Finder, fi)
-                + (_Depth,dm.depth+1);
+            {
+                var p = b.value();
+                var ob = cx._Ob(p);
+                ns += (ob.alias??ob.infos[cx.role.defpos].name, p);
+            }
+            return BTree<long, object>.Empty + (_Domain, dm.defpos) 
+                + (ObInfo.Names, ns) + (_Depth,dm.depth+1);
         }
         public static TrivialRowSet operator +(TrivialRowSet rs, (long, object) x)
         {
@@ -2599,14 +2198,27 @@ namespace Pyrrho.Level4
         /// If all uids of dm are uids of r.domain (maybe in different order)
         /// </summary>
         internal SelectedRowSet(Context cx, long dm, RowSet r)
-                :base(cx.GetUid(),cx,r.mem+(_Domain,dm)+(_Source,r.defpos)
+                :base(cx, cx.GetUid(),_Mem(cx,dm,r)+(_Domain,dm)+(_Source,r.defpos)
                      +(RSTargets,new CTree<long,long>(r.target,r.defpos))
-                     +(_Depth,cx.Depth(cx._Dom(dm),r)))
+                     +(_Depth,cx.Depth(cx._Dom(dm),r))
+                     +(Asserts,r.asserts) + (ISMap,r.iSMap) + (SIMap,r.sIMap))
         {
             cx.Add(this);
         } 
         protected SelectedRowSet(long dp, BTree<long, object> m) : base(dp, m) 
         { }
+        static BTree<long,object> _Mem(Context cx,long d,RowSet r)
+        {
+            var dm = (Domain)cx._Ob(d);
+            var m = r.mem;
+            var ns = CTree<string, long>.Empty;
+            for (var b=dm.rowType.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                ns += (cx.NameFor(p), p);
+            }
+            return m + (ObInfo.Names,ns);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new SelectedRowSet(defpos, m);
@@ -2620,20 +2232,20 @@ namespace Pyrrho.Level4
             var sd = cx._Dom(sc);
             return dm.rowType.CompareTo(sd.rowType) == 0 && target >= Transaction.Analysing;
         }
-        internal override RowSet Apply(BTree<long,object> mm,Context cx,RowSet im)
+        internal override RowSet Apply(BTree<long,object> mm,Context cx,BTree<long,object>m=null)
         {
-            var ags = im.assig;
+            var ags = assig;
             if (mm[Assig] is CTree<UpdateAssignment,bool> sg)
             for (var b=sg.First();b!=null;b=b.Next())
             {
                 var ua = b.key();
-                if (!im.finder.Contains(ua.vbl))
+                if (!Knows(cx,ua.vbl))
                     sg -= b.key(); ;
-                if ((!im.assig.Contains(ua)) && finder[ua.vbl].rowSet == defpos)
+                if ((!assig.Contains(ua)) && Knows(cx,ua.vbl))
                     ags += (ua, true);
             }
             mm += (Assig, ags);
-            return base.Apply(mm,cx,im);
+            return base.Apply(mm,cx);
         }
         internal override DBObject Relocate(long dp)
         {
@@ -2680,7 +2292,7 @@ namespace Pyrrho.Level4
             }
             static long AllowRvv(RowSet rs,long p)
             {
-                return (p == Rvv.RVV) ? p : rs.finder[p].col;
+                return p; //??
             }
             SelectedCursor(Context cx,SelectedCursor cu) :base(cx,cu)
             {
@@ -2689,36 +2301,24 @@ namespace Pyrrho.Level4
             }
             internal static SelectedCursor New(Context cx,SelectedRowSet srs)
             {
-                var ox = cx.finder;
                 var sce = (RowSet)cx.obs[srs.source];
-                cx.finder += sce.finder;
                 for (var bmk = sce.First(cx); bmk != null; bmk = bmk.Next(cx))
                 {
                     var rb = new SelectedCursor(cx,srs, bmk, 0);
                     if (rb.Matches(cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             internal static SelectedCursor New(SelectedRowSet srs, Context cx)
             {
-                var ox = cx.finder;
                 var sce = (RowSet)cx.obs[srs.source];
-                cx.finder += sce.finder;
                 for (var bmk = sce.Last(cx); bmk != null; bmk = bmk.Previous(cx))
                 {
                     var rb = new SelectedCursor(cx, srs, bmk, 0);
                     if (rb.Matches(cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             protected override Cursor New(Context cx,long p, TypedValue v)
@@ -2727,34 +2327,22 @@ namespace Pyrrho.Level4
             }
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += _srs.finder; // just for SelectedRowSet
                 for (var bmk = _bmk.Next(cx); bmk != null; bmk = bmk.Next(cx))
                 {
                     var rb = new SelectedCursor(cx,_srs, bmk, _pos + 1);
                     if (rb.Matches(cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             protected override Cursor _Previous(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += _srs.finder; // just for SelectedRowSet
                 for (var bmk = _bmk.Previous(cx); bmk != null; bmk = bmk.Previous(cx))
                 {
                     var rb = new SelectedCursor(cx, _srs, bmk, _pos + 1);
                     if (rb.Matches(cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             internal override BList<TableRow> Rec()
@@ -2770,6 +2358,12 @@ namespace Pyrrho.Level4
     // shareable as of 26 April 2021
     internal class SelectRowSet : RowSet
     {
+        internal const long
+            RdCols = -124, // CTree<long,bool> TableColumn (needed cols for select list and where)
+            ValueSelect = -385; // long SqlValue
+        internal CTree<long, bool> rdCols =>
+            (CTree<long, bool>)mem[RdCols] ?? CTree<long, bool>.Empty;
+        internal long valueSelect => (long)(mem[ValueSelect] ?? -1L);
         internal TRow row => rows[0];
         /// <summary>
         /// This constructor builds a rowset for the given QuerySpec (select list defines dm)
@@ -2777,11 +2371,10 @@ namespace Pyrrho.Level4
         /// should bind more closely.
         /// </summary>
         internal SelectRowSet(Iix lp, Context cx, Domain dm, RowSet r,BTree<long,object> m=null)
-            : base(lp.dp, _Mem(cx,lp,dm,r,m)) // don't pass cx to base: not dp, cx, _Mem..
-        {
-            cx.Add(this);
-        }
-        protected SelectRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+            : base(cx, lp.dp, _Mem(cx,lp,dm,r,m)) //  not dp, cx, _Mem..
+        { }
+        protected SelectRowSet(long dp, BTree<long, object> m) : base(dp, m) 
+        { }
         static BTree<long,object> _Mem(Context cx,Iix dp,Domain dm,RowSet r,BTree<long,object>m)
         {
             m = m ?? BTree<long, object>.Empty;
@@ -2795,19 +2388,22 @@ namespace Pyrrho.Level4
             var di = (bool)(m[Distinct] ?? false);
             if (os.CompareTo(r.rowOrder) != 0 || di != r.distinct)
                 r = (RowSet)cx.Add(new OrderedRowSet(cx, r, os, di));
-            var fi = r.finder;
-            if (m[_Finder] is CTree<long, Finder> mf)
-                fi += mf;
-            for (var b = dm.Needs(cx,r.defpos).First(); b != null; b = b.Next())
-                if (!fi.Contains(b.key()))
-                {
-                    var ku = b.key();
-                    if (cx.obs[ku].name is string su && cx.defs.Contains(su))
-                    {
-                        var kf = cx.defs[su][cx.sD].Item1.dp;
-                        fi += (ku, new Finder(kf, r.defpos));
-                    }
-                }
+            var rc = CTree<long, bool>.Empty;
+            var d = dm.display;
+            if (d == 0)
+                d = dm.rowType.Length;
+            var wh = (CTree<long, bool>)m[_Where];
+            // For SelectRowSet, we compute the RdCols: all needs of selectors and wheres
+            if (m[ISMap] is CTree<long, long> im)
+            {
+                for (var b = dm.rowType.First(); b != null && b.key() < d; b = b.Next())
+                    for (var c = cx._Ob(b.value()).Needs(cx).First(); c != null; c = c.Next())
+                        rc += (im[c.key()], true);
+                for (var b = wh?.First(); b != null && b.key() < d; b = b.Next())
+                    for (var c = cx._Ob(b.key()).Needs(cx).First(); c != null; c = c.Next())
+                        rc += (im[c.key()], true);
+            }
+            m += (RdCols, rc);
             var ma = (CTree<long, CTree<long, bool>>)m[Matching] ?? CTree<long, CTree<long, bool>>.Empty;
             if (ma.Count > 0 || r.matching.Count > 0)
                 m += (Matching, r.CombineMatching(ma, r.matching));
@@ -2822,7 +2418,7 @@ namespace Pyrrho.Level4
                         {
                             var k = x.key();
                             for (var c = k.First(); c != null; c = c.Next())
-                                if (!fi.Contains(c.value()))
+                                if (((CTree<long,long>)m[ISMap]).Contains(c.value()))
                                     goto next;
                             var t = tt.indexes[k] ?? CTree<long, bool>.Empty;
                             xs += (k, t+x.value());
@@ -2830,19 +2426,12 @@ namespace Pyrrho.Level4
                         }
                         m += (Table.Indexes, xs);
                     }
-                    if (tt.skeys.Count > 0)
-                    {
-                        var ks = CList<long>.Empty;
-                        for (var c = tt.skeys.First(); c != null; c = c.Next())
-                            if (fi.Contains(c.value()))
-                                ks += tt.sIMap[c.value()];
-                        m += (Index.Keys, ks);
-                    }
                 }
             if (r.keys != CList<long>.Empty)
                 m += (Index.Keys, r.keys);
-            return m + (_Finder, fi)+(_Domain,dm.defpos)+(_Source,r.defpos) + (RSTargets,r.rsTargets)
-                +(_Depth,cx.Depth(dm,r));
+            return m +(_Domain,dm.defpos)+(_Source,r.defpos) + (RSTargets,r.rsTargets)
+                +(_Depth,cx.Depth(dm,r)) + (SqlValue.SelectDepth, cx.sD)
+                + (Asserts,r.asserts);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -2856,9 +2445,31 @@ namespace Pyrrho.Level4
         {
             return (SelectRowSet)rs.New(rs.mem + x);
         }
-        internal override RowSet RowSets(Ident id,Context cx, Domain q, long fm, Domain fd)
+        internal override RowSet RowSets(Ident id,Context cx, Domain q, long fm,
+            Grant.Privilege pr=Grant.Privilege.Select,string a=null)
         {
             return this;
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = (SelectRowSet)base._Replace(cx, so, sv);
+            var no = so.alias ?? ((so as SqlValue)?.name) ?? so.infos[cx.role.defpos]?.name;
+            var nv = sv.alias ?? ((sv as SqlValue)?.name) ?? sv.infos[cx.role.defpos]?.name;
+            if (no!=nv)
+            {
+                var ns = r.names;
+                ns = ns + (nv, ns[no]) - no;
+                r += (ObInfo.Names, ns);
+                cx.Add(r);
+            }
+            return r;
+        }
+        internal override Basis Fix(Context cx)
+        {
+            var r = (SelectRowSet)base.Fix(cx);
+            if (r.id != null)
+                r += (_Ident, r.id.Fix(cx));
+            return r;
         }
         protected static CList<long> _Info(Context cx, Grouping g, CList<long> gs)
         {
@@ -2883,7 +2494,15 @@ namespace Pyrrho.Level4
         {
             return false;
         }
-        internal override RowSet Apply(BTree<long, object> mm, Context cx, RowSet im)
+        internal override bool Knows(Context cx, long rp, bool ambient=false)
+        {
+            if (cx.obs[valueSelect] is SqlValue svs && cx.obs[svs.from] is RowSet es)
+                for (var b = es.Sources(cx).First(); b != null; b = b.Next())
+                    if (cx._Dom(cx.obs[b.key()]).representation.Contains(rp))
+                        return true;
+            return base.Knows(cx, rp, ambient);
+        }
+        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long,object> m = null)
         {
             var gr = (long)(mm[Group] ?? -1L);
             var groups = (GroupSpecification)cx.obs[gr];
@@ -2898,36 +2517,13 @@ namespace Pyrrho.Level4
                 am += (Group, gr);
             }
             if (mm.Contains(Domain.Aggs))
-                am += (Domain.Aggs, cx._Dom(im).aggs + (CTree<long, bool>)mm[Domain.Aggs]);
+                am += (Domain.Aggs, cx._Dom(this).aggs + (CTree<long, bool>)mm[Domain.Aggs]);
             if (mm.Contains(Having))
-                am += (Having, im.having + (CTree<long, bool>)mm[Having]);
+                am += (Having, having + (CTree<long, bool>)mm[Having]);
             var pm = mm - Domain.Aggs - Group - Groupings - GroupCols - Having;
-            var r = (SelectRowSet)base.Apply(pm, cx, im);
-            if (am!=BTree<long,object>.Empty)
-                r = (SelectRowSet)ApplySR(am + (AggDomain, im.domain), cx, r);
-            if (cx._Dom(r).aggs.Count>0)
-            {
-                var vw = true;
-                for (var b = cx._Dom(r).aggs.First(); b != null; b = b.Next())
-                    if ((b.key() >= Transaction.TransPos && b.key() < Transaction.Executables)
-                        || b.key() >= Transaction.HeapStart)
-                        vw = false;
-                if (!vw)
-                {
-                    // check for agged or grouped
-                    var os = CTree<long, bool>.Empty;
-                    for (var b = cx._Dom(r).rowType.First(); b != null; b = b.Next())
-                        os += ((SqlValue)cx.obs[b.value()]).Operands(cx);
-                    for (var b = r.having.First(); b != null; b = b.Next())
-                        os += ((SqlValue)cx.obs[b.key()]).Operands(cx);
-                    for (var b = os.First(); b != null; b = b.Next())
-                    {
-                        var v = (SqlValue)cx.obs[b.key()];
-                        if (!v.AggedOrGrouped(cx, r))
-                            throw new DBException("42170", v.alias ?? v.name);
-                    }
-                }
-            }
+            var r = (SelectRowSet)base.Apply(pm, cx);
+            if (am != BTree<long, object>.Empty)
+                r = (SelectRowSet)r.ApplySR(am + (AggDomain, r.domain), cx);
             return r;
         }
         /// <summary>
@@ -2940,9 +2536,8 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="mm">Aggs,Group,Having properties for S</param>
         /// <param name="cx">The context</param>
-        /// <param name="im">The current state of rowset S</param>
         /// <returns>The new state of rowset S.</returns>
-        internal override RowSet ApplySR(BTree<long, object> mm, Context cx, RowSet im)
+        internal override RowSet ApplySR(BTree<long, object> mm, Context cx)
         {
             for (var b = mm.First(); b != null; b = b.Next())
             {
@@ -2951,11 +2546,11 @@ namespace Pyrrho.Level4
                     mm -= k;
             }
             if (mm == BTree<long, object>.Empty)
-                return im;
+                return this;
             var ag = (CTree<long, bool>)mm[Domain.Aggs];
             var od = cx.done;
             cx.done = ObTree.Empty;
-            var m = im.mem;
+            var m = mem;
             if (mm.Contains(GroupCols))
             {
                 m += (GroupCols, mm[GroupCols]);
@@ -2963,14 +2558,15 @@ namespace Pyrrho.Level4
                 m += (Group, mm[Group]);
                 m += (Domain.Aggs, ag);
             }
-            else  // if we get here we have a non-grouped aggregation to add
+            else
+                // if we get here we have a non-grouped aggregation to add
                 m += (Domain.Aggs, ag);
             var nc = CList<long>.Empty; // start again with the aggregating rowType, follow any ordering given
             var dm = (Domain)cx.obs[(long)mm[AggDomain]];
             var ns = CTree<long, Domain>.Empty;
             var gb = ((Domain)m[GroupCols])?.representation ?? CTree<long, Domain>.Empty;
             var kb = KnownBase(cx);
-            var fi = CTree<long, Finder>.Empty;
+            var dn = cx._Dom(cx.obs[source]);
             for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
@@ -2984,45 +2580,53 @@ namespace Pyrrho.Level4
                             continue;
                         nc += k;
                         ns += (k, cx._Dom(cx.obs[k]));
-                        fi += (k, new Finder(k, defpos));
                     }
                 else if (gb.Contains(p))
                 {
                     nc += p;
                     ns += (p, cx._Dom(v));
-                    fi += (p, new Finder(p, defpos));
                 }
             }
-            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc) + (Domain.Aggs, ag);
-            m = m + (_Domain, nd.defpos) + (_Finder, fi) + (Domain.Aggs, ag);
+            var d = nc.Length;
+            for (var b=dn.rowType.First();b!=null;b=b.Next())
+            {
+                var p = b.value();
+                if (ns.Contains(p))
+                    continue;
+                nc += p;
+                ns += (p, cx._Dom(cx.obs[p]));
+            }
+            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc, d) + (Domain.Aggs, ag);
+            m = m + (_Domain, nd.defpos) + (Domain.Aggs, ag);
             cx.Add(nd);
-            im = (RowSet)im.New(m);
-            cx.Add(im);
+            var r = (SelectRowSet)New(m);
+            cx.Add(r);
             if (mm[Having] is CTree<long, bool> h)
             {
                 var hh = CTree<long, bool>.Empty;
                 for (var b = h.First(); b != null; b = b.Next())
                 {
                     var k = b.key();
-                    if (((SqlValue)cx.obs[k]).KnownBy(cx, im))
+                    if (((SqlValue)cx.obs[k]).KnownBy(cx, r))
                         hh += (k, true);
                 }
                 if (hh != CTree<long, bool>.Empty)
                     m += (Having, hh);
-                im = (RowSet)im.New(m);
-                cx.Add(im);
+                r = (SelectRowSet)New(m);
+                cx.Add(r);
             }
             // see if the aggs can be pushed down further
-            for (var b = SplitAggs(mm, cx).First(); b != null; b = b.Next())
+            for (var b = r.SplitAggs(mm, cx).First(); b != null; b = b.Next())
             {
                 var a = (RowSet)cx.obs[b.key()];
-                var na = a.ApplySR(b.value() + (AggDomain,nd.defpos), cx, a);
-                if (na!=a)
-                    im.ApplyT(cx, na, nd.representation);
+                var na = a.ApplySR(b.value() + (AggDomain, nd.defpos), cx);
+                if (na != a)
+                    r.ApplyT(cx, na, nd.representation);
             }
             cx.done = od;
             return (RowSet)cx.obs[defpos]; // will have changed
         }
+
         /// <summary>
         /// In the general case, an aggregating expression might contain aggregations from different sources,
         /// and if any of these are RestRowSets (or even SelectRowSets), we would like to push them down,
@@ -3165,8 +2769,7 @@ namespace Pyrrho.Level4
             if (Built(cx))
                 return this;
             var dm = cx._Dom(this);
-   //         var cx = new Context(_cx);
-            cx.groupCols += (dm, groupCols);
+            cx.groupCols += (domain, groupCols);
             if (dm.aggs != CTree<long, bool>.Empty)
             {
                 var sce = (RowSet)cx.obs[source];
@@ -3178,7 +2781,7 @@ namespace Pyrrho.Level4
                 if (countStar!=null && sce.Built(cx) && _RestSources(cx).Count == 0)
                 {
                     var v = sce.Build(cx)?.Cardinality(cx) ?? 0;
-                    var rg = new Register(cx,TRow.Empty,countStar);
+                    var rg = new Register(cx, TRow.Empty, countStar);
                     rg.count = v;
                     var cp = dm.rowType[0];
                     cx.funcs += (defpos,cx.funcs[defpos]??BTree<TRow,BTree<long,Register>>.Empty+
@@ -3188,22 +2791,10 @@ namespace Pyrrho.Level4
                     cx.values += (defpos, sg);
                     return (RowSet)New(cx, E + (_Built, true) + (_Rows, new BList<TRow>(sg)));
                 }
-                cx.finder += sce.finder;
                 cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
-                for (var rb = sce.First(cx); rb != null;
-                    rb = rb.Next(cx))
+                for (var rb = sce.First(cx); rb != null; rb = rb.Next(cx))
                     if (!rb.IsNull)
                     {
-                        cx.finder += sce.finder;
-                        for (var b = matches.First(); b != null; b = b.Next()) // this is now redundant
-                        {
-                            var sc = cx.obs[b.key()] as SqlValue;
-                            if (sc == null || sc.CompareTo(b.value()) != 0)
-                                goto next;
-                        }
-                        for (var b = where.First(); b != null; b = b.Next()) // so is this
-                            if (cx.obs[b.key()].Eval(cx) != TBool.True)
-                                goto next;
                         var ad = false;
                         for (var b = _RestSources(cx).First(); (!ad) && b != null; b = b.Next())
                             ad = b.value().aggs != CTree<long, bool>.Empty;
@@ -3221,7 +2812,7 @@ namespace Pyrrho.Level4
                                     var p = gb.value();
                                     var kv = cx.obs[p].Eval(cx);
                                     if (kv == null || kv.IsNull)
-                                        throw new DBException("22004", cx.obs[p].name);
+                                        throw new DBException("22004", ((SqlValue)cx.obs[p]).name);
                                     vals += (p, kv);
                                 }
                                 var key = new TRow(groupCols, vals);
@@ -3240,6 +2831,10 @@ namespace Pyrrho.Level4
                     // Seed the keys in cx.values
                     var vs = b.key().values;
                     cx.values += vs;
+                    for (var d = matching.First(); d != null; d = d.Next())
+                        if (cx.values[d.key()] is TypedValue v)
+                            for (var c = d.value().First(); c != null; c = c.Next())
+                                vs += (c.key(), v);
                     // and the aggregate function accumulated values
                     for (var c = dm.aggs.First(); c != null; c = c.Next())
                     {
@@ -3275,6 +2870,7 @@ namespace Pyrrho.Level4
         protected override Cursor _First(Context _cx)
         {
             var dm = _cx._Dom(this);
+            _cx.rdC += rdCols;
             if (dm.aggs != CTree<long, bool>.Empty)
             {
                 if (groupings==CList<long>.Empty)
@@ -3294,18 +2890,17 @@ namespace Pyrrho.Level4
             }
             return SelectCursor.New(this, _cx);
         }
-        internal override BTree<long, TargetActivation>Insert(Context cx, RowSet ts, bool iter,
-            CList<long> rt)
+        internal override BTree<long, TargetActivation>Insert(Context cx, RowSet ts, CList<long> rt)
         {
-            return cx.obs[source].Insert(cx, ts, iter,rt);
+            return cx.obs[source].Insert(cx, ts, rt);
         }
-        internal override BTree<long, TargetActivation>Delete(Context cx, RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation>Delete(Context cx, RowSet fm)
         {
-            return cx.obs[source].Delete(cx,fm, iter);
+            return cx.obs[source].Delete(cx,fm);
         }
-        internal override BTree<long, TargetActivation>Update(Context cx,RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation>Update(Context cx,RowSet fm)
         {
-            return cx.obs[source].Update(cx,fm, iter);
+            return cx.obs[source].Update(cx,fm);
         }
         // shareable as of 26 April 2021
         internal class SelectCursor : Cursor
@@ -3317,6 +2912,10 @@ namespace Pyrrho.Level4
             {
                 _bmk = bmk;
                 _srs = srs;
+                for (var b = srs.matching.First(); b != null; b = b.Next())
+                    if (_cx.values[b.key()] is TypedValue v)
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                            _cx.values += (c.key(), v);
             }
             SelectCursor(SelectCursor cu,Context cx,long p,TypedValue v):base(cu,cx,p,v)
             {
@@ -3334,41 +2933,29 @@ namespace Pyrrho.Level4
             }
             internal static SelectCursor New(Context cx, SelectRowSet srs)
             {
-                var ox = cx.finder;
-                cx.finder = srs.finder;
-                for (var bmk = ((RowSet)cx.obs[srs.source]).First(cx); 
+                var sce = (RowSet)cx.obs[srs.source];
+                for (var bmk = sce.First(cx); 
                     bmk != null; bmk = bmk.Next(cx))
                 {
                    var rb = new SelectCursor(cx, srs, bmk, 0);
                     if (rb.Matches(cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             internal static SelectCursor New(SelectRowSet srs, Context cx)
             {
-                var ox = cx.finder;
-                cx.finder = srs.finder;
                 for (var bmk = ((RowSet)cx.obs[srs.source]).Last(cx);
                       bmk != null; bmk = bmk.Previous(cx))
                 {
                     var rb = new SelectCursor(cx, srs, bmk, 0);
                     if (rb.Matches(cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
                 return null;
             }
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder = _srs.finder;
                 for (var bmk = _bmk.Next(cx); 
                     bmk != null; bmk = bmk.Next(cx))
                 {
@@ -3376,18 +2963,12 @@ namespace Pyrrho.Level4
                     for (var b = rb._dom.representation.First(); b != null; b = b.Next())
                         ((SqlValue)cx.obs[b.key()]).OnRow(cx,rb);
                     if (rb.Matches(cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             protected override Cursor _Previous(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder = _srs.finder;
                 for (
                     var bmk = _bmk.Previous(cx); 
                     bmk != null; bmk = bmk.Previous(cx))
@@ -3396,12 +2977,8 @@ namespace Pyrrho.Level4
                     for (var b = rb._dom.representation.First(); b != null; b = b.Next())
                         ((SqlValue)cx.obs[b.key()]).OnRow(cx, rb);
                     if (rb.Matches(cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             internal override BList<TableRow> Rec()
@@ -3442,20 +3019,14 @@ namespace Pyrrho.Level4
             }
             internal static GroupingBookmark New(Context cx, SelectRowSet grs)
             {
-                var ox = cx.finder;
-                cx.finder += grs.finder;
                 var ebm = grs.rows?.First();
                 var r = (ebm == null) ? null : new GroupingBookmark(cx, grs, ebm, 0);
-                cx.finder = ox;
                 return r;
             }
             internal static GroupingBookmark New(SelectRowSet grs, Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += grs.finder;
                 var ebm = grs.rows?.Last();
                 var r = (ebm == null) ? null : new GroupingBookmark(cx, grs, ebm, 0);
-                cx.finder = ox;
                 return r;
             }
             /// <summary>
@@ -3464,36 +3035,24 @@ namespace Pyrrho.Level4
             /// <returns>whether there is a next row</returns>
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += _grs.finder;
                 var ebm = _ebm.Next();
                 if (ebm == null)
-                {
-                    cx.finder = ox;
                     return null;
-                }
                 var dt = cx._Dom(_grs);
                 var r = new GroupingBookmark(cx, _grs, ebm, _pos + 1);
                 for (var b = dt.representation.First(); b != null; b = b.Next())
                     ((SqlValue)cx.obs[b.key()]).OnRow(cx, r);
-                cx.finder = ox;
                 return r;
             }
             protected override Cursor _Previous(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += _grs.finder;
                 var ebm = _ebm.Previous();
                 if (ebm == null)
-                {
-                    cx.finder = ox;
                     return null;
-                }
                 var dt = cx._Dom(_grs);
                 var r = new GroupingBookmark(cx, _grs, ebm, _pos + 1);
                 for (var b = dt.representation.First(); b != null; b = b.Next())
                     ((SqlValue)cx.obs[b.key()]).OnRow(cx, r);
-                cx.finder = ox;
                 return r;
             }
             internal override Cursor _Fix(Context cx)
@@ -3558,21 +3117,14 @@ namespace Pyrrho.Level4
     internal abstract class InstanceRowSet : RowSet
     {
         internal const long
-            ISMap = -213, // CTree<long,long> SqlValue,TableColumn
-            SIMap = -214, // CTree<long,long> TableColumn,SqlValue
-            RdCols = -462,  // CTree<long,bool> TableColumn (read columns)
             SRowType = -215; // CList<long>   TableColumn
-        internal CTree<long, bool> rdCols =>
-            (CTree<long, bool>)mem[RdCols] ?? CTree<long, bool>.Empty;
-        internal CTree<long, long> iSMap =>
-            (CTree<long, long>)mem[ISMap] ?? CTree<long, long>.Empty;
-        internal CTree<long, long> sIMap =>
-            (CTree<long, long>)mem[SIMap] ?? CTree<long, long>.Empty;
+        internal CTree<long, bool> referenced =>
+            (CTree<long, bool>)mem[Referenced] ?? CTree<long, bool>.Empty;
         internal CList<long> sRowType =>
             (CList<long>)mem[SRowType] ?? CList<long>.Empty;
         internal override Assertions Requires => Assertions.SimpleCols;
         protected InstanceRowSet(long dp, Context cx, BTree<long, object> m)
-            : base(dp, cx, _Mem1(cx,m)) 
+            : base(cx, dp, _Mem1(cx,m)) 
         { }
         protected InstanceRowSet(long dp, BTree<long, object> m)
             : base(dp, m) 
@@ -3580,115 +3132,81 @@ namespace Pyrrho.Level4
         static BTree<long,object> _Mem1(Context cx,BTree<long,object> m)
         {
             m = m ?? BTree<long, object>.Empty;
-            var ism = CTree<long, long>.Empty;
-            var sim = CTree<long, long>.Empty;
+            var ism = CTree<long, long>.Empty; // SqlValue, TableColumn
+            var sim = CTree<long, long>.Empty; // TableColumn,SqlValue
             var dm = cx._Dom((long)(m[_Domain]??-1L));
+            if (dm.defpos >= 0)
+                m += (_Depth, cx.Depth(dm));
             var sr = (CList<long>)m[SRowType];
+            var ns = CTree<string, long>.Empty;
             var fb = dm.rowType.First();
             for (var b = sr.First(); b != null && fb != null;
                 b = b.Next(), fb = fb.Next())
             {
-                var ip = b.value();
-                var sp = fb.value();
+                var sp = b.value();
+                var ip = fb.value();
                 ism += (ip, sp);
                 sim += (sp, ip);
+                var ob = cx._Ob(sp);
+                ns += (ob.alias ?? ob.NameFor(cx), ip);
             }
-            if (cx.obs[(long)(m[From.Target]??-1L)] is Table tb)
-                m += (Table.Indexes,tb.IIndexes(ism));
-            m -= RSTargets;
-            return m + (ISMap, ism) + (SIMap, sim);
+            if (cx.obs[(long)(m[Target]??-1L)] is Table tb)
+                m += (Table.Indexes,tb.IIndexes(sim));
+            return m + (ISMap, ism) + (SIMap, sim) + (ObInfo.Names,ns);
         }
         public static InstanceRowSet operator +(InstanceRowSet rs, (long, object) x)
         {
             return (InstanceRowSet)rs.New(rs.mem + x);
-        }
-         internal override RowSet Apply(BTree<long, object> mm, Context cx,RowSet im)
-        {
-            if (mm == BTree<long, object>.Empty)
-                return im;
-            im = base.Apply(mm, cx,im); 
-            var m = im.mem;
-            if (mm[RdCols] is CTree<long,bool>rc)
-            {
-                var mr = (CTree<long, bool>)m[RdCols]??CTree<long,bool>.Empty;
-                var dm = cx._Dom(im);
-                var sIM = ((InstanceRowSet)im).sIMap;
-                for (var b = rc.First(); b != null; b = b.Next())
-                {
-                    var k = b.key();
-                    if (sIM.Contains(k) && dm.representation.Contains(sIM[k]))
-                    {
-                        rc -= k;
-                        mr += (k, true);
-                    }
-                }
-                mm += (RdCols, rc);
-                m += (RdCols, mr);
-                return (RowSet)im.New(m);
-            }
-            return im;
-        }
-        internal override RowSet Relocate1(Context cx)
-        {
-            var r = base.Relocate1(cx);
-            var srt = CList<long>.Empty;
-            for (var b=sRowType.First();b!=null;b=b.Next())
-            {
-                var p = b.value();
-                var np = cx.Fix(p);
-                srt += np;
-            }
-            if (srt.CompareTo(sRowType) != 0)
-                r += (SRowType, srt);
-            var sim = CTree<long, long>.Empty;
-            var ism = CTree<long, long>.Empty;
-            for (var b = sIMap.First(); b != null; b = b.Next())
-            {
-                var k = b.key();
-                var f = b.value();
-                var nk = cx.Fix(k);
-                var nf = cx.Fix(f);
-                sim += (nk, nf);
-                ism += (nf, nk);
-            }
-            if (sim.CompareTo(sIMap) != 0)
-                r = r + (SIMap, sim) + (ISMap, ism);
-            return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (InstanceRowSet)base._Replace(cx, so, sv);
-            r += (SRowType, cx.Replaced(sRowType));
-            r += (SIMap, cx.Replaced(sIMap));
-            r += (ISMap, cx.Replaced(iSMap));
+            var srt = cx.ReplacedLl(r.sRowType);
+            if (srt!=sRowType)
+                r += (SRowType, srt);
+            var sim = cx.ReplacedTll(r.sIMap);
+            if (sim != r.sIMap)
+                r += (SIMap, sim);
+            var ism = cx.ReplacedTll(r.iSMap);
+            if (ism != r.iSMap)
+                r += (ISMap, ism);
+            var xs = cx.ReplacedTLllb(r.indexes);
+            if (xs != r.indexes)
+                r += (Table.Indexes, xs);
+            var ks = cx.ReplacedLl(r.keys);
+            if (ks != r.keys)
+                r += (Index.Keys, ks);
             cx.done += (defpos, r);
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (InstanceRowSet)base._Fix(cx);
-            var srt = cx.Fix(sRowType);
-            if (srt != sRowType)
+            var srt = cx.FixLl(r.sRowType);
+            if (srt != r.sRowType)
                 r += (SRowType, srt);
-            var sim = cx.Fix(sIMap);
-            if (sim != sIMap)
+            var sim = cx.FixTll(r.sIMap);
+            if (sim != r.sIMap)
                 r += (SIMap, sim);
-            var ism = cx.Fix(iSMap);
-            if (ism != iSMap)
+            var ism = cx.FixTll(r.iSMap);
+            if (ism != r.iSMap)
                 r += (ISMap, ism);
-            var rc = cx.Fix(rdCols);
-            if (rc != rdCols)
-                r += (RdCols, rc);
+            var xs = cx.FixTLTllb(r.indexes);
+            if (xs!=r.indexes)
+                r += (Table.Indexes, xs);
+            var ks = cx.FixLl(r.keys);
+            if (ks != r.keys)
+                r += (Index.Keys, ks);
             return cx._Add(r);
         }
         internal override Basis _Relocate(Context cx)
         {
             var r = (InstanceRowSet)base._Relocate(cx);
-            r += (SRowType, cx.Fix(sRowType));
-            r += (SIMap, cx.Fix(sIMap));
-            r += (ISMap, cx.Fix(iSMap));
+            r += (SRowType, cx.FixLl(sRowType));
+            r += (SIMap, cx.FixTll(sIMap));
+            r += (ISMap, cx.FixTll(iSMap));
             return r;
         }
         internal override CTree<long, Cursor> SourceCursors(Context cx)
@@ -3698,6 +3216,7 @@ namespace Pyrrho.Level4
         internal override void Show(StringBuilder sb)
         {
             base.Show(sb);
+            if (target >= 0) { sb.Append(" Target="); sb.Append(Uid(target)); }
             sb.Append(" SRow:(");
             var cm = "";
             for (var b=sRowType.First();b!=null;b=b.Next())
@@ -3707,12 +3226,6 @@ namespace Pyrrho.Level4
             sb.Append(")");
             if (PyrrhoStart.VerboseMode)
             {
-                sb.Append(" RdCols:("); cm = "";
-                for (var b=rdCols.First();b!=null;b=b.Next())
-                {
-                    sb.Append(cm); cm = ","; sb.Append(Uid(b.key()));
-                }
-                sb.Append(")");
                 sb.Append(" ISMap:("); cm = "";
                 for (var b = iSMap.First(); b != null; b = b.Next())
                 {
@@ -3727,6 +3240,12 @@ namespace Pyrrho.Level4
                     sb.Append("="); sb.Append(Uid(b.value()));
                 }
                 sb.Append(")");
+                sb.Append(" Referenced: ("); cm = "";
+                for (var b = referenced.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ","; sb.Append(Uid(b.key()));
+                }
+                sb.Append(")");
             }
         }
     }
@@ -3738,101 +3257,118 @@ namespace Pyrrho.Level4
     internal class TableRowSet : InstanceRowSet
     {
         internal const long
-            _Index = -410, // long Index
-            SKeys = -453; // CList<long> TableColumn
+            _Index = -410; // long Index
         public long index => (long)(mem[_Index] ?? -1L);
-        public CTree<CList<long>, CTree<long,bool>> indexes =>
-            (CTree<CList<long>, CTree<long,bool>>)mem[Table.Indexes] ?? CTree<CList<long>, CTree<long,bool>>.Empty;
-        public CList<long> skeys => (CList<long>)mem[SKeys] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a rowset defined by a base table
         /// </summary>
-        internal TableRowSet(long lp,Context cx, long t, long dm)
-            : base(cx.GetUid(), cx, _Mem(cx.GetPrevUid(),lp,cx,t, dm) +(From.Target,t))
-        {
-            var s = ToString();
-        }
+        internal TableRowSet(long lp,Context cx, long t, BTree<long,object> m = null)
+            : base(lp, cx, _Mem(lp,cx,t,m))
+        { }
         protected TableRowSet(long dp, BTree<long, object> m) : base(dp, m) 
         { }
-        static BTree<long, object> _Mem(long dp,long lp, Context cx, long t, long f)
+        static BTree<long, object> _Mem(long dp, Context cx, long t, BTree<long,object> m)
         {
-            var tb = (Table)(cx.obs[t] ?? cx.db.objects[t]);
-            cx.Add(tb);
-            var r = new BTree<long, object>(_Domain, f) + (From.Target, t)
-                + (SRowType, tb.Domains(cx).rowType);
-            var fi = CTree<long, Finder>.Empty;
-            var dm = (Domain)(cx.obs[f]??cx.db.objects[f]);
-            for (var b = dm.rowType.First();b!=null;b=b.Next())
-                fi += (b.value(), new Finder(b.value(), dp));
-            r = r + (_Finder, fi) + (Table.LastData, tb.lastData)
-                + (_Depth,2);
-            r += (Asserts, _Mem(cx, r));
+            m = m ?? BTree<long, object>.Empty;
+            var tb = (Table)cx._Ob(t);
+            var n = tb.NameFor(cx) ?? throw new DBException("42105");
+            var tn = new Ident(n, cx.Ix(dp));
+            var rt = CList<long>.Empty;
+            var rs = CTree<long, Domain>.Empty;
+            var tr = CTree<long, long>.Empty;
+            var ns = CTree<string, long>.Empty;
+            for (var b = tb.tableCols.First(); b != null; b = b.Next())
+            {
+                var tc = ((TableColumn)cx.db.objects[b.key()]);
+                var nc = new SqlCopy(cx.GetUid(), cx, tc.NameFor(cx), dp, tc,
+                    BTree<long,object>.Empty+(SqlValue.SelectDepth,cx.sD));
+                var cd = b.value();
+                if (cd != Domain.Content)
+                    cd = (Domain)cd.Instance(dp, cx, null);
+                nc += (_Domain, cd.defpos);
+                cx.Add(nc);
+                rt += nc.defpos;
+                rs += (nc.defpos, cd);
+                tr += (tc.defpos, nc.defpos);
+                ns += (nc.alias??nc.name, nc.defpos);
+            }
+            var xs = CTree<CList<long>, CTree<long, bool>>.Empty;
+            CList<long> pk = null;
+            for (var b = tb.indexes.First(); b != null; b = b.Next())
+            {
+                var nk = CList<long>.Empty;
+                for (var c = b.key().First(); c != null; c = c.Next())
+                    nk += tr[c.value()];
+                if (pk == null)
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                        if (cx._Ob(c.key()) is Index x && x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey))
+                            pk = nk;
+                xs += (nk, b.value());
+            }
+            if (pk != null)
+                m += (Index.Keys,pk);
+            var rr = CList<long>.Empty;
+            if (tb.defpos < 0) // system tables have columns in the wrong order!
+            {
+                for (var b = rt.Last(); b != null; b = b.Previous())
+                    rr += b.value();
+                rt = rr;
+            }
+            var dm = new Domain(cx.GetUid(), cx, Sqlx.TABLE, rs, rt, rt.Length);
+            cx.Add(dm);
+            cx.AddDefs(tn, dm, (string)m[_Alias]);
+            var r = (m ?? BTree<long, object>.Empty) + (_Domain, dm.defpos) + (Target, t)
+                + (SRowType, cx._Dom(tb).rowType) + (Table.Indexes, xs)
+                + (Table.LastData, tb.lastData) + (SqlValue.SelectDepth,cx.sD)
+                + (Target,t) + (ObInfo.Names,ns) + (ObInfo.Name,tn.ident)
+                + (_Ident,tn)
+                + (_Depth, 2)+(RSTargets,new CTree<long,long>(t,dp));
+            r += (Asserts, (Assertions)_Mem(cx, r)[Asserts] |Assertions.SpecificRows);
             return r;
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new TableRowSet(defpos,m);
         }
-        /// <summary>
-        /// TableRowSet does not have predefined dataType.display
-        /// (because rowType is in declaration order, not select-list order)
-        /// So the rdc is predefined instead, see Table.RowSets().
-        /// It is still adjusted in ComputeNeeds for wheres etc
-        /// </summary>
-        /// <param name="cx">The Context</param>
-        /// <returns>The starting InstanceRowSet.RdCols for the tablerowset</returns>
-        internal override CTree<long, bool> _Rdc(Context cx)
+        internal override CTree<long, bool> AllWheres(Context cx, CTree<long, bool> nd)
         {
-            var r = rdCols;
-            return (r==CTree<long,bool>.Empty)?r:base._Rdc(cx);
-        }
-        internal override (CTree<long, Finder>, CTree<long, bool>) AllWheres(Context cx,
-(CTree<long, Finder>, CTree<long, bool>) ln)
-        {
-            var (nd, rc) = cx.Needs(ln, this, where);
+            nd = cx.Needs(nd, this, where);
             if (cx.obs[source] is RowSet sce)
             {
-                var (ns, ss) = sce.AllWheres(cx, ln);
+                var ns = sce.AllWheres(cx, nd);
                 for (var b = ns.First(); b != null; b = b.Next())
                 {
                     var u = b.key();
-                    nd += (u, b.value());
-                    rc += (iSMap[u], true);
+                    nd += (u, true);
                 }
-                rc += ss;
             }
-            return (nd, rc);
+            return nd;
         }
-        internal override (CTree<long, Finder>, CTree<long, bool>) AllMatches(Context cx,
-            (CTree<long, Finder>, CTree<long, bool>) ln)
+        internal override CTree<long, bool> AllMatches(Context cx, CTree<long, bool> nd)
         {
-            var (nd, rc) = cx.Needs(ln, this, matches);
+            nd = cx.Needs(nd, this, matches);
             if (cx.obs[source] is RowSet sce)
             {
-                var (ns, ss) = sce.AllMatches(cx, ln);
+                var ns = sce.AllMatches(cx, nd);
                 for (var b = ns.First(); b != null; b = b.Next())
                 {
                     var u = b.key();
-                    nd += (u, b.value());
-                    rc += (iSMap[u], true);
+                    nd += (u, true);
                 }
-                rc += ss;
             }
-            return (nd, rc);
+            return nd;
         }
-
-        internal override RowSet Apply(BTree<long, object> mm, Context cx, RowSet im)
+        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long,object> m = null)
         {
             if (mm == BTree<long, object>.Empty)
-                return im;
-            var m = im.mem;
+                return this;
+            m = m ?? mem;
             if (mm[_Where] is CTree<long, bool> w)
             {
                 for (var b = w.First(); b != null; b = b.Next())
                 {
                     var k = b.key();
-                    m += (_Where, im.where + (k, true));
-                    var imm = im.matches;
+                    var imm = (CTree<long, TypedValue>)mm[_Matches]??CTree<long,TypedValue>.Empty;
                     if (cx.obs[k] is SqlValueExpr se && se.kind == Sqlx.EQL)
                     {
                         var le = (SqlValue)cx.obs[se.left];
@@ -3844,29 +3380,25 @@ namespace Pyrrho.Level4
                     }
                 }
             }
-            if (mm[_Matches] is CTree<long,TypedValue> ma)
+            if (mm[_Matches] is CTree<long,TypedValue> ma && rowOrder==CList<long>.Empty)
             {
-                var trs = (TableRowSet)im;
+                var trs = this;
                 var (index, nmt, match) = trs.BestForMatch(cx, ma);
                 if (index == null)
-                    index = trs.BestForOrdSpec(cx, im.ordSpec);
+                    index = trs.BestForOrdSpec(cx, (CList<long>)m[OrdSpec]??CList<long>.Empty);
                 if (index != null && index.rows != null)
                 {
-                    m += (Index.Tree, index.rows);
-                    m += (_Index, index.defpos);
-                    m += (SKeys, index.keys);
-                    m += (_Matches, ma);
+                    mm += (Index.Tree, index.rows);
+                    mm += (_Index, index.defpos);
                     for (var b = trs.indexes.First(); b != null; b = b.Next())
                     {
                         var k = b.key();
                         if (b.value().Contains(index.defpos))
-                            m += (Index.Keys, k);
+                            mm += (Index.Keys, k);
                     }
                 }
             }
-            if (m != im.mem)
-                im = (RowSet)cx.Add((RowSet)im.New(m));
-            return base.Apply(mm, cx, im);
+            return base.Apply(mm, cx, m);
         }
         internal (Index, int, PRow) BestForMatch(Context cx, BTree<long, TypedValue> filter)
         {
@@ -3881,15 +3413,14 @@ namespace Pyrrho.Level4
                 if (x == null || x.flags != PIndex.ConstraintType.PrimaryKey
                     || x.tabledefpos != target)
                     continue;
-                var dt = (ObInfo)cx.db.role.infos[x.defpos];
                 int sc = 0;
                 int nm = 0;
                 PRow pr = null;
                 var havematch = false;
                 int sb = 1;
-                var j = dt.dataType.Length - 1;
-                for (var b = dt.dataType.rowType.Last(); b != null; b = b.Previous(), j--)
+                for (var b = x.keys.Last(); b != null; b = b.Previous())
                 {
+                    var j = b.key();
                     var d = b.value();
                     for (var fd = filter.First(); fd != null; fd = fd.Next())
                     {
@@ -3924,34 +3455,34 @@ namespace Pyrrho.Level4
             Index index = null;
             int bs = 0;      // score for best index
             for (var p = indexes.First(); p != null; p = p.Next())
-                for (var c=p.value().First();c!=null;c=c.Next())
-            {
-                var x = (Index)cx.db.objects[c.key()];
-                if (x == null || x.flags != PIndex.ConstraintType.PrimaryKey
-                    || x.tabledefpos != defpos)
-                    continue;
-                var dt = (ObInfo)cx.db.role.infos[x.defpos];
-                int sc = 0;
-                int n = 0;
-                int sb = 1;
-                var j = dt.dataType.Length - 1;
-                for (var b = dt.dataType.rowType.Last(); b != null; b = b.Previous(), j--)
-                    if (n < ordSpec.Length)
-                    {
-                        var ok = ordSpec[n];
-                        if (ok != -1L)
-                        {
-                            n++;
-                            sb *= 10;
-                        }
-                    }
-                sc += sb;
-                if (sc > bs)
+                for (var c = p.value().First(); c != null; c = c.Next())
                 {
-                    index = x;
-                    bs = sc;
+                    var x = (Index)cx.db.objects[c.key()];
+                    if (x == null || x.flags != PIndex.ConstraintType.PrimaryKey
+                        || x.tabledefpos != defpos)
+                        continue;
+                    var dm = cx._Dom(x.defpos);
+                    int sc = 0;
+                    int n = 0;
+                    int sb = 1;
+                    var j = dm.rowType.Length - 1;
+                    for (var b = dm.rowType.Last(); b != null; b = b.Previous(), j--)
+                        if (n < ordSpec.Length)
+                        {
+                            var ok = ordSpec[n];
+                            if (ok != -1L)
+                            {
+                                n++;
+                                sb *= 10;
+                            }
+                        }
+                    sc += sb;
+                    if (sc > bs)
+                    {
+                        index = x;
+                        bs = sc;
+                    }
                 }
-            }
             return index;
         }
         public static TableRowSet operator+(TableRowSet rs,(long,object)x)
@@ -3969,36 +3500,29 @@ namespace Pyrrho.Level4
                 (int)tb.tableRows.Count
                 :base.Cardinality(cx);
         }
+        internal override bool Knows(Context cx, long rp, bool ambient=false)
+        {
+            if (cx.obs[from] is SelectRowSet ss && cx.obs[ss.valueSelect] is SqlValue svs && cx.obs[svs.from] is RowSet es)
+                for (var b = es.Sources(cx).First(); b != null; b = b.Next())
+                    if (cx._Dom(cx.obs[b.key()]).representation.Contains(rp))
+                        return true;
+            return base.Knows(cx, rp, ambient);
+        }
         internal override DBObject Relocate(long dp)
         {
             return new TableRowSet(dp,mem);
         }
-        internal override Basis _Fix(Context cx)
-        {
-            var r = (TableRowSet)base._Fix(cx);
-            r += (Table.Indexes, ((Table)cx.db.objects[r.target]).IIndexes(r.iSMap));
-            cx.Add(r);
-            return r;
-        }
-        internal override RowSet Relocate1(Context cx)
-        {
-            var r = (TableRowSet)base.Relocate1(cx);
-            r += (Table.Indexes, ((Table)cx.db.objects[target]).IIndexes(r.iSMap));
-            cx.Add(r);
-            return r;
-        }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (TableRowSet)base._Replace(cx, so, sv);
-            r += (RSTargets, cx.Replaced(rsTargets));
-            r += (Table.Indexes, ((Table)cx.db.objects[target]).IIndexes(r.iSMap));
+            r += (RSTargets, cx.ReplacedTll(rsTargets));
             cx.Add(r);
             return r;
         }
         internal override Basis _Relocate(Context cx)
         {
             var r = (TableRowSet)base._Relocate(cx);
-            r += (RSTargets, cx.Fix(rsTargets));
+            r += (RSTargets, cx.FixTll(rsTargets));
             r += (Table.Indexes, ((Table)cx.db.objects[target]).IIndexes(r.iSMap));
             cx.Add(r);
             return r;
@@ -4012,15 +3536,10 @@ namespace Pyrrho.Level4
                 if (matches[b.value()] is TypedValue t0 && t0 != TNull.Value)
                     v = t0;
                 if (v == null)
-                {
-                    for (var d = _cx.cursors.First(); v == null && d != null; d = d.Next())
-                        if (d.value()[b.value()] is TypedValue tv && !tv.IsNull)
-                            v = tv;
                     for (var c = matching[b.value()]?.First(); v == null && c != null; c = c.Next())
                         for (var d = _cx.cursors.First(); v == null && d != null; d = d.Next())
                             if (d.value()[c.key()] is TypedValue tv && !tv.IsNull)
                                 v = tv;
-                }
                 if (v == null)
                     return TableCursor.New(_cx, this, null);
                 key = new PRow(v, key);
@@ -4060,25 +3579,13 @@ namespace Pyrrho.Level4
         /// Prepare an Insert on a single table including trigger operation.
         /// </summary>
         /// <param name="cx">The context</param>
-        /// <param name="fm">The source rowset</param>
-        /// <param name="iter">whether the operation affects multiple rows</param>
+        /// <param name="ts">The source rowset</param>
+        /// <param name="iC">A list of columns matching some of ts.rowType</param>
         /// <returns>The activations for the changes made</returns>
-        internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, bool iter,
-            CList<long> iC)
+        internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, CList<long> iC)
         {
-            var ic = sRowType;
-            if (iC != null)
-            {
-                ic = CList<long>.Empty;
-                for (var b = iC.First(); b != null; b = b.Next())
-                {
-                    var p = b.value();
-                    if (iSMap.Contains(p))
-                        ic += p;
-                }
-            }
             return new BTree<long, TargetActivation>(target,
-                new TableActivation(cx, this, ts, PTrigger.TrigType.Insert, ic));
+                new TableActivation(cx, this, ts, PTrigger.TrigType.Insert, iC));
         }
         /// <summary>
         /// Execute an Update operation on the Table, including triggers
@@ -4087,7 +3594,7 @@ namespace Pyrrho.Level4
         /// <param name="fm">The source rowset</param>
         /// <param name="iter">whether the operation affects multiple rows</param>
         /// <returns>The activations for the changes made</returns>
-        internal override BTree<long, TargetActivation> Update(Context cx, RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation> Update(Context cx, RowSet fm)
         {
             return new BTree<long, TargetActivation>(target,
                 new TableActivation(cx, this, fm, PTrigger.TrigType.Update));
@@ -4099,7 +3606,7 @@ namespace Pyrrho.Level4
         /// <param name="fm">The source rowset</param>
         /// <param name="iter">whether the operation affects multiple rows</param>
         /// <returns>the activation for the changes made</returns>
-        internal override BTree<long, TargetActivation> Delete(Context cx, RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation> Delete(Context cx, RowSet fm)
         {
             return new BTree<long, TargetActivation>(target,
                 new TableActivation(cx, this, fm, PTrigger.TrigType.Delete));
@@ -4126,46 +3633,19 @@ namespace Pyrrho.Level4
                     return x;
             return null;
         }
-
         internal override void Show(StringBuilder sb)
         {
             base.Show(sb);
             sb.Append(" Target:"); sb.Append(Uid(target));
-            if (indexes.Count>0)
-            {
-                var cm = "(";
-                sb.Append(" Indexes: ["); 
-                for (var b=indexes.First();b!=null;b=b.Next())
-                {
-                    var k = b.key();
-                    sb.Append(cm); cm = ";(";
-                    var cc = "";
-                    for (var d=k.First();d!=null;d=d.Next())
-                    {
-                        sb.Append(cc); cc = ",";
-                        sb.Append(Uid(d.value()));
-                    }
-                    sb.Append(")=");
-                    cc = "";
-                    for (var c = b.value().First(); c != null; c = c.Next())
-                    {
-                        sb.Append(cc); cc = ",";
-                        sb.Append(Uid(c.key()));
-                    }
-                }
-                sb.Append("]");
-            }
-            if (mem.Contains(Having))
-            {
-                sb.Append(" having (");
-                var cm = "";
-                for (var b = having.First(); b != null; b = b.Next())
-                {
-                    sb.Append(cm); cm = ",";
-                    sb.Append(Uid(b.key()));
-                }
-                sb.Append(")");
-            }
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (id != null)
+            { sb.Append(' '); sb.Append(id); }
+            if (alias!=null)
+            { sb.Append(" Alias: "); sb.Append(alias); }
+            return sb.ToString();
         }
         // shareable as of 26 April 2021
         internal class TableCursor : Cursor
@@ -4206,13 +3686,13 @@ namespace Pyrrho.Level4
             }
             static TRow _Row(Context cx, TableRowSet trs, TableRow rw)
             {
-                var vs = CTree<long, TypedValue>.Empty;
+         //       var vs = CTree<long, TypedValue>.Empty;
                 var ws = CTree<long, TypedValue>.Empty;
                 var dm = cx._Dom(trs);
                 for (var b = dm.rowType.First();b!=null;b=b.Next())
                 {
                     var p = b.value();
-                    var v = rw.vals[trs.sIMap[p]];
+                    var v = rw.vals[trs.iSMap[p]];
                     ws += (p, v);
                 }
                 return new TRow(dm, ws);
@@ -4226,17 +3706,16 @@ namespace Pyrrho.Level4
             internal static TableCursor New(Context _cx, TableRowSet trs, PRow key = null)
             {
                 var table = _cx.db.objects[trs.target] as Table;
-                var ox = _cx.finder;
-                _cx.finder = trs.finder;
                 if (trs.keys!=CList<long>.Empty)
                 {
                     var t = (trs.index >= 0) ? ((Index)_cx.db.objects[trs.index]).rows : null;
                     if (t == null && trs.indexes.Contains(trs.keys))
                         for (var b = trs.indexes[trs.keys]?.First(); b != null; b = b.Next())
-                        if (_cx.db.objects[b.key()] is Index ix){ 
-                            t = ix.rows;
+                            if (_cx.db.objects[b.key()] is Index ix)
+                            {
+                                t = ix.rows;
                                 break;
-                        }
+                            }
                     if (t!=null)
                     for (var bmk = t.PositionAt(key);bmk != null;bmk=bmk.Next())
                     {
@@ -4252,12 +3731,13 @@ namespace Pyrrho.Level4
                             continue;
 #endif
                         var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
-                        if (rb.Matches(_cx))
-                        {
-                            table._ReadConstraint(_cx, rb);
-                            _cx.finder = ox;
-                            return rb;
-                        }
+                            if (rb.Matches(_cx))
+                            {
+                                table._ReadConstraint(_cx, rb);
+                                var tt = _cx.rdS[table.defpos] ?? CTree<long, bool>.Empty;
+                                _cx.rdS += (table.defpos, tt+(rec.defpos,true));
+                                return rb;
+                            }
                     }
                 }
                 for (var b = table.tableRows.First(); b != null; b = b.Next())
@@ -4274,11 +3754,9 @@ namespace Pyrrho.Level4
                     if (rb.Matches(_cx))
                     {
                         table._ReadConstraint(_cx, rb);
-                        _cx.finder = ox;
                         return rb;
                     }
                 }
-                _cx.finder = ox;
                 return null;
             }
             internal static TableCursor New(TableRowSet trs, Context _cx, PRow key = null)
@@ -4455,20 +3933,28 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="r">a source rowset</param>
         internal DistinctRowSet(Context cx,RowSet r) 
-            : base(cx.GetUid(),cx,_Mem(cx.GetPrevUid(),cx,r)+(_Source,r.defpos)
+            : base(cx.GetUid(),cx,_Mem(cx,r)+(_Source,r.defpos)
                   +(Table.LastData,r.lastData)+(_Where,r.where)
-                  +(_Matches,r.matches) + (Index.Keys,r.keys)
-                  +(_Depth,r.depth+1))
+                  +(_Matches,r.matches)
+                  +(ObInfo.Names, r.names)+(_Depth,r.depth+1))
         {
             cx.Add(this);
         }
         protected DistinctRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(long dp,Context cx,RowSet r)
+        static BTree<long,object> _Mem(Context cx,RowSet r)
         {
-            var fi = CTree<long, Finder>.Empty;
-            for (var b = cx._Dom(r).rowType.First(); b != null; b = b.Next())
-                fi += (b.value(), new Finder(b.value(), dp));
-            return BTree<long, object>.Empty + (_Domain, r.domain) + (_Finder, fi);
+            var dp = cx.GetPrevUid();
+            var dm = cx._Dom(r);
+            var ks = CList<long>.Empty;
+            for (var b =dm.rowType.First(); b != null && b.key()<dm.display; b = b.Next())
+            {
+                var p = b.value();
+                ks += p;
+            }
+            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, dm.representation, ks, ks.Length);
+            cx.Add(nd);
+            return BTree<long, object>.Empty + (_Domain, nd.defpos)
+                + (Index.Keys,ks);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4489,8 +3975,7 @@ namespace Pyrrho.Level4
         internal override RowSet Build(Context cx)
         {
             var sce = (RowSet)cx.obs[source];
-            var dm = cx._Dom(sce);
-            var ks = (sce.keys.Count > 0) ? sce.keys : dm.rowType;
+            var ks = keys;
             var mt = new MTree(new TreeInfo(cx, ks, TreeBehaviour.Ignore, TreeBehaviour.Ignore));
             var rs = BTree<int, TRow>.Empty;
             for (var a = sce.First(cx); a != null; a = a.Next(cx))
@@ -4501,7 +3986,7 @@ namespace Pyrrho.Level4
                 MTree.Add(ref mt, new PRow(vs), 0);
                 rs += ((int)rs.Count, a);
             }
-            return (RowSet)New(cx,E+(_Built,true)+(Index.Tree,mt)+(Index.Keys,sce.keys));
+            return (RowSet)New(cx,E+(_Built,true)+(Index.Tree,mt)+(Index.Keys,keys));
         }
 
         protected override Cursor _First(Context cx)
@@ -4512,16 +3997,15 @@ namespace Pyrrho.Level4
         {
             return DistinctCursor.New(this, cx);
         }
-        internal override BTree<long, TargetActivation>Insert(Context cx, RowSet ts, bool iter,
-            CList<long> rt)
+        internal override BTree<long, TargetActivation>Insert(Context cx, RowSet ts, CList<long> rt)
         {
             throw new DBException("42174");
         }
-        internal override BTree<long, TargetActivation>Update(Context cx,RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation>Update(Context cx,RowSet fm)
         {
             throw new DBException("42174");
         }
-        internal override BTree<long, TargetActivation>Delete(Context cx,RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation>Delete(Context cx,RowSet fm)
         {
             throw new DBException("42174");
         }
@@ -4544,38 +4028,26 @@ namespace Pyrrho.Level4
             }
             internal static DistinctCursor New(Context cx,DistinctRowSet drs)
             {
-                var ox = cx.finder;
-                cx.finder += ((RowSet)cx.obs[drs.source]).finder;
                 if (drs.tree == null)
                     throw new DBException("20000", "Distinct RowSet not built?");
                 for (var bmk = drs.tree.First(); bmk != null; bmk = bmk.Next()) 
                 { 
                     var rb = new DistinctCursor(cx,drs,0, bmk);
                     if (rb.Matches(cx) && Eval(drs.where, cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             internal static DistinctCursor New(DistinctRowSet drs,Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += ((RowSet)cx.obs[drs.source]).finder;
                 if (drs.tree == null)
                     throw new DBException("20000", "Distinct RowSet not built?");
                 for (var bmk = drs.tree.Last(); bmk != null; bmk = bmk.Previous())
                 {
                     var rb = new DistinctCursor(cx, drs, 0, bmk);
                     if (rb.Matches(cx) && Eval(drs.where, cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             internal override Cursor _Fix(Context cx)
@@ -4584,34 +4056,22 @@ namespace Pyrrho.Level4
             }
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += ((RowSet)cx.obs[_drs.source]).finder;
                 for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
                 {
                     var rb = new DistinctCursor(cx, _drs,_pos + 1, bmk);
                     if (rb.Matches(cx) && Eval(_drs.where, cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             protected override Cursor _Previous(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += ((RowSet)cx.obs[_drs.source]).finder;
                 for (var bmk = _bmk.Previous(); bmk != null; bmk = bmk.Previous())
                 {
                     var rb = new DistinctCursor(cx, _drs, _pos + 1, bmk);
                     if (rb.Matches(cx) && Eval(_drs.where, cx))
-                    {
-                        cx.finder = ox;
                         return rb;
-                    }
                 }
-                cx.finder = ox;
                 return null;
             }
             internal override BList<TableRow> Rec()
@@ -4634,19 +4094,16 @@ namespace Pyrrho.Level4
         internal OrderedRowSet(long dp, Context cx, RowSet r, CList<long> os, bool dct)
             : base(dp, cx, _Mem(dp, cx, r) + (_Source, r.defpos)
                  + (RSTargets, r.rsTargets) + (RowOrder, os) + (Index.Keys, os)
-                 + (Table.LastData, r.lastData) + (Name, r.name)
-                 + (Distinct, dct) + (_Depth, r.depth + 1))
+                 + (Table.LastData, r.lastData) + (ObInfo.Name, r.name)
+                 + (ISMap, r.iSMap) + (SIMap,r.sIMap)
+                 + (ObInfo.Names,r.names) + (Distinct, dct) + (_Depth, r.depth + 1))
         {
             cx.Add(this);
         }
         protected OrderedRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(long dp, Context cx, RowSet r)
         {
-            var fi = CTree<long, Finder>.Empty;
-            var dm = cx._Dom(r);
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
-                fi += (b.value(), new Finder(b.value(), dp));
-            return BTree<long, object>.Empty + (_Domain, r.domain) + (_Finder, fi);
+            return BTree<long, object>.Empty + (_Domain, r.domain);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4656,29 +4113,20 @@ namespace Pyrrho.Level4
         {
             return (OrderedRowSet)rs.New(rs.mem + x);
         }
-        internal override RowSet Apply(BTree<long, object> mm, Context cx, RowSet im)
+        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long,object>m=null)
         {
             var ms = (CTree<long,TypedValue>)mm[_Matches]??CTree<long, TypedValue>.Empty;
-            for (var b = im.keys.First(); b != null; b = b.Next())
+            for (var b = keys.First(); b != null; b = b.Next())
                 if (ms.Contains(b.value()))
                 {
-                    var sc = (RowSet)cx.obs[im.source];
-                    var nf = CTree<long, Finder>.Empty;
-                    for (var c = finder.First(); c != null; c = c.Next())
-                    {
-                        var f = c.value();
-                        var ns = (f.rowSet == defpos) ? source : f.rowSet;
-                        nf += (b.key(), new Finder(f.col, ns));
-                    }
-                    return sc.Apply(mm + (_Finder, nf), cx, sc);
+                    var sc = (RowSet)cx.obs[source];
+                    return sc.Apply(mm, cx); // remove this from the pipeline
                 }
-            return base.Apply(mm, cx, im);
+            return base.Apply(mm, cx);
         }
         internal override bool CanSkip(Context cx)
         {
             var sc = (RowSet)cx.obs[source];
-            while (sc is From fm)
-                sc = (RowSet)cx.obs[fm.source];
             var match = true; // if true, all of the ordering columns are constant
             for (var b = rowOrder.First(); match && b != null; b = b.Next())
                 if (!matches.Contains(b.value()))
@@ -4689,15 +4137,7 @@ namespace Pyrrho.Level4
         {
             if (SameOrder(cx, os, rowOrder)) // skip if current rowOrder already finer
                 return this;
-            var ors = this;
-            var fi = CTree<long, Finder>.Empty;
-            for (var b = finder.First(); b != null; b = b.Next())
-            {
-                var f = b.value();
-                var ns = (f.rowSet == source) ? ors.defpos : f.rowSet;
-                fi += (b.key(), new Finder(f.col, ns));
-            }
-            return (RowSet)cx.Add((RowSet)New(mem + (OrdSpec, os)) + (_Finder, fi) + (RowOrder, os));
+            return (RowSet)cx.Add((RowSet)New(mem + (OrdSpec, os)) + (RowOrder, os));
         }
         internal override DBObject Relocate(long dp)
         {
@@ -4739,8 +4179,6 @@ namespace Pyrrho.Level4
         internal override RowSet Build(Context cx)
         {
             var sce = (RowSet)cx.obs[source];
-            var oc = cx.finder;
-            cx.finder += sce.finder;
             var dm = new Domain(Sqlx.ROW, cx, keys);
             var tree = new RTree(sce.defpos, cx, dm,
                 distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, TreeBehaviour.Allow);
@@ -4756,7 +4194,6 @@ namespace Pyrrho.Level4
                 var rw = new TRow(dm, vs);
                 RTree.Add(ref tree, rw, SourceCursors(cx));
             }
-            cx.finder = oc;
             return (RowSet)New(cx, E + (_Built, true) + (Index.Tree, tree.mt) + (_RTree, tree));
         }
         protected override Cursor _First(Context cx)
@@ -4861,6 +4298,136 @@ namespace Pyrrho.Level4
         }
     }
     /// <summary>
+    /// A RowSet for UNNEST of an array
+    /// </summary>
+    internal class ArrayRowSet : RowSet
+    {
+        public ArrayRowSet(long dp, Context cx, SqlValue sv) :
+            base(dp, new BTree<long, object>(SqlLiteral._Val, sv.Eval(cx)))
+        { }
+        protected ArrayRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        protected override Cursor _First(Context cx)
+        {
+            var a = (TArray)mem[SqlLiteral._Val];
+            return ArrayCursor.New(cx, this, a, 0);
+        }
+        protected override Cursor _Last(Context cx)
+        {
+            var a = (TArray)mem[SqlLiteral._Val];
+            return ArrayCursor.New(cx,this,a,a.Length-1);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new ArrayRowSet(defpos, m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new ArrayRowSet(dp, mem);
+        }
+        internal class ArrayCursor : Cursor
+        {
+            internal readonly ArrayRowSet _ars;
+            internal readonly TArray _ar;
+            internal readonly int _ix;
+            ArrayCursor(Context cx,ArrayRowSet ars,TArray ar, int ix)
+                : base(cx,ars,ix,E,(TRow)ar[ix])
+            {
+                _ars = ars; _ix = ix;  _ar = ar;
+            }
+            internal static ArrayCursor New(Context cx, ArrayRowSet ars, TArray ar, int ix)
+            {
+                if (ix<0 || ar.Length <= ix)
+                    return null;
+                return new ArrayCursor(cx, ars, ar, ix);
+            }
+            protected override Cursor _Next(Context cx)
+            {
+                return New(cx,_ars,_ar,_ix+1);
+            }
+
+            protected override Cursor _Previous(Context cx)
+            {
+                return New(cx, _ars, _ar, _ix - 1);
+            }
+
+            internal override BList<TableRow> Rec()
+            {
+                throw new NotImplementedException();
+            }
+
+            internal override Cursor _Fix(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+        }
+    }
+    /// <summary>
+    /// A RowSet for UNNEST of a Multiset
+    /// </summary>
+    internal class MultisetRowSet : RowSet
+    {
+        public MultisetRowSet(long dp, Context cx, SqlValue sv) :
+            base(dp, new BTree<long, object>(SqlLiteral._Val, sv.Eval(cx)))
+        { }
+        protected MultisetRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+
+        protected override Cursor _First(Context cx)
+        {
+            var a = (TMultiset)mem[SqlLiteral._Val];
+            return MultisetCursor.New(cx, this, a, a.First());
+        }
+        protected override Cursor _Last(Context cx)
+        {
+            var a = (TMultiset)mem[SqlLiteral._Val];
+            return MultisetCursor.New(cx, this, a, a.Last());
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new MultisetRowSet(defpos, m);
+        }
+        internal override DBObject Relocate(long dp)
+        {
+            return new MultisetRowSet(dp,mem);
+        }
+        internal class MultisetCursor : Cursor
+        {
+            internal readonly MultisetRowSet _mrs;
+            internal readonly TMultiset _ms;
+            internal readonly TMultiset.MultisetBookmark _mb;
+            MultisetCursor(Context cx,MultisetRowSet mrs,TMultiset ms,TMultiset.MultisetBookmark mb)
+                : base(cx,mrs,(int)mb.Position(),E,(TRow)mb.Value())
+            {
+                _mrs = mrs; _ms = ms; _mb = mb;
+            }
+            internal static MultisetCursor New(Context cx,MultisetRowSet mrs,TMultiset ms,
+                TMultiset.MultisetBookmark mb)
+            {
+                if (mb == null)
+                    return null;
+                return new MultisetCursor(cx, mrs, ms, mb);
+            }
+            protected override Cursor _Next(Context cx)
+            {
+                return New(cx, _mrs, _ms, _mb.Next());
+            }
+
+            protected override Cursor _Previous(Context cx)
+            {
+                return New(cx, _mrs, _ms, _mb.Previous());
+            }
+
+            internal override BList<TableRow> Rec()
+            {
+                throw new NotImplementedException();
+            }
+
+            internal override Cursor _Fix(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+        }
+    }
+    /// <summary>
     /// A rowset for SqlRows
     /// // shareable as of 26 April 2021
     /// </summary>
@@ -4872,7 +4439,7 @@ namespace Pyrrho.Level4
             (CList<long>)mem[SqlRows]??CList<long>.Empty;
         internal SqlRowSet(long dp,Context cx,Domain xp, CList<long> rs) 
             : base(dp, cx, _Mem(dp,cx,xp,rs)+(SqlRows,rs)
-                  +(_Needed,CTree<long,Finder>.Empty)
+                  +(_Needed,CTree<long,bool>.Empty)
                   +(_Depth,cx.Depth(rs,xp)))
         {
             cx.Add(this);
@@ -4880,11 +4447,14 @@ namespace Pyrrho.Level4
         protected SqlRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(long dp,Context cx, Domain dm, CList<long> rs)
         {
-            var fi = CTree<long, Finder>.Empty;
+            var ns = CTree<string, long>.Empty;
             for (var b = dm.Needs(cx).First(); b != null; b = b.Next())
-                fi += (b.key(), new Finder(b.key(), dp));
-            return BTree<long, object>.Empty + (_Domain, dm.defpos) + (_Finder, fi)
-                + (Asserts, Assertions.AssignTarget);
+            {
+                var p = b.key();
+                ns += (cx.NameFor(p), p);
+            }
+            return BTree<long, object>.Empty + (_Domain, dm.defpos)
+                + (ObInfo.Names, ns) + (Asserts, Assertions.AssignTarget);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4903,14 +4473,14 @@ namespace Pyrrho.Level4
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (SqlRowSet)base._Replace(cx, so, sv);
-            r += (SqlRows, cx.Replaced(sqlRows));
+            r += (SqlRows, cx.ReplacedLl(sqlRows));
             cx.done += (defpos, r);
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (SqlRowSet)base._Fix(cx);
-            var nw = cx.Fix(sqlRows);
+            var nw = cx.FixLl(sqlRows);
             if (nw!=sqlRows)
             r += (SqlRows, nw);
             return r;
@@ -4918,7 +4488,7 @@ namespace Pyrrho.Level4
         internal override Basis _Relocate(Context cx)
         {
             var r = (SqlRowSet)base._Relocate(cx);
-            r += (SqlRows, cx.Fix(sqlRows));
+            r += (SqlRows, cx.FixLl(sqlRows));
             return r;
         }
         protected override Cursor _First(Context _cx)
@@ -5046,18 +4616,11 @@ namespace Pyrrho.Level4
         /// <param name="rt">a row type</param>
         /// <param name="r">a a set of TRows from q</param>
         internal ExplicitRowSet(long dp,Context cx,Domain dt,BList<(long,TRow)>r)
-            : base(dp, _Fin(dp,dt)+(ExplRows,r)+(_Domain,dt.defpos))
+            : base(dp, BTree<long,object>.Empty+(ExplRows,r)+(_Domain,dt.defpos))
         {
             cx.Add(this);
         }
         protected ExplicitRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Fin(long dp,Domain dt)
-        {
-            var f = CTree<long, Finder>.Empty;
-            for (var b = dt.rowType.First(); b != null; b = b.Next())
-                f += (b.value(), new Finder(b.value(), dp));
-            return new BTree<long, object>(_Finder, f);
-        }
         internal override Basis New(BTree<long, object> m)
         {
             return new ExplicitRowSet(defpos,m);
@@ -5142,50 +4705,32 @@ namespace Pyrrho.Level4
             }
             internal static ExplicitCursor New(Context _cx,ExplicitRowSet ers,int i)
             {
-                var ox = _cx.finder;
-                _cx.finder += ers.finder;
                 for (var b=ers.explRows.First();b!=null;b=b.Next())
                 {
                     var rb = new ExplicitCursor(_cx,ers, b, 0);
                     if (rb.Matches(_cx) && Eval(ers.where, _cx))
-                    {
-                        _cx.finder = ox;
                         return rb;
-                    }
                 }
-                _cx.finder = ox;
                 return null;
             }
             protected override Cursor _Next(Context _cx)
             {
-                var ox = _cx.finder;
-                _cx.finder += _ers.finder;
                 for (var prb = _prb.Next(); prb!=null; prb=prb.Next())
                 {
                     var rb = new ExplicitCursor(_cx,_ers, prb, _pos+1);
                     if (rb.Matches(_cx) && Eval(_ers.where, _cx))
-                    {
-                        _cx.finder = ox;
                         return rb;
-                    }
                 }
-                _cx.finder = ox;
                 return null;
             }
             protected override Cursor _Previous(Context _cx)
             {
-                var ox = _cx.finder;
-                _cx.finder += _ers.finder;
                 for (var prb = _prb.Previous(); prb != null; prb = prb.Previous())
                 {
                     var rb = new ExplicitCursor(_cx, _ers, prb, _pos + 1);
                     if (rb.Matches(_cx) && Eval(_ers.where, _cx))
-                    {
-                        _cx.finder = ox;
                         return rb;
-                    }
                 }
-                _cx.finder = ox;
                 return null;
             }
             internal override Cursor _Fix(Context cx)
@@ -5203,7 +4748,7 @@ namespace Pyrrho.Level4
     {
         internal SqlCall call => (SqlCall)mem[SqlCall.Call];
         internal ProcRowSet(long dp, SqlCall ca, Context cx) 
-            :base(cx.GetUid(),cx,_Mem(cx.GetPrevUid(),dp,cx,ca) +(_Needed,CTree<long,Finder>.Empty)
+            :base(cx.GetUid(),cx,_Mem(cx.GetPrevUid(),dp,cx,ca) +(_Needed,CTree<long,bool>.Empty)
             +(SqlCall.Call,ca)+(_Depth,ca.depth+1))
         {
             cx.Add(this);
@@ -5211,10 +4756,12 @@ namespace Pyrrho.Level4
         protected ProcRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(long dp,long fp,Context cx,SqlCall ca)
         {
-            var fi = CTree<long, Finder>.Empty;
-            for (var b = ((Domain)cx.obs[ca.domain]).Needs(cx).First(); b != null; b = b.Next())
-                fi += (b.key(), new Finder(b.key(), dp));
-            return BTree<long, object>.Empty + (_Domain, ca.domain) + (_Finder, fi);
+            var m = BTree<long, object>.Empty + (_Domain, ca.domain);
+            var cs = (CallStatement)cx._Ob(ca.call);
+            var pi = cx._Ob(cs.procdefpos).infos[cx.role.defpos];
+            if (pi.names != CTree<string, long>.Empty)
+                m += (ObInfo.Names, pi.names);
+            return m;
         }
         public static ProcRowSet operator+(ProcRowSet p,(long,object)x)
         {
@@ -5380,47 +4927,43 @@ namespace Pyrrho.Level4
             (CTree<long, long>)mem[TargetTrans];
         internal CTree<long, long> transTarget =>
             (CTree<long, long>)mem[TransTarget];
-        internal Domain dataType => (Domain)mem[ObInfo._DataType];
         internal CTree<long, bool> foreignKeys =>
             (CTree<long, bool>)mem[ForeignKeys] ?? CTree<long, bool>.Empty;
         internal CList<long> insertCols => (CList<long>)mem[Table.TableCols];
         internal long indexdefpos => (long)(mem[IxDefPos] ?? -1L);
         internal Adapters _eqs => (Adapters)mem[_Adapters];
-        internal TransitionRowSet(TargetActivation cx, TableRowSet ts, RowSet data, CList<long> iC)
-            : base(cx.GetUid(), cx,_Mem(cx.GetPrevUid(), cx, ts, data, iC)
+        internal TransitionRowSet(TargetActivation cx, TableRowSet ts, RowSet data)
+            : base(cx.GetUid(), cx,_Mem(cx.GetPrevUid(), cx, ts, data)
                   +(_Where,ts.where)+(_Data,data.defpos)+(_Depth,cx.Depth(ts,data))
                   +(Matching,ts.matching))
         {
             cx.Add(this);
         }
         static BTree<long, object> _Mem(long defpos, TargetActivation cx, 
-            TableRowSet ts,RowSet data,CList<long> iC)
+            TableRowSet ts,RowSet data)
         {
             var m = BTree<long, object>.Empty;
             var tr = cx.db;
             var ta = ts.target;
             m += (_Domain, ts.domain);
             m += (_Data, data.defpos);
-            m += (ObInfo._DataType, (Domain)cx.obs[ts.domain]);
-            m += (From.Target, ta);
+            m += (Target, ta);
             m += (RSTargets, new CTree<long,long>(ts.target,ts.defpos));
             var t = tr.objects[ta] as Table;
             m += (IxDefPos, t?.FindPrimaryIndex(cx)?.defpos ?? -1L);
-            var ti = (ObInfo)tr.schema.infos[ta];
             // check now about conflict with generated columns
             if (t!=null && t.Denied(cx, Grant.Privilege.Insert))
-                throw new DBException("42105", ti.name);
+                throw new DBException("42105", t.infos[cx.role.defpos].name);
             var dfs = BTree<long, TypedValue>.Empty;
             if (cx._tty != PTrigger.TrigType.Delete)
             {
-                for (var b = ti.dataType.rowType.First(); b != null; b = b.Next())
+                for (var b = cx._Dom(ta).rowType.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
-                    cx.finder += (p, new Finder(p, defpos));
                     if (tr.objects[p] is TableColumn tc) // i.e. not remote
                     {
                         var tv = tc.defaultValue ?? 
-                            tc.Domains(cx).defaultValue;
+                            cx._Dom(tc).defaultValue;
                         if (!tv.IsNull)
                         {
                             dfs += (tc.defpos, tv);
@@ -5438,13 +4981,11 @@ namespace Pyrrho.Level4
                 if (ix.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
                     fk += (p, true);
             }
-            m += (TargetTrans, ts.iSMap);
-            m += (TransTarget, ts.sIMap);
+            m += (TargetTrans, ts.sIMap);
+            m += (TransTarget, ts.iSMap);
             m += (ForeignKeys, fk);
-            if (iC!=null)
-                m += (Table.TableCols, iC);
             m += (Defaults, dfs);
-            m += (_Needed, CTree<long, Finder>.Empty);
+            m += (_Needed, CTree<long, bool>.Empty);
             return m;
         }
         protected TransitionRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -5489,16 +5030,16 @@ namespace Pyrrho.Level4
             if (cx.done.Contains(defpos))
                 return cx.done[defpos];
             var r = (RowSet)base._Replace(cx, so, sv);
-            var ds = cx.Replace(defaults, so, sv);
+            var ds = cx.ReplaceTlT(defaults, so, sv);
             if (ds != defaults)
                 r += (Defaults, ds);
-            var fk = cx.Replaced(foreignKeys);
+            var fk = cx.ReplacedTlb(foreignKeys);
             if (fk != foreignKeys)
                 r += (ForeignKeys, fk);
-            var gt = cx.Replaced(targetTrans);
+            var gt = cx.ReplacedTll(targetTrans);
             if (gt != targetTrans)
                 r += (TargetTrans, gt);
-            var tg = cx.Replaced(transTarget);
+            var tg = cx.ReplacedTll(transTarget);
             if (tg != transTarget)
                 r += (TransTarget, tg);
             cx.done += (defpos, r);
@@ -5526,21 +5067,17 @@ namespace Pyrrho.Level4
             internal readonly TransitionRowSet _trs;
             internal readonly Cursor _fbm; // transition source cursor
             internal readonly TargetCursor _tgc;
-            internal TransitionCursor(TableActivation ta, TransitionRowSet trs, Cursor fbm, int pos)
-                : base(ta.next, trs, pos, fbm._ds,
-                      new TRow(trs, trs.dataType, fbm))
+            internal TransitionCursor(TableActivation ta, TransitionRowSet trs, Cursor fbm, int pos,
+                CList<long> iC) : base(ta.next, trs, pos, fbm._ds, new TRow(ta._Dom(trs), iC, fbm))
             {
                 _trs = trs;
                 _fbm = fbm;
                 var cx = ta.next;
-                for (var b = trs.finder.First(); b != null; b = b.Next())
+                for (var b = trs.iSMap.First(); b != null; b = b.Next())
                 {
                     var k = b.key();
-                    var f = b.value();
-                    if (cx.cursors.Contains(f.rowSet))
-                        cx.values += (k, cx.cursors[f.rowSet][f.col]);
+                    cx.values += (k, cx.values[b.value()]);
                 }
-                cx.values += (values, false);
                 _tgc = TargetCursor.New(ta, this, true); // retrieve it from ta
             }
             TransitionCursor(TransitionCursor cu, TableActivation ta, long p, TypedValue v)
@@ -5585,38 +5122,28 @@ namespace Pyrrho.Level4
             }
             internal static TransitionCursor New(TableActivation ta, TransitionRowSet trs)
             {
-                var ox = ta.finder;
                 var sce = (RowSet)ta.obs[trs.data];  // annoying we can't cache this
-                ta.finder += sce?.finder;
                 for (var fbm = sce?.First(ta); fbm != null;
                     fbm = fbm.Next(ta))
                     if (fbm.Matches(ta) && Eval(trs.where, ta))
-                    {
-                        var r = new TransitionCursor(ta, trs, fbm, 0);
-                        ta.finder = ox;
-                        return r;
-                    }
-                ta.finder = ox;
+                        return new TransitionCursor(ta, trs, fbm, 0, ta.insertCols);
                 return null;
             }
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += ((RowSet)cx.obs[_fbm._rowsetpos]).finder;
                 if (cx.obs[_trs.where.First()?.key() ?? -1L] is SqlValue sv && 
                     cx._Dom(sv).kind == Sqlx.CURRENT)
                     return null;
+                var ta = (TableActivation)cx;
                 for (var fbm = _fbm.Next(cx); fbm != null; fbm = fbm.Next(cx))
                 {
-                    var ret = new TransitionCursor((TableActivation)cx, _trs, fbm, _pos+1);
+                    var ret = new TransitionCursor(ta, _trs, fbm, _pos+1,ta.insertCols);
                     for (var b = _trs.where.First(); b != null; b = b.Next())
                         if (cx.obs[b.key()].Eval(cx) != TBool.True)
                             goto skip;
-                    cx.finder = ox;
                     return ret;
                 skip:;
                 }
-                cx.finder = ox;
                 return null;
             }
             protected override Cursor _Previous(Context cx)
@@ -5636,16 +5163,16 @@ namespace Pyrrho.Level4
         // shareable as of 26 April 2021
         internal class TargetCursor : Cursor
         {
-            internal readonly ObInfo _ti;
+            internal readonly Domain _td;
             internal readonly TransitionRowSet _trs;
             internal readonly Cursor _fb;
             internal readonly TableRow _rec;
-            TargetCursor(TableActivation ta, Cursor trc, Cursor fb, ObInfo ti, CTree<long,TypedValue> vals)
-                : base(ta, ta._trs.defpos, ti.dataType, trc._pos, 
+            TargetCursor(TableActivation ta, Cursor trc, Cursor fb, Domain td, CTree<long,TypedValue> vals)
+                : base(ta, ta._trs.defpos, td, trc._pos, 
                       (fb!=null)?(fb._ds+trc._ds):trc._ds, 
-                      new TRow(ti.dataType, vals))
+                      new TRow(td, vals))
             { 
-                _trs = ta._trs; _ti = ti; _fb = fb;
+                _trs = ta._trs; _td = td; _fb = fb;
                 var t = (Table)ta.db.objects[ta._tgt];
                 var tt = ta._trs.target;
                 var p = trc._ds.Contains(tt) ? trc._ds[tt].Item1 : -1L;
@@ -5658,7 +5185,7 @@ namespace Pyrrho.Level4
                 var (cx, p, tv) = x;
                 var tc = (TableActivation)cx;
                 if (tgc.dataType.representation.Contains(p))
-                    return new TargetCursor(tc, tgc, tgc._fb, tgc._ti, tgc.values + (p, tv));
+                    return new TargetCursor(tc, tgc, tgc._fb, tgc._td, tgc.values + (p, tv));
                 else 
                     return tgc;
             }
@@ -5670,10 +5197,9 @@ namespace Pyrrho.Level4
                 var vs = CTree<long, TypedValue>.Empty;
                 var trs = trc._trs;
                 var t = (Table)cx.db.objects[cx._tgt];
-                var ro = (Role)cx.db.objects[t.definer];
-                var ti = (ObInfo)ro.infos[t.defpos];
+                var dm = cx._Dom(t);
                 var fb = (cx._tty!=PTrigger.TrigType.Insert)?cx.next.cursors[trs.rsTargets[cx._tgt]]:null;
-                var rt = trc._trs.insertCols??ti.dataType.rowType;
+                var rt = trc._trs.insertCols??dm.rowType;
                 for (var b = rt.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
@@ -5685,8 +5211,7 @@ namespace Pyrrho.Level4
                 }
                 vs = CheckPrimaryKey(cx, trc, vs);
                 cx.values += vs;
-                var oc = cx.finder;
-                for (var b = t.tblCols.First(); b != null; b = b.Next())
+                for (var b = t.tableCols.First(); b != null; b = b.Next())
                     if (cx.obs[b.key()] is TableColumn tc)
                     {
                         if (check)
@@ -5694,14 +5219,13 @@ namespace Pyrrho.Level4
                             {
                                 case Generation.Expression:
                                     if (vs[tc.defpos] is TypedValue vt && !vt.IsNull)
-                                        throw new DBException("0U000", cx.Inf(tc.defpos).name);
-                                    cx.finder = oc;
+                                        throw new DBException("0U000", tc.infos[cx.role.defpos].name);
                                     cx.values += tc.Frame(vs);
+                                    cx.obs += tc.framing.obs;
                                     var e = cx.obs[tc.generated.exp];
                                     var v = e.Eval(cx);
                                     trc += (cx, tc.defpos, v);
                                     vs += (tc.defpos, v);
-                                    cx.finder = trs.finder;
                                     break;
                             }
                         var cv = vs[tc.defpos];
@@ -5709,24 +5233,25 @@ namespace Pyrrho.Level4
                             vs += (tc.defpos, tc.defaultValue);
                         cv = vs[tc.defpos];
                         if (tc.notNull && (cv == null || cv.IsNull))
-                            throw new DBException("22206", cx.Inf(tc.defpos).name);
+                            throw new DBException("22206", tc.infos[cx.role.defpos].name);
                         for (var cb = tc.constraints?.First(); cb != null; cb = cb.Next())
                         {
                             var cp = cb.key();
                             var ck = (Check)cx.db.objects[cp]; // not in framing!
+                            cx.obs += ck.framing.obs;
                             cx.values += ck.Frame(vs);
                             var se = (SqlValue)cx.obs[ck.search];
                             if (se.Eval(cx) != TBool.True)
-                                throw new DBException("22212", cx.Inf(tc.defpos).name);
+                                throw new DBException("22212", tc.infos[cx.role.defpos].name);
                         }
                     }
-                var r = new TargetCursor(cx, trc, fb,ti, vs);
+                var r = new TargetCursor(cx, trc, fb, dm, vs);
                 for (var b = trc._trs.foreignKeys.First(); b != null; b = b.Next())
                 {
                     var ix = (Index)cx.db.objects[b.key()];
                     var rx = (Index)cx.db.objects[ix.refindexdefpos];
-                    if (rx is VirtualIndex)
-                        continue;
+         /*           if (rx is VirtualIndex)
+                        continue; */
                     var k = ix.MakeKey(r._rec.vals);
                     if (k._head == null)
                         continue;
@@ -5745,7 +5270,7 @@ namespace Pyrrho.Level4
                                        goto skip;
                             }
                         throw new DBException("23000", "missing foreign key "
-                            + cx.Inf(ix.tabledefpos).name + k.ToString());
+                            + cx._Ob(ix.tabledefpos).infos[cx.role.defpos].name + k.ToString());
                     skip:;
                     }
                 }
@@ -5774,7 +5299,7 @@ namespace Pyrrho.Level4
                         var v = vs[tc.defpos];
                         if (v == null || v.IsNull)
                         {
-                            if (tc.Domains(cx).kind != Sqlx.INTEGER)
+                            if (cx._Dom(tc).kind != Sqlx.INTEGER)
                                 throw new DBException("22004");
                             v = ta.index.rows.NextKey(k, 0, b.key());
                             if (v.IsNull)
@@ -5893,7 +5418,7 @@ namespace Pyrrho.Level4
         internal TransitionTableRowSet(long dp, Context cx, TransitionRowSet trs, 
             Domain dm,bool old)
             : base(dp, cx, _Mem(cx, dp, trs, dm, old)
-                  + (RSTargets, trs.rsTargets) + (From.Target,trs.target)
+                  + (RSTargets, trs.rsTargets) + (Target,trs.target)
                   +(_Depth,cx.Depth(trs,dm)))
         {
             cx.Add(this);
@@ -5908,7 +5433,6 @@ namespace Pyrrho.Level4
                 for (var b = trs.First(cx); b != null; b = b.Next(cx))
                     for (var c=b.Rec().First();c!=null;c=c.Next())
                         dat += (c.value().tabledefpos, c.value());
-            var fi = CTree<long, Finder>.Empty;
             var ma = CTree<long, long>.Empty;
             var rm = CTree<long, long>.Empty;
             var rb = cx._Dom(trs).rowType.First();
@@ -5919,11 +5443,10 @@ namespace Pyrrho.Level4
                 var f = trs.transTarget[q];
                 ma += (f, p);
                 rm += (p, f);
-                fi += (p, new Finder(q,trs.defpos));
             }
             return BTree<long,object>.Empty + (TransitionTable.Old,old)
                 + (Trs,trs) + (Data,dat) + (_Map,ma)
-                +(RMap,rm) + (_Finder,fi) + (_Domain, dm.defpos);
+                +(RMap,rm) + (_Domain, dm.defpos);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -5945,10 +5468,10 @@ namespace Pyrrho.Level4
             var ts = _trs.Replace(cx, so, sv);
             if (ts != _trs)
                 r += (Trs, ts);
-            var mp = cx.Replaced(map);
+            var mp = cx.ReplacedTll(map);
             if (mp != map)
                 r += (_Map, mp);
-            var rm = cx.Replaced(rmap);
+            var rm = cx.ReplacedTll(rmap);
             if (rm != rmap)
                 r += (RMap, rm);
             cx.done += (defpos, r);
@@ -6014,6 +5537,7 @@ namespace Pyrrho.Level4
             }
         }
     }
+    /*
     /// <summary>
     /// RoutineCallRowSet is a table-valued routine call
     /// // shareable as of 26 April 2021
@@ -6069,7 +5593,7 @@ namespace Pyrrho.Level4
         {
             return result.Last(cx);
         }
-    }
+    } */
     // shareable as of 26 April 2021
     internal class RowSetSection : RowSet
     {
@@ -6080,13 +5604,20 @@ namespace Pyrrho.Level4
         internal int size => (int)(mem[Size] ?? 0);
         internal override Assertions Requires => Assertions.MatchesTarget;
         internal RowSetSection(Context _cx,RowSet s, int o, int c)
-            : base(_cx.GetUid(),s.mem+(Offset,o)+(Size,c)+(_Source,s.defpos)
-                  +(RSTargets,s.rsTargets)
+            : base(_cx.GetUid(),_Mem(_cx,s)+(Offset,o)+(Size,c)+(_Source,s.defpos)
+                  +(RSTargets,s.rsTargets) + (_Domain,s.domain)
                   +(Table.LastData,s.lastData))
         {
             _cx.obs += (defpos, this);
         }
         protected RowSetSection(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,RowSet r)
+        {
+            var m = BTree<long, object>.Empty + (ISMap, r.iSMap) + (SIMap, r.sIMap);
+            if (r.names != CTree<string, long>.Empty)
+                m += (ObInfo.Names, r.names);
+            return m;
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new RowSetSection(defpos,m);
@@ -6290,6 +5821,7 @@ namespace Pyrrho.Level4
         internal WindowRowSet(Context cx,RowSet sc, SqlFunction f)
             :base(cx.GetUid(),cx,_Mem(cx.GetPrevUid(),cx,sc)+(_Source,sc.defpos)
                  +(Window,f)+(Table.LastData,sc.lastData)
+                 +(ISMap,sc.iSMap)+(SIMap,sc.sIMap)+(ObInfo.Names,sc.names)
                  +(_Depth,cx.Depth(sc,f)))
         {
             cx.Add(this);
@@ -6297,11 +5829,7 @@ namespace Pyrrho.Level4
         protected WindowRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(long dp,Context cx,RowSet sc)
         {
-            var fi = CTree<long, Finder>.Empty;
-            var sd = cx._Dom(sc);
-            for (var b = sd.rowType.First(); b != null; b = b.Next())
-                fi += (b.value(), new Finder(b.value(), dp));
-            return BTree<long, object>.Empty + (_Finder, fi)
+            return BTree<long, object>.Empty 
                 +(_Domain,sc.domain);
         }
         internal override Basis New(BTree<long, object> m)
@@ -6353,13 +5881,16 @@ namespace Pyrrho.Level4
             // The value part consists of the parameter of the window function
             // (There may be an argument for including the rest of the row - might we allow triggers?)
             // We build the whole WRS at this stage for saving in f
-            var tree = new RTree(source,cx,w.order,TreeBehaviour.Allow, TreeBehaviour.Disallow);
+            var od = cx._Dom(w.order)??cx._Dom(w.partition);
+            if (od == null)
+                return this;
+            var tree = new RTree(source,cx,od,TreeBehaviour.Allow, TreeBehaviour.Disallow);
             var values = new TMultiset((Domain)cx.Add(new Domain(cx.GetUid(), Sqlx.MULTISET, cx._Dom(wf))));
             for (var rw = ((RowSet)cx.obs[source]).First(cx); rw != null; 
                 rw = rw.Next(cx))
             {
                 var v = rw[wf.val];
-                RTree.Add(ref tree, new TRow(w.order, rw.values), cx.cursors);
+                RTree.Add(ref tree, new TRow(od, rw.values), cx.cursors);
                 values.Add(v);
             }
             return (RowSet)New(cx,E+(Multi,values)+(_Built,true)+(Index.Tree,tree.mt));
@@ -6372,14 +5903,14 @@ namespace Pyrrho.Level4
             { }
             internal static Cursor New(Context cx,WindowRowSet ws)
             {
-                ws = (WindowRowSet)ws.MaybeBuild(cx);
+                ws = (WindowRowSet)ws.Build(cx);
                 var bmk = ws?.rtree.First(cx);
                 return (bmk == null) ? null 
                     : new WindowCursor(cx,ws.defpos,cx._Dom(ws), 0,bmk._key);
             }
             internal static Cursor New(WindowRowSet ws, Context cx)
             {
-                ws = (WindowRowSet)ws.MaybeBuild(cx);
+                ws = (WindowRowSet)ws.Build(cx);
                 var bmk = ws?.rtree.Last(cx);
                 return (bmk == null) ? null
                     : new WindowCursor(cx, ws.defpos, cx._Dom(ws), 0, bmk._key);
@@ -6414,8 +5945,9 @@ namespace Pyrrho.Level4
         internal const long
             DefaultUrl = -370,  // string 
             _RestView = -459,    // long RestView
+            RemoteCols = -373, // CList<long> SqlValue
             RestValue = -457,   // TArray
-            SqlAgent = -458; // string
+            SqlAgent = -256; // string
         internal TArray aVal => (TArray)mem[RestValue];
         internal long restView => (long)(mem[_RestView] ?? -1L);
         internal string defaultUrl => (string)mem[DefaultUrl];
@@ -6424,8 +5956,8 @@ namespace Pyrrho.Level4
             (CTree<long, string>)mem[RestView.NamesMap] ?? CTree<long, string>.Empty;
         internal long usingTableRowSet => (long)(mem[RestView.UsingTableRowSet] ?? -1L);
         public RestRowSet(Iix lp, Context cx, RestView vw, Domain q)
-            : base(lp.dp, _Mem(cx,lp,vw,q) +(_RestView,vw.defpos)
-                  +(Asserts,Assertions.AssignTarget))
+            : base(lp.dp, _Mem(cx,lp,vw,q) +(_RestView,vw.defpos) +(Infos,vw.infos)
+                  +(Asserts,Assertions.SpecificRows|Assertions.AssignTarget))
         {
             cx.Add(this);
             cx.restRowSets += (lp.dp, true);
@@ -6438,53 +5970,47 @@ namespace Pyrrho.Level4
             var vs = BList<SqlValue>.Empty; // the resolved select list in query rowType order
             var vd = CList<long>.Empty;
             var dt = cx._Dom(vw);
-            var qn = q?.Needs(cx, -1L, CTree<long,bool>.Empty);
-            cx.defs += (vw.name, lp, Ident.Idents.Empty);
-            cx.iim += (lp.dp, lp);
-            var d = dt.Length;
+            var qn = q?.Needs(cx, -1L, CTree<long, bool>.Empty);
+            cx.defs += (vw.infos[cx.role.defpos].name, lp, Ident.Idents.Empty);
+            int d;
             var nm = CTree<long, string>.Empty;
             var mn = CTree<string, long>.Empty;
             var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
             var ma = BTree<string, SqlValue>.Empty; // the set of referenceable columns in dt
-            var fi = CTree<long, Finder>.Empty;
             for (var b = vw.framing.obs.First(); b != null; b = b.Next())
             {
                 var c = b.value();
-                if (c is SqlValue  sc)
+                if (c is SqlValue sc)
                 {
-                    ma += (c.name, sc);
-                    mn += (c.name, c.defpos);
-                }
-            }
-            for (var b = dt.rowType.First(); b != null && b.key() < dt.display; b = b.Next())
-            {
-                var p = b.value();
-                var s = (SqlValue)cx.obs[p];
-                var sf = (SqlValue)vw.framing.obs[mn[s.name]];
-                if (!(sf is SqlCopy))
-                {
-                    fi += (p, new Finder(p, lp.dp));
-                    vd += p;
-                    nm += (p, s.name);
+                    ma += (sc.name, sc);
+                    mn += (sc.name, c.defpos);
                 }
             }
             var ur = (RowSet)cx.obs[vw.usingTableRowSet];
-            Domain ud = (ur==null)?null:cx._Dom(ur);
+            for (var b = dt.rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                var ns = cx._Ob(p).NameFor(cx);
+                if (ur?.names.Contains(ns)==true)
+                    continue; 
+                var sf = (SqlValue)vw.framing.obs[mn[ns]];
+                if (!(sf is SqlCopy))
+                {
+                    vd += p;
+                    nm += (p, ns);
+                }
+            }
             for (var b = dt.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
                 var sc = (SqlValue)cx.obs[p];
                 if (vs.Has(sc))
                     continue;
-                if (q!=null &&  !qn.Contains(p))
+                if (q != null && !qn.Contains(p))
                     continue;
                 vs += sc;
-                if (ud?.representation.Contains(p) == true)
-                    fi += (p, new Finder(p, ur.defpos));
-                else
-                    fi += (p, new Finder(p, lp.dp));
             }
-            d = vs.Length;
+            d = vs.Length; // apparent repetition of the dt.rowType loop here is simply to get the display
             for (var b = dt.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
@@ -6492,22 +6018,17 @@ namespace Pyrrho.Level4
                 if (vs.Has(sc))
                     continue;
                 vs += sc;
-                if (ud?.representation.Contains(p) == true)
-                    fi += (p, new Finder(p, ur.defpos));
-                else
-                    fi += (p, new Finder(p, lp.dp));
             }
-            var fd = (vs==BList<SqlValue>.Empty)?dt:new Domain(cx.GetUid(), cx, Sqlx.TABLE, vs,d);
-            var r = BTree<long, object>.Empty + (Name, vw.name)
-                   + (_Domain, fd.defpos) + (RestView.NamesMap,nm)
-                   + (_Finder, fi) 
-                   + (RestView.UsingTableRowSet,vw.usingTableRowSet)
-                   + (Matching, mg) + (RestView.RemoteCols, vd)
+            var fd = (vs == BList<SqlValue>.Empty) ? dt : new Domain(cx.GetUid(), cx, Sqlx.TABLE, vs, d);
+            var r = BTree<long, object>.Empty + (ObInfo.Name, vw.infos[cx.role.defpos].name)
+                   + (_Domain, fd.defpos) + (RestView.NamesMap, nm)
+                   + (RestView.UsingTableRowSet, vw.usingTableRowSet)
+                   + (Matching, mg) + (RemoteCols, vd)
                    + (RSTargets, new CTree<long, long>(vw.viewPpos, lp.dp))
                    + (_Depth, cx.Depth(fd, vw));
             if (vw.usingTableRowSet < 0)
             {
-                var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
+                var vi = cx._Ob(vw.viewPpos).infos[cx.role.defpos];
                 r += (DefaultUrl, vi.metadata[Sqlx.URL]?.ToString() ??
                     vi.metadata[Sqlx.DESC]?.ToString() ?? "");
             }
@@ -6534,12 +6055,7 @@ namespace Pyrrho.Level4
         {
             return new RestRowSet(defpos,m);
         }
-        internal override Domain Domains(Context cx, Grant.Privilege pr = Grant.Privilege.NoPrivilege)
-        {
-            var vw = (RestView)cx.obs[restView];
-            return cx._Dom(vw);
-        }
-        internal override bool Knows(Context cx, long rp)
+        internal override bool Knows(Context cx, long rp, bool ambient=false)
         {
             if (cx.obs[usingTableRowSet] is TableRowSet ur)
             {
@@ -6547,12 +6063,12 @@ namespace Pyrrho.Level4
                 if (ud.representation.Contains(rp)) // really
                     return false;
             }
-            return base.Knows(cx, rp);
+            return base.Knows(cx, rp, ambient);
         }
         internal override string DbName(Context cx)
         {
             var _vw = (RestView)cx.obs[restView];
-            var vi = (ObInfo)cx.db.role.infos[_vw.viewPpos];
+            var vi = cx._Ob(_vw.viewPpos).infos[cx.role.defpos];
             return GetUrl(cx,vi).Item1;
         }
         internal override DBObject Relocate(long dp)
@@ -6578,16 +6094,16 @@ namespace Pyrrho.Level4
                 ch = ch || p != op;
             }
             if (ch)
-                r = r + (RestView.RemoteCols, rc) + (RestView.NamesMap,nm);
+                r = r + (RemoteCols, rc) + (RestView.NamesMap,nm);
             cx.done += (defpos, r);
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (RestRowSet)base._Fix(cx);
-            var rc = cx.Fix(remoteCols);
+            var rc = cx.FixLl(remoteCols);
             if (rc != remoteCols)
-                r += (RestView.RemoteCols, rc);
+                r += (RemoteCols, rc);
             var nm = cx.Fix(namesMap);
             if (nm != namesMap)
                 r += (RestView.NamesMap, nm);
@@ -6596,9 +6112,9 @@ namespace Pyrrho.Level4
         internal override Basis _Relocate(Context cx)
         {
             var r = (RestRowSet)base._Relocate(cx);
-            var rc = cx.Fix(remoteCols);
+            var rc = cx.FixLl(remoteCols);
             if (rc != remoteCols)
-                r += (RestView.RemoteCols, rc);
+                r += (RemoteCols, rc);
             var nm = cx.Fix(namesMap);
             if (nm != namesMap)
                 r += (RestView.NamesMap, nm);
@@ -6661,14 +6177,18 @@ namespace Pyrrho.Level4
             }
             return wr;
         }
-        internal (string, string, StringBuilder) GetUrl(Context cx, ObInfo vi,
-            string url=null)
+        internal (string, string) GetUrl(Context cx, ObInfo vi,
+            string url = null)
         {
-            url = cx.url ?? url?? defaultUrl;
+            url = cx.url ?? url ?? defaultUrl;
             var sql = new StringBuilder();
-            string targetName = "";
-            if (vi?.metadata.Contains(Sqlx.URL)==true)
+            string targetName ;
+            string[] ss;
+            var mu = vi?.metadata.Contains(Sqlx.URL) == true;
+            if (mu)
             {
+                if (url == "" || url==null)
+                    url = vi.metadata[Sqlx.URL].ToString();
                 sql.Append(url);
                 for (var b = matches.First(); b != null; b = b.Next())
                 {
@@ -6677,13 +6197,17 @@ namespace Pyrrho.Level4
                     sql.Append("="); sql.Append(b.value());
                 }
                 url = sql.ToString();
-                sql.Clear();
+                ss = url.Split('/');
+                targetName = ss[5];
             }
             else
             {
-                var ss = url.Split('/');
-                if (ss.Length > 5)
-                    targetName = ss[5];
+                if (url == "" || url==null)
+                    url = vi.metadata[Sqlx.DESC]?.ToString() ?? cx.url;
+                if (url == null)
+                    return (null, null);
+                ss = url.Split('/');
+                targetName = ss[5];
                 var ub = new StringBuilder(ss[0]);
                 for (var i = 1; i < ss.Length && i < 5; i++)
                 {
@@ -6692,7 +6216,7 @@ namespace Pyrrho.Level4
                 }
                 url = ub.ToString();
             }
-            return (url,targetName,sql);
+            return (url, targetName);
         }
         internal override CTree<long, Domain> _RestSources(Context cx)
         {
@@ -6709,7 +6233,7 @@ namespace Pyrrho.Level4
         /// <param name="cx"></param>
         /// <param name="im"></param>
         /// <returns></returns>
-        internal override RowSet Apply(BTree<long, object> mm, Context cx, RowSet im)
+        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long,object> m=null)
         {
             // what might we need?
             var xs = ((CTree<long,bool>)mm[_Where]??CTree<long,bool>.Empty)
@@ -6739,7 +6263,6 @@ namespace Pyrrho.Level4
                         ou += (c.key(), true);
             }
             // Add them to the Domain if necessary
-            var fi = finder;
             var rc = dt.rowType;
             var rs = dt.representation;
             var nm = namesMap;
@@ -6749,26 +6272,59 @@ namespace Pyrrho.Level4
                 var v = cx.obs[p];
                 rc += p;
                 rs += (p, cx._Dom(v));
-                fi += (p, new Finder(p, defpos));
-                nm += (p, v.alias??v.name);
+                nm += (p, v.alias?? v.NameFor(cx));
             }
-            if (fi!=finder || nm!=namesMap)
+            var im = mem;
+            var ag = (CTree<long, bool>)mm[Domain.Aggs] ?? CTree<long, bool>.Empty;
+            if (ag != CTree<long, bool>.Empty)
             {
-                var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, rs, rc);
+                var dm = (Domain)cx.obs[(long)(mm[AggDomain] ?? -1L)];
+                var nc = CList<long>.Empty; // start again with the aggregating rowType, follow any ordering given
+                var ns = CTree<long, Domain>.Empty;
+                var gb = ((Domain)m?[GroupCols])?.representation ?? CTree<long, Domain>.Empty;
+                var kb = KnownBase(cx);
+                var ut = (TableRowSet)cx.obs[usingTableRowSet];
+                Domain ud = (ut == null) ? null : cx._Dom(ut);
+                for (var b = dt.rowType.First(); b != null; b = b.Next())
+                {
+                    var p = b.value();
+                    var v = (SqlValue)cx.obs[p];
+                    if (v is SqlFunction ct && ct.kind == Sqlx.COUNT && ct.mod == Sqlx.TIMES)
+                    {
+                        nc += p;
+                        ns += (p, Domain.Int);
+                    }
+                    else if (v.IsAggregation(cx) != CTree<long, bool>.Empty)
+                        for (var c = ((SqlValue)cx.obs[p]).KnownFragments(cx, kb).First();
+                            c != null; c = c.Next())
+                        {
+                            var k = c.key();
+                            if (ns.Contains(k))
+                                continue;
+                            nc += k;
+                            ns += (k, cx._Dom(cx.obs[k]));
+                        }
+                    else if (gb.Contains(p))
+                    {
+                        nc += p;
+                        ns += (p, cx._Dom(v));
+                    }
+                }
+                var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc) + (Domain.Aggs, ag);
+                im = im + (_Domain, nd.defpos) + (Domain.Aggs, ag);
+                if (nm != namesMap)
+                    im += (RestView.NamesMap, nm);
                 cx.Add(nd);
-                im = (RowSet)im.New(cx,im.mem+(_Domain, nd.defpos)+(_Finder,fi)
-                    +(RestView.NamesMap,nm));
             }
-            return base.Apply(mm, cx, im);
+            return base.Apply(mm,cx,im); 
         }
         /// <summary>
         /// 
         /// </summary>
         /// <param name="mm"></param>
         /// <param name="cx"></param>
-        /// <param name="im"></param>
         /// <returns></returns>
-        internal override RowSet ApplySR(BTree<long, object> mm, Context cx, RowSet im)
+        internal override RowSet ApplySR(BTree<long, object> mm, Context cx)
         {
             for (var b = mm.First(); b != null; b = b.Next())
             {
@@ -6777,18 +6333,19 @@ namespace Pyrrho.Level4
                     mm -= k;
             }
             if (mm == BTree<long, object>.Empty)
-                return im;
+                return this;
             var ag = (CTree<long, bool>)mm[Domain.Aggs];
             var od = cx.done;
             cx.done = ObTree.Empty;
-            var m = im.mem;
+            var m = mem;
+            var r = this;
             if (mm[GroupCols] is Domain gd)
             {
                 m += (GroupCols, gd);
                 m += (Groupings, mm[Groupings]);
                 m += (Group, mm[Group]);
-                if (gd != im.groupCols)
-                    im = im.Apply(m, cx, im);
+                if (gd != groupCols)
+                    r = (RestRowSet)Apply(m, cx);
             }
             else
                 m += (Domain.Aggs, ag);
@@ -6797,20 +6354,17 @@ namespace Pyrrho.Level4
             var ns = CTree<long, Domain>.Empty;
             var gb = ((Domain)m[GroupCols])?.representation ?? CTree<long, Domain>.Empty;
             var kb = KnownBase(cx);
-            var fi = CTree<long, Finder>.Empty;
-            var ut = (TableRowSet)cx.obs[usingTableRowSet];
-            Domain ud = (ut == null) ? null : cx._Dom(ut);
+            var dn = cx._Dom(this);
             for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                var v = (SqlValue)cx.obs[p];
-                if (v is SqlFunction ct && ct.kind==Sqlx.COUNT && ct.mod==Sqlx.TIMES)
+                var v = (SqlValue)cx.obs[p]; 
+                if (v is SqlFunction ct && ct.kind == Sqlx.COUNT && ct.mod == Sqlx.TIMES)
                 {
                     nc += p;
                     ns += (p, Domain.Int);
-                    fi += (p, new Finder(p, defpos));
                 }
-                else if (v.IsAggregation(cx) != CTree<long, bool>.Empty)
+                if (v.IsAggregation(cx) != CTree<long, bool>.Empty)
                     for (var c = ((SqlValue)cx.obs[p]).KnownFragments(cx, kb).First();
                         c != null; c = c.Next())
                     {
@@ -6819,23 +6373,27 @@ namespace Pyrrho.Level4
                             continue;
                         nc += k;
                         ns += (k, cx._Dom(cx.obs[k]));
-                        fi += (k, new Finder(k, defpos));
                     }
                 else if (gb.Contains(p))
                 {
                     nc += p;
                     ns += (p, cx._Dom(v));
-                    if (ud?.representation.Contains(p) == true)
-                        fi += (p, new Finder(p, ut.defpos));
-                    else
-                        fi += (p, new Finder(p, defpos));
                 }
             }
-            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc) + (Domain.Aggs, ag);
-            m = m + (_Domain, nd.defpos) + (_Finder, fi) + (Domain.Aggs, ag);
+            var d = nc.Length;
+            for (var b = dn.rowType.First(); b != null; b = b.Next())
+            {
+                var p = b.value();
+                if (ns.Contains(p))
+                    continue;
+                nc += p;
+                ns += (p, cx._Dom(cx.obs[p]));
+            }
+            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc,d) + (Domain.Aggs, ag);
+            m = m + (_Domain, nd.defpos) + (Domain.Aggs, ag);
             cx.Add(nd);
-            im = (RowSet)im.New(m);
-            cx.Add(im);
+            r = (RestRowSet)r.New(m);
+            cx.Add(r);
             cx.done = od;
             return (RowSet)cx.obs[defpos]; // will have changed
         }
@@ -6867,15 +6425,13 @@ namespace Pyrrho.Level4
             if (usingTableRowSet >= 0 && !cx.cursors.Contains(usingTableRowSet))
                 throw new PEException("PE389");
             var vw = (RestView)cx.obs[restView];
-            var vi = (ObInfo)((vw!=null)? cx.db.role.infos[vw.viewPpos]:null);
-            var (url,targetName,sql) = GetUrl(cx,vi,defaultUrl);
+            var vi = cx._Ob(vw.viewPpos).infos[cx.role.defpos];
+            var (url,targetName) = GetUrl(cx,vi,defaultUrl);
+            var sql = new StringBuilder();
             var rq = GetRequest(cx,url, vi);
             rq.Accept = vw?.mime ?? "application/json";
-            cx.finder += finder;
             if (vi?.metadata.Contains(Sqlx.URL) == true)
-            {
                 rq.Method = "GET";
-            }
             else
             {
                 rq.Method = "POST";
@@ -6884,7 +6440,7 @@ namespace Pyrrho.Level4
                     sql.Append("distinct ");
                 var co = "";
                 var dd = cx._Dom(this);
-                cx.groupCols += (dd, groupCols);
+                cx.groupCols += (domain, groupCols);
                 var hasAggs = dd.aggs!=CTree<long,bool>.Empty;
                 for (var b = dd.rowType.First(); b != null; b = b.Next())
                     if (cx.obs[b.value()] is SqlValue s)
@@ -6928,7 +6484,7 @@ namespace Pyrrho.Level4
                         sql.Append(" having ");
                         sql.Append(sw);
                     }
-                }
+                } 
             }
             if (PyrrhoStart.HTTPFeedbackMode)
                 Console.WriteLine(url + " " + sql.ToString());
@@ -6948,7 +6504,7 @@ namespace Pyrrho.Level4
                     throw new DBException("3D002", url);
                 }
             }
-            HttpWebResponse wr = null;
+            HttpWebResponse wr;
             try
             {
                 wr = GetResponse(rq);
@@ -6977,8 +6533,8 @@ namespace Pyrrho.Level4
                 cx.result = or;
                 if (PyrrhoStart.HTTPFeedbackMode)
                 {
-                    if (a is TArray)
-                        Console.WriteLine("--> " + ((TArray)a).list.Count + " rows");
+                    if (a is TArray aa)
+                        Console.WriteLine("--> " + aa.list.Count + " rows");
                     else
                         Console.WriteLine("--> " + (a?.ToString() ?? "null"));
                 }
@@ -7096,36 +6652,31 @@ namespace Pyrrho.Level4
             }
             return sb.ToString();
         }
-        internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, bool iter,
-            CList<long> rt)
+        internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, CList<long> rt)
         {
-            ts +=(From.Target, rsTargets.First().key());
+            ts +=(Target, rsTargets.First().key());
             var vw = (RestView)cx.obs[restView];
-            var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
+            var vi = vw.infos[cx.role.defpos];
             var ta = vi.metadata.Contains(Sqlx.URL) ?
                 (TargetActivation)new HTTPActivation(cx, ts, PTrigger.TrigType.Insert)
                 : new RESTActivation(cx, ts, PTrigger.TrigType.Insert);
-            //      if (iter)
-            //         throw new NotImplementedException();
             return new BTree<long, TargetActivation>(ts.target, ta);
         }
-        internal override BTree<long, TargetActivation> Update(Context cx,RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation> Update(Context cx,RowSet fm)
         {
-            fm += (From.Target, rsTargets.First().key());
+            fm += (Target, rsTargets.First().key());
             var vw = (RestView)cx.obs[restView];
-            var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
+            var vi = vw.infos[cx.role.defpos];
             var ta = vi.metadata.Contains(Sqlx.URL) ?
                 (TargetActivation)new HTTPActivation(cx, fm, PTrigger.TrigType.Update)
                 : new RESTActivation(cx, fm, PTrigger.TrigType.Update);
-            //     if (iter)
-            //         throw new NotImplementedException();
             return new BTree<long, TargetActivation>(fm.target, ta);
         }
-        internal override BTree<long, TargetActivation> Delete(Context cx,RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation> Delete(Context cx,RowSet fm)
         {
-            fm += (From.Target, rsTargets.First().key());
+            fm += (Target, rsTargets.First().key());
             var vw = (RestView)cx.obs[restView];
-            var vi = (ObInfo)cx.db.role.infos[vw.viewPpos];
+            var vi = vw.infos[cx.role.defpos];
             var ta = vi.metadata.Contains(Sqlx.URL) ?
                 (TargetActivation)new HTTPActivation(cx, fm, PTrigger.TrigType.Delete)
                 : new RESTActivation(cx, fm, PTrigger.TrigType.Delete);
@@ -7204,42 +6755,14 @@ namespace Pyrrho.Level4
             }
             internal static RestCursor New(Context cx,RestRowSet rrs)
             {
-                var ox = cx.finder;
-                cx.finder += rrs.finder;
                 cx.obs += (rrs.defpos, rrs);
-                if (rrs.aVal.Length!=0)
-
-           //     for (var i = 0; i < rrs.aVal.Length; i++)
-                {
-                    var rb = new RestCursor(cx, rrs, 0, 0);
-           //         if (rb.Matches(cx))
-           //         {
-                        cx.finder = ox;
-                        return rb;
-           //         }
-                }
-                cx.finder = ox;
-                return null;
+                return (rrs.aVal.Length!=0)?new RestCursor(cx, rrs, 0, 0):null;
             }
             internal static RestCursor New(RestRowSet rrs, Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += rrs.finder;
                 cx.obs += (rrs.defpos, rrs);
-          //      for (
-                    var i = rrs.aVal.Length-1; 
-          //          i>=0; i--)
-          if (i>=0)
-                {
-                    var rb = new RestCursor(cx, rrs, 0, i);
-            //        if (rb.Matches(cx))
-            //        {
-                        cx.finder = ox;
-                        return rb;
-            //        }
-                }
-                cx.finder = ox;
-                return null;
+                var i = rrs.aVal.Length - 1;
+                return (i >= 0) ? new RestCursor(cx, rrs, 0, i) : null;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -7247,41 +6770,13 @@ namespace Pyrrho.Level4
             }
             protected override Cursor _Next(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += _rrs.finder;
-            //    for (
-                    var i = _ix+1; 
-                if (i < _rrs.aVal.Length)
-            //        ; i++)
-                {
-                    var rb = new RestCursor(cx, _rrs, _pos+1, i);
-            //        if (rb.Matches(cx))
-            //        {
-                        cx.finder = ox;
-                        return rb;
-            //        }
-                }
-                cx.finder = ox;
-                return null;
+                var i = _ix + 1;
+                return (i < _rrs.aVal.Length) ? new RestCursor(cx, _rrs, _pos + 1, i) : null;
             }
             protected override Cursor _Previous(Context cx)
             {
-                var ox = cx.finder;
-                cx.finder += _rrs.finder;
-                //    for (
                 var i = _ix - 1; 
-                if (i >=0)
-            //        ; i--)
-                {
-                    var rb = new RestCursor(cx, _rrs, _pos + 1, i);
-                    //        if (rb.Matches(cx))
-                    //        {
-                    cx.finder = ox;
-                        return rb;
-                    // }
-                }
-                cx.finder = ox;
-                return null;
+                return (i >=0)?new RestCursor(cx, _rrs, _pos + 1, i): null;
             }
             internal override BList<TableRow> Rec()
             {
@@ -7310,7 +6805,7 @@ namespace Pyrrho.Level4
             (CList<long>)mem[UsingCols]??CList<long>.Empty;
         public RestRowSetUsing(Iix lp,Context cx,RestView vw, long rp,
             TableRowSet uf, Domain q)  :base(lp.dp,_Mem(lp.dp,cx,rp,uf,q) 
-                 + (RestTemplate, rp) + (Name,vw.name)
+                 + (RestTemplate, rp) + (ObInfo.Name, vw.infos[cx.role.defpos].name)
                  + (RSTargets,new CTree<long, long>(vw.viewPpos, lp.dp))
                  + (RestView.UsingTableRowSet, uf.defpos)  
                  + (ISMap, uf.iSMap) + (SIMap,uf.sIMap)
@@ -7326,18 +6821,12 @@ namespace Pyrrho.Level4
             var rr = (RowSet)cx.obs[rp];
             var rd = cx._Dom(rr);
             var ud = cx._Dom(uf);
-            var fi = CTree<long, Finder>.Empty;
-            for (var b = rd.rowType.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                fi += (p, new Finder(p,dp));
-            }
             // identify the urlCol and usingCols
             var ab = ud.rowType.Last();
             var ul = ab.value();
             var uc = ud.rowType - ab.key();
             return r + (UsingCols,uc)+(UrlCol,ul) + (_Domain,rd.defpos)
-                  +(_Finder,fi)+ (_Depth, cx.Depth(rd, uf, rr));
+                  +(_Depth, cx.Depth(rd, uf, rr));
         }
         public static RestRowSetUsing operator +(RestRowSetUsing rs, (long, object) x)
         {
@@ -7378,8 +6867,6 @@ namespace Pyrrho.Level4
             var rr = (RestRowSet)cx.obs[template];
             var ru = (TableRowSet)cx.obs[usingTableRowSet];
             var pos = 0;
-            var oc = cx.finder;
-            cx.finder = ru.finder + ((RowSet)cx.obs[template]).finder;
             var a = (TArray)cx.values[defpos] ?? new TArray(dt);
             for (var uc = (TableRowSet.TableCursor)ru.First(cx); uc != null;
                 uc = (TableRowSet.TableCursor)uc.Next(cx))
@@ -7391,19 +6878,17 @@ namespace Pyrrho.Level4
                     rc = (RestRowSet.RestCursor)rc.Next(cx))
                     a += new RestUsingCursor(cx, this, pos++, uc, rc);
                 cx.obs += (rr.defpos, rr - RestRowSet.RestValue - _Built);
-                cx.finder = ru.finder + ((RowSet)cx.obs[template]).finder;
                 cx.values -= uc.values;
             }
             cx.values += (defpos, a);
-            cx.finder = oc;
             cx.url = null;
             return base.Build(cx);
         }
-        internal override RowSet Apply(BTree<long,object>mm,Context cx,RowSet im)
+        internal override RowSet Apply(BTree<long,object>mm,Context cx,BTree<long,object> im=null)
         {
             if (mm == BTree<long, object>.Empty)
-                return im;
-            var ru = (RestRowSetUsing)base.Apply(mm,cx,im);
+                return this;
+            var ru = (RestRowSetUsing)base.Apply(mm,cx);
             // Watch out for situation where an aggregation has successfully moved to the Template
             // as the having condition will no longer work at the RestRowSetUsing level
             var re = (RestRowSet)cx.obs[ru.template];
@@ -7458,12 +6943,11 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="ts"></param>
-        /// <param name="iter"></param>
         /// <param name="rt"></param>
         /// <returns></returns>
-        internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, bool iter, CList<long> rt)
+        internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, CList<long> rt)
         {
-            return ((RowSet)cx.obs[template]).Insert(cx, ts, iter, rt);
+            return ((RowSet)cx.obs[template]).Insert(cx, ts, rt);
         }
         /// <summary>
         /// It makes no sense to use the RestView to alter the contents of the using table.
@@ -7471,11 +6955,10 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="fm"></param>
-        /// <param name="iter"></param>
         /// <returns></returns>
-        internal override BTree<long, TargetActivation> Update(Context cx, RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation> Update(Context cx, RowSet fm)
         {
-            return ((RowSet)cx.obs[template]).Update(cx, fm, iter);
+            return ((RowSet)cx.obs[template]).Update(cx, fm);
         }
         /// <summary>
         /// It makes no sense to use the RestView to alter the contents of the using table.
@@ -7485,9 +6968,9 @@ namespace Pyrrho.Level4
         /// <param name="fm"></param>
         /// <param name="iter"></param>
         /// <returns></returns>
-        internal override BTree<long, TargetActivation> Delete(Context cx, RowSet fm, bool iter)
+        internal override BTree<long, TargetActivation> Delete(Context cx, RowSet fm)
         {
-            return ((RowSet)cx.obs[template]).Delete(cx, fm, iter);
+            return ((RowSet)cx.obs[template]).Delete(cx, fm);
         }
         internal override void Show(StringBuilder sb)
         {
@@ -7591,18 +7074,12 @@ namespace Pyrrho.Level4
             cx.Add(tb);
             var r = new BTree<long, object>(TargetTable, tb.defpos);
             var rt = BList<SqlValue>.Empty;
-            var fi = CTree<long, Finder>.Empty;
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "Pos", Domain.Position);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "Action", Domain.Char);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "DefPos", Domain.Position);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "Transaction", Domain.Position);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "Timestamp", Domain.Timestamp);
-            return r + (_Domain, new Domain(Sqlx.TABLE,cx,rt).defpos) + (_Finder, fi)
+            return r + (_Domain, new Domain(Sqlx.TABLE,cx,rt).defpos)
                 +(Table.LastData,tb.lastData);
         }
         public static LogRowsRowSet operator+(LogRowsRowSet r,(long,object)x)
@@ -7791,22 +7268,15 @@ namespace Pyrrho.Level4
             var tb = cx.db.objects[tc.tabledefpos] as Table;
             cx.Add(tb);
             var rt = BList<SqlValue>.Empty;
-            var fi = CTree<long, Finder>.Empty;
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "Pos", Domain.Char);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "Value", Domain.Char);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "StartTransaction", Domain.Char);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "StartTimestamp", Domain.Timestamp);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "EndTransaction", Domain.Char);
-            fi += (cx.nextHeap, new Finder(cx.nextHeap, dp));
             rt += new SqlFormal(cx, "EndTimestamp", Domain.Timestamp);
             return BTree<long, object>.Empty 
                 + (_Domain,new Domain(Sqlx.TABLE,cx,rt).defpos)
-                + (LogRowsRowSet.TargetTable, tb.defpos) + (_Finder,fi)
+                + (LogRowsRowSet.TargetTable, tb.defpos)
                 + (Table.LastData,tb.lastData);
         }
         public static LogRowColRowSet operator+(LogRowColRowSet r,(long,object)x)
@@ -7864,7 +7334,7 @@ namespace Pyrrho.Level4
                 (Physical,long) nx,PTransaction trans=null)
             {
                 var vs = CTree<long, TypedValue>.Empty;
-                var tb = lrs.targetTable;
+           //     var tb = lrs.targetTable;
                 var tc = lrs.logCol;
                 var rp = nx.Item2;
                 if (trans == null)

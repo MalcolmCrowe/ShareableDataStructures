@@ -114,8 +114,6 @@ namespace Pyrrho
             string url,bool etags)
         {
             var r = (RowSet)cx.obs[cx.result];
-            if (r != null)
-                cx.finder += r.finder;
             Cursor e = r?.First(cx);
             ETag et = ETag.Empty;
             if (etags)
@@ -154,12 +152,12 @@ namespace Pyrrho
                 r = (RowSet)cx.obs[us.source];
             if (r == null && cx.exec is SqlInsert si)
                 r = (RowSet)cx.obs[si.source];
-            if (r != null && cx.db.role.infos[r.target] is ObInfo oi)
+            if (r != null && cx._Ob(r.target) is DBObject ob && ob.infos[cx.db.role.defpos] is ObInfo oi)
             {
                 if (oi.description is string ds && ds != "")
                     rs.AddHeader("Description", ds);
-                if (oi.classification != Level.D)
-                    rs.AddHeader("Classification", oi.classification.ToString());
+                if (ob.classification != Level.D)
+                    rs.AddHeader("Classification", ob.classification.ToString());
                 if (cx.obs[r.target] is Table tb)
                     rs.AddHeader("LastData", tb.lastData.ToString());
             }
@@ -267,7 +265,7 @@ namespace Pyrrho
             var om = tr.objects[fm.target] as DBObject;
             var psr = new Parser(cx, query);
             chartType = psr.ParseMetadata(Sqlx.TABLE);
-            var mi = (ObInfo)tr.role.infos[om.defpos];
+            var mi = om.infos[tr.role.defpos];
             if (om!=null && om.defpos > 0)
             {
                 chartType += mi.metadata;
@@ -281,7 +279,8 @@ namespace Pyrrho
                 {
                     var p = co.value();
                     var sc = cx.obs[p] as SqlCopy;
-                    var ci = (ObInfo)cx.db.role.infos[(sc!=null)?sc.copyFrom:p];
+                    var cp = (sc != null) ? sc.copyFrom : p;
+                    var ci = cx._Ob(cp).infos[cx.role.defpos];
                     if ((chartType[Sqlx.X] is TChar xc && xc.value==ci.name)
                         || ci.metadata.Contains(Sqlx.X))
                     {
@@ -295,7 +294,7 @@ namespace Pyrrho
                         ydesc = ci.description;
                     }
                     if (chartType.Contains(Sqlx.CAPTION))
-                        ccol = ci.defpos;
+                        ccol = cp;
                 }
                 if ((xcol ==0) && (ycol ==0))
                     chartType = CTree<Sqlx,TypedValue>.Empty;
@@ -320,7 +319,7 @@ namespace Pyrrho
                 sbuild.Append("<table border><tr>");
                 for (var b=cx._Dom(rs).rowType.First();b!=null;b=b.Next())
                 {
-                    var ci = (ObInfo)cx.db.role.infos[fm.sIMap[b.value()]];
+                    var ci = cx._Ob(fm.sIMap[b.value()]).infos[cx.role.defpos];
                     sbuild.Append("<th>" + ci.name + "</th>");
                 }
                 sbuild.Append("</tr>");
@@ -595,7 +594,7 @@ namespace Pyrrho
         public override void PutRow(Context cx, Cursor e)
         {
             var rs = (RowSet)cx.obs[e._rowsetpos];
-            var key = (cx.groupCols[cx._Dom(rs)] is Domain gc)?new TRow(gc, e.values):TRow.Empty;
+            var key = (cx.groupCols[rs.domain] is Domain gc)?new TRow(gc, e.values):TRow.Empty;
             sbuild.Append(cm); cm = ",";
             var rt = e.columns;
             var doc = new TDocument();
@@ -604,7 +603,7 @@ namespace Pyrrho
                 var ci = (SqlValue)cx.obs[b.value()];
                 if (e[ci.defpos] is TypedValue tv)
                 {
-                    var n = ci.alias ?? ci.name;
+                    var n = ci.alias ?? ci.NameFor(cx);
                     if (n == "")
                         n = "Col" + b.key();
                     doc=doc.Add(n, tv);

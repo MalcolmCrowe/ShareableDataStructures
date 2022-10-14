@@ -1,6 +1,7 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System.Configuration;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -73,7 +74,7 @@ namespace Pyrrho.Level2
         protected PProcedure(PProcedure x, Writer wr) : base(x, wr)
         {
             source = x.source;
-            parameters = wr.cx.Fix(x.parameters);
+            parameters = wr.cx.FixLl(x.parameters);
             nameAndArity = x.nameAndArity;
             arity = x.arity;
       //      returns = x.returns;
@@ -105,7 +106,8 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rb)
 		{
-			nameAndArity=rb.GetString();
+            nst = rb.context.db.nextStmt;
+            nameAndArity = rb.GetString();
             var ss = nameAndArity.Split('$');
             name = ss[0];
 			arity = rb.GetInt();
@@ -153,24 +155,33 @@ namespace Pyrrho.Level2
         internal override void OnLoad(Reader rdr)
         {
             var psr = new Parser(rdr.context,source);
-            var n = new Ident(psr, name);
+            psr.cx.defs = Ident.Idents.Empty;
+            var n = new Ident(name,new Iix(ppos));
             var (rt,dt) = psr.ParseProcedureHeading(n);
+            psr.cx._Add(dt);
             parameters = rt;
             Install(psr.cx, rdr.Position);
             psr.LexPos(); //synchronise with CREATE
+            var op = psr.cx.parse;
+            psr.cx.parse = ExecuteStatus.Compile;
             if (psr.tok!=Sqlx.EOF)
-                proc = psr.ParseProcedureStatement(dt, null, null).defpos;
-            rdr.context.nextStmt = psr.cx.nextStmt;
-            framing = new Framing(psr.cx);
+                proc = psr.ParseProcedureStatement(dt).defpos;
+            psr.cx.parse = op;
+            framing = new Framing(psr.cx,nst);
             dataType = dt;
         }
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            ro = ro + (new ObInfo(ppos, nameAndArity, dataType,
-                Grant.Privilege.Execute|Grant.Privilege.GrantExecute), true) + this;
-            var pr = new Procedure(this, cx) + (DBObject.Definer, ro.defpos)
-                + (DBObject._Framing, framing) + (Procedure.Body, proc);
+            var oi = new ObInfo(name,
+                Grant.Privilege.Execute | Grant.Privilege.GrantExecute);
+            var pr = new Procedure(this, cx,
+                BTree<long,object>.Empty + (DBObject.Definer, ro.defpos)
+                + (DBObject._Framing, framing) + (Procedure.Body, proc)
+                + (DBObject.Infos,new BTree<long,ObInfo>(cx.role.defpos,oi)));
+            var ps = ro.procedures??CTree<string,CTree<int,long>>.Empty;
+            var pn = (ps[name]??CTree<int,long>.Empty) + (arity,defpos);
+            ro += (Role.Procedures, ps + (name, pn));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db = cx.db + (ro, p) + (pr, p) 

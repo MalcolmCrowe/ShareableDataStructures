@@ -19,7 +19,7 @@ namespace Pyrrho.Level2
 	/// A PTable has a name, a set of TableColumns, a set of records, a primary key, a set of indices
     /// Only the name is defined in the PTable: the rest comes in other obs
 	/// </summary>
-	internal class PTable : Physical
+	internal class PTable : Compiled
 	{
         /// <summary>
         /// The defining position of this table
@@ -30,7 +30,6 @@ namespace Pyrrho.Level2
         /// </summary>
 		public string name;
         public string rowiri = "";
-        public Sqlx kind = Sqlx.TABLE;
         public Grant.Privilege enforcement = (Grant.Privilege)15; // read,insert,udate,delete
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -43,9 +42,12 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTable(string nm, Sqlx d, long pp, Context cx)
+        public PTable(string nm,Domain d, long pp, Context cx)
             : this(Type.PTable, nm, d, pp, cx)
-		{}
+		{
+            if (pp > Transaction.Executables)
+                nst = pp;
+        }
         /// <summary>
         /// Constructor: a Table definition from the Parser
         /// </summary>
@@ -53,11 +55,10 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PTable(Type t, string nm, Sqlx d, long pp, Context cx)
-            : base(t, pp, cx)
+        protected PTable(Type t, string nm, Domain d, long pp, Context cx)
+            : base(t, pp, cx, d)
 		{
 			name = nm;
-            kind = d;
 		}
         /// <summary>
         /// Constructor: a Table definition from the buffer
@@ -132,37 +133,25 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            // The definer is the given role
-            var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
-                Grant.Privilege.Update | Grant.Privilege.Delete | Grant.Privilege.References | 
-                Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect | 
-                Grant.Privilege.GrantInsert | Grant.Privilege.GrantReferences | 
-                Grant.Privilege.Usage | Grant.Privilege.GrantUsage |
-                Grant.Privilege.Trigger | Grant.Privilege.GrantTrigger |
-                Grant.Privilege.Metadata | Grant.Privilege.GrantMetadata;
-            var tb = (name[0]=='(')?new VirtualTable(this,ro,cx):new Table(this,ro);
-            var ti = tb._ObInfo(ppos, name, priv);
-            ti += (ObInfo.SchemaKey, p);
-            ro = ro + (ti,true) + (Role.DBObjects, ro.dbobjects + (name, ppos));
-            ro += (Role.TypeTracker,
-                ro.typeTracker + (defpos, new CTree<long,(Domain,CTree<string,long>)>
-                (defpos,(Domain.TableType, CTree<string, long>.Empty))));
+            var tb = (name[0] == '(') ? new VirtualTable(this, ro, cx) : new Table(this, ro, cx);
+            ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            framing = tb.framing;
             cx.Install(tb, p);
         }
     }
     internal class PTable1 : PTable
     {
-        public PTable1(string ir, string nm, Sqlx d, long pp, Context cx)
+        public PTable1(string ir, string nm, Domain d, long pp, Context cx)
             : base(Type.PTable1, nm, d, pp, cx)
         {
             rowiri = ir;
         }
-        protected PTable1(Type typ, string ir, string nm, Sqlx d, long pp, Context cx)
+        protected PTable1(Type typ, string ir, string nm, Domain d, long pp, Context cx)
             : base(typ, nm, d, pp, cx)
         {
             rowiri = ir;
@@ -198,7 +187,7 @@ namespace Pyrrho.Level2
     internal class AlterRowIri : PTable1
     {
         public long rowpos;
-        public AlterRowIri(long pr, string ir, Sqlx d, long pp, Context cx)
+        public AlterRowIri(long pr, string ir, Domain d, long pp, Context cx) 
             : base(Type.AlterRowIri, ir, null, d, pp, cx)
         {
             rowpos = pr;

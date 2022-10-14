@@ -27,11 +27,12 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The object to which the check applies
         /// </summary>
-        internal long checkobjpos => (long)(mem[From.Target]??-1L);
+        internal long checkobjpos => (long)(mem[RowSet.Target]??-1L);
         /// <summary>
         /// The source SQL for the check constraint
         /// </summary>
         internal string source => (string)mem[Source];
+        public string name => (string)mem[ObInfo.Name]; // constraints cannot be renamed
         internal long search => (long)(mem[Condition]??-1L);
         /// <summary>
         /// Constructor: from the level 2 information
@@ -40,14 +41,16 @@ namespace Pyrrho.Level3
         /// <param name="definer">The defining role</param>
         /// <param name="owner">the owner</param>
 		public Check(PCheck c, Database db) 
-            : base(c.name, c.ppos, c.ppos, db.role.defpos,BTree<long,object>.Empty
-                  + (From.Target,c.ckobjdefpos)+(Source,c.check)
-                  + (Condition, c.test)+(_Framing,c.framing)+(LastChange,c.ppos))
+            : base(c.ppos, c.ppos, db.role.defpos,BTree<long,object>.Empty
+                  + (RowSet.Target,c.ckobjdefpos)+(Source,c.check)
+                  + (Condition, c.test)+(_Framing,c.framing)+(LastChange,c.ppos)
+                  + (ObInfo.Name,c.name))
         { }
         public Check(PCheck2 c, Database db)
-            : base(c.name, c.ppos, c.ppos, db.role.defpos, BTree<long, object>.Empty
-          + (From.Target, c.subobjdefpos) + (Source, c.check)
-          + (Condition, c.test) + (_Framing, c.framing)+(LastChange,c.ppos))
+            : base(c.ppos, c.ppos, db.role.defpos, BTree<long, object>.Empty
+          + (RowSet.Target, c.subobjdefpos) + (Source, c.check)
+          + (Condition, c.test) + (_Framing, c.framing)+(LastChange,c.ppos)
+          + (ObInfo.Name, c.name))
         { }
         /// <summary>
         /// for system types
@@ -82,10 +85,6 @@ namespace Pyrrho.Level3
             sb.Append(" Search="); sb.Append(Uid(search));
             return sb.ToString();
         }
-        internal override CTree<long, bool> Needs(Context cx)
-        {
-            return cx.obs[search].Needs(cx);
-        }
         internal override Basis New(BTree<long, object> m)
         {
             return new Check(defpos,m);
@@ -114,9 +113,8 @@ namespace Pyrrho.Level3
             for (var b = d.roles.First(); b != null; b = b.Next())
             {
                 var ro = (Role)d.objects[b.value()];
-                if (ro.infos[defpos] is ObInfo oi)
+                if (infos[ro.defpos] is ObInfo oi)
                 {
-                    ro -= oi;
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
                     nd += (ro,p);
                 }

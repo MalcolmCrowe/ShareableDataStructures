@@ -1447,7 +1447,7 @@ namespace Pyrrho
                 rowIdsInserted.Add(conn.GetLong());
         }
     }
-    public class Versioned // for Entities: all fields initially null
+    public class Versioned // for Entities
     {
         [Exclude]
         public PyrrhoConnect conn; // null if committed or new instance
@@ -1466,6 +1466,21 @@ namespace Pyrrho
         public void Delete()
         {
             conn.Delete(this);
+        }
+        public static Versioned Parse(string s)
+        {
+            var r = new Versioned();
+            if (s != null)
+            {
+                var ix = s.IndexOf(' ');
+                if (ix > 0)
+                {
+                    r.entity = s.Substring(0, ix);
+                    r.version = s.Substring(ix + 1);
+                }
+                else r.version = s;
+            }
+            return r;
         }
         // included for completeness: useful only if conn is supplied on construction
         public void Post()

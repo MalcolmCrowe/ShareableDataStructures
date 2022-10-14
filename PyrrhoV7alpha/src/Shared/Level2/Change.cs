@@ -183,11 +183,12 @@ namespace Pyrrho.Level2
         internal override void Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            var oi = ro.infos[affects] as ObInfo;
-            oi += (ObInfo.SchemaKey, p);
-            ro = ro + (new ObInfo(affects, name,oi.dataType, oi.priv),true);
-            cx.db += (ro, p);
-            cx.obs+=(affects,cx.obs[affects] + (Basis.Name, name));
+            var ob = cx._Ob(affects);
+            var oi = ob.infos[cx.role.defpos];
+            ob += (DBObject.LastChange, p);
+            ob += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name, oi.priv)));
+            cx.db += (ob, p);
+            cx.obs+=(affects,cx.obs[affects] + (DBObject.Infos, ob.infos[cx.role.defpos] + (ObInfo.Name, name)));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

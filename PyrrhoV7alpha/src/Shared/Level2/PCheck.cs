@@ -107,10 +107,10 @@ namespace Pyrrho.Level2
             {
                 var ob = ((DBObject)rdr.context.db.objects[ckobjdefpos]);
                 var psr = new Parser(rdr, new Ident(check, rdr.context.Ix(ppos+1)), ob);
+                nst = psr.cx.db.nextStmt;
                 var sv = psr.ParseSqlValue(Domain.Bool).Reify(rdr.context);
                 test = sv.defpos;
-                rdr.context.nextStmt = psr.cx.nextStmt;
-                framing = new Framing(psr.cx);
+                framing = new Framing(psr.cx,nst);
             }
         }
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -142,10 +142,8 @@ namespace Pyrrho.Level2
             var ro = cx.db.role;
             var ck = new Check(this, cx.db);
             if (name != null && name != "")
-            {
-                ro += (new ObInfo(defpos, name,Domain.Bool,Grant.Privilege.Execute),true);
-                cx.db += (ro, p);
-            }
+                ck += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos,
+                    new ObInfo(name, Grant.Privilege.Execute)));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
@@ -243,8 +241,9 @@ namespace Pyrrho.Level2
             // no good way to maintain the surrounding context reliably in the framing
             if (name != null && name != "")
             {
-                ro += (new ObInfo(defpos, name, Domain.Bool,Grant.Privilege.Execute),true);
-                cx.db += (ro,p);
+                nc += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos,
+                    new ObInfo(name, Grant.Privilege.Execute)));
+                cx.db += (nc, p);
             }
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

@@ -268,6 +268,7 @@ namespace Pyrrho.Level2
                 case Physical.Type.Delete1: p = new Delete1(this); break;
                 case Physical.Type.Drop1: p = new Drop1(this); break;
                 case Physical.Type.RefAction: p = new RefAction(this); break;
+        /*        case Physical.Type.VIndex: p = new VIndex(this); break; */
             }
             p.Deserialise(this);
             return p;
@@ -311,19 +312,6 @@ namespace Pyrrho.Level2
         }
         public long Position => buf.start + buf.pos;
         /// <summary>
-        /// Get the colpos and Domain for a given table defpos, column name, ppos
-        /// </summary>
-        /// <param name="log"></param>
-        /// <param name="tb"></param>
-        /// <param name="cn"></param>
-        /// <returns></returns>
-        internal virtual (long,Domain) GetDomain(long tb, string cn, long pp)
-        {
-            var (dm, st) = GetDomain(tb, pp);
-            var cp = st[cn];
-            return (cp,GetDomain(cp,pp).Item1);
-        }
-        /// <summary>
         /// Get the name and Domain for a given TableColumn defpos and ppos
         /// </summary>
         /// <param name="log"></param>
@@ -332,28 +320,9 @@ namespace Pyrrho.Level2
         internal (string, Domain) GetColumnDomain(long cp, long p)
         {
             var tc = (TableColumn)context.db.objects[cp];
-            var oi = (ObInfo)context.db.role.infos[cp];
+            var oi = tc.infos[context.role.defpos];
             var nm = oi.name;
-            var dt = GetDomain(oi.domain,p); // can't simply assume dataType is correct
-            return (nm,dt.Item1);
-        }
-        /// <summary>
-        /// Get the Domain and column map for a given DBObject defpos and ppos
-        /// </summary>
-        /// <param name="tp"></param>
-        /// <param name="p"></param>
-        /// <returns></returns>
-        internal (Domain,CTree<string,long>) GetDomain(long tp, long p)
-        {
-            var r = (Domain.Content,CTree<string,long>.Empty);
-            for (var b = context.db.role.typeTracker[tp]?.First(); b != null; b = b.Next())
-            {
-                var dp = b.key();
-                if (dp > p)
-                    break;
-                r = b.value();
-            }
-            return r;
+            return (nm,context._Dom(tc));
         }
         internal Integer GetInteger()
         {
@@ -506,17 +475,6 @@ namespace Pyrrho.Level2
                     domain += (Domain.Default, dv);
                 }
                 catch (Exception) { }
-            if (pd.eldefpos >= 0)
-            {
-                if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET)
-                    domain += (Domain.Element, context.db.objects[pd.eldefpos]);
-                else
-                {
-                    var tb = (Table)context.db.objects[pd.eldefpos];
-                    domain = domain + (Domain.Structure, pd.eldefpos)
-                        + (Domain.Representation,tb.tblCols);
-                }
-            }
             pd.domain = domain;
             if (pd.domdefpos!=-1L)
                 context.db += (pd.domdefpos, pd.domain, Position);
@@ -524,46 +482,6 @@ namespace Pyrrho.Level2
         internal void Setup(Ordering od)
         {
             od.domain = (Domain)context.db.objects[od.domdefpos];
-        }
-        internal void Setup(Modify pm)
-        {
-            switch (pm.nameAndArity)
-            {
-                default:
-                    {
-                        var mi = (ObInfo)context.role.infos[pm.modifydefpos];
-                        var mt = (Method)context.db.objects[pm.modifydefpos];
-                        if (mi.dataType is UDType udt)
-                        {
-                            var psr = new Parser(context, pm.source);
-                            var (pps, xp) = psr.ParseProcedureHeading(new Ident(pm.nameAndArity, context.GetIid()));
-                            for (var b = udt.representation.First(); b != null; b = b.Next())
-                            {
-                                var p = b.key();
-                                var px = psr.cx.Ix(p);
-                                var ic = new Ident(psr.cx.Inf(p).name, px);
-                                psr.cx.defs += (ic, px);
-                                psr.cx.iim += (px.dp,ic.iix);
-                                psr.cx.Add(new SqlValue(ic) + (DBObject._Domain, b.value().defpos));
-                            }
-                            pm.proc = psr.ParseProcedureStatement(xp, null, null).defpos;
-                            pm.framing = new Framing(psr.cx);
-                            context.db = psr.cx.db;
-                            context.nextStmt = psr.cx.nextStmt;
-                            pm.framing += (mt + (Procedure.Body, pm.proc));
-                            pm.parms = pps;
-                        }
-                        break;
-                    }
-                case "Source":
-                    {
-                        var ps = context.db.objects[pm.modifydefpos] as Procedure;
-                        var (_, rs) = new Parser(context).ParseQueryExpression(
-                            pm.source, context._Dom(ps.domain));
-                        pm.proc = rs.defpos;
-                        break;
-                    }
-            }
         }
         internal void Add(Physical ph)
         {

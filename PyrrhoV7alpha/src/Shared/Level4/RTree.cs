@@ -82,8 +82,8 @@ namespace Pyrrho.Level4
         internal RTree Fix(Context cx)
         {
             return new RTree(cx.Fix(defpos), 
-                cx.Fix(keyType), (Domain)domain.Fix(cx),
-                mt.Fix(cx),cx.Fix(rows));
+                cx.FixLl(keyType), (Domain)domain.Fix(cx),
+                mt.Fix(cx),cx.FixBBlC(rows));
         }
         internal RTree Relocate(Writer wr)
         {
@@ -92,7 +92,7 @@ namespace Pyrrho.Level4
         }
         internal RTree Replace(Context cx,DBObject so,DBObject sv)
         {
-            return new RTree(defpos,  cx.Replaced(keyType), (Domain)domain._Replace(cx,so,sv),
+            return new RTree(defpos,  cx.ReplacedLl(keyType), (Domain)domain._Replace(cx,so,sv),
                 mt.Replaced(cx,so,sv), rows);
         }
     }
