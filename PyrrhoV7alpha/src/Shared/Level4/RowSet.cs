@@ -6493,6 +6493,7 @@ namespace Pyrrho.Level4
                 var bs = Encoding.UTF8.GetBytes(sql.ToString());
                 rq.ContentType = "text/plain";
                 rq.ContentLength = bs.Length;
+                cx.url = url;
                 try
                 {
                     var rqs = rq.GetRequestStream();

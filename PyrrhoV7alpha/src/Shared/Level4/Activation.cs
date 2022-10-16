@@ -188,8 +188,10 @@ namespace Pyrrho.Level4
             if (vi.metadata.Contains(Sqlx.ETAG)) // see Pyrrho manual sec 3.8.1
             {
                 var et = rp.Headers["ETag"];
-                var u = vi.metadata.Contains(Sqlx.URL)?
-                    vi.metadata[Sqlx.URL].ToString(): vi.description;
+                var u = vi.metadata.Contains(Sqlx.URL) ?
+                    vi.metadata[Sqlx.URL].ToString() :
+                    vi.metadata.Contains(Sqlx.DESC) ?
+                    vi.metadata[Sqlx.DESC].ToString() : vi.description;
                 var tr = (Transaction)cx.db;
                 if (et != null)
                     switch (tp & (PTrigger.TrigType.Insert | PTrigger.TrigType.Update | PTrigger.TrigType.Delete))
