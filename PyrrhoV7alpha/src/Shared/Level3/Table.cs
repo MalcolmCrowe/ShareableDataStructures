@@ -337,52 +337,35 @@ namespace Pyrrho.Level3
             ABookmark<long, object> _enu)
         {
             var ro = cx.db.role;
+            var nm = NameFor(cx);
             var md = cx._Dom(this);
             var mi = infos[cx.role.defpos];
             var versioned = mi.metadata.Contains(Sqlx.ENTITY);
             var key = BuildKey(cx, out CList<long> keys);
             var fields = CTree<string, bool>.Empty;
+            var types = CTree<string, string>.Empty;
             var sb = new StringBuilder("\r\nusing System;\r\nusing Pyrrho;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
-            sb.Append("/// Class " + md.name + " from Database " + cx.db.name 
+            sb.Append("/// Class " + nm + " from Database " + cx.db.name 
                 + ", Role " + ro.name + "\r\n");
             if (mi.description != "")
                 sb.Append("/// " + mi.description + "\r\n");
+            for (var b = indexes.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (cx._Ob(c.key()) is Index x)
+                        x.Note(cx, sb);
+            for (var b = tableChecks.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is Check ck)
+                    ck.Note(cx, sb);
             sb.Append("/// </summary>\r\n");
             sb.Append("[Table("); sb.Append(defpos);  sb.Append(","); sb.Append(lastChange); sb.Append(")]\r\n");
-            sb.Append("public class " + md.name + (versioned ? " : Versioned" : "") + " {\r\n");
+            sb.Append("public class " + nm + (versioned ? " : Versioned" : "") + " {\r\n");
             for (var b = md.representation.First();b!=null;b=b.Next())
             {
                 var p = b.key();
                 var dt = b.value();
-                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
-                if (keys != null)
-                {
-                    int j;
-                    for (j = 0; j < keys.Count; j++)
-                        if (keys[j] == p)
-                            break;
-                    if (j < keys.Count)
-                    {
-                        sb.Append("  [Key(" + j + ")]\r\n");
-                        if (tn == "Int64" && !(this is VirtualTable))
-                            tn = "Int64?"; // unless it is also a reference, see below
-                    }
-                }
-                for (var d = indexes.First(); d != null; d = d.Next())
-                    for (var e=d.value().First();e!=null;e=e.Next())
-                    if ((cx.obs[e.key()]??cx.db.objects[e.key()]) is Index x)
-                    {
-                        if (x.flags.HasFlag(PIndex.ConstraintType.Unique))
-                            for (var c = d.key().First(); c != null; c = c.Next())
-                                if (c.value() == p)
-                                    sb.Append("  [Unique(" + e.key() + "," + c.key() + ")]\r\n");
-                        if (x.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
-                            for (var c = d.key().First(); c != null; c = c.Next())
-                                if (c.value() == p && tn == "Int64?")
-                                    tn = "Int64";
-                    }
-                FieldType(cx,sb, dt);
+                var tn = ((dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name) + "?"; // all fields nullable
+                dt.FieldType(cx,sb);
                 var ci = infos[cx.role.defpos];
                 if (ci != null)
                 {
@@ -397,12 +380,25 @@ namespace Pyrrho.Level3
                         }
                     if (ci.description?.Length > 1)
                         sb.Append("  // " + ci.description + "\r\n");
+                    if (cx._Ob(p) is TableColumn tc)
+                    {
+                        for (var c = tc.constraints.First(); c != null; c = c.Next())
+                            if (cx._Ob(c.key()) is Check ck)
+                                ck.Note(cx, sb);
+                        if (tc.generated is GenerationRule gr)
+                            gr.Note(cx, sb);
+                    }
+                    for (var c=dt.constraints.First(); c != null; c = c.Next())
+                        if (cx._Ob(c.key()) is DBObject ck)
+                            ck.Note(cx, sb);
                 }
                 else
                    fields += (cx.obs[p].infos[cx.role.defpos].name, true); 
-                if (tn == "Int64?")
-                    sb.Append("  // autoKey enabled\r\n");
-                sb.Append("  public " + tn + " " + cx.NameFor(p) + ";\r\n");
+                if ((keys.Last()?.value()??-1L)==p && dt.kind==Sqlx.INTEGER)
+                    sb.Append("  [AutoKey]\r\n");
+                var cn = cx.NameFor(p);
+                sb.Append("  public " + tn + " " + cn + ";\r\n");
+                types += (cn, tn);
             }
             for (var b = indexes.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
@@ -482,6 +478,8 @@ namespace Pyrrho.Level3
                                 continue;
                             // many-many relationship 
                             var tb = (Table)cx.db.objects[px.reftabledefpos]; // e.g. Supplier
+                            if (tb == null)
+                                continue;
                             var ti = tb.infos[cx.role.defpos];
                             if (!ti.metadata.Contains(Sqlx.ENTITY))
                                 continue;
@@ -560,7 +558,7 @@ namespace Pyrrho.Level3
                     if (j < keys.Count)
                         sb.Append("  @Key(" + j + ")\r\n");
                 }
-                FieldJava(cx, sb, dt);
+                dt.FieldJava(cx, sb);
                 sb.Append("  public " + tn + " " + cx.NameFor(p) + ";");
                 sb.Append("\r\n");
             }

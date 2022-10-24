@@ -2088,8 +2088,7 @@ namespace Pyrrho.Level4
             for (var b = dm.rowType.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                var ob = cx._Ob(p);
-                ns += (ob.alias??ob.infos[cx.role.defpos].name, p);
+                ns += (cx.NameFor(p), p);
             }
             return BTree<long, object>.Empty + (_Domain, dm.defpos) 
                 + (ObInfo.Names, ns) + (_Depth,dm.depth+1);
@@ -3490,8 +3489,6 @@ namespace Pyrrho.Level4
             var (k, _) = x;
             if (k == RSTargets) // TableRowSet is shared: don't update rsTargets
                 return rs;
-            if (rs.defpos < Transaction.TransPos)
-                throw new PEException("PE402");
             return (TableRowSet)rs.New(rs.mem + x);
         }
         internal override int Cardinality(Context cx)

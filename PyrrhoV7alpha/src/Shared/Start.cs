@@ -531,7 +531,9 @@ namespace Pyrrho
                                 var data = new TrivialRowSet(cx.GetUid(), cx, new TRow(dm, vs));
                                 ans = f.Insert(cx, data, dm.rowType);
                                 var ib = data.First(cx);
-                                old = ib.values;
+                                old = CTree<long, TypedValue>.Empty;
+                                for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    old += (f.iSMap[b.value()], vs[b.value()]);
                                 var ta = (TableActivation)ans.First().value();
                                 ta.cursors += (ta._fm.defpos, ib);
                                 ta.EachRow(ib._pos);
@@ -545,23 +547,23 @@ namespace Pyrrho
                                 {
                                     var ep = rv[t].Last().value();
                                     var en = 0;
-                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    var td = cx._Dom(tb);
+                                    for (var b = td.rowType.First(); b != null; b = b.Next())
                                     {
                                         var a = b.value();
-                                        var dt = dm.representation[a];
+                                        var dt = td.representation[a];
                                         if (dt.Compare(old[a], vs[a]) != 0)
                                             en++;
                                     }
                                     tcp.Write(Responses.Entity);
                                     tcp.PutInt(en);
-                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    for (var b = td.rowType.First(); b != null; b = b.Next())
                                     {
                                         var a = b.value();
-                                        var dt = dm.representation[a];
+                                        var dt = td.representation[a];
                                         if (dt.Compare(old[a], vs[a]) != 0)
                                         {
-                                            var ci = cx._Ob(a).infos[cx.role.defpos];
-                                            tcp.PutString(ci.name);
+                                            tcp.PutString(cx.NameFor(a));
                                             tcp.PutInt(dt.Typecode());
                                             tcp.PutData(cx, vs[a]);
                                         }
@@ -621,7 +623,6 @@ namespace Pyrrho
                                     var ta = (TableActivation)ans.First().value();
                                     ta.updates = us;
                                     ta.cursors += (ta._fm.defpos, ib);
-                                    old = vs;
                                     ta.EachRow(ib._pos);
                                     cx.db = ta.db;
                                     ta.Finish();
@@ -630,23 +631,24 @@ namespace Pyrrho
                                 }
                                 var oc = cx;
                                 db = cx.db.RdrClose(ref cx);
+                                var td = cx._Dom(tb);
                                 if (cx?.affected is Rvv rv && rv.Contains(t))
                                 {
                                     var ep = rv[t].Last().value();
                                     var en = 0;
-                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    for (var b = td.rowType.First(); b != null; b = b.Next())
                                     {
                                         var a = b.value();
-                                        var dt = dm.representation[a];
+                                        var dt = td.representation[a];
                                         if (vs.Contains(a) && dt.Compare(old[a], vs[a]) != 0)
                                             en++;
                                     }
                                     tcp.Write(Responses.Entity);
                                     tcp.PutInt(en);
-                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    for (var b = td.rowType.First(); b != null; b = b.Next())
                                     {
                                         var a = b.value();
-                                        var dt = dm.representation[a];
+                                        var dt = td.representation[a];
                                         if (vs.Contains(a) && dt.Compare(old[a], vs[a]) != 0)
                                         {
                                             var ci = cx._Ob(a).infos[cx.db.role.defpos];
@@ -689,7 +691,7 @@ namespace Pyrrho
                                 if (long.TryParse(ss[2], out dp) && long.TryParse(ss[3], out pp)
                                     && tb.tableRows[dp] is TableRow tr && tr.ppos == pp)
                                 {
-                                    var r = new TRow(dm, tr.vals);
+                                    var r = new TRow(dm, f.iSMap, tr.vals);
                                     var ib = TableRowSet.TableCursor.New(cx, f, dp);
                                     ans = f.Delete(cx, f);
                                     var ta = (TableActivation)ans.First().value();
@@ -701,7 +703,10 @@ namespace Pyrrho
                                 }
                                 db = cx.db.RdrClose(ref cx);
                                 if (ans != BTree<long, TargetActivation>.Empty)
+                                {
                                     tcp.Write(Responses.Done);
+                                    tcp.PutInt((int)cx.affected.Count);
+                                }
                                 else
                                     tcp.Write(Responses.NoData);
                                 tcp.Flush();
@@ -1434,7 +1439,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.01alpha","(15 Oct 2022)", "http://www.pyrrhodb.com"
+            "7.01alpha","(24 Oct 2022)", "http://www.pyrrhodb.com"
         };
 	}
 }

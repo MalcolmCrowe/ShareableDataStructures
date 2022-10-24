@@ -272,6 +272,7 @@ namespace Pyrrho.Level2
                 kc += (tc,true);
             }
             tb += (Table.KeyCols, kc);
+            tb += (DBObject.LastChange, defpos);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb, p);

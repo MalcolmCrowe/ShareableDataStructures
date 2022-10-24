@@ -192,106 +192,9 @@ namespace Pyrrho
         /// <typeparam name="C"></typeparam>
         /// <param name="w"></param>
         /// <returns></returns>
-        public C FindOne<C>(params IComparable[] w) where C : new()
+        public C FindOne<C>(params (string,IComparable)[] w) where C : new()
         {
-            var tp = typeof(C);
-            // First we make a list of the possible keys.
-            var keys = BTree<long, BTree<int, FieldInfo>>.Empty;
-            var fs = BTree<string, FieldAttribute>.Empty;
-            foreach (var f in tp.GetFields())
-                foreach (var a in f.GetCustomAttributes())
-                {
-                    if (a is KeyAttribute fk)
-                    {
-                        var ky = keys[0L]??BTree<int, FieldInfo>.Empty;
-                        ky += (fk.seq, f);
-                        keys += (0L, ky);
-                    }
-                    if (a is UniqueAttribute fu)
-                    {
-                        var ky = keys[fu.index] ?? BTree<int, FieldInfo>.Empty;
-                        ky += (fu.seq, f);
-                        keys += (fu.index, ky);
-                    }
-                    if (a is FieldAttribute fa)
-                        fs += (f.Name,fa);
-                }
-            for (var b = keys.First(); b != null; b = b.Next())
-            {
-                var ky = b.value();
-                if (w.Length != ky.Count)
-                    goto no;
-                for (var c = ky.First(); c != null; c = c.Next())
-                {
-                    var ft = c.value();
-                    var sq = c.key();
-                    var v = w[sq];
-                    var wt = v.GetType();
-                    if (fs[ft.Name] is FieldAttribute fa)
-                        switch (fa.type)
-                        {
-                            case PyrrhoDbType.String:
-                                if (!(v is string)) goto no;
-                                break;
-                            case PyrrhoDbType.Integer:
-                                if (!((v is string && ((string)v).Length > 0 && char.IsDigit(((string)v)[0]))
-                                    || v is int || v is long)) goto no;
-                                break;
-                            case PyrrhoDbType.Decimal:
-                                if (!(v is decimal)) goto no;
-                                break;
-                            case PyrrhoDbType.Real:
-                                if (!(v is double)) goto no;
-                                break;
-                            case PyrrhoDbType.Date:
-                                if (!(v is DateTime || (v is string && ((string)v).StartsWith("DATE")))) goto no;
-                                break;
-                            case PyrrhoDbType.Time:
-                                if (!(v is DateTime || (v is string && ((string)v).StartsWith("TIME")))) goto no;
-                                break;
-                            case PyrrhoDbType.Timestamp:
-                                if (!(v is DateTime || (v is string && ((string)v).StartsWith("TIMESTAMP")))) goto no;
-                                break;
-                            case PyrrhoDbType.Interval:
-                                if (!(v is TimeSpan || (v is string && ((string)v).StartsWith("INTERVAL")))) goto no;
-                                break;
-                        }
-                    else if (ft.FieldType.Name.StartsWith("Nullable") && wt.Name=="Int64")
-                        continue;
-                    else if (ft.FieldType.Name != wt.Name)
-                        goto no;
-                }
-                continue;
-                no: keys -= b.key();
-            }
-            if (keys.Count != 1)
-                throw new Exception("Ambiguous or incorrect key");
-            var key = keys.First().value();
-            var sb = new StringBuilder();
-            var comma = "";
-            for (var sq = 0; sq < w.Length; sq++)
-            {
-                sb.Append(comma); comma = ",";
-                var wv = w[sq];
-                var ft = key[sq];
-                sb.Append("\""+ft.Name+"\"=");
-                var ws = "";
-                if (wv is string)
-                {
-                    ws = w[sq].ToString();
-                    if (ws != "" && ws[0] != '\'')
-                        ws = "'" + ws.Replace("'", "''") + "'";
-                }
-                else if (fs[ft.Name] is FieldAttribute fa)
-                    ws = Reflection.Sql(fa, ws);
-                else
-                    ws = wv.ToString();
-                sb.Append(ws);
-            }
-            var obs = Get<C>(sb.ToString());
-            if (obs == null || obs.Length == 0)
-                return default(C);
-            return obs[0];
+            return FindWith<C>(w)[0];
         }
         public C[] FindWith<C>(params (string,IComparable)[] w) where C : new()
         {
@@ -316,9 +219,9 @@ namespace Pyrrho
             var rdr = cmd.ExecuteReader();
             while (rdr.Read())
             {
-                var w = new IComparable[rdr.FieldCount];
+                var w = new (string,IComparable)[rdr.FieldCount];
                 for (var i = 0; i < rdr.FieldCount; i++)
-                    w[i] = (IComparable)rdr[i];
+                    w[i] = (rdr.GetName(i),(IComparable)rdr[i]);
                 r.Add(FindOne<C>(w));
             }
             rdr.Close();
@@ -1493,36 +1396,27 @@ namespace Pyrrho
         public long tabledefpos, lastschemachange; 
         public TableAttribute(long p, long c) { tabledefpos = p; lastschemachange = c; }
     }
-    public sealed class ReferredAttribute : Attribute { }
-    public sealed class KeyAttribute : Attribute
-    {
-        public int seq;
-        public KeyAttribute() { seq = 0; }
-        public KeyAttribute(int s) { seq = s; }
-    }
-    public sealed class ForeignKeyAttribute : Attribute
-    {
-        public string[] rkey;
-        public ForeignKeyAttribute(params string[] s) { rkey = s; }
-    }
-    public sealed class UniqueAttribute : Attribute 
-    {
-        public long index;
-        public int seq;
-        public UniqueAttribute() { index = 0L; seq = 0; }
-        public UniqueAttribute(long x,int s) { index = x; seq = s; }
-    }
+    public sealed class AutoKeyAttribute : Attribute
+    {  }
     public sealed class FieldAttribute : Attribute
     {
         public PyrrhoDbType type;
-        public int maxLength = 0;
-        public int scale = 0;
-        public string udt = null;
-        public FieldAttribute subType = null;
+        public long domain;  // Pyrrho's domain cookie
+        public string info; // Pyrrho's domain information
+        public long subType = -1L;
         public FieldAttribute(PyrrhoDbType tn) { type = tn; }
-        public FieldAttribute(PyrrhoDbType tn, int n) { type = tn; maxLength = n; }
-        public FieldAttribute(PyrrhoDbType tn, int n, int s) { type = tn; maxLength = n; scale = s; }
-        public FieldAttribute(PyrrhoDbType tn, string nm) { type = tn; udt = nm; }
+        public FieldAttribute(PyrrhoDbType type, string info, long subType = -1L): this(type)
+        {
+            this.info = info;
+            this.subType = subType;
+        }
+        public FieldAttribute(PyrrhoDbType type, long domain, string info, long subType=-1L) 
+            : this(type)
+        {
+            this.domain = domain;
+            this.info = info;
+            this.subType = subType;
+        }
     }
     public sealed class ExcludeAttribute : Attribute { }
     public class PyrrhoReader

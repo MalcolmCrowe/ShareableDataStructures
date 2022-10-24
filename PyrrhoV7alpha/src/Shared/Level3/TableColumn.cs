@@ -369,6 +369,13 @@ namespace Pyrrho.Level3
             }// or START/END
             return null;
         }
+        internal void Note(Context cx,StringBuilder sb)
+        {
+            if (gen == Generation.No)
+                return;
+            sb.Append("// GenerationRule "); sb.Append(gen); 
+            sb.Append(" ");  sb.Append(gfs); sb.Append("\r\n");
+        }
         public override string ToString()
         {
             return (gen == Generation.Expression) ? gfs : gen.ToString();

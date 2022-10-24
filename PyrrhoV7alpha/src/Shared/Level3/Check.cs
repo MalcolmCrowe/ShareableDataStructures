@@ -121,5 +121,9 @@ namespace Pyrrho.Level3
             }
             return base.Drop(d, nd, p);
         }
+        internal override void Note(Context cx, StringBuilder sb)
+        {
+            sb.Append("// Check "); sb.Append(source); 
+        }
     }
 }

@@ -67,18 +67,18 @@ namespace Pyrrho
             var tp = ob.GetType();
             if (ob.entity == null || ob.entity.Length == 0 || ob.entity[0] != '/')
                 throw new DatabaseError("2E304");
-            var ks = BTree<int,FieldInfo>.Empty;
+            var ps = BTree<string,(FieldInfo,FieldAttribute)>.Empty;
             foreach (var f in tp.GetFields())
-                if (f.GetCustomAttribute<KeyAttribute>() is KeyAttribute fa)
-                    ks += (fa.seq,f);
+                if (f.GetCustomAttribute<FieldAttribute>() is FieldAttribute fa)
+                    ps += (f.Name, (f,fa));
             var sa = tp.GetCustomAttribute<TableAttribute>();
             conn.Send(Protocol.Get);
             conn.PutLong(sa.lastschemachange);
             var sb = new StringBuilder("/"+sa.tabledefpos+"/");
             var cm = "";
-            for (var b = ks.First(); b != null; b = b.Next())
+            for (var b = ps.First(); b != null; b = b.Next())
             {
-                var f = b.value();
+                var (f,fa) = b.value();
                 sb.Append(cm); cm = ",";
                 var wv = f.GetValue(ob);
                 sb.Append("\"" + f.Name + "\"=");
@@ -89,10 +89,8 @@ namespace Pyrrho
                     if (ws != "" && ws[0] != '\'')
                         ws = "'" + ws.Replace("'", "''") + "'";
                 }
-                else if (f.GetCustomAttribute<FieldAttribute>() is FieldAttribute fa)
+                else 
                     ws = Sql(fa, ws);
-                else
-                    ws = wv.ToString();
                 sb.Append(ws);
             }
             conn.PutString(sb.ToString());
@@ -198,19 +196,16 @@ namespace Pyrrho
                 if (v == null)
                     continue;
                 var ca = f.GetCustomAttributes(false);
-                KeyAttribute ka = null;
                 FieldAttribute fa = null;
+                AutoKeyAttribute ka = null;
                 foreach (var an in ca)
                 {
                     if (an is ExcludeAttribute)
                         goto skip;
-                    if (ka == null)
-                        ka = an as KeyAttribute;
                     if (fa == null)
                         fa = an as FieldAttribute;
+                    ka = an as AutoKeyAttribute;
                 }
-                if (ka != null)
-                    kf.Add(f);
                 if (fa != null)
                 {
                     if (ka!=null &&  kf[0] == f && v is long && (long)v == 0)

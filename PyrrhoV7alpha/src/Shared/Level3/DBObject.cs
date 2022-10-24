@@ -304,7 +304,8 @@ namespace Pyrrho.Level3
         internal virtual void Add(Context cx,PMetadata pm, long p)
         {
             var oi = infos[cx.role.defpos];
-            cx.Add(this + (Infos, infos + (cx.role.defpos, oi + (ObInfo._Metadata, pm))));
+            cx.db += (this + (Infos, infos + (cx.role.defpos, oi + (ObInfo._Metadata, pm.detail)))
+                + (LastChange,pm.ppos),p);
         }
         internal virtual BTree<long,SystemFilter> SysFilter(Context cx,BTree<long,SystemFilter> sf)
         {
@@ -595,81 +596,7 @@ namespace Pyrrho.Level3
         {
             return null;
         }
-        /// <summary>
-        /// Implementation of the Role$Class table: Produce a type attribute for a field
-        /// </summary>
-        /// <param name="sb">A string builder to receive the attribute</param>
-        /// <param name="dt">The Pyrrho datatype</param>
-        protected static void FieldType(Context cx,StringBuilder sb, Domain dt)
-        {
-            switch (Domain.Equivalent(dt.kind))
-            {
-                case Sqlx.ONLY: 
-                    FieldType(cx, sb, (dt as UDType)?.super); return;
-                case Sqlx.INTEGER:
-                    if (dt.prec!=0)
-                        sb.Append("[Field(PyrrhoDbType.Integer," + 
-                            (int)dt.prec + ")]\r\n");
-                    return;
-                case Sqlx.NUMERIC:
-                    sb.Append("[Field(PyrrhoDbType.Decimal," + dt.prec + "," + dt.scale + ")]\r\n");
-                    return;
-                case Sqlx.NCHAR:
-                case Sqlx.CHAR:
-                    if (dt.prec != 0)
-                        sb.Append("[Field(PyrrhoDbType.String," + dt.prec + ")]\r\n");
-                    return;
-                case Sqlx.REAL:
-                    if (dt.scale != 0 || dt.prec!=0)
-                        sb.Append("[Field(PyrrhoDBType.Real," + dt.prec + "," + dt.scale + ")]\r\n");
-                    return;
-                case Sqlx.DATE: sb.Append("[Field(PyrrhoDbType.Date)]\r\n"); return;
-                case Sqlx.TIME: sb.Append("[Field(PyrrhoDbType.Time)]\r\n"); return;
-                case Sqlx.INTERVAL: sb.Append("[Field(PyrrhoDbType.Interval)]\r\n"); return;
-                case Sqlx.BOOLEAN: sb.Append("[Field(PyrrhoDbType.Bool)]\r\n"); return;
-                case Sqlx.TIMESTAMP: sb.Append("[Field(PyrrhoDbType.Timestamp)]\r\n"); return;
-                case Sqlx.ROW: sb.Append("[Field(PyrrhoDbType.Row," + 
-                    cx._Dom(dt.elType).name+ ")]\r\n"); 
-                    return;
-            }
-        }
-        /// <summary>
-        /// Implementation of the Role$Java table: Produce a type annotation for a field
-        /// </summary>
-        /// <param name="sb">A string builder to receive the attribute</param>
-        /// <param name="dt">The Pyrrho datatype</param>
-        protected void FieldJava(Context cx, StringBuilder sb, Domain dt)
-        {
-            switch (Domain.Equivalent(dt.kind))
-            {
-                case Sqlx.ONLY: FieldJava(cx, sb, (dt as UDType)?.super); return;
-                case Sqlx.INTEGER:
-                    if (dt.prec != 0)
-                        sb.Append("@FieldType(PyrrhoDbType.Integer," + dt.prec + ")\r\n");
-                    return;
-                case Sqlx.NUMERIC:
-                    sb.Append("@FieldType(PyrrhoDbType.Decimal," + dt.prec + "," + dt.scale + ")\r\n");
-                    return;
-                case Sqlx.NCHAR:
-                case Sqlx.CHAR:
-                    if (dt.prec != 0)
-                        sb.Append("@FieldType(PyrrhoDbType.String," + dt.prec + ")\r\n");
-                    return;
-                case Sqlx.REAL:
-                    if (dt.scale != 0||dt.prec!=0)
-                        sb.Append("@FieldType(PyrrhoDBType.Real," + dt.prec + "," + dt.scale + ")\r\n");
-                    return;
-                case Sqlx.DATE: sb.Append("@FieldType(PyrrhoDbType.Date)\r\n"); return;
-                case Sqlx.TIME: sb.Append("@FieldType(PyrrhoDbType.Time)\r\n"); return;
-                case Sqlx.INTERVAL: sb.Append("@FieldType(PyrrhoDbType.Interval)\r\n"); return;
-                case Sqlx.BOOLEAN: sb.Append("@FieldType(PyrrhoDbType.Bool)\r\n"); return;
-                case Sqlx.TIMESTAMP: sb.Append("@FieldType(PyrrhoDbType.Timestamp)\r\n"); return;
-                case Sqlx.ROW: sb.Append("@FieldType(PyrrhoDbType.Row," 
-                    + cx._Dom(dt.elType).name + ")\r\n");
-                    return;
-            }
-        }
-        /// <summary>
+         /// <summary>
         /// Issues here: This object may not have been committed yet
         /// We only want to record audits in the PhysBase for committed obs
         /// </summary>
@@ -729,6 +656,8 @@ namespace Pyrrho.Level3
                 ob.infos[Database.Guest] ?? throw new DBException("42105");
             return ci.name;
         }
+        internal virtual void Note(Context cx,StringBuilder sb)
+        {  }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());

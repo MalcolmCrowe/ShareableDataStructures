@@ -1471,7 +1471,8 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.ID);
             if (cx.db.schema.dbobjects.Contains(name.ident) || cx.db.role.dbobjects.Contains(name.ident))
                 throw new DBException("42104", name);
-            var pt = new PTable(name.ident, new Domain(cx.GetUid(), cx, Sqlx.TABLE, BList<SqlValue>.Empty), 
+            var 
+                pt = new PTable(name.ident, new Domain(cx.GetUid(), cx, Sqlx.TABLE, BList<SqlValue>.Empty), 
                 cx.db.nextPos, cx);
             cx.Add(pt);
             var t = pt.defpos;
@@ -2313,6 +2314,12 @@ namespace Pyrrho.Level4
                     {
                         Next();
                         ParseColumnCheckConstraint(t, c, nm);
+                        break;
+                    }
+                case Sqlx.DEFAULT:
+                    {
+                        Next();
+                        var e = ParseSqlValue(cx._Dom(tc));
                         break;
                     }
                 case Sqlx.UNIQUE:
@@ -6203,7 +6210,7 @@ namespace Pyrrho.Level4
                 if (cx.dbformat < 51)
                     cx.defs += (new Ident(rf.defpos.ToString(), rx), rx);
             }
-            return rf; // but check anyway
+            return rf; 
         }
         /// <summary>
         /// We are about to call the From constructor, which may

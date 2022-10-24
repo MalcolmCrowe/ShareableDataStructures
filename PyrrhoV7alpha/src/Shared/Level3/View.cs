@@ -286,7 +286,7 @@ namespace Pyrrho.Level3
                     if (n.EndsWith("("))
                         n = "_F" + i;
                 }
-                FieldType(cx,sb,cd);
+                cd.FieldType(cx,sb);
                 sb.Append("  public " + tn + " " + n + ";\r\n");
             }
             i = 0;
@@ -636,7 +636,7 @@ namespace Pyrrho.Level3
                                     if (c.value() == p && tn == "Int64?")
                                         tn = "Int64";
                         }
-                FieldType(cx, sb, dt);
+                dt.FieldType(cx, sb);
                 var ci = cx._Ob(p).infos[cx.role.defpos];
                 if (ci != null)
                 {

@@ -503,7 +503,7 @@ namespace Pyrrho.Level3
                     if (n.EndsWith("("))
                         n = "_F" + i;
                 }
-                FieldType(cx, sb, cd);
+                cd.FieldType(cx, sb);
                 sb.Append("  public " + tn + " " + n + ";\r\n");
             }
             for (var b = representation.First(); b != null; b = b.Next(), i++)
@@ -1674,8 +1674,7 @@ namespace Pyrrho.Level3
             for (var b = rowType.First(); b != null; b = b.Next())
             {
                 var rp = b.value();
-                var ci = infos[cx.role.defpos];
-                ns += (ci.name, rp);
+                ns += (cx.NameFor(rp), rp);
             }
             for (var j = 0; j < rowType.Length;)
             {
@@ -3223,6 +3222,75 @@ namespace Pyrrho.Level3
                 case Sqlx.TIMESTAMP: return Timestamp;
             }
             throw new DBException("42119",t,"CURRENT");
+        }
+        /// <summary>
+        /// Implementation of the Role$Class table: Produce a type attribute for a field
+        /// </summary>
+        /// <param name="sb">A string builder to receive the attribute</param>
+        /// <param name="dt">The Pyrrho datatype</param>
+        internal virtual void FieldType(Context cx, StringBuilder sb)
+        {
+            var ek = Equivalent(kind);
+            sb.Append("[Field(PyrrhoDbType.");
+            switch(ek)
+            {
+                case Sqlx.ARRAY: sb.Append("Array"); break;
+                case Sqlx.MULTISET: sb.Append("Multiset"); break;
+                case Sqlx.INTEGER: sb.Append("Integer"); break;
+                case Sqlx.NUMERIC: sb.Append("Decimal"); break;
+                case Sqlx.NCHAR:
+                case Sqlx.CHAR: sb.Append("String"); break;
+                case Sqlx.REAL: sb.Append("Real"); break;
+                case Sqlx.DATE: sb.Append("Date"); break;
+                case Sqlx.TIME: sb.Append("Time"); break;
+                case Sqlx.INTERVAL: sb.Append("Interval"); break;
+                case Sqlx.BOOLEAN: sb.Append("Bool"); break;
+                case Sqlx.TIMESTAMP: sb.Append("Timestamp"); break;
+                case Sqlx.ROW: sb.Append("Row"); break;
+            }
+            if (defpos<0) { sb.Append(")]\r\n"); return; }
+            if (defpos < Transaction.TransPos)
+                sb.Append("," + defpos);
+            sb.Append(",\""+ToString()+"\"");
+            if (ek == Sqlx.ARRAY || ek == Sqlx.MULTISET)
+            { sb.Append(","); elType.FieldType(cx, sb); }
+            sb.Append(")]\r\n"); 
+        }
+        /// <summary>
+        /// Implementation of the Role$Java table: Produce a type annotation for a field
+        /// </summary>
+        /// <param name="sb">A string builder to receive the attribute</param>
+        /// <param name="dt">The Pyrrho datatype</param>
+        internal virtual void FieldJava(Context cx, StringBuilder sb)
+        {
+            switch (Equivalent(kind))
+            {
+                case Sqlx.INTEGER:
+                    if (prec != 0)
+                        sb.Append("@FieldType(PyrrhoDbType.Integer," + prec + ")\r\n");
+                    return;
+                case Sqlx.NUMERIC:
+                    sb.Append("@FieldType(PyrrhoDbType.Decimal," + prec + "," + scale + ")\r\n");
+                    return;
+                case Sqlx.NCHAR:
+                case Sqlx.CHAR:
+                    if (prec != 0)
+                        sb.Append("@FieldType(PyrrhoDbType.String," + prec + ")\r\n");
+                    return;
+                case Sqlx.REAL:
+                    if (scale != 0 || prec != 0)
+                        sb.Append("@FieldType(PyrrhoDBType.Real," + prec + "," + scale + ")\r\n");
+                    return;
+                case Sqlx.DATE: sb.Append("@FieldType(PyrrhoDbType.Date)\r\n"); return;
+                case Sqlx.TIME: sb.Append("@FieldType(PyrrhoDbType.Time)\r\n"); return;
+                case Sqlx.INTERVAL: sb.Append("@FieldType(PyrrhoDbType.Interval)\r\n"); return;
+                case Sqlx.BOOLEAN: sb.Append("@FieldType(PyrrhoDbType.Bool)\r\n"); return;
+                case Sqlx.TIMESTAMP: sb.Append("@FieldType(PyrrhoDbType.Timestamp)\r\n"); return;
+                case Sqlx.ROW:
+                    sb.Append("@FieldType(PyrrhoDbType.Row,"
+                    + cx._Dom(elType).name + ")\r\n");
+                    return;
+            }
         }
         /// <summary>
         /// Validator
@@ -4779,8 +4847,8 @@ namespace Pyrrho.Level3
                 var p = b.key();
                 var co = (DBObject)cx.db.objects[p];
                 var dt = b.value();
-                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
-                FieldType(cx, sb, dt);
+                var tn = ((dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name)+"?";
+                dt.FieldType(cx, sb);
                 var ci = co.infos[cx.role.defpos];
                 if (ci.description?.Length > 1)
                     sb.Append("  // " + ci.description + "\r\n");

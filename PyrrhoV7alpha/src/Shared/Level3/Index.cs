@@ -4,6 +4,7 @@ using Pyrrho.Level4; // for rename/drop
 using Pyrrho.Common;
 using System.Text;
 using System.Configuration;
+using System.Runtime.Remoting.Metadata.W3cXsd2001;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -331,9 +332,23 @@ namespace Pyrrho.Level3
                 r += (RefTable, nt);
             return r;
         }
+        internal override void Note(Context cx, StringBuilder sb)
+        {
+            sb.Append("// "); sb.Append(flags);
+            var cm = "(";
+            for (var b=keys.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(cx.NameFor(b.value()));
+            }
+            sb.Append(")");
+            if (flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+            { sb.Append(" "); sb.Append(cx.NameFor(reftabledefpos)); }
+            sb.Append("\r\n");
+        }
     }
 /*    /// <summary>
-    /// A VirtualTable can have virtual indexs: they are for navigation properties
+    /// A VirtualTable can have virtual indexes: they are for navigation properties
     /// and do not attempt to act as constraints on the remote table
     /// </summary>
     internal class VirtualIndex : Index
