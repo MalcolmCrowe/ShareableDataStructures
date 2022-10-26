@@ -5,6 +5,7 @@ using System;
 using System.Text;
 using System.Net;
 using System.IO;
+using static Pyrrho.Level3.Basis;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -798,15 +799,8 @@ namespace Pyrrho.Level4
                             var ua = b.key();
                             _sql.Append(cm); cm = ",";
                             _sql.Append(((SqlValue)obs[ua.vbl]).name); _sql.Append("=");
-                            var tv = ua.Eval(this);
-                            if (tv.dataType.kind == Sqlx.CHAR)
-                            {
-                                _sql.Append("'");
-                                _sql.Append(tv.ToString().Replace("'", "'''"));
-                                _sql.Append("'");
-                            }
-                            else
-                                _sql.Append(tv);
+                            _sql.Append(((SqlValue)obs[ua.val]).ToString(_rr.sqlAgent, Remotes.Operands, 
+                                _rr.remoteCols, _rr.namesMap, this));
                         }
                         if (_rr.where.Count > 0 || _rr.matches.Count > 0)
                         {

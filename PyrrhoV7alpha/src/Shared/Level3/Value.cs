@@ -2853,11 +2853,20 @@ namespace Pyrrho.Level3
         }
         internal override string ToString(string sg, Remotes rf, CList<long> cs, CTree<long, string> ns, Context cx)
         {
-            return val.ToString();
+            if (val.dataType.kind == Sqlx.CHAR)
+            {
+                var sb = new StringBuilder();
+                sb.Append('\'');
+                sb.Append(val.ToString().Replace("'", "''"));
+                sb.Append('\'');
+                return sb.ToString();
+            }
+            return val.ToString();   
         }
         public override string ToString()
         {
-            var sb = new StringBuilder(val.ToString());
+            var sb = new StringBuilder();
+            sb.Append(val);
             if (alias != null)
             {
                 sb.Append(" as ");
