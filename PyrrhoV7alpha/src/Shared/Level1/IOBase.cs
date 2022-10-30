@@ -471,7 +471,7 @@ namespace Pyrrho.Level2
             if (ds != "")
                 try
                 {
-                    dv = Domain.For(domain.kind).Parse(context.db.uid, ds);
+                    dv = Domain.For(domain.kind).Parse(context.db.uid, ds, null);
                     domain += (Domain.Default, dv);
                 }
                 catch (Exception) { }

@@ -188,11 +188,13 @@ namespace Pyrrho.Level3
             NextPos = -395, // long: next proposed Physical record
             NextStmt = -393, // long: next space in compiled range
             Owner = -59, // long: the defpos of the owner user for the database
+            Prefixes = -375, // CTree<string,long> UDT
             Procedures = -95, // CTree<long,string> Procedure
             Role = -285, // Role: the current role (e.g. an executable's definer)
             _Role = -302, // long: role.defpos, initially set to the session role
             Roles = -60, // BTree<string,long>
             _Schema = -291, // long: the owner role for the database
+            Suffixes = -376, // CTree<string,long> UDT
             Types = -61, // CTree<Domain,long>
             User = -277, // User: always the connection user
             _User = -301,// long: user.defpos, always the connection user, maybe uncommitted
@@ -229,6 +231,10 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         public CTree<long, string> procedures =>
             (CTree<long, string>)mem[Procedures] ?? CTree<long, string>.Empty;
+        public CTree<string, long> prefixes =>
+            (CTree<string, long>)mem[Prefixes] ?? CTree<string, long>.Empty;
+        public CTree<string, long> suffixes =>
+            (CTree<string, long>)mem[Suffixes] ?? CTree<string, long>.Empty;
         /// <summary>
         /// This code sets up the _system Database.
         /// It contains two roles ($Schema and _public), 

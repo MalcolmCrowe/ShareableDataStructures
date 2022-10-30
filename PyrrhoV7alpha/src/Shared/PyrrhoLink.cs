@@ -1479,32 +1479,38 @@ namespace Pyrrho
             {
                 subType = tname
             };
+        again:
             var b = c.stream.ReadByte();
-            if (b == 3)
+            switch (b)
             {
-                version = c.GetString();
-                b = c.stream.ReadByte();
+                case 0: break;
+                case 1:
+                    cell.subType = tname;
+                    c.GetData(cell, flag);
+                    break;
+                case 2:
+                    tname = c.GetString();
+                    flag = c.GetInt();
+                    goto case 1;
+                case 3:
+                    version = c.GetString();
+                    goto again;
+                case 4:
+                    entity = c.GetString();
+                    if (!entity.Contains("http"))
+                    {
+                        var ix = entity.LastIndexOf("/");
+                        version = entity.Substring(ix + 1);
+                        entity = entity.Substring(0, ix);
+                    }
+                    goto again;
+                case 5:
+                    cell.prefix = c.GetString();
+                    goto case 2;
+                case 6:
+                    cell.suffix = c.GetString();
+                    goto case 2;
             }
-            if (b == 4)
-            {
-                entity = c.GetString();
-                if (!entity.Contains("http"))
-                {
-                    var ix = entity.LastIndexOf("/");
-                    version = entity.Substring(ix + 1);
-                    entity = entity.Substring(0, ix);
-                }
-                b = c.stream.ReadByte();
-            }
-            if (b == 0)
-                return cell;
-            if (b == 2)
-            {
-                tname = c.GetString();
-                flag = c.GetInt();
-            }
-            cell.subType = tname;
-            c.GetData(cell,flag);
             return cell;
         }
         public int RecordsAffected
@@ -1547,7 +1553,7 @@ namespace Pyrrho
         public string GetDataSubtypeName(int i)
         {
             cmd.CheckThread();
-            return cells[i].subType ?? ((PyrrhoColumn)schema.Columns[i]).datatypename;
+            return cells[i].subType ?? (schema.Columns[i]).datatypename;
         }
         private bool GetCell(int cx)
         {
@@ -1834,9 +1840,17 @@ namespace Pyrrho
     {
         public string subType = null;
         public object val = null;
+        public string prefix = null, suffix = null;
         public override string ToString()
         {
-            return val?.ToString() ?? "";
+            var sb = new StringBuilder();
+            if (prefix!=null)
+                sb.Append(prefix);
+            if (val!=null) 
+                sb.Append(val.ToString());
+            if (suffix!=null)
+            { sb.Append(' '); sb.Append(suffix); }
+            return sb.ToString();
         }
     }
     public class PyrrhoParameter
@@ -2025,7 +2039,7 @@ namespace Pyrrho
         internal int Find(string n)
         {
             for (int j = 0; j < Columns.Count; j++)
-                if (((PyrrhoColumn)Columns[j]).ColumnName == n)
+                if ((Columns[j]).ColumnName == n)
                     return j;
             return -1;
         }

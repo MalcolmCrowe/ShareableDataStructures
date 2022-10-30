@@ -330,7 +330,7 @@ namespace Pyrrho.Level2
                 if (gn != Generation.Expression)
                 {
                     var dm = (Domain)rdr.context.db.objects[domdefpos];
-                    dataType = dm+ (Domain.Default,dm.Parse(rdr.Position, dfs))
+                    dataType = dm+ (Domain.Default,dm.Parse(rdr.Position, dfs, rdr.context))
                         +(Domain.DefaultString,dfs);
                 }
                 else

@@ -1131,6 +1131,13 @@ namespace Pyrrho
                     return lc+10; // 1+ 1byte + (1long or 2xint)
                 case Sqlx.TYPE:
                     {
+                        if (tv.dataType is UDType ut)
+                        {
+                            if (ut.prefix!=null)
+                                return lc + 1 + StringLength(ut.prefix) + StringLength(o);
+                            if (ut.suffix!=null)
+                                return lc + 1 + StringLength(o) + StringLength(ut.suffix);
+                        }
                         var tn = tv.dataType.name;
                         return lc+1 + tn.Length + ((TRow)o).Length;
                     }
@@ -1439,7 +1446,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.01alpha","(26 Oct 2022)", "http://www.pyrrhodb.com"
+            "7.01alpha","(30 Oct 2022)", "http://www.pyrrhodb.com"
         };
 	}
 }

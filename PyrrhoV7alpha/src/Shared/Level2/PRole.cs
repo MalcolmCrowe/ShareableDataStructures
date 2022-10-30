@@ -226,9 +226,9 @@ namespace Pyrrho.Level2
                     case Sqlx.USER:
                     case Sqlx.PASSWORD:
                         sb.Append(b.key());
-                        sb.Append(" '");
+                        sb.Append(" \"");
                         sb.Append(b.value());
-                        sb.Append("' ");
+                        sb.Append("\" ");
                         break;
                     case Sqlx.IRI:
                         sb.Append(b.value().ToString());
@@ -239,6 +239,13 @@ namespace Pyrrho.Level2
                         var ob = (DBObject)wr.cx.db.objects[b.value().ToLong() ?? -1L];
                         sb.Append(ob.infos[wr.cx.role.defpos].name);
                         sb.Append(' ');
+                        break;
+                    case Sqlx.PREFIX:
+                    case Sqlx.SUFFIX:
+                        sb.Append(b.key());
+                        sb.Append('"');
+                        sb.Append(b.value());
+                        sb.Append('"');
                         break;
                     default:
                         sb.Append(b.key());
@@ -310,7 +317,7 @@ namespace Pyrrho.Level2
         /// <param name="p"></param>
         internal override void Install(Context cx, long p)
         {
-            cx._Ob(defpos).Add(cx,this, p);
+            ((DBObject)cx.db.objects[defpos]).Add(cx,this, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
         }

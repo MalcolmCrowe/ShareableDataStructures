@@ -61,7 +61,7 @@ namespace Pyrrho.Level2
                 k = Domain.Structure;
                 structure = sd;
             }
-            var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv);
+            var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv, null);
             domdefpos = pp;
             name = nm;
             domain = new Domain(-1L, dt, DBObject._Deps(1,structure,element,under)

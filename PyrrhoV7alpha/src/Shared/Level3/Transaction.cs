@@ -28,7 +28,7 @@ namespace Pyrrho.Level3
         internal const long
             AutoCommit = -278, // bool
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
-            _ETags = -374, // BTree<string,string> url, ETag
+            _ETags = -374, // CTree<string,string> url, ETag
             Physicals = -250, // BTree<long,Physical>
             Posts = -398, // bool
             StartTime = -217, // DateTime
@@ -503,7 +503,7 @@ namespace Pyrrho.Level3
                                 var tc = (TableColumn)cx.obs[ix.keys[kn]];
                                 TypedValue kv = null;
                                 var ft = cx._Dom(tc);
-                                if (ft.TryParse(new Scanner(uid,sk.ToCharArray(),0), out kv) != null)
+                                if (ft.TryParse(new Scanner(uid,sk.ToCharArray(),0,cx), out kv) != null)
                                     break;
                                 kn++;
                                 p++;

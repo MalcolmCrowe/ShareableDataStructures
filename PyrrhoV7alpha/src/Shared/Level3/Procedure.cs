@@ -53,7 +53,7 @@ namespace Pyrrho.Level3
         /// <param name="p">The level 2 procedure</param>
 		public Procedure(PProcedure p, Context cx,BTree<long,object> m)
             : base( p.ppos, p.defpos, cx.role.defpos, m
-                  + (Params, p.parameters) +(_Domain,p.dataType.defpos) 
+                  + (Params, p.parameters) +(_Domain,p.dataType?.defpos??throw new DBException("42000")) 
                   + (Body, p.proc) + (Clause, p.source.ident) + (LastChange, p.ppos))
         { }
         /// <summary>
@@ -86,6 +86,7 @@ namespace Pyrrho.Level3
             var oi = infos[cx.role.defpos];
             if (!oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105");
+            cx.obs += framing.obs;
             var n = (int)ins.Count;
             var acts = new TypedValue[n];
             var i = 0;
@@ -96,6 +97,7 @@ namespace Pyrrho.Level3
             for (var b=ins.First(); b!=null;b=b.Next(), i++)
                 act.values += (b.value(), acts[b.key()]);
             cx = bd.Obey(act);
+
             var r = act.Ret();
             if (r is TArray ts)
             {
@@ -114,6 +116,13 @@ namespace Pyrrho.Level3
                 if (m == Sqlx.RESULT)
                     r = v;
             }
+            if (this is Method mt && mt.methodType==PMethod.MethodType.Constructor)
+            {
+                if (mt.udType.superShape)
+                    r = cx.val;
+                else
+                    r = new TRow(mt.udType, act.values);
+            } 
             if (cx != null)
             {
                 cx.val = r;

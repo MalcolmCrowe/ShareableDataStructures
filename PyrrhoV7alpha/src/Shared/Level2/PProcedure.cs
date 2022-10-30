@@ -169,6 +169,7 @@ namespace Pyrrho.Level2
             psr.cx.parse = op;
             framing = new Framing(psr.cx,nst);
             dataType = dt;
+            rdr.context.db = psr.cx.db;
         }
         internal override void Install(Context cx, long p)
         {

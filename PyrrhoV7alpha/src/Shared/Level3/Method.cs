@@ -23,11 +23,11 @@ namespace Pyrrho.Level3
     {
         internal const long
             MethodType = -165, // PMethod.MethodType
-            TypeDef = -166; // Domain
+            TypeDef = -166; // UDType
         /// <summary>
         /// The owning type definition (each role will have its own ObInfo)
         /// </summary>
-		public Domain udType => (Domain)mem[TypeDef]??Domain.Null;
+		public UDType udType => (UDType)mem[TypeDef];
         /// <summary>
         /// The method type (constructor etc)
         /// </summary>
@@ -65,8 +65,7 @@ namespace Pyrrho.Level3
         }
         internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db
-                + (this + (Body, m.proc) + (Params, m.parms)
+            cx.db += (this + (Body, m.proc) + (Params, m.parms)
                     + (_Framing, m.framing), p);
         }
         internal override DBObject Instance(long lp,Context cx, BList<Ident> cs=null)

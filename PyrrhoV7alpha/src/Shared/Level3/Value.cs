@@ -875,16 +875,10 @@ namespace Pyrrho.Level3
         /// <param name="ty">the type</param>
         /// <param name="cx">the context</param>
         internal SqlTreatExpr(long dp,SqlValue v,Domain ty, Context cx)
-            : base(dp,_Mem(cx,ty,v) +(TreatExpr,v.defpos)
+            : base(dp,BTree<long,object>.Empty + (_Domain,ty.defpos) +(TreatExpr,v.defpos)
                   +(_Depth,v.depth+1))
         { }
         protected SqlTreatExpr(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx,Domain ty,SqlValue v)
-        {
-            var dm = (ty.kind == Sqlx.ONLY && ty.iri != null) ?
-                  cx.Add(ty + (Domain.Iri, ty.iri)) : ty;
-            return new BTree<long, object>(_Domain, dm.defpos);
-        }
         public static SqlTreatExpr operator +(SqlTreatExpr s, (long, object) x)
         {
             return (SqlTreatExpr)s.New(s.mem + x);
@@ -2697,7 +2691,7 @@ namespace Pyrrho.Level3
         /// <param name="ty">the kind of literal</param>
         /// <param name="v">the value of the literal</param>
         public SqlLiteral(long dp, Context cx, TypedValue v, Domain td=null) 
-            : base(dp,BTree<long,object>.Empty+(_Domain, (td??v.dataType).defpos)+(_Val, v))
+            : base(dp,BTree<long,object>.Empty+(_Domain, v?.dataType?.defpos)+(_Val, v))
         {
             if (td != null  && v.dataType!=null && !td.CanTakeValueOf(v.dataType))
                 throw new DBException("22000", v);
@@ -2888,7 +2882,7 @@ namespace Pyrrho.Level3
         /// <param name="op">the obs type</param>
         /// <param name="n">the string version of the date/time</param>
         public SqlDateTimeLiteral(long dp, Context cx, Domain op, string n)
-            : base(dp, cx, op.Parse(dp,n))
+            : base(dp, cx, op.Parse(dp,n,cx))
         {}
         protected SqlDateTimeLiteral(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SqlDateTimeLiteral operator+(SqlDateTimeLiteral s,(long,object)x)

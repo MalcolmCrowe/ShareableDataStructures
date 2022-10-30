@@ -5,6 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using System.Configuration;
+using System.Net.NetworkInformation;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -360,15 +361,16 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The current token's identifier
         /// </summary>
-		public Sqlx tok;
+		public Sqlx tok, prevtok = Sqlx.Null;
         public Sqlx pushBack = Sqlx.Null;
         public long offset;
         public long Position => offset + start;
         /// <summary>
         /// The current token's value
         /// </summary>
-		public TypedValue val = null;
+		public TypedValue val = null, prevval = null;
         public TypedValue pushVal;
+        private Context cx; // only used for type prefix/suffix things
         /// <summary>
         /// Entries in the reserved word table
         /// If there are more than 2048 reserved words, the server will hang
@@ -426,16 +428,17 @@ namespace Pyrrho.Level4
         /// Constructor: Start a new lexer
         /// </summary>
         /// <param name="s">the input string</param>
-        internal Lexer(string s,long off = Transaction.Analysing,bool am=false)
+        internal Lexer(Context cx,string s,long off = Transaction.Analysing,bool am=false)
         {
    		    input = s.ToCharArray();
 			pos = -1;
             offset = off;
             allowminus = am;
 			Advance();
+            this.cx = cx;
 			tok = Next();
         }
-        internal Lexer(Ident id) : this(id.ident, id.iix.lp) { }
+        internal Lexer(Context cx,Ident id) : this(cx, id.ident, id.iix.lp) { }
         /// <summary>
         /// Mutator: Advance one position in the input
         /// ch is set to the new character
@@ -495,10 +498,59 @@ namespace Pyrrho.Level4
             tok = old;
             return tok;
         }
-        public Sqlx PushBack(Sqlx old,TypedValue oldVal)
+        Sqlx MaybePrefix(string s)
         {
-            val = oldVal;
-            return PushBack(old);
+            if (cx.parse==ExecuteStatus.Obey && cx.db.prefixes.Contains(s))
+            {
+                var ps = pos;
+                Next();
+                var dt = (UDType)cx.db.objects[cx.db.prefixes[s]];
+                var mi = dt.infos[cx.role.defpos];
+                var md = mi.methodInfos[dt.name];
+                if (md != null)
+                {
+                    cx.Add(new SqlLiteral(ps, cx, Domain.Numeric.Coerce(cx, val)));
+                    var mt = (Method)cx.db.objects[md[1]];
+                    val = mt.Exec(cx, new CList<long>(ps)).val;
+                } 
+                else
+                    val = new TSubType(dt,val);
+            }
+            return tok;
+        }
+        Sqlx MaybeSuffix()
+        {
+            if (cx.parse == ExecuteStatus.Obey)
+            {
+                var oldtok = tok;
+                var oldval = val;
+                var oldstart = start;
+                var oldch = ch;
+                var t = Next();
+                var vs = val.ToString();
+                if (t == Sqlx.ID && cx.db.suffixes.Contains(vs))
+                {
+                    var dt = (UDType)cx.db.objects[cx.db.suffixes[vs]];
+                    var mi = dt.infos[cx.role.defpos];
+                    var md = mi.methodInfos[dt.name];
+                    if (md != null)
+                    {
+                        var mt = (Method)cx.db.objects[md[1]];
+                        var r = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), cx, prevval));
+                        val = mt.Exec(cx, new CList<long>(r.defpos)).val;
+                    }
+                    else
+                        val = new TSubType(dt, prevval);
+                    tok = oldtok;
+                    return tok;
+                }
+                PushBack(t);
+                tok = oldtok;
+                val = oldval;
+                start = oldstart;
+                ch = oldch;
+            }
+            return tok;
         }
         /// <summary>
         /// Advance to the next token in the input.
@@ -506,7 +558,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <returns>The new value of tok</returns>
 		public Sqlx Next()
-		{
+        {
             if (pushBack != Sqlx.Null)
             {
                 tok = pushBack;
@@ -517,67 +569,72 @@ namespace Pyrrho.Level4
                 pushBack = Sqlx.Null;
                 return tok;
             }
+            prevtok = tok;
+            prevval = val;
             val = TNull.Value;
-			while (char.IsWhiteSpace(ch))
-				Advance();
-			start = pos;
-			if (char.IsLetter(ch))
-			{
-				char c = ch;
-				Advance();
-				if (c=='X' && ch=='\'')
-				{
-					int n = 0;
-					if (Hexit(Advance())>=0)
-						n++;
-					while (ch!='\'')
-						if (Hexit(Advance())>=0)
-							n++;
-					n = n/2;
-					byte[] b = new byte[n];
-					int end = pos;
-					pos = start+1;
-					for (int j=0;j<n;j++)
-					{
-						while (Hexit(Advance())<0)
-							;
-						int d = Hexit(ch)<<4;
-						d += Hexit(Advance());
-						b[j] = (byte)d;
-					}
-					while (pos!=end)
-						Advance();
-					tok = Sqlx.BLOBLITERAL;
-					val = new TBlob(b);
-					Advance();
-					return tok;
-				}
-				while (char.IsLetterOrDigit(ch) || ch=='_')
-					Advance();
-				string s0 = new string(input,start,pos-start);
+            while (char.IsWhiteSpace(ch))
+                Advance();
+            start = pos;
+            if (char.IsLetter(ch))
+            {
+                char c = ch;
+                Advance();
+                if (c == 'X' && ch == '\'')
+                {
+                    int n = 0;
+                    if (Hexit(Advance()) >= 0)
+                        n++;
+                    while (ch != '\'')
+                        if (Hexit(Advance()) >= 0)
+                            n++;
+                    n = n / 2;
+                    byte[] b = new byte[n];
+                    int end = pos;
+                    pos = start + 1;
+                    for (int j = 0; j < n; j++)
+                    {
+                        while (Hexit(Advance()) < 0)
+                            ;
+                        int d = Hexit(ch) << 4;
+                        d += Hexit(Advance());
+                        b[j] = (byte)d;
+                    }
+                    while (pos != end)
+                        Advance();
+                    tok = Sqlx.BLOBLITERAL;
+                    val = new TBlob(b);
+                    Advance();
+                    MaybeSuffix();
+                    return tok;
+                }
+                while (char.IsLetterOrDigit(ch) || ch == '_')
+                    Advance();
+                string s0 = new string(input, start, pos - start);
                 string s = s0.ToUpper();
-				if (CheckResWd(s))
-				{
-					switch(tok)
-					{
-						case Sqlx.TRUE: val = TBool.True; return Sqlx.BOOLEANLITERAL;
-						case Sqlx.FALSE: val = TBool.False; return Sqlx.BOOLEANLITERAL;
+                if (CheckResWd(s))
+                {
+                    switch (tok)
+                    {
+                        case Sqlx.TRUE: val = TBool.True; return Sqlx.BOOLEANLITERAL;
+                        case Sqlx.FALSE: val = TBool.False; return Sqlx.BOOLEANLITERAL;
                         case Sqlx.NULL: val = TNull.Value; return Sqlx.NULL;
-						case Sqlx.UNKNOWN: val = null; return Sqlx.BOOLEANLITERAL;
+                        case Sqlx.UNKNOWN: val = null; return Sqlx.BOOLEANLITERAL;
                         case Sqlx.CURRENT_DATE: val = new TDateTime(DateTime.Today); return tok;
                         case Sqlx.CURRENT_TIME: val = new TTimeSpan(DateTime.Now - DateTime.Today); return tok;
                         case Sqlx.CURRENT_TIMESTAMP: val = new TDateTime(DateTime.Now); return tok;
-					}
-					return tok;
-				}
-				val = new TChar(s);
-				return tok=Sqlx.ID;
-			}
-			string str;
+                    }
+                    return tok;
+                }
+                val = new TChar(s);
+                tok = Sqlx.ID;
+                MaybePrefix(s);
+                return tok;
+            }
+            string str;
             char minusch = ' '; // allow negative number?
-			if (char.IsDigit(ch)||(allowminus && ch=='-'))
-			{
-				start = pos;
+            if (char.IsDigit(ch) || (allowminus && ch == '-'))
+            {
+                start = pos;
                 if (ch == '-')
                     Advance();
                 if (!char.IsDigit(ch))
@@ -586,196 +643,161 @@ namespace Pyrrho.Level4
                     ch = '-';
                     goto uminus;
                 }
-				while (char.IsDigit(Advance()))
-					;
-				if (ch!='.')
-				{
-					str = new string(input,start,pos-start);
-					if (pos-start>18)
-						val = new TInteger(Integer.Parse(str));
-					else
-						val = new TInt(long.Parse(str));
-					tok=Sqlx.INTEGERLITERAL;
-					return tok;
-				}
-				while (char.IsDigit(Advance()))
-					;
-				if (ch!='e' && ch!='E')
-				{
-					str = new string(input,start,pos-start);
-					val = new TNumeric(Common.Numeric.Parse(str));
-					tok=Sqlx.NUMERICLITERAL;
-					return tok;
-				}
-				if (Advance()=='-'||ch=='+')
-					Advance();
-				if (!char.IsDigit(ch))
-					throw new DBException("22107").Mix();
-				while (char.IsDigit(Advance()))
-					;
-				str = new string(input,start,pos-start);
-				val = new TReal(Common.Numeric.Parse(str));
-				tok=Sqlx.REALLITERAL;
-				return tok;
-			}
-            uminus:
-			switch (ch)
-			{
-				case '[':	Advance(); return tok=Sqlx.LBRACK;
-				case ']':	Advance(); return tok=Sqlx.RBRACK;
-				case '(':	Advance(); return tok=Sqlx.LPAREN;
-				case ')':	Advance(); return tok=Sqlx.RPAREN;
-				case '{':	Advance(); return tok=Sqlx.LBRACE;
-				case '}':	Advance(); return tok=Sqlx.RBRACE;
-				case '+':	Advance(); return tok=Sqlx.PLUS;
-				case '*':	Advance(); return tok=Sqlx.TIMES;
-				case '/':	Advance(); return tok=Sqlx.DIVIDE;
-				case ',':	Advance(); return tok=Sqlx.COMMA;
-				case '.':	Advance(); return tok=Sqlx.DOT;
-				case ';':	Advance(); return tok=Sqlx.SEMICOLON;
-                case '?':   Advance(); return tok = Sqlx.QMARK; //added for Prepare()
-/* from v5.5 Document syntax allows exposed SQL expressions
-                case '{':
+                while (char.IsDigit(Advance()))
+                    ;
+                if (ch != '.')
+                {
+                    str = new string(input, start, pos - start);
+                    if (pos - start > 18)
+                        val = new TInteger(Integer.Parse(str));
+                    else
+                        val = new TInt(long.Parse(str));
+                    tok = Sqlx.INTEGERLITERAL;
+                    MaybeSuffix();
+                    return tok;
+                }
+                while (char.IsDigit(Advance()))
+                    ;
+                if (ch != 'e' && ch != 'E')
+                {
+                    str = new string(input, start, pos - start);
+                    val = new TNumeric(Common.Numeric.Parse(str));
+                    tok = Sqlx.NUMERICLITERAL;
+                    MaybeSuffix();
+                    return tok;
+                }
+                if (Advance() == '-' || ch == '+')
+                    Advance();
+                if (!char.IsDigit(ch))
+                    throw new DBException("22107").Mix();
+                while (char.IsDigit(Advance()))
+                    ;
+                str = new string(input, start, pos - start);
+                val = new TReal(Common.Numeric.Parse(str));
+                tok = Sqlx.REALLITERAL;
+                MaybeSuffix();
+                return tok;
+            }
+        uminus:
+            switch (ch)
+            {
+                case '[': Advance(); return tok = Sqlx.LBRACK;
+                case ']': Advance(); return tok = Sqlx.RBRACK;
+                case '(': Advance(); return tok = Sqlx.LPAREN;
+                case ')': Advance(); return tok = Sqlx.RPAREN;
+                case '{': Advance(); return tok = Sqlx.LBRACE;
+                case '}': Advance(); return tok = Sqlx.RBRACE;
+                case '+': Advance(); return tok = Sqlx.PLUS;
+                case '*': Advance(); return tok = Sqlx.TIMES;
+                case '/': Advance(); return tok = Sqlx.DIVIDE;
+                case ',': Advance(); return tok = Sqlx.COMMA;
+                case '.': Advance(); return tok = Sqlx.DOT;
+                case ';': Advance(); return tok = Sqlx.SEMICOLON;
+                case '?': Advance(); return tok = Sqlx.QMARK; //added for Prepare()
+                case ':':
+                    if (ch == ':')
                     {
-                        var braces = 1;
-                        var quote = '\0';
-                        while (pos<input.Length)
-                        {
-                            Advance();
-                            if (ch == '\\')
-                            {
-                                Advance();
-                                continue;
-                            }
-                            else if (ch == quote)
-                                quote = '\0';
-                            else if (quote == '\0')
-                            {
-                                if (ch == '{')
-                                    braces++;
-                                else if (ch == '}' && --braces == 0)
-                                {
-                                    Advance();
-                                    val = new TDocument(ctx,new string(input, st, pos - st));
-                                    return tok = Sqlx.DOCUMENTLITERAL;
-                                }
-                                else if (ch == '\'' || ch == '"')
-                                    quote = ch;
-                            }
-                        }
-                        throw new DBException("42150",new string(input,st,pos-st));
-                    } */
-				case ':':
-					if (ch==':')
-					{
-						Advance();
-						return tok=Sqlx.DOUBLECOLON;
-					}
-					return tok=Sqlx.COLON;
-				case '-':
+                        Advance();
+                        return tok = Sqlx.DOUBLECOLON;
+                    }
+                    return tok = Sqlx.COLON;
+                case '-':
                     if (minusch == ' ')
                         Advance();
                     else
                         ch = minusch;
-					if (ch=='-')
-					{
-   					    Advance();    // -- comment
-						while (pos<input.Length) 
-							Advance();
-						return Next();
-					}
-					return tok=Sqlx.MINUS;
-				case '|':	
-					if (Advance()=='|')
-					{
-						Advance();
-						return tok=Sqlx.CONCATENATE;
-					}
-					return tok=Sqlx.VBAR;
-				case '<' : 
-					if (Advance()=='=')
-					{
-						Advance();
-						return tok=Sqlx.LEQ; 
-					}
-					else if (ch=='>')
-					{
-						Advance();
-						return tok=Sqlx.NEQ;
-					}
-					return tok=Sqlx.LSS;
-				case '=':	Advance(); return tok=Sqlx.EQL;
-				case '>':
-					if (Advance()=='=')
-					{
-						Advance();
-						return tok=Sqlx.GEQ;
-					}
-					return tok=Sqlx.GTR;
-				case '"':	// delimited identifier
-				{
-					start = pos;
-					while (Advance()!='"')
-						;
-					val = new TChar(new string(input,start+1,pos-start-1));
-                    Advance();
-                    while (ch == '"')
+                    if (ch == '-')
                     {
-                        var fq = pos;
+                        Advance();    // -- comment
+                        while (pos < input.Length)
+                            Advance();
+                        return Next();
+                    }
+                    return tok = Sqlx.MINUS;
+                case '|':
+                    if (Advance() == '|')
+                    {
+                        Advance();
+                        return tok = Sqlx.CONCATENATE;
+                    }
+                    return tok = Sqlx.VBAR;
+                case '<':
+                    if (Advance() == '=')
+                    {
+                        Advance();
+                        return tok = Sqlx.LEQ;
+                    }
+                    else if (ch == '>')
+                    {
+                        Advance();
+                        return tok = Sqlx.NEQ;
+                    }
+                    return tok = Sqlx.LSS;
+                case '=': Advance(); return tok = Sqlx.EQL;
+                case '>':
+                    if (Advance() == '=')
+                    {
+                        Advance();
+                        return tok = Sqlx.GEQ;
+                    }
+                    return tok = Sqlx.GTR;
+                case '"':   // delimited identifier
+                    {
+                        start = pos;
                         while (Advance() != '"')
                             ;
-                        val = new TChar(val.ToString()+new string(input, fq, pos - fq));
+                        val = new TChar(new string(input, start + 1, pos - start - 1));
                         Advance();
-                    }
-					tok=Sqlx.ID;
-         //           CheckForRdfLiteral();
-                    return tok;
-				}
-				case '\'': 
-				{
-					start = pos;
-					var qs = new Stack<int>();
-                    qs.Push(-1);
-					int qn = 0;
-					for (;;)
-					{
-						while (Advance()!='\'')
-							;
-						if (Advance()!='\'')
-							break;
-                        qs.Push(pos);
-						qn++;
-					}
-					char[] rb = new char[pos-start-2-qn];
-					int k=pos-start-3-qn;
-					int p = -1;
-					if (qs.Count>1)
-						p = qs.Pop();
-					for (int j=pos-2;j>start;j--)
-					{
-                        if (j == p)
-                            p = qs.Pop();
-                        else
-                            rb[k--] = input[j];
-					}
-					val = new TChar(new string(rb));
-					return tok=Sqlx.CHARLITERAL;
-				}
-                /*        case '^': // ^^uri can occur in Type
+                        while (ch == '"')
                         {
-                            val = new TChar("");
-                            tok = Sqlx.ID;
-                            CheckForRdfLiteral();
-                            return tok;
-                        } */
+                            var fq = pos;
+                            while (Advance() != '"')
+                                ;
+                            val = new TChar(val.ToString() + new string(input, fq, pos - fq));
+                            Advance();
+                        }
+                        tok = Sqlx.ID;
+                        MaybePrefix(val.ToString());
+                        return tok;
+                    }
+                case '\'':
+                    {
+                        start = pos;
+                        var qs = new Stack<int>();
+                        qs.Push(-1);
+                        int qn = 0;
+                        for (; ; )
+                        {
+                            while (Advance() != '\'')
+                                ;
+                            if (Advance() != '\'')
+                                break;
+                            qs.Push(pos);
+                            qn++;
+                        }
+                        char[] rb = new char[pos - start - 2 - qn];
+                        int k = pos - start - 3 - qn;
+                        int p = -1;
+                        if (qs.Count > 1)
+                            p = qs.Pop();
+                        for (int j = pos - 2; j > start; j--)
+                        {
+                            if (j == p)
+                                p = qs.Pop();
+                            else
+                                rb[k--] = input[j];
+                        }
+                        val = new TChar(new string(rb));
+                        return tok = Sqlx.CHARLITERAL;
+                    }
                 // These are for the new Position Domain in v7. Positions are always longs
                 case '!':
                     {
                         Advance();
                         while (char.IsDigit(Advance()))
                             ;
-                        str = new string(input, start+1, pos - start-1);
-                        val = new TInt(long.Parse(str)+Transaction.TransPos);
+                        str = new string(input, start + 1, pos - start - 1);
+                        val = new TInt(long.Parse(str) + Transaction.TransPos);
                         tok = Sqlx.INTEGERLITERAL;
                         return tok;
                     }
@@ -810,75 +832,10 @@ namespace Pyrrho.Level4
                         return tok;
                     }
                 case '\0':
-					return tok=Sqlx.EOF;
-			}
-			throw new DBException("42101",ch).Mix();
-		}
- /*       /// <summary>
-        /// Pyrrho 4.4 if we seem to have an ID, it may be followed by ^^
-        /// in which case it is an RdfLiteral
-        /// </summary>
-        private void CheckForRdfLiteral()
-        {
-            if (ch != '^')
-                return;
-            if (Advance() != '^')
-                throw new DBException("22041", "^").Mix();
-            string valu = val.ToString();
-            Domain t = null;
-            string iri = null;
-            int pp = pos;
-            Ident ic = null;
-            if (Advance() == '<')
-            {
-                StringBuilder irs = new StringBuilder();
-                while (Advance() != '>')
-                    irs.Append(ch);
-                Advance();
-                iri = irs.ToString();
+                    return tok = Sqlx.EOF;
             }
-    /*        else if (ch == ':')
-            {
-                Next();// pass the colon
-                Next();
-                if (tok != Sqlx.ID)
-                    throw new DBException("22041", tok).Mix();
-                var nsp = ctx.nsps[""];
-                if (nsp == null)
-                    throw new DBException("2201M", "\"\"").ISO();
-                iri = nsp + val as string;
-            } else 
-            {
-                Next();
-                if (tok != Sqlx.ID)
-                    throw new DBException("22041", tok).Mix();
-    /*            if (ch == ':')
-                {
-                    Advance();
-                    iri = ctx.nsps[val.ToString()];
-                    if (iri == null)
-                        iri = PhysBase.DefaultNamespaces[val.ToString()];
-                    if (iri == null)
-                        throw new DBException("2201M", val).ISO();
-                    Next();
-                    if (tok != Sqlx.ID)
-                        throw new DBException("22041", tok).Mix();
-                    iri = iri + val as string;
-                } 
-            }
-            if (iri != null)
-            {
-                t = ctx.types[iri];
-                if (t==null) // a surprise: ok in provenance and other Row
-                {
-                    t = Domain.Iri.Copy(iri);
-                    ctx.types +=(iri, t);
-                }
-                ic = new Ident(this,Ident.IDType.Type,iri);
-            }
-            val = RdfLiteral.New(t, valu);
-            tok = Sqlx.RDFLITERAL;
-        } */
+            throw new DBException("42101", ch).Mix();
+        }
         /// <summary>
         /// This function is used for XML parsing (e.g. in XPATH)
         /// It stops at the first of the given characters it encounters or )

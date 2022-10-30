@@ -867,6 +867,20 @@ namespace Pyrrho.Level1
             }
             if (dt.CompareTo(p.dataType)==0)
                 WriteByte(1);
+            else if ((dt as UDType)?.prefix is string pf)
+            {
+                WriteByte(5);
+                PutString(pf);
+                PutString(p.dataType.name);
+                PutInt(p.dataType.Typecode());
+            }
+            else if ((dt as UDType)?.suffix is string sf)
+            {
+                WriteByte(6);
+                PutString(sf);
+                PutString(p.dataType.name);
+                PutInt(p.dataType.Typecode());
+            }
             else
             {
                 WriteByte(2);
@@ -959,7 +973,27 @@ namespace Pyrrho.Level1
                 case Sqlx.MULTISET: PutMultiset(_cx, (TMultiset)tv.Val()); break;
                 case Sqlx.TABLE: PutTable(_cx, (RowSet)tv.Val()); break;
                 case Sqlx.INTERVAL: PutInterval((Interval)tv.Val()); break;
-                case Sqlx.TYPE: goto case Sqlx.ROW;
+                case Sqlx.TYPE: 
+                    if (tv.dataType is UDType u)
+                    {
+                        var ut = (UDType)_cx.db.objects[u.defpos]; // may be different!
+                        var tf = ut.rowType.First();
+                        if (ut.prefix != null)
+                        {
+                            if (tf != null)
+                                tv = ((TRow)tv).values[tf.value()];
+                            PutString(ut.prefix + tv.ToString());
+                            break;
+                        }
+                        if (ut.suffix !=null)
+                        {
+                            if (tf != null)
+                                tv = ((TRow)tv).values[tf.value()];
+                            PutString(tv.ToString()+ut.suffix);
+                            break;
+                        }
+                    }
+                    goto case Sqlx.ROW;
                 case Sqlx.TYPE_URI: PutString(tv.ToString()); break;
                 case Sqlx.XML: PutString(tv.ToString()); break;
                 default:

@@ -6516,7 +6516,7 @@ namespace Pyrrho.Level4
                 var ds = wr.GetResponseHeader("Description");
                 var cl = wr.GetResponseHeader("Classification");
                 var ld = wr.GetResponseHeader("LastData");
-                var lv = (cl != "") ? Level.Parse(cl) : Level.D;
+                var lv = (cl != "") ? Level.Parse(cl,cx) : Level.D;
                 var mime = wr.GetResponseHeader("Content-Type") ?? "text/plain";
                 var s = wr.GetResponseStream();
                 var sr = new StreamReader(s).ReadToEnd();

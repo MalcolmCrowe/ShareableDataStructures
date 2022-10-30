@@ -558,6 +558,7 @@ namespace Pyrrho.Common
             }
         }
     }
+
     // shareable as of 26 April 2021
     internal class TSensitive : TypedValue
     {
@@ -584,6 +585,33 @@ namespace Pyrrho.Common
         public override string ToString()
         {
             return value.ToString();
+        }
+    }
+    // shareable
+    internal class TSubType : TypedValue
+    {
+        internal readonly TypedValue value; // of the supertype
+        internal TSubType(UDType dt, TypedValue v) : base(dt)
+        {
+            value = v;
+        }
+        public override int _CompareTo(object obj)
+        {
+            object that = obj as TypedValue;
+            return value._CompareTo(that);
+        }
+        internal override object Val()
+        {
+            return value.Val();
+        }
+        public override bool IsNull => value.IsNull;
+        public override string ToString()
+        {
+            return value.ToString();
+        }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException();
         }
     }
     // shareable

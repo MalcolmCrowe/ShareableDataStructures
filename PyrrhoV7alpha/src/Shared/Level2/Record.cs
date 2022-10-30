@@ -308,6 +308,10 @@ namespace Pyrrho.Level2
                 var v = b.value();
                 sb.Append(cm); cm = ",";
                 sb.Append(DBObject.Uid(k));sb.Append('=');sb.Append(v.Val());
+                sb.Append("[");
+                if (v.dataType.defpos < 0) sb.Append(v.dataType.ToString());
+                else sb.Append(v.dataType.defpos);
+                sb.Append("]");
             }
             if (_classification != Level.D || type == Type.Update1)
             { sb.Append(" Classification: "); sb.Append(_classification); }

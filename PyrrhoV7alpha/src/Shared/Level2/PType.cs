@@ -38,8 +38,8 @@ namespace Pyrrho.Level2
             : base(t, pp, cx, dm)
         {
             name = nm.ident;
-            under = un;
             structure = dm;
+            under = un;
             framing = new Framing(cx,nst);
         }
         public PType(Ident nm, Domain dm, Domain un, long pp, Context cx)
@@ -123,8 +123,9 @@ namespace Pyrrho.Level2
             }
             var st = rdr.GetLong();
             var dt = rdr.context._Dom(rdr.context._Ob(st));
-            m = m + (Domain.Structure,st)
-                + (Domain.Representation,dt.representation)
+            m += (Domain.Structure, st);
+            if (dt!=null)
+                m = m + (Domain.Representation,dt.representation)
                 + (Domain.RowType, dt.rowType);
             structure = new Domain(ppos, k, m);
             base.Deserialise(rdr);
