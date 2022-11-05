@@ -112,6 +112,7 @@ namespace Pyrrho.Level3
                 for (var b = rw.values.First(); b != null; b = b.Next())
                     act.values += (b.key(), b.value());
             act.values += (defpos, targ);
+            act.val = targ;
             i = 0;
             for (var b = me.ins.First(); b != null; b = b.Next(), i++)
             {

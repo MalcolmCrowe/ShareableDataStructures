@@ -593,7 +593,7 @@ namespace Pyrrho.Common
         internal readonly TypedValue value; // of the supertype
         internal TSubType(UDType dt, TypedValue v) : base(dt)
         {
-            value = v;
+            value = (v is TSubType st)?st.value:v;
         }
         public override int _CompareTo(object obj)
         {
@@ -607,7 +607,7 @@ namespace Pyrrho.Common
         public override bool IsNull => value.IsNull;
         public override string ToString()
         {
-            return value.ToString();
+            return value.ToString() + (((UDType)dataType).suffix??"");
         }
         internal override TypedValue New(Domain t)
         {

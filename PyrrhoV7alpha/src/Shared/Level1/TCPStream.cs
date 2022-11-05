@@ -963,17 +963,22 @@ namespace Pyrrho.Level1
                         PutDateTime(new DateTime(tv.ToLong().Value));
                     else
                         PutDateTime((DateTime)tv.Val()); break;
-                case Sqlx.DOCUMENT: PutBytes(((TDocument)tv.Val()).ToBytes(null)); break;
-                case Sqlx.DOCARRAY: PutBytes(((TDocArray)tv.Val()).ToBytes()); break;
+                case Sqlx.DOCUMENT: 
+                case Sqlx.DOCARRAY: 
                 case Sqlx.OBJECT: PutString(tv.ToString()); break;
                 case Sqlx.BLOB: PutBytes((byte[])tv.Val()); break;
                 case Sqlx.REF:
-                case Sqlx.ROW: PutRow(_cx, tv as TRow); break; // different!
+                case Sqlx.ROW:
+                    if (tv is TSubType st)
+                        PutData(_cx, st.value);
+                    else
+                        PutRow(_cx, tv as TRow);
+                    break; // different!
                 case Sqlx.ARRAY: PutArray(_cx, (TArray)tv); break;
                 case Sqlx.MULTISET: PutMultiset(_cx, (TMultiset)tv.Val()); break;
                 case Sqlx.TABLE: PutTable(_cx, (RowSet)tv.Val()); break;
                 case Sqlx.INTERVAL: PutInterval((Interval)tv.Val()); break;
-                case Sqlx.TYPE: 
+                case Sqlx.TYPE:
                     if (tv.dataType is UDType u)
                     {
                         var ut = (UDType)_cx.db.objects[u.defpos]; // may be different!
@@ -985,11 +990,11 @@ namespace Pyrrho.Level1
                             PutString(ut.prefix + tv.ToString());
                             break;
                         }
-                        if (ut.suffix !=null)
+                        if (ut.suffix != null)
                         {
                             if (tf != null)
                                 tv = ((TRow)tv).values[tf.value()];
-                            PutString(tv.ToString()+ut.suffix);
+                            PutString(tv.ToString() + ut.suffix);
                             break;
                         }
                     }

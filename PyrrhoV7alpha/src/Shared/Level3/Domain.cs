@@ -205,7 +205,7 @@ namespace Pyrrho.Level3
             Database._system += (dp, this, 0);
         }
         internal Domain(long dp, BTree<long, object> m) : base(dp, m)
-        { }
+        {  }
         /// <summary>
         /// Allow construction of ad-hoc derived types such as ARRAY, MULTISET
         /// </summary>
@@ -262,7 +262,8 @@ namespace Pyrrho.Level3
         {
             var dp = cx.GetUid();
             var dm = new Domain(dp, m);
-            cx.db += (dp, dm, cx.db.loadpos);
+            if (dp<Transaction.HeapStart)         // Fixing a bug..
+                cx.db += (dp, dm, cx.db.loadpos); // should this be here at all?
             return (Domain)cx._Add(new Domain(dp, m));
         }
         internal Domain Scalar(Context cx)
@@ -334,7 +335,10 @@ namespace Pyrrho.Level3
             var m = d.mem + (RowType, d.rowType + sv.defpos)
                 + (Representation, d.representation + (sv.defpos, cx._Dom(sv)));
             m += (Aggs, d.aggs + sv.IsAggregation(cx));
-            return (Domain)d.New(m);
+            var dp = d.defpos;
+            if (dp < 0)
+                dp = cx.GetUid();
+            return new Domain(dp,m);
         }
         public static Domain operator+(Domain d,(Sqlx,Sqlx)o)
         {
@@ -3396,6 +3400,8 @@ namespace Pyrrho.Level3
         /// <returns>The evaluated object</returns>
         public TypedValue Eval(long lp,Context cx,TypedValue a, Sqlx op, TypedValue b) // op is + - * / so a and b should be compatible arithmetic types
         {
+            a = (a is TSubType st) ? st.value : a;
+            b = (b is TSubType su) ? su.value : b;
             if (sensitive)
                 return new TSensitive(this, Eval(lp,cx,a, op, b));
             if (kind == Sqlx.TABLE || kind == Sqlx.ROW)

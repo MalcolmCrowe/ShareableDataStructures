@@ -49,16 +49,12 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // CTree<string,long> Domain/Table/View etc by name
-            Methods = -252, // CTree<long,CTree<string,CTree<int,long>>> Method by UDT, name, arity
             Procedures = -249; // CTree<string,CTree<int,long>> Procedure/Function by name and arity
         internal CTree<string, long> dbobjects => 
             (CTree<string, long>)mem[DBObjects]??CTree<string,long>.Empty;
         public string name => (string)mem[ObInfo.Name];
         internal CTree<string, CTree<int,long>> procedures => // not CList<long> !
             (CTree<string, CTree<int,long>>)mem[Procedures]??CTree<string,CTree<int,long>>.Empty;
-        internal CTree<long, CTree<string, CTree<int, long>>> methods =>
-            (CTree<long, CTree<string, CTree<int, long>>>)mem[Methods]
-            ?? CTree<long, CTree<string, CTree<int, long>>>.Empty;
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>
@@ -87,37 +83,12 @@ namespace Pyrrho.Level3
         {
             return (Role)r.New(r.mem + (DBObjects, r.dbobjects + x));
         }
-        public static Role operator -(Role r, string n)
-        {
-            return (Role)r.New(r.mem + (DBObjects, r.dbobjects - n));
-        }
-        public static Role operator +(Role r, PProcedure pp)
-        {
-            var ps = r.procedures;
-            var pa = ps[pp.name] ?? CTree<int, long>.Empty;
-            return (Role)r.New(r.mem + (Procedures, ps + (pp.name, pa + (pp.arity, pp.ppos))));
-        }
         public static Role operator +(Role r, Procedure p)
         {
             var ps = r.procedures;
             var n = p.infos[r.definer].name;
             var pa = ps[n] ?? CTree<int, long>.Empty;
             return (Role)r.New(r.mem + (Procedures, ps + (n, pa + (p.arity, p.defpos))));
-        }
-        public static Role operator +(Role r, Method m)
-        {
-            var ms = r.methods;
-            var n = m.infos[m.definer].name;
-            var mn = ms[m.udType.defpos] ?? CTree<string, CTree<int, long>>.Empty;
-            var ma = mn[n] ?? CTree<int, long>.Empty;
-            ma += (m.arity, m.defpos);
-            mn += (n, ma);
-            ms += (m.udType.defpos, mn);
-            return (Role)r.New(r.mem + (Methods, ms));
-        }
-        public static Role operator -(Role r, DBObject ob)
-        {
-            return (Role)r.New(r.mem + (DBObjects, r.dbobjects - ob.infos[r.defpos].name));
         }
         public override string ToString()
         {
@@ -143,28 +114,6 @@ namespace Pyrrho.Level3
                     sb.Append(Uid(a.value()));
                 }
                 if (cn == ',') sb.Append(']');
-            }
-            if (cm == ';') sb.Append(')');
-            sb.Append(" Methods:"); cm = '(';
-            for (var o = methods.First(); o != null; o = o.Next())
-            {
-                sb.Append(cm); cm = ';';
-                sb.Append(Uid(o.key())); 
-                var co = '(';
-                for (var b = o.value().First(); b != null; b = b.Next())
-                {
-                    sb.Append(co); co = ',';
-                    sb.Append(b.key()); sb.Append('=');
-                    var cn = '[';
-                    for (var a = b.value().First(); a != null; a = a.Next())
-                    {
-                        sb.Append(a.key()); sb.Append(':');
-                        sb.Append(cn); cn = ',';
-                        sb.Append(Uid(a.value()));
-                    }
-                    if (cn == ',') sb.Append(']');
-                }
-                if (co == ',') sb.Append(')');
             }
             if (cm == ';') sb.Append(')');
             return sb.ToString();

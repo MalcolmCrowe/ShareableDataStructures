@@ -1375,8 +1375,7 @@ namespace Pyrrho.Level4
             {
                 var p = b.value();
                 var px = Ix(id.iix.lp,p);
-                var ob = obs[p] ?? (DBObject)db.objects[p];
-                var n = (ob is SqlValue v) ? v.alias??v.name : _Ob(p)?.infos[role.defpos].name;
+                var n = NameFor(p);
                 if (n == null)
                     continue;
                 var ic = new Ident(n, px);

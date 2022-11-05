@@ -122,8 +122,8 @@ namespace Pyrrho.Level3
                 {
                     if (qx.sd >= vx.sd)  // substitute the references for the instance columns
                     {
-                        var ov = (SqlValue)cx.obs[qx.dp];
-                        var tv = (SqlValue)cx.obs[vx.dp];
+                        var ov = cx.obs[qx.dp];
+                        var tv = cx.obs[vx.dp];
                         var nv = tv.Relocate(qx.dp);
                         cx.Replace(ov, nv);
                         cx.Replace(tv, nv);

@@ -3434,7 +3434,7 @@ namespace Pyrrho.Level4
                         var oi = ut.infos[cx.db.role.defpos];
                         if (cx.db.objects[oi.methodInfos[pn.ident]?[n] ?? -1L] is Method me)
                         {
-                            var ca = new CallStatement(lp.dp, cx, me, pn.ident, ps, null);
+                            var ca = new CallStatement(cx.GetUid(), cx, me, pn.ident, ps, null);
                             cx.Add(ca);
                             return new SqlConstructor(pn.iix.dp, cx, ut, ca);
                         }
@@ -3450,7 +3450,7 @@ namespace Pyrrho.Level4
                 else
                 {
                     var vr = (SqlValue)Identify(ic.Prefix(ic.Length - 2), Domain.Content);
-                    var ms = new CallStatement(lp.dp, cx, null, pn.ident, ps, vr);
+                    var ms = new CallStatement(cx.GetUid(), cx, null, pn.ident, ps, vr);
                     cx.Add(ms);
                     return (SqlValue)cx.Add(new SqlMethodCall(pn.iix.dp, cx, ms));
                 }
@@ -5041,7 +5041,7 @@ namespace Pyrrho.Level4
                 if (tok == Sqlx.LPAREN)
                    return ParseRowTypeSpec(tp,pn); // pn is needed for tp==TYPE case
             }
-            if (tok==Sqlx.ID && cx._Dom(cx.db.GetObject(pn.ident)) is UDType ut)
+            if (tok==Sqlx.ID && pn!=null && cx._Dom(cx.db.GetObject(pn?.ident)) is UDType ut)
             {
                 Next();
                 ut.Defs(cx);
@@ -6061,7 +6061,7 @@ namespace Pyrrho.Level4
                 return (RowSet)cx.Add(ParseTableReference(dp));
             }
             else
-                return new TrivialRowSet(cx);
+                return new TrivialRowSet(cx,dm);
 		}
         /// <summary>
 		/// TableReference = TableFactor Alias | JoinedTable .
@@ -6202,10 +6202,10 @@ namespace Pyrrho.Level4
             else if (tok == Sqlx.STATIC)
             {
                 Next();
-                rf = new TrivialRowSet(cx);
+                rf = new TrivialRowSet(cx,Domain.Row);
             }
             else if (tok == Sqlx.LBRACK)
-                rf = new TrivialRowSet(cx) + (RowSet.Target, ParseSqlDocArray().defpos);
+                rf = new TrivialRowSet(cx,Domain.DocArray) + (RowSet.Target, ParseSqlDocArray().defpos);
             else // ordinary table, view, OLD/NEW TABLE id, or parameter
             {
                 Ident ic = new Ident(this);
@@ -7307,11 +7307,11 @@ namespace Pyrrho.Level4
                             ps = ParseSqlValueList(xp);
                         cx.Add(left);
                         var ut = left.domain;
-                        var oi = cx._Ob(ut).infos[cx.role.defpos];
+                        var oi = ((UDType)cx.db.objects[ut]).infos[cx.role.defpos];
                         var ar = ps.Length;
                         var pr = cx.db.objects[oi.methodInfos[n.ident]?[ar] ?? -1L] as Method
                             ?? throw new DBException("42173", n);
-                        var cs = new CallStatement(lp.dp, cx, pr, n.ident, ps, left);
+                        var cs = new CallStatement(cx.GetUid(), cx, pr, n.ident, ps, left);
                         cx.Add(cs);
                         Mustbe(Sqlx.RPAREN);
                         left = new SqlMethodCall(n.iix.dp, cx, cs);
@@ -7334,8 +7334,14 @@ namespace Pyrrho.Level4
                 } else // tok==Sqlx.LBRACK
                 {
                     Next();
-                    left = new SqlValueExpr(lp.dp, cx, Sqlx.LBRACK, left,
-                        ParseSqlValue(Domain.Int), Sqlx.NO);
+                    var dl = cx._Dom(left);
+                    if (dl.kind == Sqlx.ARRAY)
+                        left = new SqlValueExpr(cx.GetUid(), cx, Sqlx.LBRACK, left,
+                            ParseSqlValue(Domain.Int), Sqlx.NO);
+                    else // probably a Document
+                        left = new SqlValueExpr(cx.GetUid(), cx, Sqlx.LBRACK, left,
+                            ParseSqlValue(Domain.Char), Sqlx.NO);
+                    cx.Add(left);
                     Mustbe(Sqlx.RBRACK);
                 }
 
@@ -7593,7 +7599,6 @@ namespace Pyrrho.Level4
 		/// XMLRoot = XMLROOT '('  TypedValue ',' VERSION (TypedValue | NO VALUE) [','STANDALONE (YES|NO|NO VALUE)] ')' .
 		/// NO VALUE is the default for the standalone property.
 		/// XPath = XMLQUERY '('  TypedValue ',' xml ')' .
-        /// HttpGet = HTTP GET url_Value [AS mime_string] .
         /// Level = LEVEL id ['-' id] GROUPS { id } REFERENCES { id }.
 		/// MethodCall = 	Value '.' Method_id  [ '(' [  TypedValue { ','  TypedValue } ] ')']
 		/// 	|	'('  TypedValue AS Type ')' '.' Method_id  [ '(' [  TypedValue { ','  TypedValue } ] ')']
@@ -7948,17 +7953,19 @@ namespace Pyrrho.Level4
                     }
                 case Sqlx.LBRACE:
                     {
-                        var v = new SqlRow(lp.dp,BTree<long,object>.Empty);
+                        var vs = BList<SqlValue>.Empty;
                         Next();
                         if (tok != Sqlx.RBRACE)
-                            GetDocItem(cx,v);
+                            vs += GetDocItem(cx);
                         while (tok==Sqlx.COMMA)
                         {
                             Next();
-                            GetDocItem(cx,v);
+                            vs += GetDocItem(cx);
                         }
                         Mustbe(Sqlx.RBRACE);
-                        return (SqlValue)cx.Add(v);
+                        var v = new SqlRow(lp.dp,cx,vs);
+                        var dm = (Domain)cx.Add(new Domain(Sqlx.DOCUMENT, cx, vs));
+                        return (SqlValue)cx.Add(v + (DBObject._Domain, dm.defpos));
                     }
                 case Sqlx.LBRACK:
                         return (SqlValue)cx.Add(ParseSqlDocArray());
@@ -8150,6 +8157,22 @@ namespace Pyrrho.Level4
                     {
                         Next();
                         return (SqlValue)cx.Add(new ColumnFunction(lp.dp, cx, ParseIDList()));
+                    }
+                case Sqlx.HTTP:
+                    {
+                        kind = tok;
+                        Next();
+                        Mustbe(Sqlx.LPAREN);
+                        op1 = ParseSqlValue(Domain.Char);
+                        Mustbe(Sqlx.COMMA);
+                        val = ParseSqlValue(Domain.Char); //url
+                        if (tok == Sqlx.COMMA)
+                        {
+                            Next();
+                            op2 = ParseSqlValue(Domain.Document);
+                        }
+                        Mustbe(Sqlx.RPAREN);
+                        break;
                     }
                 case Sqlx.INTERSECT: goto case Sqlx.COUNT;
                 case Sqlx.LN: goto case Sqlx.ABS;
@@ -9013,12 +9036,12 @@ namespace Pyrrho.Level4
         /// Get a document item
         /// </summary>
         /// <param name="v">The document being constructed</param>
-        SqlRow GetDocItem(Context cx, SqlRow v)
+        SqlValue GetDocItem(Context cx)
         {
             Ident k = new Ident(this);
             Mustbe(Sqlx.ID);
             Mustbe(Sqlx.COLON);
-            return v + (cx,(ParseSqlValue(Domain.Content) +(ObInfo.Name,k.ident)));
+            return (SqlValue)cx.Add(ParseSqlValue(Domain.Content) +(ObInfo.Name,k.ident));
         }
         /// <summary>
         /// Parse a document array

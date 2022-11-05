@@ -2072,11 +2072,12 @@ namespace Pyrrho.Level4
         internal const long
             Singleton = -405; //TRow
         internal TRow row => (TRow)mem[Singleton];
-        internal TrivialRowSet(Context cx) 
-            : this(cx.GetUid(),cx,TRow.Empty) { }
+        internal TrivialRowSet(Context cx,Domain dm) 
+            : this(cx.GetUid(),cx,new TRow(dm,CTree<long,TypedValue>.Empty))
+        {  }
         internal TrivialRowSet(long dp, Context cx, TRow r,
             Grant.Privilege pr=Grant.Privilege.Select,string a=null)
-            : base(dp, cx, _Mem(dp,cx,r.dataType)+(Singleton,r)+(_Alias,a)
+            : base(dp, _Mem(dp,cx,r.dataType)+(Singleton,r)+(_Alias,a)
                   +(_Ident,new Ident(a,new Iix(dp))))
         {
             cx.Add(this);

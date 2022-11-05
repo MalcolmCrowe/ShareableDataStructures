@@ -6,6 +6,11 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System.Xml;
 using System.Security.Cryptography;
+using System.Threading.Tasks;
+using System.Net.Configuration;
+using System.Net;
+using System.IO;
+using System.Runtime.Remoting;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -353,7 +358,7 @@ namespace Pyrrho.Level3
                 for (var b = r.Sources(cx).First(); b != null; b = b.Next())
                     if (cx.cursors[b.key()] is TypedValue sv)
                         return sv;
-            return _Default();
+            return cx.val??_Default();
         }
         internal override void Set(Context cx, TypedValue v)
         {
@@ -2003,6 +2008,11 @@ namespace Pyrrho.Level3
                             var ar = rg.Eval(cx);
                             if (al == null || ar == null)
                                 return null;
+                            if (al.dataType.kind==Sqlx.DOCUMENT|| al.dataType.kind==Sqlx.CONTENT)
+                            {
+                                var dc = (TDocument)al;
+                                return dc[ar.ToString()];
+                            }
                             var sr = ar.ToInt();
                             if (al.IsNull || !sr.HasValue)
                                 return dm.defaultValue;
@@ -2342,6 +2352,14 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.QMARK:
                         dm = Domain.Content; break;
+                case Sqlx.LBRACK:
+                    {
+                        var dl = cx._Dom(left)?.kind;
+                        var dr = cx._Dom(right)?.kind;
+                        if ((dl == Sqlx.DOCUMENT || dl == Sqlx.CONTENT) && dr == Sqlx.CHAR)
+                            dm = Domain.Content;
+                        break;
+                    }
                 case Sqlx.RBRACK:
                         dm= (Domain)cx.Add(new Domain(cx.GetUid(), Sqlx.ARRAY, cx._Dom(left))); break;
                 case Sqlx.SET: dm = cx._Dom(left); cs = cx._Dom(left).rowType;  nm = left.name; break; // JavaScript
@@ -3013,16 +3031,19 @@ namespace Pyrrho.Level3
         internal override (BList<SqlValue>, BTree<long,object>) Resolve(Context cx, long f, BTree<long,object> m)
         {
             var dm = cx._Dom(this);
-            var cs = BList<SqlValue>.Empty;
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
+            if (dm.kind != Sqlx.DOCUMENT)
             {
-                var c = (SqlValue)cx.obs[b.value()];
-                BList<SqlValue> ls;
-                (ls, m) = c.Resolve(cx, f, m);
-                cs += ls;
+                var cs = BList<SqlValue>.Empty;
+                for (var b = dm.rowType.First(); b != null; b = b.Next())
+                {
+                    var c = (SqlValue)cx.obs[b.value()];
+                    BList<SqlValue> ls;
+                    (ls, m) = c.Resolve(cx, f, m);
+                    cs += ls;
+                }
+                var sv = new SqlRow(defpos, cx, cs);
+                m = cx.Replace(this, sv, m);
             }
-            var sv = new SqlRow(defpos, cx, cs);
-            m = cx.Replace(this, sv, m);
             return (new BList<SqlValue>((SqlValue)cx.obs[defpos]), m);
         }
         internal override SqlValue AddFrom(Context cx, long q)
@@ -3086,6 +3107,17 @@ namespace Pyrrho.Level3
         {
             var vs = CTree<long,TypedValue>.Empty;
             var dm = cx._Dom(this);
+            if (dm.kind == Sqlx.DOCUMENT)
+            {
+                var dc = new TDocument();
+                for (var b = dm.rowType.First(); b != null; b = b.Next())
+                {
+                    var p = b.value();
+                    var sv = (SqlValue)cx.obs[p];
+                    dc = dc.Add(sv.NameFor(cx),sv.Eval(cx));
+                }
+                return dc;
+            } 
             for (var b=dm.rowType.First();b!=null;b=b.Next())
             {
                 var s = b.value();
@@ -4643,6 +4675,8 @@ namespace Pyrrho.Level3
         }
         internal override (BList<SqlValue>, BTree<long,object>) Resolve(Context cx, long f, BTree<long,object> m)
         {
+            if (domain >= 0)
+                return (new BList<SqlValue>(this), m);
             SqlValue v;
             BList<SqlValue> ls;
             var c = ((CallStatement)cx.obs[call]);
@@ -4650,10 +4684,19 @@ namespace Pyrrho.Level3
             v = ls[0];
             var mc = (SqlMethodCall)v;
             var ov = (SqlValue)cx.obs[c.var];
-            (ls, m) = ov.Resolve(cx, f, m);
-            ov = ls[0];
-            var oi = cx._Dom(ov).infos[cx.role.defpos]; // we need the names
-            var p = oi.methodInfos[c.name]?[(int)c.parms.Count] ?? -1L;
+            if (ov.domain < 0)
+            {
+                (ls, m) = ov.Resolve(cx, f, m);
+                ov = ls[0];
+            }
+            var udt = (UDType)cx._Dom(ov);
+            udt = (UDType)cx.db.objects[udt.defpos];
+            var oi = udt.infos[cx.role.defpos]; // we need the names
+            var nm = c.name;
+            var ix = nm.IndexOf('$');
+            if (ix>0)
+                nm = nm.Substring(0, ix);
+            var p = oi.methodInfos[nm]?[(int)c.parms.Count] ?? -1L;
             var nc = c + (CallStatement.Var, ov.defpos) + (CallStatement.ProcDefPos, p);
             cx.Add(nc);
             var pr = ((DBObject)cx.db.objects[p]).Instance(defpos, cx) as Procedure;
@@ -4677,6 +4720,7 @@ namespace Pyrrho.Level3
             if (c.var == -1L)
                 throw new PEException("PE241");
             var v = (SqlValue)cx.obs[c.var];
+            var a = cx.GetActivation();
             var vv = v.Eval(cx);
             for (var b =cx._Dom(v).rowType.First();b!=null;b=b.Next())
             {
@@ -4873,12 +4917,18 @@ namespace Pyrrho.Level3
             { 
                 var vs = CTree<long,TypedValue>.Empty;
                 var i = 0;
-                var dm = cx._Dom(this);
-                for (var b = dm.representation.First(); b != null; b = b.Next(), i++)
+                var dm = (UDType)cx._Dom(this);
+                if (dm.rowType == CList<long>.Empty)
                 {
-                    var p = cx._Dom((SqlValue)cx.obs[sce]).rowType[i];
-                    vs += (b.key(), ((SqlValue)cx.obs[p]).Eval(cx));
+                    var p = cx._Dom((SqlValue)cx.obs[sce]).rowType[0];
+                    return new TSubType(dm, ((SqlValue)cx.obs[p]).Eval(cx));
                 }
+                else
+                    for (var b = dm.representation.First(); b != null; b = b.Next(), i++)
+                    {
+                        var p = cx._Dom((SqlValue)cx.obs[sce]).rowType[i];
+                        vs += (b.key(), ((SqlValue)cx.obs[p]).Eval(cx));
+                    }
                 cx.values += vs;
                 var r = new TRow(dm, vs);
                 cx.values += (defpos,r);
@@ -4895,6 +4945,8 @@ namespace Pyrrho.Level3
         }
         internal override (BList<SqlValue>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
         {
+            if (sce >= 0L && cx._Ob(sce).domain != Domain.RowType)
+                return (new BList<SqlValue>(this), mem);
             BList<SqlValue> ls;
             (ls, m) = ((SqlValue)cx.obs[sce]).Resolve(cx, f, m);
             var r = this + (Sce, ls[0].defpos);
@@ -5310,6 +5362,7 @@ namespace Pyrrho.Level3
                 case Sqlx.EXTRACT: return Domain.Int;
                 case Sqlx.FLOOR: return cx._Dom(val) ?? Domain.UnionNumeric;
                 case Sqlx.FUSION: return Domain.Collection;
+                case Sqlx.HTTP: return Domain.Document;
                 case Sqlx.INTERSECTION: return Domain.Collection;
                 case Sqlx.LAST: return Domain.Content;
                 case Sqlx.SECURITY: return Domain._Level;
@@ -5661,6 +5714,7 @@ namespace Pyrrho.Level3
                     }
                     break;
                 case Sqlx.FUSION: return dataType.Coerce(cx,fc.mset);
+                case Sqlx.HTTP: return DoHttp(cx);
                 case Sqlx.INTERSECTION:return dataType.Coerce(cx,fc.mset);
                 case Sqlx.LAST: return fc.mset.tree.Last().key();
                 case Sqlx.LAST_DATA:
@@ -5955,6 +6009,24 @@ namespace Pyrrho.Level3
                     }
             }
             throw new DBException("42154", kind).Mix();
+        }
+        TDocument DoHttp(Context cx)
+        {
+            var url = ((SqlValue)cx.obs[val]).Eval(cx).ToString();
+            var rq = WebRequest.Create(url) as HttpWebRequest;
+            rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
+            rq.Method = "POST";
+            var content = (op2<0)?"{}":cx.obs[op2].Eval(cx).ToString();
+            var bs = Encoding.UTF8.GetBytes(content);
+            rq.ContentLength = bs.Length;
+            var rqs = rq.GetRequestStream();
+            rqs.Write(bs, 0, bs.Length);
+            rqs.Close();
+            var rp = rq.GetResponse();
+            var rs = rp.GetResponseStream();
+            var s = new StreamReader(rs).ReadToEnd();
+            rp.Close();
+            return new TDocument(s);
         }
         /// <summary>
         /// Xml encoding

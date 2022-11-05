@@ -695,12 +695,15 @@ namespace Pyrrho.Level4
                 case ';': Advance(); return tok = Sqlx.SEMICOLON;
                 case '?': Advance(); return tok = Sqlx.QMARK; //added for Prepare()
                 case ':':
-                    if (ch == ':')
-                    {
+                     {
                         Advance();
-                        return tok = Sqlx.DOUBLECOLON;
+                        if (ch == ':')
+                        {
+                            Advance();
+                            return tok = Sqlx.DOUBLECOLON;
+                        }
+                        return tok = Sqlx.COLON;
                     }
-                    return tok = Sqlx.COLON;
                 case '-':
                     if (minusch == ' ')
                         Advance();
