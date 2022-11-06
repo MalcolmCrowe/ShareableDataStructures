@@ -927,6 +927,9 @@ namespace Pyrrho.Level3
             if ((ki != Sqlx.ROW && ki != dk) || (ki == Sqlx.ROW && dk != Sqlx.ROW) ||
                 elType != dt.elType)
                 return false;
+            if (dt.kind == Sqlx.TYPE)
+                if (defpos != dt.defpos)
+                    return false;
             return (dt.prec == 0 || prec == dt.prec) && (dt.scale == 0 || scale == dt.scale) &&
                 (dt.start == Sqlx.NULL || start == dt.start) &&
                 (dt.end == Sqlx.NULL || end == dt.end) && (dt.charSet == CharSet.UCS || charSet == dt.charSet) &&
