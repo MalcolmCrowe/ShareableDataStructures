@@ -221,6 +221,11 @@ namespace Pyrrho.Level2
                 {
                     case Sqlx.DESC:
                     case Sqlx.URL:
+                        sb.Append(b.key());
+                        sb.Append("'");
+                        sb.Append(b.value());
+                        sb.Append("'");
+                        break;
                     case Sqlx.MIME:
                     case Sqlx.SQLAGENT:
                     case Sqlx.USER:
