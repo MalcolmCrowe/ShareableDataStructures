@@ -6200,8 +6200,7 @@ namespace Pyrrho.Level4
             }
             else
             {
-                if (url == "" || url==null)
-                    url = vi.metadata[Sqlx.DESC]?.ToString() ?? cx.url;
+                url = vi.metadata[Sqlx.DESC]?.ToString() ?? cx.url ?? url ??defaultUrl;
                 if (url == null)
                     return (null, null);
                 ss = url.Split('/');

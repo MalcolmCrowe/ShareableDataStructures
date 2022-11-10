@@ -269,7 +269,7 @@ namespace Pyrrho.Level3
         internal Domain Scalar(Context cx)
         {
             if ((kind == Sqlx.TABLE || kind == Sqlx.ROW) && Length>0)
-                return (Domain)cx.obs[cx.obs[rowType[0]].domain];
+                return (Domain)cx.obs[cx.obs[rowType[0]].domain]??this;
             return this;
         }
         internal Domain Best(Domain dt)
