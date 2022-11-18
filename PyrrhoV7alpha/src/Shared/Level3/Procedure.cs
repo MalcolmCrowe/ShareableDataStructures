@@ -97,7 +97,6 @@ namespace Pyrrho.Level3
             for (var b=ins.First(); b!=null;b=b.Next(), i++)
                 act.values += (b.value(), acts[b.key()]);
             cx = bd.Obey(act);
-
             var r = act.Ret();
             if (r is TArray ts)
             {
@@ -118,10 +117,8 @@ namespace Pyrrho.Level3
             }
             if (this is Method mt && mt.methodType==PMethod.MethodType.Constructor)
             {
-                if (mt.udType.superShape)
-                    r = cx.val;
-                else
-                    r = new TRow(mt.udType, act.values);
+                r = new TRow(mt.udType, act.values);
+                cx.val = r;
             } 
             if (cx != null)
             {

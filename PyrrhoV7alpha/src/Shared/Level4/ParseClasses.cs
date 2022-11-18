@@ -25,10 +25,6 @@ namespace Pyrrho.Level4
         /// </summary>
         public PMethod.MethodType methodType;
         /// <summary>
-        /// the name of the method (including $arity)
-        /// </summary>
-        public Ident mname;
-        /// <summary>
         /// The name excluding the arity
         /// </summary>
         public Ident name; 
@@ -37,18 +33,15 @@ namespace Pyrrho.Level4
         /// </summary>
         public UDType type;
         /// <summary>
-        /// the number of parameters of the method
+        /// the parameters of the method
         /// </summary>
-        public int arity;
+        public CList<Domain> signature;
+        public string heading; 
         public CList<long> ins; 
         /// <summary>
         /// The return type
         /// </summary>
         public Domain retType;
-        /// <summary>
-        /// a string version of the signature
-        /// </summary>
-        public string signature;
     }
     internal class TablePeriodDefinition
     {

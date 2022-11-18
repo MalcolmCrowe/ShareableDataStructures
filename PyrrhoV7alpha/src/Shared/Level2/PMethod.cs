@@ -33,7 +33,8 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Method definition from the Parser
         /// </summary>
-        /// <param name="nm">The name $ arity of the method</param>
+        /// <param name="nm">The name of the method</param>
+        /// <param name="ar">the signature</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
         /// <param name="td">The owning type</param>
@@ -49,7 +50,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="tp">The PMethod type</param>
         /// <param name="nm">The name of the method</param>
-        /// <param name="ar">The arity</param>
+        /// <param name="ar">the signature</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
         /// <param name="td">The defining position of the type</param>
@@ -118,7 +119,7 @@ namespace Pyrrho.Level2
 		{
             return "Method " + methodType.ToString()+" " 
                 + DBObject.Uid(ppos) + "="+DBObject.Uid(_udt)
-                + "." + nameAndArity + source.ident; 
+                + "." + name + source.ident; 
 		}
         public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -137,12 +138,12 @@ namespace Pyrrho.Level2
                     {
                         var t = (PMethod)that;
                         if (udt.defpos == t.udt.defpos
-                            && nameAndArity == t.nameAndArity)
+                            && name == t.name && source.ident==t.source.ident)
                             return new DBException("40039", defpos, that, ct);
                         break;
                     }
                 case Type.Modify:
-                    if (nameAndArity == ((Modify)that).nameAndArity)
+                    if (name == ((Modify)that).name && source.ident==((Modify)that).source.ident)
                         return new DBException("40036", defpos, that, ct);
                     break;
             }
@@ -156,10 +157,11 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
             var ui = udt.infos[Database._system._role];
             var um = ui.methodInfos;
-            var om = um[name] ?? CTree<int, long>.Empty;
-            um += (name, om+(arity, mt.defpos));
+            var om = um[name] ?? CTree<CList<Domain>, long>.Empty;
+            var sig = cx.Signature(mt.ins);
+            um += (name, om+(sig, mt.defpos));
             ui += (ObInfo.MethodInfos, um);
-            var mi = new ObInfo(nameAndArity, priv);
+            var mi = new ObInfo(name, priv);
             mt += (DBObject.Infos, new BTree<long, ObInfo>(rp, mi));
             udt += (DBObject.Infos, new BTree<long, ObInfo>(rp, ui));
             cx.db += (udt.defpos, udt);

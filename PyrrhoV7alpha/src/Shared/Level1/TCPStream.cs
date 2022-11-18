@@ -859,28 +859,29 @@ namespace Pyrrho.Level1
                 WriteByte(4);
                 PutString(rc);
             }
-
             if (p == null || p.IsNull)
             {
                 WriteByte(0);
                 return;
             }
-            if (dt.CompareTo(p.dataType)==0)
-                WriteByte(1);
-            else if ((dt as UDType)?.prefix is string pf)
+            // care: adding metadata does not modify the copies of the type in domain representations
+            // so we get the latest version of the type from the database objects
+            if (p.dataType is UDType ut && _cx.db.objects[ut.defpos] is UDType _ut && _ut.prefix is string pf)
             {
                 WriteByte(5);
                 PutString(pf);
-                PutString(p.dataType.name);
-                PutInt(p.dataType.Typecode());
+                PutString(_ut.name);
+                PutInt(_ut.Typecode());
             }
-            else if ((dt as UDType)?.suffix is string sf)
+            else if (p.dataType is UDType vt && _cx.db.objects[vt.defpos] is UDType _vt && _vt.suffix is string sf)
             {
                 WriteByte(6);
                 PutString(sf);
-                PutString(p.dataType.name);
-                PutInt(p.dataType.Typecode());
+                PutString(_vt.name);
+                PutInt(_vt.Typecode());
             }
+            else if (dt.CompareTo(p.dataType) == 0)
+                WriteByte(1); 
             else
             {
                 WriteByte(2);

@@ -1508,7 +1508,7 @@ namespace Pyrrho.Level4
                 k = new PRow(obs[b.value()].Eval(this), k);
             return k;
         }
-        internal Procedure GetProcedure(long lp,string n,int a)
+        internal Procedure GetProcedure(long lp,string n,CList<Domain> a)
         {
             var proc = db.GetProcedure(n, a);
             if (proc == null)
@@ -1518,6 +1518,13 @@ namespace Pyrrho.Level4
             var pi = (Procedure)proc.Instance(lp,this);
             Add(pi);
             return pi;
+        }
+        internal CList<Domain> Signature(CList<long> ins)
+        {
+            var r = CList<Domain>.Empty;
+            for (var b = ins.First(); b != null; b = b.Next())
+                r += _Dom(b.value());
+            return r;
         }
         internal Activation GetActivation()
         {
@@ -1912,6 +1919,28 @@ namespace Pyrrho.Level4
                 r += (p, FixTlb(b.value()));
             }
             return r;
+        }
+
+        internal string ToString(CList<long> ins, CList<Domain> signature, Domain ret)
+        {
+            var sb = new StringBuilder();
+            var cm = "";
+            sb.Append('(');
+            var a = ins.First();
+            for (var b = signature.First(); a!=null && b != null; a=a.Next(), b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(NameFor(a.value()));
+                sb.Append(' ');
+                sb.Append(b.value().Name());
+            }
+            sb.Append(')');
+            if (ret!=null && ret != Domain.Null)
+            {
+                sb.Append(" returns ");
+                sb.Append(ret.Name());
+            }
+            return sb.ToString();
         }
     }
 

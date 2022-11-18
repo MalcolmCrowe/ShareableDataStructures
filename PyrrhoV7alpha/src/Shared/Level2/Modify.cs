@@ -32,7 +32,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The new name of the routine
         /// </summary>
-		public string nameAndArity;
+		public string name;
         /// <summary>
         /// The new parameters and body of the routine
         /// </summary>
@@ -54,11 +54,11 @@ namespace Pyrrho.Level2
         /// <param name="dp">The defining position of the routine</param>
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
-        public Modify(string nm, long dp, Procedure me, Ident sce, long pp, Context cx)
+        public Modify(long dp, Procedure me, Ident sce, long pp, Context cx)
             : base(Type.Modify,pp,_Pre(cx),me.body,cx._Dom(me))
 		{
             modifydefpos = dp;
-            nameAndArity = me.infos[cx.role.defpos].name;
+            name = me.infos[cx.role.defpos].name;
             source = sce;
             proc = me.body;
             nst = me.framing.obs.First()?.key() ?? nst;
@@ -72,7 +72,7 @@ namespace Pyrrho.Level2
     : base(Type.Modify, pp, cx, rs.defpos, cx._Dom(rs))
         {
             modifydefpos = dp;
-            nameAndArity = nm;
+            name = nm;
             source = sce;
             proc = rs.defpos;
         }
@@ -85,7 +85,7 @@ namespace Pyrrho.Level2
         protected Modify(Modify x, Writer wr) : base(x, wr)
         {
             modifydefpos = wr.cx.Fix(x.modifydefpos);
-            nameAndArity = x.nameAndArity;
+            name = x.name;
             source = x.source;
             parms = wr.cx.FixLl(x.parms);
             proc = wr.cx.Fix(x.proc);
@@ -102,7 +102,7 @@ namespace Pyrrho.Level2
 		{
 			modifydefpos = wr.cx.Fix(modifydefpos);
             wr.PutLong(modifydefpos);
-            wr.PutString(nameAndArity);
+            wr.PutString(name);
             if (wr.cx.db.format < 51)
                 source = new Ident(DigestSql(wr, source.ident), source.iix);
             wr.PutString(source.ident);
@@ -116,7 +116,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
 		{
 			modifydefpos = rdr.GetLong();
-			nameAndArity = rdr.GetString();
+			name = rdr.GetString();
 			source = new Ident(rdr.GetString(), rdr.context.Ix(ppos + 1));
 			base.Deserialise(rdr);
 		}
@@ -129,6 +129,10 @@ namespace Pyrrho.Level2
             // instantiate everything we may need
             var odt = pr.udType;
             pr.Instance(psr.LexPos().dp, psr.cx);
+            if (pr.methodType==PMethod.MethodType.Constructor)
+                psr.cx.val = pr.udType.defaultValue;
+            else
+                psr.cx.val = TNull.Value;
             odt.Instance(psr.LexPos().dp,psr.cx);
             for (var b = pr.ins.First(); b != null; b = b.Next())
             {
@@ -164,7 +168,7 @@ namespace Pyrrho.Level2
                 case Type.Modify:
                     {
                         var m = (Modify)that;
-                        if (nameAndArity == m.nameAndArity || modifydefpos == m.modifydefpos)
+                        if (name == m.name || modifydefpos == m.modifydefpos)
                             return new DBException("40052", modifydefpos, that, ct);
                         break;
                     }
@@ -177,7 +181,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return "Modify " + nameAndArity + "["+ modifydefpos+"] to " + source.ident;
+            return "Modify " + name + "["+ modifydefpos+"] to " + source.ident;
 		}
         internal override void Install(Context cx, long p)
         {
@@ -185,7 +189,7 @@ namespace Pyrrho.Level2
             var pr = (Method)cx.db.objects[modifydefpos];
             pr = pr + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc);
-            pr += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(nameAndArity,
+            pr += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name,
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute)));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + modifydefpos, ppos));

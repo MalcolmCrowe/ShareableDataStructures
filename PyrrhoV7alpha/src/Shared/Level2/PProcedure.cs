@@ -1,7 +1,9 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using System;
 using System.Configuration;
+using System.Net.NetworkInformation;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -26,8 +28,8 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The name of the procedure 
         /// </summary>
-		public string name="",nameAndArity="";
-        public Ident source;
+		public string name="";
+        public Ident source; // the heading (parameter list and returns clause)
         public bool mth = false;
         public CList<long> parameters;
         public long proc = -1; // the procedure code is in Compiled.framing
@@ -36,7 +38,6 @@ namespace Pyrrho.Level2
             if (defpos != ppos && !Committed(wr, defpos)) return defpos;
             return -1;
         }
-        internal int arity;
         public PProcedure(string nm, CList<long> ar, Domain rt, Procedure pr,Ident sce, 
             long pp, Context cx) : this(Type.PProcedure,nm, ar, rt, pr, sce, pp, cx)
         { }
@@ -49,7 +50,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="tp">The PProcedure or PMethod type</param>
         /// <param name="nm">The name of the proc/func</param>
-        /// <param name="ar">The arity</param>
+        /// <param name="ar">The parameters</param>
         /// <param name="rt">The return type</param>
         /// <param name="pc">The procedure clause including parameters, or ""</param>
         /// <param name="db">The database</param>
@@ -59,10 +60,8 @@ namespace Pyrrho.Level2
 		{
             source = sce;
             parameters = ps;
-            arity = parameters.Length;
             name = nm;
             dataType = rt;
-            nameAndArity = nm + "$" + arity;
             proc = pr?.body??-1L;
         }
         /// <summary>
@@ -75,9 +74,6 @@ namespace Pyrrho.Level2
         {
             source = x.source;
             parameters = wr.cx.FixLl(x.parameters);
-            nameAndArity = x.nameAndArity;
-            arity = x.arity;
-      //      returns = x.returns;
             name = x.name;
             proc = wr.cx.Fix(x.proc);
         }
@@ -91,8 +87,17 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) 
 		{
-            wr.PutString(nameAndArity.ToString());
-            wr.PutInt(arity);
+            var a = 0;
+            if (wr.cx.db.format < 52)
+            {
+                a = (int)parameters.Count;
+                wr.PutString(name + "$" + a);
+            }
+            else 
+                wr.PutString(name);
+            wr.PutInt(a);
+            if (type==Type.PProcedure2||type==Type.PMethod2)
+                wr.PutLong(wr.cx.Fix(dataType?.defpos??-1L));
             var s = source;
             if (wr.cx.db.format < 51)
                 s = new Ident(DigestSql(wr,s.ident),s.iix);
@@ -107,12 +112,16 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rb)
 		{
             nst = rb.context.db.nextStmt;
-            nameAndArity = rb.GetString();
-            var ss = nameAndArity.Split('$');
-            name = ss[0];
-			arity = rb.GetInt();
-            if (type==Type.PProcedure2)
-                rb.GetLong();
+            name = rb.GetString();
+            if (rb.context.db.format<52) 
+            {
+                var ix = name.IndexOf('$');
+                if (ix>0)
+                    name = name.Substring(0, ix);
+            }
+            rb.GetInt();  // arity field
+            if (type==Type.PProcedure2 || type==Type.PMethod2)
+                dataType = rb.context._Dom(rb.GetLong())??throw new DBException("3D006");
             source = new Ident(rb.GetString(), rb.context.Ix(ppos + 1));
 			base.Deserialise(rb);
         }
@@ -138,11 +147,11 @@ namespace Pyrrho.Level2
                 case Type.PProcedure:
                 case Type.PMethod:
                 case Type.PMethod2:
-                    if (nameAndArity == ((PProcedure)that).nameAndArity)
+                    if (name == ((PProcedure)that).name && source.ident == ((PProcedure)that).source.ident)
                         return new DBException("40039", name, that, ct);
                     break;
                 case Type.Change:
-                    if (nameAndArity == ((Change)that).name)
+                    if (name == ((PProcedure)that).name && source.ident == ((PProcedure)that).source.ident)
                         return new DBException("40039", name, that, ct);
                     break;
                 case Type.Ordering:
@@ -160,7 +169,8 @@ namespace Pyrrho.Level2
             var (rt,dt) = psr.ParseProcedureHeading(n);
             psr.cx._Add(dt);
             parameters = rt;
-            Install(psr.cx, rdr.Position);
+            if (type!=Type.PMethod && type!=Type.PMethod2)
+                Install(psr.cx, rdr.Position);
             psr.LexPos(); //synchronise with CREATE
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
@@ -180,13 +190,15 @@ namespace Pyrrho.Level2
                 BTree<long,object>.Empty + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc)
                 + (DBObject.Infos,new BTree<long,ObInfo>(cx.role.defpos,oi)));
-            var ps = ro.procedures??CTree<string,CTree<int,long>>.Empty;
-            var pn = (ps[name]??CTree<int,long>.Empty) + (arity,defpos);
+            if (dataType != null)
+                pr += (DBObject._Domain, dataType.defpos);
+            var ps = ro.procedures??CTree<string,CTree<CList<Domain>,long>>.Empty;
+            var pn = (ps[name]??CTree<CList<Domain>,long>.Empty) + (cx.Signature(pr.ins),defpos);
             ro += (Role.Procedures, ps + (name, pn));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db = cx.db + (ro, p) + (pr, p) 
-                + (Database.Procedures,cx.db.procedures+(defpos,nameAndArity));
+                + (Database.Procedures,cx.db.procedures+(defpos,name));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(pr, p);

@@ -98,7 +98,7 @@ namespace Pyrrho
                         FileMode.OpenOrCreate, FileAccess.ReadWrite, FileShare.None);
                         var wr = new Writer(null, fs);
                         wr.PutInt(777);
-                        wr.PutInt(51);
+                        wr.PutInt(52);
                         wr.PutBuf();
                         if (user != Environment.UserDomainName + "\\" + Environment.UserName)
                         {
@@ -1446,7 +1446,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.01alpha","(10 Nov 2022)", "http://www.pyrrhodb.com"
+            "7.01alpha","(18 Nov 2022)", "http://www.pyrrhodb.com"
         };
 	}
 }

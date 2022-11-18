@@ -5,6 +5,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Threading;
+using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -487,10 +488,42 @@ namespace Pyrrho.Level3
         {
             return objects[role.dbobjects[n]] as DBObject;
         }
-        public Procedure GetProcedure(string n,int a)
+        public Procedure GetProcedure(string n,CList<Domain> a)
         {
-            return (role.procedures[n] is BTree<int,long> pt &&
+            /* I would love to write simply
+            return (role.procedures[n] is CTree<CList<Domain>,long> pt &&
                 pt.Contains(a))? objects[pt[a]] as Procedure:null;
+            */
+            for (var b= role.procedures[n]?.First();b!=null;b=b.Next())
+            {
+                var ds = b.key();
+                if (ds.Count != a.Count) continue;
+                var ab = a.First();
+                for (var c = ds.First(); ab != null && c != null; ab = ab.Next(), c = c.Next())
+                    if (!c.value().CanTakeValueOf(ab.value()))
+                        goto next;
+                return (Procedure)objects[b.value()];
+                    next:;
+            }
+            return null;
+        }
+        internal Method GetMethod(UDType ut, string pn, CList<Domain> a)
+        {
+            var oi = ut.infos[role.defpos];
+            for (var b = oi.methodInfos[pn]?.First(); b != null; b = b.Next())
+            {
+                var ds = b.key();
+                if (ds.Count != a.Count) continue;
+                var ab = a.First();
+                for (var c = ds.First(); ab != null && c != null; ab = ab.Next(), c = c.Next())
+                    if (!c.value().CanTakeValueOf(ab.value()))
+                        goto next;
+                return (Method)objects[b.value()];
+            next:;
+            }
+            if (ut.super is UDType st)
+                return GetMethod(st, pn, a);
+            return null;
         }
         public Domain Find(Domain dm)
         {

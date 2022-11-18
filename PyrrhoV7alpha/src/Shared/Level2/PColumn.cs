@@ -209,6 +209,8 @@ namespace Pyrrho.Level2
                 throw new DBException("42105");
             var op = cx.parse;
             cx.parse = ExecuteStatus.Compile;
+            var ov = cx.val;
+            cx.val = TNull.Value;
             var dm = cx._Dom(table);
             if (dm.defpos < 0)
             {
@@ -223,6 +225,7 @@ namespace Pyrrho.Level2
             table += (DBObject._Framing,table.framing+dm);
             table += (DBObject.LastChange, ppos);
             cx.parse = op;
+            cx.val = ov;
             if (cx.db is Transaction tr && tr.physicals[table.defpos] is Compiled pt)
                 pt.framing = table.framing;
             cx.Add(table);

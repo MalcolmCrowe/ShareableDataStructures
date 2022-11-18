@@ -182,8 +182,8 @@ namespace Pyrrho.Level2
             if (cx.db.objects[obj] is Procedure proc && !(proc is Method))
             {
                 var nm = proc.infos[proc.definer].name;
-                var ps = rg.procedures[nm]??CTree<int,long>.Empty;
-                ps += (proc.arity, obj);
+                var ps = rg.procedures[nm]??CTree<CList<Domain>,long>.Empty;
+                ps += (cx.Signature(proc.ins), obj);
                 rg += (Role.Procedures, rg.procedures+(nm,ps));
                 cx.db += (grantee, rg);
             }

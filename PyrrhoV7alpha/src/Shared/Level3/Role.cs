@@ -49,12 +49,13 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // CTree<string,long> Domain/Table/View etc by name
-            Procedures = -249; // CTree<string,CTree<int,long>> Procedure/Function by name and arity
+            Procedures = -249; // CTree<string,CTree<CList<Domain>,long>> Procedure/Function by name and signature
         internal CTree<string, long> dbobjects => 
             (CTree<string, long>)mem[DBObjects]??CTree<string,long>.Empty;
         public string name => (string)mem[ObInfo.Name];
-        internal CTree<string, CTree<int,long>> procedures => // not CList<long> !
-            (CTree<string, CTree<int,long>>)mem[Procedures]??CTree<string,CTree<int,long>>.Empty;
+        internal CTree<string, CTree<CList<Domain>,long>> procedures => // not CList<long> !
+            (CTree<string, CTree<CList<Domain>,long>>)mem[Procedures]??
+            CTree<string,CTree<CList<Domain>,long>>.Empty;
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>
@@ -82,13 +83,6 @@ namespace Pyrrho.Level3
         public static Role operator +(Role r, (string, long) x)
         {
             return (Role)r.New(r.mem + (DBObjects, r.dbobjects + x));
-        }
-        public static Role operator +(Role r, Procedure p)
-        {
-            var ps = r.procedures;
-            var n = p.infos[r.definer].name;
-            var pa = ps[n] ?? CTree<int, long>.Empty;
-            return (Role)r.New(r.mem + (Procedures, ps + (n, pa + (p.arity, p.defpos))));
         }
         public override string ToString()
         {
@@ -142,7 +136,7 @@ namespace Pyrrho.Level3
             _Metadata = -254, // CTree<Sqlx,TypedValue>
             Description = -67, // string
             Inverts = -353, // long SqlProcedure
-            MethodInfos = -252, // CTree<string, CTree<int,long>> Method
+            MethodInfos = -252, // CTree<string, CTree<CList<Domain>,long>> Method
             Name = -50, // string
             Names = -282, // CTree<string,long> TableColumn (SqlValues in RowSet)
             SchemaKey = -286, // long (highwatermark for schema changes)
@@ -151,8 +145,9 @@ namespace Pyrrho.Level3
         public Grant.Privilege priv => (Grant.Privilege)mem[Privilege];
         public long inverts => (long)(mem[Inverts] ?? -1L);
         public string iri => (string)mem[Domain.Iri] ?? "";
-        public CTree<string, CTree<int, long>> methodInfos =>
-(CTree<string, CTree<int, long>>)mem[MethodInfos] ?? CTree<string, CTree<int, long>>.Empty;
+        public CTree<string, CTree<CList<Domain>, long>> methodInfos =>
+            (CTree<string, CTree<CList<Domain>, long>>)mem[MethodInfos] ?? 
+            CTree<string, CTree<CList<Domain>, long>>.Empty;
         public CTree<Sqlx, TypedValue> metadata =>
             (CTree<Sqlx, TypedValue>)mem[_Metadata] ?? CTree<Sqlx, TypedValue>.Empty;
         public string name => (string)mem[Name] ?? "";

@@ -1297,7 +1297,7 @@ namespace Pyrrho.Level4
                 return new TRow(cx, cx._Dom(res),
                     Pos(m.ppos),
                     Pos(m.modifydefpos),
-                    new TChar(m.nameAndArity),
+                    new TChar(m.name),
                     new TChar(m.source.ident));
             }
          }
@@ -2781,7 +2781,7 @@ namespace Pyrrho.Level4
             var t = new SystemTable("Log$Procedure");
             t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
             t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Arity", Domain.Int,0));
+            t += (cx, new SystemTableColumn(t, "Signature", Domain.Char, 0));
             t+=(cx,new SystemTableColumn(t, "RetDefPos", Domain.Position,0));
             t+=(cx,new SystemTableColumn(t, "Proc", Domain.Char,0));
             t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
@@ -2887,9 +2887,8 @@ namespace Pyrrho.Level4
                 PProcedure p = (PProcedure)ph;
                 return new TRow(cx, cx._Dom(res),
                     Pos(p.ppos),
-                    new TChar(p.nameAndArity),
-                    new TInt(p.arity),
-                    new TChar(p.dataType.ToString()),
+                    new TChar(p.name),
+                    Display(p.source.ident),
                     Display(p.source.ident),
                     Pos(p.trans));
             }
@@ -3565,7 +3564,7 @@ namespace Pyrrho.Level4
                     return new TRow(cx, cx._Dom(res),
                         Pos(t.ppos),
                         new TChar(t.udt.ToString()),
-                        new TChar(t.nameAndArity),
+                        new TChar(t.name),
                         Pos(t.trans));
             }
         }
@@ -6825,14 +6824,14 @@ namespace Pyrrho.Level4
             /// enumerators for implementation
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<string, CTree<int,long>> _middle;
-            readonly ABookmark<int,long> _inner;
+            readonly ABookmark<string, CTree<CList<Domain>,long>> _middle;
+            readonly ABookmark<CList<Domain>,long> _inner;
             /// <summary>
             /// create the Role$Method enumerator
             /// </summary>
             /// <param name="r"></param>
             RoleMethodBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<string, CTree<int,long>> middle, ABookmark<int,long> inner)
+                ABookmark<string, CTree<CList<Domain>,long>> middle, ABookmark<CList<Domain>,long> inner)
                 : base(_cx,res,pos,inner.value(),0,_Value(_cx,res,outer.value(),inner.value()))
             {
                 _outer = outer;

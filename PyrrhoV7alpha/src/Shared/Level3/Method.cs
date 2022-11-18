@@ -2,6 +2,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Text;
+using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -40,10 +41,17 @@ namespace Pyrrho.Level3
         /// <param name="owner">the owner</param>
         /// <param name="rs">the accessing roles</param>
         public Method(PMethod m, Context cx)
-            : base(m, cx, BTree<long, object>.Empty + (_Framing,m.framing)
+            : base(m, cx, _Mem(cx,m) + (_Framing,m.framing)
                   + (TypeDef, m.udt) + (MethodType, m.methodType))
         { }
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }
+        static BTree<long,object> _Mem(Context cx,PMethod m)
+        {
+            var r = BTree<long,object>.Empty;
+            if (m.dataType != Domain.Null)
+                r += (_Domain, m.dataType.defpos);
+            return r;
+        }
         public static Method operator+(Method m,(long,object)x)
         {
             return (Method)m.New(m.mem + x);
@@ -71,7 +79,7 @@ namespace Pyrrho.Level3
         internal override DBObject Instance(long lp,Context cx, BList<Ident> cs=null)
         {
             udType.Instance(lp,cx);
-            return base.Instance(lp,cx);
+            return base.Instance(lp, cx) + (TypeDef, (UDType)cx.db.objects[udType.defpos]);
         }
         /// <summary>
         /// Execute a Method
@@ -107,10 +115,9 @@ namespace Pyrrho.Level3
             var me = (Method)cx.db.objects[defpos];
             var act = new CalledActivation(cx, me, ut.defpos);
             me = (Method)me.Instance(act.GetUid(),act);
-            var bd = (Executable)act.obs[me.body];
+            var bd = (Executable)act.obs[me.body]??throw new DBException("42108",me.NameFor(cx));
             if (targ is TRow rw)
-                for (var b = rw.values.First(); b != null; b = b.Next())
-                    act.values += (b.key(), b.value());
+                act.values += rw.values;
             act.values += (defpos, targ);
             act.val = targ;
             i = 0;
@@ -139,28 +146,10 @@ namespace Pyrrho.Level3
                 if (m == Sqlx.RESULT)
                     r = v;
             }
-            if (methodType == PMethod.MethodType.Constructor)
-            {
-                var ks = CTree<long, TypedValue>.Empty;
-                for (var b = ut.representation.First(); b != null; b = b.Next())
-                {
-                    var p = b.key();
-                    ks += (p, act.values[p]);
-                }
-                r = new TRow(ut, ks);
-            }
-            if (cx != null)
-            {
+            if (this is Method mt && mt.methodType == PMethod.MethodType.Constructor)
+                cx.val = new TRow(mt.udType, act.values);
+            else
                 cx.val = r;
-                i = 0;
-                for (var b = me.ins.First(); b != null; b = b.Next(), i++)
-                {
-                    var p = (FormalParameter)cx.obs[b.value()];
-                    var m = p.paramMode;
-                    if (m == Sqlx.INOUT || m == Sqlx.OUT)
-                        cx.AddValue(cx.obs[actIns[i]], acts[i]);
-                }
-            }
             return cx;
         }
         internal override Database Drop(Database d, Database nd, long p)
@@ -169,10 +158,10 @@ namespace Pyrrho.Level3
             var oi = BTree<long, ObInfo>.Empty;
             for (var u = udt.infos.First(); u != null; u = u.Next())
             {
-                var ms = CTree<string, CTree<int, long>>.Empty;
+                var ms = CTree<string, CTree<CList<Domain>, long>>.Empty;
                 for (var b = u.value().methodInfos.First(); b != null; b = b.Next())
                 {
-                    var sm = CTree<int, long>.Empty;
+                    var sm = CTree<CList<Domain>, long>.Empty;
                     var ch = false;
                     for (var c = b.value().First(); c != null; c = c.Next())
                     {

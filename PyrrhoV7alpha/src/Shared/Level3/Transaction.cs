@@ -127,21 +127,6 @@ namespace Pyrrho.Level3
                 return d;
             return new Transaction(d,d.loadpos, m+x);
         }
-        /// <summary>
-        /// Default action for adding a DBObject
-        /// </summary>
-        /// <param name="d"></param>
-        /// <param name="ob"></param>
-        /// <returns></returns>
-        public static Transaction operator +(Transaction d, DBObject ob)
-        {
-            return (Transaction)(d+(ob,d.loadpos));
-        }
-        public static Transaction operator+(Transaction d,Procedure p)
-        {
-            var ro = d.role + p;
-            return (Transaction)(d + ro + (p,d.loadpos));
-        }
         internal override void Add(Context cx,Physical ph, long lp)
         {
             if (cx.parse != ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Compile)

@@ -524,6 +524,10 @@ namespace Pyrrho.Level3
                 sb.Append("  }\r\n");
             }
         }
+        internal virtual string Name()
+        {
+            return name;
+        }
         /// <summary>
         /// A readable version of the Domain
         /// </summary>
@@ -755,7 +759,7 @@ namespace Pyrrho.Level3
                         var tb = (Table)rdr.context.db.objects[dp];
                         var dm = (Domain)tb.framing.obs[tb.domain];
                         var ma = CTree<string, long>.Empty;
-                        if (rdr.context.db.format >= 52)
+                        if (rdr.context.db.format < 52)
                             for (var b = dm.rowType.First(); b != null; b = b.Next())
                             {
                                 var c = b.value();
@@ -767,7 +771,7 @@ namespace Pyrrho.Level3
                         for (var j = 0; j < n; j++)
                         {
                             long cp;
-                            if (rdr.context.db.format >= 52)
+                            if (rdr.context.db.format < 52)
                                 cp = ma[rdr.GetString()];
                             else
                                 cp = rdr.GetLong();
@@ -783,13 +787,13 @@ namespace Pyrrho.Level3
                         var dp = rdr.GetLong();
                         var ut = (UDType)rdr.context.db.objects[dp];
                         ut.Instance(dp, rdr.context, null);
-                        if (ut.superShape)
-                            return new TSubType(ut,rdr.context._Dom(ut.super).Get(log,rdr,pp));
-                        else
-                        {
+            //            if (ut.superShape)
+            //                return new TSubType(ut,rdr.context._Dom(ut.super).Get(log,rdr,pp));
+           //             else
+           //             {
                             var r = CTree<long, TypedValue>.Empty;
                             var ma = CTree<string, long>.Empty;
-                            if (rdr.context.db.format >= 52)
+                            if (rdr.context.db.format < 52)
                                 for (var b = ut.rowType.First(); b != null; b = b.Next())
                                 {
                                     var c = b.value();
@@ -801,7 +805,7 @@ namespace Pyrrho.Level3
                             for (var j = 0; j < n; j++)
                             {
                                 long cp;
-                                if (rdr.context.db.format >= 52)
+                                if (rdr.context.db.format < 52)
                                     cp = ma[rdr.GetString()];
                                 else
                                     cp = rdr.GetLong();
@@ -809,7 +813,7 @@ namespace Pyrrho.Level3
                                 r += (cp, cdt.Get(log, rdr, pp));
                             }
                             return new TRow(ut, r);
-                        }
+              //          }
                     }
                 case Sqlx.CONTENT:
                     return new TChar(rdr.GetString());
@@ -4184,7 +4188,7 @@ namespace Pyrrho.Level3
         }
         internal static StandardDataType Get(Sqlx undertok)
         {
-            return types[undertok]??throw new NotImplementedException();
+            return types[undertok];
         }
         static BTree<long, object> _Mem(OrderCategory oc, Domain o, BTree<long, object> u)
         {
@@ -4198,13 +4202,10 @@ namespace Pyrrho.Level3
                 u += (OrderCategory, oc);
             return u;
         }
-     /*   public override int CompareTo(object obj)
+        internal override string Name()
         {
-            var that = (Domain)obj;
-            if (that == null)
-                return 1;
-            return defpos.CompareTo(that.defpos);
-        } */
+            return kind.ToString();
+        }
         public override string ToString()
         {
             return kind.ToString();
@@ -4683,13 +4684,13 @@ namespace Pyrrho.Level3
             Fields = -464, // CList<long> TableColumn
             Prefix = -390, // string
             Suffix = -400, // string
-            SuperShape = -318, // bool
+  //          SuperShape = -318, // bool
             Under = -90; // UDType
         public CList<long> fields => (CList<long>)mem[Fields] ?? CList<long>.Empty;
         public string prefix => (string)mem[Prefix];
         public string suffix => (string)mem[Suffix];
         public Domain super => (Domain)mem[Under];
-        public bool superShape => (bool)(mem[SuperShape] ?? true);
+   //     public bool superShape => (bool)(mem[SuperShape] ?? true);
         public CTree<long,string> methods =>
             (CTree<long,string>)mem[Database.Procedures] ?? CTree<long,string>.Empty;
         public UDType(PType pt,Context cx) : base(pt.ppos,_Mem(pt)) 
@@ -4724,8 +4725,8 @@ namespace Pyrrho.Level3
                 r += (Under, pt.under);
             else if (pt.structure.rowType == CList<long>.Empty)
                 r += (Under, pt.structure);
-            if (pt.structure!=null && pt.under!=null && pt.structure.rowType.CompareTo(pt.under.rowType)!=0)
-                r += (SuperShape, false);
+    //        if (pt.structure!=null && pt.under!=null && pt.structure.rowType.CompareTo(pt.under.rowType)!=0)
+    //            r += (SuperShape, false);
             return r;
         }
         internal override Basis New(BTree<long, object> m)

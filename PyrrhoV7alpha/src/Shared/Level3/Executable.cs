@@ -1,4 +1,5 @@
 using System;
+using System.Configuration;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -874,6 +875,10 @@ namespace Pyrrho.Level3
             : base(dp,BTree<long, object>.Empty+(Vbl,vb.defpos)+(Val,va.defpos)
                   +(Dependents,CTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true))
                   +(_Depth,Math.Max(va.depth+1,vb.depth+1)))
+        { }
+        public AssignmentStatement(long dp,long vb,long va,int d)
+            : base(dp, BTree<long, object>.Empty + (Vbl, vb) + (Val, va)
+                  +(_Depth,d))
         { }
         protected AssignmentStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static AssignmentStatement operator+(AssignmentStatement s,(long,object)x)
@@ -2259,7 +2264,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Cursor: "); sb.Append(cursor);
+            sb.Append(" Cursor: "); sb.Append(Uid(cursor));
             return sb.ToString();
         }
 
@@ -2332,7 +2337,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Cursor: "); sb.Append(cursor);
+            sb.Append(" Cursor: "); sb.Append(Uid(cursor));
             return sb.ToString();
         }
     }

@@ -502,16 +502,16 @@ namespace Pyrrho.Level4
         {
             if (cx.parse==ExecuteStatus.Obey && cx.db.prefixes.Contains(s))
             {
-                var ps = pos;
+                var ps = Position;
                 Next();
                 var dt = (UDType)cx.db.objects[cx.db.prefixes[s]];
-                var mi = dt.infos[cx.role.defpos];
-                var md = mi.methodInfos[dt.name];
-                if (md != null)
+                var mt = cx.db.GetMethod(dt, dt.name, new CList<Domain>(val.dataType));
+                if (mt != null)
                 {
-                    cx.Add(new SqlLiteral(ps, cx, Domain.Numeric.Coerce(cx, val)));
-                    var mt = (Method)cx.db.objects[md[1]];
-                    val = mt.Exec(cx, new CList<long>(ps)).val;
+                    mt = (Method)mt.Instance(cx.GetUid(), cx);
+                    var pa = (FormalParameter)cx.obs[mt.ins[0]];
+                    cx.Add(new SqlLiteral(ps, cx, cx._Dom(pa).Coerce(cx, val)));
+                    val = mt.Exec(cx,new CList<long>(ps)).val;
                 } 
                 else
                     val = new TSubType(dt,val);
@@ -535,7 +535,7 @@ namespace Pyrrho.Level4
                     var md = mi.methodInfos[dt.name];
                     if (md != null)
                     {
-                        var mt = (Method)cx.db.objects[md[1]];
+                        var mt = (Method)cx.db.objects[md[new CList<Domain>(Domain.Numeric)]];
                         var r = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), cx, prevval));
                         val = mt.Exec(cx, new CList<long>(r.defpos)).val;
                     }

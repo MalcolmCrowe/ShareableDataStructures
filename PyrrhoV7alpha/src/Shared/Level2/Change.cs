@@ -1,4 +1,5 @@
 using System;
+using System.Diagnostics;
 using Pyrrho.Common;
 using Pyrrho.Level1;
 using Pyrrho.Level3;
@@ -161,7 +162,7 @@ namespace Pyrrho.Level2
                 case Type.PMethod:
                 case Type.PMethod2:
                 case Type.PProcedure2:
-                case Type.PProcedure: if (name.CompareTo(((PProcedure)that).nameAndArity)==0) 
+                case Type.PProcedure: if (name.CompareTo(((PProcedure)that).name)==0) 
                         return new DBException("40032", ppos, that, ct);
                     break;
                 case Type.PTrigger: if (name.CompareTo(((PTrigger)that).name) == 0)

@@ -11,6 +11,7 @@ using System.Net.Configuration;
 using System.Net;
 using System.IO;
 using System.Runtime.Remoting;
+using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -4379,7 +4380,7 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder();
             sb.Append(name);
             sb.Append(" cursor for ");
-            sb.Append(spec);
+            sb.Append(Uid(spec));
             return sb.ToString();
         }
     }
@@ -4390,7 +4391,7 @@ namespace Pyrrho.Level3
             Call = -335; // long CallStatement
         public long call =>(long)(mem[Call]??-1L);
         public SqlCall(long dp, Context cx, CallStatement c, BTree<long, object> m = null)
-            : base(dp, m ?? BTree<long, object>.Empty
+            : base(dp, (m ?? BTree<long, object>.Empty)
                   + (_Domain, c.domain) + (Domain.Aggs, c.aggs)
                   + (Call, c.defpos)+(Dependents,new CTree<long,bool>(c.defpos,true))
                   +(_Depth,1+c.depth)+(ObInfo.Name,c.name))
@@ -4652,9 +4653,17 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">the context</param>
         /// <param name="c">the call statement</param>
-        public SqlMethodCall(long dp, Context cx, CallStatement c) : base(dp,cx,c)
+        public SqlMethodCall(long dp, Context cx, CallStatement c) 
+            : base(dp,cx,c,_Mem(cx,c))
         { }
         protected SqlMethodCall(long dp,BTree<long, object> m) : base(dp, m) { }
+        static BTree<long, object> _Mem(Context cx, CallStatement c)
+        {
+            var r = BTree<long, object>.Empty;
+            if (cx.db.objects[c.procdefpos] is Procedure pr && pr.domain != Domain.Null.defpos)
+                r += (_Domain, pr.domain);
+            return r;
+        }
         public static SqlMethodCall operator+(SqlMethodCall s,(long,object)x)
         {
             return new SqlMethodCall(s.defpos, s.mem + x);
@@ -4693,13 +4702,10 @@ namespace Pyrrho.Level3
             udt = (UDType)cx.db.objects[udt.defpos];
             var oi = udt.infos[cx.role.defpos]; // we need the names
             var nm = c.name;
-            var ix = nm.IndexOf('$');
-            if (ix>0)
-                nm = nm.Substring(0, ix);
-            var p = oi.methodInfos[nm]?[(int)c.parms.Count] ?? -1L;
-            var nc = c + (CallStatement.Var, ov.defpos) + (CallStatement.ProcDefPos, p);
+            var mt = cx.db.GetMethod(udt,nm,cx.Signature(c.parms))??throw new DBException("42173",nm);
+            var nc = c + (CallStatement.Var, ov.defpos) + (CallStatement.ProcDefPos, mt.defpos);
             cx.Add(nc);
-            var pr = ((DBObject)cx.db.objects[p]).Instance(defpos, cx) as Procedure;
+            var pr = mt.Instance(defpos, cx) as Procedure;
             mc = mc + (Call, nc.defpos) + (_Domain, pr.domain);
             return (new BList<SqlValue>((SqlValue)cx.Add(mc)), m);
         }
@@ -4731,7 +4737,7 @@ namespace Pyrrho.Level3
             if (p<0)
             {
                 var oi = cx._Dom(v).infos[cx.role.defpos];
-                p = oi.methodInfos[c.name]?[c.parms.Length]??-1L;
+                p = oi.methodInfos[c.name]?[cx.Signature(c.parms)]??-1L;
                 if (p < 0)
                     throw new DBException("42108", c.name);
             }
@@ -4794,7 +4800,8 @@ namespace Pyrrho.Level3
             var c = (CallStatement)cx.obs[call];
             var proc = (Method)tr.objects[c.procdefpos];
             var ac = new CalledActivation(cx, proc, proc.domain);
-            return proc.Exec(ac,-1L,c.parms).val;
+            var cc = proc.Exec(ac,-1L,c.parms);
+            return cc.val;
         }
         internal override SqlValue Having(Context c, Domain dm)
         {
@@ -4932,6 +4939,7 @@ namespace Pyrrho.Level3
                 cx.values += vs;
                 var r = new TRow(dm, vs);
                 cx.values += (defpos,r);
+                cx.val = r;
                 return r;
             }
             catch (DBException e)
