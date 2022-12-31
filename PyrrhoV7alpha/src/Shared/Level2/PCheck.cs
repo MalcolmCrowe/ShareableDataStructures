@@ -1,4 +1,5 @@
 using System;
+using System.Security.AccessControl;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -21,9 +22,8 @@ namespace Pyrrho.Level2
 	{
 		public long ckobjdefpos; // of object (e.g. Domain,Table) to which this check applies
         public long subobjdefpos = -1; // of Column if a columns check
-		public string name;
         public long defpos;
-		public string check;
+		public string? check;
         public long test;
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -35,18 +35,17 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: A new check constraint from the Parser
         /// </summary>
-        /// <param name="dm">The object to which the check applies</param>
+        /// <param name="ob">The object to which the check applies</param>
         /// <param name="nm">The name of the constraint</param>
         /// <param name="cs">The constraint as a string</param>
         /// <param name="db">The local database</param>
-        public PCheck(long dm, string nm, SqlValue se, string cs, long pp, Context cx)
-            : this(Type.PCheck, dm, nm, se, cs, pp, cx) { }
-        protected PCheck(Type tp, long dm, string nm, SqlValue se, string cs, 
-            long pp, Context cx) : base(tp,pp,cx,dm,Domain.Bool)
+        public PCheck(DBObject ob, string nm, SqlValue se, string cs, long pp, Context cx)
+            : this(Type.PCheck, ob, nm, se, cs, pp, cx) { }
+        protected PCheck(Type tp, DBObject ob, string nm, SqlValue se, string cs, 
+            long pp, Context cx) : base(tp,pp,cx,nm,ob.defpos,Domain.Bool)
 		{
-			ckobjdefpos = dm;
+			ckobjdefpos = ob.defpos;
             defpos = ppos;
-            name = nm ?? throw new DBException("42102");
 			check = cs;
             test = se.defpos;
         }
@@ -84,8 +83,8 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
             wr.PutLong(ckobjdefpos);
-            wr.PutString(name.ToString());
-            wr.PutString(check);
+            wr.PutString(name?.ToString()??"");
+            wr.PutString(check??"");
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -97,23 +96,22 @@ namespace Pyrrho.Level2
 			ckobjdefpos = rdr.GetLong();
 			name = rdr.GetString();
             defpos = ppos;
-			var src = rdr.GetIdent();
-            check = src.ident;
+            check = rdr.GetString();
 			base.Deserialise(rdr);
         }
         internal override void OnLoad(Reader rdr)
         {
-            if (check != "")
+            if (check != "" && check!=null)
             {
-                var ob = ((DBObject)rdr.context.db.objects[ckobjdefpos]);
-                var psr = new Parser(rdr, new Ident(check, rdr.context.Ix(ppos+1)), ob);
+                var ob = (DBObject?)rdr.context.db.objects[ckobjdefpos]??throw new PEException("PE1437");
+                var psr = new Parser(rdr, new Ident(check, rdr.context.Ix(ppos+1)));
                 nst = psr.cx.db.nextStmt;
                 var sv = psr.ParseSqlValue(Domain.Bool).Reify(rdr.context);
                 test = sv.defpos;
                 framing = new Framing(psr.cx,nst);
             }
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -137,26 +135,29 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.db.role;
             var ck = new Check(this, cx.db);
-            if (name != null && name != "")
-                ck += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos,
-                    new ObInfo(name, Grant.Privilege.Execute)));
+            ck += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos,
+                new ObInfo(name ?? "", Grant.Privilege.Execute)));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db),p);
-            cx.Install(ck,p);
-            base.Install(cx, p);
+            var ob = (DBObject?)cx.db.objects[ck.checkobjpos] ?? throw new PEException("PE1438");
+            ob = ob.Add(ck, cx.db);
+            cx.Install(ob, p);
+            cx.Install(ck, p);
+            return ob;
         }
-        public override (Transaction,Physical) Commit(Writer wr, Transaction t)
+        public override (Transaction?,Physical) Commit(Writer wr, Transaction? t)
         {
             var (tr,ph) = base.Commit(wr, t);
             var pc = (PCheck)ph;
-            var ck = (DBObject)tr.objects[defpos] + (Check.Condition, pc.framing.obs[pc.test])
-                + (DBObject._Framing, pc.framing);
-            var co = ((DBObject)tr.objects[ckobjdefpos]).Add((Check)ck, tr);
+            if (tr?.objects[defpos] is not DBObject ob || pc.framing.obs[pc.test] is not DBObject se
+                || tr?.objects[ckobjdefpos] is not DBObject co)
+                throw new PEException("PE1350");
+            var ck = ob + (Check.Condition, se.defpos) + (DBObject._Framing, pc.framing);
+            co = co.Add((Check)ck, tr);
             wr.cx.instDFirst = -1;
             return ((Transaction)(tr + (ck, tr.loadpos)+(co,tr.loadpos)),ph);
         }
@@ -174,11 +175,11 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the constraint</param>
         /// <param name="cs">The constraint as a string</param>
         /// <param name="pb">The local database</param>
-        public PCheck2(long dm, long so, string nm, SqlValue se, string cs, long pp, 
+        public PCheck2(DBObject ob, DBObject so, string nm, SqlValue se, string cs, long pp, 
             Context cx)
-            : base(Type.PCheck2,dm,nm,se,cs,pp,cx)
+            : base(Type.PCheck2,ob,nm,se,cs,pp,cx)
 		{
-            subobjdefpos=so;
+            subobjdefpos=so.defpos;
 		}
         /// <summary>
         /// Constructor: A new check constraint from the buffer
@@ -230,23 +231,24 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ro = cx.db.role;
+            var ro = cx.role;
             var ck = new Check(this, cx.db);
-            cx.Install(ck,p);
-            var nc = ((DBObject)cx.db.objects[ck.checkobjpos]).Add(ck, cx.db);
-            cx.Install(nc,p);
+            ck += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos,
+                new ObInfo(name??"", Grant.Privilege.Execute)));
+            if (cx.db.objects[ck.checkobjpos] is not DBObject co)
+                throw new PEException("PE1451");
+            cx.Install(ck, p);
+            var nc = co.Add(ck, cx.db);
+            cx.Install(nc, p);
             // we don't install this new column in ck's framing, as there is
             // no good way to maintain the surrounding context reliably in the framing
-            if (name != null && name != "")
-            {
-                nc += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos,
-                    new ObInfo(name, Grant.Privilege.Execute)));
-                cx.db += (nc, p);
-            }
+
+            cx.db += (nc, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return nc;
         }
     }
 }

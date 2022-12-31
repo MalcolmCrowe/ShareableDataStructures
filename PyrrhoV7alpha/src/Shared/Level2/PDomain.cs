@@ -17,15 +17,14 @@ namespace Pyrrho.Level2
     /// <summary>
     /// A new Domain definition
     /// </summary>
-    internal class PDomain : Physical
+    internal class PDomain : Defined
     {
         /// <summary>
         /// The defining position of the Domain
         /// </summary>
 		public virtual long defpos { get { return ppos; } }
-        internal Domain domain;
-        internal Domain element = null, structure=null, under = null;
-        internal string name;
+        internal Domain domain = Domain.Null;
+        internal Domain? element = null, structure=null, under = null;
         internal long domdefpos = -1L;
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -47,8 +46,8 @@ namespace Pyrrho.Level2
         /// <param name="sd">The base structure definition if any</param>
         /// <param name="pb">The local database</param>
         public PDomain(Type t, string nm, Sqlx dt, int dl, int sc, CharSet ch,
-            string co, string dv, Domain sd, long pp, Context cx)
-            : base(t, pp, cx)
+            string co, string dv, Domain? sd, long pp, Context cx)
+            : base(t, pp, cx, nm, Grant.AllPrivileges)
         {
             long k;
             if (dt == Sqlx.ARRAY || dt == Sqlx.MULTISET)
@@ -61,7 +60,7 @@ namespace Pyrrho.Level2
                 k = Domain.Structure;
                 structure = sd;
             }
-            var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv, null);
+            var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv, Context._system);
             domdefpos = pp;
             name = nm;
             domain = new Domain(-1L, dt, DBObject._Deps(1,structure,element,under)
@@ -69,7 +68,11 @@ namespace Pyrrho.Level2
                 + (Domain.Charset, ch) + (DBObject.LastChange,pp)
                 + (Domain.Culture, CultureInfo.GetCultureInfo(co))
                 + (Domain.DefaultString, dv)
-                + (Domain.Default, v) + (k, sd.defpos) + (ObInfo.Name, nm));
+                + (ObInfo.Name, nm));
+            if (sd != null)
+                domain += (k, sd.defpos);
+            if (v != null)
+                domain += (Domain.Default, v);
         }
         public PDomain(string nm, Domain dt, long pp, Context cx)
             : this(Type.PDomain, nm, dt, pp, cx) { }
@@ -97,8 +100,8 @@ namespace Pyrrho.Level2
                 var cs = CList<Domain>.Empty;
                 for (var b = dt.rowType.First(); b != null; b = b.Next())
                 {
-                    var cd = cx._Dom(dt.representation[b.value()]);
-                    d = System.Math.Max(d, cd.depth + 1);
+                    var cd = cx._Dom(dt.representation[b.value()])??throw new DBException("42105");
+                    d = Math.Max(d, cd.depth + 1);
                     cs += cd;
                 }
                 for (var b = cx.obs.First(); b != null; b = b.Next())
@@ -143,8 +146,8 @@ namespace Pyrrho.Level2
             if (dc.structure >= 0 && dc.rowType.Count == cs.Count)
             {
                 var cb = cs.First();
-                for (var c = dc.rowType.First(); c != null; c = c.Next(), cb = cb.Next())
-                    if (cx.obs[c.value()].domain.CompareTo(cb.value()) != 0)
+                for (var c = dc.rowType.First(); c != null && cb!=null; c = c.Next(), cb = cb.Next())
+                    if (cx.obs[c.value()] is SqlValue v && v.domain.CompareTo(cb.value()) != 0)
                         return false;
             }
             return true;
@@ -173,7 +176,11 @@ namespace Pyrrho.Level2
             wr.PutString(domain.culture.Name);
             wr.PutString(domain.defaultString);
             if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET)
-                wr.PutLong(wr.cx.db.types[wr.cx._Dom(domain.elType)]);
+            {
+                if (!wr.cx.db.types.Contains(domain.elType))
+                    throw new PEException("PE48802");
+                wr.PutLong(wr.cx.db.types[domain.elType]);
+            }
             else
                 wr.PutLong(domain.structure);
  			base.Serialise(wr);
@@ -199,7 +206,7 @@ namespace Pyrrho.Level2
                 ds = "'" + ds + "'";
                 domain += (Domain.DefaultString, ds);
             }
-            var sd = (Domain)rdr.context._Ob(rdr.GetLong());
+            var sd = (Domain?)rdr.context._Ob(rdr.GetLong());
             if (kind == Sqlx.TYPE)
                 structure = sd;
             else
@@ -213,7 +220,7 @@ namespace Pyrrho.Level2
                 return CultureInfo.InvariantCulture;
             return CultureInfo.GetCultureInfo(s);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             var nm = domain.name;
             switch(that.type)
@@ -233,7 +240,6 @@ namespace Pyrrho.Level2
                     if (nm == ((PTable)that).name)
                         return new DBException("40032", nm, that, ct);
                     break;
-                case Type.PView1:
                 case Type.PView:
                     if (nm == ((PView)that).name)
                         return new DBException("40032", nm, that, ct);
@@ -267,30 +273,29 @@ namespace Pyrrho.Level2
         {
             return domain.ToString();       
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ro = cx.db.role;
+            var ro = cx.db.role ?? throw new DBException("42105");
             var dt = domain;
             cx.Add(dt);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(domain.name, priv);
             dt += (DBObject.LastChange, p);
-            dt += (DBObject.Infos,new BTree<long,ObInfo>(ro.defpos, oi));
+            dt += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
             var st = CTree<string, long>.Empty;
-            for (var b=dt.rowType.First();b!=null; b=b.Next())
-            {
-                var ci = cx._Ob(b.value()).infos[ro.defpos];
-                st += (ci.name, b.value());
-            }
+            for (var b = dt.rowType.First(); b != null; b = b.Next())
+                if (cx._Ob(b.value()) is DBObject ob && ob.NameFor(cx) is string n)
+                    st += (n, b.value());
             if (domain.name != "")
                 ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
-            if (cx.db.format<51 && domain.structure > 0)
-                ro += (Role.DBObjects, ro.dbobjects 
+            if (cx.db.format < 51 && domain.structure > 0)
+                ro += (Role.DBObjects, ro.dbobjects
                     + ("" + domain.structure, domain.structure));
-            cx.db = cx.db + (ro,p) + (ppos,dt,p);
-            cx.db += (Database.Types, cx.db.types + (dt-Domain.Representation, ppos));
+            cx.db = cx.db + (ro, p) + (ppos, dt, p);
+            cx.db += (Database.Types, cx.db.types + (dt - Domain.Representation, ppos));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return dt;
         }
     }
 

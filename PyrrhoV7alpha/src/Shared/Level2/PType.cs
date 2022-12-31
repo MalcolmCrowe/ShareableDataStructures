@@ -24,9 +24,8 @@ namespace Pyrrho.Level2
 	/// </summary>
 	internal class PType : Compiled
 	{
-        internal Domain under = null;
-        internal Domain structure = null;
-        internal string name = "";
+        internal Domain? under = null;
+        internal Domain? structure = null;
         /// <summary>
         /// Constructor: A user-defined type definition from the Parser
         /// </summary>
@@ -34,15 +33,15 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the new type</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        protected PType(Type t, Ident nm, Domain dm, Domain un, long pp, Context cx)
-            : base(t, pp, cx, dm)
+        protected PType(Type t, Ident nm, Domain dm, Domain? un, long pp, Context cx)
+            : base(t, pp, cx, nm.ident, dm)
         {
             name = nm.ident;
             structure = dm;
             under = un;
             framing = new Framing(cx,nst);
         }
-        public PType(Ident nm, Domain dm, Domain un, long pp, Context cx)
+        public PType(Ident nm, Domain dm, Domain? un, long pp, Context cx)
             : this(Type.PType, nm, dm, un, pp, cx) { }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer
@@ -61,8 +60,8 @@ namespace Pyrrho.Level2
         protected PType(PType x, Writer wr) : base(x, wr)
         {
             name = x.name;
-            structure = (Domain)x.structure?._Relocate(wr.cx);
-            under = (Domain)x.under?._Relocate(wr.cx);
+            structure = (Domain?)x.structure?._Relocate(wr.cx);
+            under = (Domain?)x.under?._Relocate(wr.cx);
         }
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -106,7 +105,7 @@ namespace Pyrrho.Level2
         {
             var un = rdr.GetLong();
             if (un > 0)
-                under = (Domain)rdr.context.db.objects[un];
+                under = (Domain?)rdr.context.db.objects[un];
             name = rdr.GetString();
             var m = BTree<long, object>.Empty;
             var k = (Sqlx)rdr.GetInt();
@@ -136,9 +135,12 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
 		{
-            return "PType " + name + "["+ DBObject.Uid(structure.structure)+"]";
+            var r = "PType " + name;
+            if (structure!= null) 
+                r +="["+ DBObject.Uid(structure.structure)+"]";
+            return r;
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             var nm = dataType.name;
             switch(that.type)
@@ -150,15 +152,15 @@ namespace Pyrrho.Level2
                     break;
                 case Type.PDomain1:
                 case Type.PDomain:
-                    if (nm == cx._Dom(((PDomain)that).domain).name)
-                        return new DBException("40022", nm, that, ct);
+                    var tn = ((PDomain)that).domain.name;
+                    if (nm == tn)
+                        return new DBException("40022", nm, tn, ct);
                     break;
                 case Type.PTable:
                 case Type.PTable1:
                     if (dataType.name == ((PTable)that).name)
                         return new DBException("40032", nm, that, ct);
                     break;
-                case Type.PView1:
                 case Type.PView:
                     if (nm == ((PView)that).name)
                         return new DBException("40032", nm, that, ct);
@@ -184,20 +186,20 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        public override (Transaction, Physical) Commit(Writer wr, Transaction tr)
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
             var (nt, ph) = base.Commit(wr, tr);
             return (nt,ph);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject Install(Context cx, long p)
         {
-            var ro = cx.db.role;
-            var udt = new UDType(this, cx);
+            var ro = cx.role;
+            var udt = new UDType(this);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(name, priv);
             oi += (ObInfo.SchemaKey, p);
-            udt += (DBObject.Infos, new BTree<long, ObInfo>(Database._system._role, oi));
-            ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
+            udt += (DBObject.Infos, new BTree<long, ObInfo>(Database._system.role.defpos, oi));
+            ro += (Role.DBObjects, ro.dbobjects + (name, ppos));
             udt += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
             cx.Add(udt);
             if (cx.db.format < 51)
@@ -206,6 +208,7 @@ namespace Pyrrho.Level2
             cx.db += (Database.Types, cx.db.types + (udt, ppos));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return udt;
         }
     }
     internal class PType1 : PType // no longer used

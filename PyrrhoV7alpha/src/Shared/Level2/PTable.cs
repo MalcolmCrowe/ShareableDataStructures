@@ -25,10 +25,6 @@ namespace Pyrrho.Level2
         /// The defining position of this table
         /// </summary>
         public long defpos { get { return ppos; } }
-        /// <summary>
-        /// The name of the table
-        /// </summary>
-		public string name;
         public string rowiri = "";
         public Grant.Privilege enforcement = (Grant.Privilege)15; // read,insert,udate,delete
         public override long Dependent(Writer wr, Transaction tr)
@@ -56,10 +52,8 @@ namespace Pyrrho.Level2
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected PTable(Type t, string nm, Domain d, long pp, Context cx)
-            : base(t, pp, cx, d)
-		{
-			name = nm;
-		}
+            : base(t, pp, cx, nm, d)
+        { } 
         /// <summary>
         /// Constructor: a Table definition from the buffer
         /// </summary>
@@ -76,7 +70,6 @@ namespace Pyrrho.Level2
 		protected PTable(Type t, Reader rdr) : base(t,rdr) {}
         protected PTable(PTable x, Writer wr) : base(x, wr)
         {
-            name = x.name;
             rowiri = x.rowiri;
         }
         protected override Physical Relocate(Writer wr)
@@ -89,7 +82,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutString(name??"");
+            wr.PutString(name);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -109,7 +102,7 @@ namespace Pyrrho.Level2
 		{
 			return "PTable "+name;
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -118,7 +111,6 @@ namespace Pyrrho.Level2
                     if (name == ((PTable)that).name)
                         return new DBException("40032", name, that, ct);
                     break;
-                case Type.PView1:
                 case Type.PView:
                     if (name == ((PView)that).name)
                         return new DBException("40032", name, that, ct);
@@ -130,9 +122,9 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ro = cx.db.role;
+            var ro = cx.role;
             var tb = (name[0] == '(') ? new VirtualTable(this, ro, cx) : new Table(this, ro, cx);
             ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
@@ -142,6 +134,7 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             framing = tb.framing;
             cx.Install(tb, p);
+            return tb;
         }
     }
     internal class PTable1 : PTable
@@ -188,7 +181,7 @@ namespace Pyrrho.Level2
     {
         public long rowpos;
         public AlterRowIri(long pr, string ir, Domain d, long pp, Context cx) 
-            : base(Type.AlterRowIri, ir, null, d, pp, cx)
+            : base(Type.AlterRowIri, ir, "", d, pp, cx)
         {
             rowpos = pr;
         }
@@ -232,10 +225,9 @@ namespace Pyrrho.Level2
         {
         }
 
-        public Enforcement(long pt, Grant.Privilege en, long pp, Context cx)
-            : base(Type.Enforcement, pp, cx)
+        public Enforcement(Table tb, Grant.Privilege en, long pp) : base(Type.Enforcement, pp)
         {
-            tabledefpos = pt;
+            tabledefpos = tb.defpos;
             enforcement = en;
         }
 
@@ -243,8 +235,8 @@ namespace Pyrrho.Level2
         {
         }
 
-        protected Enforcement(Type typ, long pt, Grant.Privilege en, long pp, Context cx)
-            : base(typ, pp, cx)
+        protected Enforcement(Type typ, long pt, Grant.Privilege en, long pp)
+            : base(typ, pp)
         {
             tabledefpos = pt;
             enforcement = en;
@@ -291,14 +283,15 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject Install(Context cx, long p)
         {
-            var tb = (Table)cx.db.objects[tabledefpos];
+            if (cx.db.objects[tabledefpos] is not Table tb)
+                throw new PEException("PE1529");
             tb += (Table.Enforcement, enforcement);
             cx.db += (tb, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Add(tb);
+            return cx.Add(tb);
         }
     }
 }

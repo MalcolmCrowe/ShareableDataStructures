@@ -1,5 +1,4 @@
 using System;
-using System.Diagnostics;
 using Pyrrho.Common;
 using Pyrrho.Level1;
 using Pyrrho.Level3;
@@ -19,7 +18,7 @@ namespace Pyrrho.Level2
 	/// <summary>
 	/// The Change record in the database is used for renaming of objects other than TableColumns
 	/// </summary>
-	internal class Change : Physical
+	internal class Change : Defined
 	{
         /// <summary>
         /// The previous physical record for this object
@@ -29,10 +28,6 @@ namespace Pyrrho.Level2
         /// We compute this when reading
         /// </summary>
         public long affects;
-        /// <summary>
-        /// The new name for the object
-        /// </summary>
-		public string name;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr,prev)) return prev;
@@ -44,9 +39,8 @@ namespace Pyrrho.Level2
         /// <param name="pt">The defining position for this object</param>
         /// <param name="nm">The (new) name</param>
         /// <param name="idType">The identifier type</param>
-        /// <param name="tr">The transaction</param>
-        public Change(long pt, string nm, long pp, Context cx) 
-			:this(Type.Change,pt,nm, pp, cx)
+        public Change(long pt, string nm, long pp, Context cx)
+            : this(Type.Change, pt, nm, pp, cx)
 		{
             prev = pt;
             name = nm;
@@ -58,12 +52,10 @@ namespace Pyrrho.Level2
         /// <param name="pt">The defining position for this object</param>
         /// <param name="nm">The (new) name</param>
         /// <param name="idType">The identifier type</param>
-        /// <param name="db">The local database</param>
         protected Change(Type t, long pt, string nm, long pp, Context cx)
-			:base(t,pp,cx)
+			:base(t,pp,cx,nm,cx.Priv(pt))
 		{
             prev = pt;
-            name = nm;
 		}
         /// <summary>
         /// Constructor: a new Change object from the buffer
@@ -123,7 +115,7 @@ namespace Pyrrho.Level2
 		{ 
 			return "Change "+Pos(prev)+" ["+Pos(Affects)+"] to "+name; 
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -136,14 +128,13 @@ namespace Pyrrho.Level2
                         return new DBException("40022", name, that, ct);
                     break;
                 case Type.PType1:
-                case Type.PType: if (name.CompareTo(((PType)that).dataType.name) == 0)
+                case Type.PType: if (name.CompareTo(((PType)that).dataType?.name) == 0)
                         return new DBException("40032", ppos, that, ct);
                     break;
                 case Type.PRole1:
                 case Type.PRole: if (name.CompareTo(((PRole)that).name) == 0)
                         return new DBException("40032", ppos, that, ct);
                     break;
-                case Type.PView1:
                 case Type.PView: if (name.CompareTo(((PView)that).name) == 0)
                         return new DBException("40032", ppos, that, ct);
                     break;
@@ -162,7 +153,7 @@ namespace Pyrrho.Level2
                 case Type.PMethod:
                 case Type.PMethod2:
                 case Type.PProcedure2:
-                case Type.PProcedure: if (name.CompareTo(((PProcedure)that).name)==0) 
+                case Type.PProcedure: if (name.CompareTo(((PProcedure)that).nameAndArity)==0) 
                         return new DBException("40032", ppos, that, ct);
                     break;
                 case Type.PTrigger: if (name.CompareTo(((PTrigger)that).name) == 0)
@@ -176,22 +167,27 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pos">The object read</param>
         /// <returns>Whether a read conflict has occurred</returns>
-		public override DBException ReadCheck(long pos,Physical r,PTransaction ct)
+		public override DBException? ReadCheck(long pos,Physical r,PTransaction ct)
 		{
 			return (pos==Affects)?new DBException("40005",pos,r,ct).Mix():null;
 		}
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ro = cx.db.role;
+            var ro = cx.role;
             var ob = cx._Ob(affects);
-            var oi = ob.infos[cx.role.defpos];
+            if (ob == null)
+                return null;
+            var oi = ob.infos[ro.defpos];
+            if (oi == null)
+                return null;
             ob += (DBObject.LastChange, p);
             ob += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name, oi.priv)));
             cx.db += (ob, p);
-            cx.obs+=(affects,cx.obs[affects] + (DBObject.Infos, ob.infos[cx.role.defpos] + (ObInfo.Name, name)));
+            cx.obs+=(affects,ob + (DBObject.Infos, oi + (ObInfo.Name, name)));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return ob;
         }
     }
 }

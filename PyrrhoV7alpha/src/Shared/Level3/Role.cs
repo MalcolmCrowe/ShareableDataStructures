@@ -49,13 +49,13 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // CTree<string,long> Domain/Table/View etc by name
-            Procedures = -249; // CTree<string,CTree<CList<Domain>,long>> Procedure/Function by name and signature
+            Methods = -252, // CTree<long,CTree<string,CTree<int,long>>> Method by UDT, name, arity
+            Procedures = -249; // CTree<string,CTree<int,long>> Procedure/Function by name and arity
         internal CTree<string, long> dbobjects => 
-            (CTree<string, long>)mem[DBObjects]??CTree<string,long>.Empty;
-        public string name => (string)mem[ObInfo.Name];
+            (CTree<string, long>?)mem[DBObjects]??CTree<string,long>.Empty;
+        public string? name => (string?)mem[ObInfo.Name];
         internal CTree<string, CTree<CList<Domain>,long>> procedures => // not CList<long> !
-            (CTree<string, CTree<CList<Domain>,long>>)mem[Procedures]??
-            CTree<string,CTree<CList<Domain>,long>>.Empty;
+            (CTree<string, CTree<CList<Domain>,long>>?)mem[Procedures]??CTree<string,CTree<CList<Domain>,long>>.Empty;
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>
@@ -64,18 +64,22 @@ namespace Pyrrho.Level3
         /// <param name="nm"></param>
         /// <param name="u"></param>
         internal Role(string nm, long defpos, BTree<long, object> m)
-            : base(defpos, defpos, -1, (m ?? BTree<long, object>.Empty) + (ObInfo.Name, nm))
+            : base(defpos, defpos, (m ?? BTree<long, object>.Empty) + (ObInfo.Name, nm))
         { }
         public Role(PRole p, Database db, bool first)
-            : base(p.ppos, p.ppos, db.role.defpos,
-                 (first ? db.role.mem : db.guest.mem) + (LastChange, p.ppos)
-                 + (ObInfo.Name, p.name)
-                 + (DBObjects, first ? db.schema.dbobjects : db.guest.dbobjects)
-                 + (Procedures, first ? db.schema.procedures : db.guest.procedures)
-                 + (Infos, new BTree<long, ObInfo>(db.role.defpos,
-                      new ObInfo(p.name, Grant.Privilege.AdminRole | Grant.Privilege.UseRole))))
+            : base(p.ppos, p.ppos, _Mem(p,db,first))
         { }
         protected Role(long defpos, BTree<long, object> m) : base(defpos, m) { }
+        static BTree<long, object> _Mem(PRole p, Database db, bool first)
+        {
+            if (db.role is not Role ro || db.guest is not Role gu)
+                throw new DBException("42105");
+            return ((first ? ro : gu).mem ?? BTree<long, object>.Empty) + (LastChange, p.ppos) 
+                + (ObInfo.Name, p.name) + (Definer, p.definer) + (Infos,p.infos) + (Owner,p.owner)
+            + (DBObjects, first ? db.schema.dbobjects : db.guest.dbobjects)
+            + (Procedures, first ? db.schema.procedures : db.guest.procedures)
+            + (Infos, p.infos);
+        }
         public static Role operator+(Role r,(long,object)x)
         {
             return (Role)r.New(r.mem + x);
@@ -136,23 +140,23 @@ namespace Pyrrho.Level3
             _Metadata = -254, // CTree<Sqlx,TypedValue>
             Description = -67, // string
             Inverts = -353, // long SqlProcedure
-            MethodInfos = -252, // CTree<string, CTree<CList<Domain>,long>> Method
+            MethodInfos = -252, // CTree<string, CTree<int,long>> Method
             Name = -50, // string
             Names = -282, // CTree<string,long> TableColumn (SqlValues in RowSet)
             SchemaKey = -286, // long (highwatermark for schema changes)
             Privilege = -253; // Grant.Privilege
         public string description => mem[Description]?.ToString() ?? "";
-        public Grant.Privilege priv => (Grant.Privilege)mem[Privilege];
+        public Grant.Privilege priv => (Grant.Privilege?)mem[Privilege]??Grant.Privilege.NoPrivilege;
         public long inverts => (long)(mem[Inverts] ?? -1L);
-        public string iri => (string)mem[Domain.Iri] ?? "";
+        public string iri => (string?)mem[Domain.Iri] ?? "";
         public CTree<string, CTree<CList<Domain>, long>> methodInfos =>
-            (CTree<string, CTree<CList<Domain>, long>>)mem[MethodInfos] ?? 
-            CTree<string, CTree<CList<Domain>, long>>.Empty;
+            (CTree<string, CTree<CList<Domain>, long>>?)mem[MethodInfos] 
+            ?? CTree<string, CTree<CList<Domain>, long>>.Empty;
         public CTree<Sqlx, TypedValue> metadata =>
-            (CTree<Sqlx, TypedValue>)mem[_Metadata] ?? CTree<Sqlx, TypedValue>.Empty;
-        public string name => (string)mem[Name] ?? "";
+            (CTree<Sqlx, TypedValue>?)mem[_Metadata] ?? CTree<Sqlx, TypedValue>.Empty;
+        public string? name => (string?)mem[Name] ?? "";
         internal CTree<string,long> names =>
-            (CTree<string,long>)mem[Names]??CTree<string,long>.Empty;
+            (CTree<string, long>?)mem[Names]??CTree<string,long>.Empty;
         internal long schemaKey => (long)(mem[SchemaKey] ?? -1L);
         /// <summary>
         /// ObInfo for Table, TableColumn, Procedure etc have role-specific RowType in domains
@@ -173,8 +177,8 @@ namespace Pyrrho.Level3
         public static ObInfo operator +(ObInfo d, PMetadata pm)
         {
             d += (_Metadata, pm.Metadata());
-            if (pm.detail.Contains(Sqlx.DESCRIBE))
-                d += (Description, pm.detail[Sqlx.DESCRIBE]);
+            if (pm.detail[Sqlx.DESCRIBE] is TypedValue tv)
+                d += (Description, tv);
             if (pm.refpos > 0)
                 d += (Inverts, pm.refpos);
             return d;
@@ -243,6 +247,17 @@ namespace Pyrrho.Level3
         {
             var r = base._Relocate(cx);
             r += (Inverts, cx.Fix(inverts));
+            var ns = CTree<string,long>.Empty;
+            var ch = false;
+            for (var b=names.First();b!=null;b=b.Next())
+            {
+                var p = cx.Fix(b.value());
+                if (p != b.value())
+                    ch = true;
+                ns += (b.key(), p);
+            }
+            if (ch)
+                r += (Names, ns);
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -251,6 +266,17 @@ namespace Pyrrho.Level3
             var ni = cx.Fix(inverts);
             if (ni!=inverts)
                 r += (Inverts, ni);
+            var ns = CTree<string, long>.Empty;
+            var ch = false;
+            for (var b = names.First(); b != null; b = b.Next())
+            {
+                var p = cx.Fix(b.value());
+                if (p != b.value())
+                    ch = true;
+                ns += (b.key(), p);
+            }
+            if (ch)
+                r += (Names, ns);
             return r;
         }
     }

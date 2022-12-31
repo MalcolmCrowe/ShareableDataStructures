@@ -1,4 +1,5 @@
 using System.Text;
+using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 
@@ -16,12 +17,8 @@ namespace Pyrrho.Level2
     /// <summary>
     /// A Level 2 user definition. User identities are obtained from the operating system and from Grants
     /// </summary>
-    internal class PUser : Physical
+    internal class PUser : Defined
     {
-        /// <summary>
-        /// The name of the user
-        /// </summary>
-		public string name;
         public override long Dependent(Writer wr, Transaction tr)
         {
             return -1;
@@ -42,9 +39,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the user (an identifier)</param>
         /// <param name="pb">The local database</param>
         protected PUser(Type tp, string nm, long pp, Context cx)
-            : base(tp, pp, cx)
+            : base(tp, pp, cx,nm,Grant.AllPrivileges)
         {
-            name = nm;
         }
         /// <summary>
         /// Constructor: A Physical from the buffer
@@ -76,7 +72,9 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
         {
-            name = rdr.GetString();
+            // name = rdr.GetString();  will not work here
+            var nm = rdr.GetString();
+            infos = new BTree<long, ObInfo>(rdr.context.role.defpos, new ObInfo(nm, Grant.AllPrivileges));
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -87,7 +85,7 @@ namespace Pyrrho.Level2
         {
             return "PUser " + name;
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.db.role;
             var nu = new User(this, cx.db);
@@ -101,7 +99,7 @@ namespace Pyrrho.Level2
             var pr = Grant.Privilege.Select;
             if (first)
                 pr = pr | Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
-            var ui = new ObInfo(nu.name, pr);
+            var ui = new ObInfo(nu.name??"", pr);
             ro += (nu.defpos, ui);
             cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
             cx.db += (Database.Users, cx.db.users + (name, ppos));
@@ -110,10 +108,10 @@ namespace Pyrrho.Level2
             if (first)
             {
                 cx.db = cx.db + (Database.Owner, nu.defpos);
-                if (cx.db is Transaction tr && tr.user.name==nu.name)
-                    cx.db = cx.db + (Database.User, nu) + (Database.Role, ro)
-                        + (Database._User, nu.defpos) + (Database._Role, ro.defpos);
+                if (cx.db is Transaction tr && tr.user!=null && tr.user.name==nu.name)
+                    cx.db = cx.db + (Database.User, nu) + (Database.Role, ro);
             }
+            return nu;
         }
     }
     internal class Clearance : Physical
@@ -127,8 +125,8 @@ namespace Pyrrho.Level2
         }
         public Clearance(Reader rdr) : base(Type.Clearance, rdr)
         { }
-        public Clearance(long us, Level cl, long pp, Context cx)
-            : base(Type.Clearance, pp, cx)
+        public Clearance(long us, Level cl, long pp)
+            : base(Type.Clearance, pp)
         {
             _user = us;
             clearance = cl;
@@ -162,14 +160,15 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var us = cx.db.objects[_user] as User;
+            var us = cx.db.objects[_user] as User??throw new PEException("PE8200");
             us += (User.Clearance, clearance);
             cx.db += (us, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Add(us);
+            return us;
         }
     }
 }

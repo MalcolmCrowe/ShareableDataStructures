@@ -31,7 +31,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("10 October 2022 Repeatable tests");
+                Console.WriteLine("31 December 2022 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -109,18 +109,32 @@ namespace Test
             Test15();
             Test16();
             Test17();
-            Test18();
+            Test18(); 
             Test19();
             Test20();
             Test21();
             if (test == 0 || test > 21)
             {
+                // If the current user started the server, the databases are anonymous
+                // and current_role will be $Schema. To be accessible over the network
+                // an explicit role and user are required.
+                // Otherwise, the databases contain the user name already
+                // and their default role is the same as the database name.
                 var user = Environment.UserDomainName + "\\" + Environment.UserName;
                 connA = new PyrrhoConnect("Files=A");
                 connA.Act("create table D(e int primary key,f char,g char)");
                 connA.Act("insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')");
-                connA.Act("create role A");
-                connA.Act("grant A to \"" + user +"\"");
+                var cmd = connA.CreateCommand();
+                cmd.CommandText = "select current_role";
+                var r = cmd.ExecuteReader();
+                r.Read();
+                var needRole = r.GetString(0) != "A";
+                r.Close();
+                if (needRole)
+                {
+                    connA.Act("create role A");
+                    connA.Act("grant A to \"" + user + "\"");
+                }
                 Test22();
                 ResetA();
                 Test23();
@@ -407,7 +421,7 @@ namespace Test
             Act(97,"insert into ba values(34,0.5678e9,0)");
             CheckResults(9, 1, "select * from ba", 
                 "[{B: \"12345678901234567890123456789\", C: 123.4567, D: 0.1234}," +
-                "{B: 0, C: 1.234567E-13, D: 1234},{B: 12, C: 1234.0,D: 0.00045}," +
+                "{B: 0, C: 1.234567E-13, D: 1234},{B: 12, C: 1234,D: 0.00045}," +
                 "{B: 34, C: 567800000, D: 0}]");
             Rollback();
         }
@@ -679,7 +693,7 @@ namespace Test
             Act(176,"create table de (d int references ad)");
             if (qry == 0 || qry == 4)
             {
-                CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint: missing foreign key DE(14)");
+                CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint: missing foreign key DE(0=14)");
                 if (!commit)
                 {
                     Begin();
@@ -955,6 +969,7 @@ namespace Test
             Act(276,"set role membergames");
             Act(277,"call agree(2)");
             Act(278,"call claim(1,2)");
+            Act(378, "set role admin");
             CheckResults(21, 2, "table played", "[{ID:1,WINNER:2,LOSER:1,AGREED:true},{ID:2,WINNER:1,LOSER:2}]");
             Rollback();
         }
@@ -1140,24 +1155,42 @@ namespace Test
             testing = 24;
             var user = Environment.UserDomainName + "\\" + Environment.UserName;
             var connB = new PyrrhoConnect("Files=DB");
+            connB.Open();
+            var cmd = connB.CreateCommand();
+            // see notes for connA above
+            cmd.CommandText = "select current_role";
+            var r = cmd.ExecuteReader();
+            r.Read();
+            var needRole = r.GetString(0) != "DB";
+            r.Close();
+            if (needRole)
+            {
+                connB.Act("create role DB");
+                connB.Act("grant DB to \"" + user + "\"");
+            }
             cur = 321;
             connB.Act("create table T(E int,F char)");
             cur = 322;
             connB.Act("insert into T values(3,'Three'),(6,'Six'),(4,'Vier'),(6,'Sechs')");
-            cur = 323;
-            connB.Act("create role DB");
-            cur = 324;
-            connB.Act("grant DB to \"" + user + "\"");
             connB.Close();
             var connC = new PyrrhoConnect("Files=DC");
+            connC.Open();
+            cmd = connC.CreateCommand();
+            // see notes for connA above
+            cmd.CommandText = "select current_role";
+            r = cmd.ExecuteReader();
+            r.Read();
+            needRole = r.GetString(0) != "DC";
+            r.Close();
+            if (needRole)
+            {
+                connC.Act("create role DC");
+                connC.Act("grant DC to \"" + user + "\"");
+            }
             cur = 325;
             connC.Act("create table U(E int,F char)");
             cur = 326;
             connC.Act("insert into U values(5,'Five'),(4,'Four'),(8,'Ate')");
-            cur = 327;
-            connC.Act("create role DC");
-            cur = 328;
-            connC.Act("grant DC to \"" + user + "\"");
             cur = 329;
             connC.Close();
             Act(330,"create view BV of (E int,F char) as get 'http://localhost:8180/DB/DB/t'");

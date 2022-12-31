@@ -29,12 +29,8 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The Table
         /// </summary>
-		public Table table;
+		public Table? table;
         public long tabledefpos;
-        /// <summary>
-        /// The name of the TableColumn
-        /// </summary>
-		public string name;
         /// <summary>
         /// The position in the table (this matters for select * from ..)
         /// </summary>
@@ -45,14 +41,17 @@ namespace Pyrrho.Level2
         /// </summary>
         public long domdefpos = -1L;
 		public TypedValue dv => dataType?.defaultValue??TNull.Value; 
-        public string dfs,ups;
+        public string dfs="",ups="";
         public BTree<UpdateAssignment,bool> upd = CTree<UpdateAssignment,bool>.Empty; // see PColumn3
 		public bool notNull = false;    // ditto
 		public GenerationRule generated = GenerationRule.None; // ditto
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (!Committed(wr,table.defpos)) return table.defpos;
-            dataType.Create(wr, tr);
+            if (table != null && dataType != null)
+            {
+                if (!Committed(wr, table.defpos)) return table.defpos;
+                dataType.Create(wr, tr);
+            }
             return -1;
         }
         /// <summary>
@@ -65,10 +64,9 @@ namespace Pyrrho.Level2
         /// <param name="dm">The domain</param>
         /// <param name="tb">The local database</param>
         public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
-            Context cx,long tc) : base(t,pp,cx,tc,dm)
+            Context cx,long tc) : base(t,pp,cx,nm,tc,dm)
 		{
 			table = pr;
-			name = nm;
 			seq = sq;
             tabledefpos = pr.defpos;
             dataType = dm;
@@ -88,11 +86,13 @@ namespace Pyrrho.Level2
 		protected PColumn(Type t,Reader rdr) : base(t,rdr) {}
         protected PColumn(PColumn x, Writer wr) : base(x, wr)
         {
-            table = (Table)x.table._Relocate(wr.cx);
-            tabledefpos = table.defpos;
-            name = x.name;
-            seq = x.seq;
-            dataType = (Domain)x.dataType.Relocate(wr.cx);
+            if (x.table != null && x.dataType!=null)
+            {
+                table = (Table)x.table._Relocate(wr.cx);
+                tabledefpos = table.defpos;
+                seq = x.seq;
+                dataType = (Domain)x.dataType.Relocate(wr.cx);
+            }
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -104,9 +104,11 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
 		{
+            if (table == null || dataType == null)
+                return;
 			table = (Table)table._Relocate(wr.cx);
             tabledefpos = table.defpos;
-			dataType = wr.cx.db.Find(dataType);
+			dataType = wr.cx.db.Find(dataType) ?? throw new PEException("PE0302");
             wr.PutLong(table.defpos);
             wr.PutString(name.ToString());
             wr.PutInt(seq);
@@ -120,41 +122,44 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             tabledefpos = rdr.GetLong();
-            table = (Table)rdr.GetObject(tabledefpos);
+            table = (Table)(rdr.GetObject(tabledefpos)
+                ??new Table(defpos,BTree<long,object>.Empty+(DBObject._Domain,Domain.Content.defpos)));
             name = rdr.GetString();
             seq = rdr.GetInt();
             domdefpos = rdr.GetLong();
-            dataType = (Domain)rdr.GetObject(domdefpos);
+            dataType = (Domain)(rdr.GetObject(domdefpos) ?? throw new PEException("PE0301"));
             base.Deserialise(rdr);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
+            if (table == null || that == null || dataType==null)
+                return new DBException("42105");
             switch(that.type)
             {
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn:
-                    if (table.defpos == ((PColumn)that).table.defpos)
+                    if (that is PColumn pc && table.defpos == pc.table?.defpos)
                         return new DBException("40025", defpos, that, ct);
                     break;
                 case Type.Alter3:
                     {
                         var a = (Alter3)that;
-                        if (table.defpos == a.table.defpos && name == a.name)
+                        if (table.defpos == a.table?.defpos && name == a.name)
                             return new DBException("40025", table.defpos, that, ct);
                         break;
                     }
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
-                        if (table.defpos == a.table.defpos && name == a.name)
+                        if (table.defpos == a.table?.defpos && name == a.name)
                             return new DBException("40025", defpos, that, ct);
                         break;
                     }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
-                        if (table.defpos == a.table.defpos && name == a.name)
+                        if (table.defpos == a.table?.defpos && name == a.name)
                             return new DBException("40025", defpos, that, ct);
                         break;
                     }
@@ -163,7 +168,7 @@ namespace Pyrrho.Level2
                         var d = (Drop)that;
                         if (table.defpos == d.delpos)
                             return new DBException("40012", table.defpos, that, ct);
-                        if (cx.db.types[dataType] == d.delpos)
+                        if (cx.db.types.Contains(dataType) && cx.db.types[dataType] == d.delpos)
                             return new DBException("40016", defpos, that, ct);  
                         break;
                     }
@@ -194,14 +199,19 @@ namespace Pyrrho.Level2
             sb.Append("]");
             return sb.ToString();
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            table = (Table)cx.db.objects[table.defpos];
-            var ro = (table is VirtualTable)?Database._system.role:cx.db.role;
+           table = (Table?)cx.db.objects[table?.defpos??-1L];
+           var ro = (table is VirtualTable)?Database._system?.role:cx.role;
+           if (table == null || dataType == null || ro == null)
+                return null;
             cx.Install(dataType, p);
-            var tc = new TableColumn(table, this, dataType,cx.role);
+            var tc = new TableColumn(table, this, dataType,ro,cx.user);
             var rp = ro.defpos;
-            var priv = table.infos[rp].priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
+            var oi = table.infos[rp];
+            if (oi == null)
+                return null;
+            var priv = oi.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var oc = new ObInfo(name, priv);
             tc += (DBObject.Infos, tc.infos + (rp, oc)); // table name will already be known
             cx.Add(tc);
@@ -209,9 +219,9 @@ namespace Pyrrho.Level2
                 throw new DBException("42105");
             var op = cx.parse;
             cx.parse = ExecuteStatus.Compile;
-            var ov = cx.val;
-            cx.val = TNull.Value;
             var dm = cx._Dom(table);
+            if (dm == null)
+                return null;
             if (dm.defpos < 0)
             {
                 dm = (Domain)dm.Relocate(cx.GetUid());
@@ -225,7 +235,6 @@ namespace Pyrrho.Level2
             table += (DBObject._Framing,table.framing+dm);
             table += (DBObject.LastChange, ppos);
             cx.parse = op;
-            cx.val = ov;
             if (cx.db is Transaction tr && tr.physicals[table.defpos] is Compiled pt)
                 pt.framing = table.framing;
             cx.Add(table);
@@ -239,7 +248,7 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
             cx.Install(tc,p);
-            base.Install(cx, p);
+            return table;
         }
     }
     /// <summary>
@@ -332,21 +341,25 @@ namespace Pyrrho.Level2
             {
                 if (gn != Generation.Expression)
                 {
-                    var dm = (Domain)rdr.context.db.objects[domdefpos];
-                    dataType = dm+ (Domain.Default,dm.Parse(rdr.Position, dfs, rdr.context))
-                        +(Domain.DefaultString,dfs);
+                    var dm = (Domain?)rdr.context.db.objects[domdefpos];
+                    if (dm != null)
+                        dataType = dm + (Domain.Default, dm.Parse(rdr.Position, dfs, rdr.context))
+                            + (Domain.DefaultString, dfs);
                 }
                 else
                     generated = new GenerationRule(Generation.Expression,
-                        dfs, new SqlNull(rdr.Position), defpos);
+                        dfs, SqlNull.Value, defpos);
             }
         }
         internal override void OnLoad(Reader rdr)
         {
-            if (generated.gen == Generation.Expression)
+            if (table == null || dataType == null)
+                return;
+            if (generated.gen == Generation.Expression 
+                && rdr.context.db.objects[table?.defpos ?? -1L] is Table tb)
             {
-                table = (Table)rdr.context.db.objects[table.defpos];
-                var psr = new Parser(rdr, new Ident(dfs, rdr.context.Ix(ppos + 1)), table); // calls ForConstraintParse
+                table = tb;
+                var psr = new Parser(rdr, new Ident(dfs, rdr.context.Ix(ppos + 1))); // calls ForConstraintParse
                 var nst = psr.cx.db.nextStmt;
                 var sv = psr.ParseSqlValue(dataType);
                 psr.cx.Add(sv);
@@ -465,7 +478,7 @@ namespace Pyrrho.Level2
     /// Pyrrho 5.1. To allow constraints (even Primary Key) to refer to deep structure.
     /// This feature is introduced for Documents but will be used for row type columns, UDTs etc.
     /// </summary>
-    internal class PColumnPath : Physical
+    internal class PColumnPath : Defined
     {
         /// <summary>
         /// The defining position of the Column
@@ -478,7 +491,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// a single component of the ColumnPath string
         /// </summary>
-        public string path = null;
+        public string? path = null;
         /// <summary>
         /// The domain if known
         /// </summary>
@@ -515,7 +528,7 @@ namespace Pyrrho.Level2
             coldefpos = wr.cx.Fix(coldefpos);
             domdefpos = wr.cx.Fix(domdefpos);
             wr.PutLong(coldefpos);
-            wr.PutString(path);
+            wr.PutString(path ?? throw new PEException("PE0303"));
             wr.PutLong(domdefpos);
             base.Serialise(wr);
         }
@@ -531,7 +544,7 @@ namespace Pyrrho.Level2
             return "ColumnPath [" + coldefpos + "]" + path + "(" + domdefpos + ")";
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             throw new NotImplementedException();
         }

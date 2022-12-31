@@ -1,173 +1,77 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{9DE6C4F6-7AD5-44C4-9135-DDBB75A6ABB9}</ProjectGuid>
     <OutputType>Exe</OutputType>
-    <AppDesignerFolder>Properties/PS</AppDesignerFolder>
-    <RootNamespace>PyrrhoSvr</RootNamespace>
-    <AssemblyName>PyrrhoSvr</AssemblyName>
-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <AutoGenerateBindingRedirects>true</AutoGenerateBindingRedirects>
-    <TargetFrameworkProfile />
-    <PublishUrl>publish\</PublishUrl>
-    <Install>true</Install>
-    <InstallFrom>Disk</InstallFrom>
-    <UpdateEnabled>false</UpdateEnabled>
-    <UpdateMode>Foreground</UpdateMode>
-    <UpdateInterval>7</UpdateInterval>
-    <UpdateIntervalUnits>Days</UpdateIntervalUnits>
-    <UpdatePeriodically>false</UpdatePeriodically>
-    <UpdateRequired>false</UpdateRequired>
-    <MapFileExtensions>true</MapFileExtensions>
-    <ApplicationRevision>0</ApplicationRevision>
-    <ApplicationVersion>1.0.0.%2a</ApplicationVersion>
-    <IsWebBootstrapper>false</IsWebBootstrapper>
-    <UseApplicationTrust>false</UseApplicationTrust>
-    <BootstrapperEnabled>true</BootstrapperEnabled>
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <PlatformTarget>AnyCPU</PlatformTarget>
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup>
-    <ApplicationIcon>Server.ico</ApplicationIcon>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="Mono.Posix, Version=4.0.0.0, Culture=neutral, PublicKeyToken=0738eb9f132ed756, processorArchitecture=MSIL">
-      <HintPath>packages\Mono.Posix-4.5.4.5.0\lib\net45\Mono.Posix.dll</HintPath>
-    </Reference>
-    <Reference Include="System" />
-    <Reference Include="System.Configuration" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Web.Extensions" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
+    <Compile Remove="packages\**" />
+    <Compile Remove="Properties\EP\**" />
+    <Compile Remove="Properties\PL\**" />
+    <Compile Remove="Properties\PS\**" />
+    <Compile Remove="PyrrhoLink\**" />
+    <Compile Remove="PyrrhoSvr64\**" />
+    <Compile Remove="UnitTestProject\**" />
+    <EmbeddedResource Remove="packages\**" />
+    <EmbeddedResource Remove="Properties\EP\**" />
+    <EmbeddedResource Remove="Properties\PL\**" />
+    <EmbeddedResource Remove="Properties\PS\**" />
+    <EmbeddedResource Remove="PyrrhoLink\**" />
+    <EmbeddedResource Remove="PyrrhoSvr64\**" />
+    <EmbeddedResource Remove="UnitTestProject\**" />
+    <None Remove="packages\**" />
+    <None Remove="Properties\EP\**" />
+    <None Remove="Properties\PL\**" />
+    <None Remove="Properties\PS\**" />
+    <None Remove="PyrrhoLink\**" />
+    <None Remove="PyrrhoSvr64\**" />
+    <None Remove="UnitTestProject\**" />
   </ItemGroup>
+
   <ItemGroup>
-    <Compile Include="Common\BTree.cs" />
-    <Compile Include="Common\CTree.cs" />
-    <Compile Include="Common\DataType.cs" />
-    <Compile Include="Common\Integer.cs" />
-    <Compile Include="Common\Interfaces.cs" />
-    <Compile Include="Common\Pyrrho.cs" />
-    <Compile Include="Common\Row.cs" />
-    <Compile Include="GlobalSuppressions.cs" />
-    <Compile Include="Level4\ParseClasses.cs" />
-    <Compile Include="Level4\Symbols.cs" />
-    <Compile Include="Common\TDocument.cs" />
-    <Compile Include="Common\Tree.cs" />
-    <Compile Include="Document.cs" />
-    <Compile Include="HttpService.cs" />
-    <Compile Include="Level1\IOBase.cs" />
-    <Compile Include="Level1\TCPStream.cs" />
-    <Compile Include="Level1\Crypt.cs" />
-    <Compile Include="Level2\Alter.cs" />
-    <Compile Include="Level2\Change.cs" />
-    <Compile Include="Level2\Checkpoint.cs" />
-    <Compile Include="Level2\Delete.cs" />
-    <Compile Include="Level2\Drop.cs" />
-    <Compile Include="Level2\Edit.cs" />
-    <Compile Include="Level2\EndOfFile.cs" />
-    <Compile Include="Level2\Grant.cs" />
-    <Compile Include="Level2\Modify.cs" />
-    <Compile Include="Level3\MTree.cs" />
-    <Compile Include="Level2\Ordering.cs" />
-    <Compile Include="Level2\PCheck.cs" />
-    <Compile Include="Level2\PColumn.cs" />
-    <Compile Include="Level2\PDomain.cs" />
-    <Compile Include="Level2\Physical.cs" />
-    <Compile Include="Level2\PIndex.cs" />
-    <Compile Include="Level2\PMethod.cs" />
-    <Compile Include="Level2\PPeriodDef.cs" />
-    <Compile Include="Level2\PProcedure.cs" />
-    <Compile Include="Level2\PRole.cs" />
-    <Compile Include="Level2\PTable.cs" />
-    <Compile Include="Level2\PTransaction.cs" />
-    <Compile Include="Level2\PTrigger.cs" />
-    <Compile Include="Level2\PType.cs" />
-    <Compile Include="Level2\PUser.cs" />
-    <Compile Include="Level2\PView.cs" />
-    <Compile Include="Level2\Record.cs" />
-    <Compile Include="Level2\Revoke.cs" />
-    <Compile Include="Level2\Update.cs" />
-    <Compile Include="Level3\Check.cs" />
-    <Compile Include="Level3\Database.cs" />
-    <Compile Include="Level3\DBObject.cs" />
-    <Compile Include="Level3\Domain.cs" />
-    <Compile Include="Level3\Index.cs" />
-    <Compile Include="Level3\Method.cs" />
-    <Compile Include="Level3\Procedure.cs" />
-    <Compile Include="Level3\Profile.cs" />
-    <Compile Include="Level3\Role.cs" />
-    <Compile Include="Level3\Table.cs" />
-    <Compile Include="Level3\TableColumn.cs" />
-    <Compile Include="Level3\Trigger.cs" />
-    <Compile Include="Level3\User.cs" />
-    <Compile Include="Level3\View.cs" />
-    <Compile Include="Level4\Activation.cs" />
-    <Compile Include="Level4\Context.cs" />
-    <Compile Include="Level3\Executable.cs" />
-    <Compile Include="Level4\Join.cs" />
-    <Compile Include="Level4\MergeResults.cs" />
-    <Compile Include="Level3\QueryClasses.cs" />
-    <Compile Include="Level4\Parser.cs" />
-    <Compile Include="Level4\RowSet.cs" />
-    <Compile Include="Level4\RTree.cs" />
-    <Compile Include="Level4\SystemResults.cs" />
-    <Compile Include="Level3\Transaction.cs" />
-    <Compile Include="Level3\Value.cs" />
-    <Compile Include="Properties\PS\AssemblyInfo.cs" />
-    <Compile Include="Resx.cs" />
-    <Compile Include="Start.cs" />
+    <Compile Remove="Class1.cs" />
+    <Compile Remove="Crypt.cs" />
+    <Compile Remove="GlobalSuppressions.cs" />
+    <Compile Remove="Level3\ReadConstraint.cs" />
+    <Compile Remove="Level4\Group.cs" />
+    <Compile Remove="Properties\AssemblyInfo.cs" />
+    <Compile Remove="Pyrrho.cs" />
+    <Compile Remove="PyrrhoLink.cs" />
+    <Compile Remove="Reflection.cs" />
+    <Compile Remove="Scripting.cs" />
+    <Compile Remove="WebCtlr.cs" />
+    <Compile Remove="WebSvc.cs" />
+    <Compile Remove="WebSvr.cs" />
   </ItemGroup>
+
   <ItemGroup>
-    <None Include=".editorconfig" />
-    <None Include="App.config" />
-    <None Include="packages.config" />
+    <None Remove=".gitattributes" />
+    <None Remove=".gitignore" />
+    <None Remove="app.config" />
+    <None Remove="App.ico" />
+    <None Remove="consts.xlsx" />
+    <None Remove="COPYRIGHT.txt" />
+    <None Remove="desktop.ini" />
+    <None Remove="Embed.ico" />
+    <None Remove="Jun11.txt" />
+    <None Remove="OSPLink.dll" />
+    <None Remove="packages.config" />
+    <None Remove="ProSec.dll" />
+    <None Remove="Pyrrho.docx" />
+    <None Remove="Pyrrho.pdf" />
+    <None Remove="PyrrhoCmd.exe" />
+    <None Remove="Pyrrhodb.snk" />
+    <None Remove="PyrrhoLink.dll" />
+    <None Remove="PyrrhoSvr.exe" />
+    <None Remove="PyrrhoSvr.pdb" />
+    <None Remove="PyrrhoTest.exe" />
+    <None Remove="Server.ico" />
+    <None Remove="SourceIntro.docx" />
+    <None Remove="SourceIntro.pdf" />
+    <None Remove="tests.txt" />
   </ItemGroup>
-  <ItemGroup>
-    <Content Include="Server.ico" />
-  </ItemGroup>
-  <ItemGroup>
-    <BootstrapperPackage Include=".NETFramework,Version=v4.7.2">
-      <Visible>False</Visible>
-      <ProductName>Microsoft .NET Framework 4.7.2 %28x86 and x64%29</ProductName>
-      <Install>true</Install>
-    </BootstrapperPackage>
-    <BootstrapperPackage Include="Microsoft.Net.Framework.3.5.SP1">
-      <Visible>False</Visible>
-      <ProductName>.NET Framework 3.5 SP1</ProductName>
-      <Install>false</Install>
-    </BootstrapperPackage>
-  </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
+
 </Project>

@@ -27,7 +27,7 @@ namespace Pyrrho.Level4
         internal Iix(long l,int s,long u) { lp = l; sd = s; dp = u;  }
         internal Iix(Iix ix,long u) { lp = ix.lp; sd = ix.sd; dp = u; }
         internal Iix(long l,Context cx,long u) { lp = l; sd = cx.sD; dp = u;  }
-        public int CompareTo(object obj)
+        public int CompareTo(object? obj)
         {
             if (obj == null)
                 return -1;
@@ -55,20 +55,21 @@ namespace Pyrrho.Level4
     /// </summary>
     internal class Ident : IComparable
     {
-        internal readonly Ident sub;
+        internal readonly Ident? sub;
         internal readonly Iix iix;
         internal readonly string ident;
-        internal Ident(Parser psr, string s = null)
+        internal Ident(Parser psr, string? s = null)
         {
             var lx = psr.lxr;
-            ident = s ?? ((lx.tok == Sqlx.ID) ? lx.val.ToString() : lx.tok.ToString());
+            ident = s ?? ((lx.tok == Sqlx.ID) ? lx.val?.ToString() : lx.tok.ToString()) 
+                ?? "";
             iix = psr.LexPos();
             sub = null;
         }
         internal Ident(Parser psr, long q)
         {
             var lx = psr.lxr;
-            ident = (lx.tok == Sqlx.ID) ? lx.val.ToString() : lx.tok.ToString();
+            ident = ((lx.tok == Sqlx.ID) ? lx.val?.ToString() : lx.tok.ToString()) ?? "";
             iix = psr.LexPos();
             sub = null;
         }
@@ -78,35 +79,25 @@ namespace Pyrrho.Level4
             iix = lf.iix;
             sub = sb;
         }
-        internal Ident(Ident pr,string s)
-        {
-            if (pr == null)
-                ident = s;
-            else
-            {
-                ident = pr.ident;
-                sub = new Ident(pr.sub, s);
-            }
-        }
         internal Ident(string s, Iix dp)
         {
             iix = dp;
             ident = s;
         }
-        internal Ident(string s, Iix dp,Ident sb)
+        internal Ident(string s, Iix dp,Ident? sb)
         {
             iix = dp;
             ident = s;
             sub = sb;
         }
         internal int Length => 1 + (sub?.Length ?? 0);
-        internal Ident Prefix(int n) // if n>=Length we return this
+        internal Ident? Prefix(int n) // if n>=Length we return this
         {
             if (n < 0)
                 return null;
             return new Ident(ident, iix, sub?.Prefix(n-1));
         }
-        internal Ident this[int i]
+        internal Ident? this[int i]
         {
             get
             {
@@ -142,7 +133,7 @@ namespace Pyrrho.Level4
         {
             return new Ident(ident, cx.Fix(iix), sub?.Fix(cx));
         }
-        public int CompareTo(object obj)
+        public int CompareTo(object? obj)
         {
             if (obj == null)
                 return 1;
@@ -165,7 +156,7 @@ namespace Pyrrho.Level4
         {
             public new static Idents Empty = new Idents();
             Idents() : base() { }
-            Idents(BTree<string, BTree<int,(Iix, Idents)>> b) : base(b.root) 
+            Idents(BTree<string, BTree<int,(Iix, Idents)>> b) : base(b.root ?? throw new PEException("PE625")) 
             { }
             public static Idents operator +(Idents t, (string, Iix, Idents) x)
             {
@@ -227,7 +218,7 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="x">A pair: (chain,depth)</param>
             /// <returns>(Deepest Iix found, descendants, rest of chain)</returns>
-            internal (Iix,Idents,Ident) this[(Ident,int) x]
+            internal (Iix,Idents?,Ident?) this[(Ident,int) x]
             {
                 get
                 {
@@ -239,7 +230,7 @@ namespace Pyrrho.Level4
                     var s = this[ic.ident] ?? BTree<int, (Iix, Idents)>.Empty; ;
                     for (var sd = ic.iix.sd;ix == Iix.None && sd>=0;sd--)
                         if (s.Contains(sd))
-                           (ix, ids) = this[ic.ident][sd];
+                           (ix, ids) = s[sd];
                     if (ids != Empty && ic.sub != null && d > 1 && ids.Contains(ic.sub.ident))
                         return ids[(ic.sub, d - 1)];
                     return (ix, ids, ic.sub);
@@ -262,55 +253,57 @@ namespace Pyrrho.Level4
                     return ob;
                 }
             }
-            internal (Iix,Idents) this[(string,int)x]
+            internal (Iix,Idents) this[(string?,int)x]
             {
-                get 
+                get
                 {
                     var (s, d) = x;
-                    for (var b=PositionAt(s)?.value().Last();b!=null;b=b.Previous())
-                    {
-                        if (b.key() <= d)
-                            return b.value();
-                    }
-                    return (Iix.None,Idents.Empty);
+                    if (s != null)
+                        for (var b = PositionAt(s)?.value()?.Last(); b != null; b = b.Previous())
+                        {
+                            if (b.key() <= d)
+                                return b.value();
+                        }
+                    return (Iix.None, Empty);
                 }
             }
             internal Idents ApplyDone(Context cx)
             {
                 var r = BTree<string, BTree<int,(Iix,Idents)>>.Empty;
                 for (var b=First();b!=null;b=b.Next())
-                {
-                    for (var s = b.value().First(); s != null; s = s.Next())
+                 if (b.value() is BTree<int,(Iix,Idents)> x){
+                    for (var s = x.First(); s != null; s = s.Next())
                     {
                         var (p, st) = s.value();
                         if (p.dp != -1L && cx.done[p.dp] is DBObject nb)
                         {
                             p = new Iix(p.lp,p.sd,nb.defpos);
                             for (var c = cx._Dom(nb)?.rowType.First(); c != null; c = c.Next())
-                                if (cx.done[c.value()] is SqlValue v)
+                                if (cx.done[c.value()] is SqlValue v && v.name!=null)
                                 {
                                     var ds = st[v.name] ?? BTree<int,(Iix,Idents)>.Empty;
                                     st = new Idents(st + (v.name, ds +(p.sd,(new Iix(v.defpos,p.sd,v.defpos),Empty))));
                                 }
                         }
-                        st = st?.ApplyDone(cx);
-                        r += (b.key(), b.value()+(p.sd,(p, st))); // do not change the string key part
+                        st = st.ApplyDone(cx);
+                        r += (b.key(), x+(p.sd,(p, st))); // do not change the string key part
                     }
                 }
-                return new Idents(r);
+                return (r.Count>0)?new Idents(r):Idents.Empty;
             }
             internal Idents Relocate(Context cx)
             {
                 var r = Empty;
-                for (var b=First();b!=null;b=b.Next())
-                {
-                    var n = b.key();
-                    for (var c = b.value().First(); c != null; c = c.Next())
+                for (var b = First(); b != null; b = b.Next())
+                    if (b.value() is BTree<int, (Iix, Idents)> x)
                     {
-                        var (p, ids) = c.value();
-                        r += (n, cx.Fix(p), ids?.Relocate(cx));
+                        var n = b.key();
+                        for (var c = x.First(); c != null; c = c.Next())
+                        {
+                            var (p, ids) = c.value();
+                            r += (n, cx.Fix(p), ids.Relocate(cx));
+                        }
                     }
-                }
                 return r;
             }
             public override ATree<string, BTree<int,(Iix, Idents)>> Add(ATree<string, BTree<int,(Iix, Idents)>> a)
@@ -320,18 +313,19 @@ namespace Pyrrho.Level4
             public override string ToString()
             {
                 var sb = new StringBuilder();
-                for (var b=First();b!=null;b=b.Next())
-                {
-                    sb.Append(b.key()); sb.Append("=(");
-                    for (var c = b.value().First(); c != null; c = c.Next())
+                for (var b = First(); b != null; b = b.Next())
+                    if (b.value() is BTree<int, (Iix, Idents)> x)
                     {
-                        var (p, ids) = c.value();
-                        sb.Append(p.ToString());sb.Append(",");
-                        if (ids != Empty)
-                            sb.Append(ids.ToString());
+                        sb.Append(b.key()); sb.Append("=(");
+                        for (var c = x.First(); c != null; c = c.Next())
+                        {
+                            var (p, ids) = c.value();
+                            sb.Append(p.ToString()); sb.Append(",");
+                            if (ids != Empty)
+                                sb.Append(ids.ToString());
+                        }
+                        sb.Append(");");
                     }
-                    sb.Append(");");
-                }
                 return sb.ToString();
             }
         }
@@ -368,8 +362,8 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The current token's value
         /// </summary>
-		public TypedValue val = null, prevval = null;
-        public TypedValue pushVal;
+		public TypedValue val = TNull.Value, prevval = TNull.Value;
+        public TypedValue pushVal = TNull.Value;
         private Context cx; // only used for type prefix/suffix things
         /// <summary>
         /// Entries in the reserved word table
@@ -423,7 +417,7 @@ namespace Pyrrho.Level4
 				h = (h+1)&0x7ff;
 			}
 		}
-        internal object Diag { get { if (val.IsNull) return tok; return val; } }
+        internal object Diag { get { return (val == TNull.Value) ? tok : val; } }
        /// <summary>
         /// Constructor: Start a new lexer
         /// </summary>
@@ -500,18 +494,19 @@ namespace Pyrrho.Level4
         }
         Sqlx MaybePrefix(string s)
         {
-            if (cx.parse==ExecuteStatus.Obey && cx.db.prefixes.Contains(s))
+            if (cx.parse==ExecuteStatus.Obey && cx.db!=null && cx.role!=null
+                && cx.db.objects[cx.db.prefixes[s]] is UDType dt && val!=null
+                && dt.name!=null)
             {
-                var ps = Position;
+                var ps = pos;
                 Next();
-                var dt = (UDType)cx.db.objects[cx.db.prefixes[s]];
-                var mt = cx.db.GetMethod(dt, dt.name, new CList<Domain>(val.dataType));
-                if (mt != null)
+                var sig = new CList<Domain>(val.dataType);
+                if (dt.infos[cx.role.defpos] is ObInfo mi && dt.name!=null &&
+                    mi.methodInfos[dt.name] is CTree<CList<Domain>,long> md
+                    && cx.db.objects[md[sig]] is Method mt)
                 {
-                    mt = (Method)mt.Instance(cx.GetUid(), cx);
-                    var pa = (FormalParameter)cx.obs[mt.ins[0]];
-                    cx.Add(new SqlLiteral(ps, cx, cx._Dom(pa).Coerce(cx, val)));
-                    val = mt.Exec(cx,new CList<long>(ps)).val;
+                    cx.Add(new SqlLiteral(ps, cx, Domain.Numeric.Coerce(cx, val)));
+                    val = mt.Exec(cx, new CList<long>(ps)).val;
                 } 
                 else
                     val = new TSubType(dt,val);
@@ -524,21 +519,20 @@ namespace Pyrrho.Level4
             {
                 var oldtok = tok;
                 var oldval = val;
+                var sig = new CList<Domain>(val.dataType);
                 var oldstart = start;
                 var oldch = ch;
                 var t = Next();
-                var vs = val.ToString();
-                if (t == Sqlx.ID && cx.db.suffixes.Contains(vs))
+                var vs = val?.ToString();
+                if (t == Sqlx.ID && vs != null && cx.db!=null && cx.role!=null
+                    && cx.db.objects[cx.db.suffixes[vs]] is UDType dt
+                    && dt.name != null && prevval!=null)
                 {
-                    var dt = (UDType)cx.db.objects[cx.db.suffixes[vs]];
-                    var mi = dt.infos[cx.role.defpos];
-                    var md = mi.methodInfos[dt.name];
-                    if (md != null)
-                    {
-                        var mt = (Method)cx.db.objects[md[new CList<Domain>(Domain.Numeric)]];
-                        var r = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), cx, prevval));
+                    if (dt.infos[cx.role.defpos] is ObInfo mi 
+                        && mi.methodInfos[dt.name] is CTree<CList<Domain>, long> md
+                        && cx.db.objects[md[sig]] is Method mt
+                        && cx.Add(new SqlLiteral(cx.GetUid(), cx, prevval)) is SqlValue r)
                         val = mt.Exec(cx, new CList<long>(r.defpos)).val;
-                    }
                     else
                         val = new TSubType(dt, prevval);
                     tok = oldtok;
@@ -618,7 +612,7 @@ namespace Pyrrho.Level4
                         case Sqlx.TRUE: val = TBool.True; return Sqlx.BOOLEANLITERAL;
                         case Sqlx.FALSE: val = TBool.False; return Sqlx.BOOLEANLITERAL;
                         case Sqlx.NULL: val = TNull.Value; return Sqlx.NULL;
-                        case Sqlx.UNKNOWN: val = null; return Sqlx.BOOLEANLITERAL;
+                        case Sqlx.UNKNOWN: val = TNull.Value; return Sqlx.BOOLEANLITERAL;
                         case Sqlx.CURRENT_DATE: val = new TDateTime(DateTime.Today); return tok;
                         case Sqlx.CURRENT_TIME: val = new TTimeSpan(DateTime.Now - DateTime.Today); return tok;
                         case Sqlx.CURRENT_TIMESTAMP: val = new TDateTime(DateTime.Now); return tok;
@@ -695,15 +689,12 @@ namespace Pyrrho.Level4
                 case ';': Advance(); return tok = Sqlx.SEMICOLON;
                 case '?': Advance(); return tok = Sqlx.QMARK; //added for Prepare()
                 case ':':
-                     {
+                    if (ch == ':')
+                    {
                         Advance();
-                        if (ch == ':')
-                        {
-                            Advance();
-                            return tok = Sqlx.DOUBLECOLON;
-                        }
-                        return tok = Sqlx.COLON;
+                        return tok = Sqlx.DOUBLECOLON;
                     }
+                    return tok = Sqlx.COLON;
                 case '-':
                     if (minusch == ' ')
                         Advance();
@@ -851,14 +842,14 @@ namespace Pyrrho.Level4
         /// <returns>the stop character</returns>
         public char XmlNext(params char[] stop)
         {
-            var nest = new Stack<char>();
+            Stack<char> nest = new Stack<char>();
             char quote = (char)0;
             int n = stop.Length;
             int start = pos;
             char prev = (char)0;
             for (; ; )
             {
-                if (nest == null && quote == (char)0)
+                if (nest.Count==0 && quote == (char)0)
                     for (int j = 0; j < n; j++)
                         if (ch == stop[j])
                             goto done;
@@ -886,7 +877,7 @@ namespace Pyrrho.Level4
                             goto done;
                         goto case ']';
                     case ']': if (quote != (char)0) break;
-                        if (nest == null || ch != nest.Peek())
+                        if (nest.Count==0 || ch != nest.Peek())
                             throw new DBException("2200N").ISO();
                         nest.Pop();
                         break;

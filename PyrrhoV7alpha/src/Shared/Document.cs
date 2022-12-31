@@ -1,5 +1,8 @@
 ﻿using System;
 using System.Collections;
+using Pyrrho.Common;
+using System.Reflection;
+using System.Diagnostics.CodeAnalysis;
 #if !MONO1
 using System.Collections.Generic;
 #endif
@@ -47,7 +50,7 @@ namespace Pyrrho
             if (i != n)
                 throw new DocumentException("unparsed input at " + (i - 1));
         }
-        public object this[string k]
+        public object? this[string k]
         {
             get {
 #if MONO1
@@ -61,11 +64,12 @@ namespace Pyrrho
             }
             set
             {
+                if (value is object o)
                 fields.Add(new KeyValuePair
 #if !MONO1
                     <string, object>
 #endif
-                    (k, value));
+                    (k, o));
             }
         }
         public bool Contains(string k)
@@ -89,7 +93,7 @@ namespace Pyrrho
         internal int Fields(string s, int i, int n)
         {
             ParseState state = ParseState.StartKey;
-            StringBuilder kb = null;
+            StringBuilder kb = new StringBuilder();
             var keyquote = true;
             while (i < n)
             {
@@ -99,13 +103,13 @@ namespace Pyrrho
                     case ParseState.StartKey:
                         kb = new StringBuilder();
                         keyquote = true;
-                        if (Char.IsWhiteSpace(c))
+                        if (char.IsWhiteSpace(c))
                             continue;
                         if (c == '}' && fields.Count == 0)
                             return i;
                         if (c != '"')
                         {
-                            if (!Char.IsLetter(c) && c!='_' && c!='$' && c!='.')
+                            if (!char.IsLetter(c) && c!='_' && c!='$' && c!='.')
                                 throw new DocumentException("Expected name at " + (i - 1));
                             keyquote = false;
                             kb.Append(c);
@@ -125,24 +129,25 @@ namespace Pyrrho
                         kb.Append(c);
                         continue;
                     case ParseState.Colon:
-                        if (Char.IsWhiteSpace(c))
+                        if (char.IsWhiteSpace(c))
                             continue;
                         if (c != ':')
                             throw new DocumentException("Expected : at " + (i - 1));
                         state = ParseState.StartValue;
                         continue;
                     case ParseState.StartValue:
-                        if (Char.IsWhiteSpace(c))
+                        if (char.IsWhiteSpace(c))
                             continue;
+                        if (GetValue(s,n, ref i) is object o)
                         fields.Add(new KeyValuePair
 #if !MONO1
                                 <string, object>
 #endif
-                                (kb.ToString(), GetValue(s, n, ref i)));
+                                (kb.ToString(), o));
                         state = ParseState.Comma;
                         continue;
                     case ParseState.Comma:
-                        if (Char.IsWhiteSpace(c))
+                        if (char.IsWhiteSpace(c))
                             continue;
                         if (c == '}')
                             return i;
@@ -172,16 +177,17 @@ namespace Pyrrho
                 while (i < off + n && b[i++] != 0)
                     c++;
                 var key = Encoding.UTF8.GetString(b, s, c);
+                if (GetValue(t,b,ref i) is object o)
                 fields.Add(new KeyValuePair
 #if !MONO1
                     <string, object>
 #endif
-                    (key, GetValue(t, b, ref i)));
+                    (key, o));
             }
         }
-        internal static object GetValue(byte t, byte[] b, ref int i)
+        internal static object? GetValue(byte t, byte[] b, ref int i)
         {
-            object tv = null;
+            object? tv = null;
             switch (t)
             {
                 case 1:
@@ -383,14 +389,16 @@ namespace Pyrrho
                         for (int i = 0; i < d.fields.Count; i++)
                         {
                             var k = "" + i;
-                            var e = d[k];
-                            r.Add(BsonType(e));
-                            var b = Encoding.UTF8.GetBytes(k);
-                            foreach (var a in b)
-                                r.Add(a);
-                            r.Add(0);
-                            foreach (var a in GetBytes(e))
-                                r.Add(a);
+                            if (d[k] is object e)
+                            {
+                                r.Add(BsonType(e));
+                                var b = Encoding.UTF8.GetBytes(k);
+                                foreach (var a in b)
+                                    r.Add(a);
+                                r.Add(0);
+                                foreach (var a in GetBytes(e))
+                                    r.Add(a);
+                            }
                         }
                         r.Add(0);
                         SetLength(r);
@@ -468,13 +476,16 @@ namespace Pyrrho
         {
             var r = new List<C>();
             if (off >= p.Length)
-                r.Add((C)Extract(typeof(C)));
+            {
+                if (Extract(typeof(C)) is C v)
+                    r.Add(v);
+            }
             else
                 foreach (var e in fields)
                 {
                     if (e.Key == p[off])
                     {
-                        C[] s = null;
+                        C[] s = new C[0];
                         var g = e.Value as Document;
                         if (g != null)
                             s = g.Extract<C>(p, off + 1);
@@ -487,7 +498,7 @@ namespace Pyrrho
                 }
             return r.ToArray();
         }
-        internal object Extract(Type t)
+        internal object? Extract(Type t)
         {
             var r = Activator.CreateInstance(t);
             foreach (var e in fields)
@@ -521,10 +532,10 @@ namespace Pyrrho
                                 v = DateTime.Parse((string)v);
                         }
                         else if (f.FieldType.IsArray && v is DocArray)
-                        {
+                        if (f.FieldType.GetConstructor(new Type[] { typeof(int) }) is ConstructorInfo ei
+                                && f.FieldType.GetElementType() is Type ty){
                             var da = (DocArray)v;
-                            var ei = f.FieldType.GetConstructor(new Type[] { typeof(int) });
-                            var al = da.Extract(f.FieldType.GetElementType());
+                            var al = da.Extract(ty);
                             v = ei.Invoke(new object[]{al.Count});
                             for (int i = 0; i < al.Count; i++)
                                 ((Array)v).SetValue(al[i], i);
@@ -569,7 +580,8 @@ namespace Pyrrho
                 switch (state)
                 {
                     case ParseState.StartValue:
-                        items.Add(GetValue(s, n, ref i));
+                        if (GetValue(s, n, ref i) is object o)
+                            items.Add(o);
                         state = ParseState.Comma;
                         continue;
                     case ParseState.Comma:
@@ -599,7 +611,8 @@ namespace Pyrrho
                 var s = i;
                 while (i < off + n && b[i++] != 0)
                     c++;
-                items.Add(Document.GetValue(t, b, ref i));
+                if (Document.GetValue(t, b, ref i) is object o)
+                    items.Add(o);
             }
         }
         public byte[] ToBytes()
@@ -651,11 +664,9 @@ namespace Pyrrho
         {
             var r = new List<C>();
             foreach(var e in items)
-            {
-                var d = e as Document;
+            if (e is Document d)
                 foreach (var a in d.Extract<C>(p, off))
                     r.Add(a);
-            }
             return r.ToArray();
         }
         internal List<object> Extract(Type t)
@@ -665,10 +676,13 @@ namespace Pyrrho
             {
                 var d = e as Document;
                 if (d != null)
-                    r.Add(d.Extract(t));
+                {
+                    if (d.Extract(t) is object o)
+                        r.Add(o);
+                }
                 else
                     if (e.GetType() == t)
-                        r.Add(e);
+                    r.Add(e);
             }
             return r;
         }
@@ -700,8 +714,10 @@ namespace Pyrrho
          }
 
 
-         public int CompareTo(object obj)
+         public int CompareTo(object? obj)
          {
+            if (obj == null)
+                return 1;
              ObjectId that = (ObjectId)obj;
              if (bytes.Length < that.bytes.Length)
                  return -1;
@@ -726,7 +742,7 @@ namespace Pyrrho
     {
         protected enum ParseState { StartKey, Key, Colon, StartValue, Comma }
         public DocBase() { }
-        protected object GetValue(string s, int n, ref int i)
+        protected object? GetValue(string s, int n, ref int i)
         {
             if (i < n)
             {

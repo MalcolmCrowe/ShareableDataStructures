@@ -1,7 +1,9 @@
 using System;
 using System.CodeDom;
 using System.Globalization;
+using System.Net.Http.Headers;
 using System.Text;
+using System.Xml.Resolvers;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
@@ -23,17 +25,19 @@ namespace Pyrrho.Level4
         internal const long
             SysCols = -175; // BTree<long,TableColumn>
         public BTree<long, TableColumn> sysCols =>
-            (BTree<long, TableColumn>)mem[SysCols] ?? BTree<long, TableColumn>.Empty;
-        public string name => (string)mem[ObInfo.Name];
-        public CList<long> sRowType => (CList<long>)mem[InstanceRowSet.SRowType] ?? CList<long>.Empty;
+            (BTree<long, TableColumn>?)mem[SysCols] ?? BTree<long, TableColumn>.Empty;
+        public string name => (string?)mem[ObInfo.Name]??"";
+        public CList<long> sRowType => (CList<long>?)mem[InstanceRowSet.SRowType] ?? CList<long>.Empty;
         internal SystemTable(string n)
-            : base(--_uid, new BTree<long, object>(ObInfo.Name, n) 
-                  + (_Domain,--_uid)
+            : base(--_uid, new BTree<long, object>(ObInfo.Name, n)
+                  + (_Domain, --_uid)
                   + (Infos, new BTree<long, ObInfo>(
-                      n.StartsWith("Log$") ? Database._system.role.defpos : Database._system.guest.defpos,
+                      (n.StartsWith("Log$") ? Database.schemaRole?.defpos 
+                      : Database.guestRole?.defpos)??throw new PEException("PE1104"),
                       new ObInfo(n, Grant.AllPrivileges))))
-        { 
-            Database._system = Database._system + (this, 0) + (Domain.TableType.Relocate(_uid), 0); 
+        {
+            var sys = Database._system ?? throw new PEException("PE1013");
+            Database._system = sys + (this, 0) + (Domain.TableType.Relocate(_uid), 0);
         }
         protected SystemTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SystemTable operator+(SystemTable s,(long,object)x)
@@ -47,12 +51,12 @@ namespace Pyrrho.Level4
         /// <param name="s"></param>
         /// <param name="c"></param>
         /// <returns></returns>
-        public static SystemTable operator+(SystemTable s,(Context,SystemTableColumn) x)
+        public static SystemTable operator+(SystemTable s,SystemTableColumn c)
         {
-            var (cx, c) = x;
             return s + (SysCols, s.sysCols + (c.defpos, c))
                 + (InstanceRowSet.SRowType, s.sRowType + c.defpos)
-                + (TableCols, s.tableCols + (c.defpos, cx._Dom(c)));
+                + (TableCols, s.tableCols 
+                    + (c.defpos, (Domain)(Database._system.objects[c.domain] ??throw new PEException("PE49211"))));
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -63,35 +67,37 @@ namespace Pyrrho.Level4
         public override bool Denied(Context cx,Grant.Privilege priv)
         {
             var tr = cx.tr;
-            if (priv != Grant.Privilege.Select)
+            if (priv != Grant.Privilege.Select || tr==null || tr.user==null)
                 return true;
             // Sys$ tables are public
             if (name.StartsWith("Sys$") || name.StartsWith("Role$"))
                 return false;
             // Log$ ROWS etc tables are private to the database owner
-            if (tr.user.defpos == tr.owner)
+            if (tr.user?.defpos == tr.owner)
                 return false;
             return base.Denied(cx, priv);
         }
         public void Add()
         {
-            var d = Database._system;
-            var ro = d.role + (Role.DBObjects, d.role.dbobjects + (name, defpos));
+            var d = Database._system??throw new PEException("PE1014");
+            var dr = d.role ?? throw new PEException("PE1015");
+            var ro = dr + (Role.DBObjects, dr.dbobjects + (name, defpos));
             d = d + (this, 0) + (ro,-1);
             Database._system = d;
         }
         public SystemTable AddIndex(params string[] k)
         {
-            var ks = CList<long>.Empty;
+            var ks = Domain.Row;
             foreach (var c in k)
                 for (var b = sysCols.First(); b != null; b = b.Next())
-                    if (((SystemTableColumn)b.value()).name == c)
+                    if (b.value() is SystemTableColumn sc && sc.name == c)
                     {
-                        ks += b.key();
+                        ks += sc;
                         break;
                     }
             var x = new SystemIndex(defpos, ks);
-            Database._system += (x.defpos, x);
+            var sys = Database._system ?? throw new PEException("PE1014");
+            Database._system = sys+ (x.defpos, x);
             var t = indexes[ks] ?? CTree<long, bool>.Empty;
             return this + (Indexes, indexes + (ks, t+(x.defpos,true)));
         }
@@ -106,10 +112,12 @@ namespace Pyrrho.Level4
             return name;
         }
         internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
-            Grant.Privilege pr = Grant.Privilege.Select, string a=null)
+            Grant.Privilege pr = Grant.Privilege.Select, string? a=null)
         {
-            return new SystemRowSet(cx, q, this, null)+(_From,fm)+(_Alias,a)
-                +(_Ident,id);
+            var r = new SystemRowSet(cx, q, this, null)+(_From,fm)+(_Ident,id);
+            if (a != null)
+                r += (_Alias, a);
+            return r;
         }
     }
     // shareable as of 26 April 2021
@@ -118,8 +126,8 @@ namespace Pyrrho.Level4
         internal const long
             Key = -389;
         public readonly bool DBNeeded = true;
-        public int isKey => (int)mem[Key];
-        public string name => (string)mem[ObInfo.Name];
+        public int isKey => (int)(mem[Key]??-1);
+        public string? name => (string?)mem[ObInfo.Name];
         /// <summary>
         /// A table column for a System or Log table
         /// </summary>
@@ -130,14 +138,15 @@ namespace Pyrrho.Level4
         internal SystemTableColumn(SystemTable t, string n, Domain dt, int k)
             : base(--_uid, BTree<long, object>.Empty + (ObInfo.Name, n) + (_Table, t.defpos) 
                   + (_Domain, dt.defpos) + (Key,k)
-                  + (Infos, new BTree<long, ObInfo>(Database._system.role.defpos,
+                  + (Infos, new BTree<long, ObInfo>(Database.schemaRole?.defpos??throw new PEException("PE1105"),
                       new ObInfo(n, Grant.AllPrivileges))))
         {
-            var td = (Domain)Database._system.objects[t.domain];
+            var td = (Domain)(Database._system?.objects[t.domain]?? throw new PEException("PE1106"));
             td += (Domain.RowType, td.rowType + defpos);
             td += (Domain.Representation, td.representation + (defpos, dt));
             t += (Table.TableCols, t.tableCols + (defpos, dt));
             t += (SystemTable.SysCols, t.sysCols + (defpos, this));
+            t += (_Domain, td.defpos);
             Database._system = Database._system + (this, 0)+(t,0)+(td,0);
         }
         protected SystemTableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -147,7 +156,7 @@ namespace Pyrrho.Level4
         }
         internal override string NameFor(Context cx)
         {
-            return name;
+            return name??"?";
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -163,19 +172,19 @@ namespace Pyrrho.Level4
             if (priv != Grant.Privilege.Select || tr==null)
                 return true;
             // Sys$ tables are public
-            if (name.StartsWith("Sys$") || name.StartsWith("Role$"))
+            if (name==null || name.StartsWith("Sys$") || name.StartsWith("Role$"))
                 return false;
             // Log$ ROWS etc tables are private to the database owner
-            if (tr.user.defpos == tr.owner)
+            if (tr?.user?.defpos == tr?.owner)
                 return false;
             return base.Denied(cx, priv);
         }
     }
     // shareable as of 26 April 2021
-    internal class SystemIndex : Index
+    internal class SystemIndex : Level3.Index
     {
-        public SystemIndex(long tb,CList<long> ks) 
-            : base(--_uid,BTree<long,object>.Empty+(IndexConstraint,PIndex.ConstraintType.Unique)
+        public SystemIndex(long tb,Domain ks) 
+            : base(--_uid,BTree<long, object>.Empty+(IndexConstraint,PIndex.ConstraintType.Unique)
                   +(Keys,ks)+(TableDefPos,tb))
         { }
     }
@@ -185,36 +194,37 @@ namespace Pyrrho.Level4
         public readonly long col;
         public readonly TypedValue val1,val2;
         public readonly Sqlx op1,op2; // EQL, GTR etc
-        public SystemFilter(long c,Sqlx o,TypedValue v,Sqlx o2=Sqlx.NO,TypedValue v2=null) 
-        { col = c; op1 = o; op2 = o2;  val1 = v; val2 = v2; }
-        internal TypedValue Start(Context cx,SystemRowSet rs,string s,int i,bool desc)
+        public SystemFilter(long c,Sqlx o,TypedValue v,Sqlx o2=Sqlx.NO,TypedValue? v2=null) 
+        { col = c; op1 = o; op2 = o2;  val1 = v; val2 = v2??TNull.Value; }
+        internal TypedValue? Start(Context cx,SystemRowSet rs,string s,int i,bool desc)
         {
             var sf = rs.sysFilt;
-            if (sf != null && ((SystemTableColumn)cx.obs[rs.sysIx.keys[i]])?.name == s)
+            if (sf != null && sf[i] is SystemFilter fi && rs.sysIx!=null 
+                && cx.obs[rs.sysIx.keys[i]] is SystemTableColumn stc && stc.name == s)
             {
                 switch (op1)
                 {
                     case Sqlx.EQL:
-                        return sf[i]?.val1;
+                        return fi.val1;
                     case Sqlx.GTR:
                     case Sqlx.GEQ:
-                        if (!desc)return sf[i].val1;
+                        if (!desc)return fi.val1;
                         break;
                     case Sqlx.LSS:
                     case Sqlx.LEQ:
-                        if (desc) return sf[i].val1;
+                        if (desc) return fi.val1;
                         break;
                 }
                 switch (op2)
                 {
                     case Sqlx.EQL:
-                        return sf[i]?.val2;
+                        return fi.val2;
                     case Sqlx.GTR:
                     case Sqlx.GEQ:
-                        return desc ? null : sf[i].val2;
+                        return desc ? null : fi.val2;
                     case Sqlx.LSS:
                     case Sqlx.LEQ:
-                        return desc ? sf[i].val2 : null;
+                        return desc ? fi.val2 : null;
                 }
             }
             return null;
@@ -254,51 +264,54 @@ namespace Pyrrho.Level4
             SysFilt = -455, // BList<SysFilter>
             SysIx = -454,   // SystemIndex
             SysTable = -445; // SystemTable
-        internal SystemTable sysFrom => (SystemTable)mem[SysTable];
-        internal SystemIndex sysIx => (SystemIndex)mem[SysIx];
-        internal BList<SystemFilter> sysFilt => (BList<SystemFilter>)mem[SysFilt];
+        internal SystemTable? sysFrom => (SystemTable?)mem[SysTable];
+        internal SystemIndex? sysIx => (SystemIndex?)mem[SysIx];
+        internal BList<SystemFilter> sysFilt => (BList<SystemFilter>?)mem[SysFilt]??BList<SystemFilter>.Empty;
         /// <summary>
         /// Construct results for a system table.
         /// Independent of database, role, and user.
         /// Context is provided to be informed about the rowset.
         /// </summary>
         /// <param name="f">the from part</param>
-        internal SystemRowSet(Context cx, Domain dm,SystemTable f, CTree<long, bool> w = null)
+        internal SystemRowSet(Context cx, Domain dm,SystemTable f, CTree<long, bool>? w = null)
             : base(cx.GetUid(), cx, f.defpos, _Mem(cx, dm, f, w))
         { }
         protected SystemRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long, object> _Mem(Context cx, Domain dm,SystemTable f, CTree<long, bool> w)
+        static BTree<long,object> _Mem(Context cx, Domain dm,SystemTable f, CTree<long, bool>? w)
         {
-            var dp = cx.GetPrevUid();
             var mf = BTree<long,SystemFilter>.Empty;
             for (var b = w?.First(); b != null; b = b.Next())
-                mf = cx.obs[b.key()].SysFilter(cx, mf);
-            SystemIndex sx = null;
+                if (cx.obs[b.key()] is SqlValue s)
+                mf = s.SysFilter(cx, mf);
+            SystemIndex? sx = null;
             var sf = BList<SystemFilter>.Empty;
             for (var b = f.indexes.First(); b != null; b = b.Next())
-                for (var c=b.value().First();c!=null;c=c.Next())
-            {
-                var x = (SystemIndex)Database._system.objects[c.key()];
-                var xf = BList<SystemFilter>.Empty;
-                for (var sb = x.keys.First(); sb != null; sb = sb.Next())
-                {
-                    var sc = sb.value();
-                    for (var d = mf.First(); d != null; d = d.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (Database._system.objects[c.key()] is SystemIndex x)
                     {
-                        var fn = d.value();
-                        if (sc == fn.col)
-                            xf += fn;
+                        var xf = BList<SystemFilter>.Empty;
+                        for (var sb = x.keys.First(); sb != null; sb = sb.Next())
+                        {
+                            var sc = sb.value();
+                            for (var d = mf.First(); d != null; d = d.Next())
+                            {
+                                var fn = d.value();
+                                if (sc == fn.col)
+                                    xf += fn;
+                            }
+                        }
+                        if (xf.Length > sf.Length)
+                        {
+                            sf = xf;
+                            sx = x;
+                        }
                     }
-                }
-                if (xf.Length > sf.Length)
-                {
-                    sf = xf;
-                    sx = x;
-                }
-            }
-           return BTree<long,object>.Empty
-                + (_Domain,dm.defpos) +(SRowType,cx._Dom(f).rowType)+(SysTable, f) 
-                + (SysIx, sx) + (SysFilt, sf);
+           var r = BTree<long, object>.Empty
+                + (_Domain,dm.defpos) +(SRowType,(cx._Dom(f)??Domain.Content).rowType)+(SysTable, f) 
+                + (SysFilt, sf);
+            if (sx != null)
+                r += (SysIx, sx);
+            return r;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -312,11 +325,7 @@ namespace Pyrrho.Level4
         {
             return new SystemRowSet(dp, mem);
         }
-        /// <summary>
-        /// Kludge: force class initialisation
-        /// </summary>
-        /// <param name="o"></param>
-        internal static void Kludge()
+        internal static void Kludge(int k)
         { }
         /// <summary>
         /// Class initialisation: define the system tables
@@ -403,7 +412,7 @@ namespace Pyrrho.Level4
             ProfileTableResults();
 #endif
         }
-        public override Cursor First(Context _cx)
+        public override Cursor? First(Context _cx)
         {
             return _First(_cx);
         }
@@ -412,7 +421,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="r">the rowset to enumerate</param>
         /// <returns>the bookmark</returns>
-        protected override Cursor _First(Context _cx)
+        protected override Cursor? _First(Context _cx)
         {
             var res = this;
             if (res.sysFrom == null) // for kludge
@@ -493,6 +502,8 @@ namespace Pyrrho.Level4
                 case "Sys$Audit": return SysAuditBookmark.New(_cx, res);
                 case "Sys$AuditKey": return SysAuditKeyBookmark.New(_cx, res);
                 case "Role$PrimaryKey": return RolePrimaryKeyBookmark.New(_cx, res);
+                default:
+                    break;
 #if PROFILES
                 // profile stuff
                 case "Profile$": return ProfileBookmark.New(_cx,res);
@@ -504,60 +515,60 @@ namespace Pyrrho.Level4
             }
             return null;
         }
-        protected override Cursor _Last(Context _cx)
+        protected override Cursor? _Last(Context _cx)
         {
             var res = this;
             if (res.sysFrom == null) // for kludge
                 return null;
             SystemTable st = res.sysFrom;
-            switch (st.name)
+            return st.name switch
             {
                 // level 2 stuff
-                case "Log$": return LogBookmark.New(res, _cx);
-                case "Log$Alter": return LogAlterBookmark.New(res, _cx);
-                case "Log$Change": return LogChangeBookmark.New(res, _cx);
-                case "Log$Check": return LogCheckBookmark.New(res, _cx);
-                case "Log$Classification": return LogClassificationBookmark.New(res, _cx);
-                case "Log$Clearance": return LogClearanceBookmark.New(res, _cx);
-                case "Log$Column": return LogColumnBookmark.New(res, _cx);
-                case "Log$DateType": return LogDateTypeBookmark.New(res, _cx);
-                case "Log$Delete": return LogDeleteBookmark.New(res, _cx);
-                case "Log$Domain": return LogDomainBookmark.New(res, _cx);
-                case "Log$Drop": return LogDropBookmark.New(res, _cx);
-                case "Log$Edit": return LogEditBookmark.New(res, _cx);
-                case "Log$Enforcement": return LogEnforcementBookmark.New(res, _cx);
-                case "Log$Grant": return LogGrantBookmark.New(res, _cx);
-                case "Log$Index": return LogIndexBookmark.New(res, _cx);
-                case "Log$IndexKey": return LogIndexKeyBookmark.New(res, _cx);
-                case "Log$Metadata": return LogMetadataBookmark.New(res, _cx);
-                case "Log$Modify": return LogModifyBookmark.New(res, _cx);
-                case "Log$Ordering": return LogOrderingBookmark.New(res, _cx);
-                case "Log$Procedure": return LogProcedureBookmark.New(res, _cx);
-                case "Log$Record": return LogRecordBookmark.New(res, _cx);
-                case "Log$RecordField": return LogRecordFieldBookmark.New(res, _cx);
-                case "Log$Revoke": return LogRevokeBookmark.New(res, _cx);
-                case "Log$Role": return LogRoleBookmark.New(res, _cx);
-                case "Log$Table": return LogTableBookmark.New(res, _cx);
-                case "Log$TablePeriod": return LogTablePeriodBookmark.New(res, _cx);
-                case "Log$Transaction": return LogTransactionBookmark.New(res, _cx);
-                case "Log$Trigger": return LogTriggerBookmark.New(res, _cx);
-                case "Log$TriggerUpdateColumn": return LogTriggerUpdateColumnBookmark.New(res, _cx);
-                case "Log$TriggeredAction": return LogTriggeredActionBookmark.New(res, _cx);
-                case "Log$Type": return LogTypeBookmark.New(res, _cx);
-                case "Log$TypeMethod": return LogTypeMethodBookmark.New(res, _cx);
-                case "Log$Update": return LogUpdateBookmark.New(res, _cx);
-                case "Log$User": return LogUserBookmark.New(res, _cx);
-                case "Log$View": return LogViewBookmark.New(res, _cx);
+                "Log$" => LogBookmark.New(res, _cx),
+                "Log$Alter" => LogAlterBookmark.New(res, _cx),
+                "Log$Change" => LogChangeBookmark.New(res, _cx),
+                "Log$Check" => LogCheckBookmark.New(res, _cx),
+                "Log$Classification" => LogClassificationBookmark.New(res, _cx),
+                "Log$Clearance" => LogClearanceBookmark.New(res, _cx),
+                "Log$Column" => LogColumnBookmark.New(res, _cx),
+                "Log$DateType" => LogDateTypeBookmark.New(res, _cx),
+                "Log$Delete" => LogDeleteBookmark.New(res, _cx),
+                "Log$Domain" => LogDomainBookmark.New(res, _cx),
+                "Log$Drop" => LogDropBookmark.New(res, _cx),
+                "Log$Edit" => LogEditBookmark.New(res, _cx),
+                "Log$Enforcement" => LogEnforcementBookmark.New(res, _cx),
+                "Log$Grant" => LogGrantBookmark.New(res, _cx),
+                "Log$Index" => LogIndexBookmark.New(res, _cx),
+                "Log$IndexKey" => LogIndexKeyBookmark.New(res, _cx),
+                "Log$Metadata" => LogMetadataBookmark.New(res, _cx),
+                "Log$Modify" => LogModifyBookmark.New(res, _cx),
+                "Log$Ordering" => LogOrderingBookmark.New(res, _cx),
+                "Log$Procedure" => LogProcedureBookmark.New(res, _cx),
+                "Log$Record" => LogRecordBookmark.New(res, _cx),
+                "Log$RecordField" => LogRecordFieldBookmark.New(res, _cx),
+                "Log$Revoke" => LogRevokeBookmark.New(res, _cx),
+                "Log$Role" => LogRoleBookmark.New(res, _cx),
+                "Log$Table" => LogTableBookmark.New(res, _cx),
+                "Log$TablePeriod" => LogTablePeriodBookmark.New(res, _cx),
+                "Log$Transaction" => LogTransactionBookmark.New(res, _cx),
+                "Log$Trigger" => LogTriggerBookmark.New(res, _cx),
+                "Log$TriggerUpdateColumn" => LogTriggerUpdateColumnBookmark.New(res, _cx),
+                "Log$TriggeredAction" => LogTriggeredActionBookmark.New(res, _cx),
+                "Log$Type" => LogTypeBookmark.New(res, _cx),
+                "Log$TypeMethod" => LogTypeMethodBookmark.New(res, _cx),
+                "Log$Update" => LogUpdateBookmark.New(res, _cx),
+                "Log$User" => LogUserBookmark.New(res, _cx),
+                "Log$View" => LogViewBookmark.New(res, _cx),
                 // level >=4 stuff
-                case "Sys$Audit": return SysAuditBookmark.New(res, _cx);
-                case "Sys$AuditKey": return SysAuditKeyBookmark.New(res, _cx);
-            }
-            return null;
+                "Sys$Audit" => SysAuditBookmark.New(res, _cx),
+                "Sys$AuditKey" => SysAuditKeyBookmark.New(res, _cx),
+                _ => null,
+            };
         }
         internal TypedValue Start(Context cx, string s, int i = 0, bool desc = false)
         {
             return (sysFilt is BList<SystemFilter> sf && sf.Length>i)?
-                sf[i].Start(cx, this, s, i, desc):null;
+                (sf[i]?.Start(cx, this, s, i, desc)??TNull.Value):TNull.Value;
         }
         /// <summary>
         /// A bookmark for a system table
@@ -587,10 +598,6 @@ namespace Pyrrho.Level4
             {
                 return BList<TableRow>.Empty;
             }
-            internal override Cursor _Fix(Context cx)
-            {
-                throw new NotImplementedException();
-            }
             protected static TypedValue Display(string d)
             {
                 return new TChar(d);
@@ -608,7 +615,7 @@ namespace Pyrrho.Level4
                 }
                 return true;
             }
-            bool Test(TypedValue v, Sqlx op, TypedValue w)
+            static bool Test(TypedValue v, Sqlx op, TypedValue w)
             {
                 switch (op)
                 {
@@ -648,11 +655,11 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             protected LogSystemBookmark(Context _cx,SystemRowSet r, int pos, 
-                (Physical,long) p,TRow rw) 
-                : base(_cx,r,pos,p.Item1.ppos,p.Item1.ppos,rw)
+                Physical p,long pp,TRow rw) 
+                : base(_cx,r,pos,p.ppos,p.ppos,rw)
             {
-                ph = p.Item1;
-                nextpos = p.Item2;
+                ph = p;
+                nextpos = pp;
             }
         }
         /// <summary>
@@ -660,12 +667,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Desc", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Type", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Affects", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Desc", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Type", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Affects", Domain.Position,0);
             t = t.AddIndex("Pos");
             t.Add();
         }
@@ -678,18 +684,18 @@ namespace Pyrrho.Level4
             /// Construct the LogEnumerator
             /// </summary>
             /// <param name="r">the rowset</param>
-            protected LogBookmark(Context cx,SystemRowSet r, int pos, (Physical,long) p)
-                : base(cx,r, pos, p,_Value(cx,r,p.Item1))
+            protected LogBookmark(Context cx,SystemRowSet r, int pos, Physical ph,long pp)
+                : base(cx,r, pos, ph, pp ,_Value(cx,r,ph))
             { }
-            internal static LogBookmark New(Context _cx, SystemRowSet res)
+            internal static LogBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                {
-                    var np = _cx.db._NextPhysical(lb.key());
-                    if (np.Item1 == null)
+                if (_cx.db!=null){
+                    var (nph,np) = _cx.db._NextPhysical(lb.key());
+                    if (nph == null)
                         return null;
-                    var rb = new LogBookmark(_cx, res, 0, np);
+                    var rb = new LogBookmark(_cx, res, 0, nph, np);
                     if (!rb.Match(res))
                         return null;
                     if (Eval(res.where, _cx))
@@ -697,19 +703,20 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            internal static LogBookmark New(SystemRowSet res, Context _cx)
+            internal static LogBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
-                {
-                    var np = _cx.db._NextPhysical(lb.key());
-                    if (np.Item1 == null)
-                        return null;
-                    var rb = new LogBookmark(_cx, res, 0, np);
-                    if (!rb.Match(res))
-                        return null;
-                    if (Eval(res.where, _cx))
-                        return rb;
-                }
+                    if (_cx.db != null)
+                    {
+                        var (nph, np) = _cx.db._NextPhysical(lb.key());
+                        if (nph == null)
+                            return null;
+                        var rb = new LogBookmark(_cx, res, 0, nph, np);
+                        if (!rb.Match(res))
+                            return null;
+                        if (Eval(res.where, _cx))
+                            return rb;
+                    }
                 return null;
             }
             /// <summary>
@@ -717,7 +724,7 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx,SystemRowSet res,Physical ph)
             {
-                return new TRow(cx,cx._Dom(res),
+                return new TRow(cx,cx._Dom(res)??Domain.Null,
                     Pos(ph.ppos),
                     new TChar(ph.ToString()),
                     new TChar(ph.type.ToString()),
@@ -727,11 +734,13 @@ namespace Pyrrho.Level4
             /// Move to the next log entry
             /// </summary>
             /// <returns>whether there is a next entry</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
-                for (var x = _cx.db._NextPhysical(nextpos); x.Item1 != null; x = _cx.db._NextPhysical(x.Item2))
+                if (_cx.db!=null)
+                for (var (nph,np) = _cx.db._NextPhysical(nextpos); nph != null; 
+                        (nph,np) = _cx.db._NextPhysical(np))
                 {
-                     var rb = new LogBookmark(_cx,res, _pos+1, x);
+                     var rb = new LogBookmark(_cx,res, _pos+1, nph, np);
                     if (!rb.Match(res))
                         return null;
                     if (Eval(res.where, _cx))
@@ -739,17 +748,20 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous();lb!=null;lb=lb.Previous())
-                {
-                    var x = _cx.db._NextPhysical(lb.key());
-                   var rb = new LogBookmark(_cx, res, _pos + 1, x);
-                    if (!rb.Match(res))
-                        return null;
-                    if (Eval(res.where, _cx))
-                        return rb;
-                }
+                for (var lb = _cx.db.log?.PositionAt(ph.ppos)?.Previous(); lb != null; lb = lb.Previous())
+                    if (_cx.db != null)
+                    {
+                        var (nph,np) = _cx.db._NextPhysical(lb.key());
+                        if (nph == null)
+                            return null;
+                        var rb = new LogBookmark(_cx, res, _pos + 1, nph, np);
+                        if (!rb.Match(res))
+                            return null;
+                        if (Eval(res.where, _cx))
+                            return rb;
+                    }
                 return null;
             }
         }
@@ -758,10 +770,9 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogAlterResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Alter");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "DefPos", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -774,18 +785,19 @@ namespace Pyrrho.Level4
             /// construct the Log$Alter enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
-            LogAlterBookmark(Context _cx,SystemRowSet r,int pos,(Physical,long)p)
-                : base(_cx,r,pos,p, _Value(_cx, r, p.Item1))
+            LogAlterBookmark(Context _cx,SystemRowSet r,int pos,Physical ph, long pp)
+                : base(_cx,r,pos,ph,pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogAlterBookmark New(Context _cx, SystemRowSet res)
+            internal static LogAlterBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
-                for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
+                for (var lb = _cx.db.log?.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Alter || lb.value() == Physical.Type.Alter2
                         || lb.value() == Physical.Type.Alter3)
                     {
-                        var rb = new LogAlterBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, pp) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogAlterBookmark(_cx, res, 0, nph,pp);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -793,13 +805,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogAlterBookmark New(SystemRowSet res, Context _cx)
+            internal static LogAlterBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Alter || lb.value() == Physical.Type.Alter2
                         || lb.value() == Physical.Type.Alter3)
                     {
-                        var rb = new LogAlterBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, pp) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogAlterBookmark(_cx, res, 0, nph, pp);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -812,8 +825,8 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
-                var al = ph as PColumn;
-                return new TRow(cx, cx._Dom(res),
+                var al = ph as PColumn ?? throw new PEException("PE1610");
+                return new TRow(cx, cx._Dom(res)?? throw new PEException("PE6610"),
                     Pos(al.ppos),
                     Pos(al.Affects));
             }
@@ -821,13 +834,14 @@ namespace Pyrrho.Level4
             /// move to the next Log$Alter entry
             /// </summary>
             /// <returns>whether there is a next entry</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
+                for (var lb = _cx.db.log?.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Alter || lb.value() == Physical.Type.Alter2
                         || lb.value() == Physical.Type.Alter3)
                     {
-                        var rb = new LogAlterBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, pp) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogAlterBookmark(_cx, res, 0, nph, pp);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -835,14 +849,15 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log?.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Alter || lb.value() == Physical.Type.Alter2
                         || lb.value() == Physical.Type.Alter3)
                     {
-                        var rb = new LogAlterBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, pp) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogAlterBookmark(_cx, res, 0, nph, pp);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -856,11 +871,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogChangeResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Change");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Previous", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Previous", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -869,17 +883,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogChangeBookmark : LogSystemBookmark
         {
-            LogChangeBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogChangeBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogChangeBookmark New(Context _cx,SystemRowSet res)
+            internal static LogChangeBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Change)
                     {
-                        var rb = new LogChangeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogChangeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -887,12 +902,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogChangeBookmark New(SystemRowSet res, Context _cx)
+            internal static LogChangeBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Change)
                     {
-                        var rb = new LogChangeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogChangeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -906,17 +922,18 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Change ch = (Change)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res)??throw new PEException("PE6611"),
                     Pos(ch.ppos),
                     Pos(ch.Previous),
                     new TChar(ch.name));
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Change)
                     {
-                        var rb = new LogChangeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogChangeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -924,13 +941,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Change)
                     {
-                        var rb = new LogChangeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogChangeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -944,10 +962,9 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogDeleteResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Delete");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "DelPos", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DelPos", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -956,17 +973,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogDeleteBookmark : LogSystemBookmark
         {
-            LogDeleteBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogDeleteBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogDeleteBookmark New(Context _cx,SystemRowSet res)
+            internal static LogDeleteBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Delete||lb.value()==Physical.Type.Delete1)
                     {
-                        var rb = new LogDeleteBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDeleteBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -974,12 +992,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogDeleteBookmark New(SystemRowSet res, Context _cx)
+            internal static LogDeleteBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Delete || lb.value() == Physical.Type.Delete1)
                     {
-                        var rb = new LogDeleteBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDeleteBookmark(_cx, res, 0, nph,np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -993,16 +1012,17 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Delete d = (Delete)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE6613"),
                     Pos(d.ppos),
                     Pos(d.delpos));
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Delete || lb.value()==Physical.Type.Delete1)
                     {
-                        var rb = new LogDeleteBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDeleteBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1010,13 +1030,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Delete || lb.value() == Physical.Type.Delete1)
                     {
-                        var rb = new LogDeleteBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDeleteBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1030,11 +1051,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogDropResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Drop");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "DelPos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DelPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1043,17 +1063,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogDropBookmark : LogSystemBookmark
         {
-            LogDropBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogDropBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogDropBookmark New(Context _cx,SystemRowSet res)
+            internal static LogDropBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Drop || lb.value()==Physical.Type.Drop1)
                     {
-                        var rb = new LogDropBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDropBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1061,12 +1082,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogDropBookmark New(SystemRowSet res,Context _cx)
+            internal static LogDropBookmark? New(SystemRowSet res,Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Drop || lb.value() == Physical.Type.Drop1)
                     {
-                        var rb = new LogDropBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDropBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1080,16 +1102,17 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Drop d = (Drop)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE6614"),
                     Pos(d.ppos),
                     Pos(d.delpos));
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Drop || lb.value()==Physical.Type.Drop1)
                     {
-                        var rb = new LogDropBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDropBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1097,13 +1120,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Drop || lb.value() == Physical.Type.Drop1)
                     {
-                        var rb = new LogDropBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDropBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1117,32 +1141,32 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogMetadataResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Metadata");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "DefPos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Description", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Output", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "RefPos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Detail", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Description", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Output", Domain.Char,0);
+            t+=new SystemTableColumn(t, "RefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Detail", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
         internal class LogMetadataBookmark : LogSystemBookmark
         {
-            LogMetadataBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogMetadataBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogMetadataBookmark New(Context _cx, SystemRowSet res)
+            internal static LogMetadataBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Metadata || lb.value() == Physical.Type.Metadata2
                         || lb.value() == Physical.Type.Metadata3)
                     {
-                        var rb = new LogMetadataBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogMetadataBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1150,13 +1174,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogMetadataBookmark New(SystemRowSet res, Context _cx)
+            internal static LogMetadataBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Metadata || lb.value() == Physical.Type.Metadata2
                         || lb.value() == Physical.Type.Metadata3)
                     {
-                        var rb = new LogMetadataBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogMetadataBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1164,13 +1189,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Metadata||lb.value()==Physical.Type.Metadata2
                         ||lb.value()==Physical.Type.Metadata3)
                     {
-                        var rb = new LogMetadataBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogMetadataBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1178,14 +1204,15 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Metadata || lb.value() == Physical.Type.Metadata2
                         || lb.value() == Physical.Type.Metadata3)
                     {
-                        var rb = new LogMetadataBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogMetadataBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1200,10 +1227,10 @@ namespace Pyrrho.Level4
             {
                 PMetadata m = (PMetadata)ph;
                 var md = m.Metadata();
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0310"),
                     Pos(m.ppos),
                     Pos(m.defpos),
-                    new TChar(m.name),
+                    new TChar(m.name ?? throw new PEException("PE0311")),
                     new TChar(md.Contains(Sqlx.PASSWORD)?"*******":m.detail.ToString()),
                     new TChar(m.MetaFlags()),
                     Pos(m.refpos),
@@ -1216,12 +1243,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogModifyResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Modify");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "DefPos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Proc", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Proc", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1230,17 +1256,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogModifyBookmark : LogSystemBookmark
         {
-            LogModifyBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogModifyBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogModifyBookmark New(Context _cx,SystemRowSet res)
+            internal static LogModifyBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Modify)
                     {
-                        var rb = new LogModifyBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogModifyBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (RowSet.Eval(res.where, _cx))
@@ -1248,12 +1275,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogModifyBookmark New( SystemRowSet res,Context _cx)
+            internal static LogModifyBookmark? New( SystemRowSet res,Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Modify)
                     {
-                        var rb = new LogModifyBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogModifyBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (RowSet.Eval(res.where, _cx))
@@ -1261,12 +1289,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Modify)
                     {
-                        var rb = new LogModifyBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogModifyBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1274,13 +1303,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Modify)
                     {
-                        var rb = new LogModifyBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogModifyBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1294,11 +1324,11 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Modify m = (Modify)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0400"),
                     Pos(m.ppos),
                     Pos(m.modifydefpos),
                     new TChar(m.name),
-                    new TChar(m.source.ident));
+                    new TChar(m.source?.ident??""));
             }
          }
         /// <summary>
@@ -1306,10 +1336,9 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogUserResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$User");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1318,17 +1347,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogUserBookmark : LogSystemBookmark
         {
-            LogUserBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogUserBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogUserBookmark New(Context _cx,SystemRowSet res)
+            internal static LogUserBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PUser)
                     {
-                        var rb = new LogUserBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogUserBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1336,12 +1366,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogUserBookmark New(SystemRowSet res, Context _cx)
+            internal static LogUserBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PUser)
                     {
-                        var rb = new LogUserBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogUserBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1349,12 +1380,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PUser)
                     {
-                        var rb = new LogUserBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogUserBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1362,13 +1394,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PUser)
                     {
-                        var rb = new LogUserBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogUserBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1382,7 +1415,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PUser a = (PUser)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0230"),
                     Pos(a.ppos),
                     new TChar(a.name));
             }
@@ -1392,11 +1425,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogRoleResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Role");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Details", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Details", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1405,17 +1437,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogRoleBookmark : LogSystemBookmark
         {
-            LogRoleBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogRoleBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogRoleBookmark New(Context _cx,SystemRowSet res)
+            internal static LogRoleBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PRole || lb.value()==Physical.Type.PRole1)
                     {
-                        var rb = new LogRoleBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogRoleBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1423,12 +1456,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogRoleBookmark New(SystemRowSet res, Context _cx)
+            internal static LogRoleBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PRole || lb.value() == Physical.Type.PRole1)
                     {
-                        var rb = new LogRoleBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogRoleBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1436,12 +1470,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PRole||lb.value()==Physical.Type.PRole1)
                     {
-                        var rb = new LogRoleBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogRoleBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1449,13 +1484,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PRole || lb.value() == Physical.Type.PRole1)
                     {
-                        var rb = new LogRoleBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogRoleBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1469,7 +1505,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PRole a = (PRole)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0403"),
                     Pos(a.ppos),
                     new TChar(a.name),
                     new TChar(a.details));
@@ -1480,13 +1516,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogCheckResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Check");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Ref", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "ColRef", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Check", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Ref", Domain.Position,0);
+            t+=new SystemTableColumn(t, "ColRef", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Check", Domain.Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1495,17 +1530,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogCheckBookmark : LogSystemBookmark
         {
-            LogCheckBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogCheckBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogCheckBookmark New(Context _cx,SystemRowSet res)
+            internal static LogCheckBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PCheck||lb.value()==Physical.Type.PCheck2)
                     {
-                        var rb = new LogCheckBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogCheckBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1513,12 +1549,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogCheckBookmark New(SystemRowSet res, Context _cx)
+            internal static LogCheckBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PCheck || lb.value() == Physical.Type.PCheck2)
                     {
-                        var rb = new LogCheckBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogCheckBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1526,26 +1563,28 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PCheck||lb.value()==Physical.Type.PCheck2)
                     {
-                        var rb = new LogCheckBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogCheckBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PCheck || lb.value() == Physical.Type.PCheck2)
                     {
-                        var rb = new LogCheckBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogCheckBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (RowSet.Eval(res.where, _cx))
@@ -1559,38 +1598,38 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PCheck c = (PCheck)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0404"),
                     Pos(c.ppos),
                     Pos(c.ckobjdefpos),
                     Pos(c.subobjdefpos),
-                    new TChar(c.name),
-                    Display(c.check));
+                    new TChar(c.name ?? throw new PEException("PE0405")),
+                    Display(c.check ?? throw new PEException("PE0406")));
             }
         }
         static void LogClassificationResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Classification");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Obj", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Classification", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Obj", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
         internal class LogClassificationBookmark : LogSystemBookmark
         {
-            LogClassificationBookmark(Context _cx,SystemRowSet rs, int pos, (Physical,long) ph) 
-                : base(_cx,rs, pos, ph, _Value(_cx, rs, ph.Item1))
+            LogClassificationBookmark(Context _cx,SystemRowSet rs, int pos, Physical ph, long pp) 
+                : base(_cx,rs, pos, ph, pp, _Value(_cx, rs, ph))
             {
             }
-            internal static LogClassificationBookmark New(Context _cx,SystemRowSet res)
+            internal static LogClassificationBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Classify)
                     {
-                        var rb = new LogClassificationBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogClassificationBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1598,12 +1637,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogClassificationBookmark New(SystemRowSet res, Context _cx)
+            internal static LogClassificationBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Classify)
                     {
-                        var rb = new LogClassificationBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogClassificationBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1611,12 +1651,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Classify)
                     {
-                        var rb = new LogClassificationBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogClassificationBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1624,13 +1665,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Classify)
                     {
-                        var rb = new LogClassificationBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogClassificationBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1645,7 +1687,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Classify c = (Classify)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0407"),
                     Pos(c.ppos),
                     Pos(c.obj),
                     new TChar(c.classification.ToString()),
@@ -1654,28 +1696,29 @@ namespace Pyrrho.Level4
         }
         static void LogClearanceResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Clearance");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "User", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Clearance", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "User", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Clearance", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
         internal class LogClearanceBookmark : LogSystemBookmark
         {
-            LogClearanceBookmark(Context _cx,SystemRowSet rs, int pos, (Physical,long) ph)
-                : base(_cx,rs, pos, ph, _Value(_cx, rs, ph.Item1,_cx.db._user))
+            LogClearanceBookmark(Context _cx,SystemRowSet rs, int pos, Physical ph, long pp)
+                : base(_cx,rs, pos, ph, pp, _Value(_cx, rs, ph,
+                    (_cx.user??throw new DBException("42105")).defpos))
             {
             }
-            internal static LogClearanceBookmark New(Context _cx,SystemRowSet res)
+            internal static LogClearanceBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Clearance)
                     {
-                        var rb = new LogClearanceBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogClearanceBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1683,12 +1726,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogClearanceBookmark New(SystemRowSet res, Context _cx)
+            internal static LogClearanceBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Clearance)
                     {
-                        var rb = new LogClearanceBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogClearanceBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1696,12 +1740,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Clearance)
                     {
-                        var rb = new LogClearanceBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogClearanceBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1709,13 +1754,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Clearance)
                     {
-                        var rb = new LogClearanceBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogClearanceBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1729,7 +1775,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph,long u)
             {
                 Clearance c = (Clearance)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0408"),
                     Pos(c.ppos),
                     Pos(u),
                     new TChar(c.clearance.ToString()),
@@ -1741,18 +1787,17 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogColumnResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Column");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Seq", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Domain", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Default", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "NotNull", Domain.Bool,0));
-            t+=(cx,new SystemTableColumn(t, "Generated", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Update", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Seq", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Domain", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Default", Domain.Char,0);
+            t+=new SystemTableColumn(t, "NotNull", Domain.Bool,0);
+            t+=new SystemTableColumn(t, "Generated", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Update", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1761,11 +1806,11 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogColumnBookmark: LogSystemBookmark
         {
-            LogColumnBookmark(Context _cx,SystemRowSet rs,int pos,(Physical,long) ph)
-                : base(_cx,rs,pos,ph, _Value(_cx, rs, ph.Item1))
+            LogColumnBookmark(Context _cx,SystemRowSet rs,int pos, Physical ph, long pp)
+                : base(_cx,rs,pos,ph, pp, _Value(_cx, rs, ph))
             {
             }
-            internal static LogColumnBookmark New(Context _cx, SystemRowSet res)
+            internal static LogColumnBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
@@ -1778,7 +1823,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PColumn2:
                         case Physical.Type.PColumn3:
                             {
-                                var rb = new LogColumnBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogColumnBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -1788,7 +1834,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogColumnBookmark New(SystemRowSet res, Context _cx)
+            internal static LogColumnBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     switch (lb.value())
@@ -1800,7 +1846,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PColumn2:
                         case Physical.Type.PColumn3:
                             {
-                                var rb = new LogColumnBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogColumnBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -1810,7 +1857,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     switch (lb.value())
@@ -1822,7 +1869,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PColumn2:
                         case Physical.Type.PColumn3:
                             {
-                                var rb = new LogColumnBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogColumnBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -1832,9 +1880,9 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     switch (lb.value())
                     {
@@ -1845,7 +1893,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PColumn2:
                         case Physical.Type.PColumn3:
                             {
-                                var rb = new LogColumnBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogColumnBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -1860,10 +1909,12 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
-                    PColumn c = (PColumn)ph;
-                    return new TRow(cx, cx._Dom(res),
+                if (ph is not PColumn c || cx._Dom(res) is not Domain dm ||
+                    c.table is not Table tb)
+                    throw new PEException("PE0410");
+                    return new TRow(cx, dm,
                         Pos(c.ppos),
-                        Pos(c.table.defpos),
+                        Pos(tb.defpos),
                         new TChar(c.name),
                         new TInt(c.seq),
                         Pos(c.domdefpos),
@@ -1879,15 +1930,14 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogTablePeriodResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$TablePeriod");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "PeriodName", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Versioning", Domain.Bool,0));
-            t+=(cx,new SystemTableColumn(t, "StartColumn", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "EndColumn", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "PeriodName", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Versioning", Domain.Bool,0);
+            t+=new SystemTableColumn(t, "StartColumn", Domain.Position,0);
+            t+=new SystemTableColumn(t, "EndColumn", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
 
@@ -1897,17 +1947,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogTablePeriodBookmark : LogSystemBookmark
         {
-            LogTablePeriodBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogTablePeriodBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogTablePeriodBookmark New(Context _cx,SystemRowSet res)
+            internal static LogTablePeriodBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PeriodDef)
                     {
-                        var rb = new LogTablePeriodBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTablePeriodBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1915,12 +1966,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogTablePeriodBookmark New(SystemRowSet res, Context _cx)
+            internal static LogTablePeriodBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PeriodDef)
                     {
-                        var rb = new LogTablePeriodBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTablePeriodBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1928,12 +1980,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PeriodDef)
                     {
-                        var rb = new LogTablePeriodBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTablePeriodBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1941,13 +1994,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PeriodDef)
                     {
-                        var rb = new LogTablePeriodBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTablePeriodBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -1961,7 +2015,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PPeriodDef c = (PPeriodDef)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0411"),
                     Pos(c.ppos),
                     Pos(c.tabledefpos),
                     new TChar(c.periodname),
@@ -1976,14 +2030,13 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogDateTypeResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$DateType");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Kind", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "StartField", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "EndField",  Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Kind", Domain.Char,0);
+            t+=new SystemTableColumn(t, "StartField", Domain.Int,0);
+            t+=new SystemTableColumn(t, "EndField",  Domain.Int,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1992,17 +2045,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogDateTypeBookmark : LogSystemBookmark
         {
-            LogDateTypeBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogDateTypeBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogDateTypeBookmark New(Context _cx,SystemRowSet res)
+            internal static LogDateTypeBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PDateType)
                     {
-                        var rb = new LogDateTypeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDateTypeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2010,12 +2064,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogDateTypeBookmark New(SystemRowSet res, Context _cx)
+            internal static LogDateTypeBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PDateType)
                     {
-                        var rb = new LogDateTypeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDateTypeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2023,29 +2078,31 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PDateType)
                     {
-                        var rb = new LogDateTypeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDateTypeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PDateType)
                     {
-                        var rb = new LogDateTypeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogDateTypeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -2056,7 +2113,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                     var d = ((PDateType)ph).domain;
-                    return new TRow(cx, cx._Dom(res),
+                    return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0412"),
                         Pos(ph.ppos),
                         new TChar(d.name),
                         new TChar(d.kind.ToString()),
@@ -2070,19 +2127,18 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogDomainResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Domain");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Kind", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "DataType", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "DataLength", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Scale", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Charset", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Collate", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Default", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "StructDef", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Kind", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "DataType", Domain.Char,0);
+            t+=new SystemTableColumn(t, "DataLength", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Scale", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Charset", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Collate", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Default", Domain.Char,0);
+            t+=new SystemTableColumn(t, "StructDef", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2091,11 +2147,11 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogDomainBookmark : LogSystemBookmark
         {
-            LogDomainBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogDomainBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogDomainBookmark New(Context _cx, SystemRowSet res)
+            internal static LogDomainBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
@@ -2107,7 +2163,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PType:
                         case Physical.Type.PType1:
                             {
-                                var rb = new LogDomainBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogDomainBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -2117,7 +2174,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogDomainBookmark New(SystemRowSet res, Context _cx)
+            internal static LogDomainBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     switch (lb.value())
@@ -2128,7 +2185,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PType:
                         case Physical.Type.PType1:
                             {
-                                var rb = new LogDomainBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogDomainBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -2138,7 +2196,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     switch (lb.value())
@@ -2149,7 +2207,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PType:
                         case Physical.Type.PType1:
                             {
-                                var rb = new LogDomainBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogDomainBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -2159,9 +2218,9 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     switch (lb.value())
                     {
@@ -2171,7 +2230,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PType:
                         case Physical.Type.PType1:
                             {
-                                var rb = new LogDomainBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogDomainBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -2187,7 +2247,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Domain d = ((PDomain)ph).domain;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0413"),
                     Pos(ph.ppos),
                     new TChar(d.kind.ToString()),
                     new TChar(d.name),
@@ -2206,11 +2266,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogEditResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Edit");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Prev", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Prev", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2219,19 +2278,17 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogEditBookmark : LogSystemBookmark
         {
-            Database db;
-            LogEditBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
-            {
-                db = _cx?.db;
-            }
-            internal static LogEditBookmark New(Context _cx,SystemRowSet res)
+            LogEditBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
+            {  }
+            internal static LogEditBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Edit)
                     {
-                        var rb = new LogEditBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEditBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2239,12 +2296,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogEditBookmark New(SystemRowSet res, Context _cx)
+            internal static LogEditBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Edit)
                     {
-                        var rb = new LogEditBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEditBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2252,12 +2310,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Edit)
                     {
-                        var rb = new LogEditBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEditBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2265,13 +2324,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Edit)
                     {
-                        var rb = new LogEditBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEditBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2285,7 +2345,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Edit d = (Edit)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0415"),
                     Pos(d.ppos),
                     Pos(d._prev),
                     Pos(d.trans));
@@ -2293,28 +2353,28 @@ namespace Pyrrho.Level4
          }
         static void LogEnforcementResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Enforcement");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Flags", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Flags", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
         internal class LogEnforcementBookmark : LogSystemBookmark
         {
-            LogEnforcementBookmark(Context _cx,SystemRowSet rs, int pos, (Physical,long) ph)
-                :base(_cx,rs,pos,ph, _Value(_cx, rs, ph.Item1))
+            LogEnforcementBookmark(Context _cx,SystemRowSet rs, int pos, Physical ph, long pp)
+                :base(_cx,rs,pos,ph, pp, _Value(_cx, rs, ph))
             {
             }
-            internal static LogEnforcementBookmark New(Context _cx,SystemRowSet res)
+            internal static LogEnforcementBookmark? New(Context _cx,SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Enforcement)
                     {
-                        var rb = new LogEnforcementBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEnforcementBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2322,12 +2382,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogEnforcementBookmark New(SystemRowSet res, Context _cx)
+            internal static LogEnforcementBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Enforcement)
                     {
-                        var rb = new LogEnforcementBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEnforcementBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2337,16 +2398,18 @@ namespace Pyrrho.Level4
             }
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
-                var en = ph as Enforcement;
-                return new TRow(cx, cx._Dom(res), Pos(en.ppos), Pos(en.tabledefpos),
+                if (cx._Dom(res) is not Domain dm || ph is not Enforcement en) 
+                    throw new PEException("PE42112");
+                return new TRow(cx, dm, Pos(en.ppos), Pos(en.tabledefpos),
                     new TInt((long)en.enforcement),Pos(en.trans));
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Enforcement)
                     {
-                        var rb = new LogEnforcementBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEnforcementBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2354,13 +2417,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Enforcement)
                     {
-                        var rb = new LogEnforcementBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEnforcementBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2374,13 +2438,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogGrantResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Grant");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Privilege", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Object", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Grantee", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Privilege", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Object", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Grantee", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2389,17 +2452,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogGrantBookmark : LogSystemBookmark
         {
-            LogGrantBookmark(Context _cx,SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogGrantBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogGrantBookmark New(Context _cx, SystemRowSet res)
+            internal static LogGrantBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Grant)
                     {
-                        var rb = new LogGrantBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogGrantBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2407,12 +2471,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogGrantBookmark New(SystemRowSet res, Context _cx)
+            internal static LogGrantBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Grant)
                     {
-                        var rb = new LogGrantBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogGrantBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2420,12 +2485,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Grant)
                     {
-                        var rb = new LogGrantBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogGrantBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2433,13 +2499,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null;
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null;
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Grant)
                     {
-                        var rb = new LogGrantBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogGrantBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2454,7 +2521,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Grant g = (Grant)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0416"),
                     Pos(g.ppos),
                     new TInt((long)g.priv),
                     Pos(g.obj),
@@ -2467,15 +2534,14 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogIndexResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Index");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Flags", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Reference", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Adapter", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Reference", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Adapter", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2484,18 +2550,19 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogIndexBookmark : LogSystemBookmark
         {
-            LogIndexBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogIndexBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogIndexBookmark New(Context _cx, SystemRowSet res)
+            internal static LogIndexBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PIndex || lb.value() == Physical.Type.PIndex1
                         ||lb.value()==Physical.Type.PIndex2)
                     {
-                        var rb = new LogIndexBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogIndexBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2503,13 +2570,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogIndexBookmark New(SystemRowSet res, Context _cx)
+            internal static LogIndexBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PIndex || lb.value() == Physical.Type.PIndex1
                         || lb.value() == Physical.Type.PIndex2)
                     {
-                        var rb = new LogIndexBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogIndexBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2517,13 +2585,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PIndex || lb.value() == Physical.Type.PIndex1
                         ||lb.value()==Physical.Type.PIndex2) 
                     {
-                        var rb = new LogIndexBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogIndexBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2531,14 +2600,15 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PIndex || lb.value() == Physical.Type.PIndex1
                         || lb.value() == Physical.Type.PIndex2)
                     {
-                        var rb = new LogIndexBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogIndexBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2552,7 +2622,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                     PIndex p = (PIndex)ph;
-                    return new TRow(cx, cx._Dom(res),
+                    return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0418"),
                         Pos(p.ppos),
                         new TChar(p.name),
                         Pos(p.tabledefpos),
@@ -2567,12 +2637,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogIndexKeyResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$IndexKey");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "ColNo", Domain.Int,1));
-            t+=(cx,new SystemTableColumn(t, "Column", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "ColNo", Domain.Int,1);
+            t+=new SystemTableColumn(t, "Column", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2589,19 +2658,20 @@ namespace Pyrrho.Level4
             /// construct a Log$IndexKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
-            LogIndexKeyBookmark(Context _cx, SystemRowSet rs, int pos, (Physical,long) ph, int i)
-                 : base(_cx,rs, pos,ph, _Value(_cx, rs, ph.Item1,i))
+            LogIndexKeyBookmark(Context _cx, SystemRowSet rs, int pos, Physical ph, long pp, int i)
+                 : base(_cx,rs, pos,ph, pp, _Value(_cx, rs, ph,i))
             {
                 _ix = i;
             }
-            internal static LogIndexKeyBookmark New(Context _cx, SystemRowSet res)
+            internal static LogIndexKeyBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PIndex || lb.value() == Physical.Type.PIndex1
                         ||lb.value()==Physical.Type.PIndex2)
                     {
-                        var rb = new LogIndexKeyBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()),0);
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogIndexKeyBookmark(_cx, res, 0, nph, np, 0);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2609,15 +2679,15 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogIndexKeyBookmark New(SystemRowSet res, Context _cx)
+            internal static LogIndexKeyBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PIndex || lb.value() == Physical.Type.PIndex1
                         || lb.value() == Physical.Type.PIndex2)
                     {
-                        var x = _cx.db._NextPhysical(lb.key());
-                        var rb = new LogIndexKeyBookmark(_cx, res, 0, x, 
-                            (int)((PIndex)x.Item1).columns.Count-1);
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogIndexKeyBookmark(_cx, res, 0, nph, np, 
+                            ((PIndex)nph).columns.Length-1);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2625,11 +2695,11 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
-                for (var ix = _ix + 1; ph is PIndex x && ix < x.columns.Count; ix = ix + 1)
+                for (var ix = _ix + 1; ph is PIndex x && ix < x.columns.Length; ix++)
                 {
-                    var rb = new LogIndexKeyBookmark(_cx,res, _pos, (ph, nextpos), ix);
+                    var rb = new LogIndexKeyBookmark(_cx,res, _pos, ph, nextpos, ix);
                     if (Eval(res.where, _cx))
                         return rb;
                 }
@@ -2637,7 +2707,8 @@ namespace Pyrrho.Level4
                     if (lb.value() == Physical.Type.PIndex || lb.value() == Physical.Type.PIndex1
                         ||lb.value()==Physical.Type.PIndex2)
                     {
-                        var rb = new LogIndexKeyBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()),0);
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogIndexKeyBookmark(_cx, res, 0, nph, np, 0);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2645,24 +2716,24 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
                 for (var ix = _ix - 1; ph is PIndex && ix>=0; ix--)
                 {
-                    var rb = new LogIndexKeyBookmark(_cx, res, _pos, (ph, nextpos), ix);
-                    if (RowSet.Eval(res.where, _cx))
+                    var rb = new LogIndexKeyBookmark(_cx, res, _pos, ph, nextpos, ix);
+                    if (Eval(res.where, _cx))
                         return rb;
                 }
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PIndex || lb.value() == Physical.Type.PIndex1
                         || lb.value() == Physical.Type.PIndex2)
                     {
-                        var x = _cx.db._NextPhysical(lb.key());
-                        var rb = new LogIndexKeyBookmark(_cx, res, 0, x,
-                                              (int)((PIndex)x.Item1).columns.Count - 1);
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogIndexKeyBookmark(_cx, res, 0, nph, np,
+                                              ((PIndex)nph).columns.Length - 1);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -2673,7 +2744,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph,int _ix)
             {
                 PIndex x = (PIndex)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res)??throw new PEException("PE42111"),
                     Pos(x.ppos),
                     new TInt(_ix),
                     Pos(x.columns[_ix]),
@@ -2685,13 +2756,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogOrderingResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Ordering");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "TypeDefPos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "FuncDefPos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "OrderFlags", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "TypeDefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "FuncDefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "OrderFlags", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2700,17 +2770,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogOrderingBookmark : LogSystemBookmark
         {
-            LogOrderingBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogOrderingBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogOrderingBookmark New(Context _cx, SystemRowSet res)
+            internal static LogOrderingBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Ordering)
                     {
-                        var rb = new LogOrderingBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogOrderingBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2718,12 +2789,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogOrderingBookmark New(SystemRowSet res, Context _cx)
+            internal static LogOrderingBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Ordering)
                     {
-                        var rb = new LogOrderingBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogOrderingBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2731,29 +2803,31 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Ordering)
                     {
-                        var rb = new LogOrderingBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogOrderingBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Ordering)
                     {
-                        var rb = new LogOrderingBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogOrderingBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -2764,7 +2838,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Ordering o = (Ordering)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res)??throw new PEException("PE42109"),
                     Pos(o.ppos),
                     new TChar(o.domain.ToString()),
                     Pos(o.funcdefpos),
@@ -2777,14 +2851,13 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogProcedureResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Procedure");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t += (cx, new SystemTableColumn(t, "Signature", Domain.Char, 0));
-            t+=(cx,new SystemTableColumn(t, "RetDefPos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Proc", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Arity", Domain.Int,0);
+            t+=new SystemTableColumn(t, "RetDefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Proc", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2793,11 +2866,11 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogProcedureBookmark : LogSystemBookmark
         {
-            LogProcedureBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogProcedureBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogProcedureBookmark New(Context _cx, SystemRowSet res)
+            internal static LogProcedureBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
@@ -2808,7 +2881,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PMethod:
                         case Physical.Type.PMethod2:
                             {
-                                var rb = new LogProcedureBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogProcedureBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -2818,7 +2892,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogProcedureBookmark New(SystemRowSet res,Context _cx)
+            internal static LogProcedureBookmark? New(SystemRowSet res,Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     switch (lb.value())
@@ -2828,7 +2902,8 @@ namespace Pyrrho.Level4
                         case Physical.Type.PMethod:
                         case Physical.Type.PMethod2:
                             {
-                                var rb = new LogProcedureBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogProcedureBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -2838,7 +2913,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     switch (lb.value())
@@ -2848,19 +2923,20 @@ namespace Pyrrho.Level4
                         case Physical.Type.PMethod:
                         case Physical.Type.PMethod2:
                             {
-                                var rb = new LogProcedureBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogProcedureBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
-                                if (RowSet.Eval(res.where, _cx))
+                                if (Eval(res.where, _cx))
                                     return rb;
                                 continue;
                             }
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     switch (lb.value())
                     {
@@ -2869,10 +2945,11 @@ namespace Pyrrho.Level4
                         case Physical.Type.PMethod:
                         case Physical.Type.PMethod2:
                             {
-                                var rb = new LogProcedureBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogProcedureBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
-                                if (RowSet.Eval(res.where, _cx))
+                                if (Eval(res.where, _cx))
                                     return rb;
                                 continue;
                             }
@@ -2885,11 +2962,12 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PProcedure p = (PProcedure)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0419"),
                     Pos(p.ppos),
-                    new TChar(p.name),
-                    Display(p.source.ident),
-                    Display(p.source.ident),
+                    new TChar(p.nameAndArity),
+                    new TInt(p.arity),
+                    new TChar(p.dataType.ToString()),
+                    Display(p.source?.ident??""),
                     Pos(p.trans));
             }
         }
@@ -2898,13 +2976,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogRevokeResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Revoke");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Privilege", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Object", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Grantee", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Privilege", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Object", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Grantee", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2913,17 +2990,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogRevokeBookmark : LogSystemBookmark
         {
-            LogRevokeBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogRevokeBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogRevokeBookmark New(Context _cx, SystemRowSet res)
+            internal static LogRevokeBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Revoke)
                     {
-                        var rb = new LogRevokeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogRevokeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2931,12 +3009,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogRevokeBookmark New(SystemRowSet res, Context _cx)
+            internal static LogRevokeBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Revoke)
                     {
-                        var rb = new LogRevokeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogRevokeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -2944,24 +3023,26 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Revoke)
                     {
-                        var rb = new LogRevokeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogRevokeBookmark(_cx, res, 0, nph, np);
                         if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Revoke)
                     {
-                        var rb = new LogRevokeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogRevokeBookmark(_cx, res, 0, nph, np);
                         if (Eval(res.where, _cx))
                             return rb;
                     }
@@ -2973,7 +3054,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Grant g = (Grant)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0420"),
                     Pos(g.ppos),
                     new TInt((long)g.priv),
                     Pos(g.obj),
@@ -2986,12 +3067,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogTableResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Table");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Defpos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Defpos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3000,17 +3080,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogTableBookmark : LogSystemBookmark
         {
-            LogTableBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogTableBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogTableBookmark New(Context _cx, SystemRowSet res)
+            internal static LogTableBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PTable||lb.value()==Physical.Type.PTable1)
                     {
-                        var rb = new LogTableBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTableBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3018,12 +3099,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogTableBookmark New(SystemRowSet res, Context _cx)
+            internal static LogTableBookmark? New(SystemRowSet res, Context _cx)
             {
                  for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PTable || lb.value() == Physical.Type.PTable1)
                     {
-                        var rb = new LogTableBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTableBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3031,12 +3113,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PTable||lb.value()==Physical.Type.PTable1)
                     {
-                        var rb = new LogTableBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTableBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3044,13 +3127,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PTable || lb.value() == Physical.Type.PTable1)
                     {
-                        var rb = new LogTableBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTableBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3064,7 +3148,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PTable d = (PTable)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0421"),
                     Pos(d.ppos),
                     new TChar(d.name),
                     Pos(d.defpos),
@@ -3076,18 +3160,17 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogTriggerResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Trigger");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Flags", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "OldTable", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "NewTable", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "OldRow", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "NewRow", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Def", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
+            t+=new SystemTableColumn(t, "OldTable", Domain.Char,0);
+            t+=new SystemTableColumn(t, "NewTable", Domain.Char,0);
+            t+=new SystemTableColumn(t, "OldRow", Domain.Char,0);
+            t+=new SystemTableColumn(t, "NewRow", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Def", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3096,17 +3179,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogTriggerBookmark : LogSystemBookmark
         {
-            LogTriggerBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogTriggerBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogTriggerBookmark New(Context _cx, SystemRowSet res)
+            internal static LogTriggerBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PTrigger)
                     {
-                        var rb = new LogTriggerBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTriggerBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (RowSet.Eval(res.where, _cx))
@@ -3114,25 +3198,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogTriggerBookmark New(SystemRowSet res, Context _cx)
+            internal static LogTriggerBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PTrigger)
                     {
-                        var rb = new LogTriggerBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
-                        if (!rb.Match(res))
-                            return null;
-                        if (RowSet.Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            protected override Cursor _Next(Context _cx)
-            {
-                for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PTrigger)
-                    {
-                        var rb = new LogTriggerBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTriggerBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3140,13 +3212,28 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
+                    if (lb.value() == Physical.Type.PTrigger)
+                    {
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTriggerBookmark(_cx, res, 0, nph, np);
+                        if (!rb.Match(res))
+                            return null;
+                        if (Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Previous(Context _cx)
+            {
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PTrigger)
                     {
-                        var rb = new LogTriggerBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTriggerBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3160,16 +3247,16 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PTrigger d = (PTrigger)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0422"),
                     Pos(d.ppos),
                     new TChar(d.name),
                     Pos(d.target),
                     new TChar(d.tgtype.ToString()),
-                    new TChar(d.oldTable),
-                    new TChar(d.newTable),
-                    new TChar(d.oldRow),
-                    new TChar(d.newRow),
-                    Display(d.src.ident),
+                    new TChar(d.oldTable?.ident??""),
+                    new TChar(d.newTable?.ident??""),
+                    new TChar(d.oldRow?.ident??""),
+                    new TChar(d.newRow?.ident??""),
+                    Display(d.src?.ident??""),
                     Pos(d.trans));
             }
         }
@@ -3178,11 +3265,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogTriggerUpdateColumnResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$TriggerUpdateColumn");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Column", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Column", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3200,24 +3286,24 @@ namespace Pyrrho.Level4
             /// construct a new Log$TriggerUpdate enumerator
             /// </summary>
             /// <param name="r"></param>
-            LogTriggerUpdateColumnBookmark(Context _cx, SystemRowSet res,int pos,(Physical,long) ph,
-                BList<long> s,int i): base(_cx,res,pos,ph, _Value(_cx, res, ph.Item1,s,i))
+            LogTriggerUpdateColumnBookmark(Context _cx, SystemRowSet res,int pos,Physical ph, long pp,
+                BList<long> s,int i): base(_cx,res,pos,ph, pp,_Value(_cx, res, ph,s,i))
             {
                 _sub = s;
                 _ix = i;
             }
-            internal static LogTriggerUpdateColumnBookmark New(Context _cx, SystemRowSet res)
+            internal static LogTriggerUpdateColumnBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PTrigger)
                     {
-                        var x = _cx.db._NextPhysical(lb.key());
-                        var pt = (PTrigger)x.Item1;
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var pt = (PTrigger)nph;
                         if (pt.cols != null)
                             for (var ix = 0; ix < pt.cols.Length; ix++)
                             {
-                                var rb = new LogTriggerUpdateColumnBookmark(_cx,res, 0, x, pt.cols, ix);
+                                var rb = new LogTriggerUpdateColumnBookmark(_cx,res, 0, nph,np, pt.cols, ix);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -3226,17 +3312,17 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogTriggerUpdateColumnBookmark New(SystemRowSet res, Context _cx)
+            internal static LogTriggerUpdateColumnBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PTrigger)
                     {
-                        var x = _cx.db._NextPhysical(lb.key());
-                        var pt = (PTrigger)x.Item1;
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var pt = (PTrigger)nph;
                         if (pt.cols != null)
                             for (var ix = pt.cols.Length-1; ix>=0; ix--)
                             {
-                                var rb = new LogTriggerUpdateColumnBookmark(_cx, res, 0, x, 
+                                var rb = new LogTriggerUpdateColumnBookmark(_cx, res, 0, nph, np, 
                                     pt.cols, ix);
                                 if (!rb.Match(res))
                                     return null;
@@ -3246,23 +3332,23 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
-                for (var ix = _ix + 1; ix < _sub.Length; ix = ix + 1)
+                for (var ix = _ix + 1; ix < _sub.Length; ix++)
                 {
-                    var rb = new LogTriggerUpdateColumnBookmark(_cx,res, _pos + 1, (ph, nextpos), _sub, ix);
-                    if (RowSet.Eval(res.where, _cx))
+                    var rb = new LogTriggerUpdateColumnBookmark(_cx,res, _pos + 1, ph, nextpos, _sub, ix);
+                    if (Eval(res.where, _cx))
                         return rb;
                 }
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PTrigger)
                     {
-                        var x = _cx.db._NextPhysical(lb.key());
-                        var pt = (PTrigger)x.Item1;
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var pt = (PTrigger)nph;
                         if (pt.cols != null)
                             for (var ix = 0; ix < pt.cols.Length; ix++)
                             {
-                                var rb = new LogTriggerUpdateColumnBookmark(_cx, res, 0, x, pt.cols, ix);
+                                var rb = new LogTriggerUpdateColumnBookmark(_cx, res, 0, nph, np, pt.cols, ix);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -3271,23 +3357,23 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var ix = _ix - 1; ix >=0; ix = ix - 1)
+                for (var ix = _ix - 1; ix >=0; ix--)
                 {
-                    var rb = new LogTriggerUpdateColumnBookmark(_cx, res, _pos + 1, (ph, nextpos), _sub, ix);
+                    var rb = new LogTriggerUpdateColumnBookmark(_cx, res, _pos + 1, ph, nextpos, _sub, ix);
                     if (Eval(res.where, _cx))
                         return rb;
                 }
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PTrigger)
                     {
-                        var x = _cx.db._NextPhysical(lb.key());
-                        var pt = (PTrigger)x.Item1;
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var pt = (PTrigger)nph;
                         if (pt.cols != null)
                             for (var ix = pt.cols.Length-1; ix>=0; ix--)
                             {
-                                var rb = new LogTriggerUpdateColumnBookmark(_cx, res, 0, x, pt.cols, ix);
+                                var rb = new LogTriggerUpdateColumnBookmark(_cx, res, 0, nph, np, pt.cols, ix);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -3302,7 +3388,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph,BList<long> _sub,int _ix)
             {
                 PTrigger pt = (PTrigger)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0423"),
                     Pos(pt.ppos),
                     new TInt(_sub[_ix]),
                     Pos(pt.trans));
@@ -3310,27 +3396,27 @@ namespace Pyrrho.Level4
         }
         static void LogTriggeredActionResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$TriggeredAction");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Trigger", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Trigger", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
         internal class LogTriggeredActionBookmark : LogSystemBookmark
         {
-            LogTriggeredActionBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogTriggeredActionBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogTriggeredActionBookmark New(Context _cx, SystemRowSet res)
+            internal static LogTriggeredActionBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.TriggeredAction)
                     {
-                        var rb = new LogTriggeredActionBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTriggeredActionBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3338,12 +3424,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogTriggeredActionBookmark New(SystemRowSet res, Context _cx)
+            internal static LogTriggeredActionBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.TriggeredAction)
                     {
-                        var rb = new LogTriggeredActionBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTriggeredActionBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3351,12 +3438,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Alter)
                     {
-                        var rb = new LogTriggeredActionBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTriggeredActionBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3364,13 +3452,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Alter)
                     {
-                        var rb = new LogTriggeredActionBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTriggeredActionBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3384,7 +3473,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 TriggeredAction t = (TriggeredAction)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0424"),
                     Pos(t.ppos),
                     Pos(t.trigger),
                     Pos(t.trans));
@@ -3395,11 +3484,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogTypeResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Type");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "SuperType", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "SuperType", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3408,17 +3496,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogTypeBookmark : LogSystemBookmark
         {
-            LogTypeBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogTypeBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogTypeBookmark New(Context _cx, SystemRowSet res)
+            internal static LogTypeBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PType||lb.value()==Physical.Type.PType1)
                     {
-                        var rb = new LogTypeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTypeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3426,12 +3515,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogTypeBookmark New(SystemRowSet res, Context _cx)
+            internal static LogTypeBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PType || lb.value() == Physical.Type.PType1)
                     {
-                        var rb = new LogTypeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTypeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3439,12 +3529,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Alter)
                     {
-                        var rb = new LogTypeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTypeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3452,13 +3543,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Alter)
                     {
-                        var rb = new LogTypeBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTypeBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3472,7 +3564,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PType t = (PType)ph;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0425"),
                     Pos(t.ppos),
                     new TChar(""), // under tbd
                     Pos(t.trans));
@@ -3483,12 +3575,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogTypeMethodResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$TypeMethod");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Type", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Type", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3497,17 +3588,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogTypeMethodBookmark : LogSystemBookmark
         {
-            LogTypeMethodBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogTypeMethodBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogTypeMethodBookmark New(Context _cx, SystemRowSet res)
+            internal static LogTypeMethodBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PMethod||lb.value()==Physical.Type.PMethod2)
                     {
-                        var rb = new LogTypeMethodBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTypeMethodBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3515,12 +3607,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogTypeMethodBookmark New(SystemRowSet res, Context _cx)
+            internal static LogTypeMethodBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.PMethod || lb.value() == Physical.Type.PMethod2)
                     {
-                        var rb = new LogTypeMethodBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTypeMethodBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3528,12 +3621,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.PMethod||lb.value()==Physical.Type.PMethod2)
                     {
-                        var rb = new LogTypeMethodBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTypeMethodBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3541,13 +3635,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.PMethod || lb.value() == Physical.Type.PMethod2)
                     {
-                        var rb = new LogTypeMethodBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTypeMethodBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3560,8 +3655,10 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
-                    PMethod t = (PMethod)ph;
-                    return new TRow(cx, cx._Dom(res),
+                PMethod t = (PMethod)ph;
+                if (t.udt is null || cx._Dom(res) is not Domain dm)
+                    throw new PEException("PE0426");
+                    return new TRow(cx, dm,
                         Pos(t.ppos),
                         new TChar(t.udt.ToString()),
                         new TChar(t.name),
@@ -3573,14 +3670,13 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogViewResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$View");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Select", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Struct", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Using", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Struct", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Using", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3589,17 +3685,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogViewBookmark : LogSystemBookmark
         {
-            LogViewBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogViewBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogViewBookmark New(Context _cx, SystemRowSet res)
+            internal static LogViewBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PView||lb.value()==Physical.Type.PView1)
+                    if (lb.value() == Physical.Type.PView)
                     {
-                        var rb = new LogViewBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogViewBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3607,12 +3704,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogViewBookmark New(SystemRowSet res, Context _cx)
+            internal static LogViewBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
-                    if (lb.value() == Physical.Type.PView || lb.value() == Physical.Type.PView1)
+                    if (lb.value() == Physical.Type.PView)
                     {
-                        var rb = new LogViewBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogViewBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3620,29 +3718,31 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PView||lb.value()==Physical.Type.PView1)
+                    if (lb.value() == Physical.Type.PView)
                     {
-                        var rb = new LogViewBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogViewBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
-                    if (lb.value() == Physical.Type.PView || lb.value() == Physical.Type.PView1)
+                    if (lb.value() == Physical.Type.PView)
                     {
-                        var rb = new LogViewBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogViewBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -3655,11 +3755,11 @@ namespace Pyrrho.Level4
                 PView d = (PView)ph;
                 TypedValue us = TNull.Value;
                 TypedValue st = TNull.Value;
-                if (d is PRestView2)
-                    us = Pos(((PRestView2)d).usingtbpos);
-                if (d is PRestView)
-                    st = Pos(((PRestView)d).structpos);
-                return new TRow(cx, cx._Dom(res),
+                if (d is PRestView2 view)
+                    us = Pos(view.usingtbpos);
+                if (d is PRestView vw)
+                    st = Pos(vw.structpos);
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0426"),
                     Pos(d.ppos),
                     new TChar(d.name),
                     Display(d.viewdef),
@@ -3673,13 +3773,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogRecordResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Record");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "SubType", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Classification", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "SubType", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3688,24 +3787,24 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogRecordBookmark : LogSystemBookmark
         {
-            LogRecordBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogRecordBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogRecordBookmark New(Context _cx, SystemRowSet res)
+            internal static LogRecordBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     switch (lb.value())
                     {
                         case Physical.Type.Record:
-                        case Physical.Type.Record1:
                         case Physical.Type.Record2:
                         case Physical.Type.Record3:
                         case Physical.Type.Update:
                         case Physical.Type.Update1:
                             {
-                                var rb = new LogRecordBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogRecordBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -3715,19 +3814,19 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogRecordBookmark New(SystemRowSet res, Context _cx)
+            internal static LogRecordBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     switch (lb.value())
                     {
                         case Physical.Type.Record:
-                        case Physical.Type.Record1:
                         case Physical.Type.Record2:
                         case Physical.Type.Record3:
                         case Physical.Type.Update:
                         case Physical.Type.Update1:
                             {
-                                var rb = new LogRecordBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogRecordBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -3737,19 +3836,19 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     switch (lb.value())
                     {
                         case Physical.Type.Record:
-                        case Physical.Type.Record1:
                         case Physical.Type.Record2:
                         case Physical.Type.Record3:
                         case Physical.Type.Update:
                         case Physical.Type.Update1:
                             {
-                                var rb = new LogRecordBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogRecordBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -3759,20 +3858,20 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     switch (lb.value())
                     {
                         case Physical.Type.Record:
-                        case Physical.Type.Record1:
                         case Physical.Type.Record2:
                         case Physical.Type.Record3:
                         case Physical.Type.Update:
                         case Physical.Type.Update1:
                             {
-                                var rb = new LogRecordBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                                var (nph, np) = _cx.db.GetPhysical(lb.key());
+                                var rb = new LogRecordBookmark(_cx, res, 0, nph, np);
                                 if (!rb.Match(res))
                                     return null;
                                 if (Eval(res.where, _cx))
@@ -3788,8 +3887,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Record d = (Record)ph;
-                var dp = (d.subType < 0) ? d.tabledefpos : d.subType;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0428"),
                     Pos(d.ppos),
                     Pos(d.tabledefpos),
                     Pos(d.subType),
@@ -3802,12 +3900,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogRecordFieldResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$RecordField");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "ColRef", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Data", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "ColRef", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Data", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3827,37 +3924,39 @@ namespace Pyrrho.Level4
             /// <param name="r">the rowset</param>
             LogRecordFieldBookmark(Context _cx, LogRecordBookmark rec,int pos,
                 ABookmark<long,TypedValue>fld)
-                : base(_cx,rec.res,pos,(rec.ph,rec.nextpos), _Value(_cx, rec.res,rec.ph,fld))
+                : base(_cx,rec.res,pos,rec.ph,rec.nextpos, _Value(_cx, rec.res,rec.ph,fld))
             {
                 _rec = rec;
                 _fld = fld;
             }
-            internal static LogRecordFieldBookmark New(Context _cx, SystemRowSet res)
+            internal static LogRecordFieldBookmark? New(Context _cx, SystemRowSet res)
             {
-                for (var lb = LogRecordBookmark.New(_cx,res); lb != null; 
-                    lb = (LogRecordBookmark)lb.Next(_cx))
-                    for (var b = (lb.ph as Record).fields.PositionAt(0); b != null; b = b.Next())
-                    {
-                        var rb = new LogRecordFieldBookmark(_cx,lb, 0, b);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
+                for (var lb = LogRecordBookmark.New(_cx, res); lb != null;
+                    lb = (LogRecordBookmark?)lb.Next(_cx))
+                    if (lb.ph is Record rc)
+                        for (var b = rc.fields.PositionAt(0); b != null; b = b.Next())
+                        {
+                            var rb = new LogRecordFieldBookmark(_cx, lb, 0, b);
+                            if (!rb.Match(res))
+                                return null;
+                            if (Eval(res.where, _cx))
+                                return rb;
+                        }
                 return null;
             }
-            internal static LogRecordFieldBookmark New(SystemRowSet res, Context _cx)
+            internal static LogRecordFieldBookmark? New(SystemRowSet res, Context _cx)
             {
-                for (var lb = LogRecordBookmark.New(res,_cx); lb != null;
-                    lb = (LogRecordBookmark)lb.Previous(_cx))
-                    for (var b = (lb.ph as Record).fields.Last(); b != null; b = b.Previous())
-                    {
-                        var rb = new LogRecordFieldBookmark(_cx, lb, 0, b);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
+                for (var lb = LogRecordBookmark.New(res, _cx); lb != null;
+                    lb = (LogRecordBookmark?)lb.Previous(_cx))
+                    if (lb.ph is Record rc)
+                        for (var b = rc.fields.Last(); b != null; b = b.Previous())
+                        {
+                            var rb = new LogRecordFieldBookmark(_cx, lb, 0, b);
+                            if (!rb.Match(res))
+                                return null;
+                            if (Eval(res.where, _cx))
+                                return rb;
+                        }
                 return null;
             }
             /// <summary>
@@ -3868,7 +3967,7 @@ namespace Pyrrho.Level4
                 Record r = (Record)ph;
                 long p = _fld.key();
                 var v = r.fields[p] ?? TNull.Value;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0430"),
                     Pos(r.ppos),
                     Pos(p),
                     new TChar(v.ToString()),
@@ -3878,27 +3977,28 @@ namespace Pyrrho.Level4
             /// Move to next Field or Record
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var fld = _fld.Next(); fld != null; fld = fld.Next())
                 {
                     var rb = new LogRecordFieldBookmark(_cx,_rec, _pos + 1, fld);
-                    if (RowSet.Eval(res.where, _cx))
+                    if (Eval(res.where, _cx))
                         return rb;
                 }
-                for (var rec = (LogRecordBookmark)_rec.Next(_cx); rec != null; 
-                    rec = (LogRecordBookmark)_Next(_cx))
-                    for (var b = (rec.ph as Record).fields.PositionAt(0); b != null; b = b.Next())
-                    {
-                        var rb = new LogRecordFieldBookmark(_cx,rec, _pos + 1, b);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
+                for (var rec = (LogRecordBookmark?)_rec.Next(_cx); rec != null;
+                    rec = (LogRecordBookmark?)_Next(_cx))
+                    if (rec.ph is Record rc)
+                        for (var b = rc.fields.PositionAt(0); b != null; b = b.Next())
+                        {
+                            var rb = new LogRecordFieldBookmark(_cx, rec, _pos + 1, b);
+                            if (!rb.Match(res))
+                                return null;
+                            if (Eval(res.where, _cx))
+                                return rb;
+                        }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
                 for (var fld = _fld.Previous(); fld != null; fld = fld.Previous())
                 {
@@ -3906,16 +4006,17 @@ namespace Pyrrho.Level4
                     if (Eval(res.where, _cx))
                         return rb;
                 }
-                for (var rec = (LogRecordBookmark)_rec.Previous(_cx); rec != null;
-                    rec = (LogRecordBookmark)_Previous(_cx))
-                    for (var b = (rec.ph as Record).fields.Last(); b != null; b = b.Previous())
-                    {
-                        var rb = new LogRecordFieldBookmark(_cx, rec, _pos + 1, b);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
+                for (var rec = (LogRecordBookmark?)_rec.Previous(_cx); rec != null;
+                    rec = (LogRecordBookmark?)_Previous(_cx))
+                    if (rec.ph is Record rc)
+                        for (var b = rc.fields.Last(); b != null; b = b.Previous())
+                        {
+                            var rb = new LogRecordFieldBookmark(_cx, rec, _pos + 1, b);
+                            if (!rb.Match(res))
+                                return null;
+                            if (Eval(res.where, _cx))
+                                return rb;
+                        }
                 return null;
             }
         }
@@ -3924,14 +4025,13 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogUpdateResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Update");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "DefPos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "SubType", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Classification", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "SubType", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3940,17 +4040,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogUpdateBookmark : LogSystemBookmark
         {
-            LogUpdateBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogUpdateBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogUpdateBookmark New(Context _cx, SystemRowSet res)
+            internal static LogUpdateBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Update || lb.value()==Physical.Type.Update1)
                     {
-                        var rb = new LogUpdateBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogUpdateBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3958,12 +4059,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogUpdateBookmark New(SystemRowSet res, Context _cx)
+            internal static LogUpdateBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
                     if (lb.value() == Physical.Type.Update || lb.value() == Physical.Type.Update1)
                     {
-                        var rb = new LogUpdateBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogUpdateBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3971,12 +4073,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
                     if (lb.value() == Physical.Type.Update || lb.value()==Physical.Type.Update1)
                     {
-                        var rb = new LogUpdateBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogUpdateBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -3984,13 +4087,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
                     if (lb.value() == Physical.Type.Update || lb.value() == Physical.Type.Update1)
                     {
-                        var rb = new LogUpdateBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogUpdateBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -4004,8 +4108,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Update u = (Update)ph;
-                var dp = (u.subType < 0) ? u.tabledefpos : u.subType;
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0431"),
                     Pos(u.ppos),
                     Pos(u.defpos),
                     Pos(u.tabledefpos),
@@ -4019,15 +4122,13 @@ namespace Pyrrho.Level4
         /// </summary>
         static void LogTransactionResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Log$Transaction");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "NRecs", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Time", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "User", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Role", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Source", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Transaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "NRecs", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Time", Domain.Int,0);
+            t+=new SystemTableColumn(t, "User", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Role", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -4036,17 +4137,18 @@ namespace Pyrrho.Level4
         /// </summary>
         internal class LogTransactionBookmark : LogSystemBookmark
         {
-            LogTransactionBookmark(Context _cx, SystemRowSet r, int pos, (Physical,long) ph)
-                : base(_cx,r, pos, ph, _Value(_cx, r, ph.Item1))
+            LogTransactionBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx,r, pos, ph, pp, _Value(_cx, r, ph))
             {
             }
-            internal static LogTransactionBookmark New(Context _cx, SystemRowSet res)
+            internal static LogTransactionBookmark? New(Context _cx, SystemRowSet res)
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PTransaction||lb.value()==Physical.Type.PTransaction2)
+                    if (lb.value() == Physical.Type.PTransaction)
                     {
-                        var rb = new LogTransactionBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTransactionBookmark(_cx, res, 0, nph,np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -4054,12 +4156,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static LogTransactionBookmark New(SystemRowSet res,Context _cx)
+            internal static LogTransactionBookmark? New(SystemRowSet res,Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
-                    if (lb.value() == Physical.Type.PTransaction || lb.value() == Physical.Type.PTransaction2)
+                    if (lb.value() == Physical.Type.PTransaction)
                     {
-                        var rb = new LogTransactionBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTransactionBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -4067,12 +4170,13 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PTransaction||lb.value()==Physical.Type.PTransaction2)
+                    if (lb.value() == Physical.Type.PTransaction)
                     {
-                        var rb = new LogTransactionBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTransactionBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -4080,13 +4184,14 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos).Previous(); lb != null; 
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
-                    if (lb.value() == Physical.Type.PTransaction || lb.value() == Physical.Type.PTransaction2)
+                    if (lb.value() == Physical.Type.PTransaction)
                     {
-                        var rb = new LogTransactionBookmark(_cx, res, 0, _cx.db._NextPhysical(lb.key()));
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogTransactionBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
                         if (Eval(res.where, _cx))
@@ -4100,14 +4205,12 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                     PTransaction t = (PTransaction)ph;
-                    PImportTransaction it = t as PImportTransaction;
-                    return new TRow(cx, cx._Dom(res),
+                    return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0434"),
                         Pos(t.ppos),
                         new TInt(t.nrecs),
                         new TDateTime(new DateTime(t.time)),
-                        Pos(t.ptuser),
-                        Pos(t.ptrole),
-                        new TChar((it == null) ? "" : it.uri),
+                        Pos(t.ptuser?.defpos??-1L),
+                        Pos(t.ptrole.defpos),
                         Pos(t.trans));
             }
         }
@@ -4116,10 +4219,9 @@ namespace Pyrrho.Level4
         /// </summary>
         static void SysRoleResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Sys$Role");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t.AddIndex("Name");
             t.Add();
         }
@@ -4147,7 +4249,7 @@ namespace Pyrrho.Level4
             {
                 _bmk = bmk;
             }
-            internal static SysRoleBookmark New(Context _cx, SystemRowSet res)
+            internal static SysRoleBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
                     if (en.value() is Role)
@@ -4163,15 +4265,15 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx,SystemRowSet res,Role a)
             {
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0435"),
                     Pos(a.defpos),
-                    new TChar(a.name));
+                    new TChar(a.name??""));
             }
             /// <summary>
             /// Move to the next Role
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
                 {
@@ -4181,7 +4283,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -4191,12 +4293,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void SysUserResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Sys$User");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "SetPassword", Domain.Bool,0)); // usually null
-            t+=(cx,new SystemTableColumn(t, "Clearance", Domain.Char,0)); // usually null, otherwise D to A
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "SetPassword", Domain.Bool,0); // usually null
+            t+=new SystemTableColumn(t, "Clearance", Domain.Char,0); // usually null, otherwise D to A
             t.AddIndex("Name");
             t.Add();
         }
@@ -4230,13 +4331,13 @@ namespace Pyrrho.Level4
             {
                 en = bmk;
             }
-            internal static SysUserBookmark New(Context _cx, SystemRowSet res)
+            internal static SysUserBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
                     if (en.value() is User)
                     {
                         var rb = new SysUserBookmark(_cx, res, 0, en);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -4246,9 +4347,9 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx, SystemRowSet res, User a)
             {
-                return new TRow(cx, cx._Dom(res),
+                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0426"),
                     Pos(a.defpos),
-                    new TChar(a.name),
+                    new TChar(a.name??""),
                     (a.pwd==null)?TNull.Value:TBool.For(a.pwd.Length==0),
                     new TChar(a.clearance.ToString()));
             }
@@ -4256,7 +4357,7 @@ namespace Pyrrho.Level4
             /// Move to the next Role
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var e = en.Next(); e != null; e = e.Next())
                     if (e.value() is User)
@@ -4267,17 +4368,16 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
         }
         static void SysRoleUserResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Sys$RoleUser");
-            t+=(cx,new SystemTableColumn(t, "Role", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "User", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Role", Domain.Char,1);
+            t+=new SystemTableColumn(t, "User", Domain.Char,0);
             t .AddIndex("Role", "User");
             t.Add();
         }
@@ -4286,52 +4386,44 @@ namespace Pyrrho.Level4
         {
             readonly ABookmark<string, long> _rbmk;
             readonly ABookmark<string, long> _inner;
-            readonly User _user;
-            readonly SystemRowSet _srs;
+
             SysRoleUserBookmark(Context _cx, SystemRowSet srs,ABookmark<string,long> rbmk, 
                 ABookmark<string,long> inner,int pos) : base(_cx,srs,pos,inner.value(), 
-               ((User)_cx.db.objects[inner.value()]).lastChange,  
+               ((User?)_cx.db.objects[inner.value()] ?? throw new PEException("PE0437")).defpos,  
                _Value(_cx, srs, rbmk.value(),inner.value()))
             {
-                _srs = srs;
                 _rbmk = rbmk;
                 _inner = inner;
-                _user = (User)_cx.db.objects[inner.value()];
             }
-            internal static SysRoleUserBookmark New(Context _cx, SystemRowSet res)
+            internal static SysRoleUserBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var rb = _cx.db.roles.First(); rb != null; rb = rb.Next())
-                {
-                    var ro = _cx.db.objects[rb.value()] as Role;
-                    for (var inner = ro.dbobjects.First(); inner != null; inner = inner.Next())
-                    {
-                        var us = _cx.db.objects[inner.value()] as User;
-                        if (us == null)
-                            continue;
-                        var dm = us.infos[_cx.role.defpos];
-                        if (dm != null & dm.priv.HasFlag(Grant.Privilege.Usage))
-                        {
-                            var sb = new SysRoleUserBookmark(_cx, res, rb, inner, 0);
-                            if (sb.Match(res) && RowSet.Eval(res.where, _cx))
-                                return sb;
-                        }
-                    }
-                }
+                    if (_cx.db.objects[rb.value()] is Role ro)
+                        for (var inner = ro.dbobjects.First(); inner != null; inner = inner.Next())
+                            if (_cx.db.objects[inner.value()] is User us &&
+                                        us.infos[ro.defpos] is ObInfo ui &&
+                                        ui.priv.HasFlag(Grant.Privilege.Usage))
+                            {
+                                var sb = new SysRoleUserBookmark(_cx, res, rb, inner, 0);
+                                if (sb.Match(res) && Eval(res.where, _cx))
+                                    return sb;
+                            }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
+                if (_cx.role is not Role cr)
+                    return null;
                 var inner = _inner;
                 var rbmk = _rbmk;
-                for (; ; )
+                for (inner = inner.Next(); inner != null; inner = inner.Next())
                 {
-                    inner = inner.Next();
-                    var us = _cx.db.objects[inner.value()] as User;
-                    var dm = (us != null) ? us.infos[_cx.role.defpos]:null;
-                    if (dm!=null && dm.priv.HasFlag(Grant.Privilege.Usage))
+                    if (_cx.db.objects[inner.value()] is User us &&
+                       us.infos[cr.defpos] is ObInfo ui &&
+                       ui.priv.HasFlag(Grant.Privilege.Usage))
                     {
-                        var sb = new SysRoleUserBookmark(_cx,res, rbmk, inner, _pos+1);
-                        if (RowSet.Eval(res.where, _cx))
+                        var sb = new SysRoleUserBookmark(_cx, res, rbmk, inner, _pos + 1);
+                        if (Eval(res.where, _cx))
                             return sb;
                     }
                     if (inner != null)
@@ -4341,40 +4433,41 @@ namespace Pyrrho.Level4
                         rbmk = rbmk?.Next();
                         if (rbmk == null)
                             return null;
-                        var ro = _cx.db.objects[rbmk.value()] as Role;
+                        var ro = (Role)(_cx.db.objects[rbmk.value()]?? throw new PEException("PE440"));
                         inner = ro.dbobjects.First();
                     }
-                    us = _cx.db.objects[inner.value()] as User;
-                    dm = (us != null) ? us.infos[_cx.role.defpos] : null;
-                    if (dm!=null && dm.priv.HasFlag(Grant.Privilege.Usage))
+                    if (_cx.db.objects[inner.value()] is User ns &&
+                    ns.infos[cr.defpos] is ObInfo oi &&
+                    oi.priv.HasFlag(Grant.Privilege.Usage))
                     {
-                        var sb = new SysRoleUserBookmark(_cx,res, rbmk, inner, _pos + 1);
+                        var sb = new SysRoleUserBookmark(_cx, res, rbmk, inner, _pos + 1);
                         if (sb.Match(res) && RowSet.Eval(res.where, _cx))
                             return sb;
                     }
                 }
+                return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
             static TRow _Value(Context _cx, SystemRowSet rs, long rpos, long upos)
             {
-                var ro = _cx.db.objects[rpos] as Role;
-                var us = _cx.db.objects[upos] as User;
-                return new TRow(_cx,_cx._Dom(rs),
-                    new TChar(ro.name),
-                    new TChar(us.name));
+                if (_cx.db.objects[rpos] is not Role ro ||
+                    _cx.db.objects[upos] is not User us || _cx._Dom(rs) is not Domain dm)
+                    throw new PEException("PE0450");
+                return new TRow(_cx, dm,
+                    new TChar(ro.name ?? ""),
+                    new TChar(us.name ?? ""));
             }
         }
         static void SysAuditResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Sys$Audit");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "User", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Timestamp", Domain.Timestamp,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "User", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Timestamp", Domain.Timestamp,0);
             t.Add();
         }
         internal class SysAuditBookmark : SystemBookmark
@@ -4385,7 +4478,7 @@ namespace Pyrrho.Level4
             {
                 _bmk = b;
             }
-            internal static SysAuditBookmark New(Context _cx, SystemRowSet res)
+            internal static SysAuditBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var bmk = LogBookmark.New(_cx,res);bmk!=null;bmk=bmk.Next(_cx) as LogBookmark)
                     switch(bmk.ph.type)
@@ -4398,35 +4491,27 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            internal static SysAuditBookmark New(SystemRowSet res, Context _cx)
+            internal static SysAuditBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var bmk = LogBookmark.New(res,_cx); bmk != null; bmk = bmk.Previous(_cx) as LogBookmark)
-                    switch (bmk.ph.type)
-                    {
-                        case Physical.Type.Audit:
-                            var rb = new SysAuditBookmark(_cx, res, bmk, 0);
-                            if (Eval(res.where, _cx))
+                    if (bmk.ph.type is Physical.Type.Audit &&  
+                        new SysAuditBookmark(_cx, res, bmk, 0) is SysAuditBookmark rb &&
+                            Eval(res.where, _cx))
                                 return rb;
-                            break;
-                    }
                 return null;
             }
             static TRow _Value(Context _cx, SystemRowSet rs, Physical ph)
             {
-                switch (ph.type)
-                {
-                    case Physical.Type.Audit:
-                        {
-                            var au = ph as Audit;
-                            return new TRow(_cx,_cx._Dom(rs), Pos(au.ppos),
-                                new TChar(au.user.name),Pos(au.table),
-                                new TDateTime(new DateTime(au.timestamp)));
-                        }
-                }
-                throw new PEException("PE001");
+                if (_cx._Dom(rs) is not Domain dm || ph is not Audit au ||
+                    au.user is not User us)
+                    throw new PEException("PE0451");
+                return new TRow(_cx, dm,
+                    Pos(au.ppos),
+                    new TChar(us.name??""), Pos(au.table),
+                    new TDateTime(new DateTime(au.timestamp)));
             }
 
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var bmk = _bmk.Next(_cx) as LogBookmark; bmk != null; 
                     bmk = bmk.Next(_cx) as LogBookmark)
@@ -4434,13 +4519,13 @@ namespace Pyrrho.Level4
                     {
                         case Physical.Type.Audit:
                             var rb = new SysAuditBookmark(_cx,res, bmk, _pos+1);
-                            if (RowSet.Eval(res.where, _cx))
+                            if (Eval(res.where, _cx))
                                 return rb;
                             break;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
                 for (var bmk = _bmk.Previous(_cx) as LogBookmark; bmk != null;
                     bmk = bmk.Previous(_cx) as LogBookmark)
@@ -4448,7 +4533,7 @@ namespace Pyrrho.Level4
                     {
                         case Physical.Type.Audit:
                             var rb = new SysAuditBookmark(_cx, res, bmk, _pos + 1);
-                            if (RowSet.Eval(res.where, _cx))
+                            if (Eval(res.where, _cx))
                                 return rb;
                             break;
                     }
@@ -4457,135 +4542,105 @@ namespace Pyrrho.Level4
         }
         static void SysAuditKeyResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Sys$AuditKey");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Seq", Domain.Int,1));
-            t+=(cx,new SystemTableColumn(t, "Col", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Key", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
+            t+=new SystemTableColumn(t, "Col", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Key", Domain.Char,0);
             t.Add();
         }
         internal class SysAuditKeyBookmark : SystemBookmark
         {
             public readonly LogBookmark _bmk;
-            public readonly ABookmark<long,string> _inner;
+            public readonly ABookmark<long, string> _inner;
             public readonly int _ix;
-            public SysAuditKeyBookmark(Context _cx, SystemRowSet res, LogBookmark bmk, 
-                ABookmark<long,string> _in, int ix, int pos) 
-                : base(_cx,res, pos,bmk.ph.ppos,0,_Value(_cx,res,bmk.ph,_in,ix))
+            public SysAuditKeyBookmark(Context _cx, SystemRowSet res, LogBookmark bmk,
+                ABookmark<long, string> _in, int ix, int pos)
+                : base(_cx, res, pos, bmk.ph.ppos, 0, _Value(_cx, res, bmk.ph, _in, ix))
             {
                 _bmk = bmk; _inner = _in; _ix = ix;
             }
-            internal static SysAuditKeyBookmark New(Context _cx, SystemRowSet res)
+            internal static SysAuditKeyBookmark? New(Context _cx, SystemRowSet res)
             {
-                for (var bmk = LogBookmark.New(_cx,res); bmk != null; 
+                for (var bmk = LogBookmark.New(_cx, res); bmk != null;
                     bmk = bmk.Next(_cx) as LogBookmark)
-                    switch (bmk.ph.type)
+                    if (bmk.ph is Audit au && au.match.First() is ABookmark<long, string> inner)
                     {
-                        case Physical.Type.Audit:
-                            var a = ((Audit)bmk.ph).match.First();
-                            if (a != null)
-                            {
-                                var rb = new SysAuditKeyBookmark(_cx, res, bmk, a, 0, 0);
-                                if (Eval(res.where, _cx))
-                                    return rb;
-                            }
-                            break;
+                        var rb = new SysAuditKeyBookmark(_cx, res, bmk, inner, 0, 0);
+                        if (Eval(res.where, _cx))
+                            return rb;
                     }
                 return null;
             }
-            internal static SysAuditKeyBookmark New(SystemRowSet res, Context _cx)
+            internal static SysAuditKeyBookmark? New(SystemRowSet res, Context _cx)
             {
-                for (var bmk = LogBookmark.New(res,_cx); bmk != null;
+                for (var bmk = LogBookmark.New(res, _cx); bmk != null;
                     bmk = bmk.Previous(_cx) as LogBookmark)
-                    switch (bmk.ph.type)
+                    if (bmk.ph is Audit au && au.match.Last() is ABookmark<long, string> inner)
                     {
-                        case Physical.Type.Audit:
-                            var a = ((Audit)bmk.ph).match.Last();
-                            if (a != null)
-                            {
-                                var rb = new SysAuditKeyBookmark(_cx, res, bmk, a, 0, 0);
-                                if (Eval(res.where, _cx))
-                                    return rb;
-                            }
-                            break;
+                        var rb = new SysAuditKeyBookmark(_cx, res, bmk, inner, 0, 0);
+                        if (Eval(res.where, _cx))
+                            return rb;
                     }
                 return null;
             }
             static TRow _Value(Context _cx, SystemRowSet res, Physical ph,
                 ABookmark<long, string> _in, int _ix)
             {
-                return new TRow(_cx,_cx._Dom(res), Pos(ph.ppos), new TInt(_ix),
+                return new TRow(_cx,_cx._Dom(res) ?? throw new PEException("PE0452"), 
+                    Pos(ph.ppos), new TInt(_ix),
                     Pos(_in.key()), new TChar(_in.value()));
             }
 
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var ix = _ix;
-                var b = _inner;
-                var bmk = _bmk;
-                for (; ; )
+                var inner = _inner;
+                for (var bmk = _bmk; bmk!=null; )
                 {
-                    for (b = b?.Next(), ix++; b!=null; b=b.Next(), ix++)
+                    for (inner = inner?.Next(), ix++; inner != null; inner = inner.Next(), ix++)
                     {
-                        var sb = new SysAuditKeyBookmark(_cx,res, _bmk, b, ix, _pos + 1);
+                        var sb = new SysAuditKeyBookmark(_cx, res, _bmk, inner, ix, _pos + 1);
                         if (Eval(res.where, _cx))
                             return sb;
                     }
-                    for (bmk = bmk?.Next(_cx) as LogBookmark; bmk != null;
-                        bmk = bmk.Next(_cx) as LogBookmark)
-                        if (bmk.ph.type == Physical.Type.Audit)
-                        {
-                            b = ((Audit)bmk.ph).match.First();
-                            if (b!=null)
-                                break;
-                        }
-                    if (bmk == null)
-                        return null;
                     ix = 0;
-                    var rb = new SysAuditKeyBookmark(_cx,res, bmk, b, 0, _pos + 1);
-                    if (Eval(res.where, _cx))
-                        return rb;
+                    for (bmk = bmk?.Next(_cx) as LogBookmark; inner == null && bmk != null;
+                        bmk = bmk.Next(_cx) as LogBookmark)
+                        if (bmk.ph.type == Physical.Type.Audit &&
+                            bmk.ph is Audit au)
+                            inner = au.match.First();
                 }
+                return null;
             }
-            protected override Cursor _Previous(Context _cx)
+            protected override Cursor? _Previous(Context _cx)
             {
                 var ix = _ix;
-                var b = _inner;
-                var bmk = _bmk;
-                for (; ; )
+                var inner = _inner;
+                for (var bmk = _bmk; bmk!=null;)
                 {
-                    for (b = b?.Previous(), ix++; b != null; b = b.Previous(), ix++)
+                    for (inner = inner?.Previous(), ix++; inner != null; inner = inner.Previous(), ix++)
                     {
-                        var sb = new SysAuditKeyBookmark(_cx, res, _bmk, b, ix, _pos + 1);
+                        var sb = new SysAuditKeyBookmark(_cx, res, _bmk, inner, ix, _pos + 1);
                         if (Eval(res.where, _cx))
                             return sb;
                     }
-                    for (bmk = bmk?.Previous(_cx) as LogBookmark; bmk != null;
+                    ix = 0;
+                    for (bmk = bmk?.Previous(_cx) as LogBookmark; inner==null && bmk != null;
                         bmk = bmk.Previous(_cx) as LogBookmark)
                         if (bmk.ph.type == Physical.Type.Audit)
-                        {
-                            b = ((Audit)bmk.ph).match.Last();
-                            if (b != null)
-                                break;
-                        }
-                    if (bmk == null)
-                        return null;
-                    ix = 0;
-                    var rb = new SysAuditKeyBookmark(_cx, res, bmk, b, 0, _pos + 1);
-                    if (Eval(res.where, _cx))
-                        return rb;
+                            inner = ((Audit)bmk.ph).match.Last();
                 }
+                return null;
             }
         }
         static void SysClassificationResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Sys$Classification");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Type", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Classification", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "LastTransaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Type", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
+            t+=new SystemTableColumn(t, "LastTransaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -4596,110 +4651,112 @@ namespace Pyrrho.Level4
         internal class SysClassificationBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _obm;
-            readonly ABookmark<long, TableRow> _tbm;
-            readonly Level _classification;
-            readonly long _trans;
-            readonly string _type;
+            readonly ABookmark<long, TableRow>? _tbm;
             SysClassificationBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long,object> obm,
-                ABookmark<long, TableRow> tbm, long pp, string type,Level classification)
-                : base(_cx,res, pos, tbm?.key() ?? obm.key(),tbm?.value()?.ppos??pp,
-                      _Value(_cx,res,tbm?.value()?.ppos??pp,type,classification))
+                ABookmark<long, TableRow>? tbm)
+                : this(_cx,res, pos, obm, tbm, _Value(_cx, res, obm, tbm))
+            {   }
+            SysClassificationBookmark(Context _cx, SystemRowSet res, int pos,
+                ABookmark<long, object> obm,
+                ABookmark<long, TableRow>? tbm, (long, long, TRow) x)
+                : base(_cx, res, pos, x.Item1, x.Item2, x.Item3)
+            {   _obm = obm;  _tbm = tbm;  }
+            internal static SysClassificationBookmark? New(Context _cx, SystemRowSet res)
             {
-                _obm = obm;  _tbm = tbm; _type = type;
-                _classification = classification; _trans = Trans(_cx,res,tbm.value().ppos);
-            }
-            static long Trans(Context _cx,SystemRowSet res,long pp)
-            {
-                var ph = _cx.db.GetD(pp);
-                return ph.trans;
-            }
-            internal static SysClassificationBookmark New(Context _cx, SystemRowSet res)
-            {
-                for (var obm = _cx.db.objects.PositionAt(0); obm != null; 
+                for (var obm = _cx.db.objects.PositionAt(0); obm != null;
                     obm = obm.Next())
-                {
-                    var ob = (DBObject)obm.value();
-                    if (ob.classification != Level.D)
+                    if (obm.value() is DBObject ob && ob.classification == Level.D)
                     {
-                        var b = new SysClassificationBookmark(_cx,res, 0, obm, null,
-                            ob.lastChange, ob.GetType().Name, ob.classification);
-                        if (b.Match(res) && RowSet.Eval(res.where, _cx))
-                            return b;
-                    }
-                    if (ob is Table tb)
-                        for (var tbm = tb.tableRows?.PositionAt(0); tbm != null; tbm = tbm.Next())
                         {
-                            var rw = tbm.value();
-                            if (rw.classification != Level.D)
-                            {
-                                var rb = new SysClassificationBookmark(_cx, res, 0, obm, tbm,
-                                    tbm.key(), "Record", rw.classification);
-                                if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                                    return rb;
-                            }
+                            var b = new SysClassificationBookmark(_cx, res, 0, obm, null);
+                            if (b.Match(res) && Eval(res.where, _cx))
+                                return b;
                         }
-                }
+                        if (ob is Table tb)
+                            for (var tbm = tb.tableRows?.PositionAt(0); tbm != null; tbm = tbm.Next())
+                            if (tbm.value() is TableRow rw && rw.classification != Level.D)
+                                {
+                                    var rb = new SysClassificationBookmark(_cx, res, 0, obm, tbm);
+                                    if (rb.Match(res) && Eval(res.where, _cx))
+                                        return rb;
+                                }
+                    }
                 return null;
             }
-            static TRow _Value(Context cx,SystemRowSet res,long ppos,string type,Level cln)
+            static (long, long,TRow) _Value(Context cx,SystemRowSet res, ABookmark<long, object> obm,
+                ABookmark<long, TableRow>? tbm)
             {
-                return new TRow(cx, cx._Dom(res), Pos(ppos), 
-                    new TChar(type.ToString()),
-                    new TChar(cln.ToString()),
-                    Pos(Trans(cx,res,ppos)));
-            }
-            protected override Cursor _Next(Context _cx)
-            {
-                var obm = _obm;
-                var tbm = _tbm;
-                for (; ; )
+                if (tbm is not null)
                 {
-                    var ob = (DBObject)obm.value();
+                    if (tbm.value() is not TableRow rw
+                        || cx.db.GetD(rw.ppos) is not Physical ph ||
+                        cx._Dom(res) is not Domain dm)
+                        throw new PEException("PE42120");
+                    return (rw.defpos, rw.ppos, new TRow(cx, dm, Pos(rw.ppos),
+                        new TChar(rw.GetType().Name),
+                        new TChar(rw.classification.ToString()),
+                        Pos(ph.trans)));
+                }
+                else 
+                {
+                    var ppos = tbm?.key() ?? obm.key();
+                    if (obm.value() is not DBObject ob || cx._Dom(res) is not Domain dm ||
+                        cx.db is not Database db || db.GetD(ppos) is not Physical ph)
+                        throw new PEException("PE0453");
+                    return (ob.defpos, ob.lastChange, new TRow(cx, dm, Pos(ppos),
+                        new TChar(ob.GetType().Name),
+                        new TChar(ob.classification.ToString()),
+                        Pos(ph.trans)));
+                }
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                if (_obm.value() is not DBObject ob)
+                    throw new PEException("PE42120");
+                var tbm = _tbm;
+                for (var obm = _obm; obm != null;)
+                {
                     if (ob is Table tb)
                     {
                         if (tbm == null)
                             tbm = tb.tableRows.First();
                         else
                             tbm = tbm.Next();
-                        for (; tbm != null; tbm = tbm.Next())
-                        {
-                            var rw = (TableRow)tbm.value();
-                            if (rw.classification != Level.D)
-                            {
-                                var ta = tbm.value();
-                                var b = new SysClassificationBookmark(_cx, res, _pos + 1, obm, tbm,
-                                            tbm.key(), "Record", rw.classification);
-                                if (b.Match(res) && RowSet.Eval(res.where, _cx))
-                                    return b;
-                            }
-                        }
                     }
+                    for (; tbm != null; tbm = tbm.Next())
+                        if (tbm.value() is TableRow rw && rw.classification != Level.D)
+                        {
+                            var b = new SysClassificationBookmark(cx, res, _pos + 1, obm, tbm);
+                            if (b.Match(res) && Eval(res.where, cx))
+                                return b;
+                        }
+                    // tbm is null by now
                     obm = obm.Next();
                     if (obm == null)
                         return null;
-                    ob = (DBObject)obm.value();
-                    if (ob.classification != Level.D)
+                    if (obm.value() is not DBObject o)
+                        throw new PEException("PE42121");
+                    if (o.classification != Level.D)
                     {
-                        var rb = new SysClassificationBookmark(_cx,res, _pos + 1, obm, null, 
-                                                ob.lastChange, ob.GetType().Name, ob.classification);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        var rb = new SysClassificationBookmark(cx, res, _pos + 1, obm, null);
+                        if (rb.Match(res) && Eval(res.where, cx))
                             return rb;
                     }
-                } 
+                }
+                return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
         }
         static void SysClassifiedColumnDataResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Sys$ClassifiedColumnData");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Col", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Classification", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "LastTransaction", Domain.Position,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Col", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
+            t+=new SystemTableColumn(t, "LastTransaction", Domain.Position,0);
             t.AddIndex("Pos", "Col");
             t.Add();
         }
@@ -4707,93 +4764,84 @@ namespace Pyrrho.Level4
         {
             readonly ABookmark<long, TableColumn> _cbm;
             readonly ABookmark<long, TableRow> _tbm;
-            readonly Level _classification;
-            readonly long _trans;
             SysClassifiedColumnDataBookmark(Context _cx, SystemRowSet res, int pos, 
-                ABookmark<long, TableColumn> cbm, ABookmark<long,TableRow> tbm,
-                long ppos,Level classification) 
-                :base(_cx,res,pos,tbm?.key()??cbm.key(),0,
-                     _Value(_cx,res,ppos,cbm.key(),classification))
-            {
-                _classification = classification;
-                _cbm = cbm; _tbm = tbm;
-                _trans = Trans(_cx, ppos);
-            }
-            static long Trans(Context _cx, long pp)
-            {
-                var ph = _cx.db.GetD(pp);
-                return ph.trans;
-            }
-            internal static SysClassifiedColumnDataBookmark New(Context _cx, SystemRowSet res)
+                ABookmark<long, TableColumn> cbm, ABookmark<long, TableRow> tbm)
+                : this(_cx, res, pos, cbm, tbm, _Value(_cx, res, tbm.value()))
+            { }
+            SysClassifiedColumnDataBookmark(Context _cx, SystemRowSet res, int pos,
+                ABookmark<long, TableColumn> cbm, ABookmark<long, TableRow> tbm, 
+                (long, long, TRow) x)
+                : base(_cx, res, pos, x.Item1, x.Item2, x.Item3)
+            { _cbm = cbm; _tbm = tbm; }
+            internal static SysClassifiedColumnDataBookmark? New(Context _cx, SystemRowSet res)
             {
                 var cols = BTree<long, TableColumn>.Empty;
+                if (_cx.db is not Database db)
+                    throw new PEException("PE42122");
                 for (var b = _cx.db.objects.PositionAt(0); b != null; b = b.Next())
                     if (b.value() is TableColumn tc && tc.classification != Level.D)
                         cols+=(tc.defpos, tc);
                 for (var cbm = cols.First();cbm!=null;cbm=cbm.Next())
                 {
-                    var tc = cbm.value() as TableColumn;
-                    var tb = _cx.db.objects[tc.tabledefpos] as Table;
+                    var tc = cbm.value();
+                    if (db.objects[tc.tabledefpos] is not Table tb)
+                        throw new PEException("PE42123");
                     for (var tbm = tb.tableRows?.PositionAt(0); tbm != null; tbm = tbm.Next())
                     {
                         var rt = tbm.value();
                         if (rt.vals[tc.defpos]!=null)
                         {
-                            var rb = new SysClassifiedColumnDataBookmark(_cx,res, 0, cbm,
-                                tbm, rt.defpos, rt.classification);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            var rb = new SysClassifiedColumnDataBookmark(_cx,res, 0, cbm, tbm);
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
                     }
                 }
                 return null;
             }
-            static TRow _Value(Context cx,SystemRowSet res,long ppos,long cpos,Level cln)
+            static (long, long, TRow) _Value(Context cx,SystemRowSet res,TableRow rw)
             {
-                return new TRow(cx, cx._Dom(res), Pos(ppos),
-                    Pos(cpos),
-                    new TChar(cln.ToString()),
-                    Pos(Trans(cx,ppos)));
+                return (rw.defpos,rw.ppos, new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0457"),
+                    Pos(rw.defpos),
+                    new TChar(rw.classification.ToString()),
+                    Pos(rw.ppos)));
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var cbm = _cbm;
-                var tbm = _tbm;
-                for (; ; )
+                var tbm = _tbm.Next();
+                for (;cbm!=null; )
                 {
                     var tc = cbm.value();
-                    var tb = _cx.db.objects[tc.tabledefpos] as Table;
-                    if (tbm == null)
-                        tbm = tb.tableRows.PositionAt(0);
-                    else
-                        tbm = tbm.Next();
                     for (; tbm != null; tbm = tbm.Next())
                     {
                         var rt = tbm.value();
                         if (rt.vals[tc.defpos]!=null)
                         {
-                            var rb = new SysClassifiedColumnDataBookmark(_cx,res, _pos + 1, cbm, tbm,
-                                                                    rt.defpos, rt.classification);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            var rb = new SysClassifiedColumnDataBookmark(_cx,res, _pos + 1, cbm, tbm);
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
                     }
                     cbm = cbm.Next();
                     if (cbm == null)
-                        return null;
+                        break;
+                    if (_cx.db is not Database db || db.objects[tc.tabledefpos] is not Table tb)
+                        throw new PEException("PE42124");
+                    tbm = tb.tableRows.First();
                 }
+                return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
         }
         static void SysEnforcementResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Sys$Enforcement");
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Scope", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Scope", Domain.Char,0);
             t.AddIndex("Name", "Scope");
             t.Add();
         }
@@ -4806,39 +4854,41 @@ namespace Pyrrho.Level4
             {
                 _en = en;
             }
-            internal static SysEnforcementBookmark New(Context _cx, SystemRowSet res)
+            internal static SysEnforcementBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var b = _cx.db.objects.PositionAt(0); b != null; b = b.Next())
                     if (b.value() is Table t && (int)t.enforcement!=15)
                     {
                         var rb = new SysEnforcementBookmark(_cx,res, 0, b);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
             static TRow _Value(Context cx, SystemRowSet rs, object ob)
             {
+                var ro = cx.role ?? throw new PEException("PE0459");
                 var sb = new StringBuilder();
                 var t = (Table)ob;
-                var oi = t.infos[cx.role.defpos];
+                var oi = t.infos[ro.defpos];
                 Enforcement.Append(sb, t.enforcement);
-                return new TRow(cx, cx._Dom(rs), new TChar(oi.name),
+                return new TRow(cx, cx._Dom(rs) ?? throw new PEException("PE0460"), 
+                    new TChar(oi?.name??""),
                     new TChar(sb.ToString()));
             }
 
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 for (var b = _en.Next(); b != null; b = b.Next())
                     if (b.value() is Table t && (int)t.enforcement != 15)
                     {
                         var rb = new SysEnforcementBookmark(_cx,res, _pos+1, b);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -4848,14 +4898,13 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleViewResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$View");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "View", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Select", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Struct", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Using", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definer", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "View", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Struct", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Using", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
             t.AddIndex("View");
             t.AddIndex("Pos");
             t.Add();
@@ -4880,13 +4929,15 @@ namespace Pyrrho.Level4
             {
                 _bmk = bmk;
             }
-            internal static RoleViewBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleViewBookmark? New(Context _cx, SystemRowSet res)
             {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49520");
                 for (var bmk = _cx.db.objects.PositionAt(0);bmk!= null;bmk=bmk.Next())
-                    if (bmk.value() is View vw)
+                    if (bmk.value() is View v && v.infos[ro.defpos] is not null)
                     {
                         var rb =new RoleViewBookmark(_cx,res, 0, bmk);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -4896,46 +4947,43 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, long pos, object ob)
             {
+                if (_cx.role is not Role ro)
+                    throw new DBException("42105");
                 var us = "";
-                var st = "";
-                if (ob is RestView rv && rv.usingTableRowSet >= 0)
-                {
-                    var ur = (TableRowSet)rv.framing.obs[rv.usingTableRowSet];
-                    var tb = (Table)_cx.db.objects[ur.target];
-                    if (tb != null)
-                    {
-                        var oi = tb.infos[_cx.role.defpos];
+                if (ob is RestView rv && rv.usingTableRowSet >= 0 &&
+                    rv.framing.obs[rv.usingTableRowSet] is TableRowSet ur &&
+                    _cx.db.objects[ur.target] is Table tb && tb.infos[ro.defpos] is ObInfo oi)
                         us = oi.name;
-                    }
-
-                }
-                var vw = (View)ob;
-                st = _cx._Ob(vw.viewTable).NameFor(_cx);
-                var ov = vw.infos[_cx.role.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
+                if (ob is not View vw || _cx._Ob(vw.viewTable) is not Table vt ||
+                    vt.NameFor(_cx) is not string st || vw.infos[ro.defpos] is not ObInfo ov ||
+                    _cx._Dom(rs) is not Domain dr)
+                    throw new PEException("PE0460");
+                return new TRow(_cx,dr,
                     Pos(pos),
-                    new TChar(ov.name),
-                    new TChar(vw.viewDef),
+                    new TChar(ov.name??""),
+                    new TChar(vw.viewDef??""),
                     new TChar(st),
-                    new TChar(us),
-                    new TChar(((Role)_cx.db.objects[vw.definer]).name));
+                    new TChar(us??""),
+                    new TChar(((Role?)_cx.db.objects[vw.definer])?.name??""));
             }
             /// <summary>
             /// Move to the next View
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49521");
                 for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
-                    if (bmk.value() is View vw)
+                    if (bmk.value() is View v && v.infos[ro.defpos] is not null)
                     {
                         var rb = new RoleViewBookmark(_cx,res, _pos + 1, bmk);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -4945,12 +4993,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleDomainCheckResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$DomainCheck");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "DomainName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "CheckName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Select", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "DomainName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("DomainName","CheckName");
             t.Add();
@@ -4971,23 +5018,26 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleDomainCheckBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<long,bool> inner)
-                : base(_cx,res,pos,inner.key(),((Check)_cx.db.objects[inner.key()]).lastChange,
-                      _Value(_cx,res,outer.value(),_cx.db.objects[inner.key()]))
+                ABookmark<long, bool> inner)
+                : this(_cx, res, pos, outer, inner, _Value(_cx, res, outer.value(), inner.key()))
+            { }
+            RoleDomainCheckBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
+                ABookmark<long,bool> inner, (long,TRow) x)
+                : base(_cx,res,pos,x.Item1, x.Item1, x.Item2)
             {
-                _outer = outer;
-                _inner = inner;
+                _outer = outer; _inner = inner;
             }
-            internal static RoleDomainCheckBookmark New(Context cx, SystemRowSet res)
+            internal static RoleDomainCheckBookmark? New(Context cx, SystemRowSet res)
             {
+                if (cx.role is not Role ro)
+                    throw new PEException("PE49522");
                 for (var bmk = cx.db.objects.PositionAt(0); bmk != null; bmk = bmk.Next())
-                {
-                    var dm = bmk.value() as Domain;
+                if (bmk.value() is Domain dm){
                     for (var inner = dm?.constraints.First(); inner != null; inner = inner.Next())
-                        if (cx.db.objects[inner.key()] is Check ck)
+                        if (cx.db.objects[inner.key()] is Check ck && ck.infos[ro.defpos] is not null)
                         {
                             var rb = new RoleDomainCheckBookmark(cx,res, 0, bmk, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, cx))
+                            if (rb.Match(res) && Eval(res.where, cx))
                                 return rb;
                         }
                 }
@@ -4996,57 +5046,52 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (DomainName,CheckName,Select,Pos)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, object dm, object ck)
+            static (long,TRow) _Value(Context _cx, SystemRowSet rs, object ob, long ck)
             {
-                var domain = dm as Domain;
-                var check = ck as Check;
-                return new TRow(_cx,_cx._Dom(rs), Pos(check.defpos),
+                if (_cx.db is not Database db || _cx._Dom(rs) is not Domain dm ||
+                    ob is not Domain domain || db.objects[ck] is not Check check)
+                    throw new PEException("PE0471");
+                return (ck,new TRow(_cx,dm, 
+                    Pos(ck),
                     new TChar(domain.name),
-                    new TChar(check.name),
-                    new TChar(check.source));
+                    new TChar(check.name??""),
+                    new TChar(check.source)));
             }
             /// <summary>
             /// Move to the next Sys$DomainCheck
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context cx)
+            protected override Cursor? _Next(Context cx)
             {
                 var outer = _outer;
                 var inner = _inner;
-                for (;;)
+                if (cx.role is not Role ro)
+                    throw new PEException("PE49523");
+                for (; ; )
                 {
                     if (outer == null)
                         return null;
-                    if (inner != null && (inner = inner.Next()) != null)
+                    if (inner != null && (inner = inner.Next()) != null && cx.obs[inner.key()] is Check)
                     {
-                        var check = cx.obs[inner.key()] as Check;
-                        if (check != null)
-                        {
-                            var rb = new RoleDomainCheckBookmark(cx,res, _pos + 1, outer, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, cx))
-                                return rb;
-                        }
+                        var rb = new RoleDomainCheckBookmark(cx, res, _pos + 1, outer, inner);
+                        if (rb.Match(res) && Eval(res.where, cx))
+                            return rb;
                     }
                     inner = null;
                     if ((outer = outer.Next()) == null)
                         return null;
-                    var d = outer.value() as Domain;
-                    if (d == null)
+                    if (outer.value() is not Domain d)
                         continue;
                     inner = d.constraints.First();
-                    if (inner != null)
+                    if (inner != null && cx.obs[inner.key()] is Check ck && ck.infos[ro.defpos] is not null)
                     {
-                        var check = cx.obs[inner.key()] as Check;
-                        if (check != null)
-                        {
-                            var sb = new RoleDomainCheckBookmark(cx,res, _pos + 1, outer, inner);
-                            if (sb.Match(res) && RowSet.Eval(res.where, cx))
-                                return sb;
-                        }
+                        var sb = new RoleDomainCheckBookmark(cx, res, _pos + 1, outer, inner);
+                        if (sb.Match(res) && Eval(res.where, cx))
+                            return sb;
                     }
                 }
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -5056,12 +5101,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleTableCheckResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$TableCheck");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "TableName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "CheckName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Select", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("TableName", "CheckName");
             t.Add();
@@ -5083,21 +5127,23 @@ namespace Pyrrho.Level4
             /// <param name="r"></param>
             RoleTableCheckBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long,object>outer,
                ABookmark<long, bool> inner) 
-                : base(_cx,res,pos,inner.key(),((Check)_cx.db.objects[inner.key()]).lastChange,
-                      _Value(_cx,res, _cx.db.objects[inner.key()]))
+                : base(_cx,res,pos,inner.key(),((Check?)_cx.db.objects[inner.key()])?.lastChange??-1L,
+                      _Value(_cx,res, _cx.db.objects[inner.key()] ?? throw new PEException("PE0473")))
             {
                 _outer = outer;
                 _inner = inner;
             }
-            internal static RoleTableCheckBookmark New(Context cx, SystemRowSet res)
+            internal static RoleTableCheckBookmark? New(Context cx, SystemRowSet res)
             {
+                if (cx.role is not Role ro)
+                    throw new PEException("PE49525");
                 for (var outer = cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table rt)
                         for (var inner = rt.tableChecks.First(); inner != null; inner = inner.Next())
-                            if (cx.db.objects[inner.key()] is Check ck)
+                            if (cx.db.objects[inner.key()] is Check ck && ck.infos[ro.defpos] is not null)
                             {
                                 var rb = new RoleTableCheckBookmark(cx,res, 0, outer, inner);
-                                if (rb.Match(res) && RowSet.Eval(res.where, cx))
+                                if (rb.Match(res) && Eval(res.where, cx))
                                     return rb;
                             }
                 return null;
@@ -5108,48 +5154,46 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ck)
             {
                 var ch = (Check)ck;
-                return new TRow(_cx,_cx._Dom(rs), Pos(ch.defpos),
-                    new TChar(_cx._Ob(ch.checkobjpos).NameFor(_cx)),
-                    new TChar(ch.name),
+                if (_cx._Dom(rs) is not Domain dr || _cx._Ob(ch.checkobjpos) is not DBObject oc)
+                    throw new PEException("PE0474");
+                return new TRow(_cx,dr,
+                    new TChar(oc.NameFor(_cx)),
+                    new TChar(ch.name??""),
                     new TChar(ch.source));
             }
             /// <summary>
             /// Move to the next TableCheck
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context cx)
+            protected override Cursor? _Next(Context cx)
             {
                 var outer = _outer;
                 var inner = _inner;
-                Check ch;
+                if (cx.role is not Role ro)
+                    throw new PEException("PE49526");
                 if (outer == null)
                     return null;
                 for (; ; )
                 {
-                    if ((inner = inner?.Next())!= null)
-                    {
-                        ch = cx.obs[inner.key()] as Check;
-                        if (ch != null)
+                    if ((inner = inner?.Next())!= null &&
+                        cx.obs[inner.key()] is Check)
                             goto test;
-                    }
                     if ((outer = outer.Next()) == null)
                         return null;
-                    var rt = outer.value() as Table;
-                    if (rt == null)
+                    if (outer.value() is not Table rt)
                         continue;
                     inner = rt.tableChecks?.First();
                     if (inner == null)
                         continue;
-                    ch = cx.obs[inner.key()] as Check;
-                    if (ch == null)
+                    if (cx.obs[inner.key()] is not Check ck || ck.infos[ro.defpos] is null)
                         continue;
                     test:
                     var rb = new RoleTableCheckBookmark(cx,res, _pos + 1, outer, inner);
-                    if (rb.Match(res) && RowSet.Eval(res.where, cx))
+                    if (rb.Match(res) && Eval(res.where, cx))
                         return rb;
                 }
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -5159,13 +5203,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleTablePeriodResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$TablePaeriod");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "TableName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "PeriodName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "PeriodStartColumn", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "PeriodEndColumn", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "PeriodName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "PeriodStartColumn", Domain.Char,0);
+            t+=new SystemTableColumn(t, "PeriodEndColumn", Domain.Char,0);
             t.Add();
         }
         /// <summary>
@@ -5178,7 +5221,6 @@ namespace Pyrrho.Level4
             /// Enumerators for traversing trees
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly SystemRowSet _res;
             readonly bool _system;
             /// <summary>
             /// create the RoleTablePeriod enumerator
@@ -5188,24 +5230,26 @@ namespace Pyrrho.Level4
                 bool sys) : base(_cx,res,pos,outer.key(),((PeriodDef)outer.value()).lastChange,
                     _Value(_cx,res,outer.value(),sys))
             {
-                _outer = outer; _res = res; _system = sys;
+                _outer = outer; _system = sys;
             }
-            internal static RoleTablePeriodBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleTablePeriodBookmark? New(Context _cx, SystemRowSet res)
             {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49527");
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null;
                     outer = outer.Next())
-                    if (outer.value() is Table t)
+                    if (outer.value() is Table t && t.infos[ro.defpos] is not null)
                     {
                         if (t.systemPS > 0)
                         {
                             var rb = new RoleTablePeriodBookmark(_cx, res, 0, outer, true);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
                         else if (t.applicationPS > 0)
                         {
                             var rb = new RoleTablePeriodBookmark(_cx, res, 0, outer, false);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
                     }
@@ -5216,24 +5260,28 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object tb, bool sys)
             {
+                if (_cx.role is not Role ro)
+                    throw new DBException("42105");
                 var t = (Table)tb;
-                var dm = _cx._Dom(t);
-                var oi = t.infos[_cx.role.defpos];
-                var pd = (PeriodDef)_cx.db.objects[sys ? t.systemPS : t.applicationPS];
+                var dm = _cx._Dom(t) ?? throw new PEException("PE0480");
+                var oi = t.infos[_cx.role.defpos] ?? throw new PEException("PE0481");
+                var pd = (PeriodDef)(_cx.db.objects[sys ? t.systemPS : t.applicationPS]
+                    ?? throw new PEException("PE0482"));
                 var op = pd.infos[_cx.role.defpos];
                 string sn="", en="";
-                for (var b=dm.rowType.First();b!=null;b=b.Next())
-                {
-                    var p = b.value();
-                    var ci = _cx._Ob(p).infos[_cx.role.defpos];
-                    if (p == pd.startCol)
-                        sn = ci.name;
-                    if (p == pd.endCol)
-                        en = ci.name;
-                }
-                return new TRow(_cx,_cx._Dom(rs), Pos(t.defpos),
-                    new TChar(oi.name),
-                    new TChar(op.name),
+                for (var b = dm.rowType.First(); b != null; b = b.Next())
+                    if (_cx._Ob(b.value()) is DBObject ob && ob.infos[ro.defpos] is ObInfo ci)
+                    {
+                        var p = b.value();
+                        if (p == pd.startCol)
+                            sn = ci.name ?? "";
+                        if (p == pd.endCol)
+                            en = ci.name ?? "";
+                    }
+                return new TRow(_cx,_cx._Dom(rs) ?? throw new PEException("PE0483"), 
+                    Pos(t.defpos),
+                    new TChar(oi.name??""),
+                    new TChar(op?.name??""),
                     new TChar(sn),
                     new TChar(en));
             }
@@ -5241,32 +5289,36 @@ namespace Pyrrho.Level4
             /// Move to the next PeriodDef
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var system = _system;
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49528");
                 if (outer == null)
                     return null;
                 for (; ; )
                 {
-                    if (system && outer.value() is Table t && t.applicationPS>0)
+                    if (system && outer.value() is Table t && 
+                        t.infos[ro.defpos] is not null && t.applicationPS>0)
                     {
                         var rb = new RoleTablePeriodBookmark(_cx, res, 0, outer, false);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                     if ((outer = outer.Next()) == null)
                         return null;
                     system = true;
-                    if (outer.value() is Table tb && tb.systemPS > 0)
+                    if (outer.value() is Table tb && 
+                        tb.infos[ro.defpos] is not null && tb.systemPS > 0)
                     {
                         var rb = new RoleTablePeriodBookmark(_cx, res, 0, outer, true);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 }
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -5276,23 +5328,23 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleColumnResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Column");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Seq", Domain.Int,1));
-            t+=(cx,new SystemTableColumn(t, "Domain", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Default", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "NotNull", Domain.Bool,0));
-            t+=(cx,new SystemTableColumn(t, "Generated", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Update", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Table", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
+            t+=new SystemTableColumn(t, "Domain", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Default", Domain.Char,0);
+            t+=new SystemTableColumn(t, "NotNull", Domain.Bool,0);
+            t+=new SystemTableColumn(t, "Generated", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Update", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("Table", "Name");
             t.Add();
         }
         /// <summary>
-        /// an enumerator for Role$Column
+        /// an enumerator for Role$Column:
+        /// table and view column names as seen from the current role
         /// // shareable as of 26 April 2021
         /// </summary>
         internal class RoleColumnBookmark : SystemBookmark
@@ -5301,35 +5353,34 @@ namespace Pyrrho.Level4
             /// Enumerators for implementation
             /// </summary>
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<long,Domain> _inner;
+            readonly ABookmark<string, long> _inner;
             /// <summary>
             /// create the Sys$Column enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<long,Domain> inner)
-                : base(_cx,res, pos, inner.key(),((DBObject)outer.value()).lastChange,
-                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.key(),
-                          _cx._Dom(inner.value())))
+                ABookmark<string,long> inner)
+                : base(_cx,res, pos, inner.value(),((DBObject)outer.value()).lastChange,
+                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value(),
+                          _cx._Dom(inner.value()) ?? throw new PEException("PE0485")))
             {
                 _outer = outer;
                 _inner = inner;
             }
-            internal static RoleColumnBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleColumnBookmark? New(Context _cx, SystemRowSet res)
             {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49529");
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null;
                     outer = outer.Next())
-                    if (outer.value() is Table tb)
-                    {
-                        var rt = _cx._Dom(tb);
-                        for (var inner = rt.representation.First(); inner != null;
+                    if (outer.value() is Table tb && tb.infos[ro.defpos] is ObInfo oi)
+                        for (var inner = oi.names.First(); inner != null;
                                 inner = inner.Next())
                         {
                             var rb = new RoleColumnBookmark(_cx, res, 0, outer, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
-                    }
                 return null;
             }
             /// <summary>
@@ -5337,36 +5388,38 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx, SystemRowSet rs, object ta, int i,long p,Domain d)
             {
-                var tb = ta as Table;
-                var oi = tb.infos[cx.role.defpos];
-                var tc = (TableColumn)cx.db.objects[p];
-                var si = tc.infos[cx.role.defpos];
-                var dp = cx.db.types[d];
-                return new TRow(cx,cx._Dom(rs),
+                if (cx.role is not Role ro)
+                    throw new DBException("42105");
+                if (ta is not Table tb || tb.infos[ro.defpos] is not ObInfo oi
+                    || cx.db.objects[p] is not TableColumn tc
+                    || tc.infos[ro.defpos] is not ObInfo si)
+                    throw new PEException("PE0491");
+                return new TRow(cx,cx._Dom(rs) ?? throw new PEException("PE0492"),
                     Pos(p),
-                    new TChar(oi.name),
-                    new TChar(si.name),
+                    new TChar(oi.name??""),
+                    new TChar(si.name??""),
                     new TInt(i),
-                    Pos(dp),
-                    new TChar(d.defaultString),
+                    Pos(cx.db.types[d]),
+                    new TChar(d.defaultString??""),
                     TBool.For(d.notNull),
                     new TChar(tc.generated.gfs),
-                    new TChar(tc.updateString));
+                    new TChar(tc.updateString??""));
             }
             /// <summary>
             /// Move to the next Column def
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49530");
                 for (; outer != null; outer = outer.Next())
-                    if (outer.value() is Table tb)
+                    if (outer.value() is Table tb && tb.infos[ro.defpos] is ObInfo oi)
                     {
-                        var rt = _cx._Dom(tb);
                         if (inner == null)
-                            inner = rt.representation.First();
+                            inner = oi.names.First();
                         else
                             inner = inner.Next();
                         for (; inner != null; inner = inner.Next())
@@ -5379,7 +5432,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -5389,11 +5442,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleClassResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Class");
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Key", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definition", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Key", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
             t.Add();
         }
         // shareable as of 26 April 2021
@@ -5406,27 +5458,31 @@ namespace Pyrrho.Level4
             {
                 _enu = e;
             }
-            internal static RoleClassBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleClassBookmark? New(Context _cx, SystemRowSet res)
             {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49500");
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                 {
-                    var t = outer.value();
-                    if (t is Table || t is View)
+                    var t = (DBObject)outer.value();
+                    if (t.infos[ro.defpos] is not null && (t is Table || t is View))
                     {
                         var rb = new RoleClassBookmark(_cx,res, 0, outer);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var enu = _enu;
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49501");
                 for (enu = enu.Next(); enu != null; enu = enu.Next())
                 {
-                    var tb = enu.value();
-                    if (tb is Table || tb is View)
+                    var tb = (DBObject)enu.value();
+                    if (tb.infos[ro.defpos] is not null && (tb is Table || tb is View))
                     {
                         var rb = new RoleClassBookmark(_cx,res, _pos + 1, enu);
                         if (rb.Match(res) && Eval(res.where, _cx))
@@ -5435,13 +5491,14 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
             static TRow _Value(Context _cx,SystemRowSet res,ABookmark<long,object>e)
             {
-                return ((DBObject)e.value()).RoleClassValue(_cx,res, e);
+                return ((DBObject)e.value())?.RoleClassValue(_cx,res, e)
+                    ??throw new PEException("PE42108");
             }
         }
 
@@ -5450,13 +5507,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleColumnCheckResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$ColumnCheck");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0)); 
-            t+=(cx,new SystemTableColumn(t, "TableName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "ColumnName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "CheckName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Select", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0); 
+            t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "ColumnName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("TableName", "CheckName");
             t.Add();
@@ -5471,44 +5527,41 @@ namespace Pyrrho.Level4
             /// 3 enumerators for implementation!
             /// </summary>
             readonly ABookmark<long,bool> _inner;
-            readonly ABookmark<long,Domain> _middle;
+            readonly ABookmark<string, long> _middle;
             readonly ABookmark<long,object> _outer;
             /// <summary>
             /// create the Sys$ColumnCheck enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnCheckBookmark(Context cx, SystemRowSet res,int pos,ABookmark<long,object>outer,
-                ABookmark<long,Domain> middle,ABookmark<long,bool> inner)
-                : base(cx,res,pos,inner.key(),((DBObject)cx.db.objects[inner.key()]).lastChange,
-                      _Value(cx,res,outer.value(),middle.key(),inner.key()))
+                ABookmark<string,long> middle,ABookmark<long,bool> inner)
+                : base(cx,res,pos,inner.key(),((DBObject?)cx.db.objects[inner.key()])?.lastChange??-1L,
+                      _Value(cx,res,outer.value(),middle.value(),inner.key()))
             {
                 _outer = outer;
                 _middle = middle;
                 _inner = inner;
             }
-            internal static RoleColumnCheckBookmark New(Context cx, SystemRowSet res)
+            internal static RoleColumnCheckBookmark? New(Context cx, SystemRowSet res)
             {
+                if (cx.role is not Role ro)
+                    throw new PEException("PE49502");
                 for (var outer = cx.db.objects.PositionAt(0); outer != null;
                     outer = outer.Next())
-                    if (outer.value() is Table tb)
-                    {
-                        var rt = cx._Dom(tb);
-                        for (var middle = rt.representation.First(); middle != null;
+                    if (outer.value() is Table tb && tb.infos[ro.defpos] is ObInfo oi)
+                        for (var middle = oi.names.First(); middle != null;
                                 middle = middle.Next())
-                        {
-                            var p = middle.key();
-                            if (cx.db.objects[p] is TableColumn tc)
+                        if (cx.db.objects[middle.value()] is TableColumn tc
+                                && tc.infos[ro.defpos] is not null)
                                 for (var inner = tc.constraints.First(); inner != null;
                                         inner = inner.Next())
-                                    if (cx.db.objects[inner.key()] is Check ck)
+                                    if (cx.db.objects[inner.key()] is Check)
                                     {
                                         var rb = new RoleColumnCheckBookmark(cx, res, 0, outer,
                                             middle, inner);
-                                        if (rb.Match(res) && RowSet.Eval(res.where, cx))
+                                        if (rb.Match(res) && Eval(res.where, cx))
                                             return rb;
                                     }
-                        }
-                    }
                 return null;
             }
             /// <summary>
@@ -5516,28 +5569,32 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object ta,long tc,long ck)
             {
-                var tb = ta as Table;
-                var oi = tb.infos[_cx.role.defpos];
-                var ci = _cx._Ob(tc).infos[_cx.role.defpos];
-                var ch = (Check)_cx.db.objects[ck];
-                return new TRow(_cx,_cx._Dom(rs), Pos(ch.defpos),
-                    new TChar(oi.name),
-                    new TChar(ci.name),
-                    new TChar(ch.name),
-                    new TChar(ch.source));
+                if (_cx.role is not Role ro || ta is not Table tb ||
+                    tb.infos[ro.defpos] is not ObInfo oi ||
+                    _cx._Ob(tc) is not DBObject ot || ot.infos[ro.defpos] is not ObInfo ci ||
+                    _cx.db.objects[ck] is not Check ch)
+                    throw new PEException("PE0496");
+                return new TRow(_cx,_cx._Dom(rs) ?? throw new PEException("PE0497"), 
+                    Pos(ch.defpos),
+                    new TChar(oi.name??""),
+                    new TChar(ci.name??""),
+                    new TChar(ch.name??""),
+                    new TChar(ch.source??""));
             }
             /// <summary>
             /// Move to the next ColumnCheck
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
                 var inner = _inner;
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49504");
                 for (; ; )
                 {
-                    if (inner != null && (inner = inner.Next()) != null)
+                    if (inner != null && (inner = inner.Next()) != null && middle!=null)
                     {
                         var rb = new RoleColumnCheckBookmark(_cx, res, _pos + 1, outer, middle, inner);
                         if (rb.Match(res) && Eval(res.where, _cx))
@@ -5545,29 +5602,27 @@ namespace Pyrrho.Level4
                         continue;
                     }
                     if (middle != null && (middle = middle.Next()) != null)
-                    {
-                        var p = middle.key();
-                        var tc = _cx.db.objects[p] as TableColumn;
-                        inner = tc.constraints.First();
-                        continue;
-                    }
+                        if (_cx.db.objects[middle.value()] is TableColumn tc &&
+                            tc.infos[ro.defpos] is not null)
+                        {
+                            inner = tc.constraints.First();
+                            continue;
+                        }
                     if ((outer = outer.Next()) == null)
                         return null;
-                    var tb = outer.value() as Table;
-                    if (tb == null)
+                    if (outer.value() is not Table tb || tb.infos[ro.defpos] is not ObInfo oi)
                         continue;
-                    var ft = _cx._Dom(tb);
-                    middle = ft.representation.First();
-                    if (inner != null)
+                    middle = oi.names.First();
+                    if (inner != null && middle!=null)
                     {
                         var rb = new RoleColumnCheckBookmark(_cx, res, _pos + 1, outer, middle, inner);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                         continue;
                     }
                 }
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -5577,12 +5632,11 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleColumnPrivilegeResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$ColumnPrivilege");
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Column", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Grantee", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Privilege", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Table", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Column", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Grantee", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Privilege", Domain.Char,0);
             t.AddIndex("Table", "Column", "Grantee");
             t.Add();
         }
@@ -5608,15 +5662,18 @@ namespace Pyrrho.Level4
                 _middle = middle;
                 _inner = inner;
             }
-            internal static RoleColumnPrivilegeBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleColumnPrivilegeBookmark? New(Context _cx, SystemRowSet res)
             {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49505");
                 for (var middle = _cx.db.objects.PositionAt(0); middle != null; middle = middle.Next())
-                    if (middle.value() is SqlValue sc)
+                    if (middle.value() is Table tb)
                         for (var inner = _cx.db.objects.PositionAt(0); inner != null; inner = inner.Next())
-                            if (inner.value() is Role ro && _cx.db.objects[sc.defpos] is SqlValue rc)
+                            if (inner.value() is TableColumn tc && tc.tabledefpos==tb.defpos &&
+                                tc.infos[ro.defpos] is not null)
                             {
                                 var rb = new RoleColumnPrivilegeBookmark(_cx,res, 0, middle, inner);
-                                if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                                if (rb.Match(res) && Eval(res.where, _cx))
                                     return rb;
                             }
                 return null;
@@ -5626,30 +5683,34 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object cb,object rb)
             {
-                var ro = rb as Role;
-                var tc = cb as TableColumn;
-                var dc = tc.infos[ro.defpos];
-                var tb = _cx.db.objects[tc.tabledefpos] as Table;
-                var dt = tb.infos[ro.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
-                    new TChar(dt.name),
-                    new TChar(dc.name),
-                    new TChar(ro.name),
+                if (rb is not Role ro || cb is not TableColumn tc ||
+                    tc.infos[ro.defpos] is not ObInfo dc ||
+                    _cx.db.objects[tc.tabledefpos] is not Table tb ||
+                    tb.infos[ro.defpos] is not ObInfo dt ||
+                    _cx._Dom(rs) is not Domain dm)
+                        throw new PEException("PE42107");
+                return new TRow(_cx,dm,
+                    new TChar(dt.name??""),
+                    new TChar(dc.name??""),
+                    new TChar(ro.name??""),
                     new TChar(dc.priv.ToString()));
             }
             /// <summary>
             /// Move to the next ColumnPrivilege obs
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var middle = _middle;
                 var inner = _inner;
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49506");
                 if (inner != null && (inner = inner.Next()) != null
-                    && inner.value() is SqlValue sc && sc.defpos == middle.key())
+                    && inner.value() is TableColumn tc && tc.defpos == middle.key()
+                    && tc.infos[ro.defpos] is not null)
                 {
                     var rb = new RoleColumnPrivilegeBookmark(_cx,res, _pos + 1, middle, inner);
-                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                    if (rb.Match(res) && Eval(res.where, _cx))
                         return rb;
                 }
                 for (middle = middle.Next(); middle != null; middle = middle.Next())
@@ -5658,12 +5719,12 @@ namespace Pyrrho.Level4
                             if (_cx.db.objects[mc.defpos] is SqlValue rc && rc.defpos == mc.defpos)
                             {
                                 var rb = new RoleColumnPrivilegeBookmark(_cx,res, _pos + 1, middle, inner);
-                                if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                                if (rb.Match(res) && Eval(res.where, _cx))
                                     return rb;
                             }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -5673,18 +5734,17 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleDomainResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Domain");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "DataType", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "DataLength", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Scale", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "StartField", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "EndField", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "DefaultValue", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Struct", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definer", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "DataType", Domain.Char,0);
+            t+=new SystemTableColumn(t, "DataLength", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Scale", Domain.Int,0);
+            t+=new SystemTableColumn(t, "StartField", Domain.Char,0);
+            t+=new SystemTableColumn(t, "EndField", Domain.Char,0);
+            t+=new SystemTableColumn(t, "DefaultValue", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Struct", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("Name");
             t.Add();
@@ -5709,13 +5769,13 @@ namespace Pyrrho.Level4
             {
                 _en = outer;
             }
-            internal static RoleDomainBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleDomainBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var b = _cx.db.objects.PositionAt(0);b!= null;b=b.Next())
-                    if (b.value() is Domain dm)
+                    if (b.value() is Domain)
                     {
                         var rb =new RoleDomainBookmark(_cx,res, 0, b);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -5745,7 +5805,9 @@ namespace Pyrrho.Level4
                 string elname = "";
                 if (dm.elType!=Domain.Null)
                     elname = dm.elType.name;
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx._Dom(rs) is not Domain dr)
+                        throw new PEException("PE42107");
+                return new TRow(_cx,dr,
                     Pos(_cx.db.types[dm]),
                     new TChar(dm.name),
                     new TChar(dm.kind.ToString()),
@@ -5761,19 +5823,19 @@ namespace Pyrrho.Level4
             /// Move to next Domain
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _en;
                 for (outer = outer.Next();outer!= null;outer=outer.Next())
                 if (outer.value() is Domain)
                     {
                         var rb = new RoleDomainBookmark(_cx,res, _pos + 1, outer);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -5783,15 +5845,14 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleIndexResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Index");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Flags", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "RefTable", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Distinct", Domain.Char,0)); // probably ""
-            t+=(cx,new SystemTableColumn(t, "Adapter", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Rows", Domain.Int,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
+            t+=new SystemTableColumn(t, "RefTable", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Distinct", Domain.Char,0); // probably ""
+            t+=new SystemTableColumn(t, "Adapter", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Rows", Domain.Int,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -5805,32 +5866,33 @@ namespace Pyrrho.Level4
             /// enumerate the indexes
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<CList<long>, CTree<long,bool>> _middle;
+            readonly ABookmark<Domain, CTree<long,bool>> _middle;
             readonly ABookmark<long, bool> _inner;
             /// <summary>
             /// craete the Sys$Index enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<CList<long>,CTree<long,bool>>middle, ABookmark<long,bool>inner)
-                : base(_cx,res,pos,inner.key(),((Index)_cx.db.objects[inner.key()]).lastChange,
+                ABookmark<Domain,CTree<long,bool>>middle, ABookmark<long,bool>inner, long lc)
+                : base(_cx,res,pos,inner.key(),lc,
                       _Value(_cx,res,inner.key()))
             {
                 _outer = outer;
                 _middle = middle;
                 _inner = inner;
             }
-            internal static RoleIndexBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleIndexBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table tb)
                         for (var middle = tb.indexes.First(); middle != null; middle = middle.Next())
-                            for (var inner = middle.value().First();inner!=null;inner=inner.Next())
-                        {
-                            var rb = new RoleIndexBookmark(_cx,res, 0, outer,middle,inner);
-                            if (rb.Match(res) && Eval(res.where, _cx))
-                                return rb;
-                        }
+                            for (var inner = middle.value().First(); inner != null; inner = inner.Next())
+                            {
+                                var lc = _cx.obs[inner.key()]?.lastChange ?? -1L;
+                                var rb = new RoleIndexBookmark(_cx, res, 0, outer, middle, inner, lc);
+                                if (rb.Match(res) && Eval(res.where, _cx))
+                                    return rb;
+                            }
                 return null;
             }
             /// <summary>
@@ -5838,56 +5900,62 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, long xp)
             {
-                Index x = (Index)_cx.db.objects[xp];
-                Table t = (Table)_cx.db.objects[x.tabledefpos];
-                var oi = t.infos[_cx.role.defpos];
-                Index rx = (Index)_cx.db.objects[x.refindexdefpos];
-                var ri = _cx._Ob(x.reftabledefpos).infos[_cx.role.defpos];
-                var ai = _cx._Ob(x.adapter).infos[_cx.role.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx._Dom(rs) is not Domain dr || _cx.db.objects[xp] is not Level3.Index x ||
+                    _cx.db.objects[x.tabledefpos] is not Table t || _cx.role is not Role ro ||
+                    t.infos[ro.defpos] is not ObInfo oi || oi.name==null || x.rows is not MTree mt)
+                    throw new PEException("PE48190");
+                var rx = (Level3.Index?)_cx.db.objects[x.refindexdefpos];
+                var rt = _cx._Ob(x.reftabledefpos);
+                var ri = rt?.infos[_cx.role.defpos];
+                var ad = _cx._Ob(x.adapter);
+                var ai = ad?.infos[_cx.role.defpos];
+                return new TRow(_cx,dr,
                    Pos(x.defpos),
                    new TChar(oi.name),
                    new TChar(x.flags.ToString()),
                    new TChar(ri?.name??""),
-                   new TChar(rx?.rows.Count.ToString()??""),
-                   new TChar(ai?.name),
-                   new TInt(x.rows.Count)
+                   new TChar(rx?.rows?.Count.ToString()??""),
+                   new TChar(ai?.name??""),
+                   new TInt(mt.Count)
                    );
             }
             /// <summary>
             /// Move to next index
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
                 var inner = _inner;
-                for (inner=inner.Next();inner!=null;inner=inner.Next())
+                for (inner = inner.Next(); inner != null; inner = inner.Next())
                 {
-                    var rb = new RoleIndexBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                    if (Eval(res.where, _cx))
+                    var lc = _cx.obs[inner.key()]?.lastChange ?? -1L;
+                    var rb = new RoleIndexBookmark(_cx, res, _pos + 1, outer, middle, inner, lc);
+                    if (rb.Match(res) && Eval(res.where, _cx))
                         return rb;
                 }
-                for (middle = middle.Next();middle!=null;middle=middle.Next())
+                for (middle = middle.Next(); middle != null; middle = middle.Next())
                     for (inner = middle.value().First(); inner != null; inner = inner.Next())
                     {
-                        var rb = new RoleIndexBookmark(_cx, res, _pos + 1, outer, middle, inner);
-                        if (Eval(res.where, _cx))
+                        var lc = _cx.obs[inner.key()]?.lastChange ?? -1L;
+                        var rb = new RoleIndexBookmark(_cx, res, _pos + 1, outer, middle, inner, lc);
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
-                for (outer=outer.Next();outer!=null;outer=outer.Next())
+                for (outer = outer.Next(); outer != null; outer = outer.Next())
                     if (outer.value() is Table tb)
-                        for (middle=tb.indexes.First();middle!=null;middle=middle.Next())
-                        for (inner=middle.value().First();inner!=null;inner=inner.Next())
-                        {
-                            var rb = new RoleIndexBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                                return rb;
-                        }
+                        for (middle = tb.indexes.First(); middle != null; middle = middle.Next())
+                            for (inner = middle.value().First(); inner != null; inner = inner.Next())
+                            {
+                                var lc = _cx.obs[inner.key()]?.lastChange ?? -1L;
+                                var rb = new RoleIndexBookmark(_cx, res, _pos + 1, outer, middle, inner, lc);
+                                if (rb.Match(res) && Eval(res.where, _cx))
+                                    return rb;
+                            }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -5897,11 +5965,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleIndexKeyResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$IndexKey");
-            t +=(cx,new SystemTableColumn(t,"IndexName", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "TableColumn", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Position", Domain.Int,1));
+            t+=new SystemTableColumn(t,"IndexName", Domain.Char,1);
+            t+=new SystemTableColumn(t, "TableColumn", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Position", Domain.Int,1);
             t.AddIndex("IndexName", "TableColumn");
             t.AddIndex("IndexName", "Position");
             t.Add();
@@ -5913,37 +5980,35 @@ namespace Pyrrho.Level4
         internal class RoleIndexKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<CList<long>, CTree<long,bool>> _second;
+            readonly ABookmark<Domain, CTree<long,bool>> _second;
             readonly ABookmark<long,bool> _third;
             readonly ABookmark<int, long> _inner;
             /// <summary>
             /// create the Role$IndexKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
-            RoleIndexKeyBookmark(Context _cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<CList<long>,CTree<long,bool>> second, ABookmark<long,bool> third, 
-                ABookmark<int,long> inner)
-                : base(_cx,res,pos,inner.value(),0,_Value(_cx,res,inner.key(),
-                      (TableColumn)_cx.db.objects[inner.value()]))
+            RoleIndexKeyBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
+                ABookmark<Domain, CTree<long, bool>> second, ABookmark<long, bool> third,
+                ABookmark<int, long> inner)
+                : base(_cx, res, pos, inner.value(), 0, _Value(_cx, res, inner.key(),
+                      (TableColumn)(_cx.db.objects[inner.value()] ?? throw new PEException("PE49212"))))
             {
                 _outer = outer; _second = second; _third = third; _inner = inner;
             }
-            internal static RoleIndexKeyBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleIndexKeyBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table tb)
                         for (var second = tb.indexes.First(); second != null; second = second.Next())
                             for (var third = second.value().First(); third != null; third = third.Next())
-                            {
-                                var x = (Index)_cx.db.objects[third.key()];
-                                for (var inner = x.keys.First();
-                                    inner != null; inner = inner.Next())
-                                {
-                                    var rb = new RoleIndexKeyBookmark(_cx, res, 0, outer, second, third, inner);
-                                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                                        return rb;
-                                }
-                            }
+                                if (_cx.db.objects[third.key()] is Level3.Index x)
+                                    for (var inner = x.keys.First();
+                                        inner != null; inner = inner.Next())
+                                    {
+                                        var rb = new RoleIndexKeyBookmark(_cx, res, 0, outer, second, third, inner);
+                                        if (rb.Match(res) && Eval(res.where, _cx))
+                                            return rb;
+                                    }
                 return null;
             }
             /// <summary>
@@ -5951,17 +6016,19 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, int i, TableColumn tc)
             {
-                var oi = tc.infos[_cx.role.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
+                if (tc.infos[_cx.role.defpos] is not ObInfo oi ||
+                    _cx._Dom(rs) is not Domain dm)
+                    throw new DBException("42105");
+                return new TRow(_cx,dm,
                     Pos(tc.defpos),
-                    new TChar(oi.name),
+                    new TChar(oi?.name??""),
                     new TInt(i));
             }
             /// <summary>
             /// Move to next Indexkey obs
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var second = _second;
@@ -5974,7 +6041,7 @@ namespace Pyrrho.Level4
                         return rb;
                 }
                 for (third = third.Next();third!=null;third=third.Next())
-                    for (inner=((Index)_cx.db.objects[third.key()]).keys.First();
+                    for (inner=((Level3.Index?)_cx.db.objects[third.key()])?.keys.First();
                         inner!=null;inner=inner.Next())
                     {
                         var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, second, third, inner);
@@ -5982,8 +6049,8 @@ namespace Pyrrho.Level4
                             return rb;
                     }
                 for (second=second.Next();second!=null;second=second.Next())
-                    for (third = second.value().First();third!=null;third=third.Next())
-                    for (inner=((Index)_cx.db.objects[third.key()]).keys.First();inner!=null;inner=inner.Next())
+                    for (third = second.value()?.First();third!=null;third=third.Next())
+                    for (inner=((Level3.Index?)_cx.db.objects[third.key()])?.keys.First();inner!=null;inner=inner.Next())
                     {
                         var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, second, third, inner);
                         if (rb.Match(res) && Eval(res.where, _cx))
@@ -5992,8 +6059,8 @@ namespace Pyrrho.Level4
                 for (outer = outer.Next(); outer!=null;outer=outer.Next())
                     if (outer.value() is Table tb)
                         for (second = tb.indexes.First(); second != null; second = second.Next())
-                            for (third=second.value().First();third!=null;third=third.Next())
-                            for (inner = ((Index)_cx.db.objects[third.key()]).keys.First(); inner != null;
+                            for (third=second.value()?.First();third!=null;third=third.Next())
+                            for (inner = ((Level3.Index?)_cx.db.objects[third.key()])?.keys.First(); inner != null;
                                 inner = inner.Next())
                             {
                                 var rb = new RoleIndexKeyBookmark(_cx,res, _pos + 1, outer, second, third, inner);
@@ -6002,7 +6069,7 @@ namespace Pyrrho.Level4
                             }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -6012,11 +6079,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleJavaResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Java");
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Key", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definition", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Key", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
             t.Add();
         }
         // shareable as of 26 April 2021
@@ -6028,31 +6094,31 @@ namespace Pyrrho.Level4
             {
                 _enu = e;
             }
-            internal static RoleJavaBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleJavaBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is DBObject tb && (tb is Table || tb is View)
-                        && !(tb is RestView))
+                        && tb is not RestView)
                     {
                         var rb = new RoleJavaBookmark(_cx,res, 0, outer);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var enu = _enu;
                 for (enu = enu.Next(); enu != null; enu = enu.Next())
-                    if (enu.value() is DBObject tb && (tb is Table || tb is View) && !(tb is RestView))
+                    if (enu.value() is DBObject tb && (tb is Table || tb is View) && tb is not RestView)
                     {
                         var rb = new RoleJavaBookmark(_cx,res, _pos + 1, enu);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -6066,11 +6132,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RolePythonResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Python");
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Key", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definition", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Key", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
             t.Add();
         }
         // shareable as of 26 April 2021
@@ -6084,10 +6149,10 @@ namespace Pyrrho.Level4
             {
                 _enu = e;
             }
-            internal static RolePythonBookmark New(Context _cx, SystemRowSet res)
+            internal static RolePythonBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
-                    if (outer.value() is DBObject tb && (tb is Table || tb is View) && !(tb is RestView))
+                    if (outer.value() is DBObject tb && (tb is Table || tb is View) && tb is not RestView)
                     {
                         var rb = new RolePythonBookmark(_cx,res, 0, outer);
                         if (rb.Match(res) && RowSet.Eval(res.where, _cx))
@@ -6095,11 +6160,11 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var enu = _enu;
                 for (enu=enu.Next();enu!=null;enu=enu.Next())
-                    if (enu.value() is DBObject tb && (tb is Table || tb is View) && !(tb is RestView))
+                    if (enu.value() is DBObject tb && (tb is Table || tb is View) && tb is not RestView)
                     {
                         var rb = new RolePythonBookmark(_cx,res, _pos+1, enu);
                         if (rb.Match(res) && RowSet.Eval(res.where, _cx))
@@ -6107,7 +6172,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -6121,16 +6186,15 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleProcedureResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Procedure");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Arity", Domain.Int,1));
-            t+=(cx,new SystemTableColumn(t, "Returns", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definition", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Inverse", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Monotonic", Domain.Bool,0));
-            t+=(cx,new SystemTableColumn(t, "Definer", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Arity", Domain.Int,1);
+            t+=new SystemTableColumn(t, "Returns", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Inverse", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Monotonic", Domain.Bool,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("Name", "Arity");
             t.Add();
@@ -6155,13 +6219,13 @@ namespace Pyrrho.Level4
             {
                 _en = en;
             }
-            internal static RoleProcedureBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleProcedureBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
-                    if (en.value() is Procedure && !(en.value() is Method))
+                    if (en.value() is Procedure && en.value() is not Method)
                     {
                         var rb =new RoleProcedureBookmark(_cx,res, 0, en);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -6172,30 +6236,32 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob)
             {
                 Procedure p = (Procedure)ob;
-                var oi = p.infos[_cx.db.role.defpos];
-                var s = oi.name;
+                if (_cx._Dom(rs) is not Domain dr 
+                    || p.infos[_cx.db.role.defpos] is not ObInfo oi
+                    || oi.name == null || _cx.db.objects[p.definer] is not Role de)
+                    throw new PEException("PE23104");
                 string inv = "";
-                if (p.inverse>0)
-                    inv = _cx._Ob(p.inverse).NameFor(_cx);
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx._Ob(p.inverse) is DBObject io)
+                    inv = io.NameFor(_cx);
+                return new TRow(_cx,dr,
                     Pos(p.defpos),
-                    new TChar(s),
+                    new TChar(oi.name),
                     new TInt(p.arity),
                     new TChar(p.domain.ToString()),
                     new TChar(p.clause),
                     new TChar(inv),
                     p.monotonic ? TBool.True : TBool.False,
-                    new TChar(((Role)_cx.db.objects[p.definer]).name));
+                    new TChar(de.name??""));
             }
             /// <summary>
             /// Move to the next procedure
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var en = _en;
                 for (en = en.Next(); en != null; en = en.Next())
-                    if (en.value() is Procedure ob && !(ob is Method))
+                    if (en.value() is Procedure ob && ob is not Method)
                     {
                         var rb = new RoleProcedureBookmark(_cx,res, _pos + 1, en);
                         if (rb.Match(res) && RowSet.Eval(res.where, _cx))
@@ -6203,20 +6269,19 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
         }
         static void RoleParameterResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Parameter");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,1));
-            t+=(cx,new SystemTableColumn(t,"Seq", Domain.Int,1));
-            t+=(cx,new SystemTableColumn(t,"Name", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t,"Type", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t,"Mode", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t+=new SystemTableColumn(t,"Seq", Domain.Int,1);
+            t+=new SystemTableColumn(t,"Name", Domain.Char,0);
+            t+=new SystemTableColumn(t,"Type", Domain.Char,0);
+            t+=new SystemTableColumn(t,"Mode", Domain.Char,0);
             t.AddIndex("Pos","Seq");
             t.Add();
         }
@@ -6236,23 +6301,24 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleParameterBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
-                ABookmark<int,long> inner)
-                : base(_cx,res,pos,en.key(), ((FormalParameter)_cx.obs[inner.value()]).lastChange,
-                      _Value(_cx,res,en.key(),inner.key(),(FormalParameter)_cx.obs[inner.value()]))
+                ABookmark<int,long> inner, FormalParameter fp)
+                : base(_cx,res,pos,en.key(), fp.lastChange,
+                      _Value(_cx,res,en.key(),inner.key(),fp))
             {
                 _outer = en;
                 _inner = inner;
             }
-            internal static RoleParameterBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleParameterBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
                     if (en.value() is Procedure p && p.arity > 0)
                         for (var inner = p.ins.First(); inner != null; inner = inner.Next())
-                        {
-                            var rb = new RoleParameterBookmark(_cx,res, 0, en, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                                return rb;
-                        }
+                            if (_cx.obs[inner.value()] is FormalParameter fp)
+                            {
+                                var rb = new RoleParameterBookmark(_cx, res, 0, en, inner, fp);
+                                if (rb.Match(res) && Eval(res.where, _cx))
+                                    return rb;
+                            }
                 return null;
             }
             /// <summary>
@@ -6260,7 +6326,9 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, long dp, int i, FormalParameter pp)
             {
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx._Dom(rs) is not Domain dr || pp.name == null)
+                    throw new PEException("PE23106");
+                return new TRow(_cx,dr,
                     Pos(dp),
                     new TInt(i),
                     new TChar(pp.name),
@@ -6271,41 +6339,42 @@ namespace Pyrrho.Level4
             /// Move to the next parameter
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
-                {
-                    var rb = new RoleParameterBookmark(_cx,res, _pos + 1, outer, inner);
-                    if (RowSet.Eval(res.where, _cx))
-                        return rb;
-                }
+                    if (_cx.obs[inner.value()] is FormalParameter fp)
+                    {
+                        var rb = new RoleParameterBookmark(_cx, res, _pos + 1, outer, inner, fp);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
                     if (outer.value() is Procedure p)
                         for (inner = p.ins.First(); inner != null; inner = inner.Next())
-                        {
-                            var rb = new RoleParameterBookmark(_cx,res, _pos + 1, outer, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                                return rb;
-                        }
+                            if (_cx.obs[inner.value()] is FormalParameter fp)
+                            {
+                                var rb = new RoleParameterBookmark(_cx, res, _pos + 1, outer, inner, fp);
+                                if (rb.Match(res) && Eval(res.where, _cx))
+                                    return rb;
+                            }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
         }
         static void RoleSubobjectResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Subobject");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Type", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Seq", Domain.Int,1));
-            t+=(cx,new SystemTableColumn(t, "Column", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Subobject", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Type", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
+            t+=new SystemTableColumn(t, "Column", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Subobject", Domain.Char,0);
             t.AddIndex("Type", "Name", "Seq");
             t.Add();
         }
@@ -6331,7 +6400,7 @@ namespace Pyrrho.Level4
                 _inner = ix;
                 _sq = i;
             }
-            internal static RoleSubobjectBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleSubobjectBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
                     if (en.value() is DBObject ob)
@@ -6351,10 +6420,11 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object oo, long xp,int sq)
             {
-                var ob = (DBObject)oo;
-                var oi = ob.infos[_cx.role.defpos];
-                var ox = (DBObject)_cx.db.objects[xp];
-                return new TRow(_cx,_cx._Dom(rs),
+                if (oo is not DBObject ob || _cx.role is not Role ro || _cx._Dom(rs) is not Domain dr
+                    || ob.infos[ro.defpos] is not ObInfo oi || oi.name == null
+                    || _cx.db.objects[xp] is not DBObject ox)
+                    throw new DBException("42105");
+                return new TRow(_cx,dr,
                     Pos(ob.defpos),
                     new TChar(ob.GetType().Name),
                     new TChar(oi.name),
@@ -6366,7 +6436,7 @@ namespace Pyrrho.Level4
             /// Move to the next object
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;
@@ -6374,7 +6444,7 @@ namespace Pyrrho.Level4
                 for (inner = inner.Next(); inner != null; inner = inner.Next(),sq++)
                 {
                     var rb = new RoleSubobjectBookmark(_cx,res, _pos + 1, outer, inner, sq);
-                    if (RowSet.Eval(res.where, _cx))
+                    if (rb.Match(res) && Eval(res.where, _cx))
                         return rb;
                 }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
@@ -6384,13 +6454,13 @@ namespace Pyrrho.Level4
                         for (inner = ob.dependents.First(); inner != null; inner = inner.Next(), sq++)
                         {
                             var rb = new RoleSubobjectBookmark(_cx, res, _pos + 1, outer, inner, sq);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -6401,16 +6471,15 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleTableResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Table");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Columns", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Rows", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "Triggers", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "CheckConstraints", Domain.Int,0));
-            t+=(cx,new SystemTableColumn(t, "RowIri", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "LastData", Domain.Int, 0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Columns", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Rows", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Triggers", Domain.Int,0);
+            t+=new SystemTableColumn(t, "CheckConstraints", Domain.Int,0);
+            t+=new SystemTableColumn(t, "RowIri", Domain.Char,0);
+            t+=new SystemTableColumn(t, "LastData", Domain.Int, 0);
             t.AddIndex("Pos");
             t.AddIndex("Name");
             t.Add();
@@ -6435,10 +6504,12 @@ namespace Pyrrho.Level4
             {
                 _en = en;
             }
-            internal static RoleTableBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleTableBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var b = _cx.db.objects.PositionAt(0); b != null; b = b.Next())
-                    if (b.value() is Table t && t.infos[_cx.role.defpos].name[0]!='(')
+                    if (b.value() is Table t && _cx.role!=null &&
+                        t.infos[_cx.role.defpos] is ObInfo oi && oi.name is string s
+                        && s[0]!='(')
                     {
                         var rb =new RoleTableBookmark(_cx,res, 0, b);
                         if (rb.Match(res) && Eval(res.where, _cx))
@@ -6452,34 +6523,37 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob)
             {
                 Table t = (Table)ob;
-                var rt = _cx._Dom(t);
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx._Dom(rs) is not Domain dr || _cx._Dom(t) is not Domain rt)
+                    throw new DBException("42105");
+                return new TRow(_cx,dr,
                     Pos(t.defpos),
                     new TChar(rt.name),
                     new TInt(rt.Length),
                     new TInt(t.tableRows.Count),
                     new TInt(t.triggers.Count),
                     new TInt(t.tableChecks.Count),
-                    new TChar(t.iri),
+                    new TChar(t.iri??""),
                     new TInt(t.lastData));
             }
             /// <summary>
             /// Move to next Table
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var en = _en;
                 for (en=en.Next();en!=null;en=en.Next())
-                    if (en.value() is Table t && t.infos[_cx.role.defpos].name[0]!='(')
+                    if (en.value() is Table t && _cx.role != null &&
+                        t.infos[_cx.role.defpos] is ObInfo oi && oi.name is string s
+                        && s[0] != '(')
                     {
                         var rb =new RoleTableBookmark(_cx,res, _pos + 1, en);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -6489,13 +6563,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleTriggerResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Trigger");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Flags", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "TableName", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definer", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
+            t+=new SystemTableColumn(t, "TableName", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("Name");
             t.Add();
@@ -6517,26 +6590,26 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleTriggerBookmark(Context cx, SystemRowSet res,int pos,ABookmark<long,object> outer,
-                ABookmark<PTrigger.TrigType,CTree<long,bool>>middle,
-                ABookmark<long,bool>inner)
-                : base(cx,res,pos,inner.key(), ((Trigger)cx.db.objects[inner.key()]).lastChange,
-                      _Value(cx,res,outer.value(),(Trigger)cx.db.objects[inner.key()]))
+                ABookmark<PTrigger.TrigType,CTree<long,bool>>middle,ABookmark<long,bool>inner, 
+                Trigger tg)
+                : base(cx,res,pos,inner.key(), tg.lastChange, _Value(cx,res,outer.value(),tg))
             {
                 _outer = outer;
                 _middle = middle;
                 _inner = inner;
             }
-            internal static RoleTriggerBookmark New(Context cx, SystemRowSet res)
+            internal static RoleTriggerBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var outer = cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table t)
                         for (var middle = t.triggers.First(); middle != null; middle = middle.Next())
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
-                            {
-                                var rb = new RoleTriggerBookmark(cx,res, 0, outer, middle, inner);
-                                if (rb.Match(res) && RowSet.Eval(res.where, cx))
-                                    return rb;
-                            }
+                                if (cx.db.objects[inner.key()] is Trigger tg)
+                                {
+                                    var rb = new RoleTriggerBookmark(cx, res, 0, outer, middle, inner,tg);
+                                    if (rb.Match(res) && Eval(res.where, cx))
+                                        return rb;
+                                }
                 return null;
             }
             /// <summary>
@@ -6545,44 +6618,50 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob, Trigger tg)
             {
                 Table tb = (Table)ob;
-                var oi = tb.infos[_cx.role.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx.role is not Role ro || _cx._Dom(rs) is not Domain dr ||
+                    tb.infos[ro.defpos] is not ObInfo oi || oi.name == null ||
+                    _cx.db.objects[tg.definer] is not Role de)
+                    throw new DBException("42105");
+                return new TRow(_cx,dr,
                     Pos(tg.defpos),
                     new TChar(tg.name),
                     new TChar(tg.tgType.ToString()),
                     new TChar(oi.name),
-                    new TChar(((Role)_cx.db.objects[tg.definer]).name));
+                    new TChar(de.name??""));
             }            /// <summary>
-            /// Move to the next Trigger
-            /// </summary>
-            /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+                         /// Move to the next Trigger
+                         /// </summary>
+                         /// <returns>whether there is one</returns>
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
                 var inner = _inner;
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
-                {
-                    var rb = new RoleTriggerBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                        return rb;
-                }
-                for (middle=middle.Next();middle!=null;middle=middle.Next())
-                    for (inner=middle.value().First();inner!=null;inner=inner.Next())
+                    if (_cx.db.objects[inner.key()] is Trigger tg)
+                    {
+                        var rb = new RoleTriggerBookmark(_cx, res, _pos + 1, outer, middle, inner, tg);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
+                for (middle = middle.Next(); middle != null; middle = middle.Next())
+                    for (inner = middle.value().First(); inner != null; inner = inner.Next())
+                        if (_cx.db.objects[inner.key()] is Trigger tg)
                         {
-                            var rb = new RoleTriggerBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            var rb = new RoleTriggerBookmark(_cx, res, _pos + 1, outer, middle, inner, tg);
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
-                for (outer=outer.Next();outer!=null;outer=outer.Next())
+                for (outer = outer.Next(); outer != null; outer = outer.Next())
                     if (outer.value() is Table t)
                         for (middle = t.triggers.First(); middle != null; middle = middle.Next())
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
-                            {
-                                var rb = new RoleTriggerBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                                if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                                    return rb;
-                            }
+                                if (_cx.db.objects[inner.key()] is Trigger tg)
+                                {
+                                    var rb = new RoleTriggerBookmark(_cx, res, _pos + 1, outer, middle, inner, tg);
+                                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                                        return rb;
+                                }
                 return null;
             }
             protected override Cursor _Previous(Context cx)
@@ -6595,11 +6674,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleTriggerUpdateColumnResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$TriggerUpdateColumn");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "ColumnName", Domain.Char,1));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "ColumnName", Domain.Char,1);
             t.AddIndex("Pos");
             t.AddIndex("Name", "ColumnName");
             t.Add();
@@ -6619,9 +6697,9 @@ namespace Pyrrho.Level4
             readonly ABookmark<int, long> _fourth;
             RoleTriggerUpdateColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<PTrigger.TrigType, CTree<long, bool>> middle, ABookmark<long, bool> inner,
-                ABookmark<int,long> fourth)
+                ABookmark<int,long> fourth,Trigger tg)
                 : base(_cx,res, pos,inner.key(),0,
-                      _Value(_cx,res,outer.value(),(Trigger)_cx.db.objects[inner.key()],
+                      _Value(_cx,res,outer.value(),tg,
                           fourth.value()))
             {
                 _outer = outer;
@@ -6629,20 +6707,21 @@ namespace Pyrrho.Level4
                 _inner = inner;
                 _fourth = fourth;
             }
-            internal static RoleTriggerUpdateColumnBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleTriggerUpdateColumnBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table t)
                         for (var middle = t.triggers.First(); middle != null; middle = middle.Next())
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
-                                for (var fourth = ((Trigger)_cx.db.objects[inner.key()]).cols.First(); 
-                                    fourth != null; fourth = fourth.Next())
-                                {
-                                    var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, 0, outer, 
-                                        middle, inner, fourth);
-                                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                                        return rb;
-                                }
+                                if (_cx.db.objects[inner.key()] is Trigger tg)
+                                    for (var fourth = tg.cols.First();
+                                        fourth != null; fourth = fourth.Next())
+                                    {
+                                        var rb = new RoleTriggerUpdateColumnBookmark(_cx, res, 0, outer,
+                                            middle, inner, fourth, tg);
+                                        if (rb.Match(res) && Eval(res.where, _cx))
+                                            return rb;
+                                    }
                 return null;
             }
             /// <summary>
@@ -6650,63 +6729,66 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object ob,Trigger tg,long cp)
             {
-                TableColumn tc = (TableColumn)_cx.db.objects[cp];
-                var ci = tc.infos[_cx.role.defpos];
                 Table tb = (Table)ob;
-                var ti = tb.infos[_cx.role.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx.role is not Role ro || _cx._Dom(rs) is not Domain dr ||
+                    tb.infos[ro.defpos] is not ObInfo ti ||
+                    _cx.db.objects[cp] is not TableColumn tc ||
+                    tc.infos[ro.defpos] is not ObInfo ci)
+                    throw new DBException("42015"); 
+                return new TRow(_cx,dr,
                     Pos(tg.defpos),
-                    new TChar(ti.name),
-                    new TChar(ci.name));
+                    new TChar(ti.name??""),
+                    new TChar(ci.name??""));
             }
             /// <summary>
             /// Move to next TriggerColumnUpdate
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
                 var inner = _inner;
                 var fourth = _fourth;
                 for (fourth = fourth.Next(); fourth != null; fourth = fourth.Next())
-                {
-                    var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, _pos + 1, outer, middle, inner, fourth);
-                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                        return rb;
-                }
-                for (inner=inner.Next();inner!=null;inner=inner.Next())
-                    for (fourth = ((Trigger)_cx.db.objects[inner.key()]).cols.First(); 
-                        fourth != null; fourth = fourth.Next())
+                    if (_cx.db.objects[inner.key()] is Trigger tg)
                     {
-                        var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, _pos + 1, outer, 
-                            middle, inner, fourth);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        var rb = new RoleTriggerUpdateColumnBookmark(_cx, res, _pos + 1, outer, middle, inner, fourth, tg);
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
-                for (middle=middle.Next();middle!=null;middle=middle.Next())
-                    for (inner = middle.value().First(); inner != null; inner = inner.Next())
-                        for (fourth = ((Trigger)_cx.db.objects[inner.key()]).cols.First(); 
-                            fourth != null; fourth = fourth.Next())
+                for (inner = inner.Next(); inner != null; inner = inner.Next())
+                    if (_cx.db.objects[inner.key()] is Trigger tg)
+                        for (fourth = tg.cols.First(); fourth != null; fourth = fourth.Next())
                         {
-                            var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, _pos + 1, outer, middle, inner, fourth);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            var rb = new RoleTriggerUpdateColumnBookmark(_cx, res, _pos + 1, outer,
+                                middle, inner, fourth, tg);
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
-                for (outer=outer.Next();outer!=null;outer=outer.Next())
-                    if (outer.value() is Table t)
-                    for (middle = t.triggers.First(); middle != null; middle = middle.Next())
-                        for (inner = middle.value().First(); inner != null; inner = inner.Next())
-                            for (fourth = ((Trigger)_cx.obs[inner.key()]).cols.First(); 
-                                    fourth != null; fourth = fourth.Next())
+                for (middle = middle.Next(); middle != null; middle = middle.Next())
+                    for (inner = middle.value().First(); inner != null; inner = inner.Next())
+                        if (_cx.db.objects[inner.key()] is Trigger tg)
+                            for (fourth = tg.cols.First(); fourth != null; fourth = fourth.Next())
                             {
-                                var rb = new RoleTriggerUpdateColumnBookmark(_cx,res, _pos + 1, outer, middle, inner, fourth);
-                                if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                                var rb = new RoleTriggerUpdateColumnBookmark(_cx, res, _pos + 1, outer, middle, inner, fourth, tg);
+                                if (rb.Match(res) && Eval(res.where, _cx))
                                     return rb;
                             }
+                for (outer = outer.Next(); outer != null; outer = outer.Next())
+                    if (outer.value() is Table t)
+                        for (middle = t.triggers.First(); middle != null; middle = middle.Next())
+                            for (inner = middle.value().First(); inner != null; inner = inner.Next())
+                                if (_cx.db.objects[inner.key()] is Trigger tg)
+                                    for (fourth = tg.cols.First();fourth != null; fourth = fourth.Next())
+                                    {
+                                        var rb = new RoleTriggerUpdateColumnBookmark(_cx, res, _pos + 1, outer, middle, inner, fourth, tg);
+                                        if (rb.Match(res) && Eval(res.where, _cx))
+                                            return rb;
+                                    }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -6716,15 +6798,14 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleTypeResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Type");
-            t+=(cx,new SystemTableColumn(t, "Pos", Domain.Position,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "SuperType", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "OrderFunc", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "OrderCategory", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "WithUri", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definer", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "SuperType", Domain.Char,0);
+            t+=new SystemTableColumn(t, "OrderFunc", Domain.Char,0);
+            t+=new SystemTableColumn(t, "OrderCategory", Domain.Char,0);
+            t+=new SystemTableColumn(t, "WithUri", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
             t.AddIndex("Pos");
             t.AddIndex("Name");
             t.Add();
@@ -6749,7 +6830,7 @@ namespace Pyrrho.Level4
             {
                 _en = en;
             }
-            internal static RoleTypeBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleTypeBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
                     if (en.value() is Domain)
@@ -6766,12 +6847,14 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob)
             {
                 var t = (Domain)ob;
-                var fp = t.orderFunc;
-                var fn = fp.infos[_cx.role.defpos]?.name;
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx.role is not Role ro || _cx._Dom(rs) is not Domain dr ||
+                    t.orderFunc is not Procedure fp || fp.infos[ro.defpos] is not ObInfo fi
+                    || fi.name is not string fn)
+                    throw new DBException("42105");
+                return new TRow(_cx,dr,
                     Pos(-1L),
                     new TChar(t.name),
-                    new TChar((t as UDType)?.super?.name),
+                    new TChar((t as UDType)?.super?.name??""),
                     new TChar(fn),
                     new TChar((t.orderflags != OrderCategory.None) ? t.orderflags.ToString() : ""),
                     new TChar(""),
@@ -6781,7 +6864,7 @@ namespace Pyrrho.Level4
             /// Move to next Type
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var en = _en;
                 for (en = en.Next(); en != null; en = en.Next())
@@ -6793,7 +6876,7 @@ namespace Pyrrho.Level4
                     }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -6803,14 +6886,13 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleMethodResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Method");
-            t+=(cx,new SystemTableColumn(t, "Type", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Method", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Arity", Domain.Int,1));
-            t+=(cx,new SystemTableColumn(t, "MethodType", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definition", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definer", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Type", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Method", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Arity", Domain.Int,1);
+            t+=new SystemTableColumn(t, "MethodType", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
             t.AddIndex("Name", "Method", "Arity");
             t.Add();
         }
@@ -6831,28 +6913,26 @@ namespace Pyrrho.Level4
             /// </summary>
             /// <param name="r"></param>
             RoleMethodBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<string, CTree<CList<Domain>,long>> middle, ABookmark<CList<Domain>,long> inner)
+                ABookmark<string, CTree<CList<Domain>,long>> middle, ABookmark<CList<Domain>, long> inner)
                 : base(_cx,res,pos,inner.value(),0,_Value(_cx,res,outer.value(),inner.value()))
             {
                 _outer = outer;
                 _middle = middle;
                 _inner = inner;
             }
-            internal static RoleMethodBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleMethodBookmark? New(Context _cx, SystemRowSet res)
             {
+                var ro = _cx.role ?? throw new DBException("42105");
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
-                    if (outer.value() is Domain ut && ut.kind == Sqlx.TYPE)
-                    {
-                        var oi = ut.infos[_cx.role.defpos];
-                        for (var middle = oi.methodInfos.First(); middle != null; 
+                    if (outer.value() is UDType ut && ut.infos[ro.defpos] is ObInfo oi)
+                        for (var middle = oi.methodInfos.First(); middle != null;
                             middle = middle.Next())
                             for (var inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleMethodBookmark(_cx, res, 0, outer, middle, inner);
-                                if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                                if (rb.Match(res) && Eval(res.where, _cx))
                                     return rb;
                             }
-                    }
                 return null;
             }
             /// <summary>
@@ -6861,53 +6941,53 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob,long mp)
             {
                 var t = (Domain)ob;
-                var p = (Method)_cx.db.objects[mp];
-                var mi = p.infos[_cx.role.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx.role is not Role ro || _cx.db.objects[mp] is not Method p
+                    || p.infos[ro.defpos] is not ObInfo mi || _cx._Dom(rs) is not Domain dr
+                    || _cx.db.objects[p.definer] is not Role de)
+                    throw new DBException("42105");
+                return new TRow(_cx,dr,
                    new TChar(t.name),
-                   new TChar(mi.name),
+                   new TChar(mi.name??""),
                    new TInt(p.arity),
                    new TChar(p.methodType.ToString()),
                    new TChar(p.clause),
-                   new TChar(((Role)_cx.db.objects[p.definer]).name));
+                   new TChar(de.name??""));
             }
             /// <summary>
             /// Move to the next method
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var middle = _middle;
                 var inner = _inner;
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
                 {
-                    var rb = new RoleMethodBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                    var rb = new RoleMethodBookmark(_cx, res, _pos + 1, outer, middle, inner);
+                    if (rb.Match(res) && Eval(res.where, _cx))
                         return rb;
                 }
                 for (middle = middle.Next(); middle != null; middle = middle.Next())
                     for (inner = middle.value().First(); inner != null; inner = inner.Next())
                     {
-                        var rb = new RoleMethodBookmark(_cx,res, _pos + 1, outer, middle, inner);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        var rb = new RoleMethodBookmark(_cx, res, _pos + 1, outer, middle, inner);
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
-                    if (outer.value() is Domain ut && ut.kind == Sqlx.TYPE)
-                    {
-                        var oi = ut.infos[_cx.role.defpos];
+                    if (_cx.role is Role ro && outer.value() is Domain ut && ut.kind == Sqlx.TYPE &&
+                        ut.infos[ro.defpos] is ObInfo oi)
                         for (middle = oi.methodInfos.First(); middle != null; middle = middle.Next())
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
                             {
                                 var rb = new RoleMethodBookmark(_cx, res, _pos + 1, outer, middle, inner);
-                                if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                                if (rb.Match(res) && Eval(res.where, _cx))
                                     return rb;
                             }
-                    }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -6917,13 +6997,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RolePrivilegeResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Privilege");
-            t+=(cx,new SystemTableColumn(t, "ObjectType", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Grantee", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Privilege", Domain.Char,0));
-            t+=(cx,new SystemTableColumn(t, "Definer", Domain.Char,0));
+            t+=new SystemTableColumn(t, "ObjectType", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Grantee", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Privilege", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
             t.AddIndex("ObjectType", "Name", "Grantee");
             t.Add();
         }
@@ -6949,22 +7028,17 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _inner = inner;
             }
-            internal static RolePrivilegeBookmark New(Context _cx, SystemRowSet res)
+            internal static RolePrivilegeBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     for (var inner = _cx.db.roles.First(); inner != null; inner = inner.Next())
-                    {
-                        var ro = _cx.db.objects[inner.value()] as Role;
-                        if (ro.infos.Contains(outer.key()))
+                        if (outer.value() is DBObject ob &&
+                            _cx.db.objects[inner.value()] is Role ro && ob.infos.Contains(ro.defpos))
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, 0, outer, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx)
-                                && inner.value() != Database._system._role
-                                && rb[1].ToString().Length != 0
-                                && rb[2].CompareTo(rb[4]) != 0)
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
-                    }
                 return null;
             }
             /// <summary>
@@ -6972,54 +7046,50 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object ob,ABookmark<string,long> e)
             {
-                var ro = _cx.db.objects[e.value()] as Role;
                 var t = (DBObject)ob;
-                var oi = t.infos[_cx.role.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
+                if (_cx.role is not Role sr || _cx._Dom(rs) is not Domain dr || 
+                    _cx.db.objects[e.value()] is not Role ri || t.infos[sr.defpos] is not ObInfo oi
+                    || oi.name==null || _cx.db.objects[t.definer] is not Role de)
+                    throw new PEException("PE49300");
+                return new TRow(_cx,dr,
                     new TChar(t.GetType().Name),
-                    new TChar(oi.name),
-                    new TChar(ro.name),
+                    new TChar(oi.name??""),
+                    new TChar(ri.name??""),
                     new TChar(oi.priv.ToString()),
-                    new TChar(((Role)_cx.db.objects[t.definer])?.name??""));
+                    new TChar(de.name??""));
             }
             /// <summary>
             /// Move to the next Role$Privilege obs
             /// </summary>
             /// <returns>whethere there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
-                var outer= _outer;
+                var outer = _outer;
                 var inner = _inner;
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
-                {
-                    var ro = _cx.db.objects[inner.value()] as Role;
-                    if (ro.infos.Contains(outer.key()))
+                    if (_cx.db.objects[inner.value()] is Role ri && ri.infos.Contains(outer.key()))
                     {
                         var rb = new RolePrivilegeBookmark(_cx, res, _pos + 1, outer, inner);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx)
-                            && inner.value()!=Database._Role 
-                            && rb[1].ToString().Length!=0
-                            && rb[2].CompareTo(rb[4])!=0)
+                        if (rb.Match(res) && Eval(res.where, _cx)
+                            && inner.value() != _cx.role.defpos
+                            && rb[1].ToString().Length != 0
+                            && rb[2].CompareTo(rb[4]) != 0)
                             return rb;
                     }
-                }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
                     for (inner = _cx.db.roles.First(); inner != null; inner = inner.Next())
-                    {
-                        var ro = _cx.db.objects[inner.value()] as Role;
-                        if (ro.infos.Contains(outer.key()))
+                        if (_cx.db.objects[inner.value()] is Role ri && ri.infos.Contains(outer.key()))
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, _pos + 1, outer, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx)
-                               && inner.value() != Database._Role
+                            if (rb.Match(res) && Eval(res.where, _cx)
+                               && inner.value() != _cx.role.defpos
                                && rb[1].ToString().Length != 0
                                && rb[2].CompareTo(rb[4]) != 0)
                                 return rb;
                         }
-                    }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -7029,13 +7099,12 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleObjectResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$Object");
-            t+=(cx,new SystemTableColumn(t, "Type", Domain.Char,1)); 
-            t+=(cx,new SystemTableColumn(t, "Name", Domain.Char,0));
-            t += (cx,new SystemTableColumn(t, "Description", Domain.Char, 0));
-            t += (cx,new SystemTableColumn(t, "Iri", Domain.Char, 0));
-            t+=(cx,new SystemTableColumn(t, "Metadata", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Type", Domain.Char,1); 
+            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Description", Domain.Char, 0);
+            t+=new SystemTableColumn(t, "Iri", Domain.Char, 0);
+            t+=new SystemTableColumn(t, "Metadata", Domain.Char,0);
             t.AddIndex("Type", "Name");
             t.Add();
         }
@@ -7059,18 +7128,20 @@ namespace Pyrrho.Level4
             {
                 _en = en; 
             }
-            internal static RoleObjectBookmark New(Context _cx, SystemRowSet res)
+            internal static RoleObjectBookmark? New(Context _cx, SystemRowSet res)
             {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49310");
                 for (var bm = _cx.db.objects.PositionAt(0); bm != null; bm = bm.Next())
-                {
-                    var ob = (DBObject)bm.value();
-                    var oi = ob.infos[_cx.role.defpos];
-                    if (oi == null)
-                        continue;
-                    var rb = new RoleObjectBookmark(_cx,res, 0, bm);
-                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
-                        return rb;
-                }
+                    if (bm.value() is DBObject ob && ob.infos[_cx.role.defpos] is ObInfo oi)
+                    {
+                        var ou = ObInfo.Metadata(oi.metadata, oi.description);
+                        if (oi.name == "" && ou == "" && oi.description == "")
+                            continue;
+                        var rb = new RoleObjectBookmark(_cx, res, 0, bm);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
                 return null;
             }
             /// <summary>
@@ -7079,38 +7150,40 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object oo)
             {
                 var ob = (DBObject)oo;
-                var oi = ob.infos[_cx.role.defpos];
+                if (_cx.role is not Role ro || _cx._Dom(rs) is not Domain dr)
+                    throw new PEException("PE49310");
+                if (ob.infos[ro.defpos] is not ObInfo oi || oi.name == null)
+                    throw new DBException("42105");
                 var dm = ob as Domain;
-                return new TRow(_cx,_cx._Dom(rs),
+                return new TRow(_cx,dr,
                     new TChar(ob.GetType().Name),
                     new TChar(oi.name),
                     new TChar(oi.description ?? ""),
                     new TChar(dm?.iri ?? ""),
-                    new TChar(ObInfo.Metadata(oi.metadata,oi.description))); ;
+                    new TChar(ObInfo.Metadata(oi.metadata,oi.description??""))); ;
             }
             /// <summary>
             /// Move to the next object
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
+                if (_cx.role is not Role ro)
+                    throw new DBException("42105");
                 var en = _en;
-                for (en=en.Next();en!=null ;en=en.Next())
-                {
-                    var ob = (DBObject)en.value();
-                    var oi = ob.infos[_cx.role.defpos];
-                    if (oi == null)
-                        continue;
-                    var ou = ObInfo.Metadata(oi.metadata,oi.description);
-                    if (ou=="" && oi.description=="")
-                        continue;
-                    var rb = new RoleObjectBookmark(_cx,res, _pos+1, en);
-                    if (rb.Match(res) && Eval(res.where, _cx))
-                        return rb;
-                }
+                for (en = en.Next(); en != null; en = en.Next())
+                    if (en.value() is DBObject ob && ob.infos[ro.defpos] is ObInfo oi)
+                    {
+                        var ou = ObInfo.Metadata(oi.metadata, oi.description);
+                        if (oi.name == "" && ou == "" && oi.description == "")
+                            continue;
+                        var rb = new RoleObjectBookmark(_cx, res, _pos + 1, en);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
                 return null;
-             }
-            protected override Cursor _Previous(Context cx)
+            }
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -7120,11 +7193,10 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RolePrimaryKeyResults()
         {
-            var cx = Context._system;
             var t = new SystemTable("Role$PrimaryKey");
-            t+=(cx,new SystemTableColumn(t, "Table", Domain.Char,1));
-            t+=(cx,new SystemTableColumn(t, "Ordinal", Domain.Int,1));
-            t+=(cx,new SystemTableColumn(t, "Column", Domain.Char,0));
+            t+=new SystemTableColumn(t, "Table", Domain.Char,1);
+            t+=new SystemTableColumn(t, "Ordinal", Domain.Int,1);
+            t+=new SystemTableColumn(t, "Column", Domain.Char,0);
             t.AddIndex("Table", "Ordinal");
             t.Add();
         }
@@ -7148,14 +7220,14 @@ namespace Pyrrho.Level4
                 _outer = outer;
                 _inner = inner;
             }
-            internal static RolePrimaryKeyBookmark New(Context _cx, SystemRowSet res)
+            internal static RolePrimaryKeyBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is Table t)
-                    for (var inner = t.FindPrimaryIndex(_cx).keys.First(); inner != null; inner = inner.Next())
+                    for (var inner = t.FindPrimaryIndex(_cx)?.keys.First(); inner != null; inner = inner.Next())
                     {
                             var rb = new RolePrimaryKeyBookmark(_cx,res, 0, outer, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                     }
                 return null;
@@ -7166,38 +7238,39 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object ob, ABookmark<int,long> e)
             {
                 var tb = (Table)ob;
-                var oi = tb.infos[_cx.role.defpos];
-                var ci = _cx._Ob(e.value()).infos[_cx.role.defpos];
-                return new TRow(_cx,_cx._Dom(rs),
-                    new TChar(oi.name),
+                if (_cx._Dom(rs) is not Domain dr || tb.infos[_cx.role.defpos] is not ObInfo oi
+                    || _cx.db.objects[e.value()] is not ObInfo ci)
+                    throw new DBException("42105");
+                return new TRow(_cx,dr,
+                    new TChar(oi.name??""),
                     new TInt(e.key()),
-                    new TChar(ci.name));
+                    new TChar(ci.name??""));
             }
             /// <summary>
             /// Move to next primary key obs
             /// </summary>
             /// <returns>whether there is one</returns>
-            protected override Cursor _Next(Context _cx)
+            protected override Cursor? _Next(Context _cx)
             {
                 var outer = _outer;
                 var inner = _inner;
                 for (inner=inner.Next();inner!=null;inner=inner.Next())
                 {
                     var rb = new RolePrimaryKeyBookmark(_cx,res, _pos+1, outer, inner);
-                    if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                    if (rb.Match(res) && Eval(res.where, _cx))
                         return rb;
                 }
                 for (outer=outer.Next();outer!=null;outer=outer.Next())
                     if (outer.value() is Table t)
-                        for (inner = t.FindPrimaryIndex(_cx).keys.First(); inner != null; inner = inner.Next())
+                        for (inner = t.FindPrimaryIndex(_cx)?.keys.First(); inner != null; inner = inner.Next())
                         {
                             var rb = new RolePrimaryKeyBookmark(_cx,res, _pos + 1, outer, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                            if (rb.Match(res) && Eval(res.where, _cx))
                                 return rb;
                         }
                 return null;
             }
-            protected override Cursor _Previous(Context cx)
+            protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
             }
@@ -7235,10 +7308,10 @@ namespace Pyrrho.Level4
                 db = res.database;
                 _ix = ix;
             }
-            internal static ProfileBookmark New(SystemRowSet res)
+            internal static ProfileBookmark? New(SystemRowSet res)
             {
                 var db = res.database;
-                if (db?.profile?.transactions == null || db.profile.transactions.Count == 0)
+                if (db.profile?.transactions == null || db.profile.transactions.Count == 0)
                     return null;
                 for (var ix = 0; ix < db.profile.transactions.Count; ix++)
                 {
@@ -7250,14 +7323,14 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentKey()
             {
-                if (db?.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
+                if (db.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 return new TRow(res, new TColumn("Id", new TInt(p.id)));
             }
             public override TRow CurrentValue()
             {
-                if (db?.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
+                if (db.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 return new TRow(res,new TInt(p.id), 
@@ -7267,7 +7340,7 @@ namespace Pyrrho.Level4
             {
                 for (; ; )
                 {
-                    if (db?.profile == null || _ix + 1 >= db.profile.transactions.Count)
+                    if (db.profile == null || _ix + 1 >= db.profile.transactions.Count)
                         return Null();
                     var rb = new ProfileBookmark(res, _ix + 1);
                     if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
@@ -7303,10 +7376,10 @@ namespace Pyrrho.Level4
                 _ix = ix;
                 _inner = inner;
             }
-            internal static ProfileTableBookmark New(SystemRowSet res)
+            internal static ProfileTableBookmark? New(SystemRowSet res)
             {
                 var db = res.database;
-                if (db?.profile?.transactions == null)
+                if (db.profile?.transactions == null)
                     return null;
                 for (int i = 0; i < db.profile.transactions.Count; i++)
                     for (var inner = db.profile.transactions[i].tables.First(); inner != null; inner = inner.Next())
@@ -7326,7 +7399,7 @@ namespace Pyrrho.Level4
                     if (inner != null && (inner = inner.Next()) != null)
                         return new ProfileTableBookmark(res, _pos + 1, ix, inner);
                     ix = -1;
-                    if (db?.profile == null || ix + 1 >= db.profile.transactions.Count)
+                    if (db.profile == null || ix + 1 >= db.profile.transactions.Count)
                         return Null();
                     var p = db.profile.transactions[ix + 1];
                     inner = p.tables.First();
@@ -7340,7 +7413,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentKey()
             {
-                if (db?.profile == null || _ix<0 || _ix>= db.profile.transactions.Count)
+                if (db.profile == null || _ix<0 || _ix>= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 var t = db.objects[_inner.key()];
@@ -7349,7 +7422,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentValue()
             {
-                if (db?.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
+                if (db.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
 
@@ -7383,10 +7456,10 @@ namespace Pyrrho.Level4
                 _middle = middle;
                 _inner = inner;
             }
-            internal static ProfileReadConstraintBookmark New(SystemRowSet res)
+            internal static ProfileReadConstraintBookmark? New(SystemRowSet res)
             {
                 var db = res.database;
-                if (db?.profile?.transactions == null)
+                if (db.profile?.transactions == null)
                     return null;
                 for (int i = 0; i < db.profile.transactions.Count; i++)
                     for (var middle = db.profile.transactions[i].tables.First(); middle != null;
@@ -7414,7 +7487,7 @@ namespace Pyrrho.Level4
                         inner = tp.read.First();
                         continue;
                     }
-                    if (db?.profile == null || ix + 1 >= db.profile.transactions.Count)
+                    if (db.profile == null || ix + 1 >= db.profile.transactions.Count)
                         return Null();
                     var p = db.profile.transactions[++ix];
                     middle = p.tables.First();
@@ -7433,7 +7506,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentKey()
             {
-                if (db?.profile == null || _ix >= db.profile.transactions.Count)
+                if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 var t = db.objects[_middle.key()] as Table;
@@ -7445,7 +7518,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentValue()
             {
-                if (db?.profile == null || _ix >= db.profile.transactions.Count)
+                if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 var t = db.objects[_middle.key()] as Table;
@@ -7478,10 +7551,10 @@ namespace Pyrrho.Level4
                 _middle = middle;
                 _rx = rx;
             }
-            internal static ProfileRecordBookmark New(SystemRowSet res)
+            internal static ProfileRecordBookmark? New(SystemRowSet res)
             {
                 var db = res.database;
-                if (db?.profile?.transactions == null)
+                if (db.profile?.transactions == null)
                     return null;
                 for (int i = 0; i < db.profile.transactions.Count; i++)
                     for (var middle = db.profile.transactions[i].tables.First();
@@ -7523,7 +7596,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentKey()
             {
-                if (db?.profile==null || _ix >= db.profile.transactions.Count)
+                if (db.profile==null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 var t = db.objects[_middle.key()];
@@ -7534,7 +7607,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentValue()
             {
-                if (db?.profile == null || _ix >= db.profile.transactions.Count)
+                if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 var t = db.objects[_middle.key()];
@@ -7570,10 +7643,10 @@ namespace Pyrrho.Level4
                 _rx = rx;
                 _fourth = fourth;
             }
-            internal static ProfileRecordColumnBookmark New(SystemRowSet res)
+            internal static ProfileRecordColumnBookmark? New(SystemRowSet res)
             {
                 var db = res.database;
-                if (db?.profile?.transactions == null)
+                if (db.profile?.transactions == null)
                     return null;
                 for (int i = 0; i < db.profile.transactions.Count; i++)
                     for (var second = db.profile.transactions[i].tables.First();
@@ -7628,7 +7701,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentKey()
             {
-                if (db?.profile == null || _ix >= db.profile.transactions.Count)
+                if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 var t = db.objects[_second.key()] as Table;
@@ -7642,7 +7715,7 @@ namespace Pyrrho.Level4
             }
             public override TRow CurrentValue()
             {
-                if (db?.profile == null || _ix >= db.profile.transactions.Count)
+                if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
                 var t = db.objects[_second.key()] as Table;

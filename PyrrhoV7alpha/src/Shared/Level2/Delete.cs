@@ -23,9 +23,9 @@ namespace Pyrrho.Level2
 	{
         public long delpos;
         public long tabledefpos;
-        public TableRow delrec;
-        public CTree<long,CTree<CList<long>,CList<long>>> deC 
-            = CTree<long,CTree<CList<long>,CList<long>>>.Empty;
+        public TableRow? delrec;
+        public CTree<long,CTree<Domain,Domain>> deC 
+            = CTree<long,CTree<Domain,Domain>>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
             var dp = wr.cx.Fix(delpos);
@@ -38,15 +38,15 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="rc">The defining position of the record</param>
         /// <param name="tb">The local database</param>
-        public Delete(TableRow rw, long pp, Context cx)
-            : base(Type.Delete, pp, cx)
+        public Delete(TableRow rw, long pp)
+            : base(Type.Delete, pp)
 		{
             tabledefpos = rw.tabledefpos;
             delrec = rw;
             delpos = rw.defpos;
 		}
-        protected Delete(Type t,TableRow rw, Table tb, long pp, Context cx)
-    : base(t, pp, cx)
+        protected Delete(Type t,TableRow rw, Table tb, long pp)
+    : base(t, pp)
         {
             tabledefpos = rw.tabledefpos;
             delrec = rw;
@@ -115,7 +115,7 @@ namespace Pyrrho.Level2
         {
             return "Delete Record "+Pos(delpos);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
             {
@@ -127,42 +127,36 @@ namespace Pyrrho.Level2
                 case Type.Update:
                 case Type.Update1:
                     {
+                        // conflict if we refer to the deleted row
                         var u = (Update)that;
                         if (u._defpos == delpos)
                             return new DBException("40029", delpos, that, ct);
-                        // conflict if we refer to the deleted row
                         for (var b = u.inC.First(); b != null; b = b.Next())
-                            for (var c= b.value().First();c!=null;c=c.Next())
-                            {
-                                var x = (Index)db.objects[c.key()];
-                                if (x.reftabledefpos==tabledefpos)
-                                {
-                                    var rx = (Index)db.objects[x.refindexdefpos];
-                                    if (!rx.rows.Contains(u.MakeKey(rx.keys)))
-                                        throw new DBException("40074", delpos, that, ct);
-                                }
-                            }
+                            for (var c = b.value().First(); c != null; c = c.Next())
+                                if (db.objects[c.key()] is Level3.Index x &&
+                                       x.reftabledefpos == tabledefpos &&
+                                       db.objects[x.refindexdefpos] is Level3.Index rx &&
+                                u.MakeKey(rx.keys.rowType) is CList<TypedValue> k && 
+                                rx.rows is MTree mt && mt.Contains(k) != true)
+                                    throw new DBException("40074", delpos, that, ct);
                         break;
                     }
                 case Type.Record:
-                case Type.Record1:
                 case Type.Record2:
                 case Type.Record3:
                     {
                         // conflict if we refer to the deleted row
-                        var dr = (TableRow)db.objects[delpos];
                         var r = (Record)that;
+                        if (r.defpos == delpos)
+                            return new DBException("40029", delpos, that, ct);
                         for (var b = r.inC.First(); b != null; b = b.Next())
                             for (var c = b.value().First(); c != null; c = c.Next())
-                            {
-                            var x = (Index)db.objects[c.key()];
-                            if (x.reftabledefpos == tabledefpos)
-                            {
-                                var rx = (Index)db.objects[x.refindexdefpos];
-                                if (!rx.rows.Contains(r.MakeKey(rx.keys)))
+                                if (db.objects[c.key()] is Level3.Index x &&
+                                x.reftabledefpos == tabledefpos &&
+                                db.objects[x.refindexdefpos] is Level3.Index rx &&
+                                r.MakeKey(rx.keys.rowType) is CList<TypedValue> k && 
+                                rx.rows is MTree mt && mt.Contains(k) != true)
                                     throw new DBException("40027", delpos, that, ct);
-                            }
-                        }
                         break;
                     }
             }
@@ -176,30 +170,35 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.db.role;
+            Table? rt = null;
+            if (ro == null || cx.db == null) throw new DBException("42105");
             for (var ob = ro.dbobjects.First(); ob != null; ob = ob.Next())
                 if (cx.db.objects[ob.value()] is Table tb && tb.tableRows.Contains(delpos))
-                {
-                    var delRow = tb.tableRows[delpos];
-                    for (var b = tb.indexes.First(); b != null; b = b.Next())
-                        for (var c=b.value().First();c!=null; c = c.Next())
+                    if (tb.tableRows[delpos] is TableRow delRow)
                     {
-                        var ix = (Index)cx.db.objects[c.key()];
-                        var inf = ix.rows.info;
-                        var key = delRow.MakeKey(ix);
-                        ix -= key;
-                        if (ix.rows == null)
-                            ix += (Index.Tree, new MTree(inf));
-                        cx.Install(ix,p);
+                        rt = tb;
+                        for (var b = tb.indexes.First(); b != null; b = b.Next())
+                            for (var c = b.value().First(); c != null; c = c.Next())
+                                if (cx.db.objects[c.key()] is Level3.Index ix && 
+                                    ix.rows is MTree mt && mt.info is Domain inf &&
+                                    delRow.MakeKey(ix) is CList<TypedValue> key)
+                                {
+                                    ix -= key;
+                                    if (ix.rows == null)
+                                        ix += (Level3.Index.Tree, 
+                                            new MTree(inf,mt.nullsAndDuplicates,0));
+                                    cx.Install(ix, p);
+                                }
+                        tb -= delpos;
+                        tb += (Table.LastData, ppos);
+                        cx.Install(tb, p);
                     }
-                    tb -= delpos;
-                    tb += (Table.LastData, ppos);
-                    cx.Install(tb,p);
-                }
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return rt;
         }
     }
     internal class Delete1 : Delete
@@ -209,8 +208,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="rc">The defining position of the record</param>
         /// <param name="tb">The local database</param>
-        public Delete1(TableRow rw, Table tb, long pp, Context cx)
-            : base(Type.Delete1, rw, tb, pp, cx)
+        public Delete1(TableRow rw, Table tb, long pp)
+            : base(Type.Delete1, rw, tb, pp)
         {
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;
@@ -249,27 +248,31 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             tabledefpos = tb;
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var tb = cx.db.objects[tabledefpos] as Table;
-            var delRow = tb.tableRows[delpos];
-    //        delRow.Cascade(cx.db, cx, cx.role, p); moved to TransitionRowSet
-            for (var b = tb.indexes.First(); b != null; b = b.Next())
-                for (var c=b.value().First();c!=null;c=c.Next())
+            if (cx.db.objects[tabledefpos] is Table tb &&
+                tb.tableRows[delpos] is TableRow delRow)
             {
-                var ix = (Index)cx.db.objects[c.key()];
-                var inf = ix.rows.info;
-                var key = delRow.MakeKey(ix);
-                ix -= (key,delpos);
-                if (ix.rows == null)
-                    ix += (Index.Tree, new MTree(inf));
-                cx.Install(ix,p);
+                //        delRow.Cascade(cx.db, cx, cx.role, p); moved to TransitionRowSet
+                for (var b = tb.indexes.First(); b != null; b = b.Next())
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                        if (cx.db.objects[c.key()] is Level3.Index ix && 
+                            ix.rows is MTree mt && ix.rows.info is Domain inf &&
+                            delRow.MakeKey(ix) is CList<TypedValue> key)
+                        {
+                            ix -= (key, delpos);
+                            if (ix.rows == null)
+                                ix += (Level3.Index.Tree, new MTree(inf,mt.nullsAndDuplicates,0));
+                            cx.Install(ix, p);
+                        }
+                tb -= delpos;
+                tb += (Table.LastData, ppos);
+                cx.Install(tb, p);
+                if (cx.db.mem.Contains(Database.Log))
+                    cx.db += (Database.Log, cx.db.log + (ppos, type));
+                return tb;
             }
-            tb -= delpos;
-            tb += (Table.LastData, ppos);
-            cx.Install(tb,p);
-            if (cx.db.mem.Contains(Database.Log))
-                cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return null;
         }
         public override string ToString()
         {

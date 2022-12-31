@@ -63,9 +63,11 @@ namespace Pyrrho.Level3
         /// <returns>the table profile</returns>
         public TableProfile Get(long tb)
         {
-            if (!tables.Contains(tb))
-                tables+=(tb, new TableProfile(tb));
-            return tables[tb];
+            if (tables[tb] is TableProfile tp)
+                return tp;
+            var np = new TableProfile(tb);
+            tables += (tb, np);
+            return np;
         }
         /// <summary>
         /// Consider whether two transaction profiles can be merged
@@ -245,10 +247,10 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="db">the Database</param>
         /// <param name="w">the XML writer</param>
-        internal void Save(Database db,XmlWriter w)
+        internal void Save(Database db, XmlWriter w)
         {
-            Table tb = db.objects[tab] as Table;
-            var ti = tb.infos[db.role.defpos];
+            if (db.objects[tab] is not Table tb || tb.infos[db.role.defpos] is not ObInfo ti || ti.name == null)
+                throw new PEException("PE47152");
             w.WriteStartElement("Table");
             w.WriteAttributeString("Name", ti.name);
             w.WriteAttributeString("Pos", tab.ToString());
@@ -257,19 +259,18 @@ namespace Pyrrho.Level3
             w.WriteAttributeString("Ckix", ckix.ToString());
             w.WriteAttributeString("Specific", specific.ToString());
             w.WriteAttributeString("Blocked", blocked.ToString());
-            for (var s = read.First();s!= null;s=s.Next())
-            {
-                TableColumn tc = db.objects[s.key()] as TableColumn;
-                var i = 0;
-                for (var b=tb.tableCols.First();b!=null;b=b.Next(),i++)
-                    if (b.key() == s.key())
-                        break;
-                var ci = tc.infos[db.role.defpos];
-                w.WriteStartElement("Read");
-                w.WriteAttributeString("ColPos", s.key().ToString());
-                w.WriteAttributeString("ReadCol", ci.name);
-                w.WriteEndElement();
-            }
+            for (var s = read.First(); s != null; s = s.Next())
+                if (db.objects[s.key()] is TableColumn tc && tc.infos[db.role.defpos] is ObInfo ci && ci.name != null)
+                {
+                    var i = 0;
+                    for (var b = tb.tableCols.First(); b != null; b = b.Next(), i++)
+                        if (b.key() == s.key())
+                            break;
+                    w.WriteStartElement("Read");
+                    w.WriteAttributeString("ColPos", s.key().ToString());
+                    w.WriteAttributeString("ReadCol", ci.name);
+                    w.WriteEndElement();
+                }
             foreach (var v in recs)
                 v.Save(db,w);
             w.WriteEndElement();
@@ -349,7 +350,7 @@ namespace Pyrrho.Level3
                         // ignore RecCol
                 }
             r.MoveToElement();
-            rp.fields+=(pos, null);
+            rp.fields+=(pos, TNull.Value);
         }
     }
     /// <summary>
@@ -361,7 +362,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The set of affected columns
         /// </summary>
-        public BTree<long, TypedValue> fields;
+        public BTree<long, TypedValue> fields = BTree<long,TypedValue>.Empty;
         /// <summary>
         /// An identifier for this record profile
         /// </summary>
@@ -398,7 +399,7 @@ namespace Pyrrho.Level3
                 return false;
             var a = f.First();
             var b = fields.PositionAt(0);
-            for (;a!=null & b!=null;a=a.Next(),b=b.Next())
+            for (;a!=null && b!=null;a=a.Next(),b=b.Next())
                 if (a.key() != b.key())
                     return false;
             return true;
@@ -426,9 +427,7 @@ namespace Pyrrho.Level3
             w.WriteAttributeString("Id", id.ToString());
             w.WriteAttributeString("Occurrences", num.ToString());
             for (var s = fields.PositionAt(0);s!= null;s=s.Next())
-            {
-                TableColumn tc = db.objects[s.key()] as TableColumn;
-                var ci = tc.infos[db.role.defpos];
+            if (db.role!=null && db.objects[s.key()] is TableColumn tc && tc.infos[db.role.defpos] is ObInfo ci && ci.name!=null){
                 w.WriteStartElement("Field");
                 w.WriteAttributeString("ColPos", s.key().ToString());
                 w.WriteAttributeString("RecCol", ci.name);
@@ -510,7 +509,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The profiles being maintained (databases can be profiled or not)
         /// </summary>
-        public static List<Profile> profiles = new List<Profile>();
+        public static List<Profile> profiles = new ();
         /// <summary>
         /// The name of the database
         /// </summary>
@@ -540,7 +539,7 @@ namespace Pyrrho.Level3
         /// <param name="t">The local database</param>
         /// <param name="success">Whether the transaction has succeeded</param>
         /// <returns>The new or updated transaction profile</returns>
-        public TransactionProfile AddProfile(Context cx,bool success)
+        public TransactionProfile? AddProfile(Context cx,bool success)
         {
             if (cx == null)
                 return null;
@@ -553,18 +552,20 @@ namespace Pyrrho.Level3
                 switch (p.type)
                 {
                     case Physical.Type.Record:
-                        var r = p as Record;
+                        if (p is not Record r)
+                            throw new PEException("PE47151");
                         tp.Get(r.tabledefpos).Add(r);
                         break;
-                    case Physical.Type.Record1: goto case Physical.Type.Record;
                     case Physical.Type.Record2: goto case Physical.Type.Record;
                     case Physical.Type.Update: goto case Physical.Type.Record;
                     case Physical.Type.Delete:
-                        tp.Get((p as Delete).tabledefpos).dels++;
+                        if (p is Delete del && tp.Get(del.tabledefpos) is TableProfile dp)
+                        dp.dels++;
                         break;
                     case Physical.Type.EndOfFile: break;
                     case Physical.Type.Alter:
-                        tp.Get((p as Alter).table.defpos).schema = true;
+                        if (p is Alter al && al.table is Table at && tp.Get(at.defpos) is TableProfile ap)
+                        ap.schema = true;
                         break;
                     case Physical.Type.Change: goto case Physical.Type.Alter;
                     default:

@@ -1,9 +1,7 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
-using System;
 using System.Configuration;
-using System.Net.NetworkInformation;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -25,20 +23,18 @@ namespace Pyrrho.Level2
         /// The defining position for the Procedure
         /// </summary>
 		public virtual long defpos { get { return ppos; }}
-        /// <summary>
-        /// The name of the procedure 
-        /// </summary>
-		public string name="";
-        public Ident source; // the heading (parameter list and returns clause)
+		public string nameAndArity => name+"$"+parameters.Count;
+        public Ident? source;
         public bool mth = false;
-        public CList<long> parameters;
+        public CList<long> parameters = CList<long>.Empty;
         public long proc = -1; // the procedure code is in Compiled.framing
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos != ppos && !Committed(wr, defpos)) return defpos;
             return -1;
         }
-        public PProcedure(string nm, CList<long> ar, Domain rt, Procedure pr,Ident sce, 
+        internal int arity;
+        public PProcedure(string nm, CList<long> ar, Domain rt, Procedure? pr,Ident sce, 
             long pp, Context cx) : this(Type.PProcedure,nm, ar, rt, pr, sce, pp, cx)
         { }
         /// <summary>
@@ -50,16 +46,17 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="tp">The PProcedure or PMethod type</param>
         /// <param name="nm">The name of the proc/func</param>
-        /// <param name="ar">The parameters</param>
+        /// <param name="ar">The arity</param>
         /// <param name="rt">The return type</param>
         /// <param name="pc">The procedure clause including parameters, or ""</param>
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, CList<long> ps, Domain rt, Procedure pr,
-            Ident sce, long pp, Context cx) : base(tp,pp,cx,pr?.defpos??-1L,rt)
+        protected PProcedure(Type tp, string nm, CList<long> ps, Domain rt, Procedure? pr,
+            Ident sce, long pp, Context cx) : base(tp,pp,cx,nm, pr?.defpos??-1L,rt)
 		{
             source = sce;
             parameters = ps;
+            arity = parameters.Length;
             name = nm;
             dataType = rt;
             proc = pr?.body??-1L;
@@ -73,8 +70,9 @@ namespace Pyrrho.Level2
         protected PProcedure(PProcedure x, Writer wr) : base(x, wr)
         {
             source = x.source;
-            parameters = wr.cx.FixLl(x.parameters);
-            name = x.name;
+            if (x.parameters!=null)
+             parameters = wr.cx.FixLl(x.parameters);
+            arity = x.arity;
             proc = wr.cx.Fix(x.proc);
         }
         protected override Physical Relocate(Writer wr)
@@ -87,18 +85,9 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) 
 		{
-            var a = 0;
-            if (wr.cx.db.format < 52)
-            {
-                a = (int)parameters.Count;
-                wr.PutString(name + "$" + a);
-            }
-            else 
-                wr.PutString(name);
-            wr.PutInt(a);
-            if (type==Type.PProcedure2||type==Type.PMethod2)
-                wr.PutLong(wr.cx.Fix(dataType?.defpos??-1L));
-            var s = source;
+            wr.PutString(nameAndArity.ToString());
+            wr.PutInt(arity);
+            var s = source??throw new PEException("PE3000");
             if (wr.cx.db.format < 51)
                 s = new Ident(DigestSql(wr,s.ident),s.iix);
             wr.PutString(s.ident);
@@ -112,20 +101,15 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rb)
 		{
             nst = rb.context.db.nextStmt;
-            name = rb.GetString();
-            if (rb.context.db.format<52) 
-            {
-                var ix = name.IndexOf('$');
-                if (ix>0)
-                    name = name.Substring(0, ix);
-            }
-            rb.GetInt();  // arity field
-            if (type==Type.PProcedure2 || type==Type.PMethod2)
-                dataType = rb.context._Dom(rb.GetLong())??throw new DBException("3D006");
+            var ss = rb.GetString().Split('$');
+            name = ss[0];
+			arity = rb.GetInt();
+            if (type==Type.PProcedure2)
+                rb.GetLong();
             source = new Ident(rb.GetString(), rb.context.Ix(ppos + 1));
 			base.Deserialise(rb);
         }
-        public override (Transaction, Physical) Commit(Writer wr, Transaction tr)
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
             var r = base.Commit(wr, tr);
             wr.cx.instDFirst = -1L;
@@ -137,9 +121,9 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return GetType().Name + " "+name  + source.ident;
+            return GetType().Name + " "+name  + source?.ident ?? "??";
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -147,11 +131,11 @@ namespace Pyrrho.Level2
                 case Type.PProcedure:
                 case Type.PMethod:
                 case Type.PMethod2:
-                    if (name == ((PProcedure)that).name && source.ident == ((PProcedure)that).source.ident)
+                    if (nameAndArity == ((PProcedure)that).nameAndArity)
                         return new DBException("40039", name, that, ct);
                     break;
                 case Type.Change:
-                    if (name == ((PProcedure)that).name && source.ident == ((PProcedure)that).source.ident)
+                    if (nameAndArity == ((Change)that).name)
                         return new DBException("40039", name, that, ct);
                     break;
                 case Type.Ordering:
@@ -163,48 +147,50 @@ namespace Pyrrho.Level2
         }
         internal override void OnLoad(Reader rdr)
         {
-            var psr = new Parser(rdr.context,source);
+            if (source == null)
+                return;
+            var psr = new Parser(rdr.context, source);
             psr.cx.defs = Ident.Idents.Empty;
-            var n = new Ident(name,new Iix(ppos));
-            var (rt,dt) = psr.ParseProcedureHeading(n);
+            var n = new Ident(name, new Iix(ppos));
+            var (rt, dt) = psr.ParseProcedureHeading(n);
             psr.cx._Add(dt);
             parameters = rt;
-            if (type!=Type.PMethod && type!=Type.PMethod2)
-                Install(psr.cx, rdr.Position);
+            var pr = Install(psr.cx, rdr.Position);
             psr.LexPos(); //synchronise with CREATE
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
-            if (psr.tok!=Sqlx.EOF)
-                proc = psr.ParseProcedureStatement(dt).defpos;
+            if (psr.tok != Sqlx.EOF && psr.ParseProcedureStatement(dt) is Executable bd)
+                proc = bd.defpos;
             psr.cx.parse = op;
             framing = new Framing(psr.cx,nst);
             dataType = dt;
             rdr.context.db = psr.cx.db;
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ro = cx.db.role;
+            var ro = cx.role;
+            if (source == null || parameters==null)
+                throw new DBException("42108", name);
             var oi = new ObInfo(name,
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute);
             var pr = new Procedure(this, cx,
-                BTree<long,object>.Empty + (DBObject.Definer, ro.defpos)
+                BTree<long, object>.Empty + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc)
+                + (DBObject.Owner, cx.user??User.None)
                 + (DBObject.Infos,new BTree<long,ObInfo>(cx.role.defpos,oi)));
-            if (dataType != null)
-                pr += (DBObject._Domain, dataType.defpos);
             var ps = ro.procedures??CTree<string,CTree<CList<Domain>,long>>.Empty;
-            var pn = (ps[name]??CTree<CList<Domain>,long>.Empty) + (cx.Signature(pr.ins),defpos);
+            var pn = (ps[name]??CTree<CList<Domain>,long>.Empty) + (cx.Signature(parameters),defpos);
             ro += (Role.Procedures, ps + (name, pn));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db = cx.db + (ro, p) + (pr, p) 
-                + (Database.Procedures,cx.db.procedures+(defpos,name));
+                + (Database.Procedures,cx.db.procedures+(defpos,nameAndArity));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(pr, p);
             if (framing.obs.Count==0)
                 cx.AddParams(pr);
-            base.Install(cx, p);
+            return pr;
         }
     }
 }

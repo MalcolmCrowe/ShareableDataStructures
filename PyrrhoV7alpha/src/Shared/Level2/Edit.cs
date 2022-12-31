@@ -22,7 +22,7 @@ namespace Pyrrho.Level2
 	internal class Edit : PDomain
 	{
         internal long _defpos;
-        public Domain prev;
+        public Domain prev = Domain.Null;
         internal long _prev;
         public override long defpos => _defpos;
         /// <summary>
@@ -38,7 +38,12 @@ namespace Pyrrho.Level2
                   dt.culture.Name,dt.defaultString,
                   (dt as UDType)?.super,pp,cx)
         {
-            _defpos = cx.db.types[old];
+            if (cx.db != null)
+            {
+                if (!cx.db.types.Contains(old))
+                    throw new DBException("42000");
+                _defpos = cx.db.types[old];
+            }
             prev = old;
             _prev = prev.defpos;
         }
@@ -90,29 +95,25 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pos">the position</param>
         /// <returns>whether a conflict has occurred</returns>
-		public override DBException ReadCheck(long pos,Physical r,PTransaction ct)
+		public override DBException? ReadCheck(long pos,Physical r,PTransaction ct)
 		{
 			return (pos==defpos)?new DBException("40009", pos,r,ct).Mix() :null;
 		}
         public override long Affects => _defpos;
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
             {
                 case Type.Record3:
                 case Type.Record2:
-                case Type.Record1:
                 case Type.Record:
                 case Type.Update1:
                 case Type.Update:
                     {
                         var t = (Record)that;
                         for (var cp = t.fields.PositionAt(0); cp != null; cp = cp.Next())
-                        {
-                            var c = (DBObject)db.objects[cp.key()];
-                            if (c.domain == defpos)
+                         if (db.objects[cp.key()] is DBObject c && c.domain == defpos)
                                 return new DBException("40079", defpos, that, ct);
-                        }
                         break;
                     }
                 case Type.Drop:

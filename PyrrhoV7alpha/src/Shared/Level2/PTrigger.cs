@@ -31,13 +31,9 @@ namespace Pyrrho.Level2
         /// </summary>
 		public virtual long defpos { get { return ppos; }}
         /// <summary>
-        /// The name of the trigger
-        /// </summary>
-		public string name;
-        /// <summary>
         /// The associated table
         /// </summary>
-		public long target;
+		public long target = -1L;
         /// <summary>
         /// The trigger type
         /// </summary>
@@ -45,27 +41,27 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The TableColumns for update
         /// </summary>
-		public CList<long> cols = null;
+		public CList<long>? cols = null;
         /// <summary>
         /// The alias for the old row
         /// </summary>
-		public Ident oldRow = null;
+		public Ident? oldRow = null;
         /// <summary>
         /// The alias for the new row
         /// </summary>
-		public Ident newRow = null;
+		public Ident? newRow = null;
         /// <summary>
         /// The alias for the old table: consists of rows that are being deleted or updated
         /// (so inherits where conditions for the outer statement)
         /// </summary>
-        public Ident oldTable = null; 
+        public Ident? oldTable = null; 
         /// <summary>
         /// The alias for the new table: consists of the new rows  
         /// </summary>
-		public Ident newTable = null;
-        public long from;
-        public Ident src; // the ident is the source code of the action!
-        public long def; // the compiled version (in Compiled.framing)
+		public Ident? newTable = null;
+        public long from = -1L;
+        public Ident? src; // the ident is the source code of the action!
+        public long def = -1L; // the compiled version (in Compiled.framing)
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
@@ -88,8 +84,8 @@ namespace Pyrrho.Level2
         /// <param name="sce">The source string for the trigger definition</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTrigger(string tc, long tb, int ty, CList<long> cs, Ident or,
-            Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
+        public PTrigger(string tc, long tb, int ty, CList<long> cs, Ident? or,
+            Ident? nr, Ident? ot, Ident? nt, Ident sce, Context cx, long pp)
             : this(Type.PTrigger, tc, tb, ty, cs, or, nr, ot, nt, sce, cx, pp)
         { }
         /// <summary>
@@ -108,8 +104,8 @@ namespace Pyrrho.Level2
         /// <param name="cx">The context</param>
         /// <param name="pp">The current position in the datafile</param>
         protected PTrigger(Type tp, string tc, long tb, int ty, CList<long> cs, 
-            Ident or, Ident nr, Ident ot, Ident nt, Ident sce, Context cx, long pp)
-            : base(tp,pp,cx,tb,Domain.TableType)
+            Ident? or, Ident? nr, Ident? ot, Ident? nt, Ident sce, Context cx, long pp)
+            : base(tp,pp,cx,tc,tb,Domain.TableType)
 		{
             name = tc;
             target = tb;
@@ -156,30 +152,31 @@ namespace Pyrrho.Level2
         /// Serialise this Physical to the PhysBase
         /// </summary>
         /// <param name="r">Relocation information for positions</param>
-		public override void Serialise(Writer wr) 
-		{
+		public override void Serialise(Writer wr)
+        {
             wr.PutString(name.ToString());
             wr.PutLong(wr.cx.Fix(target));
             wr.PutInt((int)tgtype);
-			if (cols==null)
+            if (cols == null)
                 wr.PutInt(0);
-			else
-			{
-				int n = cols.Length;
+            else
+            {
+                int n = cols.Length;
                 wr.PutInt(n);
-				for(var b=cols.First();b!=null;b=b.Next())
+                for (var b = cols.First(); b != null; b = b.Next())
                     wr.PutLong(wr.cx.Fix(b.value()));
-			}
+            }
             // DON'T update oldRow, newRow, oldTable, newTable
             wr.PutIdent(oldRow);
             wr.PutIdent(newRow);
             wr.PutIdent(oldTable);
             wr.PutIdent(newTable);
-            src = new Ident((wr.cx.db.format < 51)?DigestSql(wr,src.ident):src.ident,
-                wr.cx.Ix(wr.Length));
+            if (src != null)
+                src = new Ident((wr.cx.db.format < 51) ? DigestSql(wr, src.ident) : src.ident,
+                    wr.cx.Ix(wr.Length));
             src = wr.PutIdent(src);
-			base.Serialise(wr);
-		}
+            base.Serialise(wr);
+        }
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
@@ -203,9 +200,9 @@ namespace Pyrrho.Level2
 		}
         internal override void OnLoad(Reader rdr)
         {
-            var ob = ((DBObject)rdr.context.db.objects[target]);
-            var psr = new Parser(rdr, 
-                new Ident(src.ident, rdr.context.Ix(ppos + 1)), ob);
+            if (rdr.context.db.objects[target] is not DBObject ob || src==null)
+                return;
+            var psr = new Parser(rdr,new Ident(src.ident, rdr.context.Ix(ppos + 1)));
             def = psr.ParseTriggerDefinition(this);
         }
         /// <summary>
@@ -248,7 +245,7 @@ namespace Pyrrho.Level2
             sb.Append("=");
             sb.Append(c);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -267,11 +264,11 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ro = cx.db.role;
-            var tb = (DBObject)cx.db.objects[target];
-            var tg = new Trigger(this,cx.db.role); // complete version of trigger with def, but framing not quite right
+            var ro = cx.role;
+            var tb = (DBObject)(cx.db.objects[target]??throw new PEException("PE2102"));
+            var tg = new Trigger(this,ro); // complete version of trigger with def, but framing not quite right
             tb = tb.AddTrigger(tg);
             var oi = new ObInfo(name, Grant.Privilege.Execute);
             tg += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
@@ -280,19 +277,20 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb, p);
             cx.Install(tg, p);
-            base.Install(cx, p);
+            return tg;
         }
-        public override (Transaction,Physical) Commit(Writer wr, Transaction t)
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? t)
         {
-            var (tr,ph) = base.Commit(wr, t);
+            var (tr, ph) = base.Commit(wr, t);
             var pt = (PTrigger)ph;
-            var tg = (DBObject)tr.objects[defpos] + (Check.Condition, pt.framing.obs[pt.def])
-                + (DBObject._Framing, pt.framing) + (Trigger.OldRow,pt.oldRow?.iix.dp??-1L)
-                +(Trigger.NewRow,pt.newRow?.iix.dp??-1) + (Trigger.OldTable,pt.oldTable?.iix.dp??-1)
-                +(Trigger.NewTable,pt.newTable?.iix.dp??-1L);
-            var co = ((Table)tr.objects[target]).AddTrigger((Trigger)tg);
+            var tg = (DBObject)(tr?.objects[defpos] ?? throw new PEException("PE2101"));
+            tg = tg + (DBObject._Framing, pt.framing) + (Trigger.OldRow, pt.oldRow?.iix.dp ?? -1L)
+                + (Trigger.NewRow, pt.newRow?.iix.dp ?? -1) + (Trigger.OldTable, pt.oldTable?.iix.dp ?? -1)
+                + (Trigger.NewTable, pt.newTable?.iix.dp ?? -1L);
+            var co = (DBObject)(tr.objects[target] ?? throw new PEException("PE2102"));
+            co = co.AddTrigger((Trigger)tg);
             wr.cx.instDFirst = -1;
-            return ((Transaction)(tr + (tg, tr.loadpos) + (co, tr.loadpos)),ph);
+            return ((Transaction)(tr + (tg, tr.loadpos) + (co, tr.loadpos)), ph);
         }
     }
 }

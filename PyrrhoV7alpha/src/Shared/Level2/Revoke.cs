@@ -1,3 +1,4 @@
+using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 
@@ -50,21 +51,24 @@ namespace Pyrrho.Level2
         {
             return new Revoke(this, wr);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ob = cx._Ob(obj);
-            var oi = ob.infos[cx.db._role];
+            if (cx._Ob(obj) is not DBObject ob || ob.infos[cx.role.defpos] is not ObInfo oi)
+                throw new DBException("42105");
             oi += (ObInfo.Privilege, oi.priv & ~priv);
             if (oi.priv == Privilege.NoPrivilege)
             {
-                ob += (DBObject.Infos, ob.infos - cx.db._role);
-                cx._Ob(obj).Cascade(cx,Drop.DropAction.Cascade);
+                ob += (DBObject.Infos, ob.infos - cx.role.defpos);
+                cx.Add(ob);
+                ob = cx._Ob(obj) ?? throw new PEException("PE42800");
+                ob.Cascade(cx,Drop.DropAction.Cascade);
             }
             else
-                ob += (DBObject.Infos, ob.infos + (cx.db._role, oi));
+                ob += (DBObject.Infos, ob.infos + (cx.role.defpos, oi));
             cx.db += (ob, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return ob;
         }
         /// <summary>
         /// a readable version of this Physical

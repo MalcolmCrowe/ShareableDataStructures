@@ -16,7 +16,7 @@ namespace Pyrrho.Common
     /// All trees contain KeyValuePairs in key order
     /// </summary>
  //   [System.Diagnostics.DebuggerDisplay("{ToString()}")]
-	public abstract class ATree<K,V>
+	public abstract class ATree<K,V> where K:IComparable
 	{
         /// <summary>
         /// MemoryLimit is a server configuration parameter. The default value of zero (no limit)
@@ -46,8 +46,8 @@ namespace Pyrrho.Common
         /// <summary>
         /// The BTree is a hierarchy of Buckets, which are Inner or Leaf buckets
         /// </summary>
-        public readonly Bucket<K,V> root;
-        protected ATree(Bucket<K, V> r)
+        public readonly Bucket<K,V>? root;
+        protected ATree(Bucket<K, V>? r)
         {
             root = r;
         }
@@ -56,12 +56,12 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="k">The key to find</param>
         /// <returns>The corresponding value (or null)</returns>
-        public V this[K k]
+        public V? this[K k]
         {
             get
             {
                 if (root == null)
-                    return default(V);
+                    return default;
                 return root.Lookup(this, k);
             }
         }
@@ -69,7 +69,7 @@ namespace Pyrrho.Common
         /// Iteration through the tree contents is done using immutable ABookmarks.
         /// </summary>
         /// <returns>A bookmark positioned at the first element of the tree, or null if the tree is empty</returns>
-        public ABookmark<K, V> First()
+        public ABookmark<K, V>? First()
         {
             return ABookmark<K, V>.Next(null, this);
         }
@@ -77,9 +77,9 @@ namespace Pyrrho.Common
         /// Iteration through the tree contents is done using immutable ABookmarks.
         /// </summary>
         /// <returns>A bookmark positioned at the last element of the tree, or null if the tree is empty</returns>
-        public ABookmark<K, V> Last()
+        public ABookmark<K, V>? Last()
         {
-            ABookmark<K, V> bm = null;
+            ABookmark<K, V>? bm = null;
             var cb = root;
             for (; ; )
             {
@@ -141,7 +141,7 @@ namespace Pyrrho.Common
             Add(ref tree, k, v);
         }
 		protected abstract ATree<K,V> Insert(K k,V v);
-		protected abstract ATree<K,V> Update(K k,V v);
+		internal abstract ATree<K,V> Update(K k,V v);
         /// <summary>
         /// Update a given association in the tree
         /// </summary>
@@ -152,7 +152,7 @@ namespace Pyrrho.Common
 		{
 			tree = tree.Update(k,v);
 		}
-		protected abstract ATree<K,V> Remove(K k);
+		internal abstract ATree<K,V> Remove(K k);
         /// <summary>
         /// Remove a given key
         /// </summary>
@@ -166,20 +166,20 @@ namespace Pyrrho.Common
         {
             return tree.Remove(k);
         }
-		protected virtual ATree<K,V> Remove(K k,V v)
-		{ // overridden for PPTree and PMTree where k may lead to several objects
-			return Remove(k);
-		}
+        protected virtual ATree<K, V> Remove(K k, V v)
+        { // overridden for PPTree and PMTree where k may lead to several objects
+            return Remove(k);
+        }
         /// <summary>
         /// Remove a given association
         /// </summary>
         /// <param name="tree">ref the tree</param>
         /// <param name="k">a key</param>
         /// <param name="v">the value to remove</param>
-		public static void Remove(ref ATree<K,V> tree,K k,V v)
-		{
-			tree = tree.Remove(k,v);
-		}
+		public static void Remove(ref ATree<K, V> tree, K k, V v)
+        {
+            tree = tree.Remove(k, v);
+        }
         public abstract int Compare(K a, K b);
         /// <summary>
         /// Find the position where a key would be inserted.
@@ -187,9 +187,9 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="key"></param>
         /// <returns></returns>
-        public virtual ABookmark<K, V> PositionAt(K key)
+        public virtual ABookmark<K, V>? PositionAt(K key)
         {
-            ABookmark<K, V> bmk = null;
+            ABookmark<K, V>? bmk = null;
             var cb = root;
             while (cb != null)
             {
@@ -215,12 +215,12 @@ namespace Pyrrho.Common
             {
                 sb.Append(cm); cm = ',';
                 var k = b.key();
-                if (b.key() is long)
+                if (k is long)
                     sb.Append(Uid((long)(object)k));
                 else
                     sb.Append(k);
                 var v = b.value();
-                if ((object)k != (object)v)
+                if ((object?)k != (object?)v)
                 {
                     sb.Append('=');
                     sb.Append(b.value());
@@ -259,7 +259,7 @@ namespace Pyrrho.Common
     /// Row for Inner slots are subtree Buckets
     /// Immutable
     /// </summary>
-    public abstract class Bucket<K,V> : IBucket
+    public abstract class Bucket<K,V> : IBucket where K:IComparable
     {
         /// <summary>
         /// The number of slots in use
@@ -292,7 +292,7 @@ namespace Pyrrho.Common
         /// <param name="t">The tree</param>
         /// <param name="k">the key to look for</param>
         /// <returns>the associated value (or null)</returns>
-        public abstract V Lookup(ATree<K,V> t, K k);
+        public abstract V? Lookup(ATree<K,V> t, K k);
         /// <summary>
         /// Creator: Make a new Bucket that updates a value
         /// </summary>
@@ -335,7 +335,7 @@ namespace Pyrrho.Common
         /// <param name="t">The tree</param>
         /// <param name="k">the key to remove</param>
         /// <returns></returns>
-        public abstract Bucket<K,V> Remove(ATree<K,V> t, K k);
+        public abstract Bucket<K,V>? Remove(ATree<K,V> t, K k);
         /// <summary>
         /// Accessor: find the position in this bucket at which k should be placed
         /// (maybe ==count if k is gtr than all entries)
@@ -351,12 +351,12 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="i">The index of the required slot</param>
         /// <returns>The slot with a weaker type</returns>
-        public abstract KeyValuePair<K, object> Slot(int i);
+        public abstract KeyValuePair<K, object?> Slot(int i);
         /// <summary>
         /// Add a list of slots: needs a surprisingly weak type
         /// </summary>
         /// <param name="ab">the list</param>
-        public abstract void Add(List<object> ab);
+        public abstract void Add(List<object?> ab);
         /// <summary>
         /// IBucket interface requirement
         /// </summary>
@@ -368,7 +368,7 @@ namespace Pyrrho.Common
         /// <returns>the number of entries in this bucket and its children</returns>
         public long Total() { return total; }
         internal virtual int EndPos => count - 1;
-        internal abstract Bucket<K, V> Gtr();
+        internal abstract Bucket<K, V>? Gtr();
     }
     /// <summary>
     /// Traversal of Trees is done using a stack of immutable ABookmarks.
@@ -377,7 +377,7 @@ namespace Pyrrho.Common
     /// </summary>
     /// <typeparam name="K">The tree's key type</typeparam>
     /// <typeparam name="V">The tree's value type</typeparam>
-    public sealed class ABookmark<K, V> // IMMUTABLE
+    public sealed class ABookmark<K, V> where K:IComparable // IMMUTABLE
     {
         /// <summary>
         /// The Bucket this stack entry refers to
@@ -390,14 +390,14 @@ namespace Pyrrho.Common
         /// <summary>
         /// The parent stack entry
         /// </summary>
-        public readonly ABookmark<K, V> _parent;
+        public readonly ABookmark<K, V>? _parent;
         /// <summary>
         /// Constructor: a bucket, a position in it, and the rest of the stack
         /// </summary>
         /// <param name="b">The current bucket</param>
         /// <param name="bp">The current position</param>
         /// <param name="n">The rest of the stack</param>
-        public ABookmark(Bucket<K, V> b, int bp, ABookmark<K, V> n)
+        public ABookmark(Bucket<K, V> b, int bp, ABookmark<K, V>? n)
         {
             _bucket = b;
             _bpos = bp;
@@ -417,7 +417,7 @@ namespace Pyrrho.Common
             var v = _bucket.Slot(_bpos).Value;
             if (v is V)
                 return (V)v;
-            return default(V);
+            throw new Exception("Null in tree");
         }
         /// <summary>
         /// Tree positions are numbered from 0
@@ -439,7 +439,7 @@ namespace Pyrrho.Common
         /// Get a bookmark for the next entry in the tree
         /// </summary>
         /// <returns>The bookmark, or null if we are already the last entry</returns>
-        public ABookmark<K, V> Next()
+        public ABookmark<K, V>? Next()
         {
             return Next(this);
         }
@@ -449,14 +449,14 @@ namespace Pyrrho.Common
         /// <param name="stk">The current bookmark, or null to get the first entry</param>
         /// <param name="tree">(optional) The tree to get the first entry</param>
         /// <returns>The required bookmark, or null if none exists</returns>
-        public static ABookmark<K, V> Next(ABookmark<K,V> stk,ATree<K,V> tree = null)
+        public static ABookmark<K, V>? Next(ABookmark<K,V>? stk,ATree<K,V>? tree = null)
         {
-            Bucket<K, V> b;
-            KeyValuePair<K, object> d;
+            Bucket<K, V>? b;
+            KeyValuePair<K, object?> d;
             if (stk ==null) // following Create or Reset
             {
                 // if Tree is empty return null
-                if (tree==null || tree.Count == 0)
+                if (tree==null || tree.root == null)
                     return null;
                 // The first entry is root.slots[0] or below
                 stk = new ABookmark<K, V>(tree.root, 0, null);
@@ -474,7 +474,7 @@ namespace Pyrrho.Common
                         if (++stkPos <= stk._bucket.count)// this is the right test for a non-leaf; redundantly ok for first time (leaf)
                             break;
                         stk = stk._parent;
-                        if (stk == null)
+                        if (stk is null)
                             break;
                         stkPos = stk._bpos;
                     }
@@ -486,7 +486,6 @@ namespace Pyrrho.Common
                 if (stk._bpos == stk._bucket.count)
                 { // will only happen for a non-leaf
                     b = ((Inner<K, V>)stk._bucket).gtr;
-                    d = new KeyValuePair<K, object>(default(K), null); // or compiler complains
                 }
                 else // might be leaf or not
                 {
@@ -502,14 +501,14 @@ namespace Pyrrho.Common
             }
             return stk;
         }
-        public ABookmark<K,V> Previous()
+        public ABookmark<K,V>? Previous()
         {
             return Previous(this);
         }
-        public static ABookmark<K, V> Previous(ABookmark<K, V> stk, ATree<K, V> tree = null)
+        public static ABookmark<K, V>? Previous(ABookmark<K, V>? stk, ATree<K, V>? tree = null)
         {
-            Bucket<K, V> b;
-            KeyValuePair<K, object> d;
+            Bucket<K, V>? b;
+            KeyValuePair<K, object?> d;
             if (stk == null) // Last()
             {
                 // if Tree is empty return null
@@ -538,7 +537,7 @@ namespace Pyrrho.Common
                 d = stk._bucket.Slot(stkPos);
                 b = d.Value as Bucket<K, V>;
             }
-            while (d.Value is Bucket<K, V>)
+            while (d.Value is Bucket<K, V> && b!=null)
             {
                 stk = new ABookmark<K, V>(b, b.EndPos, stk);
                 d = b.Slot(b.count - 1);

@@ -37,8 +37,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="dp">The object to drop</param>
         /// <param name="db">The local database</param>
-        public Drop(long dp,long pp, Context cx)
-            : this(Type.Drop, dp, pp, cx)
+        public Drop(long dp,long pp)
+            : this(Type.Drop, dp, pp)
 		{
 		}
         /// <summary>
@@ -48,8 +48,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The PhysBase</param>
         /// <param name="ob">The defining position of the object being dropped</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Drop(Type t, long ob, long pp, Context cx)
-            : base(t, pp, cx)
+        protected Drop(Type t, long ob, long pp)
+            : base(t, pp)
 		{
 			delpos = ob;
 		}
@@ -96,6 +96,10 @@ namespace Pyrrho.Level2
 			delpos = rdr.GetLong();
 			base.Deserialise(rdr);
 		}
+        internal long _Tbl()
+        {
+            return delpos;
+        }
         /// <summary>
         /// A readable version of the Drop request
         /// </summary>
@@ -104,7 +108,7 @@ namespace Pyrrho.Level2
 		{ 
 			return GetType().Name+" ["+Pos(delpos)+"]"; 
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -117,7 +121,6 @@ namespace Pyrrho.Level2
                     break;
                 case Type.Record3:
                 case Type.Record2:
-                case Type.Record1:
                 case Type.Record:
                 case Type.Update:
                 case Type.Update1:
@@ -131,33 +134,33 @@ namespace Pyrrho.Level2
                         break;
                     }
                 case Type.Delete1:
-                case Type.Delete: if (delpos == 
-                        ((Record)db.GetD(((Delete)that).delpos)).tabledefpos)
+                case Type.Delete: 
+                    if (db.GetD(((Delete)that).delpos) is Delete td && td.tabledefpos == delpos)
                         return new DBException("40057", delpos, that, ct);
                     break;
                 case Type.PColumn3:
                 case Type.PColumn2:
-                case Type.PColumn: if (delpos == ((PColumn)that).table.defpos)
+                case Type.PColumn: if (delpos == ((PColumn)that).table?.defpos)
                         return new DBException("40043", delpos, that, ct);
                     break;
                 case Type.Alter3:
                     {
                         var a = (Alter3)that;
-                        if (delpos == a.defpos || delpos == a.table.defpos)
+                        if (delpos == a.defpos || delpos == a.table?.defpos)
                             return new DBException("40043", ppos, that, ct);
                         break;
                     }
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
-                        if (delpos == a.defpos || delpos == a.table.defpos)
+                        if (delpos == a.defpos || delpos == a.table?.defpos)
                             return new DBException("40043", ppos, that, ct);
                         break;
                     }
                 case Type.Alter:
                     {
                         var a = (Alter)that;
-                        if (delpos == a.table.defpos || delpos == a.defpos)
+                        if (delpos == a.table?.defpos || delpos == a.defpos)
                             return new DBException("40043", delpos, that, ct);
                         break;
                     }
@@ -168,7 +171,7 @@ namespace Pyrrho.Level2
                         var c = (PIndex)that;
                         if (delpos == c.tabledefpos || delpos == c.defpos || delpos == c.reference)
                             return new DBException("40058", delpos, that, ct);
-                        for (var i = 0; i < c.columns.Count; i++)
+                        for (var i = 0; i < c.columns.Length; i++)
                             if (delpos == c.columns[i])
                                 return new DBException("40058", delpos, that, ct);
                         break;
@@ -180,7 +183,7 @@ namespace Pyrrho.Level2
                         return new DBException("40059", delpos, that, ct);
                     break;
                 case Type.PMethod2:
-                case Type.PMethod: if (delpos == ((PMethod)that).udt.defpos)
+                case Type.PMethod: if (delpos == ((PMethod)that).udt?.defpos)
                         return new DBException("40060", delpos, that, ct);
                     break;
                 case Type.Edit:
@@ -211,23 +214,27 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pos">the defining position to check</param>
         /// <returns>whether a conflict has occurred</returns>
-		public override DBException ReadCheck(long pos,Physical ph,PTransaction ct)
+		public override DBException? ReadCheck(long pos,Physical ph,PTransaction ct)
 		{
 			return (pos==delpos)?new DBException("40073",delpos,ph,ct).Mix():null;
 		}
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            cx.db = ((DBObject)cx.db.objects[delpos]).Drop(cx.db, cx.db, p);
-            if (cx.db.mem.Contains(Database.Log))
-                cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db != null && cx.db.objects[delpos] is DBObject ob)
+            {
+                cx.db = ob.Drop(cx.db, cx.db, p);
+                if (cx.db.mem.Contains(Database.Log))
+                    cx.db += (Database.Log, cx.db.log + (ppos, type));
+            }
             cx.obs -= delpos;
+            return null;
         }
     }
     internal class Drop1 : Drop
     {
-        public Drop1(long dp, DropAction a, long pp, Context cx)
-            : base(Type.Drop1, dp, pp, cx) 
+        public Drop1(long dp, DropAction a, long pp)
+            : base(Type.Drop1, dp, pp) 
         {
             dropAction = a;
         }

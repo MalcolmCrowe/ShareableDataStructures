@@ -28,16 +28,12 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The object being modified
         /// </summary>
-		public long modifydefpos;
-        /// <summary>
-        /// The new name of the routine
-        /// </summary>
-		public string name;
+		public long modifydefpos= -1L;
         /// <summary>
         /// The new parameters and body of the routine
         /// </summary>
-		public Ident source;
-        public CList<long> parms;
+		public Ident? source;
+        public CList<long> parms = CList<long>.Empty;
         /// <summary>
         /// The Parsed version of the body for the definer's role
         /// </summary>
@@ -55,10 +51,9 @@ namespace Pyrrho.Level2
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
         public Modify(long dp, Procedure me, Ident sce, long pp, Context cx)
-            : base(Type.Modify,pp,_Pre(cx),me.body,cx._Dom(me))
+            : base(Type.Modify, pp, _Pre(cx), me.NameFor(cx), me.body, cx._Dom(me) ?? throw new PEException("PE48129"))
 		{
             modifydefpos = dp;
-            name = me.infos[cx.role.defpos].name;
             source = sce;
             proc = me.body;
             nst = me.framing.obs.First()?.key() ?? nst;
@@ -69,10 +64,9 @@ namespace Pyrrho.Level2
             return cx;
         }
         public Modify(string nm, long dp, RowSet rs, Ident sce, long pp, Context cx)
-    : base(Type.Modify, pp, cx, rs.defpos, cx._Dom(rs))
+    : base(Type.Modify, pp, cx, nm, rs.defpos, cx._Dom(rs) ?? throw new PEException("PE48130"))
         {
             modifydefpos = dp;
-            name = nm;
             source = sce;
             proc = rs.defpos;
         }
@@ -100,12 +94,14 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for the positions</param>
         public override void Serialise(Writer wr) 
 		{
+            if (source == null)
+                throw new PEException("PE48174");
 			modifydefpos = wr.cx.Fix(modifydefpos);
             wr.PutLong(modifydefpos);
             wr.PutString(name);
             if (wr.cx.db.format < 51)
-                source = new Ident(DigestSql(wr, source.ident), source.iix);
-            wr.PutString(source.ident);
+                source = new Ident(DigestSql(wr, source.ident??""), source.iix);
+            wr.PutString(source.ident??"");
             proc = wr.cx.Fix(proc);
 			base.Serialise(wr);
         }
@@ -122,27 +118,27 @@ namespace Pyrrho.Level2
 		}
         internal override void OnLoad(Reader rdr)
         {
-            var pr = (Method)rdr.context.db.objects[modifydefpos];
+            if (rdr.context.db.objects[modifydefpos] is not Method pr || source==null)
+                throw new DBException("3E006");
             var psr = new Parser(rdr.context, source);
             nst = psr.cx.db.nextStmt;
             psr.cx.obs = ObTree.Empty;
             // instantiate everything we may need
             var odt = pr.udType;
             pr.Instance(psr.LexPos().dp, psr.cx);
-            if (pr.methodType==PMethod.MethodType.Constructor)
-                psr.cx.val = pr.udType.defaultValue;
-            else
-                psr.cx.val = TNull.Value;
             odt.Instance(psr.LexPos().dp,psr.cx);
             for (var b = pr.ins.First(); b != null; b = b.Next())
             {
-                var p = (FormalParameter)psr.cx.obs[b.value()];
+                if (psr.cx.obs[b.value()] is not FormalParameter p || p.name == null)
+                    throw new DBException("3E006");
                 var ip = rdr.context.Ix(p.defpos);
                 psr.cx.defs += (new Ident(p.name, ip), ip);
             }
             psr.cx.Install(pr, 0);
             // and parse the body
-            var bd = psr.ParseProcedureStatement(rdr.context._Dom(pr));
+            if (rdr.context._Dom(pr) is not Domain dr || 
+                    psr.ParseProcedureStatement(dr) is not Executable bd)
+                throw new PEException("PE1978");
             proc = bd.defpos;
             framing = new Framing(psr.cx,nst);
             framing += (Framing.Obs, pr.framing.obs + framing.obs);
@@ -150,7 +146,7 @@ namespace Pyrrho.Level2
             pr += (DBObject._Framing,framing);
             rdr.context.Install(pr, rdr.Position);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -181,12 +177,12 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return "Modify " + name + "["+ modifydefpos+"] to " + source.ident;
+            return "Modify " + name + "["+ modifydefpos+"] to " + source?.ident;
 		}
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ro = cx.db.role;
-            var pr = (Method)cx.db.objects[modifydefpos];
+            if (cx.db.role is not Role ro ||cx.db.objects[modifydefpos] is not Method pr)
+                throw new PEException("PE48140");
             pr = pr + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc);
             pr += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name,
@@ -197,7 +193,7 @@ namespace Pyrrho.Level2
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(pr, p);
-            base.Install(cx, p);
+            return pr;
         }
     }
 }

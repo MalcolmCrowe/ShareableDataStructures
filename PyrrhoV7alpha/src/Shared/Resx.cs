@@ -21,12 +21,12 @@ namespace Pyrrho
 #if SILVERLIGHT || WINDOWS_PHONE
         internal static Dictionary<string,string> dict = null;
 #else
-        public static Hashtable dict = null;
+        public static Hashtable? dict = null;
 #endif
         static bool SqlStateDone = false;
         static void InitSqlstate()
         {
-            if (SqlStateDone)
+            if (SqlStateDone || dict==null)
                 return;
             dict.Add("02000", "Not found");
             dict.Add("08000", "Invalid connection name");
@@ -90,7 +90,8 @@ namespace Pyrrho
             dict.Add("24101", "Cursor is not open");
             dict.Add("25000", "Invalid transaction state");
             dict.Add("25001", "A transaction is in progress");
-            dict.Add("26000", "Invalid SQL statement name{0}");
+            dict.Add("26000", "Invalid SQL statement name {0}");
+            dict.Add("27000", "Invalid metadata {0}");
             dict.Add("28000", "Invalid authorisation specification: no {0} in database {1}");
             dict.Add("28101", "Unknown grantee kind");
             dict.Add("28102", "Unknown grantee {0}");
@@ -289,7 +290,7 @@ namespace Pyrrho
 #endif
                 if (!SqlStateDone)
                     InitSqlstate();
-                string fmt = (string)dict[sig];
+                var fmt = (string?)dict[sig];
                 if (fmt == null)
                     return "Signal " + sig;
                 StringBuilder sb = new StringBuilder();

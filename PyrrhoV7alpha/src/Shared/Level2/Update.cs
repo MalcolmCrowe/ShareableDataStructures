@@ -23,7 +23,7 @@ namespace Pyrrho.Level2
 	{
         public long _defpos;
         public long prev;
-        public TableRow prevrec;
+        public TableRow? prevrec;
         /// <summary>
         /// Constructor: an UPDATE from the Parser
         /// </summary>
@@ -78,7 +78,7 @@ namespace Pyrrho.Level2
             _defpos = rdr.GetLong();
             base.Deserialise(rdr);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -99,12 +99,9 @@ namespace Pyrrho.Level2
                         if (de.delpos == defpos)
                             return new DBException("40029", defpos, that, ct);
                         for (var b = de.deC[tabledefpos]?.First();b!=null;b=b.Next())
-                        {
-                            var tb = (Table)db.objects[tabledefpos];
-                            var x = tb.FindIndex(db, b.key())?[0];
-                            if (x!=null && x.rows.Contains(x.MakeKey(fields)))
+                        if (db.objects[tabledefpos] is Table tb && tb.FindIndex(db, b.key())?[0] is Level3.Index x
+                            && x.MakeKey(fields) is CList<TypedValue> pk && x.rows?.Contains(pk)==true)
                                 return new DBException("40085", de.delpos);
-                        }
                         break;
                     }
                 case Type.Update1:
@@ -112,22 +109,20 @@ namespace Pyrrho.Level2
                     {
                         var u = (Update)that;
                         for (var b = u.riC[tabledefpos]?.First(); b != null; b = b.Next())
-                        {
-                            if (u.prevrec.MakeKey(b.value()).CompareTo(MakeKey(b.key())) == 0 )
+                            if (u.prevrec is TableRow pr && 
+                                pr.MakeKey(b.value().rowType) is CList<TypedValue> pk &&
+                                pk.CompareTo(MakeKey(b.key().rowType)) == 0 )
                                 // conflict if our old values are referenced by a new foreign key
                                     throw new DBException("40014", u.prevrec.ToString());
-                        }
-                        var tb = (Table)cx.db.objects[u.tabledefpos];
+                        if (db.objects[u.tabledefpos] is Table tb)
                         for (var b = tb.indexes.First(); b != null; b = b.Next())
-                        {
+                         if (tb.FindIndex(db, b.key())?[0] is Level3.Index x && 
+                                    db.objects[x.refindexdefpos] is Level3.Index rx)
                             // conflict if this updated one of our foreign keys
-                            var x = tb.FindIndex(db, b.key())?[0];
-                            if (x != null)
-                                for (var xb = ((Index)cx.db.objects[x.refindexdefpos])?.keys.First();
+                                for (var xb = rx?.keys.First();
                                         xb != null; xb = xb.Next())
                                     if (fields.Contains(xb.value()))
                                         throw new DBException("40086", u.ToString());
-                        }
                         // conflict on columns in matching rows
                         if (defpos != u.defpos)
                             return null;
@@ -137,28 +132,28 @@ namespace Pyrrho.Level2
                         return null; // do not call the base
                     }
                 case Type.Alter3:
-                    if (((Alter3)that).table.defpos == tabledefpos)
+                    if (((Alter3)that).table is Table t3 && t3.defpos == tabledefpos)
                         return new DBException("40080", defpos, that, ct);
                     break;
                 case Type.Alter2:
-                    if (((Alter2)that).table.defpos == tabledefpos)
+                    if (((Alter2)that).table is Table t2 && t2.defpos == tabledefpos)
                         return new DBException("40080", defpos, that, ct);
                     break;
                 case Type.Alter:
-                    if (((Alter)that).table.defpos == tabledefpos)
+                    if (((Alter)that).table is Table t && t.defpos == tabledefpos)
                         return new DBException("40080", defpos, that, ct);
                     break;
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn:
-                    if (((PColumn)that).table.defpos == tabledefpos)
+                    if (((PColumn)that).table is Table tc && tc.defpos == tabledefpos)
                         return new DBException("40045", defpos, that, ct);
                     break;
 
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        public override DBException Conflicts(CTree<long, bool> t,PTransaction ct)
+        public override DBException? Conflicts(CTree<long, bool> t,PTransaction ct)
         {
             for (var b = t.First(); b != null; b = b.Next())
                 if (fields.Contains(b.key()))
@@ -167,9 +162,9 @@ namespace Pyrrho.Level2
         }
         internal override TableRow AddRow(Context cx)
         {
-            var tb = (Table)cx.db.objects[tabledefpos];
-            var was = tb.tableRows[defpos];
-            var now = new TableRow(this, cx.db, was);
+            var tb = (Table)(cx.db.objects[tabledefpos]??throw new DBException("42105"));
+            var was = tb.tableRows[defpos] ?? throw new DBException("42105");
+            var now = new TableRow(this, cx, was);
             var same = true;
             for (var b = fields.First(); same && b != null; b = b.Next())
                 if (tb.keyCols.Contains(b.key()))
@@ -177,18 +172,16 @@ namespace Pyrrho.Level2
             if (same)
                 return now;
             for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
-                for (var c=xb.value().First();c!=null;c=c.Next())
-            {
-                var x = (Index)cx.db.objects[c.key()];
-                var ok = x.MakeKey(was.vals);
-                var nk = x.MakeKey(now.vals);
-                if (ok._CompareTo(nk) != 0)
-                {
-                    x -= (ok, defpos);
-                    x += (nk, defpos);
-                    cx.db += (x, cx.db.loadpos);
-                }
-            }
+                for (var c = xb.value().First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.key()] is Level3.Index x
+                        && x.MakeKey(was.vals) is CList<TypedValue> ok
+                        && x.MakeKey(now.vals) is CList<TypedValue> nk
+                        && ok.CompareTo(nk) != 0)
+                    {
+                        x -= (ok, defpos);
+                        x += (nk, defpos);
+                        cx.db += (x, cx.db.loadpos);
+                    }
             return now;
         }
         public override long Affects => _defpos;
@@ -204,7 +197,7 @@ namespace Pyrrho.Level2
             long pp, Context cx) 
             : base(Type.Update1,old, tb, fl, pp, cx)
         {
-            if (cx.db._user != cx.db.owner)
+            if (cx.db==null || cx.db.user?.defpos != cx.db.owner)
                 throw new DBException("42105");
             _classification = lv;
         }
@@ -223,13 +216,17 @@ namespace Pyrrho.Level2
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             var fl = AddRow(cx);
-            cx.Install((Table)cx.db.objects[tabledefpos] 
-                + new TableRow(this, cx.db, fl, _classification), p);
-            if (cx.db.mem.Contains(Database.Log))
-                cx.db += (Database.Log, cx.db.log + (ppos, type));
+            if (cx.db != null)
+            {
+                if (cx.db.objects[tabledefpos] is Table tb)
+                    cx.Install(tb + new TableRow(this, cx, fl, _classification), p);
+                if (cx.db.mem.Contains(Database.Log))
+                    cx.db += (Database.Log, cx.db.log + (ppos, type));
+            }
+            return null;
         }
         public override void Serialise(Writer wr)
         {

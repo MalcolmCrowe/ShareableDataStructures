@@ -13,7 +13,6 @@ using Pyrrho.Level3;
 
 namespace Pyrrho.Level2
 {
-#if !APPEND
     /// <summary>
     /// The EndOfFile marker discourages tampering with obs files,
     /// by recording a hash value of the contents. The marker is overwritten
@@ -32,14 +31,6 @@ namespace Pyrrho.Level2
         /// <param name="pos">the defining position</param>
 		public EndOfFile(Reader rdr) : base(Type.EndOfFile,rdr) {}
         /// <summary>
-        /// Deserialise this Physical from the buffer
-        /// </summary>
-        /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
-        {
-            rdr.GetInt32();
-        }
-        /// <summary>
         /// A readable version of the Physical
         /// </summary>
         /// <returns>the string representation</returns>
@@ -53,11 +44,10 @@ namespace Pyrrho.Level2
             throw new NotImplementedException();
         }
 
-        internal override void Install(Level4.Context cx, long p)
+        internal override DBObject? Install(Level4.Context cx, long p)
         {
-            throw new NotImplementedException();
+            return null;
         }
     }
-#endif
 }
 

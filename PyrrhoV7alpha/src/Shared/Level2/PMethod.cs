@@ -24,17 +24,16 @@ namespace Pyrrho.Level2
         /// The different sorts of Method: static, constructor etc
         /// </summary>
 		public enum MethodType { Instance,Overriding, Static,Constructor };
-		public UDType udt;
-        public long _udt;
+		public UDType? udt;
+        public long? _udt;
         /// <summary>
         /// The type of this method
         /// </summary>
-		public MethodType methodType;
+		public MethodType? methodType;
         /// <summary>
         /// Constructor: a new Method definition from the Parser
         /// </summary>
-        /// <param name="nm">The name of the method</param>
-        /// <param name="ar">the signature</param>
+        /// <param name="nm">The name $ arity of the method</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
         /// <param name="td">The owning type</param>
@@ -42,7 +41,7 @@ namespace Pyrrho.Level2
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PMethod(string nm, CList<long> ar, Domain rt, 
-            MethodType mt, UDType td, Method md, Ident sce,long pp, Context cx)
+            MethodType mt, UDType td, Method? md, Ident sce,long pp, Context cx)
             : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
 		{ }
         /// <summary>
@@ -50,7 +49,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="tp">The PMethod type</param>
         /// <param name="nm">The name of the method</param>
-        /// <param name="ar">the signature</param>
+        /// <param name="ar">The arity</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
         /// <param name="td">The defining position of the type</param>
@@ -58,7 +57,7 @@ namespace Pyrrho.Level2
         /// <param name="u">The defining position for the method</param>
         /// /// <param name="db">The database</param>
         protected PMethod(Type tp, string nm, CList<long> ar, 
-            Domain rt, MethodType mt, UDType td, Method md, Ident sce,
+            Domain rt, MethodType mt, UDType td, Method? md, Ident sce,
             long pp, Context cx)
             : base(tp,nm,ar,rt,md,sce,pp,cx)
 		{
@@ -76,8 +75,11 @@ namespace Pyrrho.Level2
 		public PMethod(Type tp, Reader rdr) : base(tp,rdr){}
         protected PMethod(PMethod x, Writer wr) : base(x, wr)
         {
-            _udt = wr.cx.Fix(x._udt);
-            udt = (UDType)wr.cx.db.objects[_udt];
+            if (x.udt is not UDType ut)
+                throw new PEException("PE0610");
+            var u = wr.cx.Fix(ut.defpos);
+            udt = (UDType)(wr.cx.db.objects[u] ?? throw new PEException("PE42123"));
+            _udt = udt.defpos;
             methodType = x.methodType;
         }
         protected override Physical Relocate(Writer wr)
@@ -90,6 +92,8 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) 
 		{
+            if (udt is not UDType || methodType is null)
+                throw new PEException("PE42125");
             wr.PutLong(udt.defpos);
             wr.PutInt((int)methodType);
 			base.Serialise(wr);
@@ -100,16 +104,13 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rd)
 		{
-            _udt = rd.GetLong();
+            var r = rd.GetLong();
+            _udt = r;
+            udt = (UDType)(rd.context?._Dom(r) ?? throw new PEException("PE42126"));
 			methodType = (MethodType)rd.GetInt();
             base.Deserialise(rd);
             if (methodType == MethodType.Constructor)
-                dataType = rd.context._Dom(_udt);
-        }
-        internal override void OnLoad(Reader rdr)
-        {
-            udt = (UDType)rdr.context.db.objects[_udt];
-            base.OnLoad(rdr);
+                dataType = udt;
         }
         /// <summary>
         /// A readable version of this Physical
@@ -118,11 +119,13 @@ namespace Pyrrho.Level2
 		public override string ToString()
 		{
             return "Method " + methodType.ToString()+" " 
-                + DBObject.Uid(ppos) + "="+DBObject.Uid(_udt)
-                + "." + name + source.ident; 
+                + DBObject.Uid(ppos) + "="+((_udt is long u)?DBObject.Uid(u):"_")
+                + "." + name + source?.ident??""; 
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
+            if (udt is not UDType)
+                throw new PEException("PE42130");
             switch (that.type)
             {
                 case Type.Drop:
@@ -137,28 +140,31 @@ namespace Pyrrho.Level2
                 case Type.PMethod:
                     {
                         var t = (PMethod)that;
-                        if (udt.defpos == t.udt.defpos
-                            && name == t.name && source.ident==t.source.ident)
+                        if (udt.defpos == t.udt?.defpos
+                            && name == t.name)
                             return new DBException("40039", defpos, that, ct);
                         break;
                     }
                 case Type.Modify:
-                    if (name == ((Modify)that).name && source.ident==((Modify)that).source.ident)
+                    if (name == ((Modify)that).name)
                         return new DBException("40036", defpos, that, ct);
                     break;
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var rp = Database._system._role;
+            var rp = Database._system.role.defpos;
             var mt = new Method(this,cx);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
-            var ui = udt.infos[Database._system._role];
+            udt = (UDType?)(cx.db.objects[udt?.defpos??-1L]??udt);
+            if (cx.db==null || _udt == null || udt==null ||
+                udt.infos[cx.role.defpos] is not ObInfo ui)
+                throw new PEException("PE0611");
             var um = ui.methodInfos;
+            var sig = cx.Signature(parameters);
             var om = um[name] ?? CTree<CList<Domain>, long>.Empty;
-            var sig = cx.Signature(mt.ins);
             um += (name, om+(sig, mt.defpos));
             ui += (ObInfo.MethodInfos, um);
             var mi = new ObInfo(name, priv);
@@ -169,6 +175,7 @@ namespace Pyrrho.Level2
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(mt,p);
+            return mt;
         }
     }
 }

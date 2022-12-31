@@ -1,6 +1,3 @@
-using System;
-using System.ComponentModel;
-using System.Management.Instrumentation;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -32,16 +29,16 @@ namespace Pyrrho.Level3
             TrigPpos = -299, // long Trigger
             TrigType = -297, // PTrigger.TrigType
             UpdateCols = -298; // CList<long> SqlValue
-        public long table => (long)mem[RowSet.Target];
-        public string name => (string)mem[ObInfo.Name] ?? "";
+        public long table => (long)(mem[RowSet.Target]??-1L);
+        public string name => (string)(mem[ObInfo.Name] ?? "");
         /// <summary>
         /// The trigger type (flags)
         /// </summary>
-		public PTrigger.TrigType tgType=> (PTrigger.TrigType)mem[TrigType];
+		public PTrigger.TrigType tgType => (PTrigger.TrigType)(mem[TrigType] ?? PTrigger.TrigType.Deferred);
         /// <summary>
         /// The list of update TableColumns
         /// </summary>
-		public CList<long> cols => (CList<long>)mem[UpdateCols]??CList<long>.Empty;
+		public CList<long> cols => (CList<long>?)mem[UpdateCols]??CList<long>.Empty;
         /// <summary>
         /// the name of the old row
         /// </summary>
@@ -62,10 +59,11 @@ namespace Pyrrho.Level3
         /// </summary>
 		public Trigger(PTrigger p,Role ro)
             : base(p.ppos, 
-                  _Mem(p) + (Action,p.def) + (ObInfo.Name,p.name)
-                  + (Definer, ro.defpos) + (_From, p.from) + (TrigPpos, p.ppos)
+                  _Mem(p) + (Action,p.def) + (ObInfo.Name,p.name) +(Owner,p.owner)
+                  +(Infos,p.infos)
+                  + (Definer, p.definer) + (_From, p.from) + (TrigPpos, p.ppos)
                   + (_Framing, p.framing) + (RowSet.Target, p.target) + (TrigType, p.tgtype)
-                  + (UpdateCols, p.cols) + (LastChange, p.ppos))
+                  + (LastChange, p.ppos))
 		{ }
         public Trigger(long defpos, BTree<long, object> m) : base(defpos, m) 
         { }
@@ -80,6 +78,8 @@ namespace Pyrrho.Level3
                 r += (OldRow, p.oldRow.iix.dp);
             if (p.newRow != null)
                 r += (NewRow, p.newRow.iix.dp);
+            if (p.cols != null)
+                r += (UpdateCols, p.cols);
             return r;
         }
         public static Trigger operator+(Trigger t,(long,object)x)
@@ -124,8 +124,8 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = base._Replace(cx, so, sv);
             if (table == so.defpos)
                 r += (RowSet.Target, sv.defpos);
@@ -161,19 +161,15 @@ namespace Pyrrho.Level3
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
-            var tb = (Table)nd.objects[table];
-            var tgs = BTree<PTrigger.TrigType, BTree<long, bool>>.Empty;
+            var tb = (Table)(nd.objects[table] ?? throw new DBException("42107", "??"));
+            var tgs = CTree<PTrigger.TrigType, CTree<long, bool>>.Empty;
             for (var b=tb.triggers.First();b!=null;b=b.Next())
             {
-                var ts = BTree<long, bool>.Empty;
-                var ch = false;
+                var ts = CTree<long, bool>.Empty;
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (c.key() != defpos)
                         ts += (c.key(), true);
-                    else
-                        ch = true;
-                if (ch)
-                    tgs += (b.key(), ts);
+                tgs += (b.key(), ts);
             }
             tb += (Table.Triggers, tgs);
             nd += (tb, p);
@@ -223,8 +219,8 @@ namespace Pyrrho.Level3
             ColIds = -304, // CList<long> TableColumn
             Old = -327, // bool
             Trig = -326; // long
-        internal CList<long> colIds => (CList<long>)mem[ColIds] ?? CList<long>.Empty;
-        internal bool old => (bool)mem[Old];
+        internal CList<long> colIds => (CList<long>)(mem[ColIds] ?? CList<long>.Empty);
+        internal bool old => (bool)(mem[Old]??false);
  //       internal long trig => (long)mem[Trig];
         internal TransitionTable(Ident ic, bool old, Context cx, RowSet fm, Trigger tg)
                 : base(ic.iix.dp,_Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos))

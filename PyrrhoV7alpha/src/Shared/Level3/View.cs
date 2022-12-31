@@ -37,15 +37,16 @@ namespace Pyrrho.Level3
             ViewPpos = -377,// long View
             ViewResult = -380, // long RowSet
             ViewTable = -371; // long   Table
-        public string viewDef => (string)mem[ViewDef];
+        public string? viewDef => (string?)mem[ViewDef];
         public long viewPpos => (long)(mem[ViewPpos] ?? -1L);
         public long result => (long)(mem[ViewResult] ?? -1L);
         internal long viewTable => (long)(mem[ViewTable] ?? -1L);
-        public View(PView pv,Context cx,BTree<long,object>m=null) 
+        public View(PView pv,Context cx,BTree<long,object>?m=null) 
             : base(pv.ppos, pv._Dom(cx,m)
-                  + (ObInfo.Name,pv.name) + (Definer,cx.db.role.defpos)
+                  + (ObInfo.Name,pv.name) + (Definer,pv.definer)
+                  +(Owner,pv.owner)+(Infos,pv.infos)
                   + (ViewDef,pv.viewdef) + (ViewResult,pv.framing.result)
-                  + (LastChange, pv.ppos))
+                  + (LastChange, pv.ppos) + (Owner, cx.user?.defpos??-501L))
         { }
         protected View(long dp, BTree<long, object> m) : base(dp, m) { }
         public static View operator+(View v,(long,object)x)
@@ -90,7 +91,7 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="f"></param>
         /// <returns></returns>
-        internal override DBObject Instance(long lp, Context cx, BList<Ident> cs = null)
+        internal override DBObject Instance(long lp, Context cx, BList<Ident>? cs = null)
         {
             var od = cx.done;
             cx.done = ObTree.Empty;
@@ -104,60 +105,62 @@ namespace Pyrrho.Level3
             var fo = (Framing)framing.Fix(cx);
             var ns = cx.Fix(st);
             var dt = cx.Fix(domain);
+            if (cx._Dom(dt) is not Domain dv)
+                throw new DBException("42105");
             var vi = (View)Relocate(ni) + (ViewResult, ns) + (_From,lp);
             vi = (View)vi.Fix(cx);
             cx.Add(vi);
-            var vn = new Ident(vi.infos[cx.role.defpos].name, cx.Ix(vi.defpos));
-            cx.AddDefs(vn, cx._Dom(vi),alias);
-            var ids = cx.defs[vn.ident][cx.sD].Item2;
+            if (cx._Dom(vi) is not Domain vd)
+                throw new PEException("PE5090");
+            var vn = new Ident(vi.NameFor(cx), cx.Ix(vi.defpos));
+            cx.AddDefs(vn, vd,alias);
+            var ids = cx.defs[vn.ident]?[cx.sD].Item2;
             cx.done = ObTree.Empty;
-            for (var b = ids.First(); b != null; b = b.Next())
+            for (var b = ids?.First(); b != null; b = b.Next())
             {
                 var c = b.key(); // a view column id
                 var vx = b.value()[cx.sD].Item1;
                 var qx = cx.defs[(c, cx.sD)].Item1; // a reference in q to this
                 if (vx == qx)
                     continue;
-                if (qx.dp >= 0)
+                if (qx.dp >= 0 && qx.sd >= vx.sd &&  // substitute the references for the instance columns
+                        cx.obs[qx.dp] is SqlValue ov &&
+                        cx.obs[vx.dp] is SqlValue tv)
                 {
-                    if (qx.sd >= vx.sd)  // substitute the references for the instance columns
-                    {
-                        var ov = cx.obs[qx.dp];
-                        var tv = cx.obs[vx.dp];
-                        var nv = tv.Relocate(qx.dp);
-                        cx.Replace(ov, nv);
-                        cx.Replace(tv, nv);
-                        cx.undefined -= qx.dp;
-                    }
+                    var nv = tv.Relocate(qx.dp);
+                    cx.Replace(ov, nv);
+                    cx.Replace(tv, nv);
+                    cx.undefined -= qx.dp;
                 }
                 if (!cx.obs.Contains(qx.dp))
                     cx.uids += (qx.dp, vx.dp);
-            } 
+            }
             for (var b = cs?.First(); b != null; b = b.Next())
             {
-                var iv= b.value();
-                if (cx.defs.Contains(iv.ident))
+                var iv = b.value();
+                if (cx.defs.Contains(iv.ident) && cx.defs[iv.ident]?[cx.sD].Item1.dp is long sp &&
+                    cx.obs[cx.uids[sp] ?? sp] is SqlValue so)
                 {
-                    var sp = cx.defs[iv.ident][cx.sD].Item1.dp;
-                    var so = cx.obs[cx.uids[sp]??sp];
                     cx.Replace(so, so.Relocate(iv.iix.dp));
                     if (!cx.obs.Contains(sp))
                         cx.uids += (sp, iv.iix.dp);
-                } 
+                }
             }
             cx.instDFirst = -1L;
-            var t = framing.obs.Last().key();
-            if (cx.parse == ExecuteStatus.Obey)
+            if (cx.db != null && framing.obs.Last()?.key() is long t)
             {
-                if (t >= cx.nextHeap)
-                    cx.nextHeap = t + 1;
+                if (cx.parse == ExecuteStatus.Obey)
+                {
+                    if (t >= cx.nextHeap)
+                        cx.nextHeap = t + 1;
+                }
+                else if (t >= cx.db.nextStmt)
+                    cx.db += (Database.NextStmt, t + 1);
             }
-            else if (t >= cx.db.nextStmt)
-                cx.db += (Database.NextStmt,t + 1);
             vi += (_Domain,dt);
     //        cx.defs = on;
             cx.done = od;
-            return vi.RowSets(vn, cx, (Domain)cx._Ob(dt), vi.viewTable);
+            return vi.RowSets(vn, cx, dv, vi.viewTable);
         }
         /// <summary>
         /// Triggered on the complete set if a view is referenced.
@@ -174,9 +177,9 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx"></param>
         internal override RowSet RowSets(Ident vn,Context cx,Domain q,long fm,
-            Grant.Privilege pr=Grant.Privilege.Select, string a=null)
+            Grant.Privilege pr=Grant.Privilege.Select, string? a=null)
         {
-            var ts = (RowSet)cx.obs[result];
+            var ts = (RowSet?)cx.obs[result] ?? throw new DBException("42105");
             var m = new BTree<long, object>(ObInfo.Name, vn.ident);
             if (a != null)
                 m += (_Alias, a);
@@ -191,9 +194,10 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal override TRow RoleClassValue(Context cx,DBObject from, ABookmark<long, object> _enu)
         {
-            var md = _enu.value() as View;
-            var mi = md.infos[cx.role.defpos];
-            var dm = cx._Dom(md);
+            if (cx.db.role is not Role ro || _enu.value() is not View md ||
+                    cx._Dom(md) is not Domain dm || md.infos[ro.defpos] is not ObInfo mi
+                    || mi.name==null)
+                throw new DBException("42105");
             var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
             sb.Append("\r\n[Schema("); sb.Append(from.lastChange); sb.Append(")]");
             sb.Append("\r\n/// <summary>\r\n");
@@ -217,15 +221,16 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal override TRow RoleJavaValue(Context cx, DBObject from, ABookmark<long, object> _enu)
         {
-            var md = _enu.value() as View;
-            var dm = cx._Dom(md);
-            var mi = md.infos[cx.role.defpos];
+            if (cx.db.role is not Role ro || _enu.value() is not View md ||
+                    cx._Dom(md) is not Domain dm || md.infos[ro.defpos] is not ObInfo mi
+                    || mi.name == null || cx.db.user is not User ud)
+                throw new DBException("42105");
             var sb = new StringBuilder();
             sb.Append("\r\n/* \r\n * Class "); sb.Append(mi.name); sb.Append(".java\r\n");
             sb.Append("import org.pyrrhodb.*;\r\n");
             sb.Append("\r\n@Schema("); sb.Append(from.lastChange); sb.Append(")");
-            sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(cx.db.user.name); sb.Append("\r\n */");
-            sb.Append("\r\n * from Database " + cx.db.name + ", Role " + cx.db.role.name + "\r\n");
+            sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n */");
+            sb.Append("\r\n * from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
             if (mi.description != "")
                 sb.Append(" * " + mi.description + "\r\n");
             sb.Append(" */\r\n");
@@ -245,13 +250,14 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal override TRow RolePythonValue(Context cx, DBObject from, ABookmark<long, object> _enu)
         {
-            var md = _enu.value() as View;
-            var dm = cx._Dom(md);
-            var mi = md.infos[cx.role.defpos];
+            if (cx.db.role is not Role ro || _enu.value() is not View md ||
+                    cx._Dom(md) is not Domain dm || md.infos[ro.defpos] is not ObInfo mi
+                    || mi.name == null)
+                throw new DBException("42105");
             var sb = new StringBuilder();
             sb.Append("# "); sb.Append(mi.name); sb.Append(" Created on ");
             sb.Append(DateTime.Now);
-            sb.Append("\r\n# from Database " + cx.db.name + ", Role " + cx.db.role.name + "\r\n");
+            sb.Append("\r\n# from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
             if (mi.description != "")
                 sb.Append("# " + mi.description + "\r\n");
             sb.Append("class " + mi.name + ":\r\n");
@@ -272,9 +278,9 @@ namespace Pyrrho.Level3
         {
             var i = 0;
             for (var b = dt.rowType.First();b!=null;b=b.Next(),i++)
-            {
-                var c = cx._Ob(b.value()).infos[cx.role.defpos];
-                var cd = cx._Dom(b.value());
+             if (cx.role is Role ro && cx._Ob(b.value()) is DBObject ob && 
+                    ob.infos[ro.defpos] is ObInfo c && c.name!=null){
+                var cd = cx._Dom(b.value())??throw new DBException("42105");
                 var n = c.name.Replace('.', '_');
                 var tn = c.name;
                 if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
@@ -290,22 +296,21 @@ namespace Pyrrho.Level3
                 sb.Append("  public " + tn + " " + n + ";\r\n");
             }
             i = 0;
-            for (var b=dt.rowType.First();b!=null;b=b.Next(),i++)
-            {
-                var c = cx._Ob(b.value()).infos[cx.role.defpos];
-                var cd = cx._Dom(b.value());
-                if (cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
-                    continue;
-                cd = cd.elType;
-                var tn = c.name;
-                if (tn != null)
-                    sb.Append("/* Delete this declaration of class " + tn + " if your app declares it somewhere else */\r\n");
-                else
-                    tn += "_T" + i;
-                sb.Append("  public class " + tn + " extends Versioned {\r\n");
-                DisplayJType(cx, cd, sb);
-                sb.Append("  }\r\n");
-            }
+            for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
+                if (cx.role is  Role ro && cx._Ob(b.value()) is DBObject ob && 
+                    ob.infos[ro.defpos] is ObInfo ci && cx._Dom(ob) is Domain cd &&
+                    (cd.kind==Sqlx.ARRAY || cd.kind==Sqlx.MULTISET))
+                {
+                    var ce = cd.elType;
+                    var tn = ci.name;
+                    if (tn != null)
+                        sb.Append("/* Delete this declaration of class " + tn + " if your app declares it somewhere else */\r\n");
+                    else
+                        tn += "_T" + i;
+                    sb.Append("  public class " + tn + " extends Versioned {\r\n");
+                    DisplayJType(cx, ce, sb);
+                    sb.Append("  }\r\n");
+                }
         }
         /// <summary>
         /// API development support: generate the Python type information for a field 
@@ -316,27 +321,31 @@ namespace Pyrrho.Level3
         static void DisplayPType(Context cx,Domain dt, StringBuilder sb)
         {
             var i = 0;
-            for (var b=dt.rowType.First();b!=null;b=b.Next(),i++)
-            {
-                var p = b.value();
-                var c = cx._Ob(p).infos[cx.role.defpos];
-                var cd = dt.representation[p];
-                var n = c.name.Replace('.', '_');
-                var tn = c.name;
-                if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
-                    tn = cd.SystemType.Name;
-                if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET) // ??
+            for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
+                if (cx.role != null && cx._Ob(b.value()) is DBObject oc && 
+                    oc.infos[cx.role.defpos] is ObInfo c && c.name!=null &&
+                    dt.representation[b.value()] is Domain cd)
                 {
-                    if (tn == "[]")
-                        tn = "_T" + i + "[]";
-                    if (n.EndsWith("("))
-                        n = "_F" + i;
+                    var n = c.name.Replace('.', '_');
+                    var tn = c.name;
+                    if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
+                        tn = cd.SystemType.Name;
+                    if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET) // ??
+                    {
+                        if (tn == "[]")
+                            tn = "_T" + i + "[]";
+                        if (n.EndsWith("("))
+                            n = "_F" + i;
+                    }
+                    sb.Append("  self." + n + " = " + cd.defaultValue + "\r\n");
                 }
-                sb.Append("  self." + n + " = " + cd.defaultValue+ "\r\n");
-            }
         }
         internal override void Modify(Context cx, Modify m, long p)
         {
+            if (cx.db == null)
+                throw new PEException("PE48181");
+            if (m.source == null)
+                throw new DBException("42000");
             cx.db = cx.db + (this + (ViewDef, m.source.ident), p);
         }
         internal override Basis New(BTree<long, object> m)
@@ -356,14 +365,11 @@ namespace Pyrrho.Level3
         internal override Database Drop(Database d, Database nd, long p)
         {
             for (var b = d.roles.First(); b != null; b = b.Next())
-            {
-                var ro = (Role)d.objects[b.value()];
-                if (infos[ro.defpos] is ObInfo oi)
+                if (d.objects[b.value()] is Role ro && infos[ro.defpos] is ObInfo oi && oi.name!=null)
                 {
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
                     nd += (ro, p);
                 }
-            }
             return base.Drop(d, nd, p);
         }
         /// <summary>
@@ -399,18 +405,18 @@ namespace Pyrrho.Level3
             NamesMap = -399, // CTree<long,string> SqlValue (including exports)
             UsingTableRowSet = -460, // long TableRowSet
             ViewStruct = -386;// long Domain
-        internal string nm => (string)mem[ClientName];
-        internal string pw => (string)mem[ClientPassword]; // deprecated
+        internal string? nm => (string?)mem[ClientName];
+        internal string? pw => (string?)mem[ClientPassword]; // deprecated
         internal long viewStruct => (long)(mem[ViewStruct]??-1L);
-        internal string mime => (string)mem[Mime];
-        internal string clientName => (string)mem[ClientName];
-        internal string clientPassword => (string)mem[ClientPassword];
+        internal string? mime => (string?)mem[Mime];
+        internal string? clientName => (string?)mem[ClientName];
+        internal string? clientPassword => (string?)mem[ClientPassword];
         internal long usingTableRowSet => (long)(mem[UsingTableRowSet]??-1L);
-        internal string name => (string)mem[ObInfo.Name];
+        internal string name => (string)(mem[ObInfo.Name]??"");
         internal CTree<string,long> names =>
-            (CTree<string,long>)mem[ObInfo.Names] ?? CTree<string,long>.Empty;
+            (CTree<string,long>?)mem[ObInfo.Names] ?? CTree<string,long>.Empty;
         internal CTree<long, string> namesMap =>
-            (CTree<long, string>)mem[NamesMap] ?? CTree<long, string>.Empty;
+            (CTree<long, string>?)mem[NamesMap] ?? CTree<long, string>.Empty;
         /// <summary>
         /// Constructor: a RestView from level 2
         /// </summary>
@@ -419,34 +425,36 @@ namespace Pyrrho.Level3
         /// <param name="ow">the owner</param>
         /// <param name="rs">the list of grantees</param>
         public RestView(PRestView pv,Context cx) : base(pv,cx,_Mem(pv,cx,
-            BTree<long,object>.Empty
+            BTree<long, object>.Empty
             +(ViewStruct,pv.structpos)
             +(UsingTableRowSet,pv.usingTableRowSet)+(ViewTable,pv.structpos)
-            +(ClientName,pv.rname)+(ClientPassword,pv.rpass)
             +(ViewPpos,pv.ppos)+(Infos,new BTree<long,ObInfo>(cx.role.defpos,new ObInfo(pv.name)))
             +(ObInfo.Names, pv.names)+(NamesMap,pv.namesMap)
             +(_Framing,pv.framing)))
         { }
         protected RestView(long dp, BTree<long, object> m) : base(dp, m) 
         { }
-        static BTree<long,object> _Mem(PRestView pv,Context cx,BTree<long,object> m)
+        static BTree<long, object> _Mem(PRestView pv, Context cx, BTree<long, object> m)
         {
             var vc = BTree<string, long>.Empty;
             var d = 2;
-            Domain dm = null;
-            for (var fb = pv.framing.obs.First(); dm == null; fb = fb.Next())
+            Domain? dm = null;
+            for (var fb = pv.framing.obs.First(); fb != null; fb = fb.Next())
                 if (fb.value() is Domain dd && dd.kind == Sqlx.VIEW)
                     dm = dd;
-            m += (_Domain, dm.defpos);
-            var tb = (Table)cx._Ob(pv.structpos);
+            if (dm != null)
+                m += (_Domain, dm.defpos);
+            var tb = (Table)(cx._Ob(pv.structpos) ?? throw new DBException("42105"));
             d = Math.Max(d, tb.depth);
-            for (var b = cx._Dom(tb).rowType.First(); b != null; 
+            for (var b = cx._Dom(tb)?.rowType.First(); b != null;
                 b = b.Next())
-            {
-                var c = (SqlValue)cx.obs[b.value()];
-                vc += (c.name, b.value());
-            }
+                if (cx.obs[b.value()] is SqlValue c && c.name != null)
+                    vc += (c.name, b.value());
             m += (_Depth, d);
+            if (pv.rname != null)
+                m += (ClientName, pv.rname);
+            if (pv.rpass != null)
+                m += (ClientPassword, pv.rpass);
             return m;
         }
         internal override Basis New(BTree<long, object> m)
@@ -459,13 +467,15 @@ namespace Pyrrho.Level3
                 return (m == mem) ? this : (RestView)New(m);
             return cx.Add(new RestView(cx.GetUid(), m));
         }
-        internal override void Add(Context cx, PMetadata pm, long p)
+        internal override DBObject Add(Context cx, PMetadata pm, long p)
         {
             var md = pm.Metadata();
             var oi = (infos[cx.role.defpos]??new ObInfo(name))
                 +(ObInfo._Metadata,md)
                 +(ObInfo.SchemaKey, p);
-            cx.db += (this + (Infos, infos+(cx.role.defpos,oi)),p);
+            var r = cx.Add(this + (Infos, infos + (cx.role.defpos, oi)));
+            cx.db += (r,p);
+            return r;
         }
         public static RestView operator +(RestView r, (long, object) x)
         {
@@ -512,15 +522,21 @@ namespace Pyrrho.Level3
         /// <param name="q">The global select list if provided</param>
         /// <param name="cs">The insert columns if provided</param>
         /// <returns>A RestRowSet or RestRowSetUsing</returns>
-        internal override DBObject Instance(long lp, Context cx, BList<Ident> cs = null)
+        internal override DBObject Instance(long lp, Context cx, BList<Ident>? cs = null)
         {
-            var r = (RowSet)base.Instance(lp,cx, cs);
-            var rr = (r is RestRowSetUsing ru)?(RestRowSet)cx.obs[ru.template]:(RestRowSet)r;
+            var r = (RowSet)base.Instance(lp, cx, cs);
+            var rr = (r is RestRowSetUsing ru) ? (RestRowSet)(cx.obs[ru.template] ?? throw new DBException("42105")) : (RestRowSet)r;
             var mf = CTree<string, SqlValue>.Empty;
+            var ns =CTree<string, long>.Empty;
             for (var b = rr.namesMap.First(); b != null; b = b.Next())
-                mf += (b.value(), (SqlValue)cx.obs[b.key()]);
-            for (var b = cx._Dom(r).rowType.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()] is SqlValue s)
+                if (cx.obs[b.key()] is SqlValue s)
+                {
+                    mf += (b.value(), s);
+                    ns += (b.value(), b.key());
+                }
+            r += (ObInfo.Names, ns);
+            for (var b = cx._Dom(r)?.rowType.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is SqlValue s && s.name!=null)
                 {
                     if (mf[s.name] is SqlValue so
                       && so.defpos != s.defpos)
@@ -530,37 +546,32 @@ namespace Pyrrho.Level3
                         cx.Replace(s, so);
                     }
                     else
-                    {
                         for (var c = s.Needs(cx).First(); c != null; c = c.Next())
-                        {
-                            var sp = (SqlValue)cx.obs[c.key()];
-                            if (mf[sp.name] is SqlValue sn
-                              && sp.defpos != sn.defpos)
+                            if (cx.obs[c.key()] is SqlValue sp && sp.name!=null && mf[sp.name] is SqlValue sn
+                                  && sp.defpos != sn.defpos && sn.name!=null)
                             {
                                 cx.Add(sn);
                                 cx.Add(new SqlCopy(sp.defpos, cx, sn.name, sn.from, sn));
                                 cx.Replace(sp, sn);
                             }
-                        }
-                    }
                 }
-            cx._Add((Table)cx.db.objects[viewTable]);
+            cx._Add((Table)(cx.db.objects[viewTable]??throw new DBException("42105")));
             return cx.Add(r);
         }
         internal override RowSet RowSets(Ident id,Context cx, Domain d, long fm,
-            Grant.Privilege pr=Grant.Privilege.Select,string a=null) 
+            Grant.Privilege pr=Grant.Privilege.Select,string? a=null) 
         {
             var ix = new Iix(id.iix, cx.GetUid());
             var rrs = new RestRowSet(ix, cx, this, d);
             InstanceRowSet irs = rrs;
             if (usingTableRowSet >= 0)
                 irs = new RestRowSetUsing(cx.GetIid(), cx, this, rrs.defpos,
-                    (TableRowSet)cx.obs[usingTableRowSet],d);
+                    (TableRowSet)(cx.obs[usingTableRowSet]??throw new DBException("42105")),d);
             var m = irs.mem;
             var rt = irs.rsTargets;
             var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
             var tn = id.ident; // the object name
-            var dm = (Domain)cx.obs[(long)m[_Domain]];
+            var dm = (Domain)(cx.obs[(long)(m[_Domain]??-1L)] ?? throw new DBException("42105"));
             var fa = (pr == Grant.Privilege.Select) ? Assertions.None : Assertions.AssignTarget;
             fa |= irs.asserts & Assertions.SpecificRows;
             m = m + (ObInfo.Name, tn)
@@ -571,7 +582,7 @@ namespace Pyrrho.Level3
                    + (_Depth, Depth(dm, irs));
             if (a != null)
                 m += (_Alias, a);
-            if (irs.keys != CList<long>.Empty)
+            if (irs.keys != Domain.Row)
                 m += (Index.Keys, irs.keys);
             irs = (InstanceRowSet)irs.Apply(m, cx); 
             cx.UpdateDefs(id, irs, a);
@@ -591,14 +602,15 @@ namespace Pyrrho.Level3
         internal override TRow RoleClassValue(Context cx, DBObject from,
             ABookmark<long, object> _enu)
         {
-            var dm = cx._Dom(this);
-            var tb = (Table)cx.db.objects[dm.structure];
-            var ro = cx.db.role;
-            var md = infos[ro.defpos];
+            if (cx._Dom(this) is not Domain dm || cx._Dom(from) is not Domain df || cx.role == null) 
+                throw new DBException("42105");
+            var tb = (Table)(cx.db.objects[dm.structure] ?? throw new DBException("42105"));
+            var ro = cx.role;
+            var md = infos[ro.defpos] ?? throw new DBException("42105");
             cx.obs += framing.obs;
-            dm = cx._Dom(tb);
+            dm = cx._Dom(tb) ?? throw new DBException("42105");
             var versioned = md.metadata.Contains(Sqlx.ENTITY);
-            var key = tb.BuildKey(cx, out CList<long> keys);
+            var key = tb.BuildKey(cx, out Domain keys);
             var fields = CTree<string, bool>.Empty;
             var sb = new StringBuilder("\r\nusing System;\r\nusing Pyrrho;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
@@ -617,10 +629,10 @@ namespace Pyrrho.Level3
                 if (keys != null)
                 {
                     int j;
-                    for (j = 0; j < keys.Count; j++)
+                    for (j = 0; j < keys.Length; j++)
                         if (keys[j] == p)
                             break;
-                    if (j < keys.Count)
+                    if (j < keys.Length)
                         sb.Append("  [Key(" + j + ")]\r\n");
                 }
                 for (var d = tb.indexes.First(); d != null; d = d.Next())
@@ -637,8 +649,7 @@ namespace Pyrrho.Level3
                                         tn = "Int64";
                         }
                 dt.FieldType(cx, sb);
-                var ci = cx._Ob(p).infos[cx.role.defpos];
-                if (ci != null)
+                if (cx._Ob(p) is DBObject oc && oc.infos[cx.role.defpos] is ObInfo ci && ci.name!=null)
                 {
                     fields += (ci.name, true);
                     for (var d = ci.metadata.First(); d != null; d = d.Next())
@@ -653,14 +664,15 @@ namespace Pyrrho.Level3
                         sb.Append("  // " + ci.description + "\r\n");
                 }
                 else
-                    fields += (cx.obs[p].infos[cx.role.defpos].name, true);
+                    fields += (cx.NameFor(p), true);
                 sb.Append("  public " + tn + " " + tb.NameFor(cx) + ";\r\n");
             }
             for (var b = tb.indexes.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
-                {
-                    var x = (Index)(cx.obs[c.key()] ?? cx.db.objects[c.key()]);
-                    if (x.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+                    if (cx._Ob(c.key()) is Index x && x.flags.HasFlag(PIndex.ConstraintType.ForeignKey)
+                           && cx.db.objects[x.refindexdefpos] is Index rx
+                           &&  cx._Ob(rx.tabledefpos) is DBObject ot && ot.infos[cx.role.defpos] is ObInfo rt
+                           && rt.metadata.Contains(Sqlx.ENTITY) && rt.name!=null)
                     {
                         // many-one relationship
                         var sa = new StringBuilder();
@@ -670,108 +682,97 @@ namespace Pyrrho.Level3
                             sa.Append(cm); cm = ",";
                             sa.Append(cx.NameFor(d.value()));
                         }
-                        var rx = (Index)cx.db.objects[x.refindexdefpos];
-                        var rt = cx._Ob(rx.tabledefpos).infos[cx.role.defpos];
-                        if (!rt.metadata.Contains(Sqlx.ENTITY))
-                            continue;
-                        var rn = tb.ToCamel(rt.name);
+                        var rn = Table.ToCamel(rt.name);
                         for (var i = 0; fields.Contains(rn); i++)
-                            rn = tb.ToCamel(rt.name) + i;
+                            rn = Table.ToCamel(rt.name) + i;
                         fields += (rn, true);
                         sb.Append("  public " + rt.name + " " + rn
                             + "=> conn.FindOne<" + rt.name + ">(" + sa.ToString() + ");\r\n");
                     }
-                }
             for (var b = tb.rindexes.First(); b != null; b = b.Next())
-            {
-                var rt = cx._Ob(b.key()).infos[cx.role.defpos];
-                if (rt.metadata.Contains(Sqlx.ENTITY))
+                if (cx.role!=null && cx._Ob(b.key()) is DBObject ot && 
+                    ot.infos[cx.role.defpos] is ObInfo rt && rt.name!=null)
                 {
-                    var tt = (Table)cx.db.objects[b.key()];
-                    for (var c = b.value().First(); c != null; c = c.Next())
-                    {
-                        var sa = new StringBuilder();
-                        var cm = "(\"";
-                        var rn = tb.ToCamel(rt.name);
-                        for (var i = 0; fields.Contains(rn); i++)
-                            rn = tb.ToCamel(rt.name) + i;
-                        fields += (rn, true);
-                        var x = tt.FindIndex(cx.db, c.key())?[0];
-                        if (x != null)
-                        // one-one relationship
+                    if (rt.metadata.Contains(Sqlx.ENTITY) &&
+                        cx.db.objects[b.key()] is Table tt)
+                        for (var c = b.value().First(); c != null; c = c.Next())
                         {
-                            cm = "";
-                            for (var bb = c.value().First(); bb != null; bb = bb.Next())
+                            var sa = new StringBuilder();
+                            var cm = "(\"";
+                            var rn = Table.ToCamel(rt.name);
+                            for (var i = 0; fields.Contains(rn); i++)
+                                rn = Table.ToCamel(rt.name) + i;
+                            fields += (rn, true);
+                            var x = tt.FindIndex(cx.db, c.key())?[0];
+                            if (x != null)
+                            // one-one relationship
                             {
-                                sa.Append(cm); cm = ",";
-                                var vi = cx._Ob(bb.value()).infos[cx.role.defpos];
-                                sa.Append(vi.name);
-                            }
-                            sb.Append("  public " + rt.name + " " + rn
-                                + "s => conn.FindOne<" + rt.name + ">(" + sa.ToString() + ");\r\n");
-                            continue;
-                        }
-                        // one-many relationship
-                        var rb = c.value().First();
-                        for (var xb = c.key().First(); xb != null && rb != null; xb = xb.Next(), rb = rb.Next())
-                        {
-                            sa.Append(cm); cm = "),(\"";
-                            sa.Append(cx.NameFor(xb.value())); sa.Append("\",");
-                            sa.Append(cx.NameFor(rb.value()));
-                        }
-                        sa.Append(")");
-                        sb.Append("  public " + rt.name + "[] " + rn
-                            + "s => conn.FindWith<" + rt.name + ">(" + sa.ToString() + ");\r\n");
-                    }
-                }
-                else //  e.g. this is Brand
-                {
-                    var pt = (Table)cx.db.objects[b.key()]; // auxiliary table e.g. BrandSupplier
-                    for (var d = pt.indexes.First(); d != null; d = d.Next())
-                        for (var e = d.value().First(); e != null; e = e.Next())
-                        {
-                            var px = (Index)cx.db.objects[e.key()];
-                            if (px.reftabledefpos == defpos)
+                                cm = "";
+                                for (var bb = c.value().First(); bb != null; bb = bb.Next())
+                                    if (cx._Ob(bb.value()) is DBObject vo && vo.infos[cx.role.defpos] is ObInfo vi)
+                                    {
+                                        sa.Append(cm); cm = ",";
+                                        sa.Append(vi.name);
+                                    }
+                                sb.Append("  public " + rt.name + " " + rn
+                                    + "s => conn.FindOne<" + rt.name + ">(" + sa.ToString() + ");\r\n");
                                 continue;
-                            // many-many relationship 
-                            var tt = (Table)cx.db.objects[px.reftabledefpos]; // e.g. Supplier
-                            var ti = tb.infos[cx.role.defpos];
-                            if (!ti.metadata.Contains(Sqlx.ENTITY))
-                                continue;
-                            var tx = tt.FindPrimaryIndex(cx);
-                            var sk = new StringBuilder(); // e.g. Supplier primary key
-                            var cm = "\\\"";
-                            for (var c = tx.keys.First(); c != null; c = c.Next())
-                            {
-                                sk.Append(cm); cm = "\\\",\\\"";
-                                var ci = cx._Ob(c.value()).infos[cx.role.defpos];
-                                sk.Append(ci.name);
                             }
-                            sk.Append("\\\"");
-                            var sa = new StringBuilder(); // e.g. BrandSupplier.Brand = Brand
-                            cm = "\\\"";
-                            var rb = px.keys.First();
-                            for (var xb = keys.First(); xb != null && rb != null;
-                                xb = xb.Next(), rb = rb.Next())
+                            // one-many relationship
+                            var rb = c.value().First();
+                            for (var xb = c.key().First(); xb != null && rb != null; xb = xb.Next(), rb = rb.Next())
                             {
-                                sa.Append(cm); cm = "\\\" and \\\"";
-                                sa.Append(cx.NameFor(xb.value())); sa.Append("\\\"=\\\"");
+                                sa.Append(cm); cm = "),(\"";
+                                sa.Append(cx.NameFor(xb.value())); sa.Append("\",");
                                 sa.Append(cx.NameFor(rb.value()));
                             }
-                            sa.Append("\\\"");
-                            var rn = tt.ToCamel(rt.name);
-                            for (var i = 0; fields.Contains(rn); i++)
-                                rn = tt.ToCamel(rt.name) + i;
-                            fields += (rn, true);
-                            sb.Append("  public " + ti.name + "[] " + rn
-                                + "s => conn.FindIn<" + ti.name + ">(\"select "
-                                + sk.ToString() + " from \\\"" + rt.name + "\\\" where "
-                                + sa.ToString() + "\");\r\n");
+                            sa.Append(")");
+                            sb.Append("  public " + rt.name + "[] " + rn
+                                + "s => conn.FindWith<" + rt.name + ">(" + sa.ToString() + ");\r\n");
                         }
+                    else //  e.g. this is Brand
+                    if (cx.db.objects[b.key()] is Table pt) // auxiliary table e.g. BrandSupplier
+                        for (var d = pt.indexes.First(); d != null; d = d.Next())
+                            for (var e = d.value().First(); e != null; e = e.Next())
+                                if (cx.db.objects[e.key()] is Index px && px.tabledefpos != defpos &&
+                                    // many-many relationship 
+                                    cx.db.objects[px.reftabledefpos] is Table tu && // e.g. Supplier
+                                    cx.role!=null && tb.infos[cx.role.defpos] is ObInfo ti &&
+                                    ti.metadata.Contains(Sqlx.ENTITY) && tu.FindPrimaryIndex(cx) is Level3.Index tx)
+                                {
+                                    var sk = new StringBuilder(); // e.g. Supplier primary key
+                                    var cm = "\\\"";
+                                    for (var c = tx.keys.First(); c != null; c = c.Next())
+                                        if (cx.role != null && cx._Ob(c.value()) is DBObject oc &&
+                                            oc.infos[cx.role.defpos] is ObInfo ci)
+                                        {
+                                            sk.Append(cm); cm = "\\\",\\\"";
+                                            sk.Append(ci.name);
+                                        }
+                                    sk.Append("\\\"");
+                                    var sa = new StringBuilder(); // e.g. BrandSupplier.Brand = Brand
+                                    cm = "\\\"";
+                                    var rb = px.keys.First();
+                                    for (var xb = keys?.First(); xb != null && rb != null;
+                                        xb = xb.Next(), rb = rb.Next())
+                                    {
+                                        sa.Append(cm); cm = "\\\" and \\\"";
+                                        sa.Append(cx.NameFor(xb.value())); sa.Append("\\\"=\\\"");
+                                        sa.Append(cx.NameFor(rb.value()));
+                                    }
+                                    sa.Append("\\\"");
+                                    var rn = Table.ToCamel(rt.name);
+                                    for (var i = 0; fields.Contains(rn); i++)
+                                        rn = Table.ToCamel(rt.name) + i;
+                                    fields += (rn, true);
+                                    sb.Append("  public " + ti.name + "[] " + rn
+                                        + "s => conn.FindIn<" + ti.name + ">(\"select "
+                                        + sk.ToString() + " from \\\"" + rt.name + "\\\" where "
+                                        + sa.ToString() + "\");\r\n");
+                                }
                 }
-            }
             sb.Append("}\r\n");
-            return new TRow(cx, cx._Dom(from), new TChar(md.name), new TChar(key),
+            return new TRow(cx, df, new TChar(md.name??""), new TChar(key),
                 new TChar(sb.ToString()));
         }
         public override string ToString()

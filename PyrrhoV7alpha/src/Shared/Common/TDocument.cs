@@ -38,7 +38,7 @@ namespace Pyrrho.Common
         {
             content = c; names = n;
         }
-        internal TDocument(Context cx,TRow r, string id = null) :this()
+        internal TDocument(Context cx,TRow r, string? id = null) :this()
         {
             var c = CList<(string, TypedValue)>.Empty;
             var n = CTree<string, int>.Empty;
@@ -47,13 +47,13 @@ namespace Pyrrho.Common
                 c += (_id, new TChar(id));
                 n += (_id, 0);
             }
-            for (var b=r.dataType.rowType.First();b!=null;b=b.Next())
-            {
-                var v = (SqlValue)cx.obs[b.value()];
-                var vi = v.infos[cx.role.defpos];
-                n += (vi.name, (int)n.Count);
-                c += (vi.name, r[b.value()]);
-            }
+            for (var b = r.dataType.rowType.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is SqlValue v &&
+                        v.infos[cx.role.defpos] is ObInfo vi && vi.name is not null)
+                {
+                    n += (vi.name, (int)n.Count);
+                    c += (vi.name, r[b.value()]);
+                }
             content = c;
             names = n;
         }
@@ -79,13 +79,9 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException();
         }
-        internal override object Val()
+        internal ABookmark<int,(string,TypedValue)>? First()
         {
-            return ToString();
-        }
-        internal ABookmark<int,(string,TypedValue)> First()
-        {
-            return content.First();
+            return content?.First();
         }
         /// <summary>
         /// This ghastly method is only used when importing objects of the Document class.
@@ -281,14 +277,14 @@ namespace Pyrrho.Common
                 {
                     case Sqlx.INT:
                     case Sqlx.INTEGER:
-                        tv = new TInteger(r.sumInteger);
-                        if (tv.IsNull)
+                        tv = new TInteger(r.sumInteger ?? throw new PEException("PE0810"));
+                        if (tv==TNull.Value)
                             tv = new TInt(r.sumLong);
                         break;
                     case Sqlx.REAL:
                         tv = new TReal(r.sum1); break;
                     case Sqlx.NUMERIC:
-                        tv = new TNumeric(r.sumDecimal); break;
+                        tv = new TNumeric(r.sumDecimal ?? throw new PEException("PE0811")); break;
                     case Sqlx.BOOLEAN:
                         tv = TBool.For(r.bval); break;
                 }
@@ -322,9 +318,9 @@ namespace Pyrrho.Common
         internal bool GetBool(string n, bool def)
         {
             var v = this[n] as TBool;
-            if (v == null || !v.value.HasValue)
+            if (v == null || !v.value)
                 return def;
-            return v.value.Value;
+            return v.value;
         }
         internal TDocument Remove(string n)
         {
@@ -350,7 +346,7 @@ namespace Pyrrho.Common
         static int Fields(ref TDocument doc, string s, int i, int n)
         {
             ParseState state = ParseState.StartKey;
-            StringBuilder kb = null;
+            StringBuilder? kb = null;
             char qu = '"';
             while (i < n)
             {
@@ -385,7 +381,7 @@ namespace Pyrrho.Common
                         }
                         if (c == '\\')
                             c = GetEscape(s, n, ref i);
-                        kb.Append(c);
+                        kb?.Append(c);
                         continue;
                     case ParseState.Colon:
                         if (char.IsWhiteSpace(c))
@@ -399,7 +395,7 @@ namespace Pyrrho.Common
                             continue;
                         if (c == ']' && doc.content.Count == 0)
                             return i;
-                        var key = kb.ToString();
+                        var key = kb?.ToString()??"";
                         doc = doc.Add(key, GetValue(key, s, n, ref i).Item2);
                         state = ParseState.Comma;
                         continue;
@@ -617,7 +613,7 @@ namespace Pyrrho.Common
                 {
                     case Sqlx.CONTENT: sb.Append('"'); sb.Append(v); sb.Append('"'); break;
                     case Sqlx.DOCARRAY: sb.Append("[");
-                        var d = v.Item2 as TDocArray;
+                        var d = (TDocArray)v.Item2;
                         var comma = "";
                         for (int i = 0; i < d.Count; i++)
                         {
@@ -670,7 +666,7 @@ namespace Pyrrho.Common
         }
         internal static byte[] GetBytes(TypedValue v)
         {
-            if (v == null || v.IsNull)
+            if (v == TNull.Value)
                 return new byte[0];
             switch (v.dataType.kind)
             {
@@ -683,7 +679,7 @@ namespace Pyrrho.Common
                         var doc = v as TDocument;
                         if (doc == null)
                             doc = new TDocument();
-                        return doc.ToBytes((TDocument)null);
+                        return doc.ToBytes(null);
                     }
                 case Sqlx.DOCARRAY:
                     {
@@ -720,9 +716,9 @@ namespace Pyrrho.Common
                         return r;
                     }
                 case Sqlx.BOOLEAN:
-                    return new byte[] { (byte)(v.ToBool().Value ? 1 : 0) };
+                    return new byte[] { (byte)((v.ToBool() == false)?0:1) };
                 case Sqlx.TIMESTAMP:
-                    return BitConverter.GetBytes(v.ToLong().Value);
+                    return BitConverter.GetBytes(v.ToLong()??-1L);
                 case Sqlx.NUMERIC:
                     return ToBytes(v.ToString());
                 case Sqlx.INTEGER:
@@ -733,7 +729,7 @@ namespace Pyrrho.Common
                             return ToBytes(iv.ToString());
                         return BitConverter.GetBytes((long)iv);
                     }
-                    return BitConverter.GetBytes(v.ToInt().Value);
+                    return BitConverter.GetBytes(v.ToInt()??0);
             }
             return new byte[0];
         }
@@ -751,7 +747,7 @@ namespace Pyrrho.Common
             r[n + 3] = 0;
             return r;
         }
-        internal byte[] ToBytes(TDocument proj)
+        internal byte[] ToBytes(TDocument? proj)
         {
             var r = new List<byte>
             {
@@ -801,11 +797,11 @@ namespace Pyrrho.Common
             {
                 case Sqlx.INTEGER:
                 case Sqlx.INT:
-                    if ((int)fv.Item2.Val() == 0)
+                    if (fv.Item2.ToInteger() is Integer iv && iv==Integer.Zero)
                         return true;
                     break;
                 case Sqlx.REAL:
-                    if ((double)fv.Item2.Val() == 0.0)
+                    if (fv.Item2.ToDouble()== 0.0)
                         return true;
                     break;
                 case Sqlx.Null:
@@ -852,19 +848,19 @@ namespace Pyrrho.Common
             var vb = b[nm];
             if (vb == null)
                 vb = TNull.Value;
-            if (a.IsNull && b.IsNull)
+            if (a == TNull.Value && b == TNull.Value)
                 return 0;
             var ef = a as TDocument;
             if (ef == null)
             {
-                var c = a._CompareTo(vb);
+                var c = a.CompareTo(vb);
                 if (c != 0)
                     return c;
                 return 0;
             }
             for(var eef = ef.content.First();eef != null;eef=eef.Next())
             {
-                var c = a._CompareTo(vb);
+                var c = a.CompareTo(vb);
                 if (c != 0)
                     return c;
             }
@@ -872,7 +868,7 @@ namespace Pyrrho.Common
         }
         internal TDocument Add(string k, Transaction tr, SqlValue c)
         {
-            return Add(k, c.Eval(null));
+            return Add(k, c.Eval(Context._system));
         }
         internal TDocument Add(string n, int v)
         {
@@ -890,24 +886,9 @@ namespace Pyrrho.Common
         {
             return Add(n, new TReal(v));
         }
-        /// <summary>
-        /// When comparing two documents we only consider fields with matching names
-        /// but we also need to watch out for comparison operators
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="obj"></param>
-        /// <returns></returns>
-        public override int _CompareTo(object obj)
-        {
-            return RowSet((TypedValue)obj);
-        }
         public bool Contains(string n)
         {
             return names.Contains(n);
-        }
-        public override bool IsNull
-        {
-            get { return this==Null; }
         }
     }
     /// <summary>
@@ -948,14 +929,14 @@ namespace Pyrrho.Common
                 if (n == ne.value().Item1)
                 {
                     // names match
-                    if (v._CompareTo(ne.value().Item2) != 0)
+                    if (v.CompareTo(ne.value().Item2) != 0)
                     {
                         if (n == "_id") // _id field mismatch
                             goto all;
                         if (v.dataType.kind==Sqlx.DOCUMENT)
                             details+=new Action(m, Verb.Delta, n,
-                                new Delta(v as TDocument,
-                                    ne.value().Item2 as TDocument));
+                                new Delta((TDocument)v,
+                                    (TDocument)ne.value().Item2));
                         else 
                             details+=new Action(m, Verb.Change, n, ne.value().Item2);
                     }
@@ -992,21 +973,12 @@ namespace Pyrrho.Common
                 details+=new Action(m, Verb.Add, ne.value().Item1, ne.value().Item2);
             }
             return;
-        all: details = new BList<Action>(new Action(0, Verb.All, null, now));
+        all: details = new BList<Action>(new Action(0, Verb.All, "", now));
         }
         internal override TypedValue New(Domain t)
         {
             throw new NotImplementedException();
         }
-        internal override object Val()
-        {
-            return details;
-        }
-        public override int _CompareTo(object obj)
-        {
-            throw new NotImplementedException();
-        }
-        public override bool IsNull => throw new NotImplementedException();
         public override string ToString()
         {
             var sb = new StringBuilder();
@@ -1015,6 +987,8 @@ namespace Pyrrho.Common
             {
                 sb.Append(cm); cm = ",";
                 var a = details[i];
+                if (a == null)
+                    break;
                 sb.Append(a.how.ToString());
                 sb.Append(' ');
                 sb.Append(a.name);
@@ -1102,7 +1076,7 @@ namespace Pyrrho.Common
         }
         internal TypedValue this[int i]
         {
-            get { return content[i]; }
+            get { return content[i]??TNull.Value; }
         }
         internal override TypedValue this[string n]
         {
@@ -1115,7 +1089,7 @@ namespace Pyrrho.Common
                     if (e.value() is TDocument d && d.Contains(n))
                             r = r.Add(d[n]);
                 if (r.Count == 1) // yuk
-                    return r.content[0];
+                    return r.content[0]??TNull.Value;
                 return r;
             }
         }
@@ -1163,33 +1137,6 @@ namespace Pyrrho.Common
             }
             sb.Append("]");
             return sb.ToString();
-        }
-        public override int _CompareTo(object obj)
-        {
-            var that = obj as TDocArray;
-            if (that == null)
-                return -1;
-            // array equality
-            var e = content.First();
-            var f = that.content.First();
-            for (; e!=null && f!=null; e = e.Next(), f = f.Next())
-            {
-                var c = e.key().CompareTo(f.key());
-                if (c != 0)
-                    return c;
-                c = e.value()._CompareTo(f.value());
-                if (c != 0)
-                    return c;
-            }
-            return (e!= null) ? 1 : (f!= null) ? -1 : 0;
-        }
-        internal override object Val()
-        {
-            return ToString();
-        }
-        public override bool IsNull
-        {
-            get { return this==Null; }
         }
         internal byte[] ToBytes()
         {

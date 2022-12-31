@@ -5,6 +5,7 @@ using System;
 using System.IO;
 using System.Text;
 using System.Threading;
+using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -39,7 +40,7 @@ namespace Pyrrho.Level2
                 len = n;
             }
         }
-        public Buffer buf = new Buffer();
+        public Buffer buf = new ();
         public virtual int GetBuf(long s)
         {
             throw new NotImplementedException();
@@ -57,6 +58,11 @@ namespace Pyrrho.Level2
             throw new NotImplementedException();
         }
     }
+    class Box 
+    {   
+        public byte[] cont;
+        public Box(byte[] c) { cont = c;  }
+    }
     public class Writer : IOBase
     {
         public Stream file; // shared with Reader(s)
@@ -68,7 +74,7 @@ namespace Pyrrho.Level2
         public long oldStmt; // Where we are with Executables
                              //       public long srcPos,oldStmt,stmtPos; // for Fixing uids
         internal BList<Rvv> rvv = BList<Rvv>.Empty;
-        BList<byte[]> prevBufs = BList<byte[]>.Empty;
+        BList<Box> prevBufs = BList<Box>.Empty;
         internal Context cx; // access the database we are writing to
         internal Writer(Context c, Stream f)
         {
@@ -81,10 +87,11 @@ namespace Pyrrho.Level2
             file.Seek(0, SeekOrigin.End);
             for (var b = prevBufs.First(); b != null; b = b.Next())
             {
-                var bf = b.value();
-                file.Write(bf, 0, Buffer.Size);
+                var bf = b.value().cont;
+                if (bf!=null)
+                    file.Write(bf, 0, Buffer.Size);
             }
-            prevBufs = BList<byte[]>.Empty;
+            prevBufs = BList<Box>.Empty;
             file.Write(buf.buf, 0, buf.pos);
             buf.pos = 0;
         }
@@ -92,7 +99,7 @@ namespace Pyrrho.Level2
         {
             if (buf.pos >= Buffer.Size)
             {
-                prevBufs += buf.buf;
+                prevBufs += new Box(buf.buf);
                 buf.buf = new byte[Buffer.Size];
                 buf.pos = 0;
             }
@@ -128,7 +135,7 @@ namespace Pyrrho.Level2
             for (var i = 0; i < b.Length; i++)
                 WriteByte(b[i]);
         }
-        internal Ident PutIdent(Ident id)
+        internal Ident? PutIdent(Ident? id)
         {
             if (id == null || id.ident == "")
             {
@@ -146,18 +153,22 @@ namespace Pyrrho.Level2
     {
         internal Context context;
         internal Role role;
-        internal User user;
-        internal PTransaction trans = null;
+        internal User? user;
+        internal PTransaction? trans = null;
         public long segment;
-        FileStream file;
+        readonly FileStream file;
         public long limit;
-        internal BTree<long, Physical.Type> log;
+        internal BTree<long, Physical.Type> log = BTree<long,Physical.Type>.Empty;
         public bool locked = false;
         internal Reader(Database db, long p)
         {
-            context = new Context(db);
-            context.parse = ExecuteStatus.Parse;
+            context = new Context(db)
+            {
+                parse = ExecuteStatus.Parse
+            };
             file = db._File();
+            role = db.role;
+            user = (User?)db.objects[db.owner];
             log = db.log;
             limit = file.Length;
             GetBuf(p);
@@ -165,24 +176,30 @@ namespace Pyrrho.Level2
         internal Reader(Context cx)
         {
             var db = cx.db;
-            context = new Context(db);
-            context.parse = ExecuteStatus.Parse;
+            if (db == null)
+                throw new PEException("PE1001");
+            context = new Context(db)
+            {
+                parse = ExecuteStatus.Parse
+            };
             file = db._File();
             log = db.log;
             role = db.role;
-            user = (User)db.objects[db.owner];
+            user = (User?)db.objects[db.owner];
             limit = file.Length;
             GetBuf(db.loadpos);
         }
-        internal Reader(Context cx, long p, PTransaction pt = null)
+        internal Reader(Context cx, long p, PTransaction? pt = null)
         {
             var db = cx.db;
-            context = new Context(db);
-            context.parse = ExecuteStatus.Parse;
+            context = new Context(db)
+            {
+                parse = ExecuteStatus.Parse
+            };
             file = db._File();
             log = db.log;
             role = db.role;
-            user = (User)db.objects[db.owner];
+            user = (User?)db.objects[db.owner];
             limit = file.Length;
             trans = pt;
             GetBuf(p);
@@ -190,86 +207,80 @@ namespace Pyrrho.Level2
         internal Physical Create()
         {
             if (EoF())
-                return null;
+                return new EndOfFile(this);
             Physical.Type tp = (Physical.Type)ReadByte();
-            Physical p;
-            switch (tp)
+            Physical p = tp switch
             {
-                default: throw new PEException("PE35");
-                case Physical.Type.Alter: p = new Alter(this); break;
-                case Physical.Type.Alter2: p = new Alter2(this); break;
-                case Physical.Type.Alter3: p = new Alter3(this); break;
-                case Physical.Type.AlterRowIri: p = new AlterRowIri(this); break;
-                case Physical.Type.Change: p = new Change(this); break;
-                case Physical.Type.Checkpoint: p = new Checkpoint(this); break;
-                case Physical.Type.Curated: p = new Curated(this); break;
-                case Physical.Type.Delete: p = new Delete(this); break;
-                case Physical.Type.Drop: p = new Drop(this); break;
-                case Physical.Type.Edit: p = new Edit(this); break;
-                case Physical.Type.EndOfFile:
-                    p = new EndOfFile(this); break;
-                case Physical.Type.Grant: p = new Grant(this); break;
-                case Physical.Type.Metadata: p = new PMetadata(this); break;
-                case Physical.Type.Modify: p = new Modify(this); break;
-                case Physical.Type.Namespace: p = new Namespace(this); break;
-                case Physical.Type.Ordering: p = new Ordering(this); break;
-                case Physical.Type.PCheck: p = new PCheck(this); break;
-                case Physical.Type.PCheck2: p = new PCheck2(this); break;
-                case Physical.Type.PColumn: p = new PColumn(this); break;
-                case Physical.Type.PColumn2: p = new PColumn2(this); break;
-                case Physical.Type.PColumn3: p = new PColumn3(this); break;
-                case Physical.Type.PDateType: p = new PDateType(this); break;
-                case Physical.Type.PDomain: p = new PDomain(this); break;
-                case Physical.Type.PDomain1: p = new PDomain1(this); break;
-                case Physical.Type.PeriodDef: p = new PPeriodDef(this); break;
-                case Physical.Type.PImportTransaction: p = new PImportTransaction(this); break;
-                case Physical.Type.PIndex: p = new PIndex(this); break;
-                case Physical.Type.PIndex1: p = new PIndex1(this); break;
-                case Physical.Type.PMethod: p = new PMethod(tp, this); break;
-                case Physical.Type.PMethod2: p = new PMethod(tp, this); break;
-                case Physical.Type.PProcedure: p = new PProcedure(tp, this); break;
-                case Physical.Type.PProcedure2: p = new PProcedure(tp, this); break;
-                case Physical.Type.PRole: p = new PRole(this); break;
-                case Physical.Type.PRole1: p = new PRole(this); break;
-                case Physical.Type.PTable: p = new PTable(this); break;
-                case Physical.Type.PTable1: p = new PTable1(this); break;
-                case Physical.Type.PTransaction: p = new PTransaction(this); break;
+                Physical.Type.Alter => new Alter(this),
+                Physical.Type.Alter2 => new Alter2(this),
+                Physical.Type.Alter3 => new Alter3(this),
+                Physical.Type.AlterRowIri => new AlterRowIri(this),
+                Physical.Type.Change => new Change(this),
+                Physical.Type.Checkpoint => new Checkpoint(this),
+                Physical.Type.Curated => new Curated(this),
+                Physical.Type.Delete => new Delete(this),
+                Physical.Type.Drop => new Drop(this),
+                Physical.Type.Edit => new Edit(this),
+                Physical.Type.EndOfFile => new EndOfFile(this),
+                Physical.Type.Grant => new Grant(this),
+                Physical.Type.Metadata => new PMetadata(this),
+                Physical.Type.Modify => new Modify(this),
+                Physical.Type.Namespace => new Namespace(this),
+                Physical.Type.Ordering => new Ordering(this),
+                Physical.Type.PCheck => new PCheck(this),
+                Physical.Type.PCheck2 => new PCheck2(this),
+                Physical.Type.PColumn => new PColumn(this),
+                Physical.Type.PColumn2 => new PColumn2(this),
+                Physical.Type.PColumn3 => new PColumn3(this),
+                Physical.Type.PDateType => new PDateType(this),
+                Physical.Type.PDomain => new PDomain(this),
+                Physical.Type.PDomain1 => new PDomain1(this),
+                Physical.Type.PeriodDef => new PPeriodDef(this),
+                Physical.Type.PIndex => new PIndex(this),
+                Physical.Type.PIndex1 => new PIndex1(this),
+                Physical.Type.PMethod => new PMethod(tp, this),
+                Physical.Type.PMethod2 => new PMethod(tp, this),
+                Physical.Type.PProcedure => new PProcedure(tp, this),
+                Physical.Type.PProcedure2 => new PProcedure(tp, this),
+                Physical.Type.PRole => new PRole(this),
+                Physical.Type.PRole1 => new PRole(this),
+                Physical.Type.PTable => new PTable(this),
+                Physical.Type.PTable1 => new PTable1(this),
+                Physical.Type.PTransaction => new PTransaction(this),
                 //         case Physical.Type.PTransaction2: p = new PTransaction2(this); break;
-                case Physical.Type.PTrigger: p = new PTrigger(this); break;
-                case Physical.Type.PType: p = new PType(this); break;
-                case Physical.Type.PType1: p = new PType1(this); break;
-                case Physical.Type.PUser: p = new PUser(this); break;
-                case Physical.Type.PView: p = new PView(this); break;
-                case Physical.Type.PView1: p = new PView1(this); break; //obsolete
-                case Physical.Type.RestView: p = new PRestView(this); break;
-                case Physical.Type.RestView1: p = new PRestView1(this); break;
-                case Physical.Type.Record: p = new Record(this); break;
-                case Physical.Type.Record1: p = new Record1(this); break;
-                case Physical.Type.Record2: p = new Record2(this); break;
+                Physical.Type.PTrigger => new PTrigger(this),
+                Physical.Type.PType => new PType(this),
+                Physical.Type.PType1 => new PType1(this),
+                Physical.Type.PUser => new PUser(this),
+                Physical.Type.PView => new PView(this),
+                Physical.Type.RestView => new PRestView(this),
+                Physical.Type.RestView1 => new PRestView1(this),
+                Physical.Type.Record => new Record(this),
+                Physical.Type.Record2 => new Record2(this),
                 //          case Physical.Type.Reference: p = new Reference(this); break;
-                case Physical.Type.Revoke: p = new Revoke(this); break;
-                case Physical.Type.Update: p = new Update(this); break;
-                case Physical.Type.Versioning: p = new Versioning(this); break;
+                Physical.Type.Revoke => new Revoke(this),
+                Physical.Type.Update => new Update(this),
+                Physical.Type.Versioning => new Versioning(this),
                 //          case Physical.Type.Reference1: p = new Reference1(this); break;
-                case Physical.Type.ColumnPath: p = new PColumnPath(this); break;
-                case Physical.Type.Metadata2: p = new PMetadata2(this); break;
-                case Physical.Type.PIndex2: p = new PIndex2(this); break;
+                Physical.Type.ColumnPath => new PColumnPath(this),
+                Physical.Type.Metadata2 => new PMetadata2(this),
+                Physical.Type.PIndex2 => new PIndex2(this),
                 //          case Physical.Type.DeleteReference1: p = new DeleteReference1(this); break;
-                case Physical.Type.Authenticate: p = new Authenticate(this); break;
-                case Physical.Type.TriggeredAction: p = new TriggeredAction(this); break;
-                case Physical.Type.Metadata3: p = new PMetadata3(this); break;
-                case Physical.Type.RestView2: p = new PRestView2(this); break;
-                case Physical.Type.Audit: p = new Audit(this); break;
-                case Physical.Type.Classify: p = new Classify(this); break;
-                case Physical.Type.Clearance: p = new Clearance(this); break;
-                case Physical.Type.Enforcement: p = new Enforcement(this); break;
-                case Physical.Type.Record3: p = new Record3(this); break;
-                case Physical.Type.Update1: p = new Update1(this); break;
-                case Physical.Type.Delete1: p = new Delete1(this); break;
-                case Physical.Type.Drop1: p = new Drop1(this); break;
-                case Physical.Type.RefAction: p = new RefAction(this); break;
-        /*        case Physical.Type.VIndex: p = new VIndex(this); break; */
-            }
+                Physical.Type.Authenticate => new Authenticate(this),
+                Physical.Type.TriggeredAction => new TriggeredAction(this),
+                Physical.Type.Metadata3 => new PMetadata3(this),
+                Physical.Type.RestView2 => new PRestView2(this),
+                Physical.Type.Audit => new Audit(this),
+                Physical.Type.Classify => new Classify(this),
+                Physical.Type.Clearance => new Clearance(this),
+                Physical.Type.Enforcement => new Enforcement(this),
+                Physical.Type.Record3 => new Record3(this),
+                Physical.Type.Update1 => new Update1(this),
+                Physical.Type.Delete1 => new Delete1(this),
+                Physical.Type.Drop1 => new Drop1(this),
+                Physical.Type.RefAction => new RefAction(this),
+                _ => throw new PEException("PE35"),
+            };
             p.Deserialise(this);
             return p;
         }
@@ -317,12 +328,13 @@ namespace Pyrrho.Level2
         /// <param name="log"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal (string, Domain) GetColumnDomain(long cp, long p)
+        internal (string, Domain) GetColumnDomain(long cp)
         {
-            var tc = (TableColumn)context.db.objects[cp];
-            var oi = tc.infos[context.role.defpos];
-            var nm = oi.name;
-            return (nm,context._Dom(tc));
+            var tc = (TableColumn?)context.db.objects[cp];
+            if (tc == null)
+                return ("??", Domain.Content);
+            var nm = tc.NameFor(context);
+            return (nm,context._Dom(tc)??throw new PEException("PE3005"));
         }
         internal Integer GetInteger()
         {
@@ -355,7 +367,7 @@ namespace Pyrrho.Level2
                 cs[j] = (byte)ReadByte();
             return Encoding.UTF8.GetString(cs, 0, n);
         }
-        internal Ident GetIdent()
+        internal Ident? GetIdent()
         {
             var p = context.GetIid();
             var s = GetString();
@@ -365,7 +377,7 @@ namespace Pyrrho.Level2
         /// Get a Numeric from the buffer
         /// </summary>
         /// <returns>a new Numeric</returns>
-        internal Common.Numeric GetDecimal()
+        internal Numeric GetDecimal()
         {
             Integer m = GetInteger();
             return new Common.Numeric(m, GetInt());
@@ -440,13 +452,13 @@ namespace Pyrrho.Level2
             segment = GetLong();
             ph.trans = segment;
         }
-        internal DBObject GetObject(long pp)
+        internal DBObject? GetObject(long pp)
         {
-            return (DBObject)context.db.objects[pp];
+            return (DBObject?)context.db.objects[pp];
         }
         internal  void Upd(PColumn3 pc)
         {
-            if (pc.ups != "")
+            if (pc.dataType!=null && pc.ups != "")
                 try
                 {
                     pc.upd = new Parser(context).ParseAssignments(pc.ups, pc.dataType);
@@ -462,7 +474,6 @@ namespace Pyrrho.Level2
         }
         internal void Setup(PDomain pd)
         {
-            TypedValue dv = TNull.Value;
             var ds = pd.domain.defaultString;
             var domain = pd.domain;
             if (ds.Length > 0
@@ -471,7 +482,7 @@ namespace Pyrrho.Level2
             if (ds != "")
                 try
                 {
-                    dv = Domain.For(domain.kind).Parse(context.db.uid, ds, null);
+                    var dv = Domain.For(domain.kind).Parse(context.db.uid, ds, context);
                     domain += (Domain.Default, dv);
                 }
                 catch (Exception) { }
@@ -481,7 +492,7 @@ namespace Pyrrho.Level2
         }
         internal void Setup(Ordering od)
         {
-            od.domain = (Domain)context.db.objects[od.domdefpos];
+            od.domain = (Domain)(context.db.objects[od.domdefpos] ?? throw new PEException("PE3006"));
         }
         internal void Add(Physical ph)
         {

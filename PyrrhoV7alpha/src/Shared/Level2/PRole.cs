@@ -3,6 +3,8 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
 using System.Threading;
+using System.Xml;
+using System.Reflection.Metadata;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -18,20 +20,12 @@ namespace Pyrrho.Level2
 	/// <summary>
 	/// A Role definition
 	/// </summary>
-	internal class PRole: Physical
+	internal class PRole: Defined
 	{
-        /// <summary>
-        /// The name of the Role
-        /// </summary>
-		public string name;
         /// <summary>
         /// The description of the role
         /// </summary>
         public string details = "";
-        public override long Dependent(Writer wr, Transaction tr)
-        {
-            return -1;
-        }
         /// <summary>
         /// Constructor: a Role definition from the Parser
         /// </summary>
@@ -40,16 +34,17 @@ namespace Pyrrho.Level2
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
 		public PRole(string nm,string dt,long pp, Context cx) 
-            : base(Type.PRole,pp,cx)
+            : base(Type.PRole,pp,cx,nm,Role.use|Role.admin) // the role's definer is its administrator by default
 		{
-            name = nm;
             details = dt;
+            infos += (ppos, new ObInfo(nm, Role.use));
         }
         public PRole(Reader rdr) : base(Type.PRole, rdr) { }
         protected PRole(PRole x, Writer wr) : base(x, wr)
         {
-            name = x.name;
             details = x.details;
+            if (wr.cx.role.name == x.name)
+                wr.cx.db += (Database.Role,wr.cx.role+ (DBObject.Infos, infos));
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -72,12 +67,14 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr) 
 		{
-            name = rdr.GetString();
+            // name = rdr.GetString();  will not work here
+            var nm = rdr.GetString();
+            infos = new BTree<long,ObInfo>(rdr.context.role.defpos,new ObInfo(nm,Grant.AllPrivileges));
             if (type == Type.PRole)
                 details = rdr.GetString();
 			base.Deserialise(rdr);
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -98,7 +95,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <returns>the string representation</returns>
 		public override string ToString() { return "PRole "+name; }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             // If this is the first Role to be defined, 
             // it becomes the schema role and also the current role
@@ -107,39 +104,37 @@ namespace Pyrrho.Level2
             if (first) // make the new Role the Schema role, and the definer of all objects so far
             {
                 cx.db += (Database._Schema, nr.defpos);
-                for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
+                for (var b = cx.db.objects.PositionAt(0); b != null && b.key()<Transaction.Analysing; 
+                    b = b.Next())
                 {
                     var k = b.key();
                     var ob = (DBObject)b.value();
                     if (ob is Domain) // but Domains always belong to Database._system._role
                         continue;
                     var os = ob.infos;
-                    var oi = os[-502];
+                    var oi = os[-502]??throw new PEException("PE1410");
                     os -= -502;
                     os += (nr.defpos, oi);
                     cx.db += (k, ob + (DBObject.Definer, nr.defpos)
                           +(DBObject.Infos,os));
                 }
             }
-            // give the current role and current user privileges on the new Role
-            var ri = new ObInfo(name, Role.use|Role.admin);
-            var ru = new ObInfo(name, Role.use);
-            nr += (DBObject.Infos, nr.infos + (cx.role.defpos, ri) + (cx.db._user,ru)
-                +(ppos,ri)); 
-            var ro = cx.db.role;
-            var ns = ro.dbobjects + (name, nr.defpos);
-            ro += (Role.DBObjects, ns);
-            nr += (Role.DBObjects, ns);
-            cx.db = cx.db+(ro,p)+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));
+            cx.db = cx.db+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             if (first)
-                cx.db = cx.db+(DBObject.Definer, nr.defpos)+(Database._Role,nr.defpos);
+            {
+                nr += (DBObject.Definer, nr.defpos);
+                nr += (DBObject.Infos, infos + (nr.defpos, new ObInfo(name, Grant.AllPrivileges)));
+                cx.db = cx.db + (DBObject.Definer, nr.defpos)
+                    + (nr, p);
+            }
+            return nr;
         }
     }
      internal class PMetadata : Physical
      {
-         public string name = null;
+         public string? name = null;
          /// <summary>
          /// column sequence number for view column
          /// </summary>
@@ -155,14 +150,14 @@ namespace Pyrrho.Level2
             if (!Committed(wr,refpos)) return refpos;
             return -1;
         }
-        public PMetadata(string nm, long sq, long ob, CTree<Sqlx,TypedValue> md, long pp, Context cx)
-            : this(Type.Metadata, nm, sq, ob, md, pp, cx) { }
-        public PMetadata(Type t,string nm,long sq,long ob, CTree<Sqlx,TypedValue> md,long pp,Context cx)
-            :base(t,pp,cx)
+        public PMetadata(string nm, long sq, DBObject ob, CTree<Sqlx,TypedValue> md, long pp)
+            : this(Type.Metadata, nm, sq, ob, md, pp) { }
+        public PMetadata(Type t,string nm,long sq,DBObject ob, CTree<Sqlx,TypedValue> md,long pp)
+            :base(t,pp)
         { 
             name = nm;
             seq = sq;
-            defpos = ob;
+            defpos = ob.defpos;
             detail = md;
             iri = md[Sqlx.IRI]?.ToString()??"";
             refpos = md[Sqlx.INVERTS]?.ToLong()??-1L;
@@ -190,7 +185,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
 		{
-            wr.PutString(name.ToString());
+            wr.PutString(name?.ToString()??"");
             wr.PutString(Detail(wr));
             wr.PutString(iri??"");
             wr.PutLong(seq+1); 
@@ -217,14 +212,14 @@ namespace Pyrrho.Level2
         {
             var sb = new StringBuilder();
             for (var b = detail.First(); b != null; b = b.Next())
-                switch(b.key())
+                switch (b.key())
                 {
                     case Sqlx.DESC:
                     case Sqlx.URL:
                         sb.Append(b.key());
-                        sb.Append("'");
+                        sb.Append('\'');
                         sb.Append(b.value());
-                        sb.Append("'");
+                        sb.Append("' ");
                         break;
                     case Sqlx.MIME:
                     case Sqlx.SQLAGENT:
@@ -241,8 +236,9 @@ namespace Pyrrho.Level2
                     case Sqlx.INVERTS:
                         sb.Append(b.key());
                         sb.Append(' ');
-                        var ob = (DBObject)wr.cx.db.objects[b.value().ToLong() ?? -1L];
-                        sb.Append(ob.infos[wr.cx.role.defpos].name);
+                        if (b.value().ToLong() is long lp && wr.cx.db.objects[lp] is DBObject ob &&
+                            ob.infos[wr.cx.role.defpos] is ObInfo oi && oi.name != null)
+                            sb.Append(oi.name);
                         sb.Append(' ');
                         break;
                     case Sqlx.PREFIX:
@@ -250,7 +246,7 @@ namespace Pyrrho.Level2
                         sb.Append(b.key());
                         sb.Append('"');
                         sb.Append(b.value());
-                        sb.Append('"');
+                        sb.Append("\" ");
                         break;
                     default:
                         sb.Append(b.key());
@@ -271,18 +267,6 @@ namespace Pyrrho.Level2
         {
             return detail;
         }
-        long Inv(BTree<Sqlx,object> md)
-        {
-            return (long)(md[Sqlx.REF] ?? -1L);
-        }
-        string Iri(BTree<Sqlx, object> md)
-        {
-            return (string)(md[Sqlx.IRI]??md[Sqlx.URL]);
-        }
-        string Detail(BTree<Sqlx,object> md)
-        {
-            return (string)md[Sqlx.DESC];
-        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -294,7 +278,7 @@ namespace Pyrrho.Level2
             sb.Append(detail);
             return sb.ToString();
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that,PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that,PTransaction ct)
         {
             switch(that.type)
             {
@@ -320,11 +304,13 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="p"></param>
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            ((DBObject)cx.db.objects[defpos]).Add(cx,this, p);
+            var ob = ((DBObject?)cx.db.objects[defpos]) ?? throw new DBException("42000");
+            ob = ob.Add(cx,this, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return ob;
         }
     }
      internal class PMetadata2 : PMetadata
@@ -335,10 +321,10 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the object</param>
         /// <param name="md">The new metadata</param>
         /// <param name="sq">The column seq no for a view column</param>
-        /// <param name="ob">the DBObject ref</param>
+        /// <param name="ob">the DBObject</param>
         /// <param name="db">The physical database</param>
-        protected PMetadata2(Type tp,string nm, long sq, long ob, CTree<Sqlx,TypedValue> md, long pp,Context cx)
-         : base(tp, nm, sq, ob, md, pp, cx)
+        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, CTree<Sqlx,TypedValue> md, long pp)
+         : base(tp, nm, sq, ob, md, pp)
         {
         }
         public PMetadata2(Reader rdr) : base (Type.Metadata2,rdr){}
@@ -387,11 +373,11 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the object</param>
         /// <param name="md">The new metadata</param>
         /// <param name="sq">The column seq no for a view column</param>
-        /// <param name="ob">the DBObject ref</param>
+        /// <param name="ob">the DBObject</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-        public PMetadata3(string nm, long sq, long ob, CTree<Sqlx,TypedValue> md, long pp, Context cx)
-            : base(Type.Metadata3, nm, sq, ob, md, pp, cx)
+        public PMetadata3(string nm, long sq, DBObject ob, CTree<Sqlx,TypedValue> md, long pp)
+            : base(Type.Metadata3, nm, sq, ob, md, pp)
         {
         }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }

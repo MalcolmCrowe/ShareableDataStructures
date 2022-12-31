@@ -1,4 +1,6 @@
+using System.Reflection;
 using System.Text;
+using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -31,11 +33,12 @@ namespace Pyrrho.Level3
     {
         /// <summary>
         /// The MTree is implemented using a SqlTree for the keys at this level.
-        /// So info.nominalKeyType describes the TypedValue[], info.vType is always Int.
-        /// And impl.nominalKeyType describes one component of the TypedValue[], impl.vType is MTree, Partial or Int.
+        /// Thus impl.keyType is always info[keyLen] to implement an index at this level.
         /// </summary>
-        internal readonly SqlTree impl; 
-        internal readonly TreeInfo info; // if info is null, so is SqlTree, and Cardinality is count
+        internal readonly SqlTree? impl; 
+        internal readonly Domain info; // same info for all levels!
+        internal readonly TreeBehaviour nullsAndDuplicates; 
+        internal readonly int off;
         /// <summary>
         /// The number of entries in the MTree
         /// </summary>
@@ -48,40 +51,46 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a new empty MTree for given TreeInfo info
         /// </summary>
-        /// <param name="cx">The context for user-defined types</param>
-        /// <param name="ti">The Tree type info</param>
-        internal MTree(TreeInfo ti)
+        /// <param name="ks">The key Domain info</param>
+        /// <param name="ln">The portion of the key implemented by this MTree</param>
+        internal MTree(Domain ks,TreeBehaviour nd,int ff)
         {
-            info = ti;
             count = 0;
-        }
-        internal MTree(int c)
-        {
-            count = c;
+            info = ks;
+            off = ff;
+            nullsAndDuplicates = nd;
         }
         /// <summary>
         /// Constructor: an MTree with one given Slot
         /// </summary>
         /// <param name="ti">The MTree info</param>
-        /// <param name="k">The key</param>
-        /// <param name="v">The value</param>
-        public MTree(TreeInfo ti, PRow k, long v)
+        /// <param name="fk">Whether the index is for a foreign key (allows duplicates)</param>
+        /// <param name="k">The key (length<=ti.Length)</param>
+        /// <param name="off">A position in the key (starts at 0)</param>
+        /// <param name="v">The value (picks a row in something)</param>
+        public MTree(Domain ti, TreeBehaviour fk, CList<TypedValue> k, int ff, long v)
         {
             info = ti;
-            if (info.tail == null)
+            off = ff;
+            nullsAndDuplicates = fk;
+            if (!ti.rowType.Contains(ff) || ti.representation[ti.rowType[ff]] is not Domain sd)
+                throw new PEException("PE6001");
+            if (k[ff] is not TypedValue head)
+                throw new PEException("PE6002");
+            if (ff==ti.Length-1 && k!=CList<TypedValue>.Empty)
             {
-                if (info.onDuplicate == TreeBehaviour.Allow)
+                if (fk==TreeBehaviour.Allow)
                 {
                     var x = new CTree<long, bool>(v, true);
-                    impl = new SqlTree(info, Sqlx.T, k._head, new TPartial(x));
+                    impl = new SqlTree(sd, Sqlx.T, head, new TPartial(x));
                 }
                 else
-                    impl = new SqlTree(info, Sqlx.INT, k._head, new TInt(v));
+                    impl = new SqlTree(sd, Sqlx.INT, head, new TInt(v));
             }
             else
             {
-                var x = new MTree(info.tail, k._tail, v);
-                impl = new SqlTree(info, Sqlx.M, k._head, new TMTree(x));
+                var x = new MTree(ti, fk, k, ff+1, v);
+                impl = new SqlTree(sd, Sqlx.M, head, new TMTree(x));
             }
             count = 1;
         }
@@ -91,53 +100,43 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context for user-defined types</param>
         /// <param name="i">Updated implementation tree</param>
         /// <param name="c">The new count</param>
-        private MTree(TreeInfo ti,SqlTree i, long c) 
+        private MTree(MTree mt,SqlTree i, long c) 
         {
-            info = ti;
+            info = mt.info;
+            nullsAndDuplicates = mt.nullsAndDuplicates;
+            off = mt.off;
             impl = i;
             count = c;
         }
-        internal CList<long> Keys()
-        {
-            var r = CList<long>.Empty;
-            for (var t = info; t != null; t = t.tail)
-                r += t.head;
-            return r;
-        }
-        internal bool Distinct()
-        {
-            for (var t = info; t != null; t = t.tail)
-                if (t.onDuplicate != TreeBehaviour.Disallow)
-                    return false;
-            return true;
-        }
-        internal int Cardinality(PRow filt=null)
+        internal int Cardinality(CList<TypedValue>? filt=null,int off=0)
         {
             if (count == 0L)
                 return 0;
             if (info == null)
                 return (int)count;
-            if (Distinct())
+            if (nullsAndDuplicates==TreeBehaviour.Disallow)
                 return (int)count;
-            if (filt._head is TypedValue v)
+            if (filt==null)
             {
-                if (impl[v] is TypedValue t)
-                    switch (t.dataType.kind)
+                filt = CList<TypedValue>.Empty;
+                for (var b = info.rowType.First(); b != null; b = b.Next())
+                    filt += TNull.Value;
+            }
+            if (filt[off] is TypedValue v && v is not TNull)
+            {
+                if (impl?[v] is TypedValue t)
+                    return t.dataType.kind switch
                     {
-                        case Sqlx.T:
-                            return (int)((TPartial)t).value.Count;
-                        case Sqlx.INT:
-                            return (int)((TInt)t).value.Value;
-                        case Sqlx.M:
-                            return ((TMTree)t).value.Cardinality(filt._tail);
-                        default:
-                            return 1;
-                    }
+                        Sqlx.T => (int)((TPartial)t).value.Count,
+                        Sqlx.INT => (int)((TInt)t).value,
+                        Sqlx.M => ((TMTree)t).value.Cardinality(filt,off+1),
+                        _ => 1,
+                    };
                 else
                     return 0;
             }
             var r = 0;
-            for (var b = impl.First(); b != null; b = b.Next())
+            for (var b = impl?.First(); b != null; b = b.Next())
             {
                 var t = b.value();
                 switch (t.dataType.kind)
@@ -146,10 +145,10 @@ namespace Pyrrho.Level3
                         r += (int)((TPartial)t).value.Count;
                         break;
                     case Sqlx.INT:
-                        r += (int)((TInt)t).value.Value;
+                        r += (int)((TInt)t).value;
                         break;
                     case Sqlx.M:
-                        r += ((TMTree)t).value.Cardinality();
+                        r += ((TMTree)t).value.Cardinality(filt,off+1);
                         break;
                     default:
                         r++;
@@ -165,35 +164,48 @@ namespace Pyrrho.Level3
         /// <param name="off"></param>
         /// <param name="cur"></param>
         /// <returns></returns>
-        internal TypedValue NextKey(CList<TypedValue> key, int off, int cur)
+        internal TypedValue NextKey(CList<TypedValue> key, int ff, int cur)
         {
-            if (off < cur)
+            if (off < cur && Ensure(key,ff) is MTree mt) 
+                return mt.NextKey(key, ff + 1, cur);
+            var v = impl?.Last()?.key() ?? new TInt(0);
+            if (v.dataType.kind==Sqlx.INTEGER && v.ToInt() is int iv)
+                return new TInt(iv+1);
+            if (!info.rowType.Contains(ff) || info.representation[info.rowType[ff]] is not Domain sd)
+                throw new PEException("PE6001");
+            return sd.defaultValue??new TInt(0);
+        }
+        /// <summary>
+        /// Return the tree defined by the off-th key columns, or an empty one
+        /// </summary>
+        /// <param name="k">A list of key column values</param>
+        /// <param name="off">An index into k</param>
+        MTree Ensure(CList<TypedValue> k, int off)
+        {
+            if (k[off] is not TypedValue v || v is TNull)
+                throw new PEException("PE6003");
+            if (impl != null)
             {
-                var mt = Ensure(key, off);
-                return mt.NextKey(key, off + 1, cur);
+                if (impl[v] is TMTree tm)
+                    return tm.value;
+                throw new PEException("PE6004");
             }
-            var v = impl?.Last().key() ?? new TInt(0);
-            if (v.dataType.kind==Sqlx.INTEGER)
-                return new TInt(v.ToInt()+1);
-            return info.headType.defaultValue;
+            return new MTree(info,nullsAndDuplicates,off);
         }
         /// <summary>
         /// Accessor: Look for given multi-column key
         /// </summary>
         /// <param name="k">A multikey</param>
         /// <returns>true iff the MTree contains the multikey</returns>
-        public bool Contains(PRow k)
+        public bool Contains(CList<TypedValue> k,int ff=0)
         {
-            if (k == null) // happens if a short key is supplied
-                return Count!=0;
-            if (impl==null || !impl.Contains(k[0]))
+            if (k[ff] is not TypedValue h) // happens if a short key is supplied
+                return count!=0;
+            if (impl==null || !impl.Contains(h))
                 return false;
-            var tv = impl[k[0]];
-            if (tv.dataType.kind == Sqlx.M)
-            {
-                MTree mt = tv.Val() as MTree;
-                return mt.Contains(k._tail);
-            }
+            var tv = impl[h];
+            if (tv!=null && tv is TMTree tm && tm.value is MTree mt)
+                return mt.Contains(k,ff+1);
             return true;
         }
         /// <summary>
@@ -204,46 +216,46 @@ namespace Pyrrho.Level3
         /// <param name="k">The key</param>
         /// <param name="v">The value</param>
         /// <returns>Whether the element was added, if not, why not</returns>
-        public static TreeBehaviour Add(ref MTree t, PRow k, long v)
+        public static TreeBehaviour Add(ref MTree t, CList<TypedValue> k, int off, long v)
         {
-            if (k == null)
-            {
-                if (t.info.onNullKey != TreeBehaviour.Allow)
-                    return t.info.onNullKey;
-                k = new PRow(0);
-            }
-            if (t.Contains(k) && t.info.onDuplicate != TreeBehaviour.Allow)
-                return t.info.onDuplicate;
+            if (t.info == null)
+                return TreeBehaviour.Disallow;
+            var head = k[off] ?? TNull.Value;
+            if (head is TNull)
+                return TreeBehaviour.Disallow;
             if (t.impl == null)
             {
-                t = new MTree(t.info, k, v);
+                t = new MTree(t.info, t.nullsAndDuplicates, k, off, v);
                 return TreeBehaviour.Allow;
             }
-            TypedValue nv = null; 
+            TypedValue nv;
             SqlTree st = t.impl; // care: t is immutable
-            if (st.Contains(k[0]))
+            if (st[head] is TypedValue tv)
             {
-                TypedValue tv = st[k[0]];
                 switch (tv.dataType.kind)
                 {
                     case Sqlx.M:
                         {
-                            MTree mt = tv.Val() as MTree;
-                            mt +=(k._tail, v);
+                            if (tv is not TMTree tm)
+                                throw new PEException("PE4500");
+                            var mt = tm.value;
+                            mt += (k, off+1, v);
                             nv = new TMTree(mt); // care: immutable
                             break;
                         }
                     case Sqlx.T:
                         {
-                            var bt = tv.Val() as CTree<long, bool>;
-                            bt +=(v, true);
+                            if (tv is not TPartial tp)
+                                throw new PEException("PE4501");
+                            var bt = tp.value;
+                            bt += (v, true);
                             nv = new TPartial(bt); // care: immutable
                             break;
                         }
                     default:
-                        throw new PEException("PE116");
+                        return TreeBehaviour.Allow; // throw new PEException("PE116");
                 }
-                SqlTree.Update(ref st, k[0], nv);
+                SqlTree.Update(ref st, head, nv);
             }
             else
             {
@@ -251,8 +263,7 @@ namespace Pyrrho.Level3
                 {
                     case Sqlx.M:
                         {
-                            TreeInfo ti = t.info.tail;
-                            MTree mt = new MTree(ti, k._tail, v);
+                            MTree mt = new (t.info, t.nullsAndDuplicates, k, off+1, v);
                             nv = new TMTree(mt);
                             break;
                         }
@@ -263,63 +274,46 @@ namespace Pyrrho.Level3
                             break;
                         }
                     default:
-                        if (t.info.onDuplicate == TreeBehaviour.Allow)
+                        if (t.nullsAndDuplicates==TreeBehaviour.Allow)
                             goto case Sqlx.T;
                         nv = new TInt(v);
                         break;
                 }
-                SqlTree.Add(ref st, k[0], nv);
+                SqlTree.Add(ref st, head, nv);
             }
-            t = new MTree(t.info, st, t.count + 1);
+            t = new MTree(t, st, t.count + 1);
             return TreeBehaviour.Allow;
         }
-        public static MTree operator+(MTree mt,(PRow,long) v)
+        public static MTree operator+(MTree mt,(CList<TypedValue>,int,long) x)
         {
-            if (Add(ref mt, v.Item1, v.Item2) != TreeBehaviour.Allow)
-                throw new DBException("23000","duplicate key ",v.Item1);
+            var (k, off, v) = x;
+            if (Add(ref mt, k, off, v) != TreeBehaviour.Allow)
+                throw new DBException("23000","duplicate key ",k);
             return mt;
         }
-        public static MTree operator-(MTree mt,PRow k)
+        public static MTree? operator-(MTree? mt,CList<TypedValue> k)
         {
-            Remove(ref mt, k);
+            Remove(ref mt, k, 0);
             return mt;
         }
-        public static MTree operator -(MTree mt, (PRow,long) x)
+        public static MTree operator -(MTree mt, (CList<TypedValue>,int,long) x)
         {
-            var (k, p) = x;
-            Remove(ref mt, k, p);
+            var (k, off, p) = x;
+            Remove(ref mt, k, off, p);
             return mt;
         }
         /// <summary>
         /// Traversal of trees is done by Bookmarks
         /// </summary>
         /// <returns>The bookmark for the first entry in the tree, or null if there are no entries</returns>
-        internal MTreeBookmark First()
+        internal MTreeBookmark? First()
         {
             return MTreeBookmark.New(this);
         }
-        internal MTreeBookmark Last()
+        internal MTreeBookmark? Last()
         {
             return MTreeBookmark.Last(this);
         }
-        /// <summary>
-        /// Return the tree defined by the off-th key columns, or an empty one
-        /// </summary>
-        /// <param name="k">A list of key column values</param>
-        /// <param name="off">An index into k</param>
-        MTree Ensure(CList<TypedValue> k, int off)
-        {
-            if (impl != null && impl.Contains(k[off]))
-            {
-                TypedValue tv = impl[k[off]];
-                if (tv.dataType.kind != Sqlx.M)
-                    return null;
-                return tv.Val() as MTree;
-            }
-            TreeInfo ti = info.tail;
-            return new MTree(ti);
-        }
-
         /// <summary>
         /// The update operation: change a long value for an existing key
         /// </summary>
@@ -327,19 +321,22 @@ namespace Pyrrho.Level3
         /// <param name="t">The tree</param>
         /// <param name="k">The key</param>
         /// <param name="v">The new long value</param>
-        public static void Update(ref MTree t, PRow k, long v)
+        public static void Update(ref MTree t, CList<TypedValue> k, int off, long v)
         {
-            if (!t.Contains(k))
+            if (!t.Contains(k,off) || t.impl==null || t.info==null)
                 throw new PEException("PE113");
             SqlTree st = t.impl; // care: t is immutable
-            var k0 = k[0];
-            TypedValue nv,tv = t.impl[k0];
+            if (k[off] is not TypedValue head)
+                throw new PEException("PE6008");
+            TypedValue nv, tv = t.impl[head] ?? throw new PEException("PE6009");
             switch (tv.dataType.kind)
             {
                 case Sqlx.M:
                     {
-                        MTree mt = tv.Val() as MTree;
-                        Update(ref mt, k._tail, v);
+                        if (tv is not TMTree tm)
+                            throw new PEException("PE4505");
+                        var mt = tm.value;
+                        Update(ref mt, k, off+1, v);
                         nv = new TMTree(mt);
                         break;
                     }
@@ -347,8 +344,8 @@ namespace Pyrrho.Level3
                     nv = new TInt(v);
                     break;
             }
-            SqlTree.Update(ref st, k0, nv);
-            t = new MTree(t.info, st, t.count);
+            SqlTree.Update(ref st, head, nv);
+            t = new MTree(t, st, t.count);
         }
         /// <summary>
         /// The normal Remove operation: remove a key
@@ -356,47 +353,54 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context for user-defined types</param>
         /// <param name="t">The tree target</param>
         /// <param name="k">The key to remove</param>
-        public static void Remove(ref MTree t, PRow k)
+        public static void Remove(ref MTree? t, CList<TypedValue> k, int off)
         {
-            if (!t.Contains(k))
+            if (t==null || !t.Contains(k) || t.impl==null)// care: t is immutable
                 return;
-            SqlTree st = t.impl; // care: t is immutable
-            var k0 = k[0];
-             TypedValue tv = t.impl[k0];
+            var st = t.impl;
+            if (k[off] is not TypedValue head)
+                throw new PEException("PE6010");
+            if (t.impl[head] is not TypedValue tv)
+                return;
             long nc = t.count;
             switch (tv.dataType.kind)
             {
                 case Sqlx.M:
                     {
-                        MTree mt = tv.Val() as MTree;
-                        long c = mt.Count;
-                        Remove(ref mt, k._tail);
+                        if (tv is not TMTree tm)
+                            throw new PEException("PE4001");
+                        long c = tm.value.Count;
+                        MTree? mt = tm.value;
+                        Remove(ref mt, k, off+1);
                         if (mt == null)
                         {
                             nc -= c; ;
-                            SqlTree.Remove(ref st, k0);
+                            st = (SqlTree)st.Remove(head);
                         }
                         else
                         {
                             nc -= c - mt.Count;
                             TypedValue nv = new TMTree(mt);
-                            SqlTree.Update(ref st, k0, nv);
+                            SqlTree.Update(ref st, head, nv);
                         }
                         break;
                     }
                 case Sqlx.T:
                     {
-                        var bt = tv.Val() as CTree<long, bool>;
-                        nc -= bt.Count;
-                        SqlTree.Remove(ref st, k0);
+                        if (tv is not TPartial tp)
+                            throw new PEException("PE4002");
+                        st = t.impl;
+                        nc -= tp.value.Count;
+                        st = (SqlTree)st.Remove(head);
                         break;
                     }
                 default:
                     nc--;
-                    SqlTree.Remove(ref st, k0);
+                    st = (SqlTree)st.Remove(head);
                     break;
             }
-            t = (st==null)?null:new MTree(t.info, st, nc);
+            if (t!=null && t.info!=null)
+                t = (st==null)?null:new MTree(t, st, nc);
         }
         /// <summary>
         /// The partial-ordering Remove: remove a particular association
@@ -405,115 +409,101 @@ namespace Pyrrho.Level3
         /// <param name="t">The tree</param>
         /// <param name="k">The key</param>
         /// <param name="v">The value to remove</param>
-        public static void Remove(ref MTree t, PRow k, long v)
+        public static void Remove(ref MTree t, CList<TypedValue> k, int off, long v)
         {
-            if (!t.Contains(k))
+            if (t==null || t.impl==null || k[off] is not TypedValue head 
+                || t.impl[head] is not TypedValue tv || t.info==null)
                 return;
-            SqlTree st = t.impl; // care: t is immutable
-            var k0 = k[0];
+            var st = t.impl; // care: t is immutable
             long nc = t.count;
-             TypedValue nv, tv = t.impl[k0];
+            TypedValue nv;
             switch (tv.dataType.kind)
             {
                 case Sqlx.M:
                     {
-                        MTree mt = tv.Val() as MTree;
+                        if (tv is not TMTree tm)
+                            throw new PEException("PE4005");
+                        var mt = tm.value;
                         long c = mt.Count;
-                        Remove(ref mt, k._tail, v);
-                        nc -= c - mt.Count;
-                        if (mt.Count == 0)
-                            SqlTree.Remove(ref st, k0);
+                        MTree? nt = mt;
+                        Remove(ref nt, k, off+1, v);
+                        if (nt == null || nt.Count == 0)
+                        {
+                            nc -= mt.Count;
+                            st = (SqlTree)st.Remove(head);
+                        }
                         else
                         {
+                            nc -= c - mt.Count;
                             nv = new TMTree(mt);
-                            SqlTree.Update(ref st, k0, nv);
+                            SqlTree.Update(ref st, head, nv);
                         }
                         break;
                     }
                 case Sqlx.T:
                     {
-                        var bt = tv.Val() as CTree<long, bool>;
+                        if (tv is not TPartial tp)
+                            throw new PEException("PE4006");
+                        var bt = tp.value;
                         if (!bt.Contains(v))
                             return;
                         nc--;
                         bt -=v;
                         if (bt.Count == 0)
-                            SqlTree.Remove(ref st, k0);
+                            st = (SqlTree)st.Remove(head);
                         else
                         {
                             nv = new TPartial(bt);
-                            SqlTree.Update(ref st, k0, nv);
+                            SqlTree.Update(ref st, head, nv);
                         }
                         break;
                     }
                 default:
                     nc--;
-                    SqlTree.Remove(ref st, k0, tv);
+                    SqlTree.Remove(ref st,head);
                     break;
             }
-            t = new MTree(t.info, st, nc);
+            t = new MTree(t, st, nc);
         }
         /// <summary>
         /// Get an ABookmark at the start of partial lookup. 
         /// </summary>
         /// <param name="m">A list of keys, guaranteed in the right order!</param>
         /// <returns> T:ATree(long,bool), M:MTree or else TInt</returns>
-        public MTreeBookmark PositionAt(PRow m)
+        public MTreeBookmark? PositionAt(CList<TypedValue> m,int ff)
         {
-            return MTreeBookmark.New(this, m);
+            return MTreeBookmark.New(this, m, ff);
         }
-        public long? Get(PRow k)
+        public long? Get(CList<TypedValue> k,int ff)
         {
-                var tv = impl[k._head];
-                if (tv==null)
-                    return null;
-                switch (tv.dataType.kind)
-                {
-                    case Sqlx.M:
-                        {
-                            var mt = tv.Val() as MTree;
-                            return mt.Get(k._tail);
-                        }
-                    case Sqlx.T:
-                        {
-                            var pt = tv.Val() as TPartial;
-                            return pt.value.First().key();
-                        }
-                }
-                return tv.Val() as long?;
-        }
-        internal MTree Fix(Context cx)
-        {
-            var r = new MTree(info.Fix(cx));
-            for (var b = First(); b != null; b = b.Next())
+            if (impl == null || k[ff] is not TypedValue head)
+                return null;
+            var tv = impl[head];
+            if (tv == null)
+                return null;
+            switch (tv.dataType.kind)
             {
-                var iq = b.Value();
-                if (iq!=null)
-                    r += (b.key().Fix(cx), b.Value().Value);
+                case Sqlx.M:
+                    {
+                        if (tv is TMTree tm)
+                            return tm.value.Get(k,ff+1);
+                        return null;
+                    }
+                case Sqlx.T:
+                    {
+                        if (tv is TPartial pt)
+                            return pt.value.First()?.key();
+                        return null;
+                    }
             }
-            return r;
-        }
-        internal MTree Replaced(Context cx,DBObject so,DBObject sv)
-        {
-            return new MTree(info.Replaced(cx, so, sv), impl, count);
-        }
-        internal MTree Relocate(Context cx)
-        {
-            return new MTree(info.Relocate(cx));
+            return (tv as TInt)?.value;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(GetType().Name);
             sb.Append(" " + Count);
-            var cm = " (";
-            for (var a=info;a!=null;a=a.tail)
-            {
-                sb.Append(cm); cm = ",";
-                sb.Append(DBObject.Uid(a.head));
-                sb.Append(" ");
-                sb.Append(a.headType);
-            }
-            sb.Append(")");
+            sb.Append('@'); sb.Append(off);
+            sb.Append(info);
             return sb.ToString();
         }
     }
@@ -531,71 +521,78 @@ namespace Pyrrho.Level3
     /// </summary>
     internal sealed class MTreeBookmark 
     {
+        readonly MTree _mt;
         readonly ABookmark<TypedValue, TypedValue> _outer;
-        internal readonly TreeInfo _info;
-        internal readonly MTreeBookmark _inner;
-        readonly ABookmark<long, bool> _pmk;
+        internal readonly Domain _info;
+        internal readonly MTreeBookmark? _inner;
+        readonly ABookmark<long, bool>? _pmk;
         internal readonly bool _changed;
         internal readonly long _pos;
-        internal readonly PRow _filter;
-        MTreeBookmark(ABookmark<TypedValue,TypedValue> outer,TreeInfo info, bool changed, MTreeBookmark inner,
-            ABookmark<long,bool> pmk,long pos,PRow filter = null)
-        { 
+        internal readonly CList<TypedValue> _key;
+        MTreeBookmark(MTree mt,ABookmark<TypedValue,TypedValue> outer,Domain info, bool changed, 
+            MTreeBookmark? inner,
+            ABookmark<long,bool>? pmk,long pos,CList<TypedValue>? key = null)
+        {
+            _mt = mt;
             _outer = outer;
             _info = info;
             _changed = changed;
             _inner = inner;
             _pmk = pmk;
             _pos = pos;
-            _filter = filter;
+            _key = key??CList<TypedValue>.Empty;
         }
         /// <summary>
         /// Implementation of mt.First
         /// </summary>
         /// <param name="mt">The tree whose first bookmark is required</param>
         /// <returns>An MTreeBookmark or null</returns>
-        internal static MTreeBookmark New(MTree mt)
+        internal static MTreeBookmark? New(MTree mt)
         {
+            if (mt.info == null)
+                throw new PEException("PE4020");
             for (var outer = mt.impl?.First(); outer != null; outer = outer.Next())
             {
                 var ov = outer.value();
                 switch (ov.dataType.kind)
                 {
                     case Sqlx.M:
-                        var inner = (ov.Val() as MTree)?.First();
+                        var inner = (ov as TMTree)?.value.First();
                         if (inner != null)
-                            return new MTreeBookmark(outer, mt.info, false, inner, null,0);
+                            return new MTreeBookmark(mt,outer, mt.info, false, inner, null,0);
                         break;
                     case Sqlx.T:
-                        var pmk = (ov.Val() as CTree<long, bool>)?.First();
+                        var pmk = (ov as TPartial)?.value.First();
                         if (pmk != null)
-                            return new MTreeBookmark(outer, mt.info, false, null, pmk,0);
+                            return new MTreeBookmark(mt,outer, mt.info, false, null, pmk,0);
                         break;
                     default:
-                        return new MTreeBookmark(outer, mt.info, false, null, null,0);
+                        return new MTreeBookmark(mt,outer, mt.info, false, null, null,0);
                 }
             }
             return null;
         }
-        internal static MTreeBookmark Last(MTree mt)
+        internal static MTreeBookmark? Last(MTree mt)
         {
+            if (mt.info==null)
+                throw new PEException("PE4019");
             for (var outer = mt.impl?.Last(); outer != null; outer = outer.Previous())
             {
                 var ov = outer.value();
                 switch (ov.dataType.kind)
                 {
                     case Sqlx.M:
-                        var inner = (ov.Val() as MTree)?.Last();
+                        var inner = (ov as TMTree)?.value.Last();
                         if (inner != null)
-                            return new MTreeBookmark(outer, mt.info, false, inner, null, 0);
+                            return new MTreeBookmark(mt, outer, mt.info, false, inner, null, 0);
                         break;
                     case Sqlx.T:
-                        var pmk = (ov.Val() as CTree<long, bool>)?.Last();
+                        var pmk = (ov as TPartial)?.value.Last();
                         if (pmk != null)
-                            return new MTreeBookmark(outer, mt.info, false, null, pmk, 0);
+                            return new MTreeBookmark(mt, outer, mt.info, false, null, pmk, 0);
                         break;
                     default:
-                        return new MTreeBookmark(outer, mt.info, false, null, null, 0);
+                        return new MTreeBookmark(mt, outer, mt.info, false, null, null, 0);
                 }
             }
             return null;
@@ -606,16 +603,20 @@ namespace Pyrrho.Level3
         /// <param name="mt">The MTree</param>
         /// <param name="key">A key</param>
         /// <returns>A bookmark, or null if the key is not found</returns>
-        internal static MTreeBookmark New(MTree mt,PRow key)
+        internal static MTreeBookmark? New(MTree mt,CList<TypedValue> key,int off)
         {
-            if (key == null)
+            if (mt.info == null)
+                throw new PEException("PE4050");
+            if (off>=key.Length)
                 return New(mt);
-            var outer = mt.impl?.PositionAt(key._head);
+            if (key[off] is not TypedValue head)
+                return null;
+            var outer = mt.impl?.PositionAt(head);
             if (outer == null)
                 return null;
-            MTreeBookmark inner = null;
-            ABookmark<long, bool> pmk = null;
-            for (; ; )
+            MTreeBookmark? inner = null;
+            ABookmark<long, bool>? pmk = null;
+             for (; ; )
             {
                 if (inner!=null)
                 {
@@ -629,11 +630,11 @@ namespace Pyrrho.Level3
                     if (pmk != null)
                         goto done;
                 }
-                var tv = outer.value();
+                if (outer.value() is TypedValue tv)
                 switch (tv.dataType.kind)
                 {
                     case Sqlx.M:
-                        inner = (tv.Val() as MTree).PositionAt(key._tail);
+                        inner = (tv as TMTree)?.value.PositionAt(key,off+1);
                         if (inner != null)
                             goto done;
                         outer = outer.Next();
@@ -641,28 +642,30 @@ namespace Pyrrho.Level3
                             return null;
                         continue;
                     case Sqlx.T:
-                        pmk = (tv.Val() as CTree<long, bool>).First();
-                        if (pmk != null && key._tail == null)
+                        pmk = (tv as TPartial)?.value.First();
+                        if (pmk != null)
                             goto done;
                         continue;
                     default:
-                        if (key._tail == null)
                             goto done;
-                        return null;
                 }
+                return null;
             }
             done:
-            return new MTreeBookmark(outer, mt.info, true, inner, pmk, 0, key);
+            return new MTreeBookmark(mt, outer, mt.info, true, inner, pmk, 0, key);
         }
         /// <summary>
         /// The key at this bookmark
         /// </summary>
         /// <returns>The key at this bookmark</returns>
-        public PRow key()
+        public CList<TypedValue> key()
         {
             if (_outer == null)
-                return null;
-            return new PRow(_outer.key(), _inner?.key());
+                throw new PEException("PE6012");
+            var r = new CList<TypedValue>(_outer.key());
+            if (_inner?.key() is CList<TypedValue> ik)
+                r += ik;
+            return r;
         }
         /// <summary>
         /// The value at this bookmark
@@ -682,7 +685,7 @@ namespace Pyrrho.Level3
         /// The bookmark for the next entry in the MTree, or null if no such entry exists
         /// </summary>
         /// <returns>The next bookmark or null</returns>
-        public MTreeBookmark Next()
+        public MTreeBookmark? Next()
         {
             var inner = _inner;
             var outer = _outer;
@@ -708,15 +711,17 @@ namespace Pyrrho.Level3
                     return null;
                 changed = true;
                 var oval = outer.value();
+                if (oval == null)
+                    return null;
                 switch (oval.dataType.kind)
                 {
                     case Sqlx.M:
-                        inner = ((MTree)oval.Val()).PositionAt(_filter?._tail);
+                        inner = ((TMTree)oval).value?.PositionAt(_key,_mt.off+1);
                         if (inner != null)
                             goto done;
                         break;
                     case Sqlx.T:
-                        pmk = ((CTree<long, bool>)oval.Val()).First();
+                        pmk = ((TPartial)oval).value?.First();
                         if (pmk != null)
                             goto done;
                         break;
@@ -725,9 +730,9 @@ namespace Pyrrho.Level3
                 }
             }
             done: 
-            return new MTreeBookmark(outer, _info, changed, inner, pmk, pos+1,_filter);
+            return new MTreeBookmark(_mt, outer, _info, changed, inner, pmk, pos+1,_key);
         }
-        public MTreeBookmark Previous()
+        public MTreeBookmark? Previous()
         {
             var inner = _inner;
             var outer = _outer;
@@ -748,8 +753,8 @@ namespace Pyrrho.Level3
                     if (pmk != null)
                         goto done;
                 }
-                var h = _filter?._head;
-                if (h != null && !h.IsNull)
+                var h = _key[_mt.off]??TNull.Value;
+                if (h !=TNull.Value)
                     return null;
                 outer = ABookmark<TypedValue, TypedValue>.Previous(outer);
                 if (outer == null)
@@ -759,12 +764,12 @@ namespace Pyrrho.Level3
                 switch (oval.dataType.kind)
                 {
                     case Sqlx.M:
-                        inner = ((MTree)oval.Val()).PositionAt(_filter?._tail);
+                        inner = ((TMTree)oval).value?.PositionAt(_key,_mt.off+1);
                         if (inner != null)
                             goto done;
                         break;
                     case Sqlx.T:
-                        pmk = ((CTree<long, bool>)oval.Val()).Last();
+                        pmk = ((TPartial)oval).value?.Last();
                         if (pmk != null)
                             goto done;
                         break;
@@ -773,7 +778,7 @@ namespace Pyrrho.Level3
                 }
             }
         done:
-            return new MTreeBookmark(outer, _info, changed, inner, pmk, pos + 1, _filter);
+            return new MTreeBookmark(_mt, outer, _info, changed, inner, pmk, pos + 1, _key);
         }
         /// <summary>
         /// The position of the bookmark in the tree
@@ -792,8 +797,8 @@ namespace Pyrrho.Level3
         internal MTreeBookmark ResetToTiesStart(int depth)
         {
             var m = (depth>1)?_inner?.ResetToTiesStart(depth - 1):null;
-            var ov = (depth==1)?_outer.value().Val() as BTree<long,bool>:null;
-            return new MTreeBookmark(_outer, _info, false,
+            var ov = (depth==1)?((TPartial)_outer.value()).value :null;
+            return new MTreeBookmark(_mt, _outer, _info, false,
                     m, ov?.First(), _inner?._pos??0);
         }
         /// <summary>
@@ -810,13 +815,15 @@ namespace Pyrrho.Level3
             {
                 case Sqlx.M:
                     {
-                        var m = ov.Val() as MTree;
-                        return _inner._pos < m.count-1;
+                        if (ov is not TMTree tm || _inner == null)
+                            throw new PEException("PE4040");
+                        return _inner._pos < tm.value.count-1;
                     }
                 case Sqlx.T:
                     {
-                        var t = ov.Val() as CTree<long, bool>;
-                        return _pmk.position() < t.Count -1;
+                        if (ov is not TPartial t || _pmk == null)
+                            throw new PEException("PE4041");
+                        return _pmk.position() < t.value.Count -1;
                     }
                 default:
                     return false;
@@ -831,73 +838,19 @@ namespace Pyrrho.Level3
         {
             if (_changed)
                 return true;
-            if (depth > 1)
+            if (depth > 1 && _inner!=null)
                 return _inner.changed(depth - 1);
             return false;
         }
         public override string ToString()
         {
-            return key().ToString() + "," + Value();
+            return (key()?.ToString()??"_") + "," + Value();
         }
     }
     /// <summary>
     /// TreeBehaviour deals with duplicates and nulls behaviour in SQL arrays and multisets
     /// </summary>
     internal enum TreeBehaviour { Ignore, Allow, Disallow };
-    /// <summary>
-    /// TreeInfo is used for handling complex SQL result types (for MTree, RTree)
-    ///     // shareable as of 26 April 2021
-    /// </summary>
-    internal class TreeInfo
-    {
-        internal readonly long head;
-        internal readonly Domain headType;
-        internal readonly TreeBehaviour onDuplicate, onNullKey; // onDuplicate effective only if tail is null
-        internal readonly TreeInfo tail;
-        TreeInfo(long h,Domain dm,TreeBehaviour d,TreeBehaviour n,TreeInfo t)
-        {
-            head = h; headType = dm; onDuplicate = d; onNullKey = n; tail = t;
-        }
-        /// <summary>
-        /// Set up Tree information for a simple result set
-        /// </summary>
-        /// <param name="multi">The multi-column key type</param>
-        /// <param name="d">Whether duplicates are allowed at this level</param>
-        /// <param name="n">Whether nulls are allowed at this level</param>
-        /// <param name="off">the offset of the current level in multi</param>
-        internal TreeInfo(Context cx,CList<long> cols, TreeBehaviour d, TreeBehaviour n, int off = 0)
-        {
-            if (off < (int)cols.Count)
-            {
-                head = cols[off];
-                headType = cx._Dom(head);
-            }
-            onDuplicate = d;
-            onNullKey = n;
-            tail = (off + 1 < (int)cols.Count) ? new TreeInfo(cx,cols, d, n, off + 1) : null;
-        }
-        internal TreeInfo Fix(Context cx)
-        {
-            return new TreeInfo(cx.Fix(head), (Domain)headType.Fix(cx), 
-                onDuplicate, onNullKey, tail?.Fix(cx));
-        }
-        internal TreeInfo Replaced(Context cx)
-        {
-            return new TreeInfo(cx.done[head]?.defpos ?? head, (Domain)headType.Fix(cx),
-                onDuplicate, onNullKey, tail?.Replaced(cx));
-        }
-        internal TreeInfo Relocate(Context cx)
-        {
-            return new TreeInfo(cx.Fix(head), (Domain)headType.Relocate(cx),
-                onDuplicate, onNullKey, tail?.Relocate(cx));
-        }
-        internal TreeInfo Replaced(Context cx,DBObject so,DBObject sv)
-        {
-            return new TreeInfo(cx.done[head]?.defpos ?? head, 
-                (Domain)headType._Replace(cx, so, sv),
-                onDuplicate, onNullKey, tail?.Replaced(cx, so, sv));
-        }
-    }
 
 }
 

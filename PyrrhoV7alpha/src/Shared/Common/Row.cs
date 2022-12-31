@@ -1,10 +1,4 @@
-using System;
-using System.IO;
 using System.Text;
-using System.Xml;
-using System.Collections;
-using System.Collections.Generic;
-using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 
@@ -30,7 +24,7 @@ namespace Pyrrho.Common
     /// Evaluation will restore the simple TypedValue structure.
     /// As of 26 April 2021, all TypedValue classes are shareable
     /// </summary>
-    public abstract class TypedValue : ITypedValue,IComparable
+    public abstract class TypedValue : IComparable
     {
         internal readonly Domain dataType = Domain.Null;
         internal TypedValue(Domain t)
@@ -38,33 +32,25 @@ namespace Pyrrho.Common
             dataType = t;
         }
         internal abstract TypedValue New(Domain t);
-        internal abstract object Val();
         internal virtual TypedValue Next()
         {
             throw new DBException("22009",dataType.kind.ToString());
-        }
-        internal virtual SqlValue Build(long dp,Context cx,Domain td)
-        {
-            if (td.kind == Sqlx.CONTENT)
-                td = null;
-            return new SqlLiteral(dp, cx, this, td);
         }
         internal virtual byte BsonType()
         {
             return dataType.BsonType();
         }
-        public abstract int _CompareTo(object obj);
-        internal virtual TypedValue this[string n]
+        internal virtual TypedValue? this[string n]
         {
             get { return null; }
             set { }
         }
-        internal virtual TypedValue this[long n]
+        internal virtual TypedValue? this[long n]
         {
             get { return null; }
             set { }
         }
-        internal TypedValue this[Ident n] { get { return this[n.ident]; } }
+        internal TypedValue? this[Ident n] { get { return this[n.ident]; } }
         internal virtual bool? ToBool()
         {
             return null;
@@ -77,7 +63,7 @@ namespace Pyrrho.Common
         {
             return null;
         }
-        internal virtual Integer ToInteger()
+        internal virtual Integer? ToInteger()
         {
             return null;
         }
@@ -85,13 +71,9 @@ namespace Pyrrho.Common
         {
             return double.NaN;
         }
-        internal virtual TypedValue[] ToArray()
+        internal virtual TypedValue[]? ToArray()
         {
             return null;
-        }
-        public abstract bool IsNull
-        {
-            get;
         }
         internal virtual TypedValue Fix(Context cx)
         {
@@ -129,98 +111,59 @@ namespace Pyrrho.Common
         {
             return ToString();
         }
-        public int CompareTo(object obj)
+        public virtual int CompareTo(object? obj)
         {
-            if (IsNull) 
-                return ((TypedValue)obj).IsNull?0:-1;
-            return dataType.Compare(this,(TypedValue)obj);
+            return dataType.Compare(this,(obj as TypedValue)??TNull.Value);
         }
     }
-    /// <summary>
-    /// Dec 11th 2020: let us allow TNUll to have a configurable Domain field.
-    /// Then the rules for assignment compatibility are that TNulls are strongly typed.
-    /// However any TNull value can be coerced to any other TNull value.
-    /// </summary>
     internal class TNull : TypedValue
     {
-        static TNull _Value;
+        static TNull _Value = new();
         TNull() : base(Domain.Null) { _Value = this; }
-        TNull(Domain d) : base(d) { }
-        internal TNull(long t) : this((Domain)Context._system.obs[t]) { }
-        internal static TNull Value => _Value??new TNull();
-        internal override TypedValue New(Domain d)
-        {
-            return new TNull(d);
-        }
-        internal override object Val()
-        {
-            return null;
-        }
+        internal static TNull Value => (_Value is null||_Value.dataType is null)?new():_Value;
         public override string ToString()
         {
             if (PyrrhoStart.VerboseMode)
                 return base.ToString() + " Null";
             return " Null";
         }
-        public override int _CompareTo(object obj)
+        internal override TypedValue New(Domain t)
         {
-            return (obj is TNull || obj==null)?0: -1;
+            throw new NotImplementedException();
         }
-        internal override SqlValue Build(long dp, Context cx, Domain td)
+        public override int CompareTo(object? obj)
         {
-            return new SqlNull(dp);
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return true;
-            }
+            if (obj == null || obj is TNull)
+                return 0;
+            var that = (TypedValue)obj;
+            if (that.dataType.nulls == Sqlx.FIRST)
+                return 1;
+            return -1;
         }
     }
     // shareable
     internal class TInt : TypedValue
     {
-        internal readonly long? value;
-        internal TInt(Domain dt, long? v) : base(dt.Best(Domain.Int)) { value = v; }
-        internal TInt(long? v) : this(Domain.Int, v) { }
+        internal readonly long value; // should be 0L for TInteger subclass
+        internal TInt(Domain dt, long v) : base(dt.Best(Domain.Int)) { value = v; }
+        internal TInt(long v) : this(Domain.Int, v) { }
         internal override TypedValue New(Domain t)
         {
             return new TInt(t, value);
         }
-        internal override object Val()
-        {
-            return value;
-        }
         internal override TypedValue Next()
         {
-            if (value.HasValue)
-                return new TInt(dataType, value.Value + 1);
+            if (value == long.MaxValue)
+                return new TInteger(new Integer(value)).Next();
             return base.Next();
         }
         internal override double ToDouble()
         {
-            if (value == null)
-                return double.NaN;
-            return value.Value * 1.0;
+            return value * 1.0;
         }
         public override string ToString()
         {
             return value.ToString();
-        }
-        public override int _CompareTo(object obj)
-        {
-            var nt = obj as Integer;
-            if (nt != null && value.HasValue)
-                return -nt.CompareTo(new Integer(value.Value));
-            var that = (TInt)obj;
-            if (value == that.value)
-                return 0;
-            if (!value.HasValue)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1;
-            if (!that.value.HasValue)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1;
-            return value.Value.CompareTo(that.value.Value);
         }
         internal override byte BsonType()
         {
@@ -230,22 +173,17 @@ namespace Pyrrho.Common
         }
         internal override int? ToInt()
         {
-            return (int?)value;
+            if (value>int.MaxValue || value<int.MinValue)
+                return null;
+            return (int)value;
         }
         internal override long? ToLong()
         {
             return value;
         }
-        internal override Integer ToInteger()
+        internal override Integer? ToInteger()
         {
-            return value.HasValue?new Integer(value.Value):null;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return !value.HasValue;
-            }
+            return new Integer(value);
         }
     }
     // shareable
@@ -254,126 +192,71 @@ namespace Pyrrho.Common
         internal TPosition(long p) : base(Domain.Position, p) { }
         public override string ToString()
         {
-            if (value.Value==-1L)
+            if (value<0)
                 return "";
-            return DBObject.Uid(value.Value);
+            return DBObject.Uid(value);
         }
     }
     // shareable
     internal class TInteger : TInt
     {
         internal readonly Integer ivalue;
-        internal TInteger(Domain dt, Integer i) : base(dt.Best(Domain.Int),0) { ivalue = i; }
+        internal TInteger(Domain dt, Integer i) : base(dt.Best(Domain.Int),0L) { ivalue = i; }
         internal TInteger(Integer i) : this(Domain.Int, i) { }
-        internal override object Val()
-        {
-            return ivalue;
-        }
         internal override TypedValue Next()
         {
-            if (ivalue != null)
-                return new TInteger(ivalue.Add(new Integer(1),0));
-            return base.Next();
-        }
-        public override int _CompareTo(object obj)
-        {
-            Integer v = null;
-            if (obj is TInt)
-                v = ((TInt)obj).ToInteger();
-            else if (ivalue!=null)
-                v = ((TInteger)obj).ivalue;
-            if (ivalue == v)
-                return 0;
-            if (ivalue == null && v != null)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (v == null)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1;
-            return ivalue.CompareTo(v);
+            return new TInteger(ivalue.Add(new Integer(1),0));
         }
         internal override byte BsonType()
         {
-            if (ivalue.BitsNeeded() > 64)
+            if (ivalue?.BitsNeeded() > 64)
                 return 19; // Decimal subtype added for Pyrrho
             return base.BsonType();
         }
         internal override int? ToInt()
         {
-            if (ivalue == null)
-                return null;
-            return (int)ivalue;
+            if (ivalue < int.MaxValue && ivalue > int.MinValue)
+                return (int)ivalue;
+            return null;
         }
         internal override long? ToLong()
         {
-            if (ivalue == null)
-                return null;
-            return ivalue;
+            if (ivalue <long.MaxValue && ivalue>long.MinValue)
+                return (long)ivalue;
+            return null;
         }
-        internal override Integer ToInteger()
+        internal override Integer? ToInteger()
         {
             return ivalue;
         }
         internal override double ToDouble()
         {
-            if (ivalue == null)
-                return base.ToDouble();
             return (double)ivalue;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return ivalue == null;
-            }
         }
         public override string ToString()
         {
-            if (ivalue == null)
-                return "null";
             return ivalue.ToString();
         }
     }
     // shareable
     internal class TBool : TypedValue
     {
-        internal readonly bool? value;
-        internal static TBool False = new TBool(false);
-        internal static TBool True = new TBool(true);
-        internal static TBool Null = new TBool(null);
-        private TBool(Domain dt, bool? b) : base(dt) { value = b; }
-        private TBool(bool? b) : this(Domain.Bool, b) { }
+        internal readonly bool value;
+        internal static TBool False = new (false);
+        internal static TBool True = new (true);
+        private TBool(Domain dt, bool b) : base(dt) { value = b; }
+        private TBool(bool b) : this(Domain.Bool, b) { }
         internal override TypedValue New(Domain t)
         {
             return new TBool(t, value);
-        }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TBool)obj;
-            if (value == that.value)
-                return 0;
-            if (!value.HasValue)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (!that.value.HasValue)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            return value.Value.CompareTo(that.value.Value);
         }
         public override string ToString()
         {
             return value.ToString();
         }
-        internal override object Val()
-        {
-            return value;
-        }
         internal override bool? ToBool()
         {
             return value;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return !value.HasValue;
-            }
         }
         internal static TypedValue For(bool p)
         {
@@ -384,7 +267,7 @@ namespace Pyrrho.Common
     internal class TChar : TypedValue
     {
         internal readonly string value;
-        internal static TChar Empty = new TChar("");
+        internal static TChar Empty = new ("");
         internal TChar(Domain dt, string s) : base(dt) { value = s; }
         internal TChar(string s) : this(Domain.Char, s) { }
         internal TChar(Ident n) : this((n == null) ? "" : n.ident) { }
@@ -392,37 +275,13 @@ namespace Pyrrho.Common
         {
             return new TChar(t, value);
         }
-        public override int _CompareTo(object obj)
-        {
-            var that = obj as TChar;
-            if (that == null && obj != null)
-                that = new TChar(obj.ToString());
-            if (value == that.value)
-                return 0;
-            if (value == null)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (that.value == null)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            return value.CompareTo(that.value);
-        }
         public override string ToString()
         {
-            return value;
+            return value??"null";
         }
         internal override string ToString(CList<long> cs,Context cx)
         {
             return "'" + value + "'";
-        }
-        internal override object Val()
-        {
-            return value;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return value==null;
-            }
         }
     }
     // shareable
@@ -435,22 +294,9 @@ namespace Pyrrho.Common
         {
             return new TNumeric(t, value);
         }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TNumeric)obj;
-            if (value == that.value)
-                return 0;
-            if (value == null)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (that.value == null)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            return value.CompareTo(that.value);
-        }
         internal override TypedValue Next()
         {
-            if (value!=null)
-                return new TNumeric(dataType,new Numeric(value.mantissa.Add(new Integer(1),value.scale)));
-            return base.Next();
+            return new TNumeric(dataType,new Numeric(value.mantissa.Add(new Integer(1),value.scale)));
         }
         internal override double ToDouble()
         {
@@ -474,30 +320,19 @@ namespace Pyrrho.Common
                 return r; 
             return base.ToLong();
         }
-        internal override Integer ToInteger()
+        internal override Integer? ToInteger()
         {
-            Integer r = new Integer(0);
+            Integer r = new (0);
             if (value.TryConvert(ref r))
                 return r; 
             return base.ToInteger();
-        }
-        internal override object Val()
-        {
-            return value;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return (object)value==null;
-            }
         }
     }
     // shareable
     internal class TReal : TypedValue
     {
         internal readonly double dvalue = double.NaN;
-        internal readonly Numeric nvalue = null;
+        internal readonly Numeric nvalue = new (0);
         internal TReal(Domain dt, double d) : base(dt) { dvalue = d; }
         internal TReal(Domain dt, Numeric n) : base(dt) { nvalue = n; }
         internal TReal(double d) : this(Domain.Real, d) { }
@@ -510,52 +345,23 @@ namespace Pyrrho.Common
         {
             return new TReal(t, dvalue, nvalue);
         }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TReal)obj;
-            if (((object)nvalue) != null)
-            {
-                if (((object)that.nvalue) != null)
-                    return nvalue.CompareTo(that.nvalue);
-                else
-                    return nvalue.CompareTo(new Numeric(that.dvalue));
-            }
-            if (((object)that.nvalue) == null)
-                return dvalue.CompareTo(that.dvalue);
-            return new Numeric(dvalue).CompareTo(that.nvalue);
-        }
         internal override TypedValue Next()
         {
-            if (nvalue != null)
-                return new TReal(dataType, new Numeric(nvalue.mantissa.Add(new Integer(1), 0), 0));
-            if (dvalue != double.NaN)
+            if (!double.IsNaN(dvalue))
                 return new TReal(dataType, dvalue + 1);
-            return base.Next();
+            return new TReal(dataType, new Numeric(nvalue.mantissa.Add(new Integer(1), 0), 0));
         }
         public override string ToString()
         {
-            if ((object)nvalue != null)
-                return nvalue.ToString();
-            return dvalue.ToString();
+            if (!double.IsNaN(dvalue))
+                return dvalue.ToString();
+            return nvalue.ToString();
         }
         internal override double ToDouble()
         {
-            if (((object)nvalue) != null)
+            if (double.IsNaN(dvalue))
                 return (double)nvalue;
             return dvalue;
-        }
-        internal override object Val()
-        {
-            if ((object)nvalue == null)
-                return dvalue;
-            return nvalue;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return dvalue==double.NaN && nvalue==null;
-            }
         }
     }
 
@@ -571,17 +377,6 @@ namespace Pyrrho.Common
         {
             return new TSensitive(t, value);
         }
-        public override int _CompareTo(object obj)
-        {
-            object that = (obj is TSensitive st) ? st.value : obj;
-            return value._CompareTo(that);
-        }
-
-        internal override object Val()
-        {
-            return value.Val();
-        }
-        public override bool IsNull => value.IsNull;
         public override string ToString()
         {
             return value.ToString();
@@ -593,21 +388,11 @@ namespace Pyrrho.Common
         internal readonly TypedValue value; // of the supertype
         internal TSubType(UDType dt, TypedValue v) : base(dt)
         {
-            value = (v is TSubType st)?st.value:v;
+            value = v;
         }
-        public override int _CompareTo(object obj)
-        {
-            object that = obj as TypedValue;
-            return value._CompareTo(that);
-        }
-        internal override object Val()
-        {
-            return value.Val();
-        }
-        public override bool IsNull => value.IsNull;
         public override string ToString()
         {
-            return value.ToString() + (((UDType)dataType).suffix??"");
+            return value.ToString();
         }
         internal override TypedValue New(Domain t)
         {
@@ -626,20 +411,9 @@ namespace Pyrrho.Common
                 return base.Fix(cx);
             return new TQParam((Domain)dataType.Fix(cx), id);
         }
-        public override bool IsNull => false;
-        public override int _CompareTo(object obj)
-        {
-            throw new NotImplementedException();
-        }
-
         internal override TypedValue New(Domain t)
         {
             return t.defaultValue;
-        }
-
-        internal override object Val()
-        {
-            return this;
         }
         public override string ToString()
         {
@@ -649,7 +423,7 @@ namespace Pyrrho.Common
     // shareable as of 26 April 2021
     internal class TUnion : TypedValue 
     {
-        internal readonly TypedValue value = null;
+        internal readonly TypedValue value = TNull.Value;
         internal TUnion(Domain dt, TypedValue v) : base(dt) { value = v;  }
         internal override TypedValue New(Domain t)
         {
@@ -659,14 +433,6 @@ namespace Pyrrho.Common
         {
             return new TUnion((Domain)dataType.Fix(cx), 
                 value.Fix(cx));
-        }
-        public override int _CompareTo(object obj)
-        {
-            throw new NotImplementedException();
-        }
-        internal override object Val()
-        {
-            return value;
         }
         internal override int? ToInt()
         {
@@ -691,40 +457,16 @@ namespace Pyrrho.Common
                 return ts[0].Coerce(cx,value);
             return new TUnion(Domain.UnionType(lp,ts.ToArray()),value);
         }
-        public override bool IsNull
-        {
-            get
-            {
-                return value!=null;
-            }
-        }
     }
     // shareable
     internal class TDateTime : TypedValue
     {
-        internal readonly DateTime? value;
-        internal TDateTime(Domain dt, DateTime? d) : base(dt) { value = d; }
+        internal readonly DateTime value;
+        internal TDateTime(Domain dt, DateTime d) : base(dt) { value = d; }
         internal TDateTime(DateTime d) : this(Domain.Timestamp, d) { }
-        /// <summary>
-        /// Don't use this yourself: use Relocate.
-        /// (It should be protected but Domain is internal)
-        /// </summary>
-        /// <param name="t"></param>
-        /// <returns></returns>
         internal override TypedValue New(Domain t)
         {
             return new TDateTime(t, value);
-        }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TDateTime)obj;
-            if (value == that.value)
-                return 0;
-            if (!value.HasValue)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (!that.value.HasValue)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            return value.Value.CompareTo(that.value.Value);
         }
         public override string ToString()
         {
@@ -732,18 +474,7 @@ namespace Pyrrho.Common
         }
         internal override long? ToLong()
         {
-            return value.Value.Ticks;
-        }
-        internal override object Val()
-        {
-            return value;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return !value.HasValue;
-            }
+            return value.Ticks;
         }
     }
     // shareable
@@ -780,7 +511,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="r">The string representation</param>
         /// <returns>A THttpDate</returns>
-        internal static THttpDate Parse(string r)
+        internal static THttpDate? Parse(string r)
         {
             if (r == null)
                 return null;
@@ -803,7 +534,7 @@ namespace Pyrrho.Common
             for (var j = 0; j <= 6; j++)
                 if (r.Substring(i, 3) == ((DayOfWeek)j).ToString())
                 {
-                    i = i + 3;
+                    i += 3;
                     break;
                 }
             i = White(a, i);
@@ -865,7 +596,7 @@ namespace Pyrrho.Common
             // 1994 
             // GMT
             if (y == 0)
-                (y, i) = Digits(r, a, i);
+                (y, _) = Digits(r, a, i);
             var dt = new DateTime(y, M, d, h, m, s);
             if (f != 0)
                 dt = new DateTime(dt.Ticks + f*10000);
@@ -877,10 +608,8 @@ namespace Pyrrho.Common
         /// <returns></returns>
         public override string ToString()
         {
-            if (value == null)
-                return "";
             var sb = new StringBuilder();
-            var d = value.Value;
+            var d = value;
             sb.Append((DayOfWeek)(int)d.DayOfWeek);
             sb.Append(", "); sb.Append(d.Day.ToString("D2"));
             sb.Append(' '); sb.Append((Month)d.Month);
@@ -909,73 +638,24 @@ namespace Pyrrho.Common
         {
             return new TInterval(t, value);
         }
-        /// <summary>
-        /// Fake: Intervals are strictly speaking not comparable
-        /// </summary>
-        /// <param name="obj"></param>
-        /// <returns></returns>
-        public override int _CompareTo(object obj)
-        {
-            var that = (TInterval)obj;
-            if (value == that.value)
-                return 0;
-            if (value == null)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (that.value == null)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            return value.ToString().CompareTo(that.value.ToString());
-        }
-        internal override object Val()
-        {
-            return value;
-        }
         public override string ToString()
         {
             return value.ToString();
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return value==null;
-            }
         }
     }
     // shareable
     internal class TTimeSpan : TypedValue
     {
-        internal readonly TimeSpan? value;
-        internal TTimeSpan(Domain dt, TimeSpan? t) : base(dt) { value = t; }
+        internal readonly TimeSpan value;
+        internal TTimeSpan(Domain dt, TimeSpan t) : base(dt) { value = t; }
         internal TTimeSpan(TimeSpan t) : this(Domain.Timespan, t) { }
         internal override TypedValue New(Domain t)
         {
             return new TTimeSpan(t, value);
         }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TTimeSpan)obj;
-            if (value == that.value)
-                return 0;
-            if (!value.HasValue)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (!that.value.HasValue)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            return value.Value.CompareTo(that.value.Value);
-        }
-        internal override object Val()
-        {
-            return value;
-        }
         public override string ToString()
         {
             return value.ToString();
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return !value.HasValue;
-            }
         }
     }
     /// <summary>
@@ -989,43 +669,6 @@ namespace Pyrrho.Common
         internal override TypedValue New(Domain t)
         {
             return this; // approximate: use Relocate
-        }
-        internal override TypedValue Fix(Context cx)
-        {
-            return new TMTree(value.Fix(cx));
-        }
-        internal override object Val()
-        {
-            return value;
-        }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TMTree)obj;
-            if (value == that.value)
-                return 0;
-            if (value == null)
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (that.value == null)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            var e = value.First();
-            var f = that.value.First();
-            for (;e!=null &&f!=null;e=e.Next(),f=f.Next())
-            {
-                var c = e.key()._CompareTo(f.key());
-                if (c != 0)
-                    return c;
-                c = e.Value().Value.CompareTo(f.Value().Value);
-                if (c != 0)
-                    return c;
-            }
-            return (e!=null) ? 1 : (f!=null) ? -1 : 0;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return value==null;
-            }
         }
     }
     /// <summary>
@@ -1042,21 +685,6 @@ namespace Pyrrho.Common
         internal override TypedValue Fix(Context cx)
         {
             return new TPartial(cx.FixTlb(value));
-        }
-        internal override object Val()
-        {
-            return value;
-        }
-        public override int _CompareTo(object obj)
-        {
-            throw new NotImplementedException();
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return value==null;
-            }
         }
     }
     // shareable as of 26 April 2021
@@ -1081,10 +709,6 @@ namespace Pyrrho.Common
             return new TArray((Domain)dataType.Fix(cx),
                 cx.FixBV(list));
         }
-        internal override object Val()
-        {
-            return list;
-        }
         public static TArray operator+(TArray ar,TypedValue v)
         {
             if (!ar.dataType.elType.CanTakeValueOf(v.dataType))
@@ -1092,49 +716,16 @@ namespace Pyrrho.Common
             return new TArray(ar.dataType, ar.list + v);
         }
         internal int Length { get { return (int)list.Count; } }
-        internal override TypedValue this[string n]
+        internal override TypedValue? this[string n]
         {
             get
             {
-                int i;
-                if (int.TryParse(n, out i))
+                if (int.TryParse(n, out int i))
                     return this[i];
                 return null;
             }
         }
-        internal TypedValue this[int i] => list.PositionAt(i).value();
-        public override int _CompareTo(object obj)
-        {
-            var that = (TArray)obj;
-            if (list == null || list.Count == 0)
-            {
-                if (that.list == null || that.list.Count == 0)
-                    return 0;
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            }
-            if (that.list == null || that.list.Count==0)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            int j = 0;
-            for(;j<list.Count&&j<that.list.Count;j++)
-            {
-                var a = list[j];
-                var b = that.list[j];
-                if (a == null && b == null)
-                    continue;
-                if (a == null)
-                    return -1;
-                if (b == null)
-                    return 1;
-                var c = a._CompareTo(b);
-                if (c != 0)
-                    return c;
-            }
-            if (j < list.Count)
-                return 1;
-            if (j < that.list.Count)
-                return -1;
-            return 0;
-        }
+        internal TypedValue this[int i] => list.PositionAt(i)?.value()??TNull.Value;
         public override string ToString()
         {
             var sb = new StringBuilder("[");
@@ -1145,21 +736,14 @@ namespace Pyrrho.Common
                     sb.Append(cm); cm = ",";
                     sb.Append(b.value().ToString());
                 }
-            sb.Append("]");
+            sb.Append(']');
             return sb.ToString();
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return list==null || list.Count==0;
-            }
         }
     }
     // shareable as of 26 April 2021
     internal class TTypeSpec : TypedValue
     {
-        Domain _dataType;
+        readonly Domain _dataType;
         internal TTypeSpec(Domain t) : base(Domain.TypeSpec)
         {
             _dataType = t;
@@ -1172,35 +756,11 @@ namespace Pyrrho.Common
         {
             return new TTypeSpec((Domain)_dataType.Fix(cx));
         }
-        internal override object Val()
-        {
-            return _dataType;
-        }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TTypeSpec)obj;
-            if (_dataType == that._dataType)
-                return 0;
-            if (_dataType == null)
-                return (_dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            if (that._dataType == null)
-                return (_dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            return _dataType.CompareTo(that._dataType);
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return _dataType==null;
-            }
-        }
     }
     internal class TLevel : TypedValue
     {
-        Level val;
-        public static TLevel D = new TLevel(Level.D);
-
-        public override bool IsNull => false;
+        internal readonly Level val;
+        public static TLevel D = new (Level.D);
 
         TLevel(Level v) : base(Domain._Level) { val = v; }
         internal override TypedValue New(Domain t)
@@ -1213,23 +773,6 @@ namespace Pyrrho.Common
                 return D;
             return new TLevel(lv);
         }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TLevel)obj;
-            if (val.Equals(that.val))
-                return 0;
-            if (val == null && that.val == null)
-                return 0;
-            if (val == null)
-                return -1;
-            if (that.val == null)
-                return 1;
-            return val.CompareTo(that.val);
-        }
-        internal override object Val()
-        {
-            return val;
-        }
         public override string ToString()
         {
             return val.ToString();
@@ -1238,7 +781,7 @@ namespace Pyrrho.Common
     // shareable
     internal class TBlob : TypedValue
     {
-        protected readonly byte[] value;
+        internal readonly byte[] value;
         public int Length => value.Length;
         public byte this[int i] => value[i];
         internal TBlob(Domain dt, byte[] b) : base(dt) { value = b; }
@@ -1247,44 +790,12 @@ namespace Pyrrho.Common
         {
             return new TBlob(t,value);
         }
-        internal override object Val()
-        {
-            return value;
-        }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TBlob)obj;
-            if (value==null || value.Length==0)
-            {
-                if (that.value == null || that.value.Length == 0)
-                    return 0;
-                return (dataType.nulls == Sqlx.LAST) ? 1 : -1; 
-            }
-            if (that.value == null || that.value.Length == 0)
-                return (dataType.nulls == Sqlx.LAST) ? -1 : 1; 
-            var m = value.Length;
-            var n = that.value.Length;
-            for (int i=0;i<n && i<m;i++)
-            {
-                var c = value[i].CompareTo(that.value[i]);
-                if (c != 0)
-                    return c;
-            }
-            return (m < n) ? -1 : (m > n) ? 1 : 0;
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return value==null || value.Length==0;
-            }
-        }
         public override string ToString()
         {
             var sb = new StringBuilder("byte[");
             if (value!=null)
             sb.Append(value.Length);
-            sb.Append("]");
+            sb.Append(']');
             if (value!=null && value.Length>0)
             {
                 sb.Append("X'");
@@ -1297,7 +808,7 @@ namespace Pyrrho.Common
                         break;
                     }
                 }
-                sb.Append("'");
+                sb.Append('\'');
             }
             return sb.ToString();
         }
@@ -1311,31 +822,16 @@ namespace Pyrrho.Common
         {
             return new TPeriod(t, value);
         }
-        internal override object Val()
-        {
-            return value;
-        }
-        public override int _CompareTo(object obj)
-        {
-            throw new NotImplementedException();
-        }
-        public override bool IsNull
-        {
-            get
-            {
-                return value==null;
-            }
-        }
     }
     /// <summary>
     /// A row-version cookie
     /// </summary>
     internal class TRvv : TypedValue
     {
-        internal readonly Rvv rvv;
+        internal readonly Rvv rvv = Rvv.Empty;
         internal TRvv(string match) : base (Domain.Rvv)
         {
-            rvv = Rvv.Parse(match);
+            rvv = Rvv.Parse(match)??Rvv.Empty;
         }
         internal TRvv(Rvv r) : base(Domain.Rvv)
         {
@@ -1360,19 +856,6 @@ namespace Pyrrho.Common
         {
             return this;
         }
-        internal override object Val()
-        {
-            return rvv;
-        }
-        public override bool IsNull
-        {
-            get { return false; }
-        }
-        public override int _CompareTo(object obj)
-        {
-            var that = obj as TRvv;
-            return rvv.CompareTo(that.rvv);
-        }
         public override string ToString()
         {
             return rvv.ToString();
@@ -1382,28 +865,13 @@ namespace Pyrrho.Common
     internal sealed class TMetadata : TypedValue
     {
         readonly CTree<Sqlx, TypedValue> md;
-        public TMetadata(CTree<Sqlx,TypedValue> m=null) : base(Domain.Metadata)
+        public TMetadata(CTree<Sqlx,TypedValue>? m=null) : base(Domain.Metadata)
         {
             md = m ?? CTree<Sqlx,TypedValue>.Empty;
         }
-
-        public override bool IsNull => md==CTree<Sqlx,TypedValue>.Empty;
-
-        public override int _CompareTo(object obj)
-        {
-            if (obj is TMetadata tt)
-                return md.CompareTo(tt.md);
-            return -1;
-        }
-
         internal override TypedValue New(Domain t)
         {
             throw new NotImplementedException();
-        }
-
-        internal override object Val()
-        {
-            return md;
         }
         public override string ToString()
         {
@@ -1421,147 +889,7 @@ namespace Pyrrho.Common
             return sb.ToString();
         }
     }
-    /// <summary>
-    /// Column is a convenience class for named values: has a name, segpos, obs type, value.
-    /// Should really only be used in system tables and Documents. Should not be stored anywhere.
-    /// </summary>
-    ///     // shareable as of 26 April 2021
-    internal sealed class Column
-    {
-        internal readonly string name;
-        internal readonly long segpos;
-        internal readonly TypedValue typedValue;
-        internal Column(string n, long p, Domain d)
-        { name = n; segpos = p;  typedValue = d.defaultValue;  }
-        internal Column(string n, long p, TypedValue tv)
-        { name = n; segpos = p;  typedValue = tv; }
-        internal Domain DataType { get { return typedValue.dataType; } }
-        internal object Val() { return typedValue.Val(); }
-        public override string ToString()
-        {
-            if (typedValue == null)
-                return "<null>";
-            if (typedValue.dataType.kind == Sqlx.CHAR)
-                return "\"" + typedValue.ToString() + "\"";
-            return typedValue.ToString();
-        }
-    }
-    /// This primitive form of TRow is a linked=list suitable for MTree indexes
-    // shareable as of 26 April 2021
-    internal class PRow : ITypedValue
-    {
-        internal readonly Sqlx _kind;
-        internal readonly TypedValue _head;
-        internal readonly PRow _tail;
-        public PRow(TypedValue head, PRow tail = null, Sqlx k=Sqlx.EQL)
-        {
-            _head = head; _tail = tail; _kind = k;
-        }
-        /// <summary>
-        /// For now the only inequality TRow keys we support are where the inequality
-        /// applies to the very last value of the key
-        /// </summary>
-        /// <param name="r"></param>
-        /// <param name="k">Sqlx.EQL or an inequality operator</param>
-        /// <param name="off"></param>
-        /// <param name="len"></param>
-        PRow(TRow r,Sqlx k,int off,int len)
-        {
-            _head = r[off];
-            _tail = (off < len - 1) ? new PRow(r, k, off + 1, len) : null;
-            _kind = (off < len - 1) ? Sqlx.EQL : k;
-        }
-        public PRow(TRow r,Sqlx k=Sqlx.EQL) : this(r, k, 0, r.Length)
-        { }
-        public PRow(BList<TypedValue> v,int off=0)
-        {
-            if (off < v.Count)
-                _head = v[off];
-            else
-                _head = null;
-            _tail = null;
-            if (++off < v.Count)
-                _tail = new PRow(v,off);
-        }
-        public PRow(int off, params Column[] v)
-        {
-            if (off < v.Length)
-                _head = v[off].typedValue;
-            else
-                _head = null;
-            _tail = null;
-            if (++off < v.Length)
-                _tail = new PRow(off, v);
-        }
-        public TypedValue this[int i]
-        {
-            get { if (i == 0) return _head; return _tail?[i - 1]; }
-        }
-        internal PRow Fix(Context cx)
-        {
-            return new PRow(_head?.Fix(cx), _tail?.Fix(cx));
-        }
-        internal PRow Replaced(Context cx)
-        {
-            return new PRow(_head?.Replaced(cx), _tail.Replaced(cx));
-        }
-        public int Length { get { if (_tail == null) return 1; return 1 + _tail.Length; } }
-        public int _CompareTo(object ob)
-        {
-            var p = ob as PRow;
-            if (_head == null)
-                return -1;
-            if (p == null)
-                return 1;
-            var c = _head.CompareTo(p._head);
-            if (c != 0)
-                return c;
-            if (_tail != null)
-                return _tail._CompareTo(p._tail);
-            return (p._tail == null) ? 0 : -1;
-        }
-        public bool IsNull { get { return false; } }
-        public override string ToString()
-        {
-            var sb = new StringBuilder();
-            var cm = "(";
-            for (var r = this; r != null && r._head!=null; r = r._tail)
-            {
-                sb.Append(cm); cm = ",";
-                if (!r._head.IsNull)
-                    sb.Append(r._head.ToString());
-            }
-            sb.Append(")");
-            return sb.ToString();
-        }
-
-        public int CompareTo(object obj)
-        {
-            PRow that = obj as PRow;
-            if (that == null)
-                return 1;
-            if (_head == null && that._head == null)
-                return 0;
-            if (_head == null)
-                return -1;
-            if (that._head == null)
-                return 1;
-            var c = _head.CompareTo(that._head);
-            if (c != 0)
-                return c;
-            if (_tail == null)
-                return (that._tail != null) ? -1 : 0;
-            return _tail.CompareTo(that?._tail);
-        }
-        public static PRow Reverse(PRow k)
-        {
-            PRow r = null;
-            for (;k!=null;k=k._tail)
-                r = new PRow(k._head, r);
-            return r;
-        }
-    }
-    /// <summary>
+     /// <summary>
     /// All TypedValues have a domain; TRow also has a BList of uids to give the columns ordering
     /// and a tree of values indexed by uid.
     /// Cursor and RowBookmark are TRows, and rows can be assigned to SqlValues if the columns
@@ -1575,17 +903,17 @@ namespace Pyrrho.Common
         internal readonly int docCol = -1;  // note the position of a single document column if present
         internal int Length => dataType.Length;
         internal CList<long> columns => dataType.rowType;
-        internal static TRow Empty = new TRow(Domain.Row, CTree<long, TypedValue>.Empty);
+        internal static TRow Empty = new (Domain.Row, CTree<long, TypedValue>.Empty);
         public TRow(Domain dt,CTree<long,TypedValue> vs)
             :base(dt)
         {
             values = vs;
         }
-        public TRow(Domain dt, BTree<long, long> map, BTree<long, TypedValue> vs)
+        public TRow(Domain dt, BTree<long, long>? map, BTree<long, TypedValue> vs)
             : base(dt)
         {
             var v = CTree<long, TypedValue>.Empty;
-            for (var b = map.First(); b != null; b = b.Next())
+            for (var b = map?.First(); b != null; b = b.Next())
                 if (dt.representation.Contains(b.key()))
                     v += (b.key(), vs[b.value()] ?? TNull.Value);
             values = v;
@@ -1604,11 +932,12 @@ namespace Pyrrho.Common
             }
             values = vs;
         }
-        public TRow(Domain dm,CList<long> cols,TRow rw) :base(dm)
+        public TRow(Domain dm,Domain cols,TRow rw) :base(dm)
         {
             var vs = CTree<long,TypedValue>.Empty;
             var rb = rw.columns.First();
-            for (var b = (cols??dm.rowType).First(); b != null && rb!=null; b = b.Next(),rb=rb.Next())
+            var d = (cols == Domain.Row) ? dm : cols;
+            for (var b = d.First(); b != null && rb!=null; b = b.Next(),rb=rb.Next())
                 vs += (b.value(), rw[rb.value()]);
             values = vs;
         }
@@ -1619,7 +948,6 @@ namespace Pyrrho.Common
                 v += (b.value(), rw[b.key()] ?? TNull.Value);
             values = v;
         }
-        public TRow(SqlValue sv, CTree<long, TypedValue> vs) : this(Context._system._Dom(sv), vs) { }
         /// <summary>
         /// Constructor: values by columns
         /// </summary>
@@ -1632,27 +960,45 @@ namespace Pyrrho.Common
             for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
             {
                 var p = b.value();
-                var vi = (i<v.Length)?v[i]:null;
-                vals += (p, vi ?? (cx._Dom(dt.representation[p]).defaultValue));
+                var vi = (i < v.Length) ? v[i] : null;
+                if (vi != null)
+                    vals += (p, vi);
+                else if (dt.representation[p] is Domain dd)
+                    vals += (p, dd.defaultValue);
             }
             values = vals;
         }
-        internal TRow(Domain dm, PRow v) : base(dm)
+        internal TRow(Domain dm, CList<TypedValue> v) : base(dm)
         {
             var vals = CTree<long, TypedValue>.Empty;
-            for (var b = dm.rowType.First(); b != null; b = b.Next(), v=v._tail)
+            var tb = v.First();
+            for (var b = dm.rowType.First(); b != null && tb!=null; b = b.Next(), tb=tb.Next())
             {
                 var p = b.value();
-                vals += (p, v._head);
+                vals += (p, tb.value());
             }
             values = vals;
+        }
+        internal bool IsNull
+        {
+            get
+            {
+                var d = dataType.display;
+                if (d == 0)
+                    d = int.MaxValue;
+                for (var b = dataType.rowType.First(); b != null && d>0; b = b.Next(),d--)
+                    if (values[b.value()] != TNull.Value)
+                        return false;
+                return true;
+            }
         }
         internal override TypedValue New(Domain t)
         {
             var vs = CTree<long, TypedValue>.Empty;
             var nb = t.rowType.First();
             for (var b = dataType.rowType.First(); b != null && nb != null; b = b.Next(), nb = nb.Next())
-                vs += (nb.value(), values[b.value()]);
+                if (values[b.value()] is TypedValue v)
+                vs += (nb.value(), v);
             return new TRow(t, vs);
         }
         internal override TypedValue Fix(Context cx)
@@ -1663,21 +1009,17 @@ namespace Pyrrho.Common
         {
             return new TRow(rw.dataType, rw.values + x);
         }
-        internal override object Val()
-        {
-            return this;
-        }
         internal override TypedValue this[long n] => values[n]??TNull.Value;
         internal TypedValue this[int i]
         {
             get {
-                if (columns != null)
-                    return values[columns[i]];
+                if (columns != null && columns.Contains(i))
+                    return values[columns[i]]??TNull.Value;
                 var j = 1;
                 for (var b = dataType.representation.First(); i >= j && b != null; b = b.Next(), j++)
                     if (i == j)
-                        return values[b.key()];
-                return null;
+                        return values[b.key()]??TNull.Value;
+                return TNull.Value;
             }
         }
         internal override TypedValue Replace(Context cx, DBObject ov, DBObject nv)
@@ -1687,7 +1029,8 @@ namespace Pyrrho.Common
                 return this;
             var vs = new TypedValue[dt.Length];
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
-                vs[b.key()] = values[b.value()];
+                if (values[b.value()] is TypedValue v)
+                    vs[b.key()] = v;
             return new TRow(cx, dt, vs);
         }
         /// <summary>
@@ -1708,25 +1051,6 @@ namespace Pyrrho.Common
             str.Append(')');
             return str.ToString();
         }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TRow)obj;
-            if (Length != that.Length)
-                goto bad;
-            try
-            {
-                for (int i = 0; i < Length; i++)
-                {
-                    var c = this[i]?.CompareTo(that[i]) ?? -1;
-                    if (c != 0)
-                        return c;
-                }
-                return 0;
-            }
-            catch { }
-        bad:
-            throw new DBException("22000",this).ISO();
-        }
         internal override TypedValue[] ToArray()
         {
             var r = new TypedValue[Length];
@@ -1734,21 +1058,12 @@ namespace Pyrrho.Common
                 r[i] = this[i];
             return r;
         }
-        public override bool IsNull
+        internal CList<TypedValue> ToKey()
         {
-            get 
-            {
-                var d = dataType.display;
-                if (d == 0)
-                    d = int.MaxValue;
-                for (var b = dataType.rowType.First(); b != null && d>0; b = b.Next(),d--)
-                {
-                    var v = values[b.value()];
-                    if (v != null && !v.IsNull)
-                        return false;
-                }
-                return true;
-            }
+            var r = CList<TypedValue>.Empty;
+            for (var b = dataType.rowType.First(); b != null; b = b.Next())
+                r += values[b.value()]??TNull.Value;
+            return r;
         }
     }
     /// <summary>
@@ -1839,13 +1154,15 @@ namespace Pyrrho.Common
         {
             return tree.Contains(a);
         }
-        internal MultisetBookmark First()
+        internal MultisetBookmark? First()
         {
-            return new MultisetBookmark(this,0,tree.First());
+            var tf = tree.First();
+            return (tf==null)?null:new MultisetBookmark(this,0,tf);
         }
-        internal MultisetBookmark Last()
+        internal MultisetBookmark? Last()
         {
-            return new MultisetBookmark(this, count-1, tree.Last());
+            var tl = tree.Last();
+            return (tl==null)?null:new MultisetBookmark(this, count-1, tl);
         }
         // shareable as of 26 April 2021
         internal class MultisetBookmark : IBookmark<TypedValue>
@@ -1854,39 +1171,32 @@ namespace Pyrrho.Common
             readonly ABookmark<TypedValue, long> _bmk;
             readonly long _pos;
             readonly long? _rep;
-            internal MultisetBookmark(TMultiset set, long pos = 0, ABookmark<TypedValue, long> bmk = null, long? rep = null)
+            internal MultisetBookmark(TMultiset set, long pos, 
+                ABookmark<TypedValue, long> bmk, long? rep = null)
             {
                 _set = set; _pos = pos; _bmk = bmk; _rep = rep;
             }
-            public MultisetBookmark Next()
+            public MultisetBookmark? Next()
             {
                 var bmk = _bmk;
                 var rep = _rep;
                 for (; ; )
                 {
-                    if (rep.HasValue)
-                    {
-                        var rp = _rep.Value;
-                        if (rp > 0)
-                            return new MultisetBookmark(_set, _pos + 1, bmk, rp - 1);
-                    }
+                    if (rep!=null && rep>0)
+                            return new MultisetBookmark(_set, _pos + 1, bmk, rep - 1);
                     bmk = ABookmark<TypedValue, long>.Next(bmk, _set.tree);
                     if (bmk == null)
                         return null;
                 }
             }
-            public MultisetBookmark Previous()
+            public MultisetBookmark? Previous()
             {
                 var bmk = _bmk;
                 var rep = _rep;
                 for (; ; )
                 {
-                    if (rep.HasValue)
-                    {
-                        var rp = _rep.Value;
-                        if (rp > 0)
-                            return new MultisetBookmark(_set, _pos - 1, bmk, rp - 1);
-                    }
+                    if (rep!=null && rep>0)
+                            return new MultisetBookmark(_set, _pos - 1, bmk, rep - 1);
                     bmk = ABookmark<TypedValue, long>.Previous(bmk, _set.tree);
                     if (bmk == null)
                         return null;
@@ -1902,7 +1212,7 @@ namespace Pyrrho.Common
                 return _bmk.key();
             }
 
-            IBookmark<TypedValue> IBookmark<TypedValue>.Next()
+            IBookmark<TypedValue>? IBookmark<TypedValue>.Next()
             {
                 return Next();
             }
@@ -1938,7 +1248,7 @@ namespace Pyrrho.Common
         /// <returns>A new Multiset</returns>
         internal TMultiset Set() // return a multiset with same values but no duplicates
         {
-            TMultiset m = new TMultiset(this);
+            TMultiset m = new (this);
             for (var b = m.tree.First();b!=null;b=b.Next())
                 m.Add(b.key());
             return m;
@@ -1950,17 +1260,17 @@ namespace Pyrrho.Common
         /// <param name="b">A second multiset</param>
         /// <param name="all">true if duplicates are not to be removed</param>
         /// <returns>a new Multiset</returns>
-        internal static TMultiset Union(TMultiset a, TMultiset b, bool all)
+        internal static TMultiset? Union(TMultiset? a, TMultiset? b, bool all)
         {
             if (a == null || b == null)
                 return null;
             var ae = a.dataType.elType;
             var be = b.dataType.elType;
-            if (ae == Domain.Null)
+            if (ae == Domain.Row)
                 ae = be;
-            if (be != Domain.Null && be != ae)
+            if (be != Domain.Row && be != ae)
                 throw new DBException("22105").Mix();
-            TMultiset r = new TMultiset(a);
+            TMultiset r = new (a);
             if (all)
             {
                 r.tree = a.tree;
@@ -1985,17 +1295,17 @@ namespace Pyrrho.Common
         /// <param name="b">A second multiset</param>
         /// <param name="all">true if duplicates are not to be removed</param>
         /// <returns>a new Multiset</returns>
-        internal static TMultiset Intersect(TMultiset a, TMultiset b, bool all)
+        internal static TMultiset? Intersect(TMultiset? a, TMultiset? b, bool all)
         {
             if (a == null || b == null)
                 return null;
             var ae = a.dataType.elType;
             var be = b.dataType.elType;
-            if (ae == Domain.Null)
+            if (ae == Domain.Row)
                 ae = be;
-            if (be != Domain.Null && be != ae)
+            if (be != Domain.Row && be != ae)
                 throw new DBException("22105").Mix();
-            TMultiset r = new TMultiset(a);
+            TMultiset r = new (a);
             for(var d = a.tree.First();d!=null;d=d.Next())
             {
                 TypedValue v = d.key();
@@ -2025,8 +1335,7 @@ namespace Pyrrho.Common
                 return b;
             if (b == null)
                 return a;
-            Domain tp = Context._system._Dom(a.dataType.elType);
-            TMultiset r = new TMultiset(a.dataType);
+            TMultiset r = new (a.dataType);
             for (var d = a.tree.First(); d != null; d = d.Next())
             {
                 TypedValue v = d.key();
@@ -2062,30 +1371,6 @@ namespace Pyrrho.Common
             }
             return str + ")";
         }
-        public override int _CompareTo(object obj)
-        {
-            var that = (TMultiset)obj;
-            if (dataType.kind != that.dataType.kind)
-                throw new DBException("22000",this).ISO();
-            var e = tree.First();
-            var f = that.tree.First();
-            var et = dataType.elType;
-            for (; e!=null && f!=null; e = e.Next(), f = f.Next())
-            {
-                var c = Context._system._Dom(et).Compare(e.key(),f.key());
-                if (c != 0)
-                    return c;
-            }
-            return (e!=null) ? 1 : (f!=null) ? -1 : 0;
-        }
-        internal override object Val()
-        {
-            return tree;
-        }
-        public override bool IsNull
-        {
-            get { return tree == null || tree.Count == 0; }
-        }
     }
     /// <summary>
     /// The model for Xml values is that element ordering and repetition is important,
@@ -2094,13 +1379,13 @@ namespace Pyrrho.Common
     /// </summary>
     internal class TXml : TypedValue
     {
-        internal readonly string name;
+        internal readonly string? name;
         internal readonly CTree<string, TypedValue> attributes = CTree<string, TypedValue>.Empty;
         internal readonly string content = "";
         internal readonly CList<TXml> children = CList<TXml>.Empty;
-        internal static TXml Null = new TXml(null);
-        internal TXml(string n) : base(Domain.XML) { name = n; }
-        TXml(string n,CTree<string,TypedValue>a,string c,CList<TXml> ch)
+        internal static TXml Null = new (null);
+        internal TXml(string? n) : base(Domain.XML) { name = n; }
+        TXml(string? n,CTree<string,TypedValue>a,string c,CList<TXml> ch)
             : base(Domain.XML)
         {
             name = n; attributes = a; content = c; children = ch;
@@ -2112,10 +1397,6 @@ namespace Pyrrho.Common
         internal override TypedValue Fix(Context cx)
         {
             return new TXml(name,cx.FixTsV(attributes),content,cx.FixLX(children));
-        }
-        internal override object Val()
-        {
-            return ToString();
         }
         public static TXml operator+(TXml t,(string,TypedValue)a)
         {
@@ -2129,10 +1410,6 @@ namespace Pyrrho.Common
         {
             return new TXml(t.name, t.attributes, c, t.children);
         }
-        public override int _CompareTo(object obj)
-        {
-            return ToString().CompareTo(((TypedValue)obj).ToString());
-        }
         public override string ToString()
         {
             var sb = new StringBuilder();
@@ -2143,7 +1420,7 @@ namespace Pyrrho.Common
                 sb.Append(">" + content + "</" + name + ">");
             else if (children.Count > 0)
             {
-                sb.Append(">");
+                sb.Append('>');
                 for (var b=children.First();b!=null;b=b.Next())
                     sb.Append(b.value().ToString());
                 sb.Append("</" + name + ">");
@@ -2151,10 +1428,6 @@ namespace Pyrrho.Common
             else
                 sb.Append("/>");
             return sb.ToString();
-        }
-        public override bool IsNull
-        {
-            get { return this==Null;  }
         }
     }
     // shareable

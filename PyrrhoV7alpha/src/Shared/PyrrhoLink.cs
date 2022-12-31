@@ -1497,7 +1497,7 @@ namespace Pyrrho
                     goto again;
                 case 4:
                     entity = c.GetString();
-                    if (!entity.Contains("http"))
+                    if (entity!="" && !entity.Contains("http"))
                     {
                         var ix = entity.LastIndexOf("/");
                         version = entity.Substring(ix + 1);

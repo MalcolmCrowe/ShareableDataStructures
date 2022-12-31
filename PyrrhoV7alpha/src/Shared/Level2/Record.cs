@@ -4,6 +4,7 @@ using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Level4; 
 using Pyrrho.Common;
+using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -44,15 +45,11 @@ namespace Pyrrho.Level2
         public virtual Level classification => _classification;
         public override long _Table => tabledefpos;
         public long subType = -1;
-        /// <summary>
-        /// A relative URI (base is given in PImportTransaction)
-        /// </summary>
-        public string provenance;
         // Insert and ReferenceInsert constraints: {keys} , tabledefpos->{(keys,fkeys)}
-        public CTree<CList<long>,CTree<long,bool>> inC = CTree<CList<long>,CTree<long,bool>>.Empty;
+        public CTree<Domain,CTree<long,bool>> inC = CTree<Domain,CTree<long,bool>>.Empty;
         public CTree<long, bool> refs = CTree<long, bool>.Empty;
-        public CTree<long,CTree<CList<long>,CList<long>>> riC 
-            = CTree<long,CTree<CList<long>,CList<long>>>.Empty;
+        public CTree<long,CTree<Domain,Domain>> riC 
+            = CTree<long,CTree<Domain,Domain>>.Empty;
         public long triggeredAction;
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -75,8 +72,10 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected Record(Type t, Table tb, CTree<long, TypedValue> fl, long pp, 
-            Context cx)  : base(t, pp, cx)
+            Context cx)  : base(t, pp)
         {
+            if (cx.tr==null || cx.db.user == null)
+                throw new DBException("42105");
             tabledefpos = tb.defpos;
             if (fl.Count == 0)
                 throw new DBException("2201C");
@@ -146,7 +145,7 @@ namespace Pyrrho.Level2
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var (_, cdt) = rdr.GetColumnDomain(c,ppos); // nominal obs type from log
+                var (_, cdt) = rdr.GetColumnDomain(c); // nominal obs type from log
                 cdt = cdt.GetDataType(rdr); // actual obs type from buffer
                 if (cdt != null)
                 {
@@ -162,34 +161,34 @@ namespace Pyrrho.Level2
         internal virtual void PutFields(Writer wr)  //LOCKED
         {
             wr.PutLong(fields.Count);
-            var cs = ((Table) wr.cx.db.objects[tabledefpos]).tableCols;
+            if (wr.cx.db.objects[tabledefpos] is not Table tb)
+                throw new PEException("PE0300");
+            var cs = tb.tableCols;
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
-            {
-                var k = d.key();
-                var o = d.value();
-                wr.PutLong(k); // coldefpos
-                var ndt = cs[k];
-                var dt = o?.dataType??Domain.Null;
-                dt.PutDataType(ndt, wr);
-                dt.Put(o,wr);
-            }
+                if (cs[d.key()] is Domain ndt && d.value() is TypedValue o)
+                {
+                    var k = d.key();
+                    wr.PutLong(k); // coldefpos
+                    var dt = o.dataType ?? Domain.Null;
+                    dt.PutDataType(ndt, wr);
+                    dt.Put(o, wr);
+                }
         }
-        public PRow MakeKey(CList<long> cols)
+        public CList<TypedValue> MakeKey(CList<long> cols)
         {
-            PRow r = null;
-            for (var i = (int)cols.Count - 1; i >= 0; i--)
-                r = new PRow(fields[cols[i]], r);
+            var r = CList<TypedValue>.Empty;
+            for (var b = cols.First();b!=null;b=b.Next())
+                    r += fields[b.value()]??TNull.Value;
             return r;
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
                 case Type.Drop:
                     {
                         var d = (Drop)that;
-                        var table = (Table)db.objects[tabledefpos];
-                        if (d.delpos == table.defpos)
+                        if (db.objects[tabledefpos] is Table table && d.delpos == table.defpos)
                             return new DBException("40012",d.delpos,that,ct);
                         for (var s = fields.PositionAt(0); s != null; s = s.Next())
                             if (s.key() == d.delpos)
@@ -197,21 +196,26 @@ namespace Pyrrho.Level2
                         return null;
                     }
                 case Type.Alter3:
-                    if (((Alter3)that).table.defpos == tabledefpos)
-                        return new DBException("40079", tabledefpos, that, ct);
-                    break;
+                    {
+                        if (((Alter3)that).table is Table at && at.defpos == tabledefpos)
+                            return new DBException("40079", tabledefpos, that, ct);
+                        break;
+                    }
                 case Type.Alter2:
-                    if (((Alter2)that).table.defpos == tabledefpos)
-                        return new DBException("40079", tabledefpos, that, ct);
-                    break;
+                    {
+                        if (((Alter2)that).table is Table at && at.defpos == tabledefpos)
+                            return new DBException("40079", tabledefpos, that, ct);
+                        break;
+                    }
                 case Type.Alter:
-                    if (((Alter)that).table.defpos == tabledefpos)
-                        return new DBException("40079", tabledefpos, that, ct);
-                    break;
+                    {
+                        if (((Alter)that).table is Table at && at.defpos == tabledefpos)
+                            return new DBException("40079", tabledefpos, that, ct);
+                        break;
+                    }
                 case Type.Update:
                 case Type.Update1:
                 case Type.Record:
-                case Type.Record1:
                 case Type.Record2:
                 case Type.Record3:
                     {
@@ -219,7 +223,7 @@ namespace Pyrrho.Level2
                         if (rec.tabledefpos != tabledefpos)
                             break;
                         for (var b = rec.inC.First(); b != null; b = b.Next())
-                            if (MakeKey(b.key()).CompareTo(rec.MakeKey(b.key())) == 0)
+                            if (MakeKey(b.key().rowType).CompareTo(rec.MakeKey(b.key().rowType))==0)
                                 return new DBException("40026", that);
                         break;
                     }
@@ -228,10 +232,9 @@ namespace Pyrrho.Level2
                     {
                         var del = (Delete)that;
                         for (var b = del.deC[tabledefpos]?.First(); b != null; b = b.Next())
-                        {
-                            if (del.delrec.MakeKey(b.key()).CompareTo(MakeKey(b.value())) == 0)
+                            if (del.delrec!=null && 
+                                del.delrec.MakeKey(b.key().rowType).CompareTo(MakeKey(b.value().rowType)) == 0)
                                 return new DBException("40075", that);
-                        }
                         break;
                     }
             }
@@ -244,32 +247,31 @@ namespace Pyrrho.Level2
         /// <returns></returns>
         internal virtual TableRow AddRow(Context cx)
         {
-            var tb = (Table)cx.db.objects[tabledefpos];
-            var now = new TableRow(this,cx.db);
-            for (var xb=tb.indexes.First();xb!=null;xb=xb.Next())
-                for (var c=xb.value().First();c!=null;c=c.Next())
-            {
-                var x = (Index)cx.db.objects[c.key()];
-                var k = x.MakeKey(now.vals);
-                if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
-                    x.flags.HasFlag(PIndex.ConstraintType.Unique))
-                    && (x.rows?.Contains(k)==true))
-                    throw new DBException("23000", "duplicate key ", k);
-                if (x.reftabledefpos>=0)
-                {
-                    var rx = (Index)cx.db.objects[x.refindexdefpos];
-        /*            if (!(rx is VirtualIndex) && */
-                    if (!rx.rows.Contains(k)) 
-                        throw new DBException("23000", "missing foreign key ", k);
-                }
-                x += (k, defpos);
-                cx.db += (x, cx.db.loadpos);
-            }
+            var now = new TableRow(this,cx);
+            if (cx.db==null || cx.db.objects[tabledefpos] is not Table tb)
+                throw new PEException("PE6900");
+            for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
+                for (var c = xb.value().First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.key()] is Level3.Index x)
+                    {
+                        var k = x.MakeKey(now.vals)??throw new DBException("23000","Bad key");
+                        if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
+                                x.flags.HasFlag(PIndex.ConstraintType.Unique))
+                            && (x.rows?.Contains(k) == true))
+                            throw new DBException("23000", "duplicate key ", k);
+                        if (cx.db.objects[x.refindexdefpos] is Level3.Index rx &&
+                            /*            if (!(rx is VirtualIndex) && */
+                            rx.rows?.Contains(k)!=true)
+                            throw new DBException("23000", "missing foreign key ", k);
+                        x += (k, defpos);
+                        cx.db += (x, cx.db.loadpos);
+                    }
             return now;
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var tb = cx.db.objects[tabledefpos] as Table;
+            if (cx.db.objects[tabledefpos] is not Table tb || tb.infos[tb.definer] is not ObInfo oi)
+                throw new PEException("PE0301");
             try
             {
                 tb +=  AddRow(cx);
@@ -277,15 +279,15 @@ namespace Pyrrho.Level2
             }
             catch (DBException e)
             {
-                var oi = tb.infos[cx.role.defpos];
                 if (e.signal == "23000")
                     throw new DBException(e.signal, e.objects[0].ToString() + oi.name 
                         + e.objects[1].ToString());
-                throw e;
+                throw;
             }
             cx.Install(tb, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return tb;
         }
         internal override void Affected(ref BTree<long, BTree<long, long>> aff)
         {
@@ -307,7 +309,7 @@ namespace Pyrrho.Level2
                 var k = b.key();
                 var v = b.value();
                 sb.Append(cm); cm = ",";
-                sb.Append(DBObject.Uid(k));sb.Append('=');sb.Append(v.Val());
+                sb.Append(DBObject.Uid(k));sb.Append('=');sb.Append(v.ToString());
                 sb.Append("[");
                 if (v.dataType.defpos < 0) sb.Append(v.dataType.ToString());
                 else sb.Append(v.dataType.defpos);
@@ -316,72 +318,6 @@ namespace Pyrrho.Level2
             if (_classification != Level.D || type == Type.Update1)
             { sb.Append(" Classification: "); sb.Append(_classification); }
             return sb.ToString();
-        }
-    }
-    /// <summary>
-    /// For Record entries made in an Import operation, we can add some provenance information
-    /// </summary>
-    internal class Record1 : Record
-    {
-        /// <summary>
-        /// Constructor: a new Record (INSERT) from the buffer
-        /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
-        public Record1(Reader rdr) : base(Type.Record1, rdr) { }
-        protected Record1(Type t,Reader rdr) : base(t, rdr) { }
-        /// <summary>
-        /// A new Record1 from the parser
-        /// </summary>
-        /// <param name="tb">The table the record is for</param>
-        /// <param name="dm">The domain with the provenance</param>
-        /// <param name="fl">The field values</param>
-        /// <param name="bp">The physical database</param>
-        /// <param name="curpos">The current position in the datafile</param>
-        protected Record1(Type t, Table tb, CTree<long,  TypedValue> fl, string p,
-            long pp, Context cx)
-            : base(t, tb, fl, pp, cx)
-        {
-            provenance = p;
-        }
-        /// <summary>
-        /// A new Record1 from the parser
-        /// </summary>
-        /// <param name="tb">The table the record is for</param>
-        /// <param name="fl">The field values</param>
-        /// <param name="prov">The provenance string</param>
-        /// <param name="bp">The physical database</param>
-        /// <param name="curpos">The current position in the datafile</param>
-        public Record1(Table tb, CTree<long, TypedValue> fl, string prov, long pp, Context cx)
-            : this(Type.Record1, tb, fl, prov, pp, cx)
-        {
-        }
-        protected Record1(Record1 x, Writer wr) : base(x, wr)
-        {
-            provenance = x.provenance;
-        }
-        protected override Physical Relocate(Writer wr)
-        {
-            return new Record1(this, wr);
-        }
-
-        /// <summary>
-        /// Serialise this record to the PhysBase
-        /// </summary>
-        /// <param name="r">Relocation information for positions</param>
-        public override void Serialise(Writer wr) //LOCKED
-        {
-            wr.PutString(provenance);
-            base.Serialise(wr);
-        }
-        /// <summary>
-        /// Deserialise this record from the buffer
-        /// </summary>
-        /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr)
-        {
-            provenance = rdr.GetString();
-            base.Deserialise(rdr);
         }
     }
     /// <summary>
@@ -453,7 +389,6 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="tb">The table the record is for</param>
         /// <param name="fl">The field values</param>
-        /// <param name="prov">The provenance string</param>
         /// <param name="bp">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public Record3(Table tb, CTree<long, TypedValue> fl, long st, Level lv, long pp, Context cx)

@@ -46,11 +46,13 @@
     <Compile Include="Common\BTree.cs" />
     <Compile Include="Crypt.cs" />
     <Compile Include="Document.cs" />
-    <Compile Include="Properties/PL\AssemblyInfo.cs" />
     <Compile Include="PyrrhoLink.cs" />
     <Compile Include="Reflection.cs" />
     <Compile Include="Resx.cs" />
     <Compile Include="Scripting.cs" />
+  </ItemGroup>
+  <ItemGroup>
+    <Folder Include="Properties\" />
   </ItemGroup>
   <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
   <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 

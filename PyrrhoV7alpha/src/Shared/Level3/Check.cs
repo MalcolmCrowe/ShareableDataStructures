@@ -1,4 +1,5 @@
 using System.Text;
+using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -31,8 +32,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The source SQL for the check constraint
         /// </summary>
-        internal string source => (string)mem[Source];
-        public string name => (string)mem[ObInfo.Name]; // constraints cannot be renamed
+        internal string source => (string?)mem[Source]??"";
+        public string? name => (string?)mem[ObInfo.Name]; // constraints cannot be renamed
         internal long search => (long)(mem[Condition]??-1L);
         /// <summary>
         /// Constructor: from the level 2 information
@@ -41,27 +42,21 @@ namespace Pyrrho.Level3
         /// <param name="definer">The defining role</param>
         /// <param name="owner">the owner</param>
 		public Check(PCheck c, Database db) 
-            : base(c.ppos, c.ppos, db.role.defpos,BTree<long,object>.Empty
-                  + (RowSet.Target,c.ckobjdefpos)+(Source,c.check)
+            : base(c.ppos, c.ppos, _Mem(db)
+                  + (RowSet.Target,c.ckobjdefpos)+(Source,c.check ?? "")
+                  + (Owner, c.owner) + (Definer,c.definer)
+                  + (Infos, c.infos) +(ObInfo.Name,c.name)
                   + (Condition, c.test)+(_Framing,c.framing)+(LastChange,c.ppos)
-                  + (ObInfo.Name,c.name))
+                  + (ObInfo.Name,c.name??""))
         { }
         public Check(PCheck2 c, Database db)
-            : base(c.ppos, c.ppos, db.role.defpos, BTree<long, object>.Empty
-          + (RowSet.Target, c.subobjdefpos) + (Source, c.check)
+            : base(c.ppos, c.ppos, _Mem(db)
+                                    + (Owner, c.owner) + (Definer, c.definer)
+                  + (Infos, c.infos) + (ObInfo.Name, c.name)
+          + (RowSet.Target, c.subobjdefpos) + (Source, c.check ?? "")
           + (Condition, c.test) + (_Framing, c.framing)+(LastChange,c.ppos)
-          + (ObInfo.Name, c.name))
+          + (ObInfo.Name, c.name ?? ""))
         { }
-        /// <summary>
-        /// for system types
-        /// </summary>
-        /// <param name="dp"></param>
-        /// <param name="s"></param>
-        public Check(long dp,string s)
-            : base(dp,new BTree<long,object>(Source,s)+(Condition,
-                  new Parser(new Context(Database._system),
-                      new Ident(s,Context._system.Ix(dp)))
-                  .ParseSqlValue(s,Domain.Bool))) { }
         /// <summary>
         /// Constructor: copy with changes
         /// </summary>
@@ -69,6 +64,11 @@ namespace Pyrrho.Level3
         /// <param name="us">The new list of grantees (including ownership)</param>
         /// <param name="ow">the owner</param>
         protected Check(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Database db)
+        {
+            var ro = db.role ?? throw new DBException("42105");
+            return BTree<long, object>.Empty + (Definer, ro.defpos) + (Owner,db.user?.defpos??-501L);
+        }
         public static Check operator+(Check c,(long,object)x)
         {
             return (Check)c.New(c.mem + x);
@@ -109,16 +109,15 @@ namespace Pyrrho.Level3
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
-            nd = ((DBObject)nd.objects[checkobjpos]).DropCheck(defpos, nd, p);
+            if (nd.objects[checkobjpos] is DBObject ob)
+                nd = ob.DropCheck(defpos, nd, p);
             for (var b = d.roles.First(); b != null; b = b.Next())
-            {
-                var ro = (Role)d.objects[b.value()];
-                if (infos[ro.defpos] is ObInfo oi)
+                if (d.objects[b.value()] is Role ro && infos[ro.defpos] is ObInfo oi
+                    && oi.name!=null)
                 {
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
-                    nd += (ro,p);
+                    nd += (ro, p);
                 }
-            }
             return base.Drop(d, nd, p);
         }
         internal override void Note(Context cx, StringBuilder sb)

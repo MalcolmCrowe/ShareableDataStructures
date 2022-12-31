@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.Globalization;
+using System.Security.Cryptography;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -23,7 +24,7 @@ namespace Pyrrho.Common
         /// <summary>
         /// The radix-256 digits in the Integer
         /// </summary>
-		protected readonly byte[] bytes = null; // high to low, first bit is sign bit
+		protected readonly byte[] bytes = new byte[0]; // high to low, first bit is sign bit
         public int Length => bytes.Length;
         public byte this[int x] => bytes[x];
         /// <summary>
@@ -368,8 +369,6 @@ namespace Pyrrho.Common
         /// <returns></returns>
 		public static Integer operator+(Integer a,Integer b)
 		{
-            if (a == null)
-                return b;
 			return a.Add(b,0);
 		}
         /// <summary>
@@ -611,6 +610,8 @@ namespace Pyrrho.Common
         /// <returns>The Integer value</returns>
 		public static Integer Parse(string str)
 		{
+            if (str.Length == 0)
+                return Zero;
             if (str[0] == '+')
                 str = str.Substring(1);
             bool sgn = str[0] == '-';
@@ -637,7 +638,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="obj">Something to compare</param>
         /// <returns>-1,0,1 according as this is less than, equal to, or greater than obj</returns>
-		public int CompareTo(object obj)
+		public int CompareTo(object? obj)
 		{
 			Integer x;
 			if (obj is Integer)
@@ -792,7 +793,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="obj">Integer to compare</param>
         /// <returns>whether they are equal</returns>
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return CompareTo(obj)==0;
         }
@@ -1049,6 +1050,10 @@ namespace Pyrrho.Common
 			a = a.Denormalise(b.mantissa.Length-a.mantissa.Length+prec+1);
 			return new Numeric(a.mantissa/b.mantissa,a.scale-b.scale).Normalise();
 		}
+        public static Numeric operator /(Numeric a, Numeric b)
+        {
+            return Divide(a,b,0);
+        }
         public static Numeric operator%(Numeric a,Numeric b)
         {
             int p = 0;
@@ -1075,7 +1080,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="obj">Something to compare with</param>
         /// <returns>-1,0,1 according as this is less than, equal to, greater than obj</returns>
-		public int CompareTo(object obj)
+		public int CompareTo(object? obj)
 		{
 			Numeric a = this;
 			Numeric b;
@@ -1093,7 +1098,7 @@ namespace Pyrrho.Common
                 b = new Numeric((Integer)obj, 0);
             else
                 throw new DBException("22201", obj).Pyrrho()
-                    .AddType(Level3.Domain.Numeric).AddValue(new TChar(obj.ToString()));
+                    .AddType(Level3.Domain.Numeric).AddValue(new TChar(obj?.ToString()??""));
 			int na = a.scale, nb = b.scale;
 			a = Denormalise(nb-na);
 			b = b.Denormalise(na-nb);
@@ -1107,8 +1112,6 @@ namespace Pyrrho.Common
         /// <returns>The string representation of this</returns>
 		public override string ToString()
 		{
-            if (mantissa == null)
-                return "";
 			string m = mantissa.ToString();
 			int n = m.Length;
 			if (scale==0)
@@ -1182,7 +1185,7 @@ namespace Pyrrho.Common
             return new Numeric(Integer.Parse(s.Substring(0, n) + s.Substring(n + 1)),
                 ln - n - 1 - exp);
 		}
-        public override bool Equals(object obj)
+        public override bool Equals(object? obj)
         {
             return CompareTo(obj)==0;
         }

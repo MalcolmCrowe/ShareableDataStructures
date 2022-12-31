@@ -43,8 +43,8 @@ namespace Pyrrho.Level3
         /// </summary>
         public long body => (long)(mem[Body]??-1L);
 		public CList<long> ins => 
-            (CList<long>)mem[Params]?? CList<long>.Empty;
-        public string clause => (string)mem[Clause]??"";
+            (CList<long>?)mem[Params]?? CList<long>.Empty;
+        public string clause => (string?)mem[Clause]??"";
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
         /// <summary>
@@ -52,9 +52,10 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="p">The level 2 procedure</param>
 		public Procedure(PProcedure p, Context cx,BTree<long,object> m)
-            : base( p.ppos, p.defpos, cx.role.defpos, m
+            : base( p.ppos, p.defpos, m + (ObInfo.Name,p.name)+(Definer,p.definer)+(Owner,p.owner)
+                  + (Infos,p.infos)
                   + (Params, p.parameters) +(_Domain,p.dataType?.defpos??throw new DBException("42000")) 
-                  + (Body, p.proc) + (Clause, p.source.ident) + (LastChange, p.ppos))
+                  + (Body, p.proc) + (Clause, p.source?.ident??"") + (LastChange, p.ppos))
         { }
         /// <summary>
         /// Constructor: a new Procedure/Function from the parser
@@ -64,7 +65,8 @@ namespace Pyrrho.Level3
         /// <param name="rt"></param>
         /// <param name="m"></param>
         public Procedure(long defpos,Context cx,string n,CList<long> ps, Domain dt, long definer,
-            BTree<long, object> m) : base(defpos, m +(Params,ps)+(_Domain,dt.defpos))
+            BTree<long, object> m) : base(defpos, m +(Params,ps)+(_Domain,dt.defpos)
+                + (Definer, cx.role.defpos) + (Owner, cx.user?.defpos ?? -501L))
         { }
         protected Procedure(long dp, BTree<long, object> m) : base(dp, m) { }
         public static Procedure operator+(Procedure p,(long,object)v)
@@ -83,55 +85,54 @@ namespace Pyrrho.Level3
         /// <returns>The possibily modified Transaction</returns>
         public Context Exec(Context cx, CList<long> actIns)
         {
-            var oi = infos[cx.role.defpos];
-            if (!oi.priv.HasFlag(Grant.Privilege.Execute))
+            if (infos[cx.role.defpos] is not ObInfo oi
+                || !oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105");
             cx.obs += framing.obs;
             var n = (int)ins.Count;
             var acts = new TypedValue[n];
             var i = 0;
-            for (var b=actIns.First();b!=null;b=b.Next(), i++)
-                acts[i] = cx.obs[b.value()].Eval(cx);
-            var act = new CalledActivation(cx, this,Domain.Null.defpos);
-            var bd = (Executable)cx.obs[body];
-            for (var b=ins.First(); b!=null;b=b.Next(), i++)
+            for (var b = actIns.First(); b != null; b = b.Next(), i++)
+                if (cx.obs[b.value()] is SqlValue v)
+                    acts[i] = v.Eval(cx);
+            var act = new CalledActivation(cx, this);
+            var bd = (Executable?)cx.obs[body] ?? throw new DBException("42108", oi.name ?? "??");
+            for (var b = ins.First(); b != null; b = b.Next(), i++)
                 act.values += (b.value(), acts[b.key()]);
             cx = bd.Obey(act);
             var r = act.Ret();
             if (r is TArray ts)
-            {
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());
-            }
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
-            {
-                var p = (FormalParameter)act.obs[b.value()];
-                var m = p.paramMode;
-                var v = act.values[p.val];
-                if (m == Sqlx.INOUT || m == Sqlx.OUT)
-                    acts[i] = v;
-                if (m == Sqlx.RESULT)
-                    r = v;
-            }
-            if (this is Method mt && mt.methodType==PMethod.MethodType.Constructor)
-            {
-                r = new TRow(mt.udType, act.values);
-                cx.val = r;
-            } 
-            if (cx != null)
-            {
-                cx.val = r;
-                i = 0;
-                for (var b = ins.First(); b != null; b = b.Next(), i++)
+                if (act.obs[b.value()] is FormalParameter p)
                 {
-                    var p = (FormalParameter)act.obs[b.value()];
+                    var m = p.paramMode;
+                    var v = act.values[p.val] ?? TNull.Value;
+                    if (m == Sqlx.INOUT || m == Sqlx.OUT)
+                        acts[i] = v;
+                    if (m == Sqlx.RESULT)
+                        r = v;
+                }
+            if (this is Method mt && mt.methodType == PMethod.MethodType.Constructor)
+            {
+                if (mt.udType.superShape)
+                    r = cx.val;
+                else
+                    r = new TRow(mt.udType, act.values);
+            }
+            cx.val = r ?? TNull.Value;
+            i = 0;
+            for (var b = ins.First(); b != null; b = b.Next(), i++)
+                if (act.obs[b.value()] is FormalParameter p &&
+                    cx.obs[actIns[i]] is DBObject x)
+                {
                     var m = p.paramMode;
                     if (m == Sqlx.INOUT || m == Sqlx.OUT)
-                        cx.AddValue(cx.obs[actIns[i]], acts[i]);
+                        cx.AddValue(x, acts[i]);
                 }
-            }
             return cx;
         }
         internal override void Modify(Context cx, Modify m, long p)
@@ -166,8 +167,8 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (Procedure)base._Replace(cx, so, sv);
     /*        if (!cx.obs.Contains(body))
                 cx.obs += framing.obs;
@@ -191,24 +192,24 @@ namespace Pyrrho.Level3
             return r;
         }
         internal override void Cascade(Context cx,
-            Drop.DropAction a = 0, BTree<long, TypedValue> u = null)
+            Drop.DropAction a = 0, BTree<long, TypedValue>? u = null)
         {
             base.Cascade(cx, a, u);
             for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
-            {
-                var ob = (DBObject)cx.db.objects[b.value()];
-                if (ob.Calls(defpos, cx))
-                    ob.Cascade(cx,a,u);
-            }
+                if (cx.db.objects[b.value()] is DBObject ob)
+                    if (ob.Calls(defpos, cx))
+                        ob.Cascade(cx, a, u);
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[body].Calls(defpos, cx);
+            if (cx.obs[body] is not DBObject ob)
+                throw new PEException("PE1480");
+            return ob.Calls(defpos, cx);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" "); sb.Append(infos[definer].name);
+            sb.Append(" "); sb.Append(infos[definer]?.name??"??");
             sb.Append(" Arity="); sb.Append(arity); sb.Append(" ");
             if (domain!=Domain.Null.defpos) sb.Append(Uid(domain));
             sb.Append(" Params");

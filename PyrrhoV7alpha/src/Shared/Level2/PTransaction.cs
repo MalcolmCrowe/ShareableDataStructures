@@ -27,8 +27,8 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The user for the transaction, checked in Commit
         /// </summary>
-		public long ptuser=-1;
-        public long ptrole;
+		public User? ptuser;
+        public Role ptrole;
         /// <summary>
         /// The transaction time, updated in Commit
         /// </summary>
@@ -45,8 +45,8 @@ namespace Pyrrho.Level2
         /// <param name="rl">The role for the commit</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTransaction(int nr, long usr, long rl, long pp, Context cx)
-            : this (Type.PTransaction,nr,usr,rl,pp,cx)
+        public PTransaction(int nr, User? usr, Role rl, long pp)
+            : this (Type.PTransaction,nr,usr,rl,pp)
 		{}
         /// <summary>
         /// Constructor: a Transaction record for a Commit
@@ -57,11 +57,11 @@ namespace Pyrrho.Level2
         /// <param name="rl">The role for the commit</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PTransaction(Type tp, int nr, long usr, long rl, long pp, Context cx)
-            : base (tp,pp,cx)
-		{
-			nrecs = nr;
-			ptuser = usr;
+        protected PTransaction(Type tp, int nr, User? usr, Role rl, long pp)
+            : base(tp, pp)
+        {
+            nrecs = nr;
+            ptuser = usr;
 			ptrole = rl;
 			pttime = DateTime.Now.Ticks;
 		}
@@ -80,7 +80,7 @@ namespace Pyrrho.Level2
         /// <param name="pos">The defining position</param>
         protected PTransaction(Type tp, Reader rdr)
             : base(tp, rdr)
-        { }
+        { ptuser = rdr.user; ptrole = rdr.role; }
         protected PTransaction(PTransaction x, Writer wr) : base(x, wr)
         {
             nrecs = x.nrecs;
@@ -98,9 +98,9 @@ namespace Pyrrho.Level2
         /// <param name="t">The starting position of the Commit</param>
         /// <param name="reloc">Relocation information for positions</param>
         /// <returns>Dummy</returns>
-		public override (Transaction,Physical) Commit(Writer wr,Transaction tr)
+		public override (Transaction?,Physical) Commit(Writer wr,Transaction? tr)
 		{
-			if (ptrole==-1)
+			if (ptrole==Database.guestRole)
 				throw new DBException("28000").ISO();
 			pttime = DateTime.Now.Ticks;
 			return base.Commit(wr,tr);
@@ -112,8 +112,8 @@ namespace Pyrrho.Level2
 		public override void Serialise(Writer wr)
 		{
             wr.PutInt(nrecs);
-            wr.PutLong(ptrole); // no need for Reloc - can't be local to this transaction
-            wr.PutLong(ptuser);// no need for Reloc - can't be local to this transaction
+            wr.PutLong(ptrole.defpos); // no need for Reloc - can't be local to this transaction
+            wr.PutLong(ptuser?.defpos??-1L);// no need for Reloc - can't be local to this transaction
             wr.PutLong(pttime);
 			// no base.Serialise() for PTransaction
 		}
@@ -124,8 +124,9 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
 		{
 			nrecs = rdr.GetInt();
-			ptrole = rdr.GetLong();
-			ptuser = rdr.GetLong();
+            var db = rdr.context.db;
+			ptrole = (Role)(db.objects[rdr.GetLong()]??db.schema);
+			ptuser = (User?)db.objects[rdr.GetLong()];
 			pttime = rdr.GetLong();
       //      if (rdr is Reader rr)
        //         rr.context.Add(this);
@@ -137,49 +138,16 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-			return "PTransaction for "+nrecs+" Role="+Pos(ptrole)
-                +" User="+Pos(ptuser)+" Time="+new DateTime(pttime);
+			return "PTransaction for "+nrecs+" Role="+Pos(ptrole.defpos)
+                +" User="+Pos(ptuser?.defpos ?? -1L)+" Time="+new DateTime(pttime);
 		}
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ro = (Role)cx.db.objects[ptrole] ?? cx.db.schema;
-            if (ro!=cx.db.role)
-                cx.db += (ro,p);
+            if (ptrole!=cx.db.role)
+                cx.db += (ptrole,p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-        }
-    }
-    /// <summary>
-    /// Import Transactions record the source of the obs as a URI
-    /// </summary>
-    internal class PImportTransaction : PTransaction
-    {
-        /// <summary>
-        /// A URI describing the source of the imported obs
-        /// </summary>
-        internal string uri;
-        public PImportTransaction(int nr, long usr, long au, string ur, long pp, Context cx)
-            : base(Type.PImportTransaction,nr,usr,au,pp,cx)
-        {
-            uri = ur;
-        }
-        public PImportTransaction(Reader rdr)
-            : base(Type.PImportTransaction, rdr)
-        {}
-        public override void Serialise(Writer wr)
-        {
-            wr.PutString(uri);
-            base.Serialise(wr);
-        }
-        public override void Deserialise(Reader rdr)
-        {
-            uri = rdr.GetString();
-            base.Deserialise(rdr);
-        }
-        public override string ToString()
-        {
-            return "PImportTransaction for " + nrecs + " Role=" + Pos(ptrole) 
-                + " User=" + Pos(ptuser) + " Time=" + new DateTime(pttime) + " Source="+uri;
+            return ptrole;
         }
     }
     /// <summary>
@@ -197,8 +165,8 @@ namespace Pyrrho.Level2
         }
         internal TriggeredAction(Reader rdr) : base(Type.TriggeredAction,rdr)
         { }
-        internal TriggeredAction(long tg,long pp, Context cx)
-            : base(Type.TriggeredAction,pp,cx)
+        internal TriggeredAction(long tg,long pp)
+            : base(Type.TriggeredAction,pp)
         {
             trigger = tg;
         }
@@ -225,12 +193,14 @@ namespace Pyrrho.Level2
             return "TriggeredAction " + trigger;
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var tg = (Trigger)cx.db.objects[trigger];
-            cx.db+=((Role)cx.db.objects[tg.definer],p);
+            var tg = (Trigger?)cx.db.objects[trigger] ?? throw new PEException("PE1415");
+            var ro = (Role?)cx.db.objects[tg.definer] ?? throw new PEException("PE1416");
+            cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return null;
         }
     }
     /// <summary>
@@ -238,27 +208,27 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class Audit : Physical,IComparable
     {
-        internal User user;
-        internal long _user;
-        internal long table;
-        internal CTree<long, string> match; 
-        internal long timestamp;
+        internal User? user;
+        internal long _user = -1L;
+        internal long table = -1L;
+        internal CTree<long, string> match = CTree<long,string>.Empty; 
+        internal long timestamp = -1L;
         public override long Dependent(Writer wr,Transaction tr)
         {
             if (!Committed(wr,table))
                 throw new DBException("0000"); // audit of uncommitted object ???
-            if (!Committed(wr,user.defpos)) return user.defpos; // ad-hoc user
+            if (!Committed(wr,_user)) return _user; // ad-hoc user
             for (var b=match.First();b!=null;b=b.Next())
                 if (!Committed(wr,b.key()))
                     throw new DBException("0000"); // audit of uncommitted object ???
             return -1;
         }
-        internal Audit(User us,long ta, CTree<long,string> ma, long ts,long pp, Context cx)
-            : this(Type.Audit,us,ta,ma,ts,pp,cx)
+        internal Audit(User us,long ta, CTree<long,string> ma, long ts,long pp)
+            : this(Type.Audit,us,ta,ma,ts,pp)
         {
         }
-        protected Audit(Type t, User us, long ta, CTree<long,string> ma, long ts, long pp, Context cx)
-            : base(t,pp,cx)
+        protected Audit(Type t, User us, long ta, CTree<long,string> ma, long ts, long pp)
+            : base(t,pp)
         {
             user = us; table = ta; 
             timestamp = ts; match = ma;
@@ -268,8 +238,8 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             _user = rdr.GetLong();
-            if (rdr is Reader rr)
-                user = (User)rr.context.db.objects[rdr.GetLong()];
+                user = (User)(rdr.context.db.objects[rdr.GetLong()]
+                ?? throw new PEException("PE6061"));
             table = rdr.GetLong();
             timestamp = rdr.GetLong();
             var n = rdr.GetInt();
@@ -286,7 +256,7 @@ namespace Pyrrho.Level2
         {
             table = wr.cx.Fix(table);
             timestamp = wr.cx.Fix(timestamp);
-            wr.PutLong((user.defpos>=0)?wr.cx.Fix(user.defpos):-1L);
+            wr.PutLong((_user >=0)?wr.cx.Fix(_user):-1L);
             wr.PutLong(table);
             wr.PutLong(timestamp);
             wr.PutLong(match.Count);
@@ -318,27 +288,29 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return null;
         }
 
         protected override Physical Relocate(Writer wr)
         {
-            if (user.defpos>=0)
-                user = (User)wr.cx.db.objects[wr.cx.Fix(user.defpos)];
+            if (_user >=0)
+                user = (User?)wr.cx.db.objects[wr.cx.Fix(_user)]
+                    ?? throw new DBException("42105");
             table = wr.cx.Fix(table);
             match = wr.cx.Fix(match);
             return this;
         }
 
-        public int CompareTo(object obj)
+        public int CompareTo(object? obj)
         {
             var that = obj as Audit;
             if (that == null)
                 return 1;
-            var c = user.name.CompareTo(that.user.name);
+            var c = _user.CompareTo(that._user);
             if (c != 0)
                 return c;
             var tb = that.match.First();

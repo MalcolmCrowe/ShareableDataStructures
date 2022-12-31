@@ -8,6 +8,7 @@ using System.Configuration;
 using System.CodeDom.Compiler;
 using System.Net.NetworkInformation;
 using System.Net;
+using System.ComponentModel.DataAnnotations;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -43,12 +44,12 @@ namespace Pyrrho.Level2
             PIndex, Modify, PDomain, PCheck, //12-15
             PProcedure, PTrigger, PView, PUser, PTransaction, //16-20
             Grant, Revoke, PRole1, PColumn2, //21-24
-            PType, PMethod, PTransaction2, Ordering, NotUsed, //25-29
-            PDateType, PTemporalView, PImportTransaction, Record1, //30-33 PTemporalView is obsolete
+            PType, PMethod, NotUsed, Ordering, NotUsed1, //25-29
+            PDateType, NotUsed2, NotUsed3, NotUsed4, //30-33 
             PType1, PProcedure2, PMethod2, PIndex1, Reference, Record2, Curated, //34-40
-            Partitioned, PDomain1, Namespace, PTable1, Alter2, AlterRowIri, PColumn3, //41-47
-            Alter3, PView1, Metadata, PeriodDef, Versioning, PCheck2, Partition, //48-54 PView1 is obsolete
-            Reference1, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
+            NotUsed5, PDomain1, Namespace, PTable1, Alter2, AlterRowIri, PColumn3, //41-47
+            Alter3, NotUsed6, Metadata, PeriodDef, Versioning, PCheck2, NotUsed7, //48-54 PView1 is obsolete
+            NotUsed8, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
             Update1, Delete1, Drop1, RefAction, Post, VIndex // 71-76
@@ -65,7 +66,7 @@ namespace Pyrrho.Level2
         // for format<51 compatibility
         public BTree<long, (string, long)> digested = BTree<long, (string, long)>.Empty;
         public long time;
-        protected Physical(Type tp, long pp, Context cx)
+        protected Physical(Type tp, long pp)
         {
             type = tp;
             ppos = pp;
@@ -91,31 +92,6 @@ namespace Pyrrho.Level2
             wr.cx.uids += (ph.ppos, ppos);
             time = ph.time;
         }
-        internal static int IntLength(long p)
-        {
-            return 1 + new Integer(p).Length;
-        }
-        internal static int ColsLength(CList<long> cols)
-        {
-            var r = IntLength(cols.Length);
-            for (var b = cols.First(); b!=null;b=b.Next())
-                r += IntLength(b.value());
-            return r;
-        }
-        internal static int StringLength(object o)
-        {
-            if (o == null)
-                return 1;
-            var p = Encoding.UTF8.GetBytes(o.ToString()).Length;
-            return p + IntLength(p);
-        }
-        internal static int RepresentationLength(Context cx,BTree<long,Domain> rep)
-        {
-            var r = 1 + IntLength((int)rep.Count);
-            for (var b=rep.First();b!=null;b=b.Next())
-                r += IntLength(b.key()) + IntLength(cx.db.types[b.value()]);
-            return r;
-        }
         /// <summary>
         /// Many Physicals affect another: we expose this in Log tables
         /// </summary>
@@ -133,7 +109,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Install a single Physical. 
         /// </summary>
-        internal abstract void Install(Context cx, long p);
+        internal abstract DBObject? Install(Context cx, long p);
         internal virtual void OnLoad(Reader rdr)
         { }
         /// <summary>
@@ -144,17 +120,17 @@ namespace Pyrrho.Level2
         /// when we serialise b we will know about a's new position, but not the other way round.
         /// </summary> 
         /// <param name="wr">The writer</param>
-        public virtual (Transaction,Physical) Commit(Writer wr,Transaction tr)
+        public virtual (Transaction?,Physical) Commit(Writer wr,Transaction? tr)
         {
             if (Committed(wr,ppos)) // already done
                 return (tr,this);
-            for (; ; ) // check for uncommitted dependents
+            for (;tr!=null ; ) // check for uncommitted dependents
             {
                 var pd = Dependent(wr,tr);
                 if (Committed(wr,pd))
                     break;
                 // commit the dependent physical and update wr relocation info
-                tr.physicals[pd].Commit(wr,tr);
+                tr.physicals[pd]?.Commit(wr,tr);
                 // and try again
             }
             var ph = Relocate(wr);
@@ -197,15 +173,15 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pos">a defining position</param>
         /// <returns>true if we conflict with this</returns>
-        public virtual DBException ReadCheck(long pos,Physical r,PTransaction ct)
+        public virtual DBException? ReadCheck(long pos,Physical r,PTransaction ct)
         {
             return null;
         }
-        public virtual DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public virtual DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             return null;
         }
-        public virtual DBException Conflicts(CTree<long,bool> t,PTransaction ct)
+        public virtual DBException? Conflicts(CTree<long,bool> t,PTransaction ct)
         {
             return null;
         }
@@ -236,7 +212,7 @@ namespace Pyrrho.Level2
     internal class Curated : Physical
     {
         public Curated(Reader rdr) : base(Type.Curated, rdr) { }
-        public Curated(long pp, Context cx) : base(Type.Curated, pp, cx) { }
+        public Curated(long pp) : base(Type.Curated, pp) { }
         protected Curated(Curated x, Writer wr) : base(x, wr) { }
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -250,11 +226,12 @@ namespace Pyrrho.Level2
         {
             return "SET Curated";
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             cx.db += (Database.Curated, ppos);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return null;
         }
 
     }
@@ -262,8 +239,8 @@ namespace Pyrrho.Level2
     {
         public long perioddefpos;
         public Versioning(Reader rdr) : base(Type.Versioning,rdr) { }
-        public Versioning(long pd, long pp, Context cx)
-            : base(Type.Versioning, pp, cx)
+        public Versioning(long pd, long pp)
+            : base(Type.Versioning, pp)
         {
             perioddefpos = pd;
         }
@@ -280,7 +257,7 @@ namespace Pyrrho.Level2
         {
             return new Versioning(this, wr);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -319,13 +296,16 @@ namespace Pyrrho.Level2
             return "Versioning for "+perioddefpos;
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var pd = (PeriodDef)cx.db.mem[perioddefpos];
-            var tb = (Table)cx.db.mem[pd.tabledefpos]+(Table.SystemPS,pd);
+            if (cx.db == null || cx.db.mem[perioddefpos] is not PeriodDef pd
+            || cx.db.mem[pd.tabledefpos] is not Table tb)
+                return null;
+            tb += (Table.SystemPS, pd);
             cx.db += (tb, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return tb;
         }
     }
  
@@ -333,12 +313,12 @@ namespace Pyrrho.Level2
     internal class Namespace : Physical
     {
         public string prefix = "";
-        public string uri;
+        public string uri ="";
         public Namespace(Reader rdr) : base(Type.Namespace, rdr) 
         {
         }
-        public Namespace(string pf, string ur, long pp, Context cx)
-            : base(Type.Namespace, pp, cx) 
+        public Namespace(string pf, string ur, long pp)
+            : base(Type.Namespace, pp) 
         {
             prefix = pf;
             uri = ur;
@@ -372,14 +352,14 @@ namespace Pyrrho.Level2
         {
             return "Namespace " + prefix + "=" + uri;
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             if (that.type == Type.Namespace)
                 return new DBException("40050", ppos, that, ct);
             return null;
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             throw new NotImplementedException();
         }
@@ -387,7 +367,7 @@ namespace Pyrrho.Level2
     internal class Classify : Physical
     {
         public long obj;
-        public Level classification; 
+        public Level classification = Level.D; 
         public Classify(Reader rdr) : base(Type.Classify,rdr)
         { }
         protected Classify(Classify x, Writer wr) : base(x, wr)
@@ -404,8 +384,7 @@ namespace Pyrrho.Level2
         {
             return new Classify(this, wr);
         }
-        public Classify(long ob, Level cl, long pp, Context cx)
-            : base(Type.Classify, pp, cx)
+        public Classify(long ob, Level cl, long pp) : base(Type.Classify, pp)
         {
             obj = ob;
             classification = cl;
@@ -430,45 +409,118 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ob = (DBObject)cx.db.objects[obj];
-            if (cx.role.defpos != ob.definer && cx.role.defpos != 0)
+            if (cx.db.objects[obj] is not DBObject ob)
+                throw new DBException("42000");
+            if (cx.role.defpos != ob.definer)
                 throw new DBException("42105");
             for (var b = cx.db.roles.First(); b != null; b = b.Next())
-            {
-                var ro = (Role)cx.db.objects[b.value()];
-                if (ob.infos[ro.defpos] is ObInfo oi)
+                if (cx.db.objects[b.value()] is Role ro && ob.infos[ro.defpos] is ObInfo oi)
                     cx.db += (ro + (obj, oi + (DBObject.Classification, classification)), p);
-            }
-            cx.db += (ob+(DBObject.Classification,classification), p);
+            ob += (DBObject.Classification, classification);
+            cx.db += (ob, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return ob;
+        }
+    }
+    /// <summary>
+    /// The constructor of a defined database object gains privileges including admin privilges on the new object.
+    /// These privileges are recorded in the new object (not the definer's role!)
+    /// </summary>
+    internal abstract class Defined : Physical
+    {
+        public long definer;
+        public long owner;
+        public BTree<long, ObInfo> infos = BTree<long, ObInfo>.Empty;
+        public string name
+        {
+            get { return infos[definer]?.name ?? ""; }
+            set { 
+                if (infos[definer] is ObInfo oi)
+                    infos += (definer, oi + (ObInfo.Name, value));  
+            }
+        }
+        /// <summary>
+        /// Create a new Defined object
+        /// </summary>
+        /// <param name="tp">Type of the object</param>
+        /// <param name="pp">Its physical position</param>
+        /// <param name="cx">A Context with the definer's details</param>
+        /// <param name="nm">The definer's name for the new object</param>
+        /// <param name="priv">The definer's privileges on the new object</param>
+        protected Defined(Type tp, long pp, Context cx, string nm = "", Grant.Privilege priv=Grant.Privilege.NoPrivilege) 
+            : base(tp, pp)
+        {
+            definer = cx.role.defpos;
+            owner = cx.user?.defpos ?? -1L;
+            if (priv != Grant.Privilege.NoPrivilege) 
+                infos += (definer, new ObInfo(nm, priv));
+        }
+        /// <summary>
+        /// Create a new Defined object
+        /// </summary>
+        /// <param name="tp">Type of the object</param>
+        /// <param name="pp">Its physical position</param>
+        /// <param name="cx">A Reader with the definer's details</param>
+        /// <param name="nm">The definer's name for the new object</param>
+        /// <param name="priv">The definer's privileges on the new object</param>
+        protected Defined(Type tp,Reader rdr, string nm = "", Grant.Privilege priv = Grant.Privilege.NoPrivilege) 
+            : base(tp, rdr)
+        {
+            definer = rdr.context.role.defpos;
+            owner = rdr.context.user?.defpos ?? -1L;
+            if (priv != Grant.Privilege.NoPrivilege)
+                infos += (definer, new ObInfo(nm, priv));
+        }
+        protected Defined(Defined ph, Writer writer) : base(ph, writer) 
+        {
+            definer = Fix(ph.ppos, ph.definer, writer);
+            owner = Fix(ph.ppos, ph.owner,writer);
+            var r = BTree<long, ObInfo>.Empty;
+            for (var b=ph.infos.First();b!=null;b=b.Next())
+                r += (Fix(ph.ppos, b.key(), writer),(ObInfo)b.value().Fix(writer.cx));
+            infos = r;
+        }
+        long Fix(long pp,long p,Writer wr)
+        {
+            return (p == pp) ? ppos : (wr.cx.uids[p] is long np) ? np : p;
+        }
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            if (!Committed(wr, definer)) return definer;
+            if (!Committed(wr,owner)) return owner;
+            for (var b = infos.First(); b != null; b = b.Next())
+                if (b.key()!=ppos && !Committed(wr,b.key())) 
+                    return b.key();
+            return -1;
         }
     }
     /// <summary>
     /// Compiled objects are Modify, PColumn, PCheck, PProcedure, PTrigger, PView, PTable
     /// </summary>
-    internal abstract class Compiled : Physical
+    internal abstract class Compiled : Defined
     {
-        internal Framing framing;
+        internal Framing framing = Framing.Empty;
         public long nst = Transaction.Executables;
-        internal Domain dataType = null;
-        protected Compiled(Type tp, long pp, Context cx, long tgt, Domain dom)
-            : base(tp, pp, cx)
+        internal Domain dataType;
+        protected Compiled(Type tp, long pp, Context cx, string nm, long tgt, Domain dom)
+            : base(tp, pp, cx, nm, Grant.AllPrivileges)
         {
             var oc = cx.parse;
             framing = new Framing(cx,nst);
             dataType = cx._Dom(framing.obs[framing.result]) ?? cx._Dom(cx.obs[tgt]) ?? dom;
             cx.parse = oc;
         }
-        protected Compiled(Type tp, long pp, Context cx, Domain dm)
-            : base(tp, pp, cx)
+        protected Compiled(Type tp, long pp, Context cx, string nm, Domain dm)
+            : base(tp, pp, cx, nm, Grant.AllPrivileges)
         {
             dataType = dm;
             nst = cx.db.nextStmt;
         }
-        protected Compiled(Type tp, Reader rdr) : base(tp, rdr)
+        // Reader will update the name
+        protected Compiled(Type tp, Reader rdr) : base(tp, rdr,"",Grant.AllPrivileges)
         {
             framing = Framing.Empty; // fixed in OnLoad
             dataType = Domain.Content;
@@ -478,7 +530,7 @@ namespace Pyrrho.Level2
             var oc = wr.cx.parse;
             wr.cx.parse = ExecuteStatus.Compile;
             wr.cx.offset = ppos - ph.ppos;
-            framing = (Framing)ph.framing?._Relocate(wr.cx);
+            framing = (Framing)(ph.framing?._Relocate(wr.cx)??Framing.Empty);
             dataType = (Domain)ph.dataType._Relocate(wr.cx);
             wr.cx.parse = oc;
         }
@@ -486,13 +538,10 @@ namespace Pyrrho.Level2
         {
             throw new NotImplementedException();
         }
-        public override (Transaction, Physical) Commit(Writer wr, Transaction tr)
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
             wr.cx.instDFirst = -1L;
             return base.Commit(wr, tr);
-        }
-        internal override void Install(Context cx, long p)
-        {
         }
         public override string ToString()
         {
@@ -511,8 +560,8 @@ namespace Pyrrho.Level2
         internal PTrigger.TrigType tp;
         internal Context _cx;
         internal bool committed = false;
-        internal Post(string u,string tn,string s,string us,long vw,
-            PTrigger.TrigType t,long cp,Context cx):base(Type.Post,cp,cx)
+        internal Post(string u, string tn, string s, string us, long vw,
+            PTrigger.TrigType t, long cp, Context cx) : base(Type.Post, cp)
         {
             url = u;
             sql = s;
@@ -521,12 +570,14 @@ namespace Pyrrho.Level2
             _vw = vw;
             tp = t;
             _cx = cx;
-            cx.db += (Transaction.Posts, true);
+            if (cx.db is Database db)
+                cx.db = db + (Transaction.Posts, true);
         }
-        HttpWebRequest GetRequest()
+        HttpRequestMessage GetRequest()
         {
-            var vw = (RestView)(_cx.obs[_vw]??_cx.db.objects[_vw]);
-            string user = vw.clientName ?? _cx.user.name, password = vw.clientPassword;
+            var vw = (RestView)(_cx.obs[_vw]??_cx.db.objects[_vw] ??throw new DBException("42105"));
+            string? user = vw.clientName ?? _cx.user?.name, 
+                password = vw.clientPassword;
             var ss = url.Split('/');
             if (ss.Length > 3)
             {
@@ -540,37 +591,34 @@ namespace Pyrrho.Level2
                 }
             }
             var ix = url.LastIndexOf('/');
-            var rq = WebRequest.Create(url.Substring(0,ix)) as HttpWebRequest;
-            rq.UserAgent = "Pyrrho " + PyrrhoStart.Version[1];
-            if (user == null)
-                rq.UseDefaultCredentials = true;
-            else
+            HttpRequestMessage rq = new() { RequestUri = new Uri(url.Substring(0, ix)) };
+            rq.Headers.Add("UserAgent","Pyrrho " + PyrrhoStart.Version[1]);
+            if (user != null)
             {
                 var cr = user + ":" + password;
                 var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
-                rq.Headers.Add("Authorization: Basic " + d);
+                rq.Headers.Add("Authorization","Basic "+d);
             }
-            var vi = vw.infos[_cx.role.defpos];
-            if (vi.metadata.Contains(Sqlx.ETAG))
+            if (vw.infos[_cx.role.defpos] is ObInfo vi && vi.metadata.Contains(Sqlx.ETAG))
             {
                 if (_cx.obs[_cx.result] is RowSet rs && rs.First(_cx) is Cursor cu)
-                    rq.Headers.Add("If-Match: " + cu._Rvv(_cx));
-                else
+                    rq.Headers.Add("If-Match",cu._Rvv(_cx).ToString());
+                else if (_cx.db!=null)
                 {
-                    rq.Headers.Add("If-Match: W/" + _cx.db.loadpos);
-                    rq.Headers.Add("If-Unmodified-Since: "
-                        + new THttpDate(_cx.db.lastModified,
-                        vi.metadata.Contains(Sqlx.MILLI)));
+                    rq.Headers.Add("If-Match", "W/\"" + _cx.db.loadpos + "\"");
+                    if (_cx.db.lastModified is DateTime dt)
+                    rq.Headers.Add("If-Unmodified-Since",
+                        ""+new THttpDate(dt,vi.metadata.Contains(Sqlx.MILLI)));
                 }
             }
             return rq;
         }
-        public override (Transaction,Physical) Commit(Writer wr, Transaction tr)
+        public override (Transaction?,Physical) Commit(Writer wr, Transaction? tr)
         {
             if (!committed)
             {
                 var rq = GetRequest();
-                rq.Method = "POST";
+                rq.Method = HttpMethod.Post;
                 var sb = new StringBuilder();
                 sb.Append(sql);
                 sb.Append("\r\n");
@@ -589,8 +637,9 @@ namespace Pyrrho.Level2
         {
             return this;
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
+            return null;
         }
         public override string ToString()
         {

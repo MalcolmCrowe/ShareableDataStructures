@@ -28,7 +28,7 @@ namespace Pyrrho
         /// <summary>
         /// the listener (usually port 8133 and 8180)
         /// </summary>
-		HttpListener listener;
+		HttpListener? listener;
         /// <summary>
         /// the host name
         /// </summary>
@@ -102,7 +102,7 @@ namespace Pyrrho
         /// Constructor for the web oputput class
         /// </summary>
         /// <param name="s">the output stream</param>
-        protected PyrrhoWebOutput(Transaction d,StringBuilder s,string agent=null)
+        protected PyrrhoWebOutput(Transaction d,StringBuilder s,string? agent=null)
         {
             sbuild = s;
             db = d;
@@ -113,19 +113,19 @@ namespace Pyrrho
         public virtual ETag SendResults(HttpListenerResponse rs,Transaction tr,Context cx,
             string url,bool etags)
         {
-            var r = (RowSet)cx.obs[cx.result];
-            Cursor e = r?.First(cx);
+            var r = (RowSet?)cx.obs[cx.result];
+            Cursor? e = r?.First(cx);
             ETag et = ETag.Empty;
-            if (etags)
+            if (cx.db!=null && etags)
             {
-                if (cx.affected!=null)
+                if (cx.affected!=Rvv.Empty)
                     et = new ETag(cx.db, cx.affected);
                 else if (e != null)
                 {
                     for (; e != null; e = e.Next(cx))
                         et = e._Rvv(cx);
                     cx.funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty;
-                    e = r.First(cx);
+                    e = r?.First(cx);
                 } 
             }
             Header(rs, tr, cx, url,et.assertMatch.ToString());
@@ -147,12 +147,13 @@ namespace Pyrrho
         {
             rs.StatusCode = 200;
             cx.versioned = true;
-            var r = (RowSet)cx.obs[cx.result];
+            var r = (RowSet?)cx.obs[cx.result];
             if (r == null && cx.exec is QuerySearch us)
-                r = (RowSet)cx.obs[us.source];
+                r = (RowSet?)cx.obs[us.source];
             if (r == null && cx.exec is SqlInsert si)
-                r = (RowSet)cx.obs[si.source];
-            if (r != null && cx._Ob(r.target) is DBObject ob && ob.infos[cx.db.role.defpos] is ObInfo oi)
+                r = (RowSet?)cx.obs[si.source];
+            if (r != null && cx.db!=null && cx.db.role!=null
+                && cx._Ob(r.target) is DBObject ob && ob.infos[cx.db.role.defpos] is ObInfo oi)
             {
                 if (oi.description is string ds && ds != "")
                     rs.AddHeader("Description", ds);
@@ -197,7 +198,6 @@ namespace Pyrrho
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
             string dn, string etags)
         {
-            rs.AddHeader("Content-Type", "text/plain");
             base.Header(rs, tr, cx, dn, etags);
         }
         public override void PutRow(Context cx, Cursor e)
@@ -254,41 +254,42 @@ namespace Pyrrho
         public override void Header(HttpListenerResponse hrs, Transaction tr,
             Context cx,string dn,string etags)
         {
-            hrs.AddHeader("Content-Type", "text/html");
             base.Header(hrs, tr, cx, dn,"");
             sbuild.Append("<!DOCTYPE HTML>\r\n");
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
             cx.versioned = true;
-            var rs = (RowSet)cx.obs[cx.result];
+            var rs = (RowSet?)cx.obs[cx.result];
+            if (rs == null)
+                return;
             var fm = rs as TableRowSet ?? cx.obs[rs.source] as TableRowSet;
-            var om = tr.objects[fm.target] as DBObject;
+            var om = tr.objects[fm?.target??-1L] as DBObject;
             var psr = new Parser(cx, query);
             chartType = psr.ParseMetadata(Sqlx.TABLE);
-            var mi = om.infos[tr.role.defpos];
-            if (om!=null && om.defpos > 0)
+            var mi = om?.infos[tr.role.defpos];
+            if (mi!=null && om!=null && om.defpos > 0)
             {
                 chartType += mi.metadata;
                 if (mi.description != "" && mi.description[0] == '<')
                     sbuild.Append(mi.description);
             }
-            var oi = cx._Dom(fm).rowType;
+            var oi = cx._Dom(fm)?.rowType;
             if (chartType != CTree<Sqlx,TypedValue>.Empty)
             {
-                for (var co = oi.First(); co != null; co = co.Next())
+                for (var co = oi?.First(); co != null; co = co.Next())
                 {
                     var p = co.value();
                     var sc = cx.obs[p] as SqlCopy;
                     var cp = (sc != null) ? sc.copyFrom : p;
-                    var ci = cx._Ob(cp).infos[cx.role.defpos];
-                    if ((chartType[Sqlx.X] is TChar xc && xc.value==ci.name)
-                        || ci.metadata.Contains(Sqlx.X))
+                    var ci = cx._Ob(cp)?.infos[cx.role.defpos];
+                    if ((chartType[Sqlx.X] is TChar xc && xc.value==ci?.name)
+                        || ci?.metadata.Contains(Sqlx.X)==true)
                     {
                         xcol = p;
                         xdesc = ci.description;
                     }
-                    if ((chartType[Sqlx.Y] is TChar yc && yc.value == ci.name)
-                        || ci.metadata.Contains(Sqlx.Y))
+                    if ((chartType[Sqlx.Y] is TChar yc && yc.value == ci?.name)
+                        || ci?.metadata.Contains(Sqlx.Y)==true)
                     {
                         ycol = p;
                         ydesc = ci.description;
@@ -317,17 +318,16 @@ namespace Pyrrho
             else
             {
                 sbuild.Append("<table border><tr>");
-                for (var b=cx._Dom(rs).rowType.First();b!=null;b=b.Next())
-                {
-                    var ci = cx._Ob(fm.sIMap[b.value()]).infos[cx.role.defpos];
-                    sbuild.Append("<th>" + ci.name + "</th>");
-                }
+                for (var b = cx._Dom(rs)?.rowType.First(); b != null; b = b.Next())
+                    if (fm!=null && cx._Ob(fm.sIMap[b.value()]) is DBObject c &&
+                        c.infos[cx.role.defpos] is ObInfo ci && ci.name != null)
+                        sbuild.Append("<th>" + ci?.name ?? "" + "</th>");
                 sbuild.Append("</tr>");
             }
         }
         public string GetVal(TypedValue v)
         {
-            return (v!=null && !v.IsNull) ? v.ToString() : "";
+            return (v != TNull.Value) ? v.ToString() : "";
         }
         public override void PutRow(Context _cx, Cursor e)
         {
@@ -578,7 +578,6 @@ namespace Pyrrho
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
             string dn,string etags)
         {
-            rs.AddHeader("Content-Type", "application/json");
             cx.versioned = true;
             base.Header(rs, tr, cx, dn,etags);
         }
@@ -593,31 +592,30 @@ namespace Pyrrho
         }
         public override void PutRow(Context cx, Cursor e)
         {
-            var rs = (RowSet)cx.obs[e._rowsetpos];
-            var key = (cx.groupCols[rs.domain] is Domain gc)?new TRow(gc, e.values):TRow.Empty;
+            var rs = (RowSet?)cx.obs[e._rowsetpos];
+            if (rs == null)
+                return;
+            var key = (cx.groupCols[rs.domain] is Domain gc) ? new TRow(gc, e.values) : TRow.Empty;
             sbuild.Append(cm); cm = ",";
             var rt = e.columns;
             var doc = new TDocument();
             for (var b = rt.First(); b != null; b = b.Next())
-            {
-                var ci = (SqlValue)cx.obs[b.value()];
-                if (e[ci.defpos] is TypedValue tv)
+                if (cx.obs[b.value()] is SqlValue ci && e[ci.defpos] is TypedValue tv)
                 {
                     var n = ci.alias ?? ci.NameFor(cx);
                     if (n == "")
                         n = "Col" + b.key();
-                    doc=doc.Add(n, tv);
+                    doc = doc.Add(n, tv);
                 }
-            }
             if (e[DBObject.Classification] is TLevel lv)
-                doc=doc.Add("$classification", lv.ToString());
-            if (e[Domain.Provenance] is TChar pv)
-                doc=doc.Add("$provenance", pv.ToString());
-            if (e._ds.Count > 0)
+                doc = doc.Add("$classification", lv.ToString());
+            if (e._ds.First() is ABookmark<long, (long, long)> ab)
             {
-                doc = doc.Add("$pos", new TInt(e._ds.First().value().Item1));
-                doc = doc.Add("$check", new TInt(e._ds.First().value().Item2));
+                var (p, c) = ab.value();
+                doc = doc.Add("$pos", new TInt(p));
+                doc = doc.Add("$check", new TInt(c));
             }
+            var dm = cx._Dom(rs)??throw new PEException("0098");
             for (var b = cx.funcs[e._rowsetpos]?[key]?.First(); b != null; b = b.Next())
                 doc = doc.Add("$" + DBObject.Uid(b.key()), new TDocument(b.value()));
             sbuild.Append(doc.ToString());
@@ -641,7 +639,6 @@ namespace Pyrrho
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
             string dn, string etags)
         {
-            rs.AddHeader("Content-Type", "application/xml");
             cx.versioned = true;
             base.Header(rs, tr, cx, dn, etags);
         }
@@ -670,8 +667,8 @@ namespace Pyrrho
         /// The HttpContext
         /// </summary>
         protected HttpListenerContext client;
-        string agent = null;
-        protected PyrrhoWebOutput woutput;
+        string agent;
+        protected PyrrhoWebOutput? woutput;
         StringBuilder sbuild;
         /// <summary>
         /// the database path
@@ -684,8 +681,8 @@ namespace Pyrrho
 		public HttpServer(HttpListenerContext h)
 		{
             client = h;
-            path = h.Request.RawUrl;
-            agent = h.Request.UserAgent;
+            path = h.Request.RawUrl ?? "";
+            agent = h.Request.UserAgent ?? "";
             sbuild = new StringBuilder();
 		}
          internal void Server()
@@ -720,19 +717,22 @@ namespace Pyrrho
                 string role = dbn.ident;
                 if (pathbits.Length > 2)
                     role = pathbits[2];
-                var h = client.Request.Headers["Authorization"];
-                var s = Encoding.UTF8.GetString(Convert.FromBase64String(h.Substring(6))).Split(':');
                 var details = BTree<string, string>.Empty;
-                details += ("User", s[0]);
-                details += ("Password", s[1]);
+                if (client.Request.Headers["Authorization"] is string h)
+                {
+                    var s = Encoding.UTF8.GetString(Convert.FromBase64String(h.Substring(6))).Split(':');
+                    details += ("User", s[0]);
+                    details += ("Password", s[1]);
+                }
                 details += ("Files", dbn.ident);
                 details += ("Role", role);
                 var acc = client.Request.Headers["Accept"];
                 var d = Database.Get(details);
                 if (d == null)
-                    throw new DBException("3D000",dbn.ident);
-                var db = d.Transact(Transaction.Analysing, "",new Connection(details))
-                    + (Database.LastModified, d.lastModified); // use the file time, not UTCNow
+                    throw new DBException("3D000", dbn.ident);
+                var db = d.Transact(Transaction.Analysing, "", new Connection(details));
+                if (d.lastModified != null)
+                    db += (Database.LastModified, d.lastModified); // use the file time, not UTCNow
                 if (acc != null && acc.Contains("text/plain"))
                     woutput = new SqlWebOutput(db, sbuild);
                 else if (acc != null && acc.Contains("text/html"))
@@ -758,22 +758,24 @@ namespace Pyrrho
                 }
                 if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                 {
-                    if (sb != "" && sb != null)
+                    if (sb != "")
                         Console.WriteLine(sb);
                     if (et != null)
                         Console.WriteLine("Received If-Match: " + et);
                     if (eu != null)
                         Console.WriteLine("Received If-Unmodified-Since: " + eu);
                 }
-                if (Rvv.Validate(d,et,eu))
-                     rv = Rvv.Empty;
+                if (Rvv.Validate(d, et, eu))
+                    rv = Rvv.Empty;
                 else
-                     throw new DBException("40084");
+                    throw new DBException("40084");
                 var cx = new Context(db);
-                db.Execute(cx, 0L, client.Request.HttpMethod, cx.db.name, pathbits, query,
-                    client.Request.Headers["Content-Type"], sb);
+                if (cx.db != null)
+                    db.Execute(cx, 0L, client.Request.HttpMethod, cx.db.name, pathbits, query,
+                        client.Request.Headers["Content-Type"], sb);
                 var ocx = cx;
-                cx = new Context(cx.db.Commit(cx));
+                if (cx.db != null)
+                    cx = new Context(cx.db.Commit(cx));
                 woutput.SendResults(client.Response, db, ocx, db.name, true);
                 return;
             }
@@ -803,7 +805,7 @@ namespace Pyrrho
             }
             catch (PEException)
             {
-                client.Response.StatusCode = 500; 
+                client.Response.StatusCode = 500;
             }
             catch (IOException)
             {

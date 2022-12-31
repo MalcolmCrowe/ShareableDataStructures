@@ -1,7 +1,10 @@
 ﻿[*.cs]
 
+# CS8604: Possible null reference argument.
+dotnet_diagnostic.CS8604.severity = warning
+
 # IDE1006: Naming Styles
 dotnet_diagnostic.IDE1006.severity = silent
 
-# IDE0044: Add readonly modifier
-dotnet_diagnostic.IDE0044.severity = silent
+# CA1806: Do not ignore method results
+dotnet_diagnostic.CA1806.severity = silent

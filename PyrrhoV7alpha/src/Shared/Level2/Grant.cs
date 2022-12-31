@@ -64,7 +64,7 @@ namespace Pyrrho.Level2
         public Grant(Privilege pr, long ob, long ge, long pp, Context cx)
             : this(Type.Grant, pr, ob, ge, pp, cx) { }
         protected Grant(Type t,Privilege pr, long ob, long ge, long pp, Context cx)
-            : base(t, pp, cx)
+            : base(t, pp)
 		{
             priv = pr;
             obj = ob;
@@ -96,8 +96,8 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
             wr.PutInt((int)priv);
-            wr.PutLong(obj);
-            wr.PutLong(grantee);
+            wr.PutLong(wr.cx.Fix(obj));
+            wr.PutLong(wr.cx.Fix(grantee));
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -111,7 +111,7 @@ namespace Pyrrho.Level2
 			grantee = rdr.GetLong();
 			base.Deserialise(rdr);
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -167,21 +167,23 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var ob = (DBObject)cx.db.objects[obj];
+            if (cx.db.objects[obj] is not DBObject ob)
+                throw new DBException("42000");
             // limit any grant to PUBLIC 
             if (grantee == Database.Guest)
                 priv = (Privilege)((int)priv & 0xfff);
-            var oi = ob.infos[grantee] ?? (ob.infos[ob.definer]+(ObInfo.Privilege,Privilege.NoPrivilege));
+            var oi = ob.infos[grantee] ?? new ObInfo(ob.NameFor(cx),Privilege.NoPrivilege);
             var cp = oi.priv;
             // limit grant to the request, then add the requested privilege (as limited)
             var pr = cp | priv;
-            var rg = (Role)cx.db.objects[grantee];
+            if (cx.db.objects[grantee] is not Role rg)
+                throw new DBException("42000");
             // if its a procedure, add it to the role's list of procedures
-            if (cx.db.objects[obj] is Procedure proc && !(proc is Method))
+            if (cx.db.objects[obj] is Procedure proc && proc is not Method)
             {
-                var nm = proc.infos[proc.definer].name;
+                var nm = proc.infos[proc.definer]?.name??"";
                 var ps = rg.procedures[nm]??CTree<CList<Domain>,long>.Empty;
                 ps += (cx.Signature(proc.ins), obj);
                 rg += (Role.Procedures, rg.procedures+(nm,ps));
@@ -193,12 +195,13 @@ namespace Pyrrho.Level2
             cx.db += (ob, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return rg;
         }
     }
     internal class Authenticate : Physical
     {
         internal long userpos;
-        internal string pwd;
+        internal string pwd = "";
         internal long irolepos;
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -206,8 +209,8 @@ namespace Pyrrho.Level2
             if (!Committed(wr,irolepos)) return irolepos;
             return -1;
         }
-        internal Authenticate(long us, string p, long r, long pp, Context cx)
-            : base(Type.Authenticate, pp, cx)
+        internal Authenticate(long us, string p, long r, long pp)
+            : base(Type.Authenticate, pp)
         {
             userpos = us; pwd = p ?? ""; irolepos = r;
         }
@@ -243,7 +246,7 @@ namespace Pyrrho.Level2
             return "Authenticate [" +userpos+"] "+ pwd + " FOR [" + irolepos+"]";
         }
 
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             throw new NotImplementedException();
         }

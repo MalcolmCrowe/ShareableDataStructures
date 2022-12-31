@@ -21,7 +21,7 @@ namespace Pyrrho.Common
     /// Shareable if both K and V are shareable.
     /// This subclass is for IComparable struct type keys.
     /// </summary>
-    public class BTree<K,V> : ATree<K,V>
+    public class BTree<K,V> : ATree<K,V> 
         where K: IComparable
     {
         public readonly static BTree<K, V> Empty = new BTree<K, V>();
@@ -40,7 +40,7 @@ namespace Pyrrho.Common
         /// Any modification gives a new BTree(usually sharing most of its Buckets and Slots with the old one)
         /// </summary>
         /// <param name="b">The top level (root) Bucket</param>
-        protected BTree(Bucket<K,V> b) : base(b) {}
+        protected BTree(Bucket<K,V>? b) : base(b) {}
         /// <summary>
         /// The Compare function checks for null values
         /// </summary>
@@ -71,7 +71,7 @@ namespace Pyrrho.Common
         /// <returns>The new BTree</returns>
         protected override ATree<K,V> Add(K k, V v)
         {
-            if (Contains(k))
+            if (Contains(k) && root!=null)
                 return new BTree<K,V>(root.Update(this, k, v));
             return Insert(k, v);
         }
@@ -99,12 +99,13 @@ namespace Pyrrho.Common
         }
         public static BTree<K, V> operator -(BTree<K, V> tree, K k)
         {
-            return (BTree<K, V>)tree?.Remove(k);
+            return (BTree<K, V>)tree.Remove(k);
         }
-        public static BTree<K,V> operator-(BTree<K,V> tree,BList<K> ks)
+        public static BTree<K, V> operator -(BTree<K, V> tree, BList<K> ks)
         {
             for (var b = ks.First(); b != null; b = b.Next())
-                tree -= b.value();
+                if (b.value() is K k)
+                    tree -= k;
             return tree;
         }
         /// <summary>
@@ -128,32 +129,33 @@ namespace Pyrrho.Common
         /// <param name="k">The key (guaranteed to be in this BTree)</param>
         /// <param name="v">The new value for this key</param>
         /// <returns>The new BTree</returns>
-        protected override ATree<K,V> Update(K k, V v) // this Contains k
+        internal override ATree<K,V> Update(K k, V v) // this Contains k
         {
-            if (!Contains(k))
+            if (root==null || !Contains(k))
                 throw new Exception("PE01");
             return new BTree<K,V>(root.Update(this, k, v));
         }
         /// <summary>
         /// Creator: Create a new BTree if necessary that does not have a given key
-        /// May have reoganised buckets or smaller depth than this BTree.
+        /// May have reorganised buckets or smaller depth than this BTree.
         /// </summary>
         /// <param name="k">The key to remove</param>
         /// <returns>This BTree or a new BTree (guaranteed not to have key k)</returns>
-        protected override ATree<K,V> Remove(K k)
+        internal override ATree<K,V> Remove(K k)
         {
-            if (!Contains(k))
+            if (root==null || !Contains(k))
                 return this;
             if (root.total == 1) // empty index
                 return Empty;
             // note: we allow root to have 1 entry
             return new BTree<K,V>(root.Remove(this, k));
         }
-        internal static BTree<K,bool> FromList(BList<K> ls)
+        internal static BTree<K, bool> FromList(BList<K> ls)
         {
-            var r = BTree<K,bool>.Empty;
+            var r = BTree<K, bool>.Empty;
             for (var b = ls.First(); b != null; b = b.Next())
-                r += (b.value(), true);
+                if (b.value() is K k)
+                    r += (k, true);
             return r;
         }
     }
@@ -163,7 +165,7 @@ namespace Pyrrho.Common
         /// Various constructors help to ensure that Buckets are never modified.
         /// (No Mutators)
         /// </summary>
-        public class Inner<K,V> : Bucket<K,V>
+        public class Inner<K,V> : Bucket<K,V> where K:IComparable
     {
         internal readonly KeyValuePair<K, Bucket<K, V>>[] slots;
         // INVARIANT: this subtree has >Size/2 entries
@@ -224,9 +226,9 @@ namespace Pyrrho.Common
                 slots[k++] = s2[j];
             gtr = v;
         }
-        public override KeyValuePair<K, object> Slot(int i)
+        public override KeyValuePair<K, object?> Slot(int i)
         {
-            return new KeyValuePair<K, object>(slots[i].Key, slots[i].Value);
+            return new KeyValuePair<K, object?>(slots[i].Key, slots[i].Value);
         }
         /// <summary>
         /// Accessor: Look to see if our subtree has a given key
@@ -247,7 +249,7 @@ namespace Pyrrho.Common
         /// <param name="t">the tree</param>
         /// <param name="k">The key to look for</param>
         /// <returns>the object found (or null of not there)</returns>
-        public override V Lookup(ATree<K,V> t, K k)
+        public override V? Lookup(ATree<K,V> t, K k)
         {
             int j = PositionFor(t, k, out bool _);
             if (j == count)
@@ -381,7 +383,7 @@ namespace Pyrrho.Common
         /// Very internal: add a list of slots using a weak type
         /// </summary>
         /// <param name="ab">the slots to add</param>
-        public override void Add(List<object> ab)
+        public override void Add(List<object?> ab)
         {
             for (int i = 0; i < count; i++)
                 ab.Add(slots[i]);
@@ -392,30 +394,33 @@ namespace Pyrrho.Common
         /// <param name="t">the tree</param>
         /// <param name="k">The key to remove (guaranteed to be in this subtree)</param>
         /// <returns>The new Bucket</returns>
-        public override Bucket<K, V> Remove(ATree<K, V> t, K k)
+        public override Bucket<K, V>? Remove(ATree<K, V> t, K k)
         {
             int nj = PositionFor(t, k, out bool _);
-            Bucket<K,V> nb;
+            Bucket<K,V>? nb;
             int m = ATree<K,V>.Size >> 1;
             if (nj < count)
             {
                 var e = slots[nj];
                 nb = e.Value;
                 nb = nb.Remove(t, k);
-                if (nb.count >= m)
+                if (nb?.count >= m)
                     return new Inner<K,V>(gtr, total-1, Replace(nj, new KeyValuePair<K, Bucket<K, V>>(e.Key, nb)));
             }
             else
             {
                 nb = gtr.Remove(t, k);
-                if (nb.count >= m)
+                if (nb?.count >= m)
                     return new Inner<K,V>(nb, total-1, slots);
             }
+            if (nb == null)
+                return null;
             // completely rebuild the current non-leaf node (too many cases to consider otherwise)
             // still two different cases depending on whether children are leaves
             int S = ATree<K,V>.Size;
-            var ab = new List<object>();
-            Bucket<K,V> b, g = null;
+            var ab = new List<object?>();
+            Bucket<K, V> b;
+            Bucket<K,V>? g = null;
             int i, j;
             for (j = 0; j < count; j++)
             {
@@ -429,11 +434,12 @@ namespace Pyrrho.Common
             if (b is Inner<K,V> bi)
                 g = bi.gtr;
             var s = ab.ToArray();
-            if (g == null) // we use Size entries from s for each new Bucket (all Leaves)
+            if (g == null && s!=null) // we use Size entries from s for each new Bucket (all Leaves)
             {
                 var ss = new KeyValuePair<K,V>[s.Length];
                 for (j = 0; j < s.Length; j++)
-                    ss[j] = (KeyValuePair<K,V>)s[j]; 
+                    if (s[j] is KeyValuePair<K, V> kp)
+                        ss[j] = kp; 
                 if (s.Length <= S) // can happen at root: reduce height of tree
                     return new Leaf<K, V>(ss);
                 // suppose s.Length = Size*A+B
@@ -462,11 +468,12 @@ namespace Pyrrho.Common
                 }
                 return new Inner<K,V>(new Leaf<K,V>(ss, sce, s.Length - 1), total-1, ts);
             }
-            else // we use Size+1 entries from s for each new Bucket: g is an extra one
+            else if (g!=null && s!=null)// we use Size+1 entries from s for each new Bucket: g is an extra one
             {
                 var ss = new KeyValuePair<K, Bucket<K,V>>[s.Length];
                 for (j = 0; j < s.Length; j++)
-                    ss[j] = (KeyValuePair<K, Bucket<K,V>>)s[j]; 
+                    if (s[j] is KeyValuePair<K,Bucket<K,V>> kp)
+                        ss[j] = kp; 
                 if (s.Length <= S) // can happen at root: reduce height of tree
                     return new Inner<K,V>(g, total-1, ss);
                 int A = (s.Length + 1) / (S + 1); // not forgetting g
@@ -502,6 +509,7 @@ namespace Pyrrho.Common
                     gt += ss[di].Value.total;
                 return new Inner<K,V>(new Inner<K,V>(g, gt, ss, sce, s.Length - 1), total-1, ts);
             }
+            return null;
         }
         // utility routines
         /// <summary>
@@ -547,11 +555,11 @@ namespace Pyrrho.Common
     /// Leaf Buckets contain the actual key,value pairs
     /// Immutable. No Mutators
     /// </summary>
-    public class Leaf<K,V> : Bucket<K,V>
+    public class Leaf<K,V> : Bucket<K,V> where K:IComparable
     {
         internal readonly KeyValuePair<K,V>[] slots;
         internal override int EndPos => count - 1;
-        internal override Bucket<K, V> Gtr() { return null; }
+        internal override Bucket<K, V>? Gtr() { return null; }
         /// <summary>
         /// Constructor: a Leaf from a given set of Slots
         /// </summary>
@@ -577,9 +585,9 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="i">the position to use</param>
         /// <returns>a slot with a weaker type</returns>
-        public override KeyValuePair<K, object> Slot(int i)
+        public override KeyValuePair<K, object?> Slot(int i)
         {
-            return new KeyValuePair<K,object>(slots[i].Key,slots[i].Value);
+            return new KeyValuePair<K,object?>(slots[i].Key,slots[i].Value);
         }
         /// <summary>
         /// Accessor: Find given key in this subtree
@@ -598,7 +606,7 @@ namespace Pyrrho.Common
         /// <param name="t">the tree</param>
         /// <param name="k">The key to find</param>
         /// <returns>The corresponding value (or null)</returns>
-        public override V Lookup(ATree<K,V> t, K k)
+        public override V? Lookup(ATree<K,V> t, K k)
         {
             int j = PositionFor(t, k, out bool b);
             if (!b)
@@ -668,7 +676,7 @@ namespace Pyrrho.Common
         /// Add a list of slots
         /// </summary>
         /// <param name="ab">weaker typed list to add</param>
-        public override void Add(List<object> ab)
+        public override void Add(List<object?> ab)
         {
             for (int i = 0; i < count; i++)
                 ab.Add(slots[i]);
@@ -816,7 +824,7 @@ namespace Pyrrho.Common
         /// <param name="v">A value to add at the end</param>
         public BList(BList<V> b, V v)
             : base((((BTree<int, V>)b) + (b.Length, v)).root) { }
-        protected BList(Bucket<int, V> r) : base(r) { }
+        protected BList(Bucket<int, V>? r) : base(r) { }
         protected override ATree<int, V> Add(int k, V v)
         {
             var r = BTree<int,V>.Empty;
@@ -834,12 +842,15 @@ namespace Pyrrho.Common
             if (!done)
             {
                 while (c < k - 1)
-                    r += (c++, default(V));
+                {
+                    var dv = default(V) ?? throw new Exception("PE1002");
+                    r += (c++, dv);
+                }
                 r += (c++, v);
             }
             return new BList<V>(r);
         }
-        protected override ATree<int, V> Remove(int k)
+        internal override ATree<int, V> Remove(int k)
         {
             var r = Empty;
             for (var b = First(); b != null; b = b.Next())
@@ -887,7 +898,7 @@ namespace Pyrrho.Common
         public virtual bool Has(V v)
         {
             for (var b = First(); b != null; b = b.Next())
-                if ((object)b.value() == (object)v)
+                if ((object?)b.value() == (object?)v)
                     return true;
             return false;
         }

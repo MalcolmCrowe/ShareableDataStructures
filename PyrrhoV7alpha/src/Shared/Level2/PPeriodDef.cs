@@ -17,7 +17,7 @@ namespace Pyrrho.Level2
     /// SQL2011 specifies Period Definitions for Tables
     /// Specifies a time period (-1 means SYSTEM_TIME or defpos) and start and end column
     /// </summary>
-    internal class PPeriodDef : Physical
+    internal class PPeriodDef : Defined
     {
         /// <summary>
         /// The defining position of this table
@@ -26,19 +26,19 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The table this defeinition is for
         /// </summary>
-        public long tabledefpos;
+        public long tabledefpos = -1L;
         /// <summary>
         /// The period name (e.g. "SYSTEM_TIME")
         /// </summary>
-        public string periodname;
+        public string periodname = "";
         /// <summary>
         /// The colum  with the starting time
         /// </summary>
-        public long startcol;
+        public long startcol = -1L;
         /// <summary>
         /// The colum with the ening time
         /// </summary>
-        public long endcol;
+        public long endcol = -1L;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
@@ -56,10 +56,10 @@ namespace Pyrrho.Level2
         /// <param name="e">The end column</param>
         /// <param name="wh">The PhysBase</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PPeriodDef(long t, string p, long s, long e, long pp, Context cx)
+        public PPeriodDef(Table tb, string p, long s, long e, long pp, Context cx)
             : base(Type.PeriodDef, pp, cx)
         {
-            tabledefpos = t;
+            tabledefpos = tb.defpos;
             periodname = p;
             startcol = s;
             endcol = e;
@@ -110,7 +110,7 @@ namespace Pyrrho.Level2
             endcol = rdr.GetLong();
             base.Deserialise(rdr);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that,PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that,PTransaction ct)
         {
             switch(that.type)
             {
@@ -158,12 +158,12 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject Install(Context cx, long p)
         {
             var ro = cx.db.role;
             var pd = new PeriodDef(ppos, tabledefpos, startcol, endcol,cx.db);
-            var tb = (Table)cx.db.objects[tabledefpos];
-            var ti = tb.infos[ro.defpos];
+            if (cx.db.objects[tabledefpos] is not Table tb || tb.infos[ro.defpos] is not ObInfo ti)
+                throw new PEException("PE1439");
             ti += (ObInfo.SchemaKey, p);
             tb += (DBObject.Infos, tb.infos + (ro.defpos,ti));
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
@@ -174,6 +174,7 @@ namespace Pyrrho.Level2
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(pd, p);
+            return tb;
         }
     }
 }

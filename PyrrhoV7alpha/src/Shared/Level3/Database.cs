@@ -1,11 +1,6 @@
-using System;
-using System.Text;
-using System.IO;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
-using System.Threading;
-using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -167,13 +162,14 @@ namespace Pyrrho.Level3
         protected static BTree<string, FileStream> dbfiles = BTree<string, FileStream>.Empty;
         internal static BTree<string, Database> databases = BTree<string, Database>.Empty;
         internal static object _lock = new object();
+        internal static Database Empty = new();
         /// <summary>
         /// The _system database contains primitive domains and system tables and columns.
         /// These objects are inherited by any new database, and the _system._role uid
         /// becomes the schema role uid (obviously evolves to have all of the database objects).
         /// If there no users or roles defined in a database, the _system role uid is used
         /// </summary>
-        internal static Database _system = null;
+        internal static Database _system = Empty;
         internal readonly long loadpos;
         public override long lexeroffset => loadpos;
         internal const long
@@ -192,50 +188,48 @@ namespace Pyrrho.Level3
             Prefixes = -375, // CTree<string,long> UDT
             Procedures = -95, // CTree<long,string> Procedure
             Role = -285, // Role: the current role (e.g. an executable's definer)
-            _Role = -302, // long: role.defpos, initially set to the session role
             Roles = -60, // BTree<string,long>
             _Schema = -291, // long: the owner role for the database
             Suffixes = -376, // CTree<string,long> UDT
             Types = -61, // CTree<Domain,long>
             User = -277, // User: always the connection user
-            _User = -301,// long: user.defpos, always the connection user, maybe uncommitted
             Users = -287; // BTree<string,long> users defined in the database
         internal virtual long uid => -1;
-        public string name => (string)mem[ObInfo.Name];
-        internal FileStream df => dbfiles[name];
+        public string name => (string)(mem[ObInfo.Name]??throw new PEException("PE1001"));
+        internal FileStream df => dbfiles[name]??throw new PEException("PE1002");
         internal long curated => (long)(mem[Curated]??-1L);
         internal long nextStmt => (long)(mem[NextStmt] ?? 
             throw new PEException("PE777"));
         internal virtual long nextPos => Transaction.TransPos;
         internal long nextId => (long)(mem[NextId] ?? Transaction.Analysing);
         internal BTree<string, long> roles =>
-            (BTree<string, long>)mem[Roles] ?? BTree<string, long>.Empty;
+            (BTree<string, long>?)mem[Roles] ?? BTree<string, long>.Empty;
         public BTree<string, long> users =>
-            (BTree<string, long>)mem[Users] ?? BTree<string, long>.Empty;
+            (BTree<string, long>?)mem[Users] ?? BTree<string, long>.Empty;
         // NB The following 8 entries have default values supplied by _system
-        internal Role schema => (Role)mem[(long)mem[_Schema]];
-        internal Role guest => (Role)mem[Guest];
-        internal long _role => (long)mem[_Role];
-        internal long owner => (long)mem[Owner];
-        internal long _user => (long)mem[_User];
-        internal Role role => (Role)objects[_role];
-        internal User user => (User)objects[_user]; 
+        internal Role schema => (Role)(mem[(long)(mem[_Schema]??-1L)] ?? throw new PEException("PE1003"));
+        internal Role guest => (Role)(mem[Guest]??throw new PEException("PE1003"));
+        internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
+        internal Role role => (Role)(mem[Role] ?? guest);
+        internal User? user => (User?)mem[User];
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal int format => (int)(mem[Format] ?? 0);
-        public BTree<Domain, long> types => (BTree<Domain, long>)mem[Types];
-        public BTree<Level, long> levels => (BTree<Level, long>)mem[Levels];
-        public BTree<long, Level> cache => (BTree<long, Level>)mem[LevelUids];
-        public DateTime lastModified => (DateTime)mem[LastModified];
+        public BTree<Domain, long> types => (BTree<Domain, long>?)mem[Types]??BTree<Domain,long>.Empty;
+        public BTree<Level, long> levels => (BTree<Level, long>?)mem[Levels]??BTree<Level,long>.Empty;
+        public BTree<long, Level> cache => (BTree<long, Level>?)mem[LevelUids]??BTree<long,Level>.Empty;
+        public DateTime? lastModified => (DateTime?)mem[LastModified];
         public BTree<long, Physical.Type> log =>
-            (BTree<long, Physical.Type>)mem[Log] ?? BTree<long, Physical.Type>.Empty;
+            (BTree<long, Physical.Type>?)mem[Log] ?? BTree<long, Physical.Type>.Empty;
         public BTree<long, object> objects => mem;
         public CTree<long, string> procedures =>
-            (CTree<long, string>)mem[Procedures] ?? CTree<long, string>.Empty;
+            (CTree<long, string>?)mem[Procedures] ?? CTree<long, string>.Empty;
         public CTree<string, long> prefixes =>
-            (CTree<string, long>)mem[Prefixes] ?? CTree<string, long>.Empty;
+            (CTree<string, long>?)mem[Prefixes] ?? CTree<string, long>.Empty;
         public CTree<string, long> suffixes =>
-            (CTree<string, long>)mem[Suffixes] ?? CTree<string, long>.Empty;
+            (CTree<string, long>?)mem[Suffixes] ?? CTree<string, long>.Empty;
+        internal static Role schemaRole;
+        internal static Role guestRole;
         /// <summary>
         /// This code sets up the _system Database.
         /// It contains two roles ($Schema and _public), 
@@ -245,15 +239,13 @@ namespace Pyrrho.Level3
         {
             var su = new User(--_uid, new BTree<long, object>(ObInfo.Name,
                     Environment.UserDomainName + "\\" + Environment.UserName));
-            var sr = new Role("$Schema",--_uid,BTree<long, object>.Empty +
-                    (_User, su.defpos) +  (Owner, su.defpos));
-            var gu = new Role("GUEST", Guest, BTree<long, object>.Empty);
-            _system = new Database("System", su, sr, gu)+(_Schema,sr.defpos);
-            Context._system = new Context(_system);
-            Domain.StandardTypes();
-            SystemRowSet.Kludge();
+            schemaRole = new Role("$Schema",--_uid,BTree<long, object>.Empty +
+                    (User, su) +  (Owner, su.defpos));
+            guestRole = new Role("GUEST", Guest, BTree<long, object>.Empty);
+            _system = new Database("System", su, schemaRole, guestRole)+(_Schema,schemaRole.defpos);
+            SystemRowSet.Kludge(Domain.StandardTypesCount);
         }
-        internal static void Kludge() { }
+        Database():base(BTree<long,object>.Empty) { }
         /// <summary>
         /// The creates the _system database
         /// </summary>
@@ -265,11 +257,11 @@ namespace Pyrrho.Level3
             : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
                   (ObInfo.Name,n),(sr.defpos,sr),(su.defpos,su),(gu.defpos,gu),
                   // the 7 entries without defaults start here
-                  (_Role,sr.defpos),(Role, sr),(DBObject.Definer,sr.defpos),
-                  (_User,su.defpos),(User,su),(Owner,su.defpos),
+                  (Role, sr),(DBObject.Definer,sr.defpos),
+                  (User,su),(Owner,su.defpos),
                   (Guest,gu),(gu.defpos,gu),
                   (Types,BTree<Domain,long>.Empty),
-                  (Roles,BTree<string,long>.Empty+(sr.name,sr.defpos)+(gu.name,gu.defpos)),                
+                  (Roles,BTree<string,long>.Empty+(sr.name??"",sr.defpos)+(gu.name??"",gu.defpos)),                
                   (NextStmt,Transaction.Executables))
         {
             loadpos = 0;
@@ -279,7 +271,8 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="n"></param>
         /// <param name="f"></param>
-        public Database(string n,string path,FileStream f):base(_system.mem+(ObInfo.Name,n)
+        public Database(string n,string path,FileStream f)
+            :base((_system??throw new PEException("PE1006")).mem+(ObInfo.Name,n)
             +(Format,_Format(f))+(LastModified,File.GetLastWriteTimeUtc(path))
             +(NextStmt,Transaction.Executables))
         {
@@ -339,33 +332,33 @@ namespace Pyrrho.Level3
         public static Database operator +(Database d,(Role,long) x)
         {
             var (ro, p) = x;
-            return d.New(p,d.mem+(ro.defpos,ro));
+            return d.New(p,d.mem+(ro.defpos,ro)+(Role,ro));
         }
         public static Database operator+(Database d,(long,Domain,long)x)
         {
             var (dp, dm, curpos) = x;
             return d.New(curpos, d.mem + (dp, dm) + (Types,d.types+(dm,dp)));
         }
-        internal virtual void Add(Context cx,Physical ph,long lp)
+        internal virtual DBObject? Add(Context cx,Physical ph,long lp)
         {
-            ph.Install(cx, lp);
+            return ph.Install(cx, lp);
         }
         internal FileStream _File()
         {
-            return dbfiles[name];
+            return dbfiles[name]??throw new PEException("PE1007");
         }
         internal static FileStream _File(string n)
         {
-            return dbfiles[n];
+            return dbfiles[n]??throw new PEException("PE1007");
         }
         static int _Format(FileStream f)
         {
             var bs = new byte[5];
             return (f.Read(bs, 0, 5)==5)?bs[4]:0;
         }
-        public static Database Get(BTree<string, string> cs)
+        public static Database? Get(BTree<string, string> cs)
         {
-            var fn = cs["Files"];
+            var fn = cs["Files"]??throw new DBException("80000");
             var f = dbfiles[fn];
             if (f == null)
                 try
@@ -412,8 +405,8 @@ namespace Pyrrho.Level3
             // ensure a valid user and role combination
             // 1. Default:
             Role ro = guest;
-            var user = con.props["User"];
-            User u = objects[roles[user]] as User;
+            var user = con.props["User"] ?? throw new DBException("80000");
+            User? u = objects[roles[user]] as User;
             if (u == null)// 2. if the user is unknown
             {
                 // Has the schema role any users?
@@ -423,8 +416,8 @@ namespace Pyrrho.Level3
                 else {  // 2b 
                     if (user == Environment.UserDomainName+"\\"+Environment.UserName) //2bi
                     {
-                        u = (User)objects[_system._user]
-                            ?? throw new PEException("PE855");
+                        var sysdb = _system ?? throw new PEException("PE1009");
+                        u = sysdb.user  ?? throw new PEException("PE855");
                         ro = schema // allow the server account use the schema role
                             ?? throw new PEException("PE856");
                     }
@@ -434,15 +427,15 @@ namespace Pyrrho.Level3
             }
             if (con.props["Role"] is string rn) // 3. has a specific role been requested?
             {
-                ro = (Role)objects[roles[rn]]
-                    ?? throw new DBException("42105"); // 3a
-                if (role.infos[_user] is ObInfo ou
+                ro = (Role)(objects[roles[rn]]
+                    ?? throw new DBException("42105")); // 3a
+                if (u!=null && ro.infos[u.defpos] is ObInfo ou
                         && ou.priv.HasFlag(Grant.Privilege.UseRole)) // user has usage
                     goto done;
-                if (role.infos[guest.defpos] is ObInfo oi
+                if (ro.infos[guest.defpos] is ObInfo oi
                     && oi.priv.HasFlag(Grant.Privilege.UseRole)) // 3b public role
                     goto done;
-                if (owner == u.defpos && ro == schema) // 3ci1
+                if (u!=null && owner == u.defpos && ro == schema) // 3ci1
                     goto done;
                 throw new DBException("42105");
             }
@@ -453,24 +446,26 @@ namespace Pyrrho.Level3
             {
                 // 4aii See if the use can access just one role 
                 for (var b = roles.First(); b != null; b = b.Next())
-                {
-                    var br = (Role)objects[b.value()];
-                    if (br.infos[u.defpos] is ObInfo bi
-                        && bi.priv.HasFlag(Grant.Privilege.UseRole))
+                    if (objects[b.value()] is Role br)
                     {
-                        if (ro == guest)
-                            ro = br;   // we found one
-                        else
+                        if (br.infos[u.defpos] is ObInfo bi
+                            && bi.priv.HasFlag(Grant.Privilege.UseRole))
                         {
-                            ro = guest; // we found another, so leave it as guest
-                            break;
+                            if (ro == guest)
+                                ro = br;   // we found one
+                            else
+                            {
+                                ro = guest; // we found another, so leave it as guest
+                                break;
+                            }
                         }
                     }
-                }
             }
             else
                 ro = guest;
             done:
+            if (u == null)
+                throw new DBException("42105");
             var tr = new Transaction(r, t, sce, auto ?? autoCommit);
             if (u.defpos==-1L) // make a PUser for ad-hoc User, in case of Audit or Grant
             { 
@@ -478,58 +473,24 @@ namespace Pyrrho.Level3
                 var pu = new PUser(user, tr.nextPos, cx);
                 u = new User(pu, this);
                 tr.Add(cx,pu,loadpos);
-                tr = (Transaction)cx.db;
+                tr = (Transaction)(cx.db ?? throw new PEException("PE1012"));
             }
-            tr = tr + (_User, u.defpos) + (_Role, ro.defpos)
+            tr = tr + (User, u) + (Role, ro)
                       + (LastModified, DateTime.UtcNow); // transaction start time
             return tr;
         }
-        public DBObject GetObject(string n)
+        public DBObject? GetObject(string n,Role r)
         {
-            return objects[role.dbobjects[n]] as DBObject;
+            return r.dbobjects.Contains(n)? objects[r.dbobjects[n]] as DBObject : null;
         }
-        public Procedure GetProcedure(string n,CList<Domain> a)
+        public Procedure? GetProcedure(string n,CList<Domain> a)
         {
-            /* I would love to write simply
             return (role.procedures[n] is CTree<CList<Domain>,long> pt &&
                 pt.Contains(a))? objects[pt[a]] as Procedure:null;
-            */
-            for (var b= role.procedures[n]?.First();b!=null;b=b.Next())
-            {
-                var ds = b.key();
-                if (ds.Count != a.Count) continue;
-                var ab = a.First();
-                for (var c = ds.First(); ab != null && c != null; ab = ab.Next(), c = c.Next())
-                    if (!c.value().CanTakeValueOf(ab.value()))
-                        goto next;
-                return (Procedure)objects[b.value()];
-                    next:;
-            }
-            return null;
         }
-        internal Method GetMethod(UDType ut, string pn, CList<Domain> a)
+        public Domain? Find(Domain dm)
         {
-            var oi = ut.infos[role.defpos];
-            for (var b = oi.methodInfos[pn]?.First(); b != null; b = b.Next())
-            {
-                var ds = b.key();
-                if (ds.Count != a.Count) continue;
-                var ab = a.First();
-                for (var c = ds.First(); ab != null && c != null; ab = ab.Next(), c = c.Next())
-                    if (!c.value().CanTakeValueOf(ab.value()))
-                        goto next;
-                return (Method)objects[b.value()];
-            next:;
-            }
-            if (ut.super is UDType st)
-                return GetMethod(st, pn, a);
-            return null;
-        }
-        public Domain Find(Domain dm)
-        {
-            if (!types.Contains(dm))
-                throw new PEException("PE555");
-            return (Domain)objects[types[dm]];
+            return types.Contains(dm)? (Domain?)objects[types[dm]] : null;
         }
         public virtual Database RdrClose(ref Context cx)
         {
@@ -540,37 +501,36 @@ namespace Pyrrho.Level3
         /// </summary>
         public virtual Database Load()
         {
+            var kludge = Domain.Content;
             var rdr = new Reader(new Context(this));
-            Physical p;
+            Physical? p;
             lock (df) //(consistency)
             {
                 for (int counter = 0; ; counter++)
                 {
                     p = rdr.Create();
-                    if (p == null)
+                    if (p is EndOfFile)
                         break;
                     try
                     {
-                        if (p is PTransaction pt)
+                        if (p is PTransaction pt && rdr.context is Context cx && cx.db is Database dr)
                         {
-                            rdr.trans = pt;
-                            rdr.context.db += (Role, pt.ptrole);
-                            rdr.context.db += (User, pt.ptuser);
                             // these two fields for reading of old objects from the log
-                            // not used (at all) during Load(): so set them to the above
-                            rdr.role = rdr.context.role;
-                            rdr.user = rdr.context.user;
+                            // not used (at all) during Load()
+                            rdr.role = pt.ptrole;
+                            rdr.user = pt.ptuser; 
                             rdr.trans = pt;
+                            dr += (Role, rdr.role);
+                            dr += (User,rdr.user??Level3.User.None);
                         }
                         rdr.Add(p);
-                        rdr.role = rdr.context.db.role;
                     }
                     catch (Exception) { }
-                    if (rdr.context.db.mem.Contains(Log))
+                   // if (rdr.context?.db.mem[Log] is BTree<long,Physical.Type> log)
                         rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
                 }
             }
-            var d = rdr.context.db;
+            var d = rdr.context?.db ?? throw new PEException("PE1013");
             if (PyrrhoStart.VerboseMode)
                 Console.WriteLine("Database " + name + " loaded to " + rdr.Position);
             lock (_lock)
@@ -582,40 +542,43 @@ namespace Pyrrho.Level3
             if (mem.Contains(Log))
                 return this;
             var rdr = new Reader(new Context(this),5L);
-            Physical p;
+            Physical? p;
             lock (df) //(consistency)
             {
                 for (int counter = 0; ; counter++)
                 {
                     p = rdr.Create();
-                    if (p == null)
+                    if (p == null || p is EndOfFile)
                         break;
-                    rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
+                    if (rdr.context.db is Database dr)
+                        rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
                 }
             }
-            return rdr.context.db;
+            return rdr.context.db ?? throw new PEException("PE014");
         }
-        internal (Physical, long) _NextPhysical(long pp,PTransaction trans=null)
+        internal (Physical?, long) _NextPhysical(long pp)
         {
             try
             {
                 var rdr = new Reader(this, pp);
                 var ph = rdr.Create();
                 pp = (int)rdr.Position;
-                if (ph == null)
-                    return (null, -1);
+                if (ph is EndOfFile)
+                    return (null, -1L);
                 return (ph, pp);
             } catch(Exception)
             {
                 throw new DBException("22003");
             }
         }
-        internal Physical GetPhysical(long pp)
+        internal (Physical,long) GetPhysical(long pp)
         {
             try
             {
-                var ph = new Reader(this, pp).Create();
-                return ph;
+                var rdr = new Reader(this, pp);
+                var ph = rdr.Create();
+                var ppos = rdr.Position;
+                return (ph,ppos);
             }
             catch (Exception)
             {
@@ -625,13 +588,13 @@ namespace Pyrrho.Level3
         public virtual void Audit(Audit a,Context cx) { }
         internal virtual int AffCount(Context cx)
         {
-            var aff = cx?.affected;
+            var aff = cx.affected;
             if (aff == null)
                 return 0;
             var r = 0L;
             for (var b = aff.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key()] is Table)
-                    r += b.value().Count;
+                if (cx.db.objects[b.key()] is Table && b.value() is CTree<long,long> tt)
+                    r += tt.Count;
             return (int)r;
         }
         /// <summary>
@@ -639,7 +602,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="pos">a given position</param>
         /// <returns>the physical record</returns>
-        public Physical GetD(long pos)
+        public Physical? GetD(long pos)
         {
             return new Reader(new Context(this),pos).Create();
         }
@@ -654,12 +617,12 @@ namespace Pyrrho.Level3
         /// </summary>
         internal virtual Database Commit(Context cx)
         {
-            return databases[name] 
+            return (databases[name] ?? throw new PEException("PE1010"))
                 + (LastModified, DateTime.UtcNow);
         }
         internal Database Rollback()
         {
-            return databases[name];
+            return databases[name] ?? throw new PEException("PE1011");
         }
         public virtual DBException Exception(string sig, params object[] obs)
         {

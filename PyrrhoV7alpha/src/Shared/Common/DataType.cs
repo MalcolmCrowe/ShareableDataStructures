@@ -176,504 +176,503 @@ namespace Pyrrho.Common
         INTERVAL0 = 137,  // must be 137 (old version of INTERVAL)
         HOLD = 139,
         HOUR = 140,
-        HTTP = 141,  // Pyrrho 7.01
-        IDENTITY = 142,
-        IF = 143,  // vol 4
-        IN = 144,
-        INDICATOR = 145,
-        INNER = 146,
-        INOUT = 147,
-        INSENSITIVE = 148,
-        INSERT = 149, // INT is 136, INTEGER is 135
-        INTERSECT = 150,
-        INTERSECTION = 151,
-        INTERVAL = 152, // must be 152 see also INTERVAL0
-        INTO = 153,
-        IS = 154,
-        ITERATE = 155, // vol 4
-        JOIN = 156,
-        LAG = 157,
-        LANGUAGE = 158,
-        LARGE = 159,
-        LAST_DATA = 160, // Pyrrho v7
-        LAST_VALUE = 161,
-        LATERAL = 162,
-        LEAD = 163,
-        LEADING = 164,
-        LEAVE = 165, // vol 4
-        LEFT = 166,
-        LIKE = 167,
+        IDENTITY = 141,
+        IF = 142,  // vol 4
+        IN = 143,
+        INDICATOR = 144,
+        INNER = 145,
+        INOUT = 146,
+        INSENSITIVE = 147,
+        INSERT = 148, // INT is 136, INTEGER is 135
+        INTERSECT = 149,
+        INTERSECTION = 150,
+        INTO = 151,
+        IS = 152,
+        INTERVAL = 153, // must be 152 see also INTERVAL0
+        ITERATE = 154, // vol 4
+        JOIN = 155,
+        LAG = 156,
+        LANGUAGE = 157,
+        LARGE = 158,
+        LAST_DATA = 159, // Pyrrho v7
+        LAST_VALUE = 160,
+        LATERAL = 161,
+        LEAD = 162,
+        LEADING = 163,
+        LEAVE = 164, // vol 4
+        LEFT = 165,
+        LIKE = 166,
+        LN = 167,
         MULTISET = 168, // must be 168
-        LN = 169,
-        LOCAL = 170,
+        LOCAL = 169,
+        LOCALTIME = 170,
         NCHAR = 171, // must be 171	
         NCLOB = 172, // must be 172
-        LOCALTIME = 173,
-        LOCALTIMESTAMP = 174,
-        LOOP = 175,  // vol 4
-        LOWER = 176,
+        LOCALTIMESTAMP = 173,
+        LOOP = 174,  // vol 4
+        LOWER = 175,
+        MATCH = 176,
         NULL = 177, // must be 177
-        MATCH = 178,
+        MAX = 178,
         NUMERIC = 179, // must be 179
-        MAX = 180,
-        MEMBER = 181,
-        MERGE = 182,
-        METHOD = 183,
-        MIN = 184,
-        MINUTE = 185,
-        MOD = 186,
-        MODIFIES = 187,
-        MODULE = 188,
-        MONTH = 189,	 // MULTISET is 168
-        NATIONAL = 190,
-        NATURAL = 191, // NCHAR 171 NCLOB 172
-        NEW = 192,
-        NO = 193,
-        NONE = 194,
-        NORMALIZE = 195,
-        NOT = 196,    // NULL 177 
-        NULLIF = 197, // NUMERIC 179, see also NUMERICLITERAL
-        OBJECT = 198,
+        MEMBER = 180,
+        MERGE = 181,
+        METHOD = 182,
+        MIN = 183,
+        MINUTE = 184,
+        MOD = 185,
+        MODIFIES = 186,
+        MODULE = 187,
+        MONTH = 188,	 // MULTISET is 168
+        NATIONAL = 189,
+        NATURAL = 190, // NCHAR 171 NCLOB 172
+        NEW = 191,
+        NO = 192,
+        NONE = 193,
+        NORMALIZE = 194,
+        NOT = 195,
+        NULLIF = 196, // NUMERIC 179, see also NUMERICLITERAL
+        OBJECT = 197,
+        OCCURRENCES_REGEX = 198, // alphabetical sequence is a misprint in SQL2008
         REAL0 = 199, // must be 199, previous version of REAL
-        OCCURRENCES_REGEX = 200, // alphabetical sequence is a misprint in SQL2008
-        OCTET_LENGTH = 201,
-        OF = 202,
+        OCTET_LENGTH = 200,
+        OF = 201,
+        OFFSET = 202,
         REAL = 203, // must be 203, see also REAL0 and REALLITERAL
-        OFFSET = 204,
-        OLD = 205,
-        ON = 206,
-        ONLY = 207,
-        OPEN = 208,
-        OR = 209,
-        ORDER = 210,
-        OUT = 211,
-        OUTER = 212,
-        OVER = 213,
-        OVERLAPS = 214,
-        OVERLAY = 215,
-        PARAMETER = 216,
-        PARTITION = 217,
+        OLD = 204,
+        ON = 205,
+        ONLY = 206,
+        OPEN = 207,
+        OR = 208,
+        ORDER = 209,
+        OUT = 210,
+        OUTER = 211,
+        OVER = 212,
+        OVERLAPS = 213,
+        OVERLAY = 214,
+        PARAMETER = 215,
+        PARTITION = 216,
+        PERCENT = 217,
         PASSWORD = 218, // must be 218, Pyrrho v5
-        PERCENT = 219,
-        PERIOD = 220,
-        PORTION = 221,
-        POSITION = 222,
-        POWER = 223,
-        PRECEDES = 224,
-        PRECISION = 225,
-        PREPARE = 226,
-        PRIMARY = 227,
-        PROCEDURE = 228,
-        RANGE = 229,
-        RANK = 230,
-        READS = 231,    // REAL 203 (previously 199 see REAL0)
-        RECURSIVE = 232,
-        REF = 233,
-        REFERENCES = 234,
-        REFERENCING = 235,
-        RELEASE = 236,
-        REPEAT = 237, // vol 4
-        RESIGNAL = 238, // vol 4
-        RESULT = 239,
-        RETURN = 240,
-        RETURNS = 241,
-        REVOKE = 242,
-        RIGHT = 243,
-        ROLLBACK = 244,
-        ROW = 245,
-        ROW_NUMBER = 246,
-        ROWS = 247,
-        SAVEPOINT = 248,
-        SCOPE = 249,
-        SCROLL = 250,
-        SEARCH = 251,
-        SECOND = 252,
-        SELECT = 253,
-        SENSITIVE = 254,    
-        SESSION_USER = 255,
-        SET = 256,
+        PERIOD = 219,
+        PORTION = 220,
+        POSITION = 221,
+        POWER = 222,
+        PRECEDES = 223,
+        PRECISION = 224,
+        PREPARE = 225,
+        PRIMARY = 226,
+        PROCEDURE = 227,
+        RANGE = 228,
+        RANK = 229,
+        READS = 230,    // REAL 203 (previously 199 see REAL0)
+        RECURSIVE = 231,
+        REF = 232,
+        REFERENCES = 233,
+        REFERENCING = 234,
+        RELEASE = 235,
+        REPEAT = 236, // vol 4
+        RESIGNAL = 237, // vol 4
+        RESULT = 238,
+        RETURN = 239,
+        RETURNS = 240,
+        REVOKE = 241,
+        RIGHT = 242,
+        ROLLBACK = 243,
+        ROW = 244,
+        ROW_NUMBER = 245,
+        ROWS = 246,
+        SAVEPOINT = 247,
+        SCOPE = 248,
+        SCROLL = 249,
+        SEARCH = 250,
+        SECOND = 251,
+        SELECT = 252,
+        SENSITIVE = 253,    
+        SESSION_USER = 254,
+        SET = 255,
+        SIGNAL = 256, //vol 4
         TIME = 257, // must be 257
         TIMESTAMP = 258, // must be 258
-        SIGNAL = 259, //vol 4
-        SMALLINT = 260,
-        SOME = 261,
-        SPECIFIC = 262,
-        SPECIFICTYPE = 263,
-        SQL = 264,
-        SQLEXCEPTION = 265,
-        SQLSTATE = 266,
+        SMALLINT = 259,
+        SOME = 260,
+        SPECIFIC = 261,
+        SPECIFICTYPE = 262,
+        SQL = 263,
+        SQLEXCEPTION = 264,
+        SQLSTATE = 265,
+        SQLWARNING = 266,
         TYPE = 267, // must be 267 but is not a reserved word
-        SQLWARNING = 268,
-        SQRT = 269,
-        START = 270,
-        STATIC = 271,
-        STDDEV_POP = 272,
-        STDDEV_SAMP = 273,
-        SUBMULTISET = 274,
-        SUBSTRING = 275, //
-        SUBSTRING_REGEX = 276,
-        SUCCEEDS = 277,
-        SUM = 278, //
-        SYMMETRIC = 279,
-        SYSTEM = 280,
-        SYSTEM_TIME = 281,
-        SYSTEM_USER = 282,  // TABLE is 297
-        TABLESAMPLE = 283,
-        THEN = 284,  // TIME is 257, TIMESTAMP is 258	
-        TIMEZONE_HOUR = 285,
-        TIMEZONE_MINUTE = 286,
-        TO = 287,
-        TRAILING = 288,
-        TRANSLATE = 289,
-        TRANSLATION = 290,
-        TREAT = 291,
-        TRIGGER = 292,
-        TRIM = 293,
-        TRIM_ARRAY = 294,
-        TRUE = 295,
-        TRUNCATE = 296,
+        SQRT = 268,
+        START = 269,
+        STATIC = 270,
+        STDDEV_POP = 271,
+        STDDEV_SAMP = 272,
+        SUBMULTISET = 273,
+        SUBSTRING = 274, //
+        SUBSTRING_REGEX = 275,
+        SUCCEEDS = 276,
+        SUM = 277, //
+        SYMMETRIC = 278,
+        SYSTEM = 279,
+        SYSTEM_TIME = 280,
+        SYSTEM_USER = 281,  // TABLE is 297
+        TABLESAMPLE = 282,
+        THEN = 283,  // TIME is 257, TIMESTAMP is 258	
+        TIMEZONE_HOUR = 284,
+        TIMEZONE_MINUTE = 285,
+        TO = 286,
+        TRAILING = 287,
+        TRANSLATE = 288,
+        TRANSLATION = 289,
+        TREAT = 290,
+        TRIGGER = 291,
+        TRIM = 292,
+        TRIM_ARRAY = 293,
+        TRUE = 294,
+        TRUNCATE = 295,
+        UESCAPE = 296,
         TABLE = 297, // must be 297
-        UESCAPE = 298,
-        UNION = 299,
-        UNIQUE = 300,
-        UNKNOWN = 301,
-        UNNEST = 302,
-        UNTIL = 303, // vol 4
-        UPDATE = 304,
-        UPPER = 305, //
-        USER = 306,
-        USING = 307,
-        VALUE = 308,
-        VALUE_OF = 309,
-        VALUES = 310,
-        VARBINARY = 311,
-        VARCHAR = 312,
-        VARYING = 313,
-        VERSIONING = 314,
-        WHEN = 315,
-        WHENEVER = 316,
-        WHERE = 317,
-        WHILE = 318, // vol 4
-        WINDOW = 319,
-        WITH = 320,
-        WITHIN = 321,
-        WITHOUT = 322, // XML is 356 vol 14
-        XMLAGG = 323, // Basic XML stuff + XMLAgg vol 14
-        XMLATTRIBUTES = 324,
-        XMLBINARY = 325,
-        XMLCAST = 326,
-        XMLCOMMENT = 327,
-        XMLCONCAT = 328,
-        XMLDOCUMENT = 329,
-        XMLELEMENT = 330,
-        XMLEXISTS = 331,
-        XMLFOREST = 332,
-        XMLITERATE = 333,
-        XMLNAMESPACES = 334,
-        XMLPARSE = 335,
-        XMLPI = 336,
-        XMLQUERY = 337,
-        XMLSERIALIZE = 338,
-        XMLTABLE = 339,
-        XMLTEXT = 340,
-        XMLVALIDATE = 341,
-        YEAR = 342,	// last reserved word
+        UNION = 298,
+        UNIQUE = 299,
+        UNKNOWN = 300,
+        UNNEST = 301,
+        UNTIL = 302, // vol 4
+        UPDATE = 303,
+        UPPER = 304, //
+        USER = 305,
+        USING = 306,
+        VALUE = 307,
+        VALUE_OF = 308,
+        VALUES = 309,
+        VARBINARY = 310,
+        VARCHAR = 311,
+        VARYING = 312,
+        VERSIONING = 313,
+        WHEN = 314,
+        WHENEVER = 315,
+        WHERE = 316,
+        WHILE = 317, // vol 4
+        WINDOW = 318,
+        WITH = 319,
+        WITHIN = 320,
+        WITHOUT = 321, // XML is 356 vol 14
+        XMLAGG = 322, // Basic XML stuff + XMLAgg vol 14
+        XMLATTRIBUTES = 323,
+        XMLBINARY = 324,
+        XMLCAST = 325,
+        XMLCOMMENT = 326,
+        XMLCONCAT = 327,
+        XMLDOCUMENT = 328,
+        XMLELEMENT = 329,
+        XMLEXISTS = 330,
+        XMLFOREST = 331,
+        XMLITERATE = 332,
+        XMLNAMESPACES = 333,
+        XMLPARSE = 334,
+        XMLPI = 335,
+        XMLQUERY = 336,
+        XMLSERIALIZE = 337,
+        XMLTABLE = 338,
+        XMLTEXT = 339,
+        XMLVALIDATE = 340,
+        YEAR = 341,	// last reserved word
         //====================TOKEN TYPES=====================
-        ASSIGNMENT = 343, // := 
-        BLOBLITERAL = 344, // 
-        BOOLEANLITERAL = 345,
-        CHARLITERAL = 346, //
-        COLON = 347, // :
-        COMMA = 348,  // ,        
-        CONCATENATE = 349, // ||        
-        DIVIDE = 350, // /        
-        DOCUMENTLITERAL = 351, // v5.1
-        DOT = 352, // . 5.2 was STOP
-        DOUBLECOLON = 353, // ::        
-        EMPTY = 354, // []        
-        EQL = 355,  // =        
+        ASSIGNMENT = 342, // := 
+        BLOBLITERAL = 343, // 
+        BOOLEANLITERAL = 344,
+        CHARLITERAL = 345, //
+        COLON = 346, // :
+        COMMA = 347,  // ,        
+        CONCATENATE = 348, // ||        
+        DIVIDE = 349, // /        
+        DOCUMENTLITERAL = 350, // v5.1
+        DOT = 351, // . 5.2 was STOP
+        DOUBLECOLON = 352, // ::        
+        EMPTY = 353, // []        
+        EQL = 354,  // =        
+        GEQ = 355, // >=    
         XML = 356, // must be 356 (is a reserved word)
-        GEQ = 357, // >=    
-        GTR = 358, // >    
-        ID = 359, // identifier
-        INTEGERLITERAL = 360, // Pyrrho
-        LBRACE = 361, // {
-        LBRACK = 362, // [
-        LEQ = 363, // <=
-        LPAREN = 364, // (
-        LSS = 365, // <
-        MEXCEPT = 366, // 
-        MINTERSECT = 367, //
-        MINUS = 368, // -
-        MUNION = 369, // 
-        NEQ = 370, // <>
-        NUMERICLITERAL = 371, // 
-        PLUS = 372, // + 
-        QMARK = 373, // ?
-        RBRACE = 374, // } 
-        RBRACK = 375, // ] 
-        RDFDATETIME = 376, //
-        RDFLITERAL = 377, // 
-        RDFTYPE = 378, // Pyrrho 7.0
-        REALLITERAL = 379, //
-        RPAREN = 380, // ) 
-        SEMICOLON = 381, // ; 
-        TIMES = 382, // *
-        VBAR = 383, // | 
+        GTR = 357, // >    
+        ID = 358, // identifier
+        INTEGERLITERAL = 359, // Pyrrho
+        LBRACE = 360, // {
+        LBRACK = 361, // [
+        LEQ = 362, // <=
+        LPAREN = 363, // (
+        LSS = 364, // <
+        MEXCEPT = 365, // 
+        MINTERSECT = 366, //
+        MINUS = 367, // -
+        MUNION = 368, // 
+        NEQ = 369, // <>
+        NUMERICLITERAL = 370, // 
+        PLUS = 371, // + 
+        QMARK = 372, // ?
+        RBRACE = 373, // } 
+        RBRACK = 374, // ] 
+        RDFDATETIME = 375, //
+        RDFLITERAL = 376, // 
+        RDFTYPE = 377, // Pyrrho 7.0
+        REALLITERAL = 378, //
+        RPAREN = 379, // ) 
+        SEMICOLON = 380, // ; 
+        TIMES = 381, // *
+        VBAR = 382, // | 
         //=========================NON-RESERVED WORDS================
-        A = 384, // first non-reserved word
-        ABSOLUTE = 385,
-        ACTION = 386,
-        ADA = 387,
-        ADD = 388,
-        ADMIN = 389,
-        AFTER = 390,
-        ALWAYS = 391,
-        APPLICATION = 392, // Pyrrho 4.6
-        ASC = 393,
-        ASSERTION = 394,
-        ATTRIBUTE = 395,
-        ATTRIBUTES = 396,
-        BEFORE = 397,
-        BERNOULLI = 398,
-        BREADTH = 399,
-        BREAK = 400, // Pyrrho
-        C = 401,
-        CAPTION = 402, // Pyrrho 4.5
-        CASCADE = 403,
-        CATALOG = 404,
-        CATALOG_NAME = 405,
-        CHAIN = 406,
-        CHARACTER_SET_CATALOG = 407,
-        CHARACTER_SET_NAME = 408,
-        CHARACTER_SET_SCHEMA = 409,
-        CHARACTERISTICS = 410,
-        CHARACTERS = 411,
-        CLASS_ORIGIN = 412,
-        COBOL = 413,
-        COLLATION = 414,
-        COLLATION_CATALOG = 415,
-        COLLATION_NAME = 416,
-        COLLATION_SCHEMA = 417,
-        COLUMN_NAME = 418,
-        COMMAND_FUNCTION = 419,
-        COMMAND_FUNCTION_CODE = 420,
-        COMMITTED = 421,
-        CONDITION_NUMBER = 422,
-        CONNECTION = 423,
-        CONNECTION_NAME = 424,
-        CONSTRAINT_CATALOG = 425,
-        CONSTRAINT_NAME = 426,
-        CONSTRAINT_SCHEMA = 427,
-        CONSTRAINTS = 428,
-        CONSTRUCTOR = 429,
-        CONTENT = 430,
-        CONTINUE = 431,
-        CSV = 432, // Pyrrho 5.5
-        CURATED = 433, // Pyrrho
-        CURSOR_NAME = 434,
-        DATA = 435,
-        DATABASE = 436, // Pyrrho
-        DATETIME_INTERVAL_CODE = 437,
-        DATETIME_INTERVAL_PRECISION = 438,
-        DEFAULTS = 439,
-        DEFERRABLE = 440,
-        DEFERRED = 441,
-        DEFINED = 442,
-        DEFINER = 443,
-        DEGREE = 444,
-        DEPTH = 445,
-        DERIVED = 446,
-        DESC = 447,
-        DESCRIPTOR = 448,
-        DIAGNOSTICS = 449,
-        DISPATCH = 450,
-        DOMAIN = 451,
-        DYNAMIC_FUNCTION = 452,
-        DYNAMIC_FUNCTION_CODE = 453,
-        ENFORCED = 454,
-        ENTITY = 455, // Pyrrho 4.5
-        ETAG = 456, // Pyrrho Metadata 7.0
-        EXCLUDE = 457,
-        EXCLUDING = 458,
-        FINAL = 459,
-        FIRST = 460,
-        FLAG = 461,
-        FOLLOWING = 462,
-        FORTRAN = 463,
-        FOUND = 464,
-        G = 465,
-        GENERAL = 466,
-        GENERATED = 467,
-        GO = 468,
-        GOTO = 469,
-        GRANTED = 470,
-        HIERARCHY = 471,
-        HISTOGRAM = 472, // Pyrrho 4.5
-        HTTPDATE = 473, // Pyrrho 7 RFC 7231
-        IGNORE = 474,
-        IMMEDIATE = 475,
-        IMMEDIATELY = 476,
-        IMPLEMENTATION = 477,
-        INCLUDING = 478,
-        INCREMENT = 479,
-        INITIALLY = 480,
-        INPUT = 481,
-        INSTANCE = 482,
-        INSTANTIABLE = 483,
-        INSTEAD = 484,
-        INVERTS = 485, // Pyrrho Metadata 5.7
-        INVOKER = 486,
-        IRI = 487, // Pyrrho 7
-        ISOLATION = 488,
-        JSON = 489, // Pyrrho 5.5
-        K = 490,
-        KEY = 491,
-        KEY_MEMBER = 492,
-        KEY_TYPE = 493,
-        LAST = 494,
-        LEGEND = 495, // Pyrrho Metadata 4.8
-        LENGTH = 496,
-        LEVEL = 497,
-        LINE = 498, // Pyrrho 4.5
-        LOCATOR = 499,
-        M = 500,
-        MAP = 501,
-        MATCHED = 502,
-        MAXVALUE = 503,
-        MESSAGE_LENGTH = 504,
-        MESSAGE_OCTET_LENGTH = 505,
-        MESSAGE_TEXT = 506,
-        METADATA = 507, // Pyrrho 7
-        MILLI = 508, // Pyrrho 7
-        MIME = 509, // Pyrrho 7
-        MINVALUE = 510,
-        MONOTONIC = 511, // Pyrrho 5.7
-        MORE = 512,
-        MUMPS = 513,
-        NAME = 514,
-        NAMES = 515,
-        NESTING = 516,
-        NEXT = 517,
-        NFC = 518,
-        NFD = 519,
-        NFKC = 520,
-        NFKD = 521,
-        NORMALIZED = 522,
-        NULLABLE = 523,
-        NULLS = 524,
-        NUMBER = 525,
-        OCCURRENCE = 526,
-        OCTETS = 527,
-        OPTION = 528,
-        OPTIONS = 529,
-        ORDERING = 530,
-        ORDINALITY = 531,
-        OTHERS = 532,
-        OUTPUT = 533,
-        OVERRIDING = 534,
-        OWNER = 535, // Pyrrho
-        P = 536,
-        PAD = 537,
-        PARAMETER_MODE = 538,
-        PARAMETER_NAME = 539,
-        PARAMETER_ORDINAL_POSITION = 540,
-        PARAMETER_SPECIFIC_CATALOG = 541,
-        PARAMETER_SPECIFIC_NAME = 542,
-        PARAMETER_SPECIFIC_SCHEMA = 543,
-        PARTIAL = 544,
-        PASCAL = 545,
-        PATH = 546,
-        PIE = 547, // Pyrrho 4.5
-        PLACING = 548,
-        PL1 = 549,
-        POINTS = 550, // Pyrrho 4.5
-        PRECEDING = 551,
-        PREFIX = 552, // Pyrrho 7.01
-        PRESERVE = 553,
-        PRIOR = 554,
-        PRIVILEGES = 555,
-        PROFILING = 556, // Pyrrho
-        PROVENANCE = 557, // Pyrrho
-        PUBLIC = 558,
-        READ = 559,
-        REFERRED = 560, // 5.2
-        REFERS = 561, // 5.2
-        RELATIVE = 562,
-        REPEATABLE = 563,
-        RESPECT = 564,
-        RESTART = 565,
-        RESTRICT = 566,
-        RETURNED_CARDINALITY = 567,
-        RETURNED_LENGTH = 568,
-        RETURNED_OCTET_LENGTH = 569,
-        RETURNED_SQLSTATE = 570,
-        ROLE = 571,
-        ROUTINE = 572,
-        ROUTINE_CATALOG = 573,
-        ROUTINE_NAME = 574,
-        ROUTINE_SCHEMA = 575,
-        ROW_COUNT = 576,
-        SCALE = 577,
-        SCHEMA = 578,
-        SCHEMA_NAME = 579,
-        SCOPE_CATALOG = 580,
-        SCOPE_NAME = 581,
-        SCOPE_SCHEMA = 582,
-        SECTION = 583,
-        SECURITY = 584,
-        SELF = 585,
-        SEQUENCE = 586,
-        SERIALIZABLE = 587,
-        SERVER_NAME = 588,
-        SESSION = 589,
-        SETS = 590,
-        SIMPLE = 591,
-        SIZE = 592,
-        SOURCE = 593,
-        SPACE = 594,
-        SPECIFIC_NAME = 595,
-        SQLAGENT = 596, // Pyrrho 7
-        STANDALONE = 597, // vol 14
-        STATE = 598,
-        STATEMENT = 599,
-        STRUCTURE = 600,
-        STYLE = 601,
-        SUBCLASS_ORIGIN = 602,
-        SUFFIX = 603, // Pyrrho 7.01
-        T = 604,
-        TABLE_NAME = 605,
-        TEMPORARY = 606,
-        TIES = 607,
-        TIMEOUT = 608, // Pyrrho
-        TOP_LEVEL_COUNT = 609,
-        TRANSACTION = 610,
-        TRANSACTION_ACTIVE = 611,
-        TRANSACTIONS_COMMITTED = 612,
-        TRANSACTIONS_ROLLED_BACK = 613,
-        TRANSFORM = 614,
-        TRANSFORMS = 615,
-        TRIGGER_CATALOG = 616,
-        TRIGGER_NAME = 617,
-        TRIGGER_SCHEMA = 618, // TYPE  is 267 but is not a reserved word
-        TYPE_URI = 619, // Pyrrho
-        UNBOUNDED = 620,
-        UNCOMMITTED = 621,
-        UNDER = 622,
-        UNDO = 623,
-        UNNAMED = 624,
-        URL = 625,  // Pyrrho 7
-        USAGE = 626,
-        USER_DEFINED_TYPE_CATALOG = 627,
-        USER_DEFINED_TYPE_CODE = 628,
-        USER_DEFINED_TYPE_NAME = 629,
-        USER_DEFINED_TYPE_SCHEMA = 630,
-        VIEW = 631,
-        WORK = 632,
-        WRITE = 633,
-        X = 634, // Pyrrho 4.5
-        Y = 635, // Pyrrho 4.5
-        ZONE = 636
+        A = 383, // first non-reserved word
+        ABSOLUTE = 384,
+        ACTION = 385,
+        ADA = 386,
+        ADD = 387,
+        ADMIN = 388,
+        AFTER = 389,
+        ALWAYS = 390,
+        APPLICATION = 391, // Pyrrho 4.6
+        ASC = 392,
+        ASSERTION = 393,
+        ATTRIBUTE = 394,
+        ATTRIBUTES = 395,
+        BEFORE = 396,
+        BERNOULLI = 397,
+        BREADTH = 398,
+        BREAK = 399, // Pyrrho
+        C = 400,
+        CAPTION = 401, // Pyrrho 4.5
+        CASCADE = 402,
+        CATALOG = 403,
+        CATALOG_NAME = 404,
+        CHAIN = 405,
+        CHARACTER_SET_CATALOG = 406,
+        CHARACTER_SET_NAME = 407,
+        CHARACTER_SET_SCHEMA = 408,
+        CHARACTERISTICS = 409,
+        CHARACTERS = 410,
+        CLASS_ORIGIN = 411,
+        COBOL = 412,
+        COLLATION = 413,
+        COLLATION_CATALOG = 414,
+        COLLATION_NAME = 415,
+        COLLATION_SCHEMA = 416,
+        COLUMN_NAME = 417,
+        COMMAND_FUNCTION = 418,
+        COMMAND_FUNCTION_CODE = 419,
+        COMMITTED = 420,
+        CONDITION_NUMBER = 421,
+        CONNECTION = 422,
+        CONNECTION_NAME = 423,
+        CONSTRAINT_CATALOG = 424,
+        CONSTRAINT_NAME = 425,
+        CONSTRAINT_SCHEMA = 426,
+        CONSTRAINTS = 427,
+        CONSTRUCTOR = 428,
+        CONTENT = 429,
+        CONTINUE = 430,
+        CSV = 431, // Pyrrho 5.5
+        CURATED = 432, // Pyrrho
+        CURSOR_NAME = 433,
+        DATA = 434,
+        DATABASE = 435, // Pyrrho
+        DATETIME_INTERVAL_CODE = 436,
+        DATETIME_INTERVAL_PRECISION = 437,
+        DEFAULTS = 438,
+        DEFERRABLE = 439,
+        DEFERRED = 440,
+        DEFINED = 441,
+        DEFINER = 442,
+        DEGREE = 443,
+        DEPTH = 444,
+        DERIVED = 445,
+        DESC = 446,
+        DESCRIPTOR = 447,
+        DIAGNOSTICS = 448,
+        DISPATCH = 449,
+        DOMAIN = 450,
+        DYNAMIC_FUNCTION = 451,
+        DYNAMIC_FUNCTION_CODE = 452,
+        ENFORCED = 453,
+        ENTITY = 454, // Pyrrho 4.5
+        ETAG = 455, // Pyrrho Metadata 7.0
+        EXCLUDE = 456,
+        EXCLUDING = 457,
+        FINAL = 458,
+        FIRST = 459,
+        FLAG = 460,
+        FOLLOWING = 461,
+        FORTRAN = 462,
+        FOUND = 463,
+        G = 464,
+        GENERAL = 465,
+        GENERATED = 466,
+        GO = 467,
+        GOTO = 468,
+        GRANTED = 469,
+        HIERARCHY = 470,
+        HISTOGRAM = 471, // Pyrrho 4.5
+        HTTPDATE = 472, // Pyrrho 7 RFC 7231
+        IGNORE = 473,
+        IMMEDIATE = 474,
+        IMMEDIATELY = 475,
+        IMPLEMENTATION = 476,
+        INCLUDING = 477,
+        INCREMENT = 478,
+        INITIALLY = 479,
+        INPUT = 480,
+        INSTANCE = 481,
+        INSTANTIABLE = 482,
+        INSTEAD = 483,
+        INVERTS = 484, // Pyrrho Metadata 5.7
+        INVOKER = 485,
+        IRI = 486, // Pyrrho 7
+        ISOLATION = 487,
+        JSON = 488, // Pyrrho 5.5
+        K = 489,
+        KEY = 490,
+        KEY_MEMBER = 491,
+        KEY_TYPE = 492,
+        LAST = 493,
+        LEGEND = 494, // Pyrrho Metadata 4.8
+        LENGTH = 495,
+        LEVEL = 496,
+        LINE = 497, // Pyrrho 4.5
+        LOCATOR = 498,
+        M = 499,
+        MAP = 500,
+        MATCHED = 501,
+        MAXVALUE = 502,
+        MESSAGE_LENGTH = 503,
+        MESSAGE_OCTET_LENGTH = 504,
+        MESSAGE_TEXT = 505,
+        METADATA = 506, // Pyrrho 7
+        MILLI = 507, // Pyrrho 7
+        MIME = 508, // Pyrrho 7
+        MINVALUE = 509,
+        MONOTONIC = 510, // Pyrrho 5.7
+        MORE = 511,
+        MUMPS = 512,
+        NAME = 513,
+        NAMES = 514,
+        NESTING = 515,
+        NEXT = 516,
+        NFC = 516,
+        NFD = 518,
+        NFKC = 519,
+        NFKD = 520,
+        NORMALIZED = 521,
+        NULLABLE = 522,
+        NULLS = 523,
+        NUMBER = 524,
+        OCCURRENCE = 525,
+        OCTETS = 526,
+        OPTION = 527,
+        OPTIONS = 528,
+        ORDERING = 529,
+        ORDINALITY = 530,
+        OTHERS = 531,
+        OUTPUT = 532,
+        OVERRIDING = 533,
+        OWNER = 534, // Pyrrho
+        P = 535,
+        PAD = 536,
+        PARAMETER_MODE = 537,
+        PARAMETER_NAME = 538,
+        PARAMETER_ORDINAL_POSITION = 539,
+        PARAMETER_SPECIFIC_CATALOG = 540,
+        PARAMETER_SPECIFIC_NAME = 541,
+        PARAMETER_SPECIFIC_SCHEMA = 542,
+        PARTIAL = 543,
+        PASCAL = 544,
+        PATH = 545,
+        PIE = 546, // Pyrrho 4.5
+        PLACING = 547,
+        PL1 = 548,
+        POINTS = 549, // Pyrrho 4.5
+        PRECEDING = 550,
+        PREFIX = 551, // Pyrrho 7.01
+        PRESERVE = 552,
+        PRIOR = 553,
+        PRIVILEGES = 554,
+        PROFILING = 555, // Pyrrho
+        PROVENANCE = 556, // Pyrrho obsolete from 7.02
+        PUBLIC = 557,
+        READ = 558,
+        REFERRED = 559, // 5.2
+        REFERS = 560, // 5.2
+        RELATIVE = 561,
+        REPEATABLE = 562,
+        RESPECT = 563,
+        RESTART = 564,
+        RESTRICT = 565,
+        RETURNED_CARDINALITY = 566,
+        RETURNED_LENGTH = 567,
+        RETURNED_OCTET_LENGTH = 568,
+        RETURNED_SQLSTATE = 569,
+        ROLE = 570,
+        ROUTINE = 571,
+        ROUTINE_CATALOG = 572,
+        ROUTINE_NAME = 573,
+        ROUTINE_SCHEMA = 574,
+        ROW_COUNT = 575,
+        SCALE = 576,
+        SCHEMA = 577,
+        SCHEMA_NAME = 578,
+        SCOPE_CATALOG = 579,
+        SCOPE_NAME = 580,
+        SCOPE_SCHEMA = 581,
+        SECTION = 582,
+        SECURITY = 583,
+        SELF = 584,
+        SEQUENCE = 585,
+        SERIALIZABLE = 586,
+        SERVER_NAME = 587,
+        SESSION = 588,
+        SETS = 589,
+        SIMPLE = 590,
+        SIZE = 591,
+        SOURCE = 592,
+        SPACE = 593,
+        SPECIFIC_NAME = 594,
+        SQLAGENT = 595, // Pyrrho 7
+        STANDALONE = 596, // vol 14
+        STATE = 597,
+        STATEMENT = 598,
+        STRUCTURE = 599,
+        STYLE = 600,
+        SUBCLASS_ORIGIN = 601,
+        SUFFIX = 602, // Pyrrho 7.01
+        T = 603,
+        TABLE_NAME = 604,
+        TEMPORARY = 605,
+        TIES = 606,
+        TIMEOUT = 607, // Pyrrho
+        TOP_LEVEL_COUNT = 608,
+        TRANSACTION = 609,
+        TRANSACTION_ACTIVE = 610,
+        TRANSACTIONS_COMMITTED = 611,
+        TRANSACTIONS_ROLLED_BACK = 612,
+        TRANSFORM = 613,
+        TRANSFORMS = 614,
+        TRIGGER_CATALOG = 615,
+        TRIGGER_NAME = 616,
+        TRIGGER_SCHEMA = 617, // TYPE  is 267 but is not a reserved word
+        TYPE_URI = 618, // Pyrrho
+        UNBOUNDED = 619,
+        UNCOMMITTED = 620,
+        UNDER = 621,
+        UNDO = 622,
+        UNNAMED = 623,
+        URL = 624,  // Pyrrho 7
+        USAGE = 625,
+        USER_DEFINED_TYPE_CATALOG = 626,
+        USER_DEFINED_TYPE_CODE = 627,
+        USER_DEFINED_TYPE_NAME = 628,
+        USER_DEFINED_TYPE_SCHEMA = 629,
+        VIEW = 630,
+        WORK = 631,
+        WRITE = 632,
+        X = 633, // Pyrrho 4.5
+        Y = 634, // Pyrrho 4.5
+        ZONE = 635
     }
     /// <summary>
     /// These are the underlying (physical) datatypes used  for values in the database
@@ -836,7 +835,7 @@ namespace Pyrrho.Common
         internal long version => First()?.value()?.Last()?.value() ?? 0L;
         Rvv() : base()
         { }
-        protected Rvv(CTree<long, CTree<long, long>> t) : base(t.root) { }
+        protected Rvv(CTree<long, CTree<long, long>> t) : base(t.root ?? throw new PEException("PE925")) { }
         public static Rvv operator +(Rvv r, (long, Level4.Cursor) x)
         {
             var (rp, cu) = x;
@@ -863,64 +862,65 @@ namespace Pyrrho.Common
             var a = (CTree<long, CTree<long, long>>)r;
             var b = (CTree<long, CTree<long, long>>)s;
             for (var bb = b.First(); bb != null; bb = bb.Next())
-            {
-                var k = bb.key();
-                var bt = bb.value();
-            /* If we read the whole table, then any change will be a conflict, 
-             * so we record -1, lastData; */ 
-                if (bt.Contains(-1L))
-                    a += (k, bt);
-                else
-            /* we override a previous -1,lastData entry with specific information. */
-                if (a[k] is CTree<long, long> at)
+                if (bb.value() is CTree<long, long> bt)
                 {
-                    if (at.Contains(-1L))
-                        at -= -1L;
-                    for (var cb = bt.First(); cb != null; cb = cb.Next())
+                    var k = bb.key();
+                    /* If we read the whole table, then any change will be a conflict, 
+                     * so we record -1, lastData; */
+                    if (bt.Contains(-1L))
+                        a += (k, bt);
+                    else
+                    /* we override a previous -1,lastData entry with specific information. */
+                    if (a[k] is CTree<long, long> at)
                     {
-                        var bk = cb.key();
-                        var bv = cb.value();
-                        if (at.Contains(bk))
-                            at += (bk, Math.Max(at[bk], bv));
-                        else
-                            at += (bk, bv);
+                        if (at.Contains(-1L))
+                            at -= -1L;
+                        for (var cb = bt.First(); cb != null; cb = cb.Next())
+                        {
+                            var bk = cb.key();
+                            var bv = cb.value();
+                            if (at.Contains(bk))
+                                at += (bk, Math.Max(at[bk], bv));
+                            else
+                                at += (bk, bv);
+                        }
+                        a += (k, at);
                     }
-                    a += (k, at);
+                    else
+                        a += (k, bt);
                 }
-                else
-                    a += (k, bt);
-            }
             return new Rvv(a);
         }
-        internal static bool Validate(Database db,string es,string eu)
+        internal static bool Validate(Database db,string? es,string? eu)
         {
-            var e = Parse(es);
-            for (var b = e?.First();b!=null;b=b.Next())
+            if (es != null)
             {
-                var tk = b.key();
-                var tb = (Table)db.objects[tk];
-                if (tb == null)
-                    return false;
-                for (var c=b.value().First();c!=null;c=c.Next())
-                {
-                    var dp = c.key();
-                    if (dp==-1L)
+                var e = Parse(es);
+                for (var b = e?.First(); b != null; b = b.Next())
+                    if (db.objects[b.key()] is Table tb)
                     {
-                        if (tb.lastChange > c.value())
-                            return false;
-                        continue;
+                        for (var c = b.value()?.First(); c != null; c = c.Next())
+                        {
+                            var dp = c.key();
+                            if (dp == -1L)
+                            {
+                                if (tb.lastChange > c.value())
+                                    return false;
+                                continue;
+                            }
+                            var tr = tb.tableRows[dp];
+                            if (tr == null)
+                                return false;
+                            if (tr.ppos > c.value())
+                                return false;
+                        }
                     }
-                    var tr = tb.tableRows[dp];
-                    if (tr == null)
-                        return false;
-                    if (tr.ppos > c.value())
-                        return false;
-                }
+                    else return false;
             }
             if (eu!=null)
             {
                 var ck = THttpDate.Parse(eu);
-                if (ck.value != null && db.lastModified > ck.value.Value)
+                if (ck != null && db.lastModified > ck.value)
                     return false;
             }
             return true;
@@ -934,36 +934,37 @@ namespace Pyrrho.Common
         internal bool Validate(Database db, THttpDate st)
         {
             var eps = (st==null)?0: st.milli ? 10000000 : 10000;
-            var tt = (st==null)? 0: st.value.Value.Ticks - eps;
+            var tt = (st?.value is DateTime dt)? dt.Ticks - eps : 0;
             for (var b = First(); b != null; b = b.Next())
-            {
-                var t = (Table)db.objects[b.key()];
-                for (var c = b.value().First(); c != null; c = c.Next())
+                if (db.objects[b.key()] is Table t)
                 {
-                    if (c.key() < 0)
+                    for (var c = b.value()?.First(); c != null; c = c.Next())
                     {
-                        if (t.lastData > c.value())
-                            return false;
-                    }
-                    else
-                    {
-                        var tr = t.tableRows[c.key()];
-                        if (tr == null)
+                        if (c.key() < 0)
                         {
-                            if (c.value() > 0)
+                            if (t.lastData > c.value())
                                 return false;
                         }
-                        else if (tr.ppos > c.value())
-                            return false;
+                        else
+                        {
+                            var tr = t.tableRows[c.key()];
+                            if (tr == null)
+                            {
+                                if (c.value() > 0)
+                                    return false;
+                            }
+                            else if (tr.ppos > c.value())
+                                return false;
+                        }
                     }
                 }
-            }
+                else return false;
             return true;
         }
         public static Rvv Parse(string s)
         {
             if (s == null)
-                return null;
+                return Empty;
             var r = Empty;
             if (s == "*")
                 return Empty;
@@ -1006,7 +1007,7 @@ namespace Pyrrho.Common
             {
                 sb.Append(sc); sc = "\",\"";
                 sb.Append(DBObject.Uid(b.key())); 
-                for (var c = b.value().First(); c != null; c = c.Next())
+                for (var c = b.value()?.First(); c != null; c = c.Next())
                 {
                     sb.Append(",");
                     sb.Append(DBObject.Uid(c.key())); sb.Append(",");
@@ -1033,7 +1034,7 @@ namespace Pyrrho.Common
         }
         #region IComparable Members
 
-        public int CompareTo(object obj)
+        public int CompareTo(object? obj)
         {
             if (obj is Date dt)
                 obj = dt.date;

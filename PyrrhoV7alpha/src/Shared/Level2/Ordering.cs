@@ -17,21 +17,21 @@ namespace Pyrrho.Level2
     /// <summary>
     /// Ordering associates an ordering function with a user defined type
     /// </summary>
-    internal class Ordering : Physical
+    internal class Ordering : Defined
     {
         /// <summary>
         /// The type being ordered
         /// </summary>
-        public Domain domain;
-        public long domdefpos;
+        public Domain domain = Domain.Content;
+        public long domdefpos = -1L;
         /// <summary>
         /// the ordering function
         /// </summary>
-        public long funcdefpos;
+        public long funcdefpos = -1L;
         /// <summary>
         /// The flags specified in CREATE ORDERING
         /// </summary>
-        public OrderCategory flags;
+        public OrderCategory flags = OrderCategory.None;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (domain != null && !wr.cx.db.types.Contains(domain))
@@ -82,6 +82,8 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
         {
+            if (!wr.cx.db.types.Contains(domain))
+                throw new PEException("PE48800");
             wr.PutLong(wr.cx.db.types[domain]);
             funcdefpos = wr.cx.Fix(funcdefpos);
             wr.PutLong(funcdefpos);
@@ -100,7 +102,7 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             rdr.Setup(this);
         }
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
             {
@@ -127,14 +129,17 @@ namespace Pyrrho.Level2
             return "Ordering for " + domain.name +
                 flags + Pos(funcdefpos);
         }
-
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
-            var dm = domain + (Domain.OrderFunc, (Procedure)cx.db.objects[funcdefpos])
+            var dm = domain 
+                + (Domain.OrderFunc, (Procedure?)cx.db.objects[funcdefpos] ?? throw new DBException("42108"))
                 +(Domain.OrderCategory,flags);
+            if (!cx.db.types.Contains(domain))
+                throw new PEException("PE48801");
             cx.db += (cx.db.types[domain],dm, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return dm;
         }
     }
 }

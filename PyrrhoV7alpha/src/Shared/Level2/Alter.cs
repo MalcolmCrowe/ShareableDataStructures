@@ -51,13 +51,18 @@ namespace Pyrrho.Level2
             _defpos = rdr.Prev(prev) ?? ppos;
             base.Deserialise(rdr);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            table = (Table)cx.db.objects[table.defpos];
-            var ti = table.infos[ro.defpos];
+            if (table == null)
+                return null;
+            table = (Table?)cx.db.objects[table.defpos];
+            if (table == null)
+                return null;
+            if (table.infos[ro.defpos] is not ObInfo ti)
+                throw new PEException("PE47120");
             ti += (ObInfo.SchemaKey, p);
-            var tc = new TableColumn(table, this, dataType, cx.role);
+            var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(name, priv);
@@ -68,6 +73,7 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table, p);
             cx.Install(tc, p);
+            return tc;
         }
         /// <summary>
         /// Provide a string version of the Alter
@@ -114,13 +120,18 @@ namespace Pyrrho.Level2
             _defpos = rdr.Prev(prev) ?? -1L;
             base.Deserialise(rdr);
         }
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            table = (Table)cx.db.objects[table.defpos];
-            var ti = table.infos[ro.defpos];
+            if (table == null)
+                return null;
+            table = (Table?)cx.db.objects[table.defpos];
+            if (table == null)
+                return null;
+            if (table.infos[ro.defpos] is not ObInfo ti)
+                throw new PEException("PE427121");
             ti += (ObInfo.SchemaKey, p);
-            var tc = new TableColumn(table, this, dataType, cx.role);
+            var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(name, priv);
@@ -131,6 +142,7 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
             cx.Install(tc,p);
+            return tc;
         }
     }
 	/// <summary>
@@ -194,23 +206,29 @@ namespace Pyrrho.Level2
             _defpos = rdr.Prev(previous) ?? -1L;
 			base.Deserialise(rdr);
 		}
-        internal override void Install(Context cx, long p)
+        internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.db.role;
-            table = (Table)cx.db.objects[table.defpos];
-            var ti = table.infos[ro.defpos];
+            if (table == null)
+                return null;
+            table = (Table?)cx.db.objects[table.defpos];
+            if (table == null)
+                return null;
+            if (table.infos[ro.defpos] is not ObInfo ti)
+                throw new PEException("PE47122");
             ti += (ObInfo.SchemaKey, p);
-            var tc = new TableColumn(table, this, dataType, cx.role);
+            var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var oc = new ObInfo(name, priv);
-            tc += (cx.db._role, oc);
+            tc += (ro.defpos, oc);
             table += (cx,tc);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(table,p);
             cx.Install(tc,p);
+            return tc;
         }
         /// <summary>
         /// Provide a string version of the Alter
@@ -225,18 +243,20 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pos">A Position to check</param>
         /// <returns>Whether read conflict has occurred</returns>
-		public override DBException ReadCheck(long pos,Physical r,PTransaction ct)
+		public override DBException? ReadCheck(long pos,Physical r,PTransaction ct)
 		{
 			return (pos==defpos)?new DBException("40078",pos,r,ct).Mix() :null;
 		}
-        public override DBException Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
+            if (table == null)
+                return new DBException("42105");
             switch (that.type)
             {
                 case Type.Alter3:
                     {
                         var a = (Alter3)that;
-                        if (defpos == a.defpos ||
+                        if (defpos == a.defpos || a.table==null ||
                             (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0))
                             return new DBException("40032", table.defpos, that, ct);
                         break;
@@ -244,7 +264,7 @@ namespace Pyrrho.Level2
                 case Type.Alter2:
                     {
                         var a = (Alter2)that;
-                        if (defpos == a.defpos ||
+                        if (defpos == a.defpos || a.table==null ||
                             (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0))
                             return new DBException("40032", table.defpos, that, ct);
                         break;
@@ -252,7 +272,7 @@ namespace Pyrrho.Level2
                 case Type.Alter:
                     {
                         var a = (Alter)that;
-                        if (defpos == a.defpos ||
+                        if (defpos == a.defpos || a.table==null ||
                             (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0))
                             return new DBException("40032", table.defpos, that, ct);
                         break;
@@ -262,13 +282,12 @@ namespace Pyrrho.Level2
                 case Type.PColumn:
                     {
                         var a = (PColumn)that;
-                        if (table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)
+                        if (a.table==null || table.defpos == a.table.defpos && name.CompareTo(a.name) == 0)
                             return new DBException("40045", DBObject.Uid(table.defpos), that, ct);
                         break;
                     }
                 case Type.Record3:
                 case Type.Record2:
-                case Type.Record1:
                 case Type.Record:
                     {
                         var r = (Record)that;
@@ -297,7 +316,7 @@ namespace Pyrrho.Level2
                     {
                         var c = (PIndex)that;
                         if (table.defpos==c.tabledefpos)
-                            for (int j = 0; j < c.columns.Count; j++)
+                            for (int j = 0; j < c.columns.Length; j++)
                                 if (c.columns[j] == defpos)
                                     return new DBException("40042", ppos, that, ct);
                         break;

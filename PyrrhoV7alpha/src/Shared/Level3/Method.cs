@@ -2,7 +2,6 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Text;
-using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -28,11 +27,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The owning type definition (each role will have its own ObInfo)
         /// </summary>
-		public UDType udType => (UDType)mem[TypeDef];
+		public UDType udType => (UDType)(mem[TypeDef]??throw new PEException("PE1968"));
         /// <summary>
         /// The method type (constructor etc)
         /// </summary>
-		public PMethod.MethodType methodType => (PMethod.MethodType)mem[MethodType];
+		public PMethod.MethodType methodType => (PMethod.MethodType)(mem[MethodType]??PMethod.MethodType.Instance);
         /// <summary>
         /// Constructor: A new level 3 method from a level 2 method
         /// </summary>
@@ -41,17 +40,11 @@ namespace Pyrrho.Level3
         /// <param name="owner">the owner</param>
         /// <param name="rs">the accessing roles</param>
         public Method(PMethod m, Context cx)
-            : base(m, cx, _Mem(cx,m) + (_Framing,m.framing)
-                  + (TypeDef, m.udt) + (MethodType, m.methodType))
+            : base(m, cx, BTree<long, object>.Empty + (_Framing,m.framing)
+                  + (TypeDef, m.udt??throw new PEException("PE48131"))
+                  + (MethodType, m.methodType??throw new PEException("PE48132")))
         { }
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }
-        static BTree<long,object> _Mem(Context cx,PMethod m)
-        {
-            var r = BTree<long,object>.Empty;
-            if (m.dataType != Domain.Null)
-                r += (_Domain, m.dataType.defpos);
-            return r;
-        }
         public static Method operator+(Method m,(long,object)x)
         {
             return (Method)m.New(m.mem + x);
@@ -76,10 +69,10 @@ namespace Pyrrho.Level3
             cx.db += (this + (Body, m.proc) + (Params, m.parms)
                     + (_Framing, m.framing), p);
         }
-        internal override DBObject Instance(long lp,Context cx, BList<Ident> cs=null)
+        internal override DBObject Instance(long lp,Context cx, BList<Ident>? cs=null)
         {
             udType.Instance(lp,cx);
-            return base.Instance(lp, cx) + (TypeDef, (UDType)cx.db.objects[udType.defpos]);
+            return base.Instance(lp,cx);
         }
         /// <summary>
         /// Execute a Method
@@ -94,67 +87,65 @@ namespace Pyrrho.Level3
         /// <returns>The return value</returns>
         public Context Exec(Context cx, long var, CList<long> actIns)
         {
-            var oi = infos[cx.role.defpos];
-            if (!oi.priv.HasFlag(Grant.Privilege.Execute))
+            if (cx.role==null || infos[cx.role.defpos] is not ObInfo oi
+             || !oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105");
             var a = cx.GetActivation();
-            a.var = (SqlValue)cx.obs[var];
-            var ut = (UDType)cx.db.objects[udType.defpos];
-            cx.Add(cx._Dom(ut).Instance(ut.defpos, cx));
-            var targ = a.var?.Eval(cx) ?? ut.defaultValue;
-            for (var b=ut.representation.First();b!=null;b=b.Next())
-            {
-                 var p= b.key();
-                 cx.values+=(p,targ[p]);
-            }
+            var vr = (SqlValue?)cx.obs[var]; // for a constructor, vr is null!
+            if (cx.db.objects[udType.defpos] is not UDType ut)
+                return cx;
+            a.var = vr;
+            cx.Add(ut.Instance(ut.defpos, cx));
+            var targ = vr?.Eval(cx) ?? ut.defaultValue;
+            for (var b = ut.representation.First(); b != null; b = b.Next())
+                if (targ[b.key()] is TypedValue tv)
+                    cx.values += (b.key(), tv);
             var n = (int)ins.Count;
             var acts = new TypedValue[n];
             var i = 0;
             for (var b = actIns.First(); i < n && b != null; b = b.Next(), i++)
-                acts[i] = cx.obs[b.value()].Eval(cx);
-            var me = (Method)cx.db.objects[defpos];
-            var act = new CalledActivation(cx, me, ut.defpos);
+                if (cx.obs[b.value()]?.Eval(cx) is TypedValue tv)
+                    acts[i] = tv;
+            if (cx.db.objects[defpos] is not Method me)
+                throw new DBException("42108", NameFor(cx));
+            var act = new CalledActivation(cx, me);
             me = (Method)me.Instance(act.GetUid(),act);
-            var bd = (Executable)act.obs[me.body]??throw new DBException("42108",me.NameFor(cx));
+            if (act.obs[me.body] is not Executable bd)
+                throw new DBException("42108", NameFor(cx));
             if (targ is TRow rw)
-                act.values += rw.values;
+                for (var b = rw.values.First(); b != null; b = b.Next())
+                    act.values += (b.key(), b.value());
             act.values += (defpos, targ);
-            act.val = targ;
             i = 0;
             for (var b = me.ins.First(); b != null; b = b.Next(), i++)
-            {
-                var pp = b.value();
-                var pi = (FormalParameter)act.obs[pp];
+                if (act.obs[b.value()] is FormalParameter pi) 
                 act.values += (pi.val, acts[i]);
-            }
             cx = bd.Obey(act);
             var r = act.Ret();
             if (r is TArray)
-            {
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());
-            }
             i = 0;
             for (var b = me.ins.First(); b != null; b = b.Next(), i++)
-            {
-                var p = (FormalParameter)cx.obs[b.value()];
-                var m = p.paramMode;
-                var v = act.values[p.val];
-                if (m == Sqlx.INOUT || m == Sqlx.OUT)
-                    acts[i] = v;
-                if (m == Sqlx.RESULT)
-                    r = v;
-            }
+                if (cx.obs[b.value()] is FormalParameter p)
+                    if (act.values[p.val] is TypedValue v)
+                    {
+                        var m = p.paramMode;
+                        if (m == Sqlx.INOUT || m == Sqlx.OUT)
+                            acts[i] = v;
+                        if (m == Sqlx.RESULT)
+                            r = v;
+                    }
             if (this is Method mt && mt.methodType == PMethod.MethodType.Constructor)
                 cx.val = new TRow(mt.udType, act.values);
-            else
+            else if (r!=null)
                 cx.val = r;
             return cx;
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
-            var udt = (UDType)udType;
+            var udt = udType;
             var oi = BTree<long, ObInfo>.Empty;
             for (var u = udt.infos.First(); u != null; u = u.Next())
             {

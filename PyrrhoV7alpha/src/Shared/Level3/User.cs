@@ -27,15 +27,17 @@ namespace Pyrrho.Level3
         internal const long
             Password = -303, // string (hidden)
             Clearance = -305; // Level
-        public string pwd => (string)mem[Password]; // if "" will be set on next authentication
+        public static User None = new User("");
+        public string? pwd => (string?)mem[Password]; // if "" will be set on next authentication
    //     public long initialRole => (long)(mem[InitialRole]??Database.Public);
-        public Level clearance => (Level)mem[Clearance]??Level.D;
+        public Level clearance => (Level)(mem[Clearance]??Level.D);
         /// <summary>
         /// Constructor: a User from level 2 information
         /// </summary>
         /// <param name="pu">The PUser object</param>
 		public User(PUser pu,Database db) 
-            : base(pu.name,pu.ppos,BTree<long,object>.Empty)
+            : base(pu.name,pu.ppos,BTree<long, object>.Empty + (Definer,pu.definer)
+                  +(Owner,pu.owner)+(Infos,pu.infos))
         { }
         /// <summary>
         /// An ad-hoc guest user (will be reified by Transaction constructor)
@@ -62,7 +64,7 @@ namespace Pyrrho.Level3
         public override string ToString()
 		{
             var sb = new StringBuilder(base.ToString());
-            if (mem.Contains(Password))
+            if (pwd!=null)
             { sb.Append(" Password:"); sb.Append((pwd.Length==0)?"":"****"); }
        //     if (mem.Contains(InitialRole))
        //     { sb.Append(" InitialRole:"); sb.Append(Uid(initialRole)); }

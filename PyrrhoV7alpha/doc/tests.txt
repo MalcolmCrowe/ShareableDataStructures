@@ -141,7 +141,7 @@ create table employee(employee_id int,full_name char,Department char,salary nume
 [insert into employee values(100,'Mary Johns','SALES',1000.00),
 (101,'Sean Moldy','IT',1500.00),(102,'Peter Dugan','SALES',2000.00),
 (103,'Lilian Penn','SALES',1700.00),(104,'Milton Kowarsky','IT',1800.00),
-(105,'Moreen Bisset','ACCOUNTS',1200.00),(106,'Airton Graue','ACCOUNTS',1100.00)]
+(105,'Mareen Bisset','ACCOUNTS',1200.00),(106,'Airton Graue','ACCOUNTS',1100.00)]
 [select rank() over (partition by department order by salary desc) as dept_ranking,
 department,employee_id,full_name,salary from employee]
 8:
@@ -260,21 +260,21 @@ delete from RWC where a=52
 update RRC set E=52 where D='Douglas Adams'
 10 contd:
 commit
- -> Transaction conflict: An update conflicts with delete
+ -> Transaction conflict: A new reference conflicts with delete
 begin transaction
 update RRC set E=42 where D='Douglas Adams'
 10F 122:
 delete from RWC where A=42
 10 contd:
 commit
- -> Transaction conflict
+ -> Transaction conflict: A delete conflicts with update
 begin transaction
 update RWC set A=12,B='Dozen' where A=13
 10G 124:
 insert into RWC values (12,'Dozen',6)
 10 contd:
 commit
- -> Transaction conflict
+ -> Transaction conflict: Conflicting record Update
 delete from RWC where A=12
 begin transaction
 insert into RWC values (12,'Dozen',7)
@@ -282,7 +282,7 @@ insert into RWC values (12,'Dozen',7)
 update RWC set A=12,B='Dozen' where A=13
 10 contd:
 commit
- -> Transaction conflict
+ -> Transaction conflict: Conflicting record Record
 insert into RWC values (13,'Black Friday',6)
 begin transaction
 delete from RWC where A=13
@@ -290,7 +290,7 @@ delete from RWC where A=13
 insert into RRC values ('Last Supper',13)
 10 contd:
 commit
--> Transaction conflict
+-> Transaction conflict: A new reference conflicts with deletion
 11:
 create table cs(b int not null,c int default 4,d int generated always as b+c)
 insert into cs(c) values(5)
@@ -308,8 +308,12 @@ create table dst(c int)
 insert into dst (select a from sce where b<'H')
 select * from dst
 select a from sce where b in('Fortnight','Zodiac')
+->[{A:12},{A:14}]
 select * from dst where c in (select a from sce where b='Bakers')
+->[{C:13}]
 insert into dst(c) (select max(x.a)+4 from sce x where x.b<'H')
+select * from dst
+->[{C:13},{C:14},{C:18}]
 insert into dst (select min(x.c)-3 from dst x)
 table dst
 -> 13 14 18 10
@@ -537,12 +541,13 @@ grant select on played to public
 [create procedure agree(p int) 
   update played set agreed=true 
    where winner=agree.p and loser in
-    (select m.id from members m where current_user like '%'||firstname escape '^')]
-insert into members(firstname) values(current_user)
-select id from members where current_user like '%'||firstname escape'^'
+    (select m.id from members m where user like '%'||firstname escape '^')]
+insert into members(firstname) values(user)
+select id from members where user like '%'||firstname escape'^'
   -> [{ID:1}]
 insert into members(firstname) values('Fred')
 insert into played(winner,loser) values(2,1)
+create role admin
 create role membergames
 grant execute on procedure claim(int,int) to role membergames
 grant execute on procedure agree(int) to role membergames
@@ -550,6 +555,7 @@ grant membergames to public
 set role membergames
 call agree(2)
 call claim(1,2)
+set role admin
 table played
   -> [{ID:1,WINNER:2,LOSER:1,AGREED:true},{ID:2,WINNER:1,LOSER:2}]
 22: 
@@ -592,87 +598,87 @@ B> select * from ww where e=2
 Reset A>
 B> begin transaction
 B> select * from ww where e=2
-A> update d set f='Liz' where e=2
+A291> update d set f='Liz' where e=2
 B> commit
  -> ETag validation failure
 Reset A>
 B> begin transaction
 B> select * from ww where e=2
-A> delete from d where e=2
+A292> delete from d where e=2
 B> commit
  -> ETag validation failure
 Reset A>
 B> begin transaction
 B> select * from ww where e=1
-A> update d set f='Liz' where e=2
+A295> update d set f='Liz' where e=2
 B> commit
 B> select * from ww
  -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Liz',G:'Boop'}]
 Reset A>
 B> begin transaction
 B> select * from ww where e=1
-A> delete from d where e=2 
+A298> delete from d where e=2 
 B> commit
 B> select * from ww
  -> [{E:1,F:'Joe',G:'Soap'}]
 Reset A>
 B> begin transaction
 B> update ww set f='Liz' where e=2
-A> update d set f='Eliza' where e=2
+A300> update d set f='Eliza' where e=2
 B> commit
  -> ETag validation failure
 Reset A>
 B> begin transaction
 B> insert into ww values (3,'Fred','Bloggs')
-A> insert into d values (3,'Anyone','Else')
+A302> insert into d values (3,'Anyone','Else')
 B> commit
   -> Integrity constraint
 Reset A>
 B> begin transaction
 B> update ww set f='Liz' where e=2
-A> delete from d where e=2
+A304> delete from d where e=2
 B> commit
   -> ETag validation failure
 Reset A>
 B> begin transaction
 B> delete from ww where e=2
-A> update d set f='Eliza' where e=2
+A306> update d set f='Eliza' where e=2
 B> commit
 -> ETag validation failure
 Reset A>
 B> begin transaction
 B> delete from ww where e=2
-A> delete from d where e=2
+A308> delete from d where e=2
 B> commit
 -> ETag validation failure
 Reset A>
 B> begin transaction
 B> update ww set f='Joseph' where e=1
-A> update d set f='Eliza' where e=2
+A310> update d set f='Eliza' where e=2
 B> commit
-B> select * from w
+B> select * from ww
  -> [{E:1,F:'Joseph',G:'Soap'},{E:2,F:'Eliza',G:'Boop'}]
 Reset A>
 B> begin transaction
 B> insert into ww values (4,'Some','Other')
-A> insert into d values (3,'Anyone','Else')
+A313> insert into d values (3,'Anyone','Else')
 B> commit
 B> select * from ww
  -> [{E:1,F:'Joe',G:'Soap'},{E:2,F:'Betty',G:'Boop'}, 15{E:3,F:'Anyone',G:'Else'},{E:4,F:'Some',G:'Other'}]
 Reset A>
 B> begin transaction
 B> update ww set f='Joseph' where e=1
-A> delete from d where e=2
+A316> delete from d where e=2
 B> commit
 B> select * from ww
- -> [{E:1,F:'Joseph',G:'Soap'}] 16
+ -> [{E:1,F:'Joseph',G:'Soap'}] 
 Reset A>
 B> begin transaction
 B> delete from ww where e=2
-A> update d set f='Joseph' where e=1
+A319> update d set f='Joseph' where e=1
 B> commit
 B> select * from ww
- -> [{E:1,F:'Joseph',G:'Soap'}] 17
+ -> [{E:1,F:'Joseph',G:'Soap'}] 
 24:
 .DB
 create table T(E int,F char)

@@ -8,6 +8,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Security;
+using System.ComponentModel.DataAnnotations;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
@@ -25,7 +26,7 @@ namespace Pyrrho.Level1
     /// </summary>
     internal class TCPStream : Stream
     {
-        internal string debug = null;
+        internal string? debug = null;
         /// <summary>
         /// Buffer size for communications.
         /// important: all buffers have exactly this size
@@ -38,7 +39,7 @@ namespace Pyrrho.Level1
         {
             // first 2 bytes indicate how many following bytes are good
             internal byte[] bytes = new byte[bSize];
-            internal ManualResetEvent wait = null;
+            internal ManualResetEvent wait = new ManualResetEvent(true);
         }
         /// <summary>
         /// The array of write buffers
@@ -51,7 +52,7 @@ namespace Pyrrho.Level1
         /// <summary>
         /// points to the current write buffer
         /// </summary>
-        internal Buffer wbuf = null;
+        internal Buffer? wbuf = null;
 #if WINDOWS_PHONE
         internal StreamSocket client;
 #endif
@@ -59,7 +60,7 @@ namespace Pyrrho.Level1
         /// <summary>
         /// The client Socket
         /// </summary>
-        internal Socket client;
+        internal Socket? client;
 #endif
         /// <summary>
         /// Pyrrho cryptograhy
@@ -85,7 +86,7 @@ namespace Pyrrho.Level1
         /// the current position in the write buffer
         /// </summary>
         internal int wcount = 2;
-        internal string tName; // name of the thread
+        internal string? tName; // name of the thread
         static int _uid = 0;
         internal int uid = ++_uid;
         /// <summary>
@@ -107,6 +108,8 @@ namespace Pyrrho.Level1
         /// <returns>the byte</returns>
         public override int ReadByte()
         {
+            if (client == null)
+                throw new PEException("PE0100");
             if (wcount != 2)
                 Flush();
             if (rpos < rcount + 2)
@@ -138,7 +141,8 @@ namespace Pyrrho.Level1
         /// <param name="ar">the async result</param>
         protected void Callback(IAsyncResult ar)
         {
-            var buf = ar.AsyncState as Buffer;
+            if (client == null || ar.AsyncState is not Buffer buf)
+                throw new PEException("PE0011");
             try
             {
                 int rc = client.EndReceive(ar);
@@ -192,6 +196,8 @@ namespace Pyrrho.Level1
         /// <param name="value">the byte to write</param>
         public override void WriteByte(byte value)
         {
+            if (wbuf == null)
+                throw new PEException("PE0012");
             if (debug != null)
                 Console.WriteLine(debug + value.ToString("X"));
             if (wcount < bSize)
@@ -212,6 +218,8 @@ namespace Pyrrho.Level1
         /// </summary>
         private void WriteBuf()
         {
+            if (wbuf == null || client==null)
+                throw new PEException("PE0013");
             if (PyrrhoStart.DebugMode)
                 Console.WriteLine("WriteBuf");
             wbuf.wait = new ManualResetEvent(false);
@@ -239,16 +247,10 @@ namespace Pyrrho.Level1
         /// <param name="ar">the async result</param>
         void Callback1(IAsyncResult ar)
         {
-            try
-            {
-                Buffer buf = ar.AsyncState as Buffer;
-                client.EndSend(ar);
-                buf.wait.Set();
-            }
-            catch (Exception)
-            {
-                //          Console.WriteLine("Socket (" + uid + ") Exception reported on Write");
-            }
+            if (ar.AsyncState is not Buffer buf || client == null)
+                throw new PEException("PE0014");
+            client.EndSend(ar);
+            buf.wait.Set();
         }
         /// <summary>
         /// Write a set of bytes from an array
@@ -271,6 +273,8 @@ namespace Pyrrho.Level1
         /// </summary>
         public override void Flush()
         {
+            if (wbuf == null || client==null)
+                throw new PEException("PE0015");
             if (wcount == 2)
                 return;
             int ox = (wx + 1) & 1;
@@ -283,8 +287,8 @@ namespace Pyrrho.Level1
                 unchecked
                 {
                     exception = false;
-                    wbuf.bytes[0] = (byte)((bSize - 1) >> 7);
-                    wbuf.bytes[1] = (byte)((bSize - 1) & 0x7f);
+                    wbuf.bytes[0] = (bSize - 1) >> 7;
+                    wbuf.bytes[1] = (bSize - 1) & 0x7f;
                     wcount -= 4;
                     wbuf.bytes[2] = (byte)(wcount >> 7);
                     wbuf.bytes[3] = (byte)(wcount & 0x7f);
@@ -508,7 +512,7 @@ namespace Pyrrho.Level1
                 PutString(e.signal);
                 PutInt(e.objects.Length);
                 for (int i = 0; i < e.objects.Length; i++)
-                    PutString(e.objects[i].ToString());
+                    PutString(e.objects[i]?.ToString() ?? "");
             }
         }
         /// <summary>
@@ -561,19 +565,19 @@ namespace Pyrrho.Level1
             var n = r.Length;
             PutInt(n);
             var j = 0;
-            for (var b=r.columns.First();b!=null;b=b.Next(), j++)
-            {
-                var p = b.value();
-                var d = _cx._Dom(_cx.obs[p] ?? (DBObject)_cx.db.objects[p]);
-                PutString(r.dataType.NameFor(_cx,p,b.key()));
-                var c = r[p];
-                if (c is TArray ta && ta.Length>=1)
-                    c = ta[0];
-                c = d.Coerce(_cx, c);
-                PutString(d.name);
-                PutInt(d.Typecode()); // other flags are 0
-                PutCell(_cx,d, c);
-            }
+            for (var b = r.columns.First(); b != null; b = b.Next(), j++)
+                if (_cx._Dom(b.value()) is Domain d)
+                {
+                    var p = b.value();
+                    PutString(Domain.NameFor(_cx, p, b.key()));
+                    var c = r[p];
+                    if (c is TArray ta && ta.Length >= 1)
+                        c = ta[0];
+                    c = d.Coerce(_cx, c);
+                    PutString(d.name);
+                    PutInt(d.Typecode()); // other flags are 0
+                    PutCell(_cx, d, c);
+                }
         }
         /// <summary>
         /// Send an Array value to the client
@@ -598,12 +602,11 @@ namespace Pyrrho.Level1
         internal void PutMultiset(Context cx, TMultiset m)
         {
             PutString("MULTISET");
-            var e = m.First();
-            var et = cx._Dom(m.dataType.elType) ?? m?.dataType ?? Domain.Content;
+            var et = cx._Dom(m.dataType.elType) ?? m.dataType ?? Domain.Content;
             PutString(et.ToString());
             PutInt(et.Typecode());
             PutInt((int)m.Count);
-            for (; e != null; e = e.Next())
+            for (var e = m.First(); e != null; e = e.Next())
                 PutCell(cx,et, e.Value());
         }
         /// <summary>
@@ -618,10 +621,14 @@ namespace Pyrrho.Level1
             for (var e = r.First(cx); e != null; e = e.Next(cx))
                 n++;
             PutInt(n);
-            var dm = cx._Dom(r);
-            for (var e = r.First(cx); e != null; e = e.Next(cx))
-                for (var b = dm.rowType.First(); b!=null; b=b.Next())
-                    PutCell(cx,cx._Dom(b.value()), e[b.key()]);
+            if (cx._Dom(r) is Domain dm)
+                for (var e = r.First(cx); e != null; e = e.Next(cx))
+                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                    {
+                        if (cx._Dom(b.value()) is not Domain dt)
+                            throw new PEException("PE29002");
+                            PutCell(cx, dt, e[b.key()]);
+                    }
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -666,8 +673,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema(Context cx)
         {
-            var result = (RowSet)cx.obs[cx.result];
-            if (result == null)
+            if (cx.obs[cx.result] is not RowSet result || cx._Dom(result) is not Domain dm)
             {
 #if EMBEDDED
                 WriteByte(11);
@@ -682,9 +688,8 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema);
 #endif
-            var dm = cx._Dom(result);
             var dt = dm.rowType;
-            int m = cx._Dom(result).display;
+            int m = dm.display;
             if (m == 0)
                 m = dt.Length;
             PutInt(m);
@@ -705,11 +710,9 @@ namespace Pyrrho.Level1
                 result.Schema(cx, flags);
                 var j = 0;
                 for (var b=dt.First();j<m && b!=null;b=b.Next(),j++)
-                {
-                    var cp = b.value();
+                if (dm.representation[b.value()] is Domain dn){
                     var i = b.key();
                     PutString(result.NameFor(cx,i));
-                    var dn = dm.representation[cp];
                     if (dn.kind!=Sqlx.TYPE)
                         PutString(dn.kind.ToString());
                     else
@@ -725,7 +728,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema1(Context cx,RowSet result)
         {
-            if (result == null)
+            if (result == null || cx._Dom(result) is not Domain dt)
             {
 #if EMBEDDED
                 WriteByte(11);
@@ -740,11 +743,7 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema1);
 #endif
-            if (cx.obs[result.defpos] is RowSet fm) // compute the schemakey
-                PutLong(fm.lastChange);
-            else
-                PutLong(0);
-            var dt = cx._Dom(result);
+            PutLong(result.lastChange);// compute the schemakey
             int m = dt.display;
             PutInt(m);
             if (m == 0)
@@ -759,9 +758,9 @@ namespace Pyrrho.Level1
                 var j = 0;
                 for (var b=dt.representation.First();b!=null;b=b.Next(),j++)
                 {
-                    var n = cx._Ob(b.key()).infos[cx.role.defpos].name;
+                    var n = cx.NameFor(b.key());
                     PutString(n);
-                    var k = cx._Dom(b.value()).kind;
+                    var k = b.value().kind;
                     switch (k)
                     {
                         case Sqlx.DOCUMENT:
@@ -797,9 +796,10 @@ namespace Pyrrho.Level1
             for (var j = 0; j < m; j++)
                 if (cx.db.objects[dt[j]] is SqlCopy sc && cx.db.objects[sc.copyFrom] is TableColumn dn)
                 {
-                    PutString(sc.name);
-                    var dm = cx._Dom(sc);
-                    PutString((dm.kind == Sqlx.DOCUMENT) ? "DOCUMENT" : sc.name);
+                    var n = sc.NameFor(cx);
+                    PutString(n);
+                    var dm = cx._Dom(sc)??Domain.Null;
+                    PutString((dm.kind == Sqlx.DOCUMENT) ? "DOCUMENT": n);
                     var flags = dm.Typecode() + (dn.notNull ? 0x100 : 0) +
                     ((dn.generated != GenerationRule.None) ? 0x200 : 0);
                     PutInt(flags);
@@ -810,22 +810,21 @@ namespace Pyrrho.Level1
         /// Send ReadCheck information if present
         /// </summary>
         /// <param name="rs"></param>
-        internal (string,string) Check(Context cx, Cursor rb)
+        internal (string?,string?) Check(Context cx, Cursor rb)
         {
             if (!cx.versioned)
                 return (null, null);
             var rec = rb.Rec();
-            string rc = null;
+            string? rc = null;
+            var ro = cx.role;
             if (rec != null && rec!=BList<TableRow>.Empty)
             {
                 var sb = new StringBuilder();
                 var cm = "";
                 for (var b = rec.First(); b != null; b = b.Next())
-                {
+                if (cx._Ob(b.value().tabledefpos) is DBObject ob && ob.infos[ro.defpos] is ObInfo md &&
+                        md.metadata.Contains(Sqlx.ENTITY)){
                     var tr = b.value();
-                    var md = cx._Ob(tr.tabledefpos).infos[cx.role.defpos];
-                    if (!md.metadata.Contains(Sqlx.ENTITY))
-                        continue;
                     sb.Append(cm); cm = ",";
                     sb.Append("/");
                     sb.Append(tr.tabledefpos);
@@ -846,42 +845,41 @@ namespace Pyrrho.Level1
         /// </summary>
         /// <param name="nt"></param>
         /// <param name="tv"></param>
-        internal void PutCell(Context _cx, Domain dt, TypedValue p, string rv=null, string rc=null)
+        internal void PutCell(Context _cx, Domain dt, TypedValue p, string? rv=null, string? rc=null)
         {
             p = dt.Coerce(_cx, p);
-            if (rv!=null && rv!="")
+            if (rv!=null && rv!=null)
             {
                 WriteByte(3);
                 PutString(rv);
             } 
-            if (rc!=null && rc!="")
+            if (rc!=null && rc!=null)
             {
                 WriteByte(4);
                 PutString(rc);
             }
-            if (p == null || p.IsNull)
+
+            if (p == TNull.Value)
             {
                 WriteByte(0);
                 return;
             }
-            // care: adding metadata does not modify the copies of the type in domain representations
-            // so we get the latest version of the type from the database objects
-            if (p.dataType is UDType ut && _cx.db.objects[ut.defpos] is UDType _ut && _ut.prefix is string pf)
+            if (dt.CompareTo(p.dataType)==0)
+                WriteByte(1);
+            else if ((dt as UDType)?.prefix is string pf)
             {
                 WriteByte(5);
                 PutString(pf);
-                PutString(_ut.name);
-                PutInt(_ut.Typecode());
+                PutString(p.dataType.name);
+                PutInt(p.dataType.Typecode());
             }
-            else if (p.dataType is UDType vt && _cx.db.objects[vt.defpos] is UDType _vt && _vt.suffix is string sf)
+            else if ((dt as UDType)?.suffix is string sf)
             {
                 WriteByte(6);
                 PutString(sf);
-                PutString(_vt.name);
-                PutInt(_vt.Typecode());
+                PutString(p.dataType.name);
+                PutInt(p.dataType.Typecode());
             }
-            else if (dt.CompareTo(p.dataType) == 0)
-                WriteByte(1); 
             else
             {
                 WriteByte(2);
@@ -906,34 +904,44 @@ namespace Pyrrho.Level1
                     PutData(_cx, ((TSensitive)tv).value);
                     break;
                 case Sqlx.BOOLEAN:
-                    PutInt(((bool)tv.Val()) ? 1 : 0);
+                    PutInt(((TBool)tv).value ? 1 : 0);
                     break;
                 case Sqlx.INTEGER:
                     {
-                        var v = tv.Val();
-                        if (v is int)
-                            v = (long)(int)v;
-                        if (v is long)
-                            v = new Integer((long)v);
-                        PutInteger((Integer)v);
+                        if (tv is TInteger ti)
+                            PutInteger(ti.ivalue);
+                        else
+                        {
+                            var iv = (TInt)tv;
+                            if (iv.ToInt() is int v)
+                                PutInteger(new Integer((long)v));
+                            else
+                                PutInteger(new Integer(iv.value));
+                        }
                     }
                     break;
                 case Sqlx.NUMERIC:
                     {
-                        var v = tv.Val();
-                        if (v is long)
-                            v = new Numeric((long)v);
-                        else if (tv.Val() is double)
-                            v = new Numeric((double)v);
-                        PutNumeric((Numeric)v);
+                        Numeric v;
+                        if (tv is TNumeric nv)
+                            v = nv.value;
+                        else if (tv.ToLong() is long lv)
+                            v = new Numeric(lv);
+                        else if (tv.ToDouble() is double dv)
+                            v = new Numeric(dv);
+                        else break;
+                        PutNumeric(v);
                     }
                     break;
                 case Sqlx.REAL:
                     {
-                        var v = tv.Val();
-                        if (!(v is Numeric))
-                            v = new Numeric((double)v);
-                        PutReal((Numeric)v);
+                        Numeric v;
+                        if (tv is TNumeric nv)
+                            v = nv.value;
+                        else if (tv.ToDouble() is double dv)
+                            v = new Numeric(dv);
+                        else break;
+                        PutReal(v);
                     }
                     break;
                 case Sqlx.NCHAR:
@@ -948,54 +956,86 @@ namespace Pyrrho.Level1
                 case Sqlx.POSITION:
                     PutString(tv.ToString()); break;
                 case Sqlx.DATE:
-                    if (tv.Val() is long)
-                        PutDateTime(new DateTime(tv.ToLong().Value));
-                    else if (tv.Val() is DateTime) // backward compatibility
-                        PutDateTime((DateTime)tv.Val());
-                    else
-                        PutDateTime(((Date)tv.Val()).date); break;
-                case Sqlx.TIME:
-                    if (tv.Val() is long)
-                        PutTimeSpan(new TimeSpan(tv.ToLong().Value));
-                    else
-                        PutTimeSpan((TimeSpan)tv.Val()); break;
-                case Sqlx.TIMESTAMP:
-                    if (tv.Val() is long)
-                        PutDateTime(new DateTime(tv.ToLong().Value));
-                    else
-                        PutDateTime((DateTime)tv.Val()); break;
-                case Sqlx.DOCUMENT: 
-                case Sqlx.DOCARRAY: 
-                case Sqlx.OBJECT: PutString(tv.ToString()); break;
-                case Sqlx.BLOB: PutBytes((byte[])tv.Val()); break;
-                case Sqlx.REF:
-                case Sqlx.ROW:
-                    if (tv is TSubType st)
-                        PutData(_cx, st.value);
-                    else
-                        PutRow(_cx, tv as TRow);
-                    break; // different!
-                case Sqlx.ARRAY: PutArray(_cx, (TArray)tv); break;
-                case Sqlx.MULTISET: PutMultiset(_cx, (TMultiset)tv.Val()); break;
-                case Sqlx.TABLE: PutTable(_cx, (RowSet)tv.Val()); break;
-                case Sqlx.INTERVAL: PutInterval((Interval)tv.Val()); break;
-                case Sqlx.TYPE:
-                    if (tv.dataType is UDType u)
                     {
-                        var ut = (UDType)_cx.db.objects[u.defpos]; // may be different!
+                        if (tv.ToLong() is long tl)
+                            PutDateTime(new DateTime(tl));
+                        else if (tv is TDateTime td) // backward compatibility
+                            PutDateTime(td.value);
+                        break;
+                    }
+                case Sqlx.TIME:
+                    {
+                        if (tv.ToLong() is long tt)
+                            PutTimeSpan(new TimeSpan(tt));
+                        else if (tv is TTimeSpan sp && sp.value is TimeSpan s)
+                            PutTimeSpan(s);
+                        else throw new PEException("PE42161");
+                        break;
+                    }
+                case Sqlx.TIMESTAMP:
+                    {
+                        if (tv.ToLong() is long ts)
+                            PutDateTime(new DateTime(ts));
+                        else if (tv is TDateTime d)
+                            PutDateTime(d.value);
+                        else throw new PEException("PE42162");
+                        break;
+                    }
+                case Sqlx.DOCUMENT:
+                    {
+                        if (tv is TDocument d)
+                            PutBytes(d.ToBytes(null));
+                        else throw new PEException("PE42163");
+                        break;
+                    }
+                case Sqlx.DOCARRAY:
+                    {
+                        if (tv is TDocArray d)
+                            PutBytes(d.ToBytes());
+                        else throw new PEException("PE42164");
+                        break;
+                    }
+                case Sqlx.OBJECT: PutString(tv.ToString()); break;
+                case Sqlx.BLOB:
+                    {
+                        if (tv is TBlob d)
+                            PutBytes(d.value);
+                        else throw new PEException("PE42165");
+                        break;
+                    }
+                case Sqlx.REF:
+                case Sqlx.ROW: PutRow(_cx, (TRow)tv); break; // different!
+                case Sqlx.ARRAY: PutArray(_cx, (TArray)tv); break;
+                case Sqlx.MULTISET:
+                    {
+                        if (tv is TMultiset d)
+                            PutMultiset(_cx, d);
+                        else throw new PEException("PE42166");
+                        break;
+                    }
+                case Sqlx.INTERVAL:
+                    {
+                        if (tv is TInterval d)
+                        PutInterval(d.value);
+                        else throw new PEException("PE42168");
+                        break;
+                    }
+                case Sqlx.TYPE: 
+                    if (tv.dataType is UDType u && _cx.db.objects[u.defpos] is UDType ut)// may be different!
+                    {
                         var tf = ut.rowType.First();
                         if (ut.prefix != null)
                         {
-                            if (tf != null)
-                                tv = ((TRow)tv).values[tf.value()];
+                            if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
+                                tv = nv;
                             PutString(ut.prefix + tv.ToString());
                             break;
                         }
-                        if (ut.suffix != null)
+                        if (ut.suffix !=null)
                         {
-                            if (tf != null)
-                                tv = ((TRow)tv).values[tf.value()];
-                            PutString(tv.ToString() + ut.suffix);
+                            if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
+                                tv = nv;
+                            PutString(tv.ToString()+ut.suffix);
                             break;
                         }
                     }
@@ -1026,7 +1066,7 @@ namespace Pyrrho.Level1
             rcount = (rbuf.bytes[rpos++] << 7) + (rbuf.bytes[rpos++] & 0x7f);
             rcount += 2;
             var proto = (Responses)rbuf.bytes[rpos++];
-            Exception e = null;
+            Exception? e;
             string sig;
             switch (proto)
             {

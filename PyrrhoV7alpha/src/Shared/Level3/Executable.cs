@@ -1,5 +1,4 @@
 using System;
-using System.Configuration;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -35,13 +34,13 @@ namespace Pyrrho.Level3
         internal const long
             Label = -92, // string
             Stmt = -93; // string
-        public string stmt => (string)mem[Stmt];
+        public string? stmt => (string?)mem[Stmt];
         /// <summary>
         /// The label for the Executable
         /// </summary>
-        internal string label => (string)mem[Label];
-        protected Executable(long dp, BTree<long, object> m=null) 
-            : base(dp, m??BTree<long,object>.Empty) { }
+        internal string? label => (string?)mem[Label];
+        protected Executable(long dp, BTree<long, object>? m=null) 
+            : base(dp, m??BTree<long, object>.Empty) { }
         /// <summary>
         /// Support execution of a list of Executables, in an Activation.
         /// With break behaviour
@@ -59,7 +58,8 @@ namespace Pyrrho.Level3
             {
                 try
                 {
-                    var x = (Executable)cx._Ob(b.value());
+                    if (cx._Ob(b.value()) is not Executable x)
+                        throw new PEException("PE29000");
                     nx = x.Obey(a);
                     if (a==nx && a.signal != null)
                         a.signal.Throw(a);
@@ -85,7 +85,7 @@ namespace Pyrrho.Level3
         internal static bool Calls(CList<long> ss,long defpos,Context cx)
         {
             for (var b = ss?.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()].Calls(defpos, cx))
+                if (cx.obs[b.value()]?.Calls(defpos, cx) == true)
                     return true;
             return false;
         }
@@ -106,7 +106,7 @@ namespace Pyrrho.Level3
         public RollbackStatement(long dp) : base(dp) { }
         public override Context Obey(Context cx)
         {
-            throw cx.db.Exception("40000").ISO();
+             throw new DBException("40000").ISO();
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -129,7 +129,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The source string
         /// </summary>
-        public string _source => (string)mem[SourceSQL];
+        public string? _source => (string?)mem[SourceSQL];
         /// <summary>
         /// The QueryExpression 
         /// </summary>
@@ -170,7 +170,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[union].Calls(defpos, cx);
+            return cx.obs[union]?.Calls(defpos, cx)??false;
         }
         /// <summary>
         /// Obey the executable
@@ -183,11 +183,11 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (SelectStatement)base._Replace(cx, so, sv);
-            var nu = ((RowSet)cx.obs[r.union])._Replace(cx, so, sv).defpos;
-            if (nu!=r.union)
+            var nu = ((RowSet?)cx.obs[r.union])?._Replace(cx, so, sv)?.defpos;
+            if (nu!=r.union && nu!=null)
                 r += (Union, nu);
             cx.done += (defpos, r);
             return r;
@@ -211,14 +211,14 @@ namespace Pyrrho.Level3
         /// The contained list of Executables
         /// </summary>
 		public CList<long> stms =>
-            (CList<long>)mem[Stms] ?? CList<long>.Empty;
+            (CList<long>?)mem[Stms] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: create a compound statement
         /// </summary>
         /// <param name="n">The label for the compound statement</param>
-		public CompoundStatement(long dp,string n) 
-            : base(dp,new BTree<long,object>(Label,n))
-		{ }
+		public CompoundStatement(long dp, string n)
+            : base(dp, new BTree<long, object>(Label, n))
+        { }
         protected CompoundStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CompoundStatement operator +(CompoundStatement c, (long, object) x)
         {
@@ -226,16 +226,16 @@ namespace Pyrrho.Level3
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new CompoundStatement(defpos,m);
+            return new CompoundStatement(defpos, m);
         }
         internal override DBObject Relocate(long dp)
         {
-            return new CompoundStatement(dp,mem);
+            return new CompoundStatement(dp, mem);
         }
         internal override Basis _Relocate(Context cx)
         {
             var r = (CompoundStatement)base._Relocate(cx);
-            r += (Stms,cx.FixLl(stms));
+            r += (Stms, cx.FixLl(stms));
             return r;
         }
         internal override Basis _Fix(Context cx)
@@ -257,20 +257,16 @@ namespace Pyrrho.Level3
 		public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var act = new Activation(cx,label);
-            try
-            {
-                act = (Activation)ObeyList(stms, act);
-                if (act.signal != null)
-                    act.signal.Throw(cx);
-            }
-            catch (Exception e) { throw e; }
+            var act = new Activation(cx, label ?? "");
+            act = (Activation)ObeyList(stms, act);
+            if (act.signal != null)
+                act.signal.Throw(cx);
             return act.SlideDown();
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (CompoundStatement)base._Replace(cx, so, sv);
             var ns = cx.ReplacedLl(r.stms);
             if (ns!=r.stms)
@@ -298,15 +294,21 @@ namespace Pyrrho.Level3
             QMarks = -396,  // CList<long> SqlValue
             Target = -397; // Executable
         internal CList<long> qMarks =>
-           (CList<long>)mem[QMarks] ?? CList<long>.Empty;
-        internal Executable target => (Executable)mem[Target];
+           (CList<long>?)mem[QMarks] ?? CList<long>.Empty;
+        internal Executable? target => (Executable?)mem[Target];
         public PreparedStatement(Context cx,long nst)
-            : base(cx.GetUid(), BTree<long, object>.Empty
-                 + (Target, cx.exec) + (QMarks, cx.qParams) + (_Framing, new Framing(cx,nst)))
+            : base(cx.GetUid(), _Mem(cx) + (QMarks, cx.qParams) + (_Framing, new Framing(cx,nst)))
         { }
         protected PreparedStatement(long dp,BTree<long,object> m)
             :base(dp,m)
         { }
+        static BTree<long,object> _Mem(Context cx)
+        {
+            var r = BTree<long, object>.Empty;
+            if (cx.exec != null)
+                r += (Target, cx.exec);
+            return r;
+        }
         public static PreparedStatement operator+(PreparedStatement pr,(long,object)x)
         {
             return (PreparedStatement)pr.New(pr.mem + x);
@@ -321,12 +323,14 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
+            if (target == null)
+                return cx;
             return ((Executable)target.Instance(defpos,cx)).Obey(cx);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (PreparedStatement)base._Replace(cx, so, sv);
             var nq = cx.ReplacedLl(r.qMarks);
             if (nq!=r.qMarks)
@@ -363,8 +367,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a new local variable
         /// </summary>
-        public LocalVariableDec(long dp, Context cx, SqlValue v, BTree<long,object>m=null)
-         : base(dp, (m??BTree<long, object>.Empty) + (Label, v.name)
+        public LocalVariableDec(long dp, Context cx, SqlValue v, BTree<long,object>?m=null)
+         : base(dp, (m??BTree<long, object>.Empty) + (Label, v.name??"")
           + (AssignmentStatement.Vbl, v.defpos)+(_Domain,v.domain))
         { }
         protected LocalVariableDec(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -400,7 +404,7 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue Eval(Context cx)
         {
-            return cx.FindCx(defpos).values[defpos];
+            return cx.FindCx(defpos).values[defpos]??TNull.Value;
         }
         /// <summary>
         /// Execute the local variable declaration, by adding the local variable to the activation (overwrites any previous)
@@ -410,8 +414,8 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx;
             a.exec = this;
-            var vb = (SqlValue)cx.obs[vbl];
-            var dm = cx._Dom(vb);
+            var vb = (SqlValue)(cx.obs[vbl] ?? throw new PEException("PE1101"));
+            var dm = cx._Dom(vb) ?? throw new DBException("PE1102");
             TypedValue tv = cx.obs[init]?.Eval(cx)??dm.defaultValue;
             a.locals += (defpos, true); // local variables need special handling
             cx.AddValue(vb, tv); // We expect a==cx, but if not, tv will be copied to a later
@@ -421,17 +425,13 @@ namespace Pyrrho.Level3
         {
             return CTree<long, bool>.Empty;
         }
-        internal override bool LocallyConstant(Context cx, RowSet rs)
-        {
-            return false;
-        }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (LocalVariableDec)base._Replace(cx, so, sv);
-            var ni = ((SqlValue)cx.obs[r.init])._Replace(cx,so,sv).defpos ;
-            if (ni!=r.init)
+            var ni = ((SqlValue?)cx.obs[r.init])?._Replace(cx,so,sv)?.defpos ;
+            if (ni!=r.init && ni!=null)
                 r += (Init, ni);
             cx.done += (defpos, r);
             return r;
@@ -505,15 +505,11 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue Eval(Context cx)
         {
-            return cx.values[defpos];
+            return cx.values[defpos]??TNull.Value;
         }
         internal override CTree<long, bool> Needs(Context context, long rs)
         {
             return CTree<long, bool>.Empty;
-        }
-        internal override bool LocallyConstant(Context cx, RowSet rs)
-        {
-            return false; // might be the target of an assignment in the method body
         }
         internal override string ToString(string sg,Remotes rf,CList<long> cs,
             CTree<long, string> ns, Context cx)
@@ -583,7 +579,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[cs].Calls(defpos, cx);
+            return cx.obs[cs]?.Calls(defpos, cx)??false;
         }
         /// <summary>
         /// Instantiate the cursor
@@ -592,16 +588,17 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             var cu = cx.obs[cs];
-            cx.AddValue(cu, cu.Eval(cx));
+            if (cu!=null)
+                cx.AddValue(cu, cu.Eval(cx));
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (CursorDeclaration)base._Replace(cx, so, sv);
-            var nc = ((SqlValue)cx.obs[r.cs])._Replace(cx, so, sv).defpos;
-            if (nc != r.cs)
+            var nc = ((SqlValue?)cx.obs[r.cs])?._Replace(cx, so, sv)?.defpos;
+            if (nc != r.cs && nc!=null)
                 r += (CS, nc);
             cx.done += (defpos, r);
             return r;
@@ -628,12 +625,12 @@ namespace Pyrrho.Level3
         /// The handler type: CONTINUE, EXIT, or UNDO
         /// </summary>
 		public Sqlx htype => (Sqlx)(mem[HType]??Sqlx.EXIT);
-        public string name => (string)mem[ObInfo.Name] ?? "";
+        public string name => (string)(mem[ObInfo.Name] ?? "");
         /// <summary>
         /// A list of condition names, SQLSTATE codes, "SQLEXCEPTION", "SQLWARNING", or "NOT_FOUND"
         /// </summary>
 		public BList<string> conds => 
-            (BList<string>)mem[Conds]?? BList<string>.Empty;
+            (BList<string>?)mem[Conds]?? BList<string>.Empty;
         /// <summary>
         /// The statement to execute when one of these conditions happens
         /// </summary>
@@ -679,22 +676,23 @@ namespace Pyrrho.Level3
 		{
             cx.exec = this;
             var a = (Activation)cx;
-            a.saved = new ExecState(cx);
+            a.saved = new ExecState(cx,cx.tr??throw new PEException("PE49204"));
             for (var c =conds.First();c!=null;c=c.Next())
-				a.exceptions+=(c.value(),new Handler(this,a));
+                if (c.value() is string h)
+				a.exceptions+=(h,new Handler(this,a));
             return cx;
 		}
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[action].Calls(defpos, cx);
+            return cx.obs[action]?.Calls(defpos, cx)??false;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (HandlerStatement)base._Replace(cx, so, sv);
-            var na = ((Executable)cx.obs[r.action])._Replace(cx, so, sv).defpos;
-            if (na != r.action)
+            var na = ((Executable?)cx.obs[r.action])?._Replace(cx, so, sv)?.defpos;
+            if (na != r.action && na!=null)
                 r += (Action, na);
             cx.done += (defpos, r);
             return r;
@@ -724,7 +722,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The shared handler statement
         /// </summary>
-		HandlerStatement hdlr => (HandlerStatement)mem[Hdlr];
+		HandlerStatement? hdlr => (HandlerStatement?)mem[Hdlr];
         /// <summary>
         /// The activation that defined this
         /// </summary>
@@ -753,20 +751,21 @@ namespace Pyrrho.Level3
         internal override Basis _Relocate(Context cx)
         {
             var r = (Handler)base._Relocate(cx);
-            r += (Hdlr, hdlr.Relocate(cx));
+            if (hdlr != null)
+                r += (Hdlr, hdlr.Relocate(cx));
             return r;
         }
         internal override Basis _Fix(Context cx)
         {
             var r = (Handler)base._Fix(cx);
-            var nh = hdlr.Fix(cx);
-            if (hdlr!=nh)
-            r += (Hdlr, nh);
+            var nh = hdlr?.Fix(cx);
+            if (hdlr != nh && nh != null)
+                r += (Hdlr, nh);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return hdlr.Calls(defpos, cx);
+            return hdlr?.Calls(defpos, cx)??false;
         }
         /// <summary>
         /// Execute the action part of the Handler Statement
@@ -774,38 +773,37 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            try
-            {
-                Activation definer = null;
-                for (Context p = cx; definer == null && p != null; p = p.next)
+                Activation? definer = null;
+                for (Context? p = cx; definer == null && p != null; p = p.next)
                     if (p.cxid == hdefiner)
                         definer = p as Activation;
-                if (hdlr.htype == Sqlx.UNDO)
+                if (hdlr?.htype == Sqlx.UNDO)
                 {
-                    CompoundStatement cs = null;
-                    for (Context p = cx; cs == null && p != null; p = p.next)
+                    CompoundStatement? cs = null;
+                    for (Context? p = cx; cs == null && p != null; p = p.next)
                         cs = p.exec as CompoundStatement;
-                    if (cs != null)
+                    if (cs != null && definer?.saved is ExecState es)
                     {
-                        cx.db = definer.saved.mark;
-                        cx.next = definer.saved.stack;
+                        cx.db = es.mark;
+                        cx.next = es.stack;
                     }
                 }
-                ((Executable)cx.obs[hdlr.action]).Obey(cx);
-                if (hdlr.htype == Sqlx.EXIT)
-                    return definer.next;
+                ((Executable?)cx.obs[hdlr?.action??-1L])?.Obey(cx);
+                if (hdlr?.htype == Sqlx.EXIT && definer?.next is Context nx)
+                    return nx;
                 var a = (Activation)cx;
                 if (a.signal != null)
                     a.signal.Throw(cx);
-            }
-            catch (Exception e) { throw e; }
             return cx;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Hdef=");sb.Append(Uid(hdefiner));
-            sb.Append(" Hdlr=");sb.Append(Uid(hdlr.defpos));
+            if (hdlr != null)
+            {
+                sb.Append(" Hdlr="); sb.Append(Uid(hdlr.defpos));
+            }
             return sb.ToString();
         }
 
@@ -820,8 +818,8 @@ namespace Pyrrho.Level3
         /// Constructor: A break statement
         /// </summary>
         /// <param name="n">The label to break to</param>
-		public BreakStatement(long dp,string n) : base(dp,BTree<long,object>.Empty
-            +(Label,n))
+		public BreakStatement(long dp,string? n) 
+            : base(dp,(n==null)?BTree<long,object>.Empty:(BTree<long, object>.Empty+(Label,n)))
 		{ }
         protected BreakStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static BreakStatement operator+(BreakStatement b,(long,object)x)
@@ -845,9 +843,12 @@ namespace Pyrrho.Level3
             cx.exec = this;
             if (label == "")
                 return cx.SlideDown();
-            for (cx = cx.next; cx.next != null; cx = cx.next)
-                if (cx is Activation ac && ac.label == label)
+            for (Context? c = cx.next; c?.next != null; c = c.next)
+                if (c is Activation ac && ac.label == label)
+                {
+                    cx = c;
                     break;
+                }
             return cx;
         }
 	}
@@ -875,10 +876,6 @@ namespace Pyrrho.Level3
             : base(dp,BTree<long, object>.Empty+(Vbl,vb.defpos)+(Val,va.defpos)
                   +(Dependents,CTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true))
                   +(_Depth,Math.Max(va.depth+1,vb.depth+1)))
-        { }
-        public AssignmentStatement(long dp,long vb,long va,int d)
-            : base(dp, BTree<long, object>.Empty + (Vbl, vb) + (Val, va)
-                  +(_Depth,d))
         { }
         protected AssignmentStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static AssignmentStatement operator+(AssignmentStatement s,(long,object)x)
@@ -913,30 +910,31 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[vbl].Calls(defpos, cx) || cx.obs[val].Calls(defpos,cx);
+            return (cx.obs[vbl]?.Calls(defpos, cx)??false) || 
+                (cx.obs[val]?.Calls(defpos,cx)??false);
         }
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var vb = cx.obs[vbl] ?? (DBObject) cx.db.objects[vbl];
+            var vb = cx.obs[vbl] ?? (DBObject?) cx.db.objects[vbl];
             var dm = cx._Dom(vb);
-            if (val != -1L)
+            if (vb!=null && dm != null && cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
             {
-                var v = dm.Coerce(cx,cx.obs[val].Eval(cx));
+                var v = dm.Coerce(cx,tv);
                 cx.values += (vbl, v);
             }
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (AssignmentStatement)base._Replace(cx, so, sv);
-            var nb = ((SqlValue)cx.obs[vbl])._Replace(cx, so, sv).defpos;
-            if (nb != r.vbl)
+            var nb = ((SqlValue?)cx.obs[vbl])?._Replace(cx, so, sv)?.defpos;
+            if (nb != r.vbl && nb!=null)
                 r += (Vbl, nb);
-            var na = ((SqlValue)cx.obs[val])._Replace(cx, so, sv).defpos;
-            if (na != r.val)
+            var na = ((SqlValue?)cx.obs[val])?._Replace(cx, so, sv)?.defpos;
+            if (na != r.val && na!=null)
                 r += (Val, na);  
             cx.done += (defpos, r);
             return r;
@@ -967,7 +965,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of identifiers
         /// </summary>
-        internal CList<long> list => (CList<long>)mem[List];
+        internal CList<long> list => (CList<long>?)mem[List]??CList<long>.Empty;
         /// <summary>
         /// The row type of the lefthand side, used to coerce the given value 
         /// </summary>
@@ -986,17 +984,17 @@ namespace Pyrrho.Level3
         static BTree<long,object> _Mem(Context cx,BList<Ident> lh,SqlValue rg)
         {
             var d = rg.depth + 1;
-            var dm = cx._Dom(rg);
+            var dm = cx._Dom(rg)??Domain.Null;
             var r = new BTree<long,object>(Rhs,rg.defpos);
             var ls = CList<long>.Empty;
-            for (var b=lh.First();b!=null;b=b.Next())
-            {
-                var id = b.value();
-                var v = (SqlValue)cx.obs[id.iix.dp];
-                dm = dm.Constrain(cx, id.iix.lp, cx._Dom(v));
-                d = Math.Max(d, v.depth+1);
-                ls += v.defpos;
-            }
+            for (var b = lh.First(); b != null; b = b.Next())
+                if (b.value() is Ident id && cx.obs[id.iix.dp] is SqlValue v
+                            && cx._Dom(v) is Domain vd)
+                {
+                    dm = dm.Constrain(cx, id.iix.lp, vd);
+                    d = Math.Max(d, v.depth + 1);
+                    ls += v.defpos;
+                }
             return r + (_Depth,d)+(List,ls)+(LhsType,dm.defpos);
         }
         public static MultipleAssignment operator+(MultipleAssignment s,(long,object)x)
@@ -1035,7 +1033,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[rhs].Calls(defpos, cx);
+            return cx.obs[rhs]?.Calls(defpos, cx)??false;
         }
         /// <summary>
         /// Execute the multiple assignment
@@ -1045,24 +1043,27 @@ namespace Pyrrho.Level3
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
-            TRow r = (TRow)cx.obs[rhs].Eval(cx);
-            for (int j = 0; j < r.Length; j++)
-                cx.values+=(list[j],r[j]);
+            if (cx.obs[rhs] is SqlValue sv)
+            {
+                TRow r = (TRow)sv.Eval(cx);
+                for (int j = 0; j < r.Length; j++)
+                    cx.values += (list[j], r[j]);
+            }
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (MultipleAssignment)base._Replace(cx, so, sv);
-            var nd = ((Domain)cx.obs[lhsType])._Replace(cx, so, sv).defpos;
-            if (nd != r.lhsType)
+            var nd = ((Domain?)cx.obs[lhsType])?._Replace(cx, so, sv)?.defpos;
+            if (nd != r.lhsType && nd!=null)
                 r += (LhsType, nd);
             var nl = cx.ReplacedLl(r.list);
             if (nl != r.list)
                 r += (List, nl);
-            var na = ((SqlValue)cx.obs[rhs])._Replace(cx, so, sv).defpos;
-            if (na != r.rhs)
+            var na = ((SqlValue?)cx.obs[rhs])?._Replace(cx, so, sv)?.defpos;
+            if (na != r.rhs && na!=null)
                 r += (Rhs, na);
             cx.done += (defpos, r);
             return r;
@@ -1128,7 +1129,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[ret].Calls(defpos, cx);
+            return cx.obs[ret]?.Calls(defpos, cx)??false;
         }
         /// <summary>
         /// Execute the return statement
@@ -1138,17 +1139,17 @@ namespace Pyrrho.Level3
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-			a.val = cx.obs[ret].Eval(cx);
+			a.val = cx.obs[ret]?.Eval(cx)??TNull.Value;
             cx = a.SlideDown();
             return cx;
 		}
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (ReturnStatement)base._Replace(cx, so, sv);
-            var nr = ((SqlValue)cx.obs[ret])._Replace(cx, so, sv).defpos;
-            if (nr != r.ret)
+            var nr = ((SqlValue?)cx.obs[ret])?._Replace(cx, so, sv)?.defpos;
+            if (nr != r.ret && nr!=null)
                 r += (Ret,nr);
             cx.done += (defpos, r);
             return r;
@@ -1177,11 +1178,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A list of when parts
         /// </summary>
-        public CList<long> whens => (CList<long>)mem[Whens]?? CList<long>.Empty;
+        public CList<long> whens => (CList<long>?)mem[Whens]?? CList<long>.Empty;
         /// <summary>
         /// An else part
         /// </summary>
-        public CList<long> els => (CList<long>)mem[Else]?? CList<long>.Empty;
+        public CList<long> els => (CList<long>?)mem[Else]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a case statement from the parser
         /// </summary>
@@ -1190,25 +1191,23 @@ namespace Pyrrho.Level3
             base(dp,_Mem(cx,op,ws,ss))
         { }
         protected SimpleCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx, SqlValue op, BList<WhenPart> ws,
+        static BTree<long, object> _Mem(Context cx, SqlValue op, BList<WhenPart> ws,
             CList<long> ss)
         {
-            var r = new BTree<long,object>(_Operand,op.defpos);
+            var r = new BTree<long, object>(_Operand, op.defpos);
             var d = op.depth + 1;
             var wl = CList<long>.Empty;
-            for (var b=ws.First();b!=null;b=b.Next())
-            {
-                var w = b.value();
-                d = Math.Max(d, w.depth + 1);
-                wl += w.defpos;
-            }
-            if (ss!=CList<long>.Empty)
-            {
-                for (var b = ss.First(); b != null; b = b.Next())
-                    d = Math.Max(d, cx.obs[b.value()].depth + 1);
-                r += (Else, ss);
-            }
-            return r + (Whens,wl) + (_Depth,d);
+            for (var b = ws.First(); b != null; b = b.Next())
+                if (b.value() is WhenPart w)
+                {
+                    d = Math.Max(d, w.depth + 1);
+                    wl += w.defpos;
+                }
+            for (var b = ss.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is DBObject ob)
+                    d = Math.Max(d, ob.depth + 1);
+            r += (Else, ss);
+            return r + (Whens, wl) + (_Depth, d);
         }
         public static SimpleCaseStatement operator+(SimpleCaseStatement s,(long,object)x)
         {
@@ -1247,9 +1246,9 @@ namespace Pyrrho.Level3
         internal override bool Calls(long defpos, Context cx)
         {
             for (var b = whens.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()].Calls(defpos, cx))
+                if (cx.obs[b.value()]?.Calls(defpos, cx)??false)
                     return true;
-            return Calls(els,defpos,cx) || cx.obs[operand].Calls(defpos,cx);
+            return Calls(els,defpos,cx) || (cx.obs[operand]?.Calls(defpos,cx)??false);
         }
         /// <summary>
         /// Execute the case statement
@@ -1260,17 +1259,18 @@ namespace Pyrrho.Level3
             var a = cx; // from the top of the stack each time
             a.exec = this;
             for(var c = whens.First();c!=null; c=c.Next())
-                if (((SqlValue)cx.obs[operand]).Matches(cx)==true)
-                    return ObeyList(((WhenPart)cx.obs[c.value()]).stms, cx);
+                if (cx.obs[operand] is SqlValue sv && sv.Matches(cx)==true
+                    && cx.obs[c.value()] is WhenPart w)
+                    return ObeyList(w.stms, cx);
             return ObeyList(els, cx);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (SimpleCaseStatement)base._Replace(cx, so, sv);
-            var no = ((SqlValue)cx.obs[r.operand])._Replace(cx, so, sv).defpos;
-            if (no != r.operand)
+            var no = ((SqlValue?)cx.obs[r.operand])?._Replace(cx, so, sv)?.defpos;
+            if (no != r.operand && no!=null)
                 r += (_Operand, no);
             var nw = cx.ReplacedLl(r.whens);
             if (nw != r.whens)
@@ -1309,11 +1309,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A list of when parts
         /// </summary>
-		public CList<long> whens => (CList<long>)mem[SimpleCaseStatement.Whens];
+		public CList<long> whens => (CList<long>?)mem[SimpleCaseStatement.Whens]??CList<long>.Empty;
         /// <summary>
         /// An else part
         /// </summary>
-		public CList<long> els => (CList<long>)mem[SimpleCaseStatement.Else]?? CList<long>.Empty;
+		public CList<long> els => (CList<long>?)mem[SimpleCaseStatement.Else]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a searched case statement from the parser
         /// </summary>
@@ -1328,16 +1328,17 @@ namespace Pyrrho.Level3
             if (ss != CList<long>.Empty)
             {
                 for (var b = ss.First(); b != null; b = b.Next())
-                    d = Math.Max(d, cx.obs[b.value()].depth + 1);
+                    if (cx.obs[b.value()] is DBObject ob)
+                    d = Math.Max(d, ob.depth + 1);
                 r += (SimpleCaseStatement.Else,ss);
             }
             var wl = CList<long>.Empty;
             for (var b = ws.First(); b != null; b = b.Next())
-            {
-                var w = b.value();
-                d = Math.Max(d, w.depth + 1);
-                wl += w.defpos;
-            }
+                if (b.value() is WhenPart w)
+                {
+                    d = Math.Max(d, w.depth + 1);
+                    wl += w.defpos;
+                }
             return r + (SimpleCaseStatement.Whens,wl)+(_Depth, d);
         }
         public static SearchedCaseStatement operator+(SearchedCaseStatement s,(long,object)x)
@@ -1373,7 +1374,7 @@ namespace Pyrrho.Level3
         internal override bool Calls(long defpos, Context cx)
         {
             for (var b = whens.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()].Calls(defpos, cx))
+                if (cx.obs[b.value()]?.Calls(defpos, cx)??false)
                     return true;
             return Calls(els, defpos, cx);
         }
@@ -1387,17 +1388,16 @@ namespace Pyrrho.Level3
             var a = cx; // from the top of the stack each time
             a.exec = this;
             for (var c = whens.First(); c != null; c = c.Next())
-            {
-                var w = (WhenPart)cx.obs[c.value()];
-                if (((SqlValue)cx.obs[w.cond]).Matches(cx)==true)
+            if (cx.obs[c.value()] is WhenPart w){
+                if (((SqlValue?)cx.obs[w.cond])?.Matches(cx)==true)
                     return ObeyList(w.stms, cx);
             }
 			return ObeyList(els,cx);
 		}
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (SearchedCaseStatement)base._Replace(cx, so, sv);
             var nw = cx.ReplacedLl(r.whens);
             if (nw != r.whens)
@@ -1442,14 +1442,14 @@ namespace Pyrrho.Level3
         /// <summary>
         /// a list of statements
         /// </summary>
-		public CList<long> stms =>(CList<long>)mem[Stms]?? CList<long>.Empty;
+		public CList<long> stms =>(CList<long>?)mem[Stms]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: A searched when part from the parser
         /// </summary>
         /// <param name="v">A search condition</param>
         /// <param name="s">A list of statements for this when</param>
         public WhenPart(long dp,SqlValue v, CList<long> s) 
-            : base(dp, BTree<long,object>.Empty+(Cond,v.defpos)+(Stms,s))
+            : base(dp, BTree<long, object>.Empty+(Cond,v.defpos)+(Stms,s))
         { }
         protected WhenPart(long dp, BTree<long, object> m) : base(dp, m) { }
         public static WhenPart operator+(WhenPart s,(long,object) x)
@@ -1484,12 +1484,12 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(stms,defpos,cx) || cx.obs[cond].Calls(defpos, cx);
+            return Calls(stms,defpos,cx) || (cx.obs[cond]?.Calls(defpos, cx)??false);
         }
         public override Context Obey(Context cx)
         {
             var a = cx;
-            if (cond == -1L || ((SqlValue)cx.obs[cond]).Matches(cx)==true)
+            if (cond == -1L || ((SqlValue?)cx.obs[cond])?.Matches(cx)==true)
             {
                 a.val = TBool.True;
                 return ObeyList(stms, cx);
@@ -1499,11 +1499,11 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (WhenPart)base._Replace(cx, so, sv);
-            var no = ((SqlValue)cx.obs[r.cond])._Replace(cx, so, sv).defpos;
-            if (no != r.cond)
+            var no = ((SqlValue?)cx.obs[r.cond])?._Replace(cx, so, sv)?.defpos;
+            if (no != r.cond && no!=null)
                 r += (Cond, no);
             var nw = cx.ReplacedLl(r.stms);
             if (nw != r.stms)
@@ -1545,15 +1545,15 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The then statements
         /// </summary>
-		public CList<long> then => (CList<long>)mem[Then]?? CList<long>.Empty;
+		public CList<long> then => (CList<long>?)mem[Then]?? CList<long>.Empty;
         /// <summary>
         /// The elsif parts
         /// </summary>
-		public CList<long> elsif => (CList<long>)mem[Elsif] ?? CList<long>.Empty;
+		public CList<long> elsif => (CList<long>?)mem[Elsif] ?? CList<long>.Empty;
         /// <summary>
         /// The else part
         /// </summary>
-		public CList<long> els => (CList<long>)mem[Else] ?? CList<long>.Empty;
+		public CList<long> els => (CList<long>?)mem[Else] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: an if-then-else statement from the parser
         /// </summary>
@@ -1568,11 +1568,14 @@ namespace Pyrrho.Level3
                 + (Else,el);
             var d = se.depth + 1;
             for (var b = th.First(); b != null; b = b.Next())
-                d = Math.Max(d, cx.obs[b.value()].depth + 1);
+                if (cx.obs[b.value()] is DBObject ob)
+                d = Math.Max(d, ob.depth + 1);
             for (var b = ei.First(); b != null; b = b.Next())
-                d = Math.Max(d, cx.obs[b.value()].depth + 1); 
+                if (cx.obs[b.value()] is DBObject ob)
+                    d = Math.Max(d, ob.depth + 1); 
             for (var b = el.First(); b != null; b = b.Next())
-                d = Math.Max(d, cx.obs[b.value()].depth + 1);
+                if (cx.obs[b.value()] is DBObject ob)
+                    d = Math.Max(d, ob.depth + 1); 
             return r + (_Depth,d);
         }
         public static IfThenElse operator+(IfThenElse s,(long,object)x)
@@ -1625,21 +1628,21 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx; 
             a.exec = this;
-            if (((SqlValue)cx.obs[search]).Matches(cx)==true)
+            if (((SqlValue?)cx.obs[search])?.Matches(cx)==true)
                 return ObeyList(then, cx);
             for (var g = elsif.First(); g != null; g = g.Next())
                 if (cx.obs[g.value()] is IfThenElse f 
-                    && ((SqlValue)cx.obs[f.search]).Matches(cx)==true)
+                    && ((SqlValue?)cx.obs[f.search])?.Matches(cx)==true)
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (IfThenElse)base._Replace(cx, so, sv);
-            var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
-            if (no != r.search)
+            var no = ((SqlValue?)cx.obs[r.search])?._Replace(cx, so, sv)?.defpos;
+            if (no != r.search && no!=null)
                 r += (Search, no);
             var nt = cx.ReplacedLl(r.then);
             if (nt != r.then)
@@ -1686,11 +1689,12 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A list of namespaces to be added
         /// </summary>
-        public CTree<string, string> nsps => (CTree<string,string>)mem[Nsps];
+        public CTree<string, string> nsps => (CTree<string,string>?)mem[Nsps]
+            ??CTree<string,string>.Empty;
         /// <summary>
         /// Constructor
         /// </summary>
-        public XmlNameSpaces(long dp) : base(dp,BTree<long,object>.Empty) { }
+        public XmlNameSpaces(long dp) : base(dp,BTree<long, object>.Empty) { }
         protected XmlNameSpaces(long dp, BTree<long, object> m) : base(dp, m) { }
         public static XmlNameSpaces operator+(XmlNameSpaces s,(long,object)x)
         {
@@ -1711,7 +1715,8 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             for(var b=nsps.First();b!= null;b=b.Next())
-                cx.nsps+=(b.key(),b.value());
+                if (b.value() is string s)
+                cx.nsps+=(b.key(),s);
             return cx;
         }
         public override string ToString()
@@ -1743,7 +1748,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements to execute
         /// </summary>
-		public CList<long> what => (CList<long>)mem[What]?? CList<long>.Empty;
+		public CList<long> what => (CList<long>?)mem[What]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a while statement from the parser
         /// </summary>
@@ -1790,9 +1795,9 @@ namespace Pyrrho.Level3
             var a = (Activation)cx; 
             a.exec = this;
             var na = cx;
-            while (na==cx && a.signal == null && ((SqlValue)cx.obs[search]).Matches(cx)==true)
+            while (na==cx && a.signal == null && ((SqlValue?)cx.obs[search])?.Matches(cx)==true)
             {
-                var lp = new Activation(cx,label);
+                var lp = new Activation(cx,label??"");
                 lp.cont = a;
                 lp.brk = a;
                 na = ObeyList(what, lp);
@@ -1805,15 +1810,15 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(what,defpos,cx) || cx.obs[search].Calls(defpos, cx);
+            return Calls(what,defpos,cx) || (cx.obs[search]?.Calls(defpos, cx)??false);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (WhileStatement)base._Replace(cx, so, sv);
-            var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
-            if (no != r.search)
+            var no = ((SqlValue?)cx.obs[r.search])?._Replace(cx, so, sv)?.defpos;
+            if (no != r.search && no!=null)
                 r += (Search, no);
             var nw = cx.ReplacedLl(r.what);
             if (nw != r.what)
@@ -1847,7 +1852,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of statements to execute at least once
         /// </summary>
-		public CList<long> what => (CList<long>)mem[WhileStatement.What];
+		public CList<long> what => (CList<long>?)mem[WhileStatement.What]??CList<long>.Empty;
          /// <summary>
         /// Constructor: a repeat statement from the parser
         /// </summary>
@@ -1887,7 +1892,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(what, defpos, cx) || cx.obs[search].Calls(defpos,cx);
+            return Calls(what, defpos, cx) || (cx.obs[search]?.Calls(defpos,cx)??false);
         }
         /// <summary>
         /// Execute the repeat statement
@@ -1897,7 +1902,7 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx;
             a.exec = this;
-            var act = new Activation(cx,label);
+            var act = new Activation(cx,label??"");
             Context na = act;
             for (; ;)
             {
@@ -1905,7 +1910,7 @@ namespace Pyrrho.Level3
                 if (na != act)
                     break;
                 act.signal?.Throw(act);
-                if (((SqlValue)cx.obs[search]).Matches(act)!=false)
+                if (((SqlValue?)cx.obs[search])?.Matches(act)!=false)
                     break;
             }
             cx = act.SlideDown(); 
@@ -1913,11 +1918,11 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (RepeatStatement)base._Replace(cx, so, sv);
-            var no = ((SqlValue)cx.obs[r.search])._Replace(cx, so, sv).defpos;
-            if (no != r.search)
+            var no = ((SqlValue?)cx.obs[r.search])?._Replace(cx, so, sv)?.defpos;
+            if (no != r.search && no!=null)
                 r += (WhileStatement.Search, no);
             var nw = cx.ReplacedLl(r.what);
             if (nw != r.what)
@@ -1948,7 +1953,7 @@ namespace Pyrrho.Level3
         /// Constructor: an iterate statement from the parser
         /// </summary>
         /// <param name="n">The name of the iterated SQL-statement</param>
-		public IterateStatement(long dp,string n):base(dp,BTree<long,object>.Empty
+		public IterateStatement(long dp,string n):base(dp,BTree<long, object>.Empty
             +(Label,n))
 		{ }
         protected IterateStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -1972,7 +1977,7 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx; // from the top of the stack each time
             a.exec = this;
-            return a.cont;
+            return a.cont ?? cx;
 		}
 	}
     /// <summary>
@@ -1984,7 +1989,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public CList<long> stms => (CList<long>)mem[WhenPart.Stms];
+		public CList<long> stms => (CList<long>?)mem[WhenPart.Stms]??CList<long>.Empty;
         /// <summary>
         /// Constructor: a loop statement from the parser
         /// </summary>
@@ -2031,7 +2036,7 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx; // from the top of the stack each time
             a.exec = this;
-            var act = new Activation(cx,label);
+            var act = new Activation(cx,label??"");
             var lp = new Activation(act,"");
             var na = lp;
             while(na==lp)
@@ -2051,8 +2056,8 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (LoopStatement)base._Replace(cx, so, sv);
             var nw = cx.ReplacedLl(r.stms);
             if (nw != r.stms)
@@ -2089,11 +2094,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The identifier in the AS part
         /// </summary>
-		public string forvn => (string)mem[ForVn];
+		public string? forvn => (string?)mem[ForVn];
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public CList<long> stms => (CList<long>)mem[Stms];
+		public CList<long> stms => (CList<long>?)mem[Stms]??CList<long>.Empty;
         /// <summary>
         /// Constructor: a for statement from the parser
         /// </summary>
@@ -2105,10 +2110,11 @@ namespace Pyrrho.Level3
         protected ForSelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Context cx,RowSet rs,CList<long>ss)
         {
-            var r = BTree<long,object>.Empty;
+            var r = BTree<long, object>.Empty;
             var d = rs.depth+1;
             for (var b = ss.First(); b != null; b = b.Next())
-                d = Math.Max(d, cx.obs[b.value()].depth + 1);
+                if (cx.obs[b.value()] is DBObject ob)
+                d = Math.Max(d, ob.depth + 1);
             return r + (Sel,rs.defpos) + (Stms,ss) + (_Depth, d);
         }
         public static ForSelectStatement operator+(ForSelectStatement s,(long,object)x)
@@ -2143,7 +2149,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[sel].Calls(defpos, cx) || Calls(stms,defpos,cx);
+            return (cx.obs[sel]?.Calls(defpos, cx)??false) || Calls(stms,defpos,cx);
         }
         /// <summary>
         /// Execute a FOR statement
@@ -2152,28 +2158,32 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var qs = (RowSet)cx.obs[sel];
-            var ac = new Activation(cx,label);
-            for (var rb = qs.First(ac); rb != null; rb = rb.Next(ac))
+            if (cx.obs[sel] is RowSet qs)
             {
+                var ac = new Activation(cx, label ?? "");
                 ac.Add(qs);
-                cx.cursors += (qs.defpos, rb);
-                ac.values += cx.cursors[qs.defpos].values;
-                ac.brk = cx as Activation;
-                ac.cont = ac;
-                ac = (Activation)ObeyList(stms, ac);
-                if (ac.signal != null)
-                    ac.signal.Throw(cx);
+                for (var rb = qs.First(ac); rb != null; rb = rb.Next(ac))
+                {
+                    cx.cursors += (qs.defpos, rb);
+                    if (cx.cursors[qs.defpos] is Cursor cu)
+                        ac.values += cu.values;
+                    ac.brk = cx as Activation;
+                    ac.cont = ac;
+                    ac = (Activation)ObeyList(stms, ac);
+                    if (ac.signal != null)
+                        ac.signal.Throw(cx);
+                }
+                return ac.SlideDown();
             }
-            return ac.SlideDown();
+            return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (ForSelectStatement)base._Replace(cx, so, sv);
-            var no = ((RowSet)cx.obs[r.sel])._Replace(cx, so, sv).defpos;
-            if (no != r.sel)
+            var no = ((RowSet?)cx.obs[r.sel])?._Replace(cx, so, sv)?.defpos;
+            if (no != r.sel && no!=null)
                 r += (Sel, no);
             var nw = cx.ReplacedLl(r.stms);
             if (nw != r.stms)
@@ -2207,7 +2217,7 @@ namespace Pyrrho.Level3
         /// Constructor: an open statement from the parser
         /// </summary>
         /// <param name="n">the cursor name</param>
-		public OpenStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long,object>.Empty
+		public OpenStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long, object>.Empty
             +(FetchStatement.Cursor,c.defpos))
 		{ }
         protected OpenStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2239,8 +2249,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            var c = (SqlCursor)cx.obs[cursor];
-            return c.Calls(defpos, cx);
+            return ((SqlCursor?)cx.obs[cursor])?.Calls(defpos, cx)??false;
         }
         /// <summary>
         /// Execute an open statement
@@ -2252,11 +2261,11 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (OpenStatement)base._Replace(cx, so, sv);
-            var no = ((SqlValue)cx.obs[r.cursor])._Replace(cx, so, sv).defpos;
-            if (no != r.cursor)
+            var no = ((SqlValue?)cx.obs[r.cursor])?._Replace(cx, so, sv)?.defpos;
+            if (no != r.cursor && no!=null)
                 r += (FetchStatement.Cursor, no);
             cx.done += (defpos, r);
             return r;
@@ -2264,7 +2273,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Cursor: "); sb.Append(Uid(cursor));
+            sb.Append(" Cursor: "); sb.Append(cursor);
             return sb.ToString();
         }
 
@@ -2280,7 +2289,7 @@ namespace Pyrrho.Level3
         /// Constructor: a close statement from the parser
         /// </summary>
         /// <param name="n">The name of the cursor</param>
-		public CloseStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long,object>.Empty
+		public CloseStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long, object>.Empty
             +(FetchStatement.Cursor,c.defpos)+(_Domain,c.domain))
 		{ }
         protected CloseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2312,8 +2321,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            var c = (SqlCursor)cx.obs[cursor];
-            return c.Calls(defpos, cx);
+            return ((SqlCursor?)cx.obs[cursor])?.Calls(defpos, cx)??false;
         }
         /// <summary>
         /// Execute the close statement
@@ -2325,11 +2333,11 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (CloseStatement)base._Replace(cx, so, sv);
-            var no = ((SqlValue)cx.obs[r.cursor])._Replace(cx, so, sv).defpos;
-            if (no != r.cursor)
+            var no = ((SqlValue?)cx.obs[r.cursor])?._Replace(cx, so, sv)?.defpos;
+            if (no != r.cursor && no!=null)
                 r += (FetchStatement.Cursor, no);
             cx.done += (defpos, r);
             return r;
@@ -2337,7 +2345,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Cursor: "); sb.Append(Uid(cursor));
+            sb.Append(" Cursor: "); sb.Append(cursor);
             return sb.ToString();
         }
     }
@@ -2364,14 +2372,14 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The list of assignable expressions to receive values
         /// </summary>
-		public CList<long> outs => (CList<long>)mem[Outs]?? CList<long>.Empty; 
+		public CList<long> outs => (CList<long>?)mem[Outs]?? CList<long>.Empty; 
         /// <summary>
         /// Constructor: a fetch statement from the parser
         /// </summary>
         /// <param name="n">The name of the cursor</param>
         /// <param name="h">The fetch behaviour: ALL, NEXT, LAST PRIOR, ABSOLUTE, RELATIVE</param>
         /// <param name="w">The output variables</param>
-        public FetchStatement(long dp, SqlCursor n, Sqlx h, SqlValue w)
+        public FetchStatement(long dp, SqlCursor n, Sqlx h, SqlValue? w)
         : base(dp, BTree<long, object>.Empty + (Cursor, n.defpos) + (How, h) + (Where, w?.defpos??-1L))
         { }
         protected FetchStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2411,83 +2419,84 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[cursor].Calls(defpos, cx) || 
-                cx.obs[where].Calls(defpos,cx) || Calls(outs,defpos,cx);
+            return (cx.obs[cursor]?.Calls(defpos, cx)??false) || 
+                (cx.obs[where]?.Calls(defpos,cx)??false) || Calls(outs,defpos,cx);
         }
         /// Execute a fetch
         /// </summary>
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            var cu = (SqlCursor)cx.obs[cursor];
-            var cs = (RowSet)cx.obs[cu.spec];
-            // position the cursor as specified
-            var rqpos = 0L;
-            var rb = cx.values[cu.defpos] as Cursor;
-            if (rb != null)
-                rqpos = rb._pos + 1;
-            switch (how)
+            if (cx.obs[cursor] is SqlCursor cu && cx.obs[cu.spec] is RowSet cs
+                && cx._Dom(cs) is Domain cd)
             {
-                case Sqlx.NEXT: break; // default case
-                case Sqlx.PRIOR: // reposition so we can refecth
-                    rqpos = rqpos - 2;
-                    break;
-                case Sqlx.FIRST:
-                    rqpos = 1;
-                    break;
-                case Sqlx.LAST:
-                    {
-                        int n = 0;
-                        for (var e = ((RowSet)cx.obs[cs.defpos]).First(cx); e != null; 
-                            e = e.Next(cx))
-                            n++;
-                        rqpos = n - 1;
-                        break;
-                    }
-                case Sqlx.ABSOLUTE:
-                    rqpos = (long)cx.obs[where].Eval(cx).Val();
-                    break;
-                case Sqlx.RELATIVE:
-                    rqpos = rqpos + (long)cx.obs[where].Eval(cx).Val();
-                    break;
-            }
-            if (rb == null || rqpos == 0)
-                rb = ((RowSet)cx.obs[cs.defpos]).First(cx);
-            while (rb != null && rqpos != rb._pos)
-                rb = rb.Next(cx);
-            cx.values += (cu.defpos, rb);
-            if (rb == null)
-                cx = new Signal(defpos, "02000", "No obs").Obey(cx);
-            else
-            {
-                var dt = cx._Dom(cs).rowType;
-                for (int i = 0; i < dt.Length; i++)
+                // position the cursor as specified
+                var rqpos = 0L;
+                var rb = cx.values[cu.defpos] as Cursor;
+                if (rb != null)
+                    rqpos = rb._pos + 1;
+                switch (how)
                 {
-                    var c = rb[i];
-                    if (c != null)
-                    {
-                        var ou = outs[i];
-                        if (ou != -1L)
-                            cx.AddValue((SqlValue)cx.obs[ou], c);
-                    }
+                    case Sqlx.NEXT: break; // default case
+                    case Sqlx.PRIOR: // reposition so we can refecth
+                        rqpos = rqpos - 2;
+                        break;
+                    case Sqlx.FIRST:
+                        rqpos = 1;
+                        break;
+                    case Sqlx.LAST:
+                        {
+                            int n = 0;
+                            for (var e = ((RowSet?)cx.obs[cs.defpos])?.First(cx); e != null;
+                                e = e.Next(cx))
+                                n++;
+                            rqpos = n - 1;
+                            break;
+                        }
+                    case Sqlx.ABSOLUTE:
+                        rqpos = cx.obs[where]?.Eval(cx)?.ToLong()??-1L;
+                        break;
+                    case Sqlx.RELATIVE:
+                        rqpos = rqpos + (cx.obs[where]?.Eval(cx)?.ToLong()??-1L);
+                        break;
                 }
+                if (rb == null || rqpos == 0)
+                    rb = ((RowSet?)cx.obs[cs.defpos])?.First(cx);
+                while (rb != null && rqpos != rb._pos)
+                    rb = rb.Next(cx);
+                if (rb != null)
+                {
+                    cx.values += (cu.defpos, rb);
+                    for (int i = 0; i < cd.rowType.Length; i++)
+                    {
+                        var c = rb[i];
+                        if (c != null)
+                        {
+                            var ou = outs[i];
+                            if (cx.obs[ou] is SqlValue sv)
+                                cx.AddValue(sv, c);
+                        }
+                    }  
+                }
+                else
+                    cx = new Signal(defpos, "02000", "No obs").Obey(cx);
             }
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (FetchStatement)base._Replace(cx, so, sv);
-            var nc = ((SqlValue)cx.obs[r.cursor])._Replace(cx, so, sv).defpos;
-            if (nc != r.cursor)
+            var nc = ((SqlValue?)cx.obs[r.cursor])?._Replace(cx, so, sv)?.defpos;
+            if (nc != r.cursor && nc!=null)
                 r += (Cursor, nc);
             var no = cx.ReplacedLl(r.outs);
             if (no != r.outs)
                 r += (Outs, no);
             cx.done += (defpos, r);
-            var nw = ((SqlValue)cx.obs[r.where])._Replace(cx, so, sv).defpos;
-            if (nw != r.where)
+            var nw = ((SqlValue?)cx.obs[r.where])?._Replace(cx, so, sv)?.defpos;
+            if (nw != r.where && nw!=null)
                 r += (Where, nw);
             return r;
         }
@@ -2526,43 +2535,51 @@ namespace Pyrrho.Level3
         /// <summary>
         /// We need to allow the Call to have a name because we may not have resolved the target object
         /// </summary>
-        public string name => (string)mem[ObInfo.Name];
+        public string name => (string)(mem[ObInfo.Name]??"");
         /// <summary>
         /// The proc/method to call
         /// </summary>
-		public long procdefpos => (long)mem[ProcDefPos];
+		public long procdefpos => (long)(mem[ProcDefPos]??-1L);
         /// <summary>
         /// The list of actual parameters
         /// </summary>
 		public CList<long> parms =>
-            (CList<long>)mem[Parms] ?? CList<long>.Empty;
+            (CList<long>?)mem[Parms] ?? CList<long>.Empty;
         public CTree<long,bool> aggs =>
-            (CTree<long,bool>)mem[Domain.Aggs]??CTree<long,bool>.Empty;
+            (CTree<long,bool>?)mem[Domain.Aggs]??CTree<long,bool>.Empty;
         /// <summary>
         /// Constructor: a procedure/function call
         /// </summary>
         public CallStatement(long lp, Context cx,Procedure pr, string pn, 
-            CList<long> acts, SqlValue tg = null)
-         : this(lp,cx, (Procedure)cx.Add(pr?.Instance(lp,cx)), pn, acts, 
+            CList<long> acts, SqlValue? tg = null)
+         : this(lp,cx, (Procedure)cx.Add(pr.Instance(lp,cx)), pn, acts, 
                (tg == null) ? null : 
-               new BTree<long, object>(Var, tg.defpos) + (_Domain,pr?.domain??Domain.Content.defpos))
+               new BTree<long, object>(Var, tg.defpos) + (_Domain,pr.domain))
         { }
-        protected CallStatement(long dp, Context cx,Procedure pr, string pn, CList<long> acts, 
-            BTree<long, object> m = null)
-         : base(dp, _Mem(cx,pr,acts,m) + (Parms, acts) + (ProcDefPos, pr?.defpos ?? -1L)
-               + (ObInfo.Name, pr?.infos[cx.role.defpos]?.name ?? pn))
+        public CallStatement(long lp, Context cx, string pn, CList<long> acts, SqlValue? tg = null)
+         : this(lp, cx, null, pn, acts,
+               (tg == null) ? null :
+               new BTree<long, object>(Var, tg.defpos) + (_Domain, Domain.Content.defpos))
+        { }
+        protected CallStatement(long dp, Context cx,Procedure? pr, string pn, CList<long> acts, 
+            BTree<long, object>? m = null)
+         : base(dp, _Mem(cx,pr,acts,m) + (Parms, acts) + (ObInfo.Name, pn))
         { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx,Procedure pr,CList<long> acts,BTree<long,object>m)
+        static BTree<long,object> _Mem(Context cx,Procedure? pr,CList<long> acts,
+            BTree<long,object>?m)
         {
             m = m ?? BTree<long, object>.Empty;
-            var dm = cx._Dom(pr)??Domain.Content;
+            var dm = Domain.Content;
+            if (pr != null)
+            {
+                m += (ProcDefPos, pr.defpos);
+                dm = cx._Dom(pr) ?? Domain.Content;
+            } 
             var ag = CTree<long, bool>.Empty;
             for (var b=acts.First();b!=null;b=b.Next())
-            {
-                var pa = (SqlValue)cx.obs[b.value()];
+            if (cx.obs[b.value()] is SqlValue pa)
                 ag += pa.IsAggregation(cx);
-            }
             if (ag!=dm.aggs)
             {
                 dm = (Domain)cx.Add(dm.Relocate(cx.GetUid()) + (Domain.Aggs, ag));
@@ -2607,7 +2624,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            if (var != -1L && cx.obs[var].Calls(defpos, cx))
+            if (var != -1L && (cx.obs[var]?.Calls(defpos, cx)??false))
                 return true;
             return procdefpos == defpos || Calls(parms, defpos, cx);
         }
@@ -2618,13 +2635,16 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var proc = (Procedure)cx.db.objects[procdefpos];
-            return proc.Exec(cx, parms);
+            var proc = (Procedure)(cx.db.objects[procdefpos]??throw new DBException("42108"));
+            var ac = new Context(cx, cx._Ob(proc.definer) as Role??throw new DBException("42108"), 
+                cx.user??throw new DBException("42108"));
+            var a = proc?.Exec(ac, parms) ?? cx;
+            return a.SlideDown();
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = this;
             var nv = cx.ObReplace(var, so, sv);
             if (nv != var)
@@ -2679,10 +2699,10 @@ namespace Pyrrho.Level3
         /// The signal to raise
         /// </summary>
         internal Sqlx stype => (Sqlx)(mem[SType] ?? Sqlx.NO); // RAISE or RESIGNAL
-        internal string signal => (string)mem[_Signal];
-        internal BList<string> objects => (BList<string>)mem[Objects];
+        internal string? signal => (string?)mem[_Signal];
+        internal BList<string> objects => (BList<string>?)mem[Objects]??BList<string>.Empty;
         internal CTree<Sqlx, long> setlist =>
-            (CTree<Sqlx, long>)mem[SetList] ?? CTree<Sqlx, long>.Empty;
+            (CTree<Sqlx, long>?)mem[SetList] ?? CTree<Sqlx, long>.Empty;
         /// <summary>
         /// Constructor: a signal statement from the parser
         /// </summary>
@@ -2692,7 +2712,7 @@ namespace Pyrrho.Level3
             : base(dp, _Mem(obs) +(_Signal, n))
         { }
         protected SignalStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long, object> _Mem(string[] obs)
+        static BTree<long,object> _Mem(string[] obs)
         {
             var r = BList<string>.Empty;
             foreach (var o in obs)
@@ -2728,7 +2748,7 @@ namespace Pyrrho.Level3
         internal override bool Calls(long defpos, Context cx)
         {
             for (var b = setlist.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()].Calls(defpos, cx))
+                if (cx.obs[b.value()]?.Calls(defpos, cx)??false)
                     return true;
             return base.Calls(defpos, cx);
         }
@@ -2740,41 +2760,47 @@ namespace Pyrrho.Level3
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
+            if (cx.tr == null)
+                return cx;
             if (stype == Sqlx.RESIGNAL && !cx.tr.diagnostics.Contains(Sqlx.RETURNED_SQLSTATE))
                 throw new DBException("0K000").ISO();
-            string sclass = signal.Substring(0, 2);
-            var dia = cx.tr.diagnostics;
-            dia += (Sqlx.RETURNED_SQLSTATE, new TChar(signal));
-            for (var s = setlist.First(); s != null; s = s.Next())
-                dia += (s.key(), cx.obs[s.value()].Eval(cx));
-            cx.db += (Transaction.Diagnostics, dia);
-            Handler h = null;
-            Activation cs = null;
-            for (cs = a; h == null && cs != null;)
+            if (signal != null && cx.db!=null)
             {
-                h = cs.exceptions[signal];
-                if (h == null && Char.IsDigit(signal[0]))
-                    h = cs.exceptions[sclass + "000"];
-                if (h == null)
-                    h = cs.exceptions["SQLEXCEPTION"];
-                if (h == null)
+                string? sclass = signal.Substring(0, 2);
+                var dia = cx.tr.diagnostics;
+                dia += (Sqlx.RETURNED_SQLSTATE, new TChar(signal));
+                for (var s = setlist.First(); s != null; s = s.Next())
+                    if (cx.obs[s.value()] is SqlValue sv)
+                    dia += (s.key(), sv.Eval(cx));
+                cx.db += (Transaction.Diagnostics, dia);
+                Handler? h = null;
+                Activation? cs;
+                for (cs = a; h == null && cs != null;)
                 {
-                    var c = cs.next;
-                    while (c != null && !(c is Activation))
-                        c = c.next;
-                    cs = c as Activation;
+                    h = cs.exceptions[signal];
+                    if (h == null && char.IsDigit(signal[0]))
+                        h = cs.exceptions[sclass + "000"];
+                    if (h == null)
+                        h = cs.exceptions["SQLEXCEPTION"];
+                    if (h == null)
+                    {
+                        var c = cs.next;
+                        while (c != null && !(c is Activation))
+                            c = c.next;
+                        cs = c as Activation;
+                    }
                 }
-            }
-            if (h == null || sclass == "25" || sclass == "40" || sclass == "2D") // no handler or uncatchable transaction errors
-            {
-                for (; cs != null && a != cs; a = cx.GetActivation())
-                    cx = a;
-                a.signal = new Signal(defpos,signal,objects);
-            }
-            else
-            {
-                a.signal = null;
-                cx = h.Obey(cx);
+                if (h == null || sclass == "25" || sclass == "40" || sclass == "2D") // no handler or uncatchable transaction errors
+                {
+                    for (; cs != null && a != cs; a = cx.GetActivation())
+                        cx = a;
+                    a.signal = new Signal(defpos, signal, objects);
+                }
+                else
+                {
+                    a.signal = null;
+                    cx = h.Obey(cx);
+                }
             }
             return cx;
         }
@@ -2784,15 +2810,15 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         public void Throw(Context cx)
         {
-            var e = new DBException(signal, objects);
+            var e = new DBException(signal??"", objects);
                 for (var x = setlist.First(); x != null; x = x.Next())
-                    e.info += (x.key(), cx.obs[x.value()].Eval(cx));
+                    e.info += (x.key(), cx.obs[x.value()]?.Eval(cx)??TNull.Value);
             throw e;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (SignalStatement)base._Replace(cx, so, sv);
             var sl = CTree<Sqlx, long>.Empty;
             for (var b = r.setlist.First(); b != null; b = b.Next())
@@ -2829,7 +2855,7 @@ namespace Pyrrho.Level3
         internal string signal;
         internal Sqlx stype = Sqlx.SIGNAL;
         internal BList<string> objects = BList<string>.Empty;
-        internal Exception exception;
+        internal Exception? exception;
         internal CTree<Sqlx, long> setlist = CTree<Sqlx, long>.Empty;
         /// <summary>
         /// Constructor: a signal statement from the parser
@@ -2841,7 +2867,8 @@ namespace Pyrrho.Level3
             defpos = dp;
             signal = n;
             foreach (var o in obs)
-                objects += o.ToString();
+                if (o.ToString() is string s)
+                    objects += s;
         }
         public Signal(long dp, DBException e)
         {
@@ -2849,7 +2876,8 @@ namespace Pyrrho.Level3
             signal = e.signal;
             exception = e;
             foreach (var o in e.objects)
-                objects += o.ToString();
+                if (o.ToString() is string s)
+                objects += s;
         }
         /// <summary>
         /// Execute a signal
@@ -2857,6 +2885,8 @@ namespace Pyrrho.Level3
         /// <param name="tr">the transaction</param>
         public Context Obey(Context cx)
         {
+            if (cx.tr == null)
+                return cx;
             var a = cx.GetActivation(); // from the top of the stack each time
             if (stype == Sqlx.RESIGNAL && !cx.tr.diagnostics.Contains(Sqlx.RETURNED_SQLSTATE))
                 throw new DBException("0K000").ISO();
@@ -2866,18 +2896,20 @@ namespace Pyrrho.Level3
             if (exception is DBException dbex)
             {
                 for (var b = dbex.info.First(); b != null; b = b.Next())
-                    dia += (b.key(), b.value());
+                    if (b.value() is TypedValue v)
+                        dia += (b.key(), v);
                 dia += (Sqlx.MESSAGE_TEXT, new TChar(Resx.Format(dbex.signal, dbex.objects)));
             }
             for (var s = setlist.First(); s != null; s = s.Next())
-                dia += (s.key(), cx.obs[s.value()].Eval(cx));
-            cx.db += (Transaction.Diagnostics, dia);
-            Handler h = null;
-            Activation cs;
+                dia += (s.key(), cx.obs[s.value()]?.Eval(cx)??TNull.Value);
+            if (cx.db!=null)
+                cx.db += (Transaction.Diagnostics, dia);
+            Handler? h = null;
+            Activation? cs;
             for (cs = a; h == null && cs != null;)
             {
                 h = cs.exceptions[signal];
-                if (h == null && Char.IsDigit(signal[0]))
+                if (h == null && char.IsDigit(signal[0]))
                     h = cs.exceptions[sclass + "000"];
                 if (h == null)
                     h = cs.exceptions["SQLEXCEPTION"];
@@ -2913,7 +2945,7 @@ namespace Pyrrho.Level3
             {
                 e = new DBException(signal, objects);
                 for (var x = setlist.First(); x != null; x = x.Next())
-                    e.info += (x.key(), cx.obs[x.value()].Eval(cx));
+                    e.info += (x.key(), cx.obs[x.value()]?.Eval(cx)??TNull.Value);
             }
             throw e;
         }
@@ -2927,7 +2959,7 @@ namespace Pyrrho.Level3
         internal const long
             List = -141; // CTree<long,Sqlx>
         internal CTree<long, Sqlx> list =>
-            (CTree<long, Sqlx>)mem[List] ?? CTree<long, Sqlx>.Empty;
+            (CTree<long, Sqlx>?)mem[List] ?? CTree<long, Sqlx>.Empty;
         internal GetDiagnostics(long dp) : base(dp, BTree<long, object>.Empty) { }
         protected GetDiagnostics(long dp, BTree<long, object> m) : base(dp, m) { }
         public static GetDiagnostics operator +(GetDiagnostics s, (long, object) x)
@@ -2959,7 +2991,7 @@ namespace Pyrrho.Level3
         internal override bool Calls(long defpos, Context cx)
         {
             for (var b = list.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()].Calls(defpos, cx))
+                if (cx.obs[b.key()]?.Calls(defpos, cx)??false)
                     return true;
             return base.Calls(defpos, cx);
         }
@@ -2971,13 +3003,15 @@ namespace Pyrrho.Level3
         {
             cx.exec = this;
             for (var b = list.First(); b != null; b = b.Next())
-                cx.AddValue(cx.obs[b.key()], cx.tr.diagnostics[b.value()]);
+                if (cx.obs[b.key()] is SqlValue s && b.value() is Sqlx t
+                    && cx.tr!=null && cx.tr.diagnostics[t] is TypedValue v)
+                cx.AddValue(s, v);
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (GetDiagnostics)base._Replace(cx, so, sv);
             var ls = CTree<long, Sqlx>.Empty;
             for (var b = r.list.First(); b != null; b = b.Next())
@@ -3015,7 +3049,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The output list
         /// </summary>
-		public CList<long> outs => (CList<long>)mem[Outs] ?? CList<long>.Empty;
+		public CList<long> outs => (CList<long>?)mem[Outs] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a select statement: single row from the parser
         /// </summary>
@@ -3066,19 +3100,21 @@ namespace Pyrrho.Level3
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
-            var rb = ((RowSet)cx.obs[sel]).First(cx);
-            a.AddValue(this, rb);
-            if (rb != null)
+            if (((RowSet?)cx.obs[sel])?.First(cx) is Cursor rb)
+            {
+                a.AddValue(this, rb);
                 for (var b = outs.First(); b != null; b = b.Next())
-                    a.AddValue((SqlValue)cx.obs[b.value()], rb[b.key()]);
+                    if (cx.obs[b.value()] is SqlValue sv)
+                        a.AddValue(sv, rb[b.key()]);
+            }
             else
                 a.NoData();
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (SelectSingle)base._Replace(cx, so, sv);
             var no = cx.ReplacedLl(r.outs);
             if (no != r.outs)
@@ -3110,27 +3146,29 @@ namespace Pyrrho.Level3
     internal class SqlInsert : Executable
     {
         internal const long
-            InsCols = -241, // CList<long> SqlValue
-            Provenance = -155, //string
+            InsCols = -241, // CList<long>? SqlValue
             Value = -156; // long RowSet
         internal long source => (long)(mem[RowSet._Source] ?? -1L);
-        /// <summary>
-        /// Provenance information if supplied
-        /// </summary>
-        public string provenance => (string)mem[Provenance];
         public long value => (long)(mem[Value] ?? -1L);
-        public CList<long> insCols => (CList<long>)mem[InsCols]; // tablecolumns if specified
+        public Domain insCols => (Domain)(mem[InsCols]??Domain.Row); // tablecolumns if specified
         /// <summary>
         /// Constructor: an INSERT statement from the parser.
         /// </summary>
         /// <param name="cx">The parsing context</param>
         /// <param name="fm">The rowset with target info</param>
         /// <param name="v">The uid of the data rowset</param>
-        public SqlInsert(long dp, RowSet fm, string prov, long v, CList<long>iC)
-           : base(dp, BTree<long, object>.Empty + (RowSet._Source, fm.defpos)
-                 + (Provenance, prov) + (Value, v) + (InsCols, iC))
+        public SqlInsert(long dp, RowSet fm, long v, Domain iC)
+           : base(dp, _Mem(fm,v,iC))
         { }
         protected SqlInsert(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long, object> _Mem(RowSet fm,long v, Domain iC)
+        {
+            var r = BTree<long, object>.Empty + (RowSet._Source, fm.defpos)
+                 + (Value, v);
+            if (iC != null)
+                r += (InsCols, iC);
+            return r;
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlInsert(defpos, m);
@@ -3141,8 +3179,8 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = base._Replace(cx, so, sv);
             var tg = cx.ObReplace(source, so, sv);
             if (tg != source)
@@ -3177,34 +3215,33 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.result = 0;
-            var tg = (RowSet)cx.obs[source];
-            var data = (RowSet)cx.obs[value];
-            if (provenance!=null)
-                cx._Add(cx._Dom(data) + (Domain.Provenance, provenance));
-            var ts = BTree<long, TargetActivation>.Empty;
-            for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+            if (cx.obs[source] is RowSet tg && cx.obs[value] is RowSet data)
             {
-                var tb = cx.obs[it.value()];
-                ts += tb.Insert(cx, data, insCols);
-            }
-            for (var ib = data.First(cx); ib != null; ib = ib.Next(cx))
-                for (var it = ts.First(); it != null; it = it.Next())
-                {
-                    var ta = it.value();
-                    ta.db = cx.db;
-                    ta.cursors = cx.cursors;
-                    ta.cursors += (ta._fm.defpos, ib);
-                    ta.EachRow(ib._pos);
-                    cx.db = ta.db;
-                    ts += (it.key(), ta);
-                }
-            for (var c = ts.First(); c != null; c = c.Next())
-            {
-                var ta = c.value();
-                ta.db = cx.db;
-                ta.Finish();
-                ts += (c.key(), ta);
-                cx.affected += ta.affected;
+                var ts = BTree<long, TargetActivation>.Empty;
+                for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+                    if (cx.obs[it.value()] is RowSet tb)
+                        ts += tb.Insert(cx, data, insCols);
+                for (var ib = data.First(cx); ib != null; ib = ib.Next(cx))
+                    for (var it = ts.First(); it != null; it = it.Next())
+                        if (it.value() is TargetActivation ta)
+                        {
+                            ta.db = cx.db;
+                            ta.cursors = cx.cursors;
+                            ta.cursors += (ta._fm.defpos, ib);
+                            ta.EachRow(ib._pos);
+                            cx.db = ta.db;
+                            ts += (it.key(), ta);
+                        }
+                for (var c = ts.First(); c != null; c = c.Next())
+                    if (c.value() is TargetActivation ta)
+                    {
+                        ta.db = cx.db;
+                        ta.Finish();
+                        ts += (c.key(), ta);
+                        cx.affected = cx.affected ?? Rvv.Empty;
+                        if (ta.affected != null)
+                            cx.affected += ta.affected;
+                    }
             }
             return cx;
         }
@@ -3214,8 +3251,6 @@ namespace Pyrrho.Level3
             sb.Append(" Target: ");
             sb.Append(Uid(source));
             sb.Append(" Value: "); sb.Append(Uid(value));
-            if (provenance != null)
-            { sb.Append(" Provenance: "); sb.Append(provenance); }
             if (insCols!=null)
             {
                 sb.Append(" Columns: [");
@@ -3242,15 +3277,22 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">The parsing context</param>
         internal QuerySearch(long dp, Context cx, RowSet f, DBObject tb,
-            Grant.Privilege how, CTree<UpdateAssignment, bool> ua = null)
-            : base(dp, BTree<long, object>.Empty
-                  + (RowSet._Source, f.defpos)
-                  + (_Depth, f.depth + 1) + (RowSet.Assig, ua))
-        {
-            if (cx._Dom(f).rowType.Length == 0)
-                throw new DBException("2E111", cx.db.user, dp).Mix();
-        }
+            Grant.Privilege how, CTree<UpdateAssignment, bool>? ua = null)
+            : base(dp, _Mem(cx,f,tb,ua) + (RowSet._Source, f.defpos))
+        { }
         protected QuerySearch(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx, RowSet f,DBObject td,CTree<UpdateAssignment, bool>? ua)
+        {
+            var d = Math.Max(td.depth, f.depth);
+            for (var b = ua?.First(); b != null; b = b.Next())
+                if (cx.obs[b.key().val] is SqlValue sa &&
+                    cx.obs[b.key().vbl] is SqlValue sb)
+                d = Math.Max(d, Math.Max(sa.depth,sb.depth));
+            var r = new BTree<long, object>(_Depth,d+1);
+            if (ua!=null)
+                r += (RowSet.Assig, ua);
+            return r;
+        }
         public static QuerySearch operator +(QuerySearch q, (long, object) x)
         {
             return (QuerySearch)q.New(q.mem + x);
@@ -3261,8 +3303,8 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            if (cx.done.Contains(defpos))
-                return cx.done[defpos];
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
             var r = (QuerySearch)base._Replace(cx, so, sv);
             if (r != this)
                 r = (QuerySearch)New(cx, r.mem);
@@ -3287,31 +3329,33 @@ namespace Pyrrho.Level3
         }
         public override Context Obey(Context cx)
         {
-            var tg = (RowSet)cx.obs[source];
-            var ts = BTree<long, TargetActivation>.Empty;
-            for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+            if (cx.obs[source] is RowSet tg)
             {
-                var tb = cx.obs[it.value()];
-                ts += tb.Delete(cx, tg);
-            }
-            for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
-                for (var it = ts.First(); it != null; it = it.Next())
-                {
-                    var ta = it.value();
-                    ta.db = cx.db;
-                    ta.cursors = cx.cursors;
-                    ta.cursors += (ta._fm.defpos, ib);
-                    ta.EachRow(ib._pos);
-                    cx.db = ta.db;
-                    ts += (it.key(), ta);
-                }
-            for (var c = ts.First(); c != null; c = c.Next())
-            {
-                var ta = c.value();
-                ta.db = cx.db;
-                ta.Finish();
-                ts += (c.key(), ta);
-                cx.affected += ta.affected;
+                var ts = BTree<long, TargetActivation>.Empty;
+                for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+                if (cx.obs[it.value()] is RowSet tb)
+                    ts += tb.Delete(cx, tg);
+                for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
+                    for (var it = ts.First(); it != null; it = it.Next())
+                        if (it.value() is TargetActivation ta)
+                        {
+                            ta.db = cx.db;
+                            ta.cursors = cx.cursors;
+                            ta.cursors += (ta._fm.defpos, ib);
+                            ta.EachRow(ib._pos);
+                            cx.db = ta.db;
+                            ts += (it.key(), ta);
+                        }
+                for (var c = ts.First(); c != null; c = c.Next())
+                    if (c.value() is TargetActivation ta)
+                    {
+                        ta.db = cx.db;
+                        ta.Finish();
+                        ts += (c.key(), ta);
+                        cx.affected = cx.affected ?? Rvv.Empty;
+                        if (ta.affected!=null)
+                            cx.affected += ta.affected;
+                    }
             }
             return cx;
         }
@@ -3352,31 +3396,33 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.result = 0;
-            var tg = (RowSet)cx.obs[source];
-            var ts = BTree<long, TargetActivation>.Empty;
-            for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+            if (cx.obs[source] is RowSet tg)
             {
-                var tb = cx.obs[it.value()];
-                ts += tb.Update(cx, tg);
-            }
-            for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
-                for (var it = ts.First(); it != null; it = it.Next())
-                {
-                    var ta = it.value();
-                    ta.db = cx.db;
-                    ta.cursors = cx.cursors;
-                    ta.cursors += (ta._fm.defpos, ib);
-                    ta.EachRow(ib._pos);
-                    cx.db = ta.db;
-                    ts += (it.key(), ta);
-                }
-            for (var c = ts.First(); c != null; c = c.Next())
-            {
-                var ta = c.value();
-                ta.db = cx.db;
-                ta.Finish();
-                ts += (c.key(), ta);
-                cx.affected += ta.affected;
+                var ts = BTree<long, TargetActivation>.Empty;
+                for (var it = tg.rsTargets.First(); it != null; it = it.Next())
+                    if (cx.obs[it.value()] is RowSet tb)
+                        ts += tb.Update(cx, tg);
+                for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
+                    for (var it = ts.First(); it != null; it = it.Next())
+                        if (it.value() is TargetActivation ta)
+                        {
+                            ta.db = cx.db;
+                            ta.cursors = cx.cursors;
+                            ta.cursors += (ta._fm.defpos, ib);
+                            ta.EachRow(ib._pos);
+                            cx.db = ta.db;
+                            ts += (it.key(), ta);
+                        }
+                for (var c = ts.First(); c != null; c = c.Next())
+                    if (c.value() is TargetActivation ta)
+                    {
+                        ta.db = cx.db;
+                        ta.Finish();
+                        ts += (c.key(), ta);
+                        cx.affected = cx.affected ?? Rvv.Empty;
+                        if (ta.affected != null)
+                            cx.affected += ta.affected;
+                    }
             }
             return cx;
         }
