@@ -3,9 +3,10 @@ using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
+using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -47,7 +48,7 @@ namespace Pyrrho.Level2
         /// <param name="curpos">The current position in the datafile</param>
         public PTransaction(int nr, User? usr, Role rl, long pp)
             : this (Type.PTransaction,nr,usr,rl,pp)
-		{}
+		{ }
         /// <summary>
         /// Constructor: a Transaction record for a Commit
         /// </summary>
@@ -112,8 +113,8 @@ namespace Pyrrho.Level2
 		public override void Serialise(Writer wr)
 		{
             wr.PutInt(nrecs);
-            wr.PutLong(ptrole.defpos); // no need for Reloc - can't be local to this transaction
-            wr.PutLong(ptuser?.defpos??-1L);// no need for Reloc - can't be local to this transaction
+            wr.PutLong(ptrole.defpos); 
+            wr.PutLong(ptuser?.defpos??-1L);
             wr.PutLong(pttime);
 			// no base.Serialise() for PTransaction
 		}

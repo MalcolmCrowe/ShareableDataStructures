@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -27,32 +27,32 @@ namespace Pyrrho.Level2
         public long defpos { get { return ppos; } }
         public string rowiri = "";
         public Grant.Privilege enforcement = (Grant.Privilege)15; // read,insert,udate,delete
+        public long nodeType = -1L;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
             return -1;
         }
         /// <summary>
-        /// Constructor: a Table definition from the Parser
+        /// Constructor: a Table definition from the Parser.
+        /// We assume that code for framing has not yet been parsed
         /// </summary>
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTable(string nm,Domain d, long pp, Context cx)
-            : this(Type.PTable, nm, d, pp, cx)
-		{
-            if (pp > Transaction.Executables)
-                nst = pp;
-        }
+        public PTable(string nm,Domain d, long nst, long pp, Context cx)
+            : this(Type.PTable, nm, d, nst, pp, cx)
+        { }
         /// <summary>
-        /// Constructor: a Table definition from the Parser
+        /// Constructor: a Table definition from the Parser.
+        /// We assume that code for framing has not yet been parsed
         /// </summary>
         /// <param name="t">The Ptable type</param>
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PTable(Type t, string nm, Domain d, long pp, Context cx)
-            : base(t, pp, cx, nm, d)
+        protected PTable(Type t, string nm, Domain d, long nst, long pp, Context cx)
+            : base(t, pp, cx, nm, d, nst)
         { } 
         /// <summary>
         /// Constructor: a Table definition from the buffer
@@ -60,7 +60,12 @@ namespace Pyrrho.Level2
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
 		public PTable(Reader rdr) : base (Type.PTable,rdr)
-		{ }
+		{
+            var op = rdr.context.parse;
+            rdr.context.parse = ExecuteStatus.Compile;
+            dataType = (Domain)Domain.TableType.Relocate(rdr.context.GetUid());
+            rdr.context.parse = op;
+        }
         /// <summary>
         /// Constructor: a Table definition from the buffer
         /// </summary>
@@ -70,6 +75,7 @@ namespace Pyrrho.Level2
 		protected PTable(Type t, Reader rdr) : base(t,rdr) {}
         protected PTable(PTable x, Writer wr) : base(x, wr)
         {
+            nodeType = wr.cx.Fix(x.nodeType);
             rowiri = x.rowiri;
         }
         protected override Physical Relocate(Writer wr)
@@ -83,7 +89,7 @@ namespace Pyrrho.Level2
 		public override void Serialise(Writer wr)
 		{
             wr.PutString(name);
-			base.Serialise(wr);
+			base.Serialise(wr); // skips to Physical.Serialise
 		}
         /// <summary>
         /// Deserialise this Physical from the buffer
@@ -92,8 +98,8 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-			base.Deserialise(rdr);
-		}
+			base.Deserialise(rdr); // skips to Physical.Serialise
+        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -125,7 +131,9 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.role;
-            var tb = (name[0] == '(') ? new VirtualTable(this, ro, cx) : new Table(this, ro, cx);
+            var tb = (name[0] == '(') ? new VirtualTable(this, cx) : new Table(this, cx);
+            if (nodeType >= 0)
+                tb += (Table._NodeType, nodeType);
             ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
@@ -139,13 +147,8 @@ namespace Pyrrho.Level2
     }
     internal class PTable1 : PTable
     {
-        public PTable1(string ir, string nm, Domain d, long pp, Context cx)
-            : base(Type.PTable1, nm, d, pp, cx)
-        {
-            rowiri = ir;
-        }
-        protected PTable1(Type typ, string ir, string nm, Domain d, long pp, Context cx)
-            : base(typ, nm, d, pp, cx)
+        protected PTable1(Type typ, string ir, string nm, Domain d, long nst, long pp, Context cx)
+            : base(typ, nm, d, nst, pp, cx)
         {
             rowiri = ir;
         }
@@ -181,7 +184,7 @@ namespace Pyrrho.Level2
     {
         public long rowpos;
         public AlterRowIri(long pr, string ir, Domain d, long pp, Context cx) 
-            : base(Type.AlterRowIri, ir, "", d, pp, cx)
+            : base(Type.AlterRowIri, ir, "", d, cx.db.nextStmt, pp, cx)
         {
             rowpos = pr;
         }

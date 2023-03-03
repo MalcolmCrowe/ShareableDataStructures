@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System;
 using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -77,7 +77,7 @@ namespace Pyrrho.Level3
         {
             return new Transaction(this,loadpos, m);
         }
-        public override Database New(long c, BTree<long, object> m)
+        protected override Database New(long c, BTree<long, object> m)
         {
             return new Transaction(this, c, m);
         }
@@ -105,8 +105,7 @@ namespace Pyrrho.Level3
             {
                 var r = cx.db.Commit(cx);
                 var aff = cx.affected;
-                cx = new Context(r,cx.conn);
-                cx.affected = aff;
+                cx = new Context(r, cx.conn) { affected = aff };
                 return r;
             }
         }
@@ -132,7 +131,8 @@ namespace Pyrrho.Level3
             if (cx.parse != ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Compile)
                 return null;
             cx.db += (Physicals,physicals +(ph.ppos, ph));
-            cx.db += (NextPos, ph.ppos + 1);
+            if (ph.ppos==cx.db.nextPos)
+                cx.db += (NextPos, ph.ppos + 1);
             return ph.Install(cx, lp);
         }
         /// <summary>
@@ -151,7 +151,7 @@ namespace Pyrrho.Level3
             // u is from this transaction which has not been committed.
             // it is possible that a different user u is in the database: check for name.
             if (u.defpos > TransPos && u.name!=null && db.roles.Contains(u.name)
-                && db.objects[db.roles[u.name]] is User du)
+                && db.objects[db.roles[u.name]??-1L] is User du)
                 a.user = du;
             lock (wr.file)
             {
@@ -237,9 +237,8 @@ namespace Pyrrho.Level3
             lock (wr.file)
             { 
                 if (databases[name] is Database nd && nd!=db)// may have moved on 
-                    db = nd; 
-                rdr = new Reader(new Context(db), ph?.ppos ?? loadpos); 
-                rdr.locked = true;
+                    db = nd;
+                rdr = new Reader(new Context(db), ph?.ppos ?? loadpos) { locked = true };
                 since = rdr.GetAll(); // resume where we had to stop above, use new file length
                 for (var pb = since.First(); pb != null; pb = pb.Next())
                 {
@@ -284,7 +283,14 @@ namespace Pyrrho.Level3
                 }
                 if (physicals.Count == 0)
                     return Rollback();
-                pt = new PTransaction((int)physicals.Count, user, role, nextPos);
+                // deal with the specials cases of first role and first user of the database
+                var uu = user;
+                var rl = role;
+                if (uu?.defpos >= TransPos)
+                    uu = null;
+                if (rl.defpos >= TransPos)
+                    rl = db.schema;
+                pt = new PTransaction((int)physicals.Count, uu, rl, nextPos);
                 cx.Add(pt);
                 wr.segment = wr.file.Position;
                 var (tr, _) = pt.Commit(wr, this);
@@ -331,14 +337,16 @@ namespace Pyrrho.Level3
         {
             if (cx.parse != ExecuteStatus.Obey)
                 return cx;
-            var a = new Activation(cx,e.label??"");
-            a.exec = e;
+            var a = new Activation(cx, e.label ?? "")
+            {
+                exec = e
+            };
             var ac = e.Obey(a);
             if (a.signal != null)
             {
                 var ex = Exception(a.signal.signal, a.signal.objects);
                 for (var s = a.signal.setlist.First(); s != null; s = s.Next())
-                    if (cx.obs[s.value()] is SqlValue v)
+                    if (s.value() is long p && cx.obs[p] is SqlValue v)
                         ex.Add(s.key(), v.Eval(cx));
                 throw ex;
             }
@@ -466,7 +474,8 @@ namespace Pyrrho.Level3
                         var tbs = cp[(6 + off)..];
                         tbs = WebUtility.UrlDecode(tbs);
                         var tbn = new Ident(tbs, cx.GetIid());
-                        if(cx.db==null || cx.db.role==null ||objects[cx.db.role.dbobjects[tbn.ident]] is not Table tb
+                        if(cx.db==null || cx.db.role==null 
+                            ||objects[cx.db.role.dbobjects[tbn.ident]??-1L] is not Table tb
                             || cx._Dom(tb) is not Domain dm)
                             throw new DBException("42107", tbn).Mix();
                         if (f==null)
@@ -504,13 +513,15 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                                 sk = WebUtility.UrlDecode(sk);
 #endif
-                                if (cx.obs[ix.keys[kn]] is not TableColumn tc || cx._Dom(tc) is not Domain ft)
+                                if (cx.obs[ix.keys[kn] ?? -1L] is not TableColumn tc
+                                    || cx._Dom(tc) is not Domain ft)
                                     throw new DBException("42112", kn);
                                 if (ft.TryParse(new Scanner(uid, sk.ToCharArray(), 0, cx), out TypedValue? kv) != null)
                                     break;
                                 kn++;
                                 p++;
-                                fl += (ts.iSMap[tc.defpos], kv);
+                                if (ts.iSMap[tc.defpos] is long pp)
+                                    fl += (pp, kv);
                             }
                             var rs = (RowSet)cx.Add(f + (RowSet._Matches,fl));
                             cx.result = rs.defpos;
@@ -580,7 +591,7 @@ namespace Pyrrho.Level3
                     {
                         var s = cp[(3 + off)..];
                         var ps = s.IndexOf('(');
-                        var key = new string[0];
+                        var key = Array.Empty<string>();
                         if (ps > 0)
                         {
                             var cs = s.Substring(ps + 1, s.Length - ps - 2);
@@ -600,17 +611,19 @@ namespace Pyrrho.Level3
                     {
                         sp[0] = sp[0].Trim(' ');
                         if (f is TableRowSet fa && objects[fa.target] is Table ta && cx._Dom(ta) is Domain dm
-                            && cx.role!=null)
+                            && cx.role != null)
                         {
                             var cs = sp[0].Split(',');
-                            var ns = CTree<string, long>.Empty;
-                            var ss = CList<long>.Empty;
+                            var ns = BTree<string, long?>.Empty;
+                            var ss = BList<long?>.Empty;
                             for (var c = dm.rowType.First(); c != null; c = c.Next())
-                            if (cx._Ob(c.value()) is DBObject oa && oa.infos[cx.role.defpos] is ObInfo ci && ci.name!=null)
-                                ns += (ci.name, c.value());
-                            for (var i = 0; i < cs.Length && ns.Contains(cs[i]); i++)
-                                ss += fa.iSMap[ns[cs[i]]];
-                            if (ss != CList<long>.Empty && cx._Dom(f) is Domain df)
+                                if (c.value() is long cc && cx._Ob(cc) is DBObject oa
+                                        && oa.infos[cx.role.defpos] is ObInfo ci && ci.name != null)
+                                    ns += (ci.name, cc);
+                            for (var i = 0; i < cs.Length; i++)
+                                if (ns[cs[i]] is long np && fa.iSMap[np] is long fp)
+                                    ss += fp;
+                            if (ss != BList<long?>.Empty && cx._Dom(f) is Domain df)
                             {
                                 var fd = new Domain(cx.GetUid(), cx, df.kind, df.representation, ss);
                                 f = new SelectedRowSet(cx, fd.defpos, f);
@@ -652,22 +665,22 @@ namespace Pyrrho.Level3
                             off = -6;
                             goto case "where";
                         }
-                        if (f is TableRowSet fa && objects[fa.target] is Table ta && cx._Dom(ta) is Domain dm && cx.role!=null)
+                        if (f is TableRowSet fa && objects[fa.target] is Table ta && cx._Dom(ta) is Domain dm && cx.role != null)
                         {
                             var cs = sp[0].Split(',');
-                            var ns = CTree<string, long>.Empty;
-                            var ss = CList<long>.Empty;
-                            for (var c = dm.rowType.First();c!=null;c=c.Next())
-                            if (cx._Ob(c.value()) is DBObject co && co.infos[cx.role.defpos] is ObInfo ci &&
-                                    ci.name!=null)
-                                ns += (ci.name, c.value());
-                            for (var i = 0; i<cs.Length &&  ns.Contains(cs[i]);i++)
+                            var ns = BTree<string, long?>.Empty;
+                            var ss = BList<long?>.Empty;
+                            for (var c = dm.rowType.First(); c != null; c = c.Next())
+                                if (c.value() is long cc && cx._Ob(cc) is DBObject co
+                                        && co.infos[cx.role.defpos] is ObInfo ci &&
+                                        ci.name != null)
+                                    ns += (ci.name, cc);
+                            for (var i = 0; i < cs.Length; i++)
+                                if (ns[cs[i]] is long np && fa.iSMap[np] is long fp)
+                                    ss += fp;
+                            if (ss != BList<long?>.Empty && cx._Dom(f) is Domain df)
                             {
-                                ss += fa.iSMap[ns[cs[i]]];
-                            }
-                            if (ss!=CList<long>.Empty && cx._Dom(f) is Domain df)
-                            {
-                                var fd = new Domain(cx.GetUid(),cx,df.kind,df.representation,ss);
+                                var fd = new Domain(cx.GetUid(), cx, df.kind, df.representation, ss);
                                 f = new SelectedRowSet(cx, fd.defpos, f);
                                 break;
                             }
@@ -689,7 +702,7 @@ namespace Pyrrho.Level3
             }
             Execute(cx, f, method, dn, path, query, p + 1);
         }
-        bool QuotedIdent(string s)
+        static bool QuotedIdent(string s)
         {
             var cs = s.ToCharArray();
             var n = cs.Length;
@@ -712,28 +725,29 @@ namespace Pyrrho.Level3
             var d = da[0];
             cx.nextHeap = ab.key()+1;
             for (var c = dr.rowType.First(); c != null; c = c.Next())
-            {
-                var n = "";
-                var isk = false;
-                if (cx.obs[c.value()] is SqlValue sv && sv.name!=null)
+                if (c.value() is long cc)
                 {
-                    n = sv.name;
-                    if (sv is SqlCopy sc && ix!=null)
-                        isk = ix.keys.rowType.Has(sc.copyFrom);
+                    var n = "";
+                    var isk = false;
+                    if (cx.obs[cc] is SqlValue sv && sv.name != null)
+                    {
+                        n = sv.name;
+                        if (sv is SqlCopy sc && ix != null)
+                            isk = ix.keys.rowType.Has(sc.copyFrom);
+                    }
+                    else if (cx._Ob(cc) is DBObject oc && oc.infos[cx.role.defpos] is ObInfo ci && ci.name != null)
+                        n = ci.name;
+                    if (d[n] is not TypedValue v)
+                        throw new PEException("PE49203");
+                    if (isk)
+                        ma += (cc, v);
+                    else
+                    {
+                        var sl = new SqlLiteral(cx.GetUid(), v);
+                        cx._Add(sl);
+                        us += (new UpdateAssignment(cc, sl.defpos), true);
+                    }
                 }
-                else if (cx._Ob(c.value()) is DBObject oc && oc.infos[cx.role.defpos] is ObInfo ci && ci.name!=null)
-                    n = ci.name;
-                if (d[n] is not TypedValue v)
-                    throw new PEException("PE49203"); 
-                if (isk)
-                    ma += (c.value(), v);  
-                else
-                {
-                    var sl = new SqlLiteral(cx.GetUid(), cx, v);
-                    cx._Add(sl);
-                    us += (new UpdateAssignment(c.value(), sl.defpos), true);
-                }
-            }
             rs += (RowSet._Matches, ma);
             rs += (RowSet.Assig, us);
             cx.Add(rs);
@@ -762,8 +776,8 @@ namespace Pyrrho.Level3
                     var d = da[i];
                     var vs = CTree<long, TypedValue>.Empty;
                     for (var c = dm.rowType.First(); c != null; c = c.Next())
-                        if (cx.NameFor(c.value()) is string n && d[n] is TypedValue v)
-                            vs += (c.value(), v);
+                        if (c.value() is long p && cx.NameFor(p) is string n && d[n] is TypedValue v)
+                            vs += (p, v);
                     rws += (cx.GetUid(), new TRow(dm, vs));
                 }
                 var ers = new ExplicitRowSet(cx.GetUid(), cx, dm, rws);
@@ -807,7 +821,7 @@ namespace Pyrrho.Level3
         /// <param name="pr">the privilege</param>
         /// <param name="obj">the database object</param>
         /// <param name="grantees">a list of grantees</param>
-        void DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
+        static void DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
             DBObject[] grantees)
         {
             var np = cx.db.nextPos;
@@ -831,7 +845,7 @@ namespace Pyrrho.Level3
         /// <param name="tb">the table</param>
         /// <param name="list">(Privilege,columnnames[])</param>
         /// <param name="grantees">a list of grantees</param>
-        void AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, DBObject[] grantees)
+        static void AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, DBObject[] grantees)
         {
             var rt = cx._Dom(tb) ?? Domain.Content;
             var ne = list.cols != BTree<string, bool>.Empty;
@@ -863,7 +877,7 @@ namespace Pyrrho.Level3
             else // grant
                 op = Grant.Privilege.UseRole;
             foreach (var s in rols)
-                if (roles.Contains(s) && objects[roles[s]] is Role ro)
+                if (roles.Contains(s) && objects[roles[s]??-1L] is Role ro)
                     DoAccess(cx, grant, op, ro.defpos, grantees);
         }
         /// <summary>
@@ -890,14 +904,14 @@ namespace Pyrrho.Level3
                     {
                         p = gp;
                         for (var cp = cx._Dom(ob)?.rowType.First(); cp != null; cp = cp.Next())
-                        {
-                            var c = cp.value();
-                            gp = gd.priv;
-                            var pp = defp;
-                            if (grant)
-                                pp = gp;
-                            DoAccess(cx, grant, pp, c, grantees);
-                        }
+                            if (cp.value() is long c)
+                            {
+                                gp = gd.priv;
+                                var pp = defp;
+                                if (grant)
+                                    pp = gp;
+                                DoAccess(cx, grant, pp, c, grantees);
+                            }
                     }
                 }
                 else
@@ -968,7 +982,7 @@ namespace Pyrrho.Level3
                 nextPos);
         }
   /*      public VIndex ReferentialConstraint(Context cx, Table tb, Ident name,
-    CList<int> key, Table rt, CList<long> refs, PIndex.ConstraintType ct, int c)
+    CList<int> key, Table rt, BList<long?> refs, PIndex.ConstraintType ct, int c)
         {
             Index rx = null;
             if (refs == null || refs.Count == 0)

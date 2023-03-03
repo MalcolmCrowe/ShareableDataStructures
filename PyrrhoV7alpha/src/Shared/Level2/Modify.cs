@@ -8,7 +8,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -33,7 +33,7 @@ namespace Pyrrho.Level2
         /// The new parameters and body of the routine
         /// </summary>
 		public Ident? source;
-        public CList<long> parms = CList<long>.Empty;
+        public BList<long?> parms = BList<long?>.Empty;
         /// <summary>
         /// The Parsed version of the body for the definer's role
         /// </summary>
@@ -50,13 +50,13 @@ namespace Pyrrho.Level2
         /// <param name="dp">The defining position of the routine</param>
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
-        public Modify(long dp, Procedure me, Ident sce, long pp, Context cx)
-            : base(Type.Modify, pp, _Pre(cx), me.NameFor(cx), me.body, cx._Dom(me) ?? throw new PEException("PE48129"))
+        public Modify(long dp, Procedure me, Ident sce, long nst, long pp, Context cx)
+            : base(Type.Modify, pp, _Pre(cx), me.NameFor(cx), me.body, 
+                  cx._Dom(me) ?? throw new PEException("PE48129"),nst)
 		{
             modifydefpos = dp;
             source = sce;
             proc = me.body;
-            nst = me.framing.obs.First()?.key() ?? nst;
         }
         static Context _Pre(Context cx) // hack to keep our formalparameters in framing
         {
@@ -64,7 +64,8 @@ namespace Pyrrho.Level2
             return cx;
         }
         public Modify(string nm, long dp, RowSet rs, Ident sce, long pp, Context cx)
-    : base(Type.Modify, pp, cx, nm, rs.defpos, cx._Dom(rs) ?? throw new PEException("PE48130"))
+            : base(Type.Modify, pp, cx, nm, rs.defpos, 
+                cx._Dom(rs) ?? throw new PEException("PE48130"), cx.db.nextStmt)
         {
             modifydefpos = dp;
             source = sce;
@@ -128,12 +129,13 @@ namespace Pyrrho.Level2
             pr.Instance(psr.LexPos().dp, psr.cx);
             odt.Instance(psr.LexPos().dp,psr.cx);
             for (var b = pr.ins.First(); b != null; b = b.Next())
-            {
-                if (psr.cx.obs[b.value()] is not FormalParameter p || p.name == null)
-                    throw new DBException("3E006");
-                var ip = rdr.context.Ix(p.defpos);
-                psr.cx.defs += (new Ident(p.name, ip), ip);
-            }
+                if (b.value() is long k)
+                {
+                    if (psr.cx.obs[k] is not FormalParameter p || p.name == null)
+                        throw new DBException("3E006");
+                    var ip = rdr.context.Ix(p.defpos);
+                    psr.cx.defs += (new Ident(p.name, ip), ip);
+                }
             psr.cx.Install(pr, 0);
             // and parse the body
             if (rdr.context._Dom(pr) is not Domain dr || 

@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -181,10 +181,13 @@ namespace Pyrrho.Level2
             var oi = ob.infos[ro.defpos];
             if (oi == null)
                 return null;
-            ob += (DBObject.LastChange, p);
-            ob += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name, oi.priv)));
+            var m = ob.mem;
+            m += (DBObject.LastChange, p);
+            m += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name, oi.priv)));
+            ob = (DBObject)ob.New(m);
             cx.db += (ob, p);
-            cx.obs+=(affects,ob + (DBObject.Infos, oi + (ObInfo.Name, name)));
+            ob = (DBObject)ob.New(m + (DBObject.Infos, oi + (ObInfo.Name, name)));
+            cx.obs += (affects, ob);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return ob;

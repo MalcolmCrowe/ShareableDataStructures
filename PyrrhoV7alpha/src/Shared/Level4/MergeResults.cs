@@ -3,7 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -64,28 +64,24 @@ namespace Pyrrho.Level4
         }
         public static MergeRowSet operator+(MergeRowSet rs,(long,object)x)
         {
+            var (dp, ob) = x;
+            if (rs.mem[dp] == ob)
+                return rs;
             return (MergeRowSet)rs.New(rs.mem + x);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return new MergeRowSet(dp, mem);
+            return new MergeRowSet(dp, m);
         }
-        internal override Basis _Fix(Context cx)
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
-            var r = (MergeRowSet)base._Fix(cx);
+            var r = base._Fix(cx,m);
             var nl = cx.Fix(left);
             if (nl!=left)
             r += (_Left, nl);
             var nr = cx.Fix(right);
             if (nr!=right)
             r += (_Right, nr);
-            return r;
-        }
-        internal override Basis _Relocate(Context cx)
-        {
-            var r = (MergeRowSet)base._Relocate(cx);
-            r += (_Left, cx.Fix(left));
-            r += (_Right, cx.Fix(right));
             return r;
         }
         internal override bool Knows(Context cx, long rp, bool ambient=false)
@@ -186,13 +182,13 @@ namespace Pyrrho.Level4
             if (right == null)
                 return 1;
             var dt = cx._Dom(r)?.rowType??throw new PEException("PE2302");
-            for (var i=0;i<dt.Length;i++)
-            {
-                var n = dt[i];
-                var c = left[n].CompareTo(right[n]);
-                if (c != 0)
-                    return c;
-            }
+            for (var i = 0; i < dt.Length; i++)
+                if (dt[i] is long n)
+                {
+                    var c = left[n].CompareTo(right[n]);
+                    if (c != 0)
+                        return c;
+                }
             return 0;
         }
     }

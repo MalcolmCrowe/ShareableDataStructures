@@ -1,11 +1,9 @@
-using System;
-using Pyrrho.Level1;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -101,9 +99,9 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             delpos= dp;
         }
-        internal override void Affected(ref BTree<long, BTree<long, long>> aff)
+        internal override void Affected(ref BTree<long, BTree<long, long?>> aff)
         {
-            var ta = aff[tabledefpos] ?? BTree<long, long>.Empty;
+            var ta = aff[tabledefpos] ?? BTree<long, long?>.Empty;
             ta += (delpos, ppos);
             aff += (tabledefpos, ta);
         }
@@ -176,11 +174,15 @@ namespace Pyrrho.Level2
             Table? rt = null;
             if (ro == null || cx.db == null) throw new DBException("42105");
             for (var ob = ro.dbobjects.First(); ob != null; ob = ob.Next())
-                if (cx.db.objects[ob.value()] is Table tb && tb.tableRows.Contains(delpos))
-                    if (tb.tableRows[delpos] is TableRow delRow)
+                if (ob.value() is long op && cx.db.objects[op] is Table tb 
+                    && tb.tableRows[delpos] is TableRow delRow)
                     {
                         rt = tb;
-                        for (var b = tb.indexes.First(); b != null; b = b.Next())
+                    if (tb.defpos == tabledefpos && cx.db.objects[tb.nodeType] is NodeType tn
+                            && tn.rowType[0] is long q && delRow.vals[q] is TChar id
+                            && cx.db.nodeIds[id.value] is TNode nn)
+                        cx.db -= nn;
+                    for (var b = tb.indexes.First(); b != null; b = b.Next())
                             for (var c = b.value().First(); c != null; c = c.Next())
                                 if (cx.db.objects[c.key()] is Level3.Index ix && 
                                     ix.rows is MTree mt && mt.info is Domain inf &&
@@ -196,6 +198,7 @@ namespace Pyrrho.Level2
                         tb += (Table.LastData, ppos);
                         cx.Install(tb, p);
                     }
+
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return rt;

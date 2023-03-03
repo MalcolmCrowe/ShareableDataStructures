@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -41,7 +41,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The TableColumns for update
         /// </summary>
-		public CList<long>? cols = null;
+		public BList<long?>? cols = null;
         /// <summary>
         /// The alias for the old row
         /// </summary>
@@ -67,7 +67,7 @@ namespace Pyrrho.Level2
             if (defpos != ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,target)) return target;
             for (var i = 0; i < cols?.Length; i++)
-                if (!Committed(wr,cols[i])) return cols[i];
+                if (cols[i] is long p && !Committed(wr,p)) return p;
             return -1;
         }
         /// <summary>
@@ -82,11 +82,12 @@ namespace Pyrrho.Level2
         /// <param name="ot">The alias for the old table</param>
         /// <param name="nt">The alias for the new table</param>
         /// <param name="sce">The source string for the trigger definition</param>
+        ///         /// <param name="nst">The first possible framing object</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTrigger(string tc, long tb, int ty, CList<long> cs, Ident? or,
-            Ident? nr, Ident? ot, Ident? nt, Ident sce, Context cx, long pp)
-            : this(Type.PTrigger, tc, tb, ty, cs, or, nr, ot, nt, sce, cx, pp)
+        public PTrigger(string tc, long tb, int ty, BList<long?> cs, Ident? or,
+            Ident? nr, Ident? ot, Ident? nt, Ident sce, long nst, Context cx, long pp)
+            : this(Type.PTrigger, tc, tb, ty, cs, or, nr, ot, nt, sce, nst, cx, pp)
         { }
         /// <summary>
         /// Constructor
@@ -101,11 +102,12 @@ namespace Pyrrho.Level2
         /// <param name="ot">The alias for the old table</param>
         /// <param name="nt">The alias for the new table</param>
         /// <param name="sce">The source code of the trigger</param>
+        /// <param name="nst">The first possible framing object</param>
         /// <param name="cx">The context</param>
         /// <param name="pp">The current position in the datafile</param>
-        protected PTrigger(Type tp, string tc, long tb, int ty, CList<long> cs, 
-            Ident? or, Ident? nr, Ident? ot, Ident? nt, Ident sce, Context cx, long pp)
-            : base(tp,pp,cx,tc,tb,Domain.TableType)
+        protected PTrigger(Type tp, string tc, long tb, int ty, BList<long?> cs, 
+            Ident? or, Ident? nr, Ident? ot, Ident? nt, Ident sce, long nst, Context cx, long pp)
+            : base(tp,pp,cx,tc,tb,Domain.TableType,nst)
 		{
             name = tc;
             target = tb;
@@ -134,10 +136,11 @@ namespace Pyrrho.Level2
             target = cx.Fix(x.target);
             from = cx.Fix(x.from);
             def = cx.Fix(x.def);
-            var cs = CList<long>.Empty;
+            var cs = BList<long?>.Empty;
             if (x.cols != null)
-                for (var b = x.cols.First(); b!=null; b=b.Next())
-                    cs += cx.Fix(b.value());
+                for (var b = x.cols.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                        cs += cx.Fix(p);
             cols = cs;
             oldRow = cx.FixI(x.oldRow);
             newRow = cx.FixI(x.newRow);
@@ -164,7 +167,8 @@ namespace Pyrrho.Level2
                 int n = cols.Length;
                 wr.PutInt(n);
                 for (var b = cols.First(); b != null; b = b.Next())
-                    wr.PutLong(wr.cx.Fix(b.value()));
+                    if (b.value() is long p)
+                    wr.PutLong(wr.cx.Fix(p));
             }
             // DON'T update oldRow, newRow, oldTable, newTable
             wr.PutIdent(oldRow);
@@ -187,7 +191,7 @@ namespace Pyrrho.Level2
             target = rdr.GetLong();
 			tgtype = (TrigType)rdr.GetInt();
 			int n = rdr.GetInt();
-            var cols = CList<long>.Empty;
+            var cols = BList<long?>.Empty;
 			while (n-->0)
                 cols += rdr.GetLong();
             nst = rdr.context.db.nextStmt;
@@ -220,9 +224,9 @@ namespace Pyrrho.Level2
             {
                 var cm = " of (";
                 for (var b = cols.First(); b != null; b = b.Next())
-                {
+                if (b.value() is long p){
                     sb.Append(cm); cm = ",";
-                    sb.Append(DBObject.Uid(b.value()));
+                    sb.Append(DBObject.Uid(p));
                 }
                 sb.Append(")");
             }
@@ -284,9 +288,10 @@ namespace Pyrrho.Level2
             var (tr, ph) = base.Commit(wr, t);
             var pt = (PTrigger)ph;
             var tg = (DBObject)(tr?.objects[defpos] ?? throw new PEException("PE2101"));
-            tg = tg + (DBObject._Framing, pt.framing) + (Trigger.OldRow, pt.oldRow?.iix.dp ?? -1L)
+            var m = tg.mem + (DBObject._Framing, pt.framing) + (Trigger.OldRow, pt.oldRow?.iix.dp ?? -1L)
                 + (Trigger.NewRow, pt.newRow?.iix.dp ?? -1) + (Trigger.OldTable, pt.oldTable?.iix.dp ?? -1)
                 + (Trigger.NewTable, pt.newTable?.iix.dp ?? -1L);
+            tg = (Trigger)tg.New(m);
             var co = (DBObject)(tr.objects[target] ?? throw new PEException("PE2102"));
             co = co.AddTrigger((Trigger)tg);
             wr.cx.instDFirst = -1;

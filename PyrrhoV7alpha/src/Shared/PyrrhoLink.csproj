@@ -1,65 +1,63 @@
-﻿<?xml version="1.0" encoding="utf-8"?>
-<Project ToolsVersion="12.0" DefaultTargets="Build" xmlns="http://schemas.microsoft.com/developer/msbuild/2003">
-  <Import Project="$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props" Condition="Exists('$(MSBuildExtensionsPath)\$(MSBuildToolsVersion)\Microsoft.Common.props')" />
+﻿<Project Sdk="Microsoft.NET.Sdk">
+
   <PropertyGroup>
-    <Configuration Condition=" '$(Configuration)' == '' ">Debug</Configuration>
-    <Platform Condition=" '$(Platform)' == '' ">AnyCPU</Platform>
-    <ProjectGuid>{893E315D-E6CA-4DB3-AE08-2D28788D3693}</ProjectGuid>
-    <OutputType>Library</OutputType>
-    <AppDesignerFolder>Properties/PL</AppDesignerFolder>
-    <RootNamespace>PyrrhoLink</RootNamespace>
-    <AssemblyName>PyrrhoLink</AssemblyName>
-    <TargetFrameworkVersion>v4.7.2</TargetFrameworkVersion>
-    <FileAlignment>512</FileAlignment>
-    <TargetFrameworkProfile />
+    <TargetFramework>net6.0</TargetFramework>
+    <ImplicitUsings>enable</ImplicitUsings>
+    <Nullable>enable</Nullable>
   </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Debug|AnyCPU' ">
-    <DebugSymbols>true</DebugSymbols>
-    <DebugType>full</DebugType>
-    <Optimize>false</Optimize>
-    <OutputPath>bin\Debug\</OutputPath>
-    <DefineConstants>TRACE;DEBUG;CLIENT</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
-  <PropertyGroup Condition=" '$(Configuration)|$(Platform)' == 'Release|AnyCPU' ">
-    <DebugType>pdbonly</DebugType>
-    <Optimize>true</Optimize>
-    <OutputPath>bin\Release\</OutputPath>
-    <DefineConstants>TRACE</DefineConstants>
-    <ErrorReport>prompt</ErrorReport>
-    <WarningLevel>4</WarningLevel>
-  </PropertyGroup>
+
   <ItemGroup>
-    <Reference Include="System" />
-    <Reference Include="System.Core" />
-    <Reference Include="System.Xml.Linq" />
-    <Reference Include="System.Data.DataSetExtensions" />
-    <Reference Include="Microsoft.CSharp" />
-    <Reference Include="System.Data" />
-    <Reference Include="System.Xml" />
+    <Compile Remove="Common\**" />
+    <Compile Remove="Level1\**" />
+    <Compile Remove="Level2\**" />
+    <Compile Remove="Level3\**" />
+    <Compile Remove="Level4\**" />
+    <Compile Remove="Level5\**" />
+    <Compile Remove="Properties\**" />
+    <Compile Remove="UnitTestProject\**" />
+    <EmbeddedResource Remove="Common\**" />
+    <EmbeddedResource Remove="Level1\**" />
+    <EmbeddedResource Remove="Level2\**" />
+    <EmbeddedResource Remove="Level3\**" />
+    <EmbeddedResource Remove="Level4\**" />
+    <EmbeddedResource Remove="Level5\**" />
+    <EmbeddedResource Remove="Properties\**" />
+    <EmbeddedResource Remove="UnitTestProject\**" />
+    <None Remove="Common\**" />
+    <None Remove="Level1\**" />
+    <None Remove="Level2\**" />
+    <None Remove="Level3\**" />
+    <None Remove="Level4\**" />
+    <None Remove="Level5\**" />
+    <None Remove="Properties\**" />
+    <None Remove="UnitTestProject\**" />
   </ItemGroup>
+
   <ItemGroup>
-    <Compile Include="Common\Interfaces.cs" />
-    <Compile Include="Common\Pyrrho.cs" />
-    <Compile Include="Common\Tree.cs" />
-    <Compile Include="Common\BTree.cs" />
-    <Compile Include="Crypt.cs" />
-    <Compile Include="Document.cs" />
-    <Compile Include="PyrrhoLink.cs" />
-    <Compile Include="Reflection.cs" />
-    <Compile Include="Resx.cs" />
-    <Compile Include="Scripting.cs" />
+    <Compile Remove="HttpService.cs" />
+    <Compile Remove="Row.cs" />
+    <Compile Remove="Start.cs" />
+    <Compile Remove="WebCtlr.cs" />
+    <Compile Remove="WebSvc.cs" />
+    <Compile Remove="WebSvr.cs" />
   </ItemGroup>
+
   <ItemGroup>
-    <Folder Include="Properties\" />
+    <None Remove="consts.xlsx" />
+    <None Remove="Jun11.txt" />
+    <None Remove="OSPLink.dll" />
+    <None Remove="ProSec.dll" />
+    <None Remove="Pyrrho.docx" />
+    <None Remove="Pyrrho.pdf" />
+    <None Remove="PyrrhoCmd.exe" />
+    <None Remove="Pyrrhodb.snk" />
+    <None Remove="PyrrhoLink.dll" />
+    <None Remove="PyrrhoSvr.exe" />
+    <None Remove="PyrrhoTest.exe" />
+    <None Remove="Server.ico" />
+    <None Remove="SourceIntro.docx" />
+    <None Remove="SourceIntro.pdf" />
+    <None Remove="tests.txt" />
   </ItemGroup>
-  <Import Project="$(MSBuildToolsPath)\Microsoft.CSharp.targets" />
-  <!-- To modify your build process, add your task inside one of the targets below and uncomment it. 
-       Other similar extension points exist, see Microsoft.Common.targets.
-  <Target Name="BeforeBuild">
-  </Target>
-  <Target Name="AfterBuild">
-  </Target>
-  -->
+
 </Project>

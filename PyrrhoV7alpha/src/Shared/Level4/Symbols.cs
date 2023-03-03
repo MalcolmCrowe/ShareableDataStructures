@@ -6,8 +6,9 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using System.Configuration;
 using System.Net.NetworkInformation;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -22,7 +23,7 @@ namespace Pyrrho.Level4
         internal readonly long lp; // lexical (if not equal to dp)
         internal readonly int sd; // select depth
         internal readonly long dp; // defining
-        internal static Iix None = new Iix(-1L);
+        internal static Iix None = new (-1L);
         internal Iix(long u) { lp = u; sd = 0;  dp = u;  }
         internal Iix(long l,int s,long u) { lp = l; sd = s; dp = u;  }
         internal Iix(Iix ix,long u) { lp = ix.lp; sd = ix.sd; dp = u; }
@@ -43,7 +44,7 @@ namespace Pyrrho.Level4
                 return "Ambiguous";
             }
             var sb = new StringBuilder(DBObject.Uid(sd));
-            sb.Append(":"); sb.Append(DBObject.Uid(lp));
+            sb.Append(':'); sb.Append(DBObject.Uid(lp));
             if (dp != lp)
             { sb.Append('|'); sb.Append(DBObject.Uid(dp)); }
             return sb.ToString();
@@ -58,19 +59,17 @@ namespace Pyrrho.Level4
         internal readonly Ident? sub;
         internal readonly Iix iix;
         internal readonly string ident;
-        internal Ident(Parser psr, string? s = null)
+        /// <summary>
+        /// During parsing of Compiled objects this process allocates a new Stmt location 
+        /// for every identifier processed, because LexPos() calls GetUid().
+        /// This may seem wasteful but isn't really.
+        /// </summary>
+        /// <param name="psr"></param>
+        internal Ident(Parser psr)
         {
             var lx = psr.lxr;
-            ident = s ?? ((lx.tok == Sqlx.ID) ? lx.val?.ToString() : lx.tok.ToString()) 
-                ?? "";
             iix = psr.LexPos();
-            sub = null;
-        }
-        internal Ident(Parser psr, long q)
-        {
-            var lx = psr.lxr;
-            ident = ((lx.tok == Sqlx.ID) ? lx.val?.ToString() : lx.tok.ToString()) ?? "";
-            iix = psr.LexPos();
+            ident = ((lx.tok == Sqlx.ID) ? lx.val?.ToString() : lx.tok.ToString()) ?? (DBObject.Uid(iix.dp));
             sub = null;
         }
         internal Ident(Ident lf, Ident sb)
@@ -120,7 +119,7 @@ namespace Pyrrho.Level4
                 sb.Append("??");
             if (sub != null)
             {
-                sb.Append(".");
+                sb.Append('.');
                 sb.Append(sub.ToString());
             }
             return sb.ToString();
@@ -150,13 +149,16 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The class is used for identifiers that have columns or are columns.
         /// Therefore used for select lists as it consists of columns in the result.
+        /// (There is an annoying aspect of this implementation: 
+        ///  If we have a pair (Iix,Idents) and Idents is not empty, the sd part of the Iix
+        ///  is incorrect but it is ignored)
         /// shareable as of 26 April 2021
         /// </summary>
         internal class Idents : BTree<string, BTree<int,(Iix, Idents)>>
         {
-            public new static Idents Empty = new Idents();
+            public new static Idents Empty = new();
             Idents() : base() { }
-            Idents(BTree<string, BTree<int,(Iix, Idents)>> b) : base(b.root ?? throw new PEException("PE625")) 
+            internal Idents(BTree<string, BTree<int,(Iix, Idents)>> b) : base(b.root ?? throw new PEException("PE625")) 
             { }
             public static Idents operator +(Idents t, (string, Iix, Idents) x)
             {
@@ -185,7 +187,7 @@ namespace Pyrrho.Level4
                         else
                             s += (p.sd, (p, ts));
                     }
-                    else
+                    else //if (id.sub==null)
                         s += (p.sd, (p, Empty));
                     return new Idents(t + (id.ident, s));
                 }
@@ -207,7 +209,7 @@ namespace Pyrrho.Level4
                 if (s.Contains(id.iix.sd))
                     ts = s[id.iix.sd].Item2;
                 if (id.sub != null && n > 0)
-                    ts = ts + (id.sub, n - 1);
+                    ts += (id.sub, n - 1);
                 return new Idents(t + (id.ident, s+(id.iix.sd,(id.iix, ts))));
             }
             /// <summary>
@@ -227,7 +229,7 @@ namespace Pyrrho.Level4
                         return (Iix.None, null, ic);
                     var ix = Iix.None;
                     Idents ids = Empty;
-                    var s = this[ic.ident] ?? BTree<int, (Iix, Idents)>.Empty; ;
+                    var s = this[ic.ident] ?? BTree<int, (Iix, Idents)>.Empty;
                     for (var sd = ic.iix.sd;ix == Iix.None && sd>=0;sd--)
                         if (s.Contains(sd))
                            (ix, ids) = s[sd];
@@ -258,7 +260,7 @@ namespace Pyrrho.Level4
                 get
                 {
                     var (s, d) = x;
-                    if (s != null)
+                    if (s != null && Contains(s))
                         for (var b = PositionAt(s)?.value()?.Last(); b != null; b = b.Previous())
                         {
                             if (b.key() <= d)
@@ -279,7 +281,7 @@ namespace Pyrrho.Level4
                         {
                             p = new Iix(p.lp,p.sd,nb.defpos);
                             for (var c = cx._Dom(nb)?.rowType.First(); c != null; c = c.Next())
-                                if (cx.done[c.value()] is SqlValue v && v.name!=null)
+                                if (c.value() is long cp && cx.done[cp] is SqlValue v && v.name!=null)
                                 {
                                     var ds = st[v.name] ?? BTree<int,(Iix,Idents)>.Empty;
                                     st = new Idents(st + (v.name, ds +(p.sd,(new Iix(v.defpos,p.sd,v.defpos),Empty))));
@@ -320,7 +322,7 @@ namespace Pyrrho.Level4
                         for (var c = x.First(); c != null; c = c.Next())
                         {
                             var (p, ids) = c.value();
-                            sb.Append(p.ToString()); sb.Append(",");
+                            sb.Append(p.ToString()); sb.Append(',');
                             if (ids != Empty)
                                 sb.Append(ids.ToString());
                         }
@@ -364,7 +366,8 @@ namespace Pyrrho.Level4
         /// </summary>
 		public TypedValue val = TNull.Value, prevval = TNull.Value;
         public TypedValue pushVal = TNull.Value;
-        private Context cx; // only used for type prefix/suffix things
+        private readonly Context cx; // only used for type prefix/suffix things
+        public CTree<long, TGParam> tgs = CTree<long, TGParam>.Empty; // TGParam wizardry
         /// <summary>
         /// Entries in the reserved word table
         /// If there are more than 2048 reserved words, the server will hang
@@ -376,7 +379,7 @@ namespace Pyrrho.Level4
 			public readonly string spell;
 			public ResWd(Sqlx t,string s) { typ=t; spell=s; }
 		}
- 		static ResWd[] resWds = new ResWd[0x800]; // open hash
+ 		readonly static ResWd[] resWds = new ResWd[0x800]; // open hash
         static Lexer()
         {
             int h;
@@ -455,33 +458,33 @@ namespace Pyrrho.Level4
         /// <returns>0..15</returns>
 		internal static int Hexit(char c)
 		{
-			switch (c)
-			{
-				case '0': return 0;
-				case '1': return 1;
-				case '2': return 2;
-				case '3': return 3;
-				case '4': return 4;
-				case '5': return 5;
-				case '6': return 6;
-				case '7': return 7;
-				case '8': return 8;
-				case '9': return 9;
-				case 'a': return 10;
-				case 'b': return 11;
-				case 'c': return 12;
-				case 'd': return 13;
-				case 'e': return 14;
-				case 'f': return 15;
-				case 'A': return 10;
-				case 'B': return 11;
-				case 'C': return 12;
-				case 'D': return 13;
-				case 'E': return 14;
-				case 'F': return 15;
-				default: return -1;
-			}
-		}
+            return c switch
+            {
+                '0' => 0,
+                '1' => 1,
+                '2' => 2,
+                '3' => 3,
+                '4' => 4,
+                '5' => 5,
+                '6' => 6,
+                '7' => 7,
+                '8' => 8,
+                '9' => 9,
+                'a' => 10,
+                'b' => 11,
+                'c' => 12,
+                'd' => 13,
+                'e' => 14,
+                'f' => 15,
+                'A' => 10,
+                'B' => 11,
+                'C' => 12,
+                'D' => 13,
+                'E' => 14,
+                'F' => 15,
+                _ => -1,
+            };
+        }
         public Sqlx PushBack(Sqlx old)
         {
             pushBack = tok;
@@ -495,18 +498,18 @@ namespace Pyrrho.Level4
         Sqlx MaybePrefix(string s)
         {
             if (cx.parse==ExecuteStatus.Obey && cx.db!=null && cx.role!=null
-                && cx.db.objects[cx.db.prefixes[s]] is UDType dt && val!=null
+                && cx.db.objects[cx.db.prefixes[s]??-1L] is UDType dt && val!=null
                 && dt.name!=null)
             {
                 var ps = pos;
                 Next();
                 var sig = new CList<Domain>(val.dataType);
                 if (dt.infos[cx.role.defpos] is ObInfo mi && dt.name!=null &&
-                    mi.methodInfos[dt.name] is CTree<CList<Domain>,long> md
-                    && cx.db.objects[md[sig]] is Method mt)
+                    mi.methodInfos[dt.name] is BTree<CList<Domain>,long?> md
+                    && cx.db.objects[md[sig]??-1L] is Method mt)
                 {
-                    cx.Add(new SqlLiteral(ps, cx, Domain.Numeric.Coerce(cx, val)));
-                    val = mt.Exec(cx, new CList<long>(ps)).val;
+                    cx.Add(new SqlLiteral(ps, Domain.Numeric.Coerce(cx, val)));
+                    val = mt.Exec(cx, new BList<long?>(ps)).val;
                 } 
                 else
                     val = new TSubType(dt,val);
@@ -525,14 +528,14 @@ namespace Pyrrho.Level4
                 var t = Next();
                 var vs = val?.ToString();
                 if (t == Sqlx.ID && vs != null && cx.db!=null && cx.role!=null
-                    && cx.db.objects[cx.db.suffixes[vs]] is UDType dt
+                    && cx.db.objects[cx.db.suffixes[vs]??-1L] is UDType dt
                     && dt.name != null && prevval!=null)
                 {
                     if (dt.infos[cx.role.defpos] is ObInfo mi 
-                        && mi.methodInfos[dt.name] is CTree<CList<Domain>, long> md
-                        && cx.db.objects[md[sig]] is Method mt
-                        && cx.Add(new SqlLiteral(cx.GetUid(), cx, prevval)) is SqlValue r)
-                        val = mt.Exec(cx, new CList<long>(r.defpos)).val;
+                        && mi.methodInfos[dt.name] is BTree<CList<Domain>, long?> md
+                        && cx.db.objects[md[sig]??-1L] is Method mt
+                        && cx.Add(new SqlLiteral(cx.GetUid(), prevval)) is SqlValue r)
+                        val = mt.Exec(cx, new BList<long?>(r.defpos)).val;
                     else
                         val = new TSubType(dt, prevval);
                     tok = oldtok;
@@ -569,6 +572,19 @@ namespace Pyrrho.Level4
             while (char.IsWhiteSpace(ch))
                 Advance();
             start = pos;
+            if (ch=='_')
+            {
+                Advance();
+                if (char.IsLetter(ch))
+                    while (char.IsLetter(ch))
+                        Advance();
+                var tg = new TGParam(Position,new string(input, start, pos - start),
+                        tok,Domain.Content,CTree<string,TypedValue>.Empty);
+                tgs += (tg.uid, tg);
+                val = tg;
+                tok = Sqlx.NODE;
+                return tok;
+            }
             if (char.IsLetter(ch))
             {
                 char c = ch;
@@ -581,7 +597,7 @@ namespace Pyrrho.Level4
                     while (ch != '\'')
                         if (Hexit(Advance()) >= 0)
                             n++;
-                    n = n / 2;
+                    n /= 2;
                     byte[] b = new byte[n];
                     int end = pos;
                     pos = start + 1;
@@ -603,7 +619,7 @@ namespace Pyrrho.Level4
                 }
                 while (char.IsLetterOrDigit(ch) || ch == '_')
                     Advance();
-                string s0 = new string(input, start, pos - start);
+                string s0 = new(input, start, pos - start);
                 string s = s0.ToUpper();
                 if (CheckResWd(s))
                 {
@@ -631,6 +647,11 @@ namespace Pyrrho.Level4
                 start = pos;
                 if (ch == '-')
                     Advance();
+                if (ch == '[')
+                {
+                    Advance();
+                    return tok = Sqlx.ARROWBASE;
+                }
                 if (!char.IsDigit(ch))
                 {
                     minusch = ch;
@@ -676,7 +697,18 @@ namespace Pyrrho.Level4
             switch (ch)
             {
                 case '[': Advance(); return tok = Sqlx.LBRACK;
-                case ']': Advance(); return tok = Sqlx.RBRACK;
+                case ']': Advance(); 
+                    if (ch=='-')
+                    {
+                        Advance();
+                        if (ch=='>')
+                        {
+                            Advance();
+                            return tok = Sqlx.ARROW;
+                        }
+                        return tok = Sqlx.RARROWBASE;
+                    }
+                    return tok = Sqlx.RBRACK;
                 case '(': Advance(); return tok = Sqlx.LPAREN;
                 case ')': Advance(); return tok = Sqlx.RPAREN;
                 case '{': Advance(); return tok = Sqlx.LBRACE;
@@ -689,12 +721,15 @@ namespace Pyrrho.Level4
                 case ';': Advance(); return tok = Sqlx.SEMICOLON;
                 case '?': Advance(); return tok = Sqlx.QMARK; //added for Prepare()
                 case ':':
-                    if (ch == ':')
                     {
                         Advance();
-                        return tok = Sqlx.DOUBLECOLON;
+                        if (ch == ':')
+                        {
+                            Advance();
+                            return tok = Sqlx.DOUBLECOLON;
+                        }
+                        return tok = Sqlx.COLON;
                     }
-                    return tok = Sqlx.COLON;
                 case '-':
                     if (minusch == ' ')
                         Advance();
@@ -706,6 +741,11 @@ namespace Pyrrho.Level4
                         while (pos < input.Length)
                             Advance();
                         return Next();
+                    }
+                    if (ch=='[')
+                    {
+                        Advance();
+                        return Sqlx.ARROWBASE;
                     }
                     return tok = Sqlx.MINUS;
                 case '|':
@@ -725,6 +765,16 @@ namespace Pyrrho.Level4
                     {
                         Advance();
                         return tok = Sqlx.NEQ;
+                    }
+                    if (ch=='-')
+                    {
+                        Advance();
+                        if (ch=='[')
+                        {
+                            Advance();
+                            return tok = Sqlx.RARROW;
+                        }
+                        throw new DBException("42000", "<-");
                     }
                     return tok = Sqlx.LSS;
                 case '=': Advance(); return tok = Sqlx.EQL;
@@ -842,7 +892,7 @@ namespace Pyrrho.Level4
         /// <returns>the stop character</returns>
         public char XmlNext(params char[] stop)
         {
-            Stack<char> nest = new Stack<char>();
+            Stack<char> nest = new ();
             char quote = (char)0;
             int n = stop.Length;
             int start = pos;
@@ -898,20 +948,20 @@ namespace Pyrrho.Level4
         }
         public static string UnLex(Sqlx s)
         {
-            switch (s)
+            return s switch
             {
-                default: return s.ToString();
-                case Sqlx.EQL: return "=";
-                case Sqlx.NEQ: return "<>";
-                case Sqlx.LSS: return "<";
-                case Sqlx.GTR: return ">";
-                case Sqlx.LEQ: return "<=";
-                case Sqlx.GEQ: return ">=";
-                case Sqlx.PLUS: return "+";
-                case Sqlx.MINUS: return "-";
-                case Sqlx.TIMES: return "*";
-                case Sqlx.DIVIDE: return "/";
-            }
+                Sqlx.EQL => "=",
+                Sqlx.NEQ => "<>",
+                Sqlx.LSS => "<",
+                Sqlx.GTR => ">",
+                Sqlx.LEQ => "<=",
+                Sqlx.GEQ => ">=",
+                Sqlx.PLUS => "+",
+                Sqlx.MINUS => "-",
+                Sqlx.TIMES => "*",
+                Sqlx.DIVIDE => "/",
+                _ => s.ToString(),
+            };
         }
      }
 }

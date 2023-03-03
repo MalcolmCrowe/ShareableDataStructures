@@ -1,7 +1,3 @@
-using System;
-using System.IO;
-using System.Collections.Generic;
-using System.Threading;
 using System.Text;
 using System.Net;
 using System.Net.Sockets;
@@ -10,12 +6,9 @@ using Pyrrho.Level3; // for Database
 using Pyrrho.Level4; // for Select
 using Pyrrho.Level1; // for DataFile option
 using Pyrrho.Common;
-#if WINDOWS
-using System.Security.AccessControl;
-#endif
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -531,17 +524,17 @@ namespace Pyrrho
                                 {
                                     old = CTree<long, TypedValue>.Empty;
                                     for (var b = dm.rowType.First(); b != null; b = b.Next())
-                                        if (f.iSMap.Contains(b.value()) &&
-                                            vs[b.value()] is TypedValue tt)
-                                        old += (f.iSMap[b.value()], tt);
+                                        if (b.value() is long bp && f.iSMap[bp] is long fp &&
+                                            vs[p] is TypedValue tt)
+                                            old += (fp, tt);
                                     if (ans?.First()?.value() is TableActivation ta)
                                     {
                                         ta.cursors += (ta._fm.defpos, ib);
                                         ta.EachRow(ib._pos);
                                         cx.db = ta.db;
                                         ta.Finish();
-                                        vs = ta.newRow??CTree<long,TypedValue>.Empty;
-                                        if (cx.affected!=null && ta.affected!=null)
+                                        vs = ta.newRow ?? CTree<long, TypedValue>.Empty;
+                                        if (cx.affected != null && ta.affected != null)
                                             cx.affected += ta.affected;
                                     }
                                 }
@@ -553,25 +546,25 @@ namespace Pyrrho
                                     var en = 0;
                                     var td = cx._Dom(tb);
                                     for (var b = td?.rowType.First(); b != null; b = b.Next())
-                                    {
-                                        var a = b.value();
-                                        var dt = td?.representation[a] ?? Domain.Content;
-                                        if (dt.Compare(old[a]??TNull.Value, vs[a]??TNull.Value) != 0)
-                                            en++;
-                                    }
+                                        if (b.value() is long a)
+                                        {
+                                            var dt = td?.representation[a] ?? Domain.Content;
+                                            if (dt.Compare(old[a] ?? TNull.Value, vs[a] ?? TNull.Value) != 0)
+                                                en++;
+                                        }
                                     tcp.Write(Responses.Entity);
                                     tcp.PutInt(en);
                                     for (var b = td?.rowType.First(); b != null; b = b.Next())
-                                    {
-                                        var a = b.value();
-                                        var dt = td?.representation[a]??Domain.Content;
-                                        if (dt.Compare(old[a]??TNull.Value, vs[a]??TNull.Value) != 0)
+                                        if (b.value() is long a)
                                         {
-                                            tcp.PutString(cx.NameFor(a));
-                                            tcp.PutInt(dt.Typecode());
-                                            tcp.PutData(cx, vs[a]??TNull.Value);
+                                            var dt = td?.representation[a] ?? Domain.Content;
+                                            if (dt.Compare(old[a] ?? TNull.Value, vs[a] ?? TNull.Value) != 0)
+                                            {
+                                                tcp.PutString(cx.NameFor(a));
+                                                tcp.PutInt(dt.Typecode());
+                                                tcp.PutData(cx, vs[a] ?? TNull.Value);
+                                            }
                                         }
-                                    }
                                     tcp.PutLong(ep);
                                     tcp.Write(Responses.Done);
                                 }
@@ -612,17 +605,17 @@ namespace Pyrrho
                                         vs = dm.Parse(cx, ss[4]);
                                         var us = BTree<long, UpdateAssignment>.Empty;
                                         for (var b = dm.rowType.First(); b != null; b = b.Next())
-                                        {
-                                            var c = b.value();
-                                            var ov = ib.values[c]??TNull.Value;
-                                            var nv = vs[c]??TNull.Value;
-                                            var dt = dm.representation[c] ?? Domain.Content;
-                                            if (dt.Compare(ov, nv) != 0)
+                                            if (b.value() is long c)
                                             {
-                                                var ns = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), cx, nv));
-                                                us += (c, new UpdateAssignment(c, ns.defpos));
+                                                var ov = ib.values[c] ?? TNull.Value;
+                                                var nv = vs[c] ?? TNull.Value;
+                                                var dt = dm.representation[c] ?? Domain.Content;
+                                                if (dt.Compare(ov, nv) != 0)
+                                                {
+                                                    var ns = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), nv));
+                                                    us += (c, new UpdateAssignment(c, ns.defpos));
+                                                }
                                             }
-                                        }
                                         ans = f.Update(cx, f);
                                         if (ans?.First()?.value() is TableActivation ta)
                                         {
@@ -645,12 +638,12 @@ namespace Pyrrho
                                     var ep = rv[t]?.Last()?.value();
                                     var en = 0;
                                     for (var b = td.rowType.First(); b != null; b = b.Next())
-                                    {
-                                        var a = b.value();
-                                        var dt = td.representation[a] ?? Domain.Content;
-                                        if (vs?.Contains(a) == true && dt.Compare(old?[a] ?? TNull.Value, vs?[a] ?? TNull.Value) != 0)
-                                            en++;
-                                    }
+                                        if (b.value() is long a)
+                                        {
+                                            var dt = td.representation[a] ?? Domain.Content;
+                                            if (vs?.Contains(a) == true && dt.Compare(old?[a] ?? TNull.Value, vs?[a] ?? TNull.Value) != 0)
+                                                en++;
+                                        }
                                     tcp.Write(Responses.Entity);
                                     tcp.PutInt(en);
                                     for (var b = td.rowType.First(); b != null; b = b.Next())
@@ -836,8 +829,7 @@ namespace Pyrrho
                                 if (!db.roles.Contains(rn))
                                     throw new DBException("42105");
                                 conn.props += ("Role", rn);
-                                var rp = db.roles[rn];
-                                if (db.objects[rp] is not Role ro
+                                if (db.roles[rn] is not long rp || db.objects[rp] is not Role ro
                                     || cx==null)
                                     throw new DBException("42105");
                                 db += (ro, db.loadpos);
@@ -1039,20 +1031,23 @@ namespace Pyrrho
             tcp.PutInt(1);
             var domains = BTree<int, Domain>.Empty;
             var i = 0;
-            if (rb.columns is CList<long> co)
+            if (rb.columns is BList<long?> co)
+            {
                 for (var b = co.First(); b != null; b = b.Next(), i++)
-                    domains += (i, rb._dom.representation[b.value()]??Domain.Content);
+                    if (b.value() is long p)
+                        domains += (i, rb._dom.representation[p] ?? Domain.Content);
+            }
             else
                 for (var b = rb.dataType.representation.First(); b != null; b = b.Next(), i++)
-                    domains += (i, cx._Dom(b.value())??Domain.Content);
-            var dc = domains[nextCol]??throw new PEException("PE1401");
+                    domains += (i, cx._Dom(b.value()) ?? Domain.Content);
+            var dc = domains[nextCol] ?? throw new PEException("PE1401");
             var ds = rb.display;
             if (ds == 0)
                 ds = rb.Length;
             nextCell = rb[nextCol++];
             if (nextCol == ds)
                 lookAheadDone = false;
-            var (rv,rc) = tcp.Check(cx, rb);
+            var (rv, rc) = TCPStream.Check(cx, rb);
             tcp.PutCell(cx, dc, nextCell, rv, rc);
             for (; ; )
             {
@@ -1066,9 +1061,9 @@ namespace Pyrrho
                     nextCol = 0;
                     if (rb == null)
                         break;
-                    (rv, rc) = tcp.Check(cx, rb);
+                    (rv, rc) = TCPStream.Check(cx, rb);
                 }
-                nextCell = rb[nextCol]??throw new PEException("PE0110");
+                nextCell = rb[nextCol] ?? throw new PEException("PE0110");
                 int len = DataLength(cx, nextCell, rv, rc);
                 dc = domains[nextCol] ?? throw new PEException("PE1405");
                 if (dc.CompareTo(nextCell.dataType) != 0)
@@ -1175,13 +1170,13 @@ namespace Pyrrho
         {
             int len = 4;
             for (var b = v.columns.First(); b != null; b = b.Next())
-            {
-                var i = b.key();
-                var p = b.value();
-                len += StringLength(Domain.NameFor(cx, p, i))
-                    + TypeLength(v.dataType.representation[p]??Domain.Content)
-                    + DataLength(cx, v[i]);
-            }
+                if (b.value() is long p)
+                {
+                    var i = b.key();
+                    len += StringLength(Domain.NameFor(cx, p, i))
+                        + TypeLength(v.dataType.representation[p] ?? Domain.Content)
+                        + DataLength(cx, v[i]);
+                }
             return len;
 
         }
@@ -1236,11 +1231,12 @@ namespace Pyrrho
             tcp.PutInt((cx?.affected==null)?0:(int)cx.affected.Count);
             for (var tb = cx?.affected?.First(); tb != null; tb = tb.Next())
                 for (var b = tb.value().First(); b != null; b = b.Next())
-                {
-                    tcp.PutString(DBObject.Uid(tb.key()));
-                    tcp.PutLong(b.key());
-                    tcp.PutLong(b.value());
-                }
+                    if (b.value() is long p)
+                    {
+                        tcp.PutString(DBObject.Uid(tb.key()));
+                        tcp.PutLong(b.key());
+                        tcp.PutLong(p);
+                    }
         }
     }
 	/// <summary>
@@ -1249,7 +1245,6 @@ namespace Pyrrho
 	/// </summary>
 	class PyrrhoStart
 	{
-        internal static List<PyrrhoServer> connections = new();
         /// <summary>
         /// the default database folder
         /// </summary>
@@ -1275,7 +1270,7 @@ namespace Pyrrho
         public static string hostname = "localhost";
         public static int port = 5433;
         internal static bool VerboseMode = false, TutorialMode = false, DebugMode = false, 
-            HTTPFeedbackMode = false,ShowPlan = false;
+            HTTPFeedbackMode = false,ShowPlan = false, ShowGraph = false;
         /// <summary>
         /// The main service loop of the Pyrrho DBMS is here
         /// </summary>
@@ -1364,9 +1359,10 @@ namespace Pyrrho
                         p = int.Parse(args[k][3..]);
                     switch (args[k][1])
                     {
+                        case 'R': ShowPlan = true; break;
+                        case 'G': ShowGraph = true; break;
                         case 's': httpport = (p < 0) ? 8180 : p; break;
                         case 'S': httpsport = (p < 0) ? 8133 : p; break;
-                        case 'R': ShowPlan = true; break;
                     }
                 }
 #if WINDOWS
@@ -1419,6 +1415,7 @@ namespace Pyrrho
             Console.WriteLine("   +S[:port]  Start HTTPS REST service on the given port (default 8133).");
             Console.WriteLine("Flags:");
             Console.WriteLine("   -D  Debug mode");
+            Console.WriteLine("   +G  Show graph");
             Console.WriteLine("   -H  Show feedback on HTTP RESTView operations");
             Console.WriteLine("   +R  Show evaluation plan");
             Console.WriteLine("   -V  Verbose mode");
@@ -1429,8 +1426,8 @@ namespace Pyrrho
         /// </summary>
  		internal static string[] Version = new string[]
         {
-            "Pyrrho DBMS (c) 2022 Malcolm Crowe and University of the West of Scotland",
-            "7.02alpha","(31 Dec 2022)", "http://www.pyrrhodb.com"
+            "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
+            "7.03alpha","(3 Mar 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

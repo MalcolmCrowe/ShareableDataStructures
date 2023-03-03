@@ -6,7 +6,7 @@ using Pyrrho.Common;
 using System.Configuration;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -29,10 +29,10 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The Table
         /// </summary>
-		public Table? table;
+		public Table? table; // may be a shadow: watch for NodeType/EdgeType
         public long tabledefpos;
         /// <summary>
-        /// The position in the table (this matters for select * from ..)
+        /// The position in the table (-1 means don't care: replace by rowType.Length)
         /// </summary>
 		public int seq;
         public virtual long defpos => ppos;
@@ -50,9 +50,19 @@ namespace Pyrrho.Level2
             if (table != null && dataType != null)
             {
                 if (!Committed(wr, table.defpos)) return table.defpos;
-                dataType.Create(wr, tr);
+                domdefpos = dataType.Create(wr, tr);
             }
             return -1;
+        }
+        public override BList<long?> Dependent(Transaction tr, BList<long?> ds)
+        {
+            if (domdefpos > tr.loadpos)
+            {
+                if (tr.physicals[domdefpos] is PType udt)
+                    ds = udt.Dependent(tr,ds);
+                ds += domdefpos;
+            }
+            return ds;
         }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -62,14 +72,18 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the columns</param>
         /// <param name="sq">The 0-based position in the table</param>
         /// <param name="dm">The domain</param>
+        /// <param name="tc">The target object for the generation rule or -1</param>
+        /// <param name="nst">The first possible framing object</param>
         /// <param name="tb">The local database</param>
-        public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
-            Context cx,long tc) : base(t,pp,cx,nm,tc,dm)
+        public PColumn(Type t, Table pr, string nm, int sq, Domain dm,long tc, long nst, long pp, 
+            Context cx) : base(t,pp,cx,nm,tc,dm,nst)
 		{
 			table = pr;
 			seq = sq;
+            framing = Framing.Empty;
             tabledefpos = pr.defpos;
             dataType = dm;
+            domdefpos = dm.defpos;
 		}
         /// <summary>
         /// Constructor: a new Column definition from the buffer
@@ -88,10 +102,10 @@ namespace Pyrrho.Level2
         {
             if (x.table != null && x.dataType!=null)
             {
-                table = (Table)x.table._Relocate(wr.cx);
+                table = (Table)x.table.Fix(wr.cx);
                 tabledefpos = table.defpos;
                 seq = x.seq;
-                dataType = (Domain)x.dataType.Relocate(wr.cx);
+                domdefpos = x.domdefpos;
             }
         }
         protected override Physical Relocate(Writer wr)
@@ -106,13 +120,13 @@ namespace Pyrrho.Level2
 		{
             if (table == null || dataType == null)
                 return;
-			table = (Table)table._Relocate(wr.cx);
+			table = (Table)table.Fix(wr.cx);
             tabledefpos = table.defpos;
-			dataType = wr.cx.db.Find(dataType) ?? throw new PEException("PE0302");
+            dataType = wr.cx.db.Find(dataType) ?? throw new PEException("PE0302");
             wr.PutLong(table.defpos);
             wr.PutString(name.ToString());
             wr.PutInt(seq);
-            wr.PutLong(wr.cx.db.types[dataType]);
+            wr.PutLong(domdefpos);
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -175,13 +189,6 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal int flags
-        {
-            get
-            {
-                return (notNull ? 0x100 : 0) + ((generated.gen == 0) ? 0 : 0x200);
-            }
-        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -201,12 +208,14 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx, long p)
         {
-           table = (Table?)cx.db.objects[table?.defpos??-1L];
-           var ro = (table is VirtualTable)?Database._system?.role:cx.role;
-           if (table == null || dataType == null || ro == null)
+            if (table==null || cx.db.objects[table.defpos] is not Table tb)
+                return null;
+            table = tb;
+            var ro = (table is VirtualTable) ? Database._system?.role : cx.role;
+            if (table == null || dataType == null || ro == null)
                 return null;
             cx.Install(dataType, p);
-            var tc = new TableColumn(table, this, dataType,ro,cx.user);
+            var tc = new TableColumn(table, this, dataType, ro, cx.user);
             var rp = ro.defpos;
             var oi = table.infos[rp];
             if (oi == null)
@@ -215,30 +224,36 @@ namespace Pyrrho.Level2
             var oc = new ObInfo(name, priv);
             tc += (DBObject.Infos, tc.infos + (rp, oc)); // table name will already be known
             cx.Add(tc);
-            if (table.defpos<0)
+            if (table.defpos < 0)
                 throw new DBException("42105");
             var op = cx.parse;
             cx.parse = ExecuteStatus.Compile;
-            var dm = cx._Dom(table);
-            if (dm == null)
-                return null;
-            if (dm.defpos < 0)
-            {
-                dm = (Domain)dm.Relocate(cx.GetUid());
-                cx.Add(dm);
-                table += (DBObject._Domain, dm.defpos); 
-            }
-            dm = new Domain(table.domain, cx, Sqlx.TABLE,
-                dm.representation + (tc.defpos, dataType), dm.rowType + tc.defpos);
-            cx.Add(dm);
-            table += (cx,tc); 
-            table += (DBObject._Framing,table.framing+dm);
+            cx.Add(tb.framing);
+            table += (cx, seq, tc);
+            table += (DBObject._Framing, table.framing);
             table += (DBObject.LastChange, ppos);
+            cx.Install(table, p);
+            if (cx.db.objects[table.nodeType] is NodeType nt)
+            {
+                var rt = nt.rowType + (seq, tc.defpos);
+                var ts = cx.db.types;
+                var rs = nt.representation + (tc.defpos, dataType);
+                nt = nt + (Domain.RowType, rt) + (Domain.Representation, rs);
+                ts += (nt, nt.defpos);
+                cx.db += (nt, cx.db.loadpos);
+                for (var b = nt.subtypes.First(); b != null; b = b.Next())
+                    if (cx._Ob(b.key()) is NodeType st)
+                    {
+                        st += (UDType.Under, nt);
+                        cx.db += (st, cx.db.loadpos);
+                        ts += (st, st.defpos);
+                    }
+                cx.db += (Database.Types, ts);
+            }
             cx.parse = op;
             if (cx.db is Transaction tr && tr.physicals[table.defpos] is Compiled pt)
                 pt.framing = table.framing;
-            cx.Add(table);
-            cx.obs += table.framing.obs;
+            cx.Add(table.framing);
             if (cx.db.format < 51)
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
@@ -246,8 +261,7 @@ namespace Pyrrho.Level2
             }
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(table,p);
-            cx.Install(tc,p);
+            cx.Install(tc, p);
             return table;
         }
     }
@@ -269,8 +283,8 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn2(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            bool nn, GenerationRule ge, long pp, Context cx)
-            : this(Type.PColumn2,pr,nm,sq,dm,ds,dv,nn,ge,pp,cx)
+            bool nn, GenerationRule ge, long nst, long pp, Context cx)
+            : this(Type.PColumn2,pr,nm,sq,dm,ds,dv,nn,ge,nst, pp,cx)
 		{ }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -285,8 +299,8 @@ namespace Pyrrho.Level2
         /// <param name="ge">the Generation Rule</param>
         /// <param name="db">The database</param>
         protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, string ds,
-            TypedValue v, bool nn, GenerationRule ge, long pp, Context cx)
-            : base(t,pr,nm,sq,dm+(Domain.Default,v),pp,cx,ge.target)
+            TypedValue v, bool nn, GenerationRule ge, long nst, long pp, Context cx)
+            : base(t,pr,nm,sq,(Domain)dm.New(cx,dm.mem+(Domain.Default,v)),ge.target,nst,pp,cx)
 		{
 			dfs = ds;
 			notNull = nn;
@@ -310,6 +324,7 @@ namespace Pyrrho.Level2
             dfs = x.dfs;
             notNull = x.notNull;
             generated = x.generated;
+            framing = (Framing)x.framing.Relocate(wr.cx);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -396,9 +411,9 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn3(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge, long pp,
+            string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge, long nst, long pp,
             Context cx)
-            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
+            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, nst, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -414,8 +429,8 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ds, 
             TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
-            GenerationRule ge, long pp, Context cx)
-            : base(t, pr, nm, sq, dm, ds, dv, nn, ge, pp, cx)
+            GenerationRule ge, long nst, long pp, Context cx)
+            : base(t, pr, nm, sq, dm, ds, dv, nn, ge, nst, pp, cx)
         {
             upd = ua;
             ups = us;

@@ -1,10 +1,12 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
     <TargetFramework>net6.0</TargetFramework>
     <ImplicitUsings>enable</ImplicitUsings>
     <Nullable>enable</Nullable>
+    <ApplicationIcon>Server.ico</ApplicationIcon>
+    <StartupObject>Pyrrho.PyrrhoStart</StartupObject>
   </PropertyGroup>
 
   <ItemGroup>
@@ -35,8 +37,15 @@
     <Compile Remove="Class1.cs" />
     <Compile Remove="Crypt.cs" />
     <Compile Remove="GlobalSuppressions.cs" />
+    <Compile Remove="Level2\Checkpoint.cs" />
+    <Compile Remove="Level2\IndexConstraint.cs" />
+    <Compile Remove="Level3\Query.cs" />
+    <Compile Remove="Level3\QuerySpecification.cs" />
     <Compile Remove="Level3\ReadConstraint.cs" />
     <Compile Remove="Level4\Group.cs" />
+    <Compile Remove="Level4\LogRowColSelect.cs" />
+    <Compile Remove="Level4\LogTableSelect.cs" />
+    <Compile Remove="Level4\Value.cs" />
     <Compile Remove="Properties\AssemblyInfo.cs" />
     <Compile Remove="Pyrrho.cs" />
     <Compile Remove="PyrrhoLink.cs" />
@@ -48,6 +57,7 @@
   </ItemGroup>
 
   <ItemGroup>
+    <None Remove=".editorconfig" />
     <None Remove=".gitattributes" />
     <None Remove=".gitignore" />
     <None Remove="app.config" />
@@ -57,6 +67,22 @@
     <None Remove="desktop.ini" />
     <None Remove="Embed.ico" />
     <None Remove="Jun11.txt" />
+    <None Remove="Level3\Database.cs.bak" />
+    <None Remove="Level3\Database.cs0" />
+    <None Remove="Level3\desktop.ini" />
+    <None Remove="Level3\Feb18.txt" />
+    <None Remove="Level3\Feb20.txt" />
+    <None Remove="Level4\Connection.cs.bak" />
+    <None Remove="Level4\desktop.ini" />
+    <None Remove="Level4\feb23.txt" />
+    <None Remove="Level4\feb24.txt" />
+    <None Remove="Level4\Mar20.txt" />
+    <None Remove="Level4\Mar21.txt" />
+    <None Remove="Level4\Mar22.txt" />
+    <None Remove="Level4\Mar23.txt" />
+    <None Remove="Level4\Mar24.txt" />
+    <None Remove="Level4\Mar25.txt" />
+    <None Remove="Level4\Mar26.txt" />
     <None Remove="OSPLink.dll" />
     <None Remove="packages.config" />
     <None Remove="ProSec.dll" />
@@ -72,6 +98,14 @@
     <None Remove="SourceIntro.docx" />
     <None Remove="SourceIntro.pdf" />
     <None Remove="tests.txt" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EditorConfigFiles Remove="I:\PyrrhoDB70\Pyrrho\src\Shared\.editorconfig" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <Content Include="Server.ico" />
   </ItemGroup>
 
 </Project>

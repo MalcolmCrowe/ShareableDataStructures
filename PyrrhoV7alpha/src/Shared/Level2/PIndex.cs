@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -77,7 +77,7 @@ namespace Pyrrho.Level2
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
             if (!Committed(wr,tabledefpos)) return tabledefpos;
             for (var b=columns.First();b!=null;b=b.Next())
-                if (!Committed(wr,b.value())) return b.value();
+                if (b.value() is long p && !Committed(wr,p)) return p;
             if (reference >= 0 && wr.cx.db.objects[reference] is Level3.Index xr)
             {
                 var reftable = xr.tabledefpos;
@@ -140,12 +140,14 @@ namespace Pyrrho.Level2
         {
             name = x.name;
             tabledefpos = wr.cx.Fix(x.tabledefpos);
-            columns = Domain.Row;
+            var bs = BList<DBObject>.Empty;
             for (var b = x.columns.First(); b != null; b = b.Next())
-            {
-                var nc = wr.cx._Ob(wr.cx.Fix(b.value())) ?? throw new PEException("PE0098");
-                columns += (wr.cx, nc);
-            }
+                if (b.value() is long p)
+                {
+                    var nc = wr.cx._Ob(wr.cx.Fix(p)) ?? throw new PEException("PE0098");
+                    bs += nc;
+                }
+            columns = (Domain)wr.cx.Add(new Domain(-1L, wr.cx, Sqlx.ROW, bs, bs.Length));
             flags = x.flags;
             reference = wr.cx.Fix(x.reference);
         }
@@ -167,7 +169,7 @@ namespace Pyrrho.Level2
             wr.PutLong(tabledefpos);
             wr.PutInt(columns.Length);
             for (int j = 0; j < columns.Length; j++)
-                wr.PutLong(columns[j]);
+                wr.PutLong(columns[j]??-1L);
             wr.PutInt((int)flags);
             reference = wr.cx.Fix(reference);
             wr.PutLong(reference);
@@ -184,12 +186,11 @@ namespace Pyrrho.Level2
             int n = rdr.GetInt();
             if (n > 0)
             {
-                columns = Domain.Row;
+                var bs = BList<DBObject>.Empty;
                 for (int j = 0; j < n; j++)
-                {
-                    var ob = rdr.context._Ob(rdr.GetLong()) ?? throw new PEException("PE0097");
-                    columns += (rdr.context, ob);
-                }
+                    if (rdr.context._Ob(rdr.GetLong()) is DBObject ob)
+                        bs += ob;
+                columns = new Domain(rdr.context.GetUid(), rdr.context, Sqlx.ROW, bs, bs.Length);
             }
             flags = (ConstraintType)rdr.GetInt();
             reference = rdr.GetLong();
@@ -247,7 +248,7 @@ namespace Pyrrho.Level2
             string r = GetType().Name + " "+ name;
             r = r + " on " + Pos(tabledefpos) + "(";
             for (int j = 0; j < columns.Length; j++)
-                r += ((j > 0) ? "," : "") + DBObject.Uid(columns[j]);
+                r += ((j > 0) ? "," : "") + DBObject.Uid(columns[j]??-1L);
             r += ") " + flags.ToString();
             if (reference >= 0)
                 r += " refers to [" + Pos(reference) + "]";
@@ -255,35 +256,43 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            var tb = (Table?)cx.db.objects[tabledefpos]??throw new PEException("PE1434");
+            if (cx._Ob(tabledefpos) is not Table tb)
+                return null;
+            var nst = cx.db.nextStmt;
+            var op = cx.parse;
+            cx.parse = ExecuteStatus.Compile;
+            // tb is a shadow table if ta is NodeType or EdgeType 
             var x = new Level3.Index(this, cx).Build(cx);
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
-            tb += (Table.Indexes, tb.indexes + (x.keys, t+(x.defpos,true)));
-            x += (DBObject.Infos, x.infos+(cx.role.defpos,new ObInfo("", Grant.Privilege.Execute)));
-            cx.Install(x,p);
-            if (reference>=0 && cx.db.objects[x.refindexdefpos] is Level3.Index rx)
+            var fr = new Framing(cx, nst);
+            cx.parse = op;
+            tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
+            tb += (DBObject._Framing, tb.framing + fr);
+            x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));
+            cx.Install(x, p);
+            if (reference >= 0 && cx.db.objects[x.refindexdefpos] is Level3.Index rx)
             {
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
-                var rt = (Table?)(cx.obs[x.reftabledefpos]??cx.db.objects[x.reftabledefpos])?? throw new PEException("PE1435");
+                var rt = (Table?)(cx.obs[x.reftabledefpos] ?? cx.db.objects[x.reftabledefpos]) ?? throw new PEException("PE1435");
                 var at = rt.rindexes[x.defpos] ?? CTree<Domain, Domain>.Empty;
-                rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at+(x.keys,rx.keys)));
+                rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at + (x.keys, rx.keys)));
                 cx.Install(rt, p);
-                cx.Install(rx,p);
+                cx.Install(rx, p);
             }
-            var cs = CList<long>.Empty;
+            var cs = BList<long?>.Empty;
             var kc = tb.keyCols;
-            for (var b=x.keys.First();b!=null;b=b.Next())
-            {
-                var tc = b.value();
-                cs += tc;
-                cx.Add(((TableColumn?)cx.db.objects[tc]) ?? throw new PEException("PE1436"));
-                kc += (tc,true);
-            }
+            for (var b = x.keys.First(); b != null; b = b.Next())
+                if (b.value() is long tc)
+                {
+                    cs += tc;
+                    cx.Add(((TableColumn?)cx.db.objects[tc]) ?? throw new PEException("PE1436"));
+                    kc += (tc, true);
+                }
             tb += (Table.KeyCols, kc);
             tb += (DBObject.LastChange, defpos);
+            cx.Install(tb, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(tb, p);
             return tb;
         }
     }
@@ -524,7 +533,7 @@ namespace Pyrrho.Level2
         {
             var tb = (Table)(cx.obs[tabledefpos]??cx.db.objects[tabledefpos]);
             var x = new VirtualIndex(this, cx);
-            var xs = tb.indexes ?? CTree<CList<long>, CTree<long, bool>>.Empty;
+            var xs = tb.indexes ?? CTree<BList<long?>, CTree<long, bool>>.Empty;
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
             tb += (Table.Indexes, xs + (x.keys, t + (x.defpos, true)));
             cx.Install(x, p);
@@ -532,7 +541,7 @@ namespace Pyrrho.Level2
             {
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
                 var rt = (Table)(cx.obs[x.reftabledefpos] ?? cx.db.objects[x.reftabledefpos]);
-                var at = rt.rindexes[x.defpos] ?? CTree<CList<long>, CList<long>>.Empty;
+                var at = rt.rindexes[x.defpos] ?? CTree<BList<long?>, BList<long?>>.Empty;
                 rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at + (x.keys, rx.keys)));
                 cx.Install(rt, p);
                 cx.Install(rx, p);

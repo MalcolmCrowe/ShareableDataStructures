@@ -5,7 +5,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -24,7 +24,7 @@ namespace Pyrrho.Common
     internal class CTree<K, V> : BTree<K, V>,IComparable
     where K : IComparable where V : IComparable
     {
-        public new static CTree<K, V> Empty = new CTree<K, V>();
+        public new static CTree<K, V> Empty = new ();
         protected CTree():base() {}
         /// <summary>
         /// Constructor
@@ -190,7 +190,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="hd">The tree info</param>
         /// <param name="b">The root bucket</param>
-        SqlTree(Domain hd,Sqlx k,Bucket<TypedValue, TypedValue>? b)
+        internal SqlTree(Domain hd,Sqlx k,Bucket<TypedValue, TypedValue>? b)
             : base(b)
         {
             keyType = hd;
@@ -331,10 +331,39 @@ namespace Pyrrho.Common
         {
             return (SqlTree)tree.Remove(k);
         }
+        public TypedValue AutoKey(Sqlx kt)
+        {
+            if (kt == Sqlx.INT || kt == Sqlx.INTEGER)
+            {
+                var v = Last()?.key();
+                var n = v?.ToInt() ?? 0;
+                return new TInt(n + 1);
+            }
+            if (kt == Sqlx.CHAR)
+            {
+                for (var b = PositionAt(new TChar("A"))?.Previous(); b!=null;b=b.Previous())
+                {
+                    var s = b.key().ToString();
+                    if (s.CompareTo("1")<0)
+                        break;
+                    var alldigits = true;
+                    for (var i = 0; alldigits && i < s.Length; i++)
+                        if (!char.IsDigit(s[i]))
+                            alldigits = false;
+                    if (alldigits)
+                        return new TChar((int.Parse(s) + 1).ToString());
+                }
+                var nk = 1;
+                while (Contains(new TChar(nk.ToString())))
+                    nk++;
+                return new TChar(nk.ToString());
+            }
+            throw new DBException("22209", kind);
+        }
     }
     internal class CList<V> : BList<V>, IComparable where V : IComparable
     {
-        public new static readonly CList<V> Empty = new CList<V>();
+        public new static readonly CList<V> Empty = new ();
         protected CList() : base() { }
         public CList(V v) : base(v) { }
         public CList(CList<V> c, V v) : base(c, v) { }
@@ -374,23 +403,6 @@ namespace Pyrrho.Common
             var r = a ?? Empty;
             for (var x = b?.First(); x != null; x = x.Next())
                 r += x.value();
-            return r;
-        }
-        public CList<V> Without(V v)
-        {
-            var r = Empty;
-            for (var b = First(); b != null; b = b.Next())
-                if (b.value().CompareTo(v) != 0)
-                    r += b.value();
-            return r;
-        }
-        public CList<V> Replace(V v,V w)
-        {
-            var r = Empty;
-            for (var b = First(); b != null; b = b.Next())
-                if (b.value().CompareTo(v) == 0)
-                    r += w;
-                else r += b.value();
             return r;
         }
         public int CompareTo(object? obj)

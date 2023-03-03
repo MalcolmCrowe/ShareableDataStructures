@@ -1,11 +1,9 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Text;
+﻿using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -29,12 +27,16 @@ namespace Pyrrho.Common
         private enum ParseState { StartKey, Key, Colon, StartValue, Comma }
         readonly CList<(string, TypedValue)> content = CList<(string, TypedValue)>.Empty;
         readonly CTree<string, int> names = CTree<string, int>.Empty;
-        internal static TDocument Null = new TDocument();
+        internal static TDocument Null = new();
         public static string _id = "_id";
-        internal TDocument() : base(Domain.Document)
+        TDocument() : base(Domain.Document)
+        { }
+        protected TDocument(Domain dt,TDocument d) :base(dt)
         {
+            content = d.content; names = d.names;
         }
-        TDocument(CList<(string,TypedValue)> c,CTree<string,int> n) :base(Domain.Document)
+      
+        internal TDocument(CList<(string,TypedValue)> c,CTree<string,int> n) :base(Domain.Document)
         {
             content = c; names = n;
         }
@@ -48,11 +50,11 @@ namespace Pyrrho.Common
                 n += (_id, 0);
             }
             for (var b = r.dataType.rowType.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()] is SqlValue v &&
+                if (b.value() is long p && cx.obs[p] is SqlValue v &&
                         v.infos[cx.role.defpos] is ObInfo vi && vi.name is not null)
                 {
                     n += (vi.name, (int)n.Count);
-                    c += (vi.name, r[b.value()]);
+                    c += (vi.name, r[p]);
                 }
             content = c;
             names = n;
@@ -93,18 +95,18 @@ namespace Pyrrho.Common
         {
             if (o == null || o is DBNull)
                 return TNull.Value;
-            else if (o is string)
-                return new TChar((string)o);
-            else if (o is int)
-                return new TInt((int)o);
-            else if (o is long)
-                return new TInt((long)o);
-            else if (o is double)
-                return new TReal((double)o);
-            else if (o is DateTime)
-                return new TDateTime((DateTime)o);
-            else if (o is byte[])
-                return new TBlob((byte[])o);
+            else if (o is string @string)
+                return new TChar(@string);
+            else if (o is int @int)
+                return new TInt(@int);
+            else if (o is long int1)
+                return new TInt(int1);
+            else if (o is double @double)
+                return new TReal(@double);
+            else if (o is DateTime time)
+                return new TDateTime(time);
+            else if (o is byte[] v)
+                return new TBlob(v);
 #if EMBEDDED
             else if (o is Document)
                 return new TDocument((Document)o);
@@ -317,8 +319,7 @@ namespace Pyrrho.Common
         }
         internal bool GetBool(string n, bool def)
         {
-            var v = this[n] as TBool;
-            if (v == null || !v.value)
+            if (this[n] is not TBool v || !v.value)
                 return def;
             return v.value;
         }
@@ -477,7 +478,7 @@ namespace Pyrrho.Common
                 var c = s[i++];
                 if (c >= '0' && c <= '9') return c - '0';
                 if (c >= 'a' && c <= 'f') return (c - 'a') + 10;
-                if (c >= 'A' && c <= 'F') return (c = 'A') + 10;
+                if (c >= 'A' && c <= 'F') return (c - 'A') + 10;
             }
             throw ParseException("Hex digit expected at " + (i - 1));
         }
@@ -612,7 +613,7 @@ namespace Pyrrho.Common
                 switch (v.Item2.dataType.kind)
                 {
                     case Sqlx.CONTENT: sb.Append('"'); sb.Append(v); sb.Append('"'); break;
-                    case Sqlx.DOCARRAY: sb.Append("[");
+                    case Sqlx.DOCARRAY: sb.Append('[');
                         var d = (TDocArray)v.Item2;
                         var comma = "";
                         for (int i = 0; i < d.Count; i++)
@@ -621,12 +622,12 @@ namespace Pyrrho.Common
                             comma = ", ";
                             Field((""+i,d[i]), sb);
                         }
-                        sb.Append("]");
+                        sb.Append(']');
                         break;
                     case Sqlx.CHAR:
-                        sb.Append("'");
+                        sb.Append('\'');
                         sb.Append(v.Item2.ToString());
-                        sb.Append("'");
+                        sb.Append('\'');
                         break;
                     default:
                         sb.Append(v.Item2.ToString());
@@ -649,7 +650,7 @@ namespace Pyrrho.Common
                     Field(f.value(), sb);
                 }
             }
-            sb.Append("}");
+            sb.Append('}');
             return sb.ToString();
         }
         internal static int GetLength(byte[] b, int off)
@@ -667,7 +668,7 @@ namespace Pyrrho.Common
         internal static byte[] GetBytes(TypedValue v)
         {
             if (v == TNull.Value)
-                return new byte[0];
+                return Array.Empty<byte>();
             switch (v.dataType.kind)
             {
                 case Sqlx.REAL:
@@ -677,8 +678,7 @@ namespace Pyrrho.Common
                 case Sqlx.DOCUMENT:
                     {
                         var doc = v as TDocument;
-                        if (doc == null)
-                            doc = new TDocument();
+                        doc ??= new TDocument();
                         return doc.ToBytes(null);
                     }
                 case Sqlx.DOCARRAY:
@@ -722,16 +722,16 @@ namespace Pyrrho.Common
                 case Sqlx.NUMERIC:
                     return ToBytes(v.ToString());
                 case Sqlx.INTEGER:
-                    if (v is TInteger)
+                    if (v is TInteger integer)
                     {
-                        var iv = ((TInteger)v).ivalue;
+                        var iv = integer.ivalue;
                         if (iv.BitsNeeded() > 64)
                             return ToBytes(iv.ToString());
                         return BitConverter.GetBytes((long)iv);
                     }
                     return BitConverter.GetBytes(v.ToInt()??0);
             }
-            return new byte[0];
+            return Array.Empty<byte>();
         }
         static byte[] ToBytes(string s)
         {
@@ -791,7 +791,8 @@ namespace Pyrrho.Common
             SetLength(r);
             return r.ToArray();
         }
-        bool IsZero((string,TypedValue) fv)
+
+        static bool IsZero((string,TypedValue) fv)
         {
             switch (fv.Item2.dataType.kind)
             {
@@ -840,25 +841,24 @@ namespace Pyrrho.Common
                             return -1;
             return 0;
         }
-        int RowSet(string nm,TypedValue a, TypedValue b)
+
+        static int RowSet(string nm,TypedValue a, TypedValue b)
         {
             var ki = b.dataType.kind;
             if (ki != Sqlx.DOCARRAY && ki != Sqlx.DOCUMENT)
                 return -1;
             var vb = b[nm];
-            if (vb == null)
-                vb = TNull.Value;
+            vb ??= TNull.Value;
             if (a == TNull.Value && b == TNull.Value)
                 return 0;
-            var ef = a as TDocument;
-            if (ef == null)
+            if (a is not TDocument ef)
             {
                 var c = a.CompareTo(vb);
                 if (c != 0)
                     return c;
                 return 0;
             }
-            for(var eef = ef.content.First();eef != null;eef=eef.Next())
+            for (var eef = ef.content.First();eef != null;eef=eef.Next())
             {
                 var c = a.CompareTo(vb);
                 if (c != 0)
@@ -866,25 +866,9 @@ namespace Pyrrho.Common
             }
             return 0;
         }
-        internal TDocument Add(string k, Transaction tr, SqlValue c)
-        {
-            return Add(k, c.Eval(Context._system));
-        }
-        internal TDocument Add(string n, int v)
-        {
-            return Add(n, new TInt(v));
-        }
         internal TDocument Add(string n, string v)
         {
             return Add(n, new TChar(v));
-        }
-        internal TDocument Add(string n, bool v)
-        {
-            return Add(n, v?TBool.True:TBool.False);
-        }
-        internal TDocument Add(string n, double v)
-        {
-            return Add(n, new TReal(v));
         }
         public bool Contains(string n)
         {
@@ -969,7 +953,7 @@ namespace Pyrrho.Common
             {
                 if (was.Contains(ne.value().Item1))
                     goto all;
-                m = m + 1;
+                m++;
                 details+=new Action(m, Verb.Add, ne.value().Item1, ne.value().Item2);
             }
             return;
@@ -1007,7 +991,7 @@ namespace Pyrrho.Common
         readonly BList<TypedValue> content = BList<TypedValue>.Empty;
         internal long Count => content.Count;
         int nbytes = 0;
-        internal static TDocArray Null = new TDocArray();
+        internal static TDocArray Null = new();
         internal TDocArray() : base(Domain.DocArray)
         {
         }
@@ -1135,7 +1119,7 @@ namespace Pyrrho.Common
                 sb.Append(comma); comma = ", ";
                 TDocument.Field((""+f.key(),f.value()), sb);
             }
-            sb.Append("]");
+            sb.Append(']');
             return sb.ToString();
         }
         internal byte[] ToBytes()

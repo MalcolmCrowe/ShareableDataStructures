@@ -3,7 +3,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -47,15 +47,18 @@ namespace Pyrrho.Level3
         public Method(long defpos, BTree<long, object> m) : base(defpos, m) { }
         public static Method operator+(Method m,(long,object)x)
         {
+            var (dp, ob) = x;
+            if (m.mem[dp] == ob)
+                return m;
             return (Method)m.New(m.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new Method(defpos,m);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return new Method(dp,mem);
+            return new Method(dp, m);
         }
         public override string ToString()
         {
@@ -85,7 +88,7 @@ namespace Pyrrho.Level3
         /// <param name="n">The method name</param>
         /// <param name="actIns">The actual parameter list</param>
         /// <returns>The return value</returns>
-        public Context Exec(Context cx, long var, CList<long> actIns)
+        public Context Exec(Context cx, long var, BList<long?> actIns)
         {
             if (cx.role==null || infos[cx.role.defpos] is not ObInfo oi
              || !oi.priv.HasFlag(Grant.Privilege.Execute))
@@ -104,7 +107,7 @@ namespace Pyrrho.Level3
             var acts = new TypedValue[n];
             var i = 0;
             for (var b = actIns.First(); i < n && b != null; b = b.Next(), i++)
-                if (cx.obs[b.value()]?.Eval(cx) is TypedValue tv)
+                if (b.value() is long p && cx.obs[p]?.Eval(cx) is TypedValue tv)
                     acts[i] = tv;
             if (cx.db.objects[defpos] is not Method me)
                 throw new DBException("42108", NameFor(cx));
@@ -118,7 +121,7 @@ namespace Pyrrho.Level3
             act.values += (defpos, targ);
             i = 0;
             for (var b = me.ins.First(); b != null; b = b.Next(), i++)
-                if (act.obs[b.value()] is FormalParameter pi) 
+                if (b.value() is long p && act.obs[p] is FormalParameter pi) 
                 act.values += (pi.val, acts[i]);
             cx = bd.Obey(act);
             var r = act.Ret();
@@ -128,7 +131,7 @@ namespace Pyrrho.Level3
                         cx.values += (b.key(), b.value());
             i = 0;
             for (var b = me.ins.First(); b != null; b = b.Next(), i++)
-                if (cx.obs[b.value()] is FormalParameter p)
+                if (b.value() is long bp && cx.obs[bp] is FormalParameter p)
                     if (act.values[p.val] is TypedValue v)
                     {
                         var m = p.paramMode;
@@ -149,10 +152,10 @@ namespace Pyrrho.Level3
             var oi = BTree<long, ObInfo>.Empty;
             for (var u = udt.infos.First(); u != null; u = u.Next())
             {
-                var ms = CTree<string, CTree<CList<Domain>, long>>.Empty;
+                var ms = BTree<string, BTree<CList<Domain>, long?>>.Empty;
                 for (var b = u.value().methodInfos.First(); b != null; b = b.Next())
                 {
-                    var sm = CTree<CList<Domain>, long>.Empty;
+                    var sm = BTree<CList<Domain>, long?>.Empty;
                     var ch = false;
                     for (var c = b.value().First(); c != null; c = c.Next())
                     {

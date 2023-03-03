@@ -1,10 +1,11 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -33,7 +34,7 @@ namespace Pyrrho.Level3
         /// The source SQL for the check constraint
         /// </summary>
         internal string source => (string?)mem[Source]??"";
-        public string? name => (string?)mem[ObInfo.Name]; // constraints cannot be renamed
+        public new string? name => (string?)mem[ObInfo.Name]; // constraints cannot be renamed
         internal long search => (long)(mem[Condition]??-1L);
         /// <summary>
         /// Constructor: from the level 2 information
@@ -71,7 +72,7 @@ namespace Pyrrho.Level3
         }
         public static Check operator+(Check c,(long,object)x)
         {
-            return (Check)c.New(c.mem + x);
+            return (c.mem[x.Item1] == x.Item2)?c:(Check)c.New(c.mem + x);
         }
         /// <summary>
         /// a readable version of the object
@@ -89,19 +90,13 @@ namespace Pyrrho.Level3
         {
             return new Check(defpos,m);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp,BTree<long,object>m)
         {
-            return new Check(dp, mem);
+            return new Check(dp,m);
         }
-        internal override Basis _Relocate(Context cx)
+        protected override BTree<long,object> _Fix(Context cx,BTree<long,object>m)
         {
-            var r = (Check)base._Relocate(cx);
-            r += (Condition, cx.Fix(search));
-            return r;
-        }
-        internal override Basis _Fix(Context cx)
-        {
-            var r = (Check)base._Fix(cx);
+            var r = base._Fix(cx,m);
             var ns = cx.Fix(search);
             if (ns!=search)
                 r += (Condition, ns);
@@ -112,8 +107,8 @@ namespace Pyrrho.Level3
             if (nd.objects[checkobjpos] is DBObject ob)
                 nd = ob.DropCheck(defpos, nd, p);
             for (var b = d.roles.First(); b != null; b = b.Next())
-                if (d.objects[b.value()] is Role ro && infos[ro.defpos] is ObInfo oi
-                    && oi.name!=null)
+                if (b.value() is long bp && d.objects[bp] is Role ro 
+                    && infos[ro.defpos] is ObInfo oi && oi.name!=null)
                 {
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
                     nd += (ro, p);

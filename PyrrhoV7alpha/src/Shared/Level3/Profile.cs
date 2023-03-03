@@ -7,7 +7,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -95,7 +95,7 @@ namespace Pyrrho.Level3
             s.Append("TRANSACTION occurrences "+num + " of which "+fails+" failed\n\r");
             if (schema)
                 s.Append("Alterations to database schema\n\r");
-            foreach (Slot<long> t in tables)
+            foreach (Slot<long?> t in tables)
                 ((TableProfile)(t.Value)).Show(s);
         } */
         public override string ToString()
@@ -408,7 +408,7 @@ namespace Pyrrho.Level3
         {
             s.Append("Record occurrences = " + num);
             string comma = " [";
-            foreach (Slot<long> e in rec.fields)
+            foreach (Slot<long?> e in rec.fields)
             {
                 s.Append(comma); s.Append(e.Key);
                 comma = ",";

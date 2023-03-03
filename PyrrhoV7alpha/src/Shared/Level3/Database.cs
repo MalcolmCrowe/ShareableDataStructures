@@ -1,8 +1,11 @@
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
+using Pyrrho.Level5;
+using System.Xml;
+using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -47,63 +50,26 @@ namespace Pyrrho.Level3
             return mm;
         }
         internal abstract Basis New(BTree<long, object> m);
-        public static Basis operator+(Basis b,(long,object)x)
-        {
-            return b.New(b.mem + x);
-        }
-#if ASSERTRANGE
-        /// <summary>
-        /// Alarm bells should ring if any committed DBObject in
-        /// db.objects has any property with a non-shareable uid. 
-        /// If db is a Transaction, this means #,%,@ uids
-        /// If db is a Database, it means !,#,%,@ uids.
-        /// These methods don't know if db is a Transaction,
-        /// (and if it is, e.g. a table has uncommitted records etc)
-        /// but we can test a good many uids anyway.
-        /// </summary>
-        /// <typeparam name="K"></typeparam>
-        /// <typeparam name="V"></typeparam>
-        /// <param name="m"></param>
-        internal void AssertRange<K,V>(ATree<K,V> m) 
-        {
-            for (var b=m.First();b!=null;b=b.Next())
-            {
-                if (b.key() is long p)
-                    AssertRange(p);
-                var o = b.value();
-                if (o is long p0)
-                    AssertRange(p0);
-                if (o is Basis bo)
-                    AssertRange(bo.mem);
-            }
-        }
-        internal static void AssertRange(long p)
-        {
-            if (p > Transaction.Analysing)
-                throw new PEException("PE101");
-        }
-#endif
         internal virtual Basis Fix(Context cx)
         {
-            return _Fix(cx);
+            return New(_Fix(cx,mem));
+        }
+        internal virtual Basis Apply(Context cx,BTree<long,object> m)
+        {
+            return New(_Apply(cx,m,mem));
         }
         /// <summary>
         /// Deep Fix of uids following Commit or View.Instance
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
-        internal virtual Basis _Fix(Context cx)
+        protected virtual BTree<long,object> _Fix(Context cx,BTree<long,object> m)
         {
-            return this;
+            return m;
         }
-        /// <summary>
-        /// Relocation for Commit
-        /// </summary>
-        /// <param name="wr"></param>
-        /// <returns></returns>
-        internal virtual Basis _Relocate(Context cx)
+        protected virtual BTree<long,object> _Apply(Context cx,BTree<long,object>am,BTree<long,object>m)
         {
-            return this;
+            return m;
         }
         public override string ToString()
         {
@@ -120,7 +86,7 @@ namespace Pyrrho.Level3
         /// <param name="ns">remote names</param>
         /// <param name="cx">Context</param>
         /// <returns></returns>
-        internal virtual string ToString(string sg, Remotes rf, CList<long> cs, 
+        internal virtual string ToString(string sg, Remotes rf, BList<long?> cs, 
             CTree<long,string> ns, Context cx)
         {
             return ToString();
@@ -161,7 +127,7 @@ namespace Pyrrho.Level3
         internal readonly long did = ++_did;
         protected static BTree<string, FileStream> dbfiles = BTree<string, FileStream>.Empty;
         internal static BTree<string, Database> databases = BTree<string, Database>.Empty;
-        internal static object _lock = new object();
+        internal static object _lock = new();
         internal static Database Empty = new();
         /// <summary>
         /// The _system database contains primitive domains and system tables and columns.
@@ -173,27 +139,31 @@ namespace Pyrrho.Level3
         internal readonly long loadpos;
         public override long lexeroffset => loadpos;
         internal const long
+            Arriving = -469, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Curated = -53, // long
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
+            Graphs = -461, // CTree<long,TGraph> the set of disjoint graphs for 7.03
             Guest = -55, // long: a role holding all grants to PUBLIC
             Public = -311, // long: always -1L, a dummy user ID
             LastModified = -279, // DateTime
-            Levels = -56, // BTree<Level,long>
+            Leaving = -466, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
+            Levels = -56, // BTree<Level,long?>
             LevelUids = -57, // BTree<long,Level>
             Log = -188,     // BTree<long,Physical.Type>
             NextId = -58, // long:  will be used for next transaction
             NextPos = -395, // long: next proposed Physical record
             NextStmt = -393, // long: next space in compiled range
+            NodeIds = -471, // BTree<string,TNode> 
             Owner = -59, // long: the defpos of the owner user for the database
-            Prefixes = -375, // CTree<string,long> UDT
+            Prefixes = -375, // BTree<string,long?> UDT
             Procedures = -95, // CTree<long,string> Procedure
             Role = -285, // Role: the current role (e.g. an executable's definer)
-            Roles = -60, // BTree<string,long>
+            Roles = -60, // BTree<string,long?>
             _Schema = -291, // long: the owner role for the database
-            Suffixes = -376, // CTree<string,long> UDT
-            Types = -61, // CTree<Domain,long>
+            Suffixes = -376, // BTree<string,long?> UDT
+            Types = -61, // BTree<Domain,long?>
             User = -277, // User: always the connection user
-            Users = -287; // BTree<string,long> users defined in the database
+            Users = -287; // BTree<string,long?> users defined in the database
         internal virtual long uid => -1;
         public string name => (string)(mem[ObInfo.Name]??throw new PEException("PE1001"));
         internal FileStream df => dbfiles[name]??throw new PEException("PE1002");
@@ -202,21 +172,25 @@ namespace Pyrrho.Level3
             throw new PEException("PE777"));
         internal virtual long nextPos => Transaction.TransPos;
         internal long nextId => (long)(mem[NextId] ?? Transaction.Analysing);
-        internal BTree<string, long> roles =>
-            (BTree<string, long>?)mem[Roles] ?? BTree<string, long>.Empty;
-        public BTree<string, long> users =>
-            (BTree<string, long>?)mem[Users] ?? BTree<string, long>.Empty;
+        internal BTree<string, long?> roles =>
+            (BTree<string, long?>?)mem[Roles] ?? BTree<string, long?>.Empty;
+        public BTree<string, long?> users =>
+            (BTree<string, long?>?)mem[Users] ?? BTree<string, long?>.Empty;
         // NB The following 8 entries have default values supplied by _system
         internal Role schema => (Role)(mem[(long)(mem[_Schema]??-1L)] ?? throw new PEException("PE1003"));
         internal Role guest => (Role)(mem[Guest]??throw new PEException("PE1003"));
         internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
         internal Role role => (Role)(mem[Role] ?? guest);
         internal User? user => (User?)mem[User];
+        internal CTree<long, CTree<long, bool>> leaving =>
+            (CTree<long, CTree<long, bool>>)(mem[Leaving] ?? CTree<long, CTree<long, bool>>.Empty);
+        internal CTree<long, CTree<long, bool>> arriving =>
+            (CTree<long, CTree<long, bool>>)(mem[Arriving] ?? CTree<long, CTree<long, bool>>.Empty); 
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal int format => (int)(mem[Format] ?? 0);
-        public BTree<Domain, long> types => (BTree<Domain, long>?)mem[Types]??BTree<Domain,long>.Empty;
-        public BTree<Level, long> levels => (BTree<Level, long>?)mem[Levels]??BTree<Level,long>.Empty;
+        public BTree<Domain, long?> types => (BTree<Domain, long?>?)mem[Types]??BTree<Domain,long?>.Empty;
+        public BTree<Level, long?> levels => (BTree<Level, long?>?)mem[Levels]??BTree<Level,long?>.Empty;
         public BTree<long, Level> cache => (BTree<long, Level>?)mem[LevelUids]??BTree<long,Level>.Empty;
         public DateTime? lastModified => (DateTime?)mem[LastModified];
         public BTree<long, Physical.Type> log =>
@@ -224,10 +198,14 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         public CTree<long, string> procedures =>
             (CTree<long, string>?)mem[Procedures] ?? CTree<long, string>.Empty;
-        public CTree<string, long> prefixes =>
-            (CTree<string, long>?)mem[Prefixes] ?? CTree<string, long>.Empty;
-        public CTree<string, long> suffixes =>
-            (CTree<string, long>?)mem[Suffixes] ?? CTree<string, long>.Empty;
+        public BTree<string, long?> prefixes =>
+            (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
+        public BTree<string, long?> suffixes =>
+            (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
+        public BTree<string, TNode> nodeIds =>
+            (BTree<string, TNode>)(mem[NodeIds] ?? BTree<string, TNode>.Empty); // ->uid
+        public CTree<long,TGraph> graphs =>
+            (CTree<long,TGraph>)(mem[Graphs]??CTree<long,TGraph>.Empty);
         internal static Role schemaRole;
         internal static Role guestRole;
         /// <summary>
@@ -254,14 +232,14 @@ namespace Pyrrho.Level3
         /// <param name="sr"></param>
         /// <param name="gu"></param>
         Database(string n,User su,Role sr,Role gu) 
-            : base((Levels,BTree<Level,long>.Empty),(LevelUids,BTree<long,Level>.Empty),
+            : base((Levels,BTree<Level,long?>.Empty),(LevelUids,BTree<long,Level>.Empty),
                   (ObInfo.Name,n),(sr.defpos,sr),(su.defpos,su),(gu.defpos,gu),
                   // the 7 entries without defaults start here
                   (Role, sr),(DBObject.Definer,sr.defpos),
                   (User,su),(Owner,su.defpos),
                   (Guest,gu),(gu.defpos,gu),
-                  (Types,BTree<Domain,long>.Empty),
-                  (Roles,BTree<string,long>.Empty+(sr.name??"",sr.defpos)+(gu.name??"",gu.defpos)),                
+                  (Types,BTree<Domain,long?>.Empty),
+                  (Roles,BTree<string,long?>.Empty+(sr.name??"",sr.defpos)+(gu.name??"",gu.defpos)),                
                   (NextStmt,Transaction.Executables))
         {
             loadpos = 0;
@@ -289,7 +267,7 @@ namespace Pyrrho.Level3
         {
             loadpos = c;
         }
-        public virtual Database New(long c, BTree<long,object> m)
+        protected virtual Database New(long c, BTree<long,object> m)
         {
             return new Database(c, m);
         }
@@ -319,8 +297,9 @@ namespace Pyrrho.Level3
         {
             var (ob,curpos) = x;
             var m = d.mem;
-            if (d.mem[ob.defpos] != ob)
-                m += (ob.defpos, ob);
+            if (d.mem[ob.defpos] == ob)
+                return d;
+            m += (ob.defpos, ob);
             return d.New(curpos,m);
         }
         public static Database operator +(Database d, (Level, long) x)
@@ -337,7 +316,79 @@ namespace Pyrrho.Level3
         public static Database operator+(Database d,(long,Domain,long)x)
         {
             var (dp, dm, curpos) = x;
-            return d.New(curpos, d.mem + (dp, dm) + (Types,d.types+(dm,dp)));
+            var ts = d.types + (dm, dp);
+            return d.New(curpos, d.mem + (dp, dm) + (Types,ts));
+        }
+        /// <summary>
+        /// This algorithm tolerates missing nodes
+        /// </summary>
+        /// <param name="d"></param>
+        /// <param name="n"></param>
+        /// <returns></returns>
+        /// <exception cref="PEException"></exception>
+        public static Database operator +(Database d, TNode n) //or TEdge
+        {
+            if (n.Graph(d) is not null)
+                return d;
+            var nt = n.dataType;
+            var gs = d.graphs;
+            if (d.objects[n.dataType.structure] is not Table tb ||
+                tb.tableRows[n.uid] is not TableRow tr)
+                return d;
+            var ni = d.nodeIds + (n.id, n);
+            var m = d.mem + (NodeIds, ni);
+            if (n is not TEdge)
+                return d.New(d.loadpos, m + (Graphs, gs + (n.uid, new TGraph(n))));
+            // Edge: end nodes already must be in the database, but may be in different TGraphs
+            var lu = n[1].ToString();
+            var au = n[2].ToString();
+            if (d.Graph(lu) is not TGraph lg || d.Graph(au) is not TGraph ag
+                || lg.Rep() is not TNode lr || ag.Rep() is not TNode ar)
+                return d;
+            if (lr.uid == ar.uid) // already connected
+                return d.New(d.loadpos, m + (Graphs, gs + (lr.uid, lg+n)));
+            // connect the two TGraphs and discard the higher one
+            if (lr.uid < ar.uid)
+            {
+                gs -= ar.uid;
+                gs += (lr.uid, new TGraph(lg.nodes + ag.nodes + (n.uid, n), lg.nids + ag.nids + (n.id, n)));
+            } else
+            {
+                gs -= lr.uid;
+                gs += (ar.uid, new TGraph(lg.nodes + ag.nodes + (n.uid, n), lg.nids + ag.nids + (n.id, n)));
+            }
+            return d.New(d.loadpos, m + (Graphs, gs));
+        }
+        /// <summary>
+        /// Actual removal of a node from the database cascades to edges leaving it or arriving at it.
+        /// Removal of an edge may split a TGraph.So the only safe thing to do is to rebuild
+        /// the whole thing
+        /// </summary>
+        /// <param name="d"></param>
+        /// <param name="n"></param>
+        /// <returns></returns>
+        public static Database operator-(Database d,TNode n) // or edge
+        {
+            var ni = d.nodeIds - n.id;
+            if (ni == d.nodeIds)
+                return d;
+            var nn = BTree<string, long?>.Empty;
+            var ng = CTree<long,TGraph>.Empty;
+            var nd = d.New(d.loadpos, d.mem + (Graphs, ng) + (NodeIds, nn));
+            for (var b = ni.First(); b != null; b = b.Next())
+                if (b.value() is TEdge e)
+                    nd += e;
+            else
+                    nd += b.value();
+            return nd;
+        }
+        internal TGraph? Graph(string s)
+        {
+            if (nodeIds[s] is TNode n)
+                for (var b = graphs.First(); b != null; b = b.Next())
+                    if (b.value().nodes.Contains(n.uid))
+                        return b.value();
+            return null;
         }
         internal virtual DBObject? Add(Context cx,Physical ph,long lp)
         {
@@ -406,18 +457,18 @@ namespace Pyrrho.Level3
             // 1. Default:
             Role ro = guest;
             var user = con.props["User"] ?? throw new DBException("80000");
-            User? u = objects[roles[user]] as User;
-            if (u == null)// 2. if the user is unknown
+            if (objects[roles[user] ?? -1L] is not User u)// 2. if the user is unknown
             {
                 // Has the schema role any users?
                 var users = r.mem.Contains(Users);
                 if (users) // 2a make an uncommitted user
                     u = new User(user); // added to the new Transaction below
-                else {  // 2b 
-                    if (user == Environment.UserDomainName+"\\"+Environment.UserName) //2bi
+                else
+                {  // 2b 
+                    if (user == Environment.UserDomainName + "\\" + Environment.UserName) //2bi
                     {
                         var sysdb = _system ?? throw new PEException("PE1009");
-                        u = sysdb.user  ?? throw new PEException("PE855");
+                        u = sysdb.user ?? throw new PEException("PE855");
                         ro = schema // allow the server account use the schema role
                             ?? throw new PEException("PE856");
                     }
@@ -427,7 +478,7 @@ namespace Pyrrho.Level3
             }
             if (con.props["Role"] is string rn) // 3. has a specific role been requested?
             {
-                ro = (Role)(objects[roles[rn]]
+                ro = (Role)(objects[roles[rn]??-1L]
                     ?? throw new DBException("42105")); // 3a
                 if (u!=null && ro.infos[u.defpos] is ObInfo ou
                         && ou.priv.HasFlag(Grant.Privilege.UseRole)) // user has usage
@@ -446,7 +497,7 @@ namespace Pyrrho.Level3
             {
                 // 4aii See if the use can access just one role 
                 for (var b = roles.First(); b != null; b = b.Next())
-                    if (objects[b.value()] is Role br)
+                    if (objects[b.value()??-1L] is Role br)
                     {
                         if (br.infos[u.defpos] is ObInfo bi
                             && bi.priv.HasFlag(Grant.Privilege.UseRole))
@@ -481,16 +532,19 @@ namespace Pyrrho.Level3
         }
         public DBObject? GetObject(string n,Role r)
         {
-            return r.dbobjects.Contains(n)? objects[r.dbobjects[n]] as DBObject : null;
+            return r.dbobjects.Contains(n)? objects[r.dbobjects[n]??-1L] as DBObject : null;
         }
         public Procedure? GetProcedure(string n,CList<Domain> a)
         {
-            return (role.procedures[n] is CTree<CList<Domain>,long> pt &&
-                pt.Contains(a))? objects[pt[a]] as Procedure:null;
+            return (role.procedures[n] is BTree<CList<Domain>,long?> pt &&
+                pt.Contains(a))? objects[pt[a]??-1L] as Procedure:null;
         }
         public Domain? Find(Domain dm)
         {
-            return types.Contains(dm)? (Domain?)objects[types[dm]] : null;
+            dm -= Domain.OrderCategory; // probably OrderCategory.Primitive
+            dm -= Domain.Descending;
+            dm -= Domain.NotNull;
+            return objects[types[dm] ?? -1L] as Domain;
         }
         public virtual Database RdrClose(ref Context cx)
         {
@@ -593,9 +647,14 @@ namespace Pyrrho.Level3
                 return 0;
             var r = 0L;
             for (var b = aff.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key()] is Table && b.value() is CTree<long,long> tt)
+                if (cx.db.objects[b.key()] is Table && b.value() is BTree<long,long?> tt)
                     r += tt.Count;
             return (int)r;
+        }
+        internal static void UpdateWith(Database d)
+        {
+            lock (_lock)
+                databases += (d.name, d);
         }
         /// <summary>
         /// Accessor: a level2 record by position

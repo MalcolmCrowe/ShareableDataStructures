@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -66,12 +66,12 @@ namespace Pyrrho.Level2
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(name, priv);
-            tc += (DBObject.Infos,new BTree<long,ObInfo>(ro.defpos, ci));
-            table += (cx,tc);
+            tc += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
+            table += (cx, seq, tc);
+            cx.Install(table, p);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(table, p);
             cx.Install(tc, p);
             return tc;
         }
@@ -135,13 +135,13 @@ namespace Pyrrho.Level2
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(name, priv);
-            table += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci)); 
-            table += (cx,tc);
+            table += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
+            table += (cx, seq, tc);
+            cx.Install(table, p);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(table,p);
-            cx.Install(tc,p);
+            cx.Install(tc, p);
             return tc;
         }
     }
@@ -165,11 +165,12 @@ namespace Pyrrho.Level2
         /// <param name="ua">The update assignment rule</param>
         /// <param name="nn">The (new) setting for NOT NULL</param>
         /// <param name="ge">The (new) setting for GENERATED ALWAYS</param>
+        /// <param name="nst">The first possible framing executable</param>
         /// <param name="db">The local database</param>
         public Alter3(long co, string nm, int sq, Table tb, Domain dm, string ds,
             TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
-            GenerationRule ge, long pp, Context cx) :
-            base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
+            GenerationRule ge, long nst, long pp, Context cx) :
+            base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, nst, pp, cx)
 		{
             _defpos = co;
 		}
@@ -214,6 +215,7 @@ namespace Pyrrho.Level2
             table = (Table?)cx.db.objects[table.defpos];
             if (table == null)
                 return null;
+            cx.obs += table.framing.obs;
             if (table.infos[ro.defpos] is not ObInfo ti)
                 throw new PEException("PE47122");
             ti += (ObInfo.SchemaKey, p);
@@ -222,12 +224,12 @@ namespace Pyrrho.Level2
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var oc = new ObInfo(name, priv);
             tc += (ro.defpos, oc);
-            table += (cx,tc);
+            table += (cx, seq, tc);
+            cx.Install(table, p);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(table,p);
-            cx.Install(tc,p);
+            cx.Install(tc, p);
             return tc;
         }
         /// <summary>

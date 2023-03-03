@@ -48,6 +48,7 @@ select b-3 as h,22 as g from f
 select f.b as h,(c) from f
 select b+3,d.c from f d
 select (b as d,c) from f
+-->[{Col0:(D=17,C=15)},{Col0:(D=23,C=6)}]
 select * from f order by c
 select * from f order by b desc
 select * from f order by b+c
@@ -368,8 +369,7 @@ ORDER BY KdUmsatz DESC]
 create table ad(a int,b char)
 insert into ad values(20,'Twenty')
 alter table ad add c char not null
- -> Table is not empty
-alter table ad add c char default 'XX'
+alter table ad alter c set default 'XX'
 insert into ad(a,b) values(2,'Two')
 select * from ad
 ->[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]
@@ -448,7 +448,7 @@ begin atomic update ot set d='deleted' end]
 begin atomic insert into xc (select b,c from ot) end]
 delete from xa where d='changed'
 table xa
- -> [{B:8,C:10,D:'deleted'},{B:9,C:12,D:'Nine'}]
+ -> [{B:8,C:10,D:'changed'},{B:9,C:12,D:'Nine'}]
 table xc
   -> [{TOTB:8,TOTC:10}]
 17:
@@ -777,3 +777,27 @@ select * from ww
 {E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'},
 {E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},
 {E:8,D:'C',K:1,F:'Eight'}]
+25:
+create type product nodetype
+[CREATE
+(Joe:Customer {"Name":'Joe Edwards', Address:'10 Station Rd.'}),
+(Joe)-[:Ordered {"Date":date'22/11/2002'} ]-> (Ord201:"Order")-[:Item {Qty: 5}]->("16/8x100" : WoodScrew : Product),
+(Ord201)-[:Item {Qty: 5}]->("Fibre 12cm": WallPlug : Product),
+(Ord201)-[:Item {Qty: 1}]->("500ml" : RubberGlue : Product)]
+create type student as (matric char) nodetype
+insert into student values ('Fred','22/456')
+create type person nodetype
+alter type student set under person
+create type staff under person as (title char)
+insert into staff values ('Anne','Prof')
+select *,specifictype() from person
+alter type person add dob date
+create type friend edgetype(person,person)
+[create trigger sym after insert on friend referencing new as nr for each row 
+if not exists (select id from friend where leaving=nr.arriving and arriving=nr.leaving)
+then insert into friend(leaving,arriving) values (nr.arriving,nr.leaving) end if]
+insert into person values('Joe',date'22/04/1950'),('Mary',date'04/08/1973')
+insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')
+select id from friend where leaving='Fred'
+match ("Fred")-[:friend]->(_x)
+match (_)-[:Item {Qty:_Q}]->(_Y:_T) where Q>4

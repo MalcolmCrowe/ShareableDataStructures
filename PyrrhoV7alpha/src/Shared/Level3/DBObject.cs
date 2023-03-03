@@ -6,8 +6,10 @@ using Pyrrho.Level4;
 using System;
 using System.Configuration;
 using System.Runtime.Intrinsics.Arm;
+using System.Runtime.CompilerServices;
+using System.Data.Common;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -66,6 +68,7 @@ namespace Pyrrho.Level3
     (BTree<long, ObInfo>?)mem[Infos] ?? BTree<long, ObInfo>.Empty;
         internal long domain => (long)(mem[_Domain] ?? -1L);
         internal long from => (long)(mem[_From] ?? -1L);
+        internal string name => (string)(mem[ObInfo.Name] ?? "");
         /// <summary>
         /// For compiled code - triggers and Procedures
         /// </summary>
@@ -89,23 +92,48 @@ namespace Pyrrho.Level3
         protected DBObject(long pp, long dp, BTree<long, object>? m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp))
         { }
-        public static DBObject operator +(DBObject ob, (long, object) x)
-        {
-            return (DBObject)ob.New(ob.mem + x);
-        }
-        /// <summary>
-        /// Used for shared RowSet and RowSets to create new copies 
-        /// when we want to modify a property (e.g. adding a filter).
-        /// As far as I can see this is not required for SqlValues or Executables.
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="m"></param>
-        /// <returns></returns>
         internal virtual DBObject New(Context cx, BTree<long, object> m)
         {
             var r = (DBObject)New(mem+m);
             cx.Add(r);
             return r;
+        }
+        internal abstract DBObject New(long dp, BTree<long, object> m);
+        internal override Basis New(BTree<long, object> m)
+        {
+            return New(defpos,m);
+        }
+        internal virtual DBObject Relocate(long dp,Context cx)
+        {
+            return New(dp, _Fix(cx,mem));
+        }
+        internal virtual DBObject Replace(Context cx,DBObject was,DBObject now)
+        {
+            if (cx.done[defpos] is DBObject rr)
+                return rr;
+            var ldpos = cx.db.loadpos;
+            for (var cc = cx.next; cc != null && cc.db != null; cc = cc.next)
+                ldpos = cc.db.loadpos;
+            if (defpos < ldpos)
+                return this; 
+            var r = New(defpos, _Replace(cx, was, now, mem));
+            if (r != this && dependents.Contains(was.defpos) && (now.depth + 1) > depth)
+            {
+                r = New(defpos,mem + (_Depth, now.depth + 1));
+                cx.done += (r.defpos, r);
+            }
+            for (var b = dependents.First(); b != null; b = b.Next())
+                if (cx.done[b.key()] is DBObject d && d.depth >= r.depth)
+                {
+                    r = New(defpos, mem + (_Depth, d.depth + 1));
+                    cx.done += (r.defpos, r);
+                }
+            cx.done += (defpos, r);
+            return r;
+        }
+        protected virtual BTree<long, object> _Replace(Context cx, DBObject was, DBObject now, BTree<long, object> m)
+        {
+            return m;
         }
         internal virtual (DBObject?,Ident?) _Lookup(long lp, Context cx,string nm, Ident? n)
         {
@@ -119,20 +147,17 @@ namespace Pyrrho.Level3
                     r = x[i];
             return r;
         }
-        internal static BTree<long, object> _Deps(Context cx,CList<long> vs,DBObject? ob=null)
+        internal static BTree<long, object> _Deps(Context cx,BList<long?> vs,DBObject? ob=null)
         {
             var r = ob?.mem??BTree<long, object>.Empty;
             var os = ob?.dependents ?? CTree<long, bool>.Empty;
             var d = ob?.depth ??1;
             for (var b = vs?.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                if (cx._Ob(p) is DBObject o)
+            if (b.value() is long p && cx._Ob(p) is DBObject o)
                 {
                     d = Math.Max(d, o.depth + 1);
                     os += (p, true);
                 }
-            }
             return r + (Dependents,os) + (_Depth,d);
         }
         internal static BTree<long, object> _Deps(BList<SqlValue> vs,DBObject? ob=null)
@@ -215,32 +240,9 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="dp"></param>
         /// <returns></returns>
-        internal abstract DBObject Relocate(long dp);
-        /// <summary>
-        /// When a Physical commits to transaction log, this routine
-        /// helps to relocate the associated compiled objects
-        /// </summary>
-        /// <param name="wr"></param>
-        /// <returns></returns>
-        internal override Basis _Relocate(Context cx)
+        internal DBObject Relocate(long dp)
         {
-            var r = Relocate(cx.Fix(defpos));
-            var dm = cx.Fix(domain);
-            if (dm != domain)
-                r += (_Domain, dm);
-            var df = cx.Fix(definer);
-            if (df != definer)
-                r += (Definer, df);
-            var ds = CTree<long, bool>.Empty;
-            for (var b = dependents.First(); b != null; b = b.Next())
-                ds += (cx.Fix(b.key()), true);
-            if (ds != dependents)
-                r += (Dependents, ds);
-            var ni = cx.Fix(infos);
-            if (ni != infos)
-                r += (Infos, ni);
-            cx.Add(r);
-            return r;
+            return (dp==defpos)?this:New(dp, mem);
         }
         /// <summary>
         /// Adjust compiled DBObject (calls _Relocate)
@@ -252,32 +254,34 @@ namespace Pyrrho.Level3
             if (defpos < 0)
             {
                 var dm = this as Domain ?? throw new PEException("PE688");
-                return (Domain)dm._Relocate(cx);
+                return (Domain)New(dm._Fix(cx,mem));
             }
             if (cx.done[defpos] is DBObject rr)
                 return rr;
-            var r = (DBObject)_Relocate(cx);
+            var r = (DBObject)New(_Fix(cx,mem));
             cx.Add(r);
             cx.done += (defpos, r);
             return r;
         }
         internal override Basis Fix(Context cx)
         {
-            var r = (DBObject)_Fix(cx);
+            if (defpos < 0)
+                return this;
+            var r = New(cx.Fix(defpos),_Fix(cx,mem));
             if (defpos!=-1L)
                 cx.Add(r);
             return r;
         }
         internal CTree<long, TypedValue> Frame(CTree<long, TypedValue> vs)
         {
-            var map = CTree<long, long>.Empty;
+            var map = BTree<long, long?>.Empty;
             for (var b = framing.obs.First(); b != null; b = b.Next())
                 if (b.value() is SqlCopy sc)
                     map += (sc.copyFrom, sc.defpos);
             var r = CTree<long, TypedValue>.Empty;
             for (var b = vs.First(); b != null; b = b.Next())
-                if (map.Contains(b.key()))
-                    r += (map[b.key()], b.value());
+                if (map[b.key()] is long s && b.value() is TypedValue v)
+                    r += (s, v);
             return r;
         }
         /// <summary>
@@ -285,16 +289,9 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
-        internal override Basis _Fix(Context cx)
+        protected override BTree<long,object> _Fix(Context cx,BTree<long,object> m)
         {
-            var r = this;
-            var np = cx.Fix(defpos);
-            if (np != defpos)
-            {
-                r = cx.obs[np];
-                if (r == null || r is SqlNull)
-                    r = cx._Add(Relocate(np));
-            }
+            var r = mem;
             var dm = cx.Fix(domain);
             if (dm != domain)
                 r += (_Domain, dm);
@@ -321,10 +318,11 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal virtual DBObject Add(Context cx,PMetadata pm, long p)
         {
-            var r = this;
+            var m = mem;
             if (infos[cx.role.defpos] is ObInfo oi)
-                r += (Infos, infos + (cx.role.defpos, oi));
-            r = r + (ObInfo._Metadata, pm.detail) + (LastChange, pm.ppos);
+                m += (Infos, infos + (cx.role.defpos, oi));
+            m = m + (ObInfo._Metadata, pm.detail) + (LastChange, pm.ppos);
+            var r = New(defpos, m);
             cx.db += (r,p);
             return cx.Add(r);
         }
@@ -332,11 +330,11 @@ namespace Pyrrho.Level3
         {
             return sf;
         }
-        internal virtual int Depth(params DBObject[] obs)
+        internal virtual int Depth(Context cx,BList<DBObject?> obs)
         {
             int de = depth;
-            foreach (var ob in obs)
-                if (ob.depth >= de)
+            for (var b = obs.First();b!=null;b=b.Next())
+                if (b.value() is DBObject ob && ob.depth >= de)
                     de = ob.depth+1;
             return de;
         }
@@ -432,38 +430,13 @@ namespace Pyrrho.Level3
             var mt = (Method?)cx.obs[m.proc] ?? throw new PEException("PE1006");
             cx.db += (mt, p);
         }
-        internal virtual DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            return this;
-        }
-        internal DBObject Replace(Context cx,DBObject was,DBObject now)
-        {
-            var ldpos = cx.db.loadpos;
-            for (var cc = cx.next; cc != null && cc.db!=null; cc = cc.next)
-                ldpos = cc.db.loadpos;
-            if (defpos < ldpos)
-                return this;
-            var r = _Replace(cx, was, now);
-            if (r != this && dependents.Contains(was.defpos) && (now.depth + 1) > depth)
-            {
-                r += (_Depth, now.depth + 1);
-                cx.done += (r.defpos, r);
-            }
-            for (var b = dependents.First(); b != null; b = b.Next())
-                if (cx.done[b.key()] is DBObject d && d.depth >= r.depth)
-                {
-                    r += (_Depth, d.depth + 1);
-                    cx.done += (r.defpos, r);
-                } 
-            return r;
-        }
         internal virtual (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
         {
             throw new NotImplementedException();
         }
         internal virtual void _Add(Context cx)
         {
-            cx.obs += (defpos, this);
+            cx.obs += (defpos, this); // don't do this anywhere else except Fix/Relocate, use cx.Add(ob)
             if (domain >= 0)
                 cx.Add(cx._Dom(this)??throw new PEException("PE2600"));
         }
@@ -488,7 +461,7 @@ namespace Pyrrho.Level3
         {
             if (v == null)
                 return this;
-            var rt = CList<long>.Empty;
+            var rt = BList<long?>.Empty;
             var rp = CTree<long, Domain>.Empty;
             var ch = false;
             var dm = cx._Dom(this);
@@ -673,8 +646,9 @@ namespace Pyrrho.Level3
         }
         internal virtual string NameFor(Context cx)
         {
-            if (cx._Ob(defpos) is not DBObject ob)
-                throw new PEException("PE29003");
+            var ob = cx.db.objects[defpos] as DBObject;
+            if (ob == null || ob.dbg < dbg)
+                ob = this;
             if (ob.alias is string s)
                 return s;
             var ci = ob.infos[cx.role.defpos] ?? ob.infos[definer] ??
@@ -803,18 +777,14 @@ namespace Pyrrho.Level3
         }
         public static ForwardReference operator+(ForwardReference fr,(long,object)x)
         {
+            var (dp, ob) = x;
+            if (fr.mem[dp] == ob)
+                return fr;
             return (ForwardReference)fr.New(fr.mem + x);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override DBObject New(long dp, BTree<long, object> m)
         {
-            var r = (ForwardReference)base._Relocate(cx);
-            if (id!=null)
-                r += (_Ident, id.Fix(cx));
-            return r;
-        }
-        internal override DBObject Relocate(long dp)
-        {
-            return new ForwardReference(dp,mem);
+            return new ForwardReference(dp,m);
         }
     }
 }

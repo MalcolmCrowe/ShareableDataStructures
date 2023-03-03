@@ -1,0 +1,36 @@
+{
+  "runtimeTarget": {
+    "name": ".NETCoreApp,Version=v6.0",
+    "signature": ""
+  },
+  "compilationOptions": {},
+  "targets": {
+    ".NETCoreApp,Version=v6.0": {
+      "PyrrhoCmd/1.0.0": {
+        "dependencies": {
+          "PyrrhoLink": "1.0.0"
+        },
+        "runtime": {
+          "PyrrhoCmd.dll": {}
+        }
+      },
+      "PyrrhoLink/1.0.0": {
+        "runtime": {
+          "PyrrhoLink.dll": {}
+        }
+      }
+    }
+  },
+  "libraries": {
+    "PyrrhoCmd/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    },
+    "PyrrhoLink/1.0.0": {
+      "type": "project",
+      "serviceable": false,
+      "sha512": ""
+    }
+  }
+}

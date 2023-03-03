@@ -1,19 +1,11 @@
-using System;
-using System.Configuration;
-using System.Diagnostics.Eventing.Reader;
 using System.Globalization;
-using System.Reflection.PortableExecutable;
-using System.Runtime.Intrinsics.Arm;
-using System.Security.Policy;
 using System.Text;
 using System.Xml;
-using System.Xml.Schema;
-using Microsoft.VisualBasic;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -77,21 +69,24 @@ namespace Pyrrho.Level3
             OrderFunc = -84, // long DBObject
             Precision = -85, // int (D)
             Representation = -87, // CTree<long,Domain> DBObject
-            RowType = -187,  // CList<long> 
+            RowType = -187,  // BList<long?> 
             Scale = -88, // int (D)
             Start = -89, // Sqlx (D)
             Structure = -391, // long Table 
             UnionOf = -91; // CTree<Domain,bool>
         internal static Domain Null, Value, Content, // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
     Bool, Blob, Char, Password, XML, Int, Numeric, Real, Date, Timespan, Timestamp,
-    Interval, TypeSpec, _Level, Physical, MTree, // pseudo type for MTree implementation
+    Interval, _Level, Physical, MTree, // pseudo type for MTree implementation
     Partial, // pseudo type for MTree implementation
     Array, Multiset, Collection, Cursor, UnionNumeric, UnionDate,
     UnionDateNumeric, Exception, Period,
     Document, DocArray, ObjectId, JavaScript, ArgList, // Pyrrho 5.1
     TableType, Row, Delta, Position, Role,
     Metadata, HttpDate, Star, // Pyrrho v7
-    Rvv; // Rvv is V7 validator type
+    Rvv, Graph; // Rvv is V7 validator type
+        internal static UDType TypeSpec;
+        internal static NodeType NodeType;
+        internal static EdgeType EdgeType;
         internal static int StandardTypesCount;
         static Domain()
         {
@@ -111,7 +106,7 @@ namespace Pyrrho.Level3
             Timespan = new StandardDataType(Sqlx.TIME, Common.OrderCategory.Primitive);
             Timestamp = new StandardDataType(Sqlx.TIMESTAMP, Common.OrderCategory.Primitive);
             Interval = new StandardDataType(Sqlx.INTERVAL, Common.OrderCategory.Primitive);
-            TypeSpec = new StandardDataType(Sqlx.TYPE);
+            TypeSpec = new UDType(Sqlx.TYPE);
             _Level = new StandardDataType(Sqlx.LEVEL);
             Physical = new StandardDataType(Sqlx.DATA);
             MTree = new StandardDataType(Sqlx.M); // pseudo type for MTree implementation
@@ -139,6 +134,9 @@ namespace Pyrrho.Level3
             Metadata = new StandardDataType(Sqlx.METADATA);
             Star = new(--_uid, Sqlx.TIMES, BTree<long, object>.Empty);
             StandardTypesCount = (int)Database._system.types.Count;
+            Graph = new StandardDataType(Sqlx.GRAPH);
+            NodeType = new NodeType(Sqlx.NODETYPE);
+            EdgeType = new EdgeType(Sqlx.EDGETYPE);
         }
         public Sqlx kind => (Sqlx)(mem[Kind] ?? Sqlx.NO);
         public int prec => (int)(mem[Precision] ?? 0);
@@ -161,11 +159,10 @@ namespace Pyrrho.Level3
         public string abbrev => (string?)mem[Abbreviation]??"";
         public CTree<long, bool> constraints => (CTree<long, bool>?)mem[Constraints]??CTree<long,bool>.Empty;
         public string? iri => (string?)mem[Iri];
-        public string name => (string?)mem[ObInfo.Name] ?? "";
         public long structure => (long)(mem[Structure] ?? -1L);
         public CTree<long,Domain> representation => 
             (CTree<long,Domain>?)mem[Representation] ?? CTree<long,Domain>.Empty;
-        public virtual CList<long> rowType => (CList<long>?)mem[RowType] ?? CList<long>.Empty;
+        public virtual BList<long?> rowType => (BList<long?>?)mem[RowType] ?? BList<long?>.Empty;
         public int Length => rowType.Length;
         public Procedure? orderFunc => (Procedure?)mem[OrderFunc];
         public CTree<long,bool> aggs => 
@@ -173,24 +170,19 @@ namespace Pyrrho.Level3
         public OrderCategory orderflags => (OrderCategory)(mem[OrderCategory]??Common.OrderCategory.None);
         public CTree<Domain,bool> unionOf => 
             (CTree<Domain,bool>?)mem[UnionOf] ?? CTree<Domain,bool>.Empty;
-        internal Domain(long dp,Context cx,Sqlx t, CTree<long, Domain> rs, CList<long> rt, int ds=0)
+        internal Domain(long dp,Context cx,Sqlx t, CTree<long, Domain> rs, BList<long?> rt, int ds=0)
             : this(dp,_Mem(cx,t,rs,rt,ds) 
                   + (Representation, rs) + (RowType, rt) + (_Depth,cx.Depth(rs))) 
         {
             cx.Add(this);
         }
-        public Domain(Sqlx t, Context cx, BList<SqlValue> vs, int ds=0)
+        public Domain(Sqlx t, Context cx, BList<DBObject> vs, int ds=0)
             : this(cx.GetUid(),_Mem(cx,t,vs,ds)) 
         {
             cx.Add(this);
         }
         public Domain(long dp,Context cx,Sqlx t, BList<DBObject> vs, int ds = 0)
     : this(dp, _Mem(cx,t,vs, ds))
-        {
-            cx.Add(this);
-        }
-        public Domain(long dp, Context cx, Sqlx t, BList<SqlValue> vs, int ds = 0)
-: this(dp, _Mem(cx, t, vs, ds))
         {
             cx.Add(this);
         }
@@ -207,7 +199,10 @@ namespace Pyrrho.Level3
             Database._system += (dp, this, 0);
         }
         internal Domain(long dp, BTree<long, object> m) : base(dp, m)
-        {  }
+        {
+            if (kind == Sqlx.TYPE && this is not UDType)
+                throw new PEException("PE8880");
+        }
         /// <summary>
         /// Allow construction of ad-hoc derived types such as ARRAY, MULTISET
         /// </summary>
@@ -215,38 +210,23 @@ namespace Pyrrho.Level3
         /// <param name="d"></param>
         public Domain(long dp,Sqlx t, Domain et)
             : base(dp,new BTree<long, object>(Element, et)+(Kind,t))
-        { }
-        static BTree<long,object> _Mem(Context cx,Sqlx t,BList<SqlValue> vs,int ds=0)
         {
-            var rs = CTree<long, Domain>.Empty;
-            var cs = CList<long>.Empty;
-            var ag = CTree<long, bool>.Empty;
-            for (var b = vs.First(); b != null; b = b.Next())
-            {
-                var v = b.value();
-                rs += (v.defpos, cx._Dom(v)??Null);
-                cs += v.defpos;
-                ag += v.IsAggregation(cx);
-            }
-            var m = _Deps(vs) + (Representation, rs) + (RowType, cs)
-                + (Aggs,ag) + (Kind,t) + (Owner, cx.user?.defpos ?? -501L)
-                + (Default, For(t).defaultValue);
-            if (ds != 0)
-                m += (Display, ds);
-            return m;
+            if (kind == Sqlx.TYPE && this is not UDType)
+                throw new PEException("PE8881");
         }
         static BTree<long, object> _Mem(Context cx, Sqlx t, BList<DBObject> vs, int ds = 0)
         {
             var rs = CTree<long, Domain>.Empty;
-            var cs = CList<long>.Empty;
+            var cs = BList<long?>.Empty;
             var ag = CTree<long, bool>.Empty;
             for (var b = vs.First(); b != null; b = b.Next())
-                if (b.value() is SqlValue v)
-                {
-                    rs += (v.defpos, cx._Dom(v) ?? Null);
-                    cs += v.defpos;
-                    ag += v.IsAggregation(cx);
-                }
+            {
+                var v = b.value();
+                rs += (v.defpos, cx._Dom(v) ?? Null);
+                cs += v.defpos;
+                if (v is SqlValue sv)
+                    ag += sv.IsAggregation(cx);
+            }
             var m = _Deps(vs) + (Representation, rs) + (RowType, cs)
                 + (Aggs, ag) + (Kind, t)
                 + (Default, For(t).defaultValue);
@@ -254,10 +234,10 @@ namespace Pyrrho.Level3
                 m += (Display, ds);
             return m;
         }
-        static BTree<long, object> _Mem(Context cx,Sqlx t,BTree<long,Domain> rs, CList<long> cs, int ds = 0)
+        static BTree<long, object> _Mem(Context cx,Sqlx t,BTree<long,Domain> rs, BList<long?> cs, int ds = 0)
         {
             for (var b = cs.First(); b != null; b = b.Next())
-                if (!rs.Contains(b.value()))
+                if (b.value() is long p && !rs.Contains(p))
                     throw new PEException("PE283");
             var m = _Deps(cx,cs) + (RowType, cs) + (Kind, t)
                 + (Default, For(t).defaultValue);
@@ -265,17 +245,10 @@ namespace Pyrrho.Level3
                 m += (Display, ds);
             return m;
         }
-        internal new static Domain New(Context cx, BTree<long, object> m)
-        {
-            var dp = cx.GetUid();
-            var dm = new Domain(dp, m);
-            cx.db += (dp, dm, cx.db.loadpos);
-            return (Domain)cx._Add(new Domain(dp, m));
-        }
         internal Domain Scalar(Context cx)
         {
             if ((kind == Sqlx.TABLE || kind == Sqlx.ROW) && Length>0)
-                return (Domain?)cx.obs[cx.obs[rowType[0]]?.domain??-1L]??Content;
+                return (Domain?)cx.obs[cx.obs[rowType[0]??-1L]?.domain??-1L]??Content;
             return this;
         }
         internal Domain Best(Domain dt)
@@ -302,25 +275,6 @@ namespace Pyrrho.Level3
         {
             return (Domain)d.New(d.mem+x);
         }
-        public static Domain operator+ (Domain d,(Context,Domain) x)
-        {
-            var (cx, p) = x;
-            if (p == Null)
-                return d;
-            if (d == Null)
-                return p;
-            var cs = d.rowType;
-            var rs = d.representation;
-            for (var b = p.rowType.First();b!=null;b=b.Next())
-                if (!rs.Contains(b.value()) && p.representation[b.value()] is Domain xd)
-                {
-                    cs += b.value();
-                    rs += (b.value(), xd);
-                }
-            if (cs.Length > d.Length)
-                return new Domain(cx.GetUid(), cx, Sqlx.ROW, rs, cs, cs.Length);
-            return d;
-        }
         public static Domain operator-(Domain d,long x)
         {
             var rp = CTree<long, Domain>.Empty;
@@ -337,7 +291,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 m += (Representation, rp);
-            var rt = CList<long>.Empty;
+            var rt = BList<long?>.Empty;
             for (var b=d.rowType.First();b!=null;b=b.Next())
             {
                 var p = b.value();
@@ -352,65 +306,10 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 m = m + (RowType, rt) + (Display,ds);
-            return (Domain)d.New(m);
+            return ch?(Domain)d.New(m):d;
         }
-        public static Domain operator+ (Domain d,(Context,SqlValue) x)
-        {
-            var (cx, sv) = x;
-            if (d.defpos < Transaction.Analysing)
-                d = (Domain)d.Relocate(cx.GetUid());
-            var m = d.mem + (RowType, d.rowType + sv.defpos)
-                + (Representation, d.representation + (sv.defpos, cx._Dom(sv)??Content));
-            m += (Aggs, d.aggs + sv.IsAggregation(cx));
-            return (Domain)d.New(m);
-        }
-        public static Domain operator+(Domain d,(Context,CList<long>)x)
-        {
-            var (cx, cs) = x;
-            for (var b = cs.First(); b != null; b = b.Next())
-                d += (cx, (SqlValue)(cx.obs[b.value()] ?? throw new PEException("PE60300")));
-            return d;
-        }
-        public static Domain operator +(Domain d, (Context, DBObject) x)
-        {
-            var (cx, ob) = x;
-            var m = d.mem + (RowType, d.rowType + ob.defpos)
-                + (Representation, d.representation + (ob.defpos, cx._Dom(ob) ?? Null));
-            return (Domain)d.New(m);
-        }
-        public static Domain operator+(Domain d, SystemTableColumn sc)
-        {
-            var sd = (Domain)(Database._system.objects[sc.domain]??throw new PEException("PE0099"));
-            var m = d.mem + (RowType, d.rowType + sc.defpos)
-                + (Representation, d.representation + (sc.defpos, sd ?? Null));
-            return (Domain)d.New(m);
-        }
-        public static Domain operator +(Domain d, (Context, long) x)
-        {
-            var (cx, p) = x;
-            if (d.defpos < Transaction.Analysing)
-                d = (Domain)d.Relocate(cx.GetUid());
-            var ob = cx._Ob(p)?? throw new DBException("42000");
-            var m = d.mem + (RowType, d.rowType + ob.defpos)
-                + (Representation, d.representation + (ob.defpos, cx._Dom(ob) ?? Null));
-            if (ob is SqlValue sv)
-                m += (Aggs, d.aggs + sv.IsAggregation(cx));
-            return (Domain)d.New(m);
-        }
-        public static Domain operator+(Domain d,(Sqlx,Sqlx)o)
-        {
-            if (d.AscDesc != o.Item1)
-                d += (Descending, o.Item1);
-            if (d.nulls != o.Item2)
-                d += (NullsFirst, o.Item2);
-            return d;
-        }
-        internal bool IsStar(Context cx)
-        {
-            return rowType.Length == 1 && cx.obs[rowType[0]] is SqlStar;
-        }
-        public long this[int i] => (i>=0 && i<rowType.Length)?rowType[i]:-1L;
-        public ABookmark<int,long>? First()
+        public long? this[int i] => (i>=0 && i<rowType.Length)?rowType[i]:-1L;
+        public ABookmark<int,long?>? First()
         {
             return rowType.First();
         }
@@ -425,11 +324,10 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         internal long Create(Writer wr,Transaction tr)
         {
-            if (defpos >= 0)
-                return defpos;
-            if (wr.cx.db.types.Contains(this)==true)
-                return wr.cx.db.types[this];
-            Physical pp = new PDomain(this,wr.Length,wr.cx);
+            if (wr.cx.db.Find(this) is Domain d && d.defpos<Transaction.TransPos)
+                return d.defpos;
+            Physical pp;
+            pp = new PDomain(this, wr.Length, wr.cx);
             (_,pp) = pp.Commit(wr, tr);
             // Assert(CompareTo(pp.domaim)==0) and tr unchanged
             return pp.ppos;
@@ -437,16 +335,23 @@ namespace Pyrrho.Level3
         internal CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> s)
         {
             for (var b = rowType?.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()] is SqlValue sv)
+                if (b.value() is long p && cx.obs[p] is SqlValue sv)
                     s = sv.Needs(cx, r, s);
             return s;
         }
         internal override DBObject Add(Context cx, PMetadata pm, long p)
         {
-            var ob = base.Add(cx, pm, p);
+            var ob = (Domain)base.Add(cx, pm, p);
             if (pm.iri!="")
-                ob = cx.Add(ob + (Iri, pm.iri));
+                ob = (Domain)New(cx,ob.mem + (Iri, pm.iri));
             return ob;
+        }
+        internal bool Match(string n)
+        {
+            for (var d = this; d != null; d = (d as UDType)?.super)
+                if (d.name == n)
+                    return true;
+            return false;
         }
         internal void Show(StringBuilder sb)
         {
@@ -463,18 +368,19 @@ namespace Pyrrho.Level3
             {
                 var cm = " (";
                 for (var b = rowType.First(); b != null; b = b.Next())
-                {
-                    sb.Append(cm); cm = (b.key() + 1 == display) ? "|" : ",";
-                    sb.Append(Uid(b.value()));
-                    sb.Append(' ');
-                    if (representation[b.value()] is Domain dm)
+                    if (b.value() is long p)
                     {
-                        if (dm.name != "")
-                            sb.Append(dm.name);
-                        else 
-                            sb.Append(dm.kind);
+                        sb.Append(cm); cm = (b.key() + 1 == display) ? "|" : ",";
+                        sb.Append(Uid(p));
+                        sb.Append(' ');
+                        if (representation[p] is Domain dm)
+                        {
+                            if (dm.name != "")
+                                sb.Append(dm.name);
+                            else
+                                sb.Append(dm.kind);
+                        }
                     }
-                }
                 sb.Append(')');
             }
             if (mem.Contains(Aggs))
@@ -565,34 +471,40 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var tn = GetType().Name;
-            if (this is StandardDataType)
+            if (this is StandardDataType||this is NodeType)
                 tn = "";
             var sb = new StringBuilder(tn);
             if (name != "")
             {
-                sb.Append(' '); sb.Append(name);
+                if (tn!="") sb.Append(' '); 
+                sb.Append(name);
             }
             sb.Append(' ');sb.Append(kind);
             if (mem.Contains(RowType))
             {
                 var cm = " (";
-                for (var b=rowType.First();b!=null;b=b.Next())
-                {
-                    sb.Append(cm); cm=(b.key()+1==display)?"|":",";
-                    sb.Append(Uid(b.value()));
-                }
-                if (rowType != CList<long>.Empty)
+                for (var b = rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                    {
+                        sb.Append(cm); cm = (b.key() + 1 == display) ? "|" : ",";
+                        sb.Append(Uid(p));
+                    }
+                if (rowType != BList<long?>.Empty)
                     sb.Append(')');
             }
             _Show(sb);
-            if (mem.Contains(Representation)) {
+            if (mem.Contains(Representation))
+            {
                 var cm = "";
-                if (mem.Contains(RowType) && rowType.Length==representation.Count)
-                    for (var b=rowType.First();b!=null;b=b.Next())
-                    {
-                        sb.Append(cm); cm = ",";
-                        sb.Append("[" + Uid(b.value()) + "," + representation[b.value()] + "]");
-                    }
+                if (mem.Contains(RowType) && rowType.Length == representation.Count)
+                {
+                    for (var b = rowType.First(); b != null; b = b.Next())
+                        if (b.value() is long p)
+                        {
+                            sb.Append(cm); cm = ",";
+                            sb.Append("[" + Uid(p) + "," + representation[p] + "]");
+                        }
+                }
                 else for (var b = representation.First(); b != null; b = b.Next())
                 {
                     sb.Append(cm); cm = ",";
@@ -620,7 +532,7 @@ namespace Pyrrho.Level3
                     sb.Append(cm); cm = ",";
                     sb.Append(Uid(b.key()));
                 }
-                if (cm == ",") sb.Append(")");
+                if (cm == ",") sb.Append(')');
             }
             return sb.ToString();
         }
@@ -775,24 +687,24 @@ namespace Pyrrho.Level3
                         var dp = rdr.GetLong();
                         var vs = CTree<long,TypedValue>.Empty;
                         var dt = CTree<long, Domain>.Empty;
-                        var rt = CList<long>.Empty;
+                        var rt = BList<long?>.Empty;
                         var tb = (Table?)rdr.context.db.objects[dp];
                         var dm = (Domain?)tb?.framing.obs[tb.domain];
-                        var ma = CTree<string, long>.Empty;
+                        var ma = BTree<string, long?>.Empty;
                         if (rdr.context.db.format < 52)
                             for (var b = dm?.rowType.First(); b != null; b = b.Next())
-                            {
-                                var c = b.value();
-                                var tc = (TableColumn?)rdr.context.db.objects[c];
-                                var oi = tc?.infos[rdr.context.role.defpos];
-                                ma += (oi?.name??"", c);
-                            }
+                                if (b.value() is long c)
+                                {
+                                    var tc = (TableColumn?)rdr.context.db.objects[c];
+                                    var oi = tc?.infos[rdr.context.role.defpos];
+                                    ma += (oi?.name ?? "", c);
+                                }
                         var n = rdr.GetInt();
                         for (var j = 0; j < n; j++)
                         {
                             long cp;
                             if (rdr.context.db.format < 52)
-                                cp = ma[rdr.GetString()];
+                                cp = ma[rdr.GetString()]??-1L;
                             else
                                 cp = rdr.GetLong();
                             if (dm?.representation[cp] is Domain cdt)
@@ -814,21 +726,21 @@ namespace Pyrrho.Level3
                         else
                         {
                             var r = CTree<long, TypedValue>.Empty;
-                            var ma = CTree<string, long>.Empty;
+                            var ma = BTree<string, long?>.Empty;
                             if (rdr.context.db.format < 52)
                                 for (var b = ut.rowType.First(); b != null; b = b.Next())
-                                {
-                                    var c = b.value();
-                                    var tc = (TableColumn?)rdr.context.db.objects[c];
-                                    var oi = tc?.infos[rdr.role.defpos];
-                                    ma += (oi?.name??"", c);
-                                }
+                                    if (b.value() is long c)
+                                    {
+                                        var tc = (TableColumn?)rdr.context.db.objects[c];
+                                        var oi = tc?.infos[rdr.role.defpos];
+                                        ma += (oi?.name ?? "", c);
+                                    }
                             var n = rdr.GetInt();
                             for (var j = 0; j < n; j++)
                             {
                                 long cp;
                                 if (rdr.context.db.format < 52)
-                                    cp = ma[rdr.GetString()];
+                                    cp = ma[rdr.GetString()]??-1L;
                                 else
                                     cp = rdr.GetLong();
                                 if (ut.representation[cp] is Domain cdt)
@@ -844,21 +756,18 @@ namespace Pyrrho.Level3
         }
         internal long ColFor(Context cx, string c)
         {
-            for (var b=rowType.First();b!=null;b=b.Next())
-            {
-                var p = b.value();
-                if (cx._Ob(p) is DBObject ob &&
-                    ((p >= Transaction.TransPos && ob is SqlValue sv 
-                        && (sv.alias??sv.name) == c)
-                    || ob.NameFor(cx)==c))
-                        return p;
-            }
+            for (var b = rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx._Ob(p) is DBObject ob &&
+                        ((p >= Transaction.TransPos && ob is SqlValue sv
+                            && (sv.alias ?? sv.name) == c)
+                        || ob.NameFor(cx) == c))
+                    return p;
             return -1L;
         }
         internal int PosFor(Context cx, string c)
         {
             for (var b = rowType.First(); b != null; b = b.Next())
-                if (cx.NameFor(b.value()) == c)
+                if (b.value() is long p && cx.NameFor(p) == c)
                     return b.key();
             return -1;
         }
@@ -966,7 +875,7 @@ namespace Pyrrho.Level3
                 && CompareTo(nt)!=0)
             {
                 wr.WriteByte((byte)DataType.DomainRef);
-                wr.PutLong(wr.cx.db.types[this]);
+                wr.PutLong(wr.cx.db.types[this] ?? throw new PEException("PE48812"));
                 return;
             }
             else 
@@ -1000,7 +909,7 @@ namespace Pyrrho.Level3
                     case Sqlx.TYPE:
                         wr.WriteByte((byte)DataType.DomainRef);
                         var nd = (Domain?)wr.cx.db.objects[defpos]??Content; // without names
-                        wr.PutLong(wr.cx.db.types.Contains(nd) ? wr.cx.db.types[nd] :Content.defpos); break;
+                        wr.PutLong(wr.cx.db.types[nd]??Content.defpos); break;
                     case Sqlx.REF:
                     case Sqlx.ROW: wr.WriteByte((byte)DataType.Row); break;
                 }
@@ -1144,17 +1053,17 @@ namespace Pyrrho.Level3
                         var cs = rw.columns;
                         wr.PutInt(cs.Length);
                         for (var rb = cs.First(); rb != null; rb = rb.Next())
-                        {
-                            var p = rb.value();
-                            if (wr.cx.db.format >= 52)
-                                wr.PutLong(p);
-                            else
+                            if (rb.value() is long p)
                             {
-                                var n = NameFor(wr.cx, p, rb.key());
-                                wr.PutString(n);
+                                if (wr.cx.db.format >= 52)
+                                    wr.PutLong(p);
+                                else
+                                {
+                                    var n = NameFor(wr.cx, p, rb.key());
+                                    wr.PutString(n);
+                                }
+                                st.representation[p]?.Put(rw[p], wr);
                             }
-                            st.representation[p]?.Put(rw[p], wr);
-                        }
                         return;
                     }
                 case Sqlx.TYPE:
@@ -1192,7 +1101,7 @@ namespace Pyrrho.Level3
                     {
                         var a = (TArray)tv;
                         var et = a.dataType.elType;
-                        wr.PutLong(wr.cx.db.types[et]);
+                        wr.PutLong(wr.cx.db.types[et] ?? throw new PEException("PE48814"));
                         wr.PutInt(a.Length);
                         for(var ab=a.list.First();ab!=null;ab=ab.Next())
                             et.Put(ab.value(), wr);
@@ -1202,7 +1111,7 @@ namespace Pyrrho.Level3
                     {
                         TMultiset m = (TMultiset)tv;
                         var et = m.dataType.elType;
-                        wr.PutLong(wr.cx.db.types[et]);
+                        wr.PutLong(wr.cx.db.types[et] ?? throw new PEException("PE48815"));
                         wr.PutInt((int)m.Count);
                         for (var a = m.tree.First(); a != null; a = a.Next())
                             for (int i = 0; i < a.value(); i++)
@@ -1235,6 +1144,12 @@ namespace Pyrrho.Level3
             var c = kind.CompareTo(that.kind);
             if (c != 0)
                 return c;
+            c = Comp(AscDesc, that.AscDesc);
+            if (c != 0)
+                return c;
+            c = Comp(notNull, that.notNull);
+            if (c != 0) 
+                return c;
             c = Comp(iri, that.iri);
             if (c != 0)
                 return c;
@@ -1261,7 +1176,7 @@ namespace Pyrrho.Level3
                 case Sqlx.UNION:
                 case Sqlx.TABLE:
                 case Sqlx.ROW:
-                    return rowType.CompareTo(that.rowType);
+                    return Context.Compare(rowType,that.rowType);
                 case Sqlx.TYPE:
                     if (name is string nm)
                         return nm.CompareTo(that.name);
@@ -1327,22 +1242,22 @@ namespace Pyrrho.Level3
                 && orderFunc!=null)
             {
                 var cx = Context._system;
-                var sa = new SqlLiteral(cx.GetUid(),cx,a);
+                var sa = new SqlLiteral(cx.GetUid(),a);
                 cx.Add(sa);
-                var sb = new SqlLiteral(cx.GetUid(),cx,b);
+                var sb = new SqlLiteral(cx.GetUid(),b);
                 cx.Add(sb);
                 if ((orderflags & Common.OrderCategory.Relative) == Common.OrderCategory.Relative)
                 {
-                    orderFunc.Exec(cx, new CList<long>(sa.defpos) + sb.defpos);
+                    orderFunc.Exec(cx, new BList<long?>(sa.defpos) + sb.defpos);
                     if (cx.val.ToInt() is int ri)
                         c = ri;
                     else
                         throw new DBException("22004");
                     goto ret;
                 }
-                orderFunc.Exec(cx,new CList<long>(sa.defpos));
+                orderFunc.Exec(cx,new BList<long?>(sa.defpos));
                 a = cx.val;
-                orderFunc.Exec(cx,new CList<long>(sb.defpos));
+                orderFunc.Exec(cx,new BList<long?>(sb.defpos));
                 b = cx.val;
                 c = a.dataType.Compare(a, b);
                 goto ret;
@@ -1451,7 +1366,7 @@ namespace Pyrrho.Level3
                             c = x.dataType.elType.Compare(e.key(), f.key());
                             if (c != 0)
                                 goto ret;
-                            c = e.value().CompareTo(f.value());
+                            c = Context.Compare(e.value(),f.value());
                             if (c != 0)
                                 goto ret;
                         }
@@ -1473,13 +1388,14 @@ namespace Pyrrho.Level3
                             var bb = rb.dataType.rowType.First();
                             var cb = ra.dataType.rowType.First();
                             for (; c == 0 && cb != null && bb != null; cb = cb.Next(), bb = bb.Next())
-                            {
-                                var k = cb.key();
-                                var dm = ra.dataType.representation[cb.value()] ?? throw new PEException("PE1289");
-                                c = dm.Compare(ra[k], rb[k]);
-                                if (c != 0)
-                                    goto ret;
-                            }
+                                if (cb.value() is long p)
+                                {
+                                    var k = cb.key();
+                                    var dm = ra.dataType.representation[p] ?? throw new PEException("PE1289");
+                                    c = dm.Compare(ra[k], rb[k]);
+                                    if (c != 0)
+                                        goto ret;
+                                }
                             c = (cb != null) ? 1 : (bb != null) ? -1 : 0;
                             break;
                         }
@@ -1515,12 +1431,12 @@ namespace Pyrrho.Level3
         internal int Compare(CTree<long,TypedValue> a,CTree<long,TypedValue>b)
         {
             int c = 0;
-            for (var bm=rowType.First();c==0 && bm!=null;bm=bm.Next())
-            {
-                var p = bm.value();
-                var dm = representation[p] ?? throw new PEException("PE1533");
-                c = dm.Compare(a[p] ?? TNull.Value, b[p] ?? TNull.Value);
-            }
+            for (var bm = rowType.First(); c == 0 && bm != null; bm = bm.Next())
+                if (bm.value() is long p)
+                {
+                    var dm = representation[p] ?? throw new PEException("PE1533");
+                    c = dm.Compare(a[p] ?? TNull.Value, b[p] ?? TNull.Value);
+                }
             return c;
         }
         /// <summary>
@@ -1561,7 +1477,7 @@ namespace Pyrrho.Level3
             if (kind == Sqlx.ANY)
                 return true;
             if ((dt.kind == Sqlx.TABLE || dt.kind == Sqlx.ROW) && dt.rowType.Length == 1
-                && CanTakeValueOf(dt.representation[dt.rowType[0]]??Domain.Null))
+                && CanTakeValueOf(dt.representation[dt.rowType[0]??-1L]??Null))
                 return true;
             if (kind == Sqlx.UNION && dt.kind==Sqlx.UNION)
             {
@@ -1581,40 +1497,37 @@ namespace Pyrrho.Level3
             {
                 var e = rowType.First();
                 var c = true;
-                for (var te = dt.rowType.First(); c && e != null && te != null;
+                for (var te = dt.rowType.First();
+                    c && e != null && te != null && e.key() < display;
                     e = e.Next(), te = te.Next())
-                {
-                    if (e.key() >= display)
-                        break;
-                    var d = representation[e.value()];
-                    var td = dt.representation[te.value()]??Null;
-                    c = d?.CanTakeValueOf(td) ?? false;
-                }
+                    if (e.value() is long ep && te.value() is long tp)
+                    {
+                        var d = representation[ep];
+                        var td = dt.representation[tp] ?? Null;
+                        c = d?.CanTakeValueOf(td) ?? false;
+                    }
                 if (c)
                     return true;
             }
             var ki = Equivalent(kind);
             var dk = Equivalent(dt.kind);
-            switch (ki)
+            return ki switch
             {
-                default: return ki == dk;
-                case Sqlx.CONTENT: return true;
-                case Sqlx.NCHAR: return dk == Sqlx.CHAR || dk == ki;
-                case Sqlx.NUMERIC: return dk == Sqlx.INTEGER || dk == ki;
-                case Sqlx.PASSWORD: return dk == Sqlx.CHAR || dk == ki;
-                case Sqlx.REAL: return dk == Sqlx.INTEGER || dk == Sqlx.NUMERIC || dk == ki;
-                case Sqlx.TABLE:
-                case Sqlx.TYPE:
-                case Sqlx.ROW:
-                    return rowType.Length==0 ||CompareTo(dt)==0; // generic TABLE etc is ok
-                case Sqlx.ARRAY:
-                case Sqlx.MULTISET:
-                    return CompareTo(dt)==0;
-
+                Sqlx.CHAR => true,
+                Sqlx.NCHAR => dk == Sqlx.CHAR || dk == ki,
+                Sqlx.NUMERIC => dk == Sqlx.INTEGER || dk == ki,
+                Sqlx.PASSWORD => dk == Sqlx.CHAR || dk == ki,
+                Sqlx.REAL => dk == Sqlx.INTEGER || dk == Sqlx.NUMERIC || dk == ki,
+                Sqlx.TYPE => rowType.Length == 0 || CompareTo(dt) == 0,
+                Sqlx.ROW => rowType.Length == 0 || CompareTo(dt) == 0,
+                Sqlx.TABLE => rowType.Length == 0 || CompareTo(dt) == 0, // generic TABLE etc is ok
+                Sqlx.ARRAY => CompareTo(dt) == 0,
+                Sqlx.MULTISET => CompareTo(dt) == 0,
 #if SIMILAR
-                case Sqlx.CHAR: return dk == Sqlx.REGULAR_EXPRESSION || dk == ki;
+                Sqlx.CHAR => dk == Sqlx.REGULAR_EXPRESSION || dk == ki
 #endif
-            }
+                _ => dk == ki
+            };
         }
         public virtual bool HasValue(Context cx,TypedValue v)
         {
@@ -1630,7 +1543,7 @@ namespace Pyrrho.Level3
             if (ki == Sqlx.NULL || kind == Sqlx.ANY)
                 return true;
             if (ki == Sqlx.UNION)
-                return (mem.Contains(cx.db.types[v.dataType]));
+                return (mem.Contains(cx.db.types[v.dataType]??-1L));
             if (ki != v.dataType.kind)
                 return false;
             switch (ki)
@@ -1648,17 +1561,16 @@ namespace Pyrrho.Level3
                         if (dt.Length != Length)
                             return false;
                         var b = rowType.First();
-                        for (var vb = dt.rowType.First(); b!=null && vb!=null; b=b.Next(),vb.Next())
-                        {
-                            var vc = vb.value();
-                            var vd = cx._Dom(dt.representation[vc]);
-                            if (vd == null)
-                                return false;
-                            var c = b.value();
-                            var cd = cx._Dom(representation[c])??Null;
-                            if (!vd.EqualOrStrongSubtypeOf(cd))
-                                return false;
-                        }
+                        for (var vb = dt.rowType.First(); b != null && vb != null; b = b.Next(), vb.Next())
+                            if (b.value() is long c && vb.value() is long vc)
+                            {
+                                var vd = cx._Dom(dt.representation[vc]);
+                                if (vd == null)
+                                    return false;
+                                var cd = cx._Dom(representation[c]) ?? Null;
+                                if (!vd.EqualOrStrongSubtypeOf(cd))
+                                    return false;
+                            }
                         break;
                     }
                     return false;
@@ -1685,12 +1597,10 @@ namespace Pyrrho.Level3
             if (psr.tok == Sqlx.LPAREN)
                 psr.Next();
             // might be named or positional
-            var ns = CTree<string, long>.Empty;
+            var ns = BTree<string, long?>.Empty;
             for (var b = rowType.First(); b != null; b = b.Next())
-            {
-                var rp = b.value();
+            if (b.value() is long rp)
                 ns += (cx.NameFor(rp), rp);
-            }
             for (var j = 0; j < rowType.Length;)
             {
                 var a = psr.lxr.val.ToString();
@@ -1698,20 +1608,14 @@ namespace Pyrrho.Level3
                 {
                     psr.Next();
                     psr.Mustbe(Sqlx.EQL);
-                        if (!ns.Contains(a))
-                            throw new DBException("42000", a);
-                        var p = ns[a];
-                        if (psr.ParseSqlValueItem(representation[p]??Null, false) is SqlLiteral sl)
-                            vs += (p, sl.val);
-                        else throw new DBException("42000", a);
+                    if (ns[a] is long p &&
+                    psr.ParseSqlValueItem(representation[p] ?? Null, false) is SqlLiteral sl)
+                        vs += (p, sl.val);
+                    else throw new DBException("42000", a);
                 }
-                else
-                {
-                    var rj = rowType[j++];
-                    var sv = psr.ParseSqlValueItem(representation[rj]??Null, false);
-                    if (sv is SqlLiteral v)
+                else if (rowType[j++] is long rj 
+                    && psr.ParseSqlValueItem(representation[rj] ?? Null, false) is SqlLiteral v)
                         vs += (rj, v.val);
-                }
                 if (psr.tok != Sqlx.COMMA)
                     break;
                 psr.Next();
@@ -1749,7 +1653,7 @@ namespace Pyrrho.Level3
                 throw new PEException("PE3044");
             v = TNull.Value;
             if (lx.len == 0)
-            { v = new TRow(lx._cx, this); return null; }
+            { v = new TRow(this); return null; }
             if (sensitive)
             { v = new TSensitive(this, Parse(lx, union)); return null; }
             int start = lx.pos;
@@ -1979,9 +1883,8 @@ namespace Pyrrho.Level3
                                 goto bad;
                             bool blank = true;
                             for (var b = rowType.First(); b != null; b = b.Next())
-                                if (representation[b.value()] is Domain cd)
+                                if (b.value() is long p && representation[p] is Domain cd)
                                 {
-                                    var p = b.value();
                                     var cn = lx._cx.NameFor(p);
                                     TypedValue item = TNull.Value;
                                     if (xc.Attributes != null)
@@ -1994,7 +1897,7 @@ namespace Pyrrho.Level3
                                         if (xc.ChildNodes[j] is XmlNode xn && xn.Name == cn)
                                             item = cd.Parse(0, xn.InnerXml, lx.mime, lx._cx);
                                     blank = blank && (item == null);
-                                    cols += (b.value(), item??TNull.Value);
+                                    cols += (p, item ?? TNull.Value);
                                 }
                             if (blank)
                                 v = TXml.Null;
@@ -2008,79 +1911,80 @@ namespace Pyrrho.Level3
                             // we expect all columns, separated by commas, without string quotes
                             var vs = CTree<long, TypedValue>.Empty;
                             for (var b = rowType.First(); b != null; b = b.Next())
-                            {
-                                // for this mime type we only understand primitive types
-                                var cd = representation[b.value()] ?? Content;
-                                TypedValue vl = TNull.Value;
-                                try
+                                if (b.value() is long p)
                                 {
-                                    switch (cd.kind)
+                                    // for this mime type we only understand primitive types
+                                    var cd = representation[p] ?? Content;
+                                    TypedValue vl = TNull.Value;
+                                    try
                                     {
-                                        case Sqlx.CHAR:
-                                            {
-                                                int st = lx.pos;
-                                                string s;
-                                                if (lx.ch == '"')
+                                        switch (cd.kind)
+                                        {
+                                            case Sqlx.CHAR:
                                                 {
-                                                    lx.Advance();
-                                                    st = lx.pos;
-                                                    while (lx.ch != '"')
+                                                    int st = lx.pos;
+                                                    string s;
+                                                    if (lx.ch == '"')
+                                                    {
                                                         lx.Advance();
-                                                    s = new string(lx.input, st, lx.pos - st);
-                                                    lx.Advance();
-                                                }
-                                                else
-                                                {
-                                                    while (lx.ch != ',' && lx.ch != '\n' && lx.ch != '\r')
+                                                        st = lx.pos;
+                                                        while (lx.ch != '"')
+                                                            lx.Advance();
+                                                        s = new string(lx.input, st, lx.pos - st);
                                                         lx.Advance();
-                                                    s = new string(lx.input, st, lx.pos - st);
-                                                }
-                                                vl = new TChar(s);
-                                                break;
-                                            }
-                                        case Sqlx.DATE:
-                                            {
-                                                int st = lx.pos;
-                                                char oc = lx.ch;
-                                                while (lx.ch != ',' && lx.ch != '\n' && lx.ch != '\r')
-                                                    lx.Advance();
-                                                var s = new string(lx.input, st, lx.pos - st);
-                                                if (s.Contains('/'))
-                                                {
-                                                    var sa = s.Split('/');
-                                                    vl = new TDateTime(Domain.Date, new DateTime(int.Parse(sa[2]), int.Parse(sa[0]), int.Parse(sa[1])));
+                                                    }
+                                                    else
+                                                    {
+                                                        while (lx.ch != ',' && lx.ch != '\n' && lx.ch != '\r')
+                                                            lx.Advance();
+                                                        s = new string(lx.input, st, lx.pos - st);
+                                                    }
+                                                    vl = new TChar(s);
                                                     break;
                                                 }
-                                                lx.pos = st;
-                                                lx.ch = oc;
-                                                vl = cd.Parse(lx);
-                                                break;
-                                            }
-                                        default: vl = cd.Parse(lx); break;
+                                            case Sqlx.DATE:
+                                                {
+                                                    int st = lx.pos;
+                                                    char oc = lx.ch;
+                                                    while (lx.ch != ',' && lx.ch != '\n' && lx.ch != '\r')
+                                                        lx.Advance();
+                                                    var s = new string(lx.input, st, lx.pos - st);
+                                                    if (s.Contains('/'))
+                                                    {
+                                                        var sa = s.Split('/');
+                                                        vl = new TDateTime(Domain.Date, new DateTime(int.Parse(sa[2]), int.Parse(sa[0]), int.Parse(sa[1])));
+                                                        break;
+                                                    }
+                                                    lx.pos = st;
+                                                    lx.ch = oc;
+                                                    vl = cd.Parse(lx);
+                                                    break;
+                                                }
+                                            default: vl = cd.Parse(lx); break;
+                                        }
                                     }
-                                }
-                                catch (Exception)
-                                {
-                                    while (lx.ch != '\0' && lx.ch != ',' && lx.ch != '\r' && lx.ch != '\n')
+                                    catch (Exception)
+                                    {
+                                        while (lx.ch != '\0' && lx.ch != ',' && lx.ch != '\r' && lx.ch != '\n')
+                                            lx.Advance();
+                                    }
+                                    if (b.Next() != null)
+                                    {
+                                        if (lx.ch != ',')
+                                            return new DBException("42101", lx.ch).Mix();
                                         lx.Advance();
+                                    }
+                                    else
+                                    {
+                                        if (lx.ch == ',')
+                                            lx.Advance();
+                                        if (lx.ch != '\0' && lx.ch != '\r' && lx.ch != '\n')
+                                            return new DBException("42101", lx.ch).Mix();
+                                        while (lx.ch == '\r' || lx.ch == '\n')
+                                            lx.Advance();
+                                    }
+                                    vs += (p, vl);
                                 }
-                                if (b.Next() != null)
-                                {
-                                    if (lx.ch != ',')
-                                        return new DBException("42101", lx.ch).Mix();
-                                    lx.Advance();
-                                }
-                                else
-                                {
-                                    if (lx.ch == ',')
-                                        lx.Advance();
-                                    if (lx.ch != '\0' && lx.ch != '\r' && lx.ch != '\n')
-                                        return new DBException("42101", lx.ch).Mix();
-                                    while (lx.ch == '\r' || lx.ch == '\n')
-                                        lx.Advance();
-                                }
-                                vs += (b.value(), vl);
-                            }
                             v = new TRow(this, vs);
                             return null;
                         }
@@ -2101,12 +2005,11 @@ namespace Pyrrho.Level3
                             if (lx.ch == '[')
                                 goto case Sqlx.TABLE;
                             var cols = CTree<long, TypedValue>.Empty;
-                            var names = CTree<string, long>.Empty;
+                            var names = BTree<string, long?>.Empty;
                             var b = rowType.First();
                             for (; b != null; b = b.Next())
-                                if (representation[b.value()] is Domain dm)
+                                if (b.value() is long p && representation[p] is Domain dm)
                                 {
-                                    var p = b.value();
                                     if (lx._cx.obs[p] is SqlValue sv && sv.name is string nm)
                                     {
                                         names += (nm, p);
@@ -2132,30 +2035,33 @@ namespace Pyrrho.Level3
                                 lx.Advance();
                                 lx.White();
                                 var n = lx.GetName();
-                                long p = b.value();
-                                if (n == null) // no name supplied
+                                if (b.value() is long p)
                                 {
-                                    if (b == null || !unnamedOk)
-                                        return new DBException("22208").Mix();
-                                    namedOk = false;
-                                    b = b.Next();
+                                    if (n == null) // no name supplied
+                                    {
+                                        if (b == null || !unnamedOk)
+                                            return new DBException("22208").Mix();
+                                        namedOk = false;
+                                    }
+                                    else // column name supplied
+                                    {
+                                        if (lx.ch != ':')
+                                            return new DBException("42124").Mix();
+                                        else
+                                            lx.Advance();
+                                        if (!namedOk)
+                                            return new DBException("22208").Mix()
+                                                .Add(Sqlx.COLUMN_NAME, new TChar(n));
+                                        unnamedOk = false;
+                                        if (names[n] is long np && np != p)
+                                            p = np;
+                                    }
+                                    lx.White();
+                                    var cv = (representation[p] ?? Content).Parse(lx);
+                                    if (n?[0]!='$')
+                                        cols += (p, cv);
+                                    comma = ',';
                                 }
-                                else // column name supplied
-                                {
-                                    if (lx.ch != ':')
-                                        return new DBException("42124").Mix();
-                                    else
-                                        lx.Advance();
-                                    if (!namedOk)
-                                        return new DBException("22208").Mix()
-                                            .Add(Sqlx.COLUMN_NAME, new TChar(n));
-                                    unnamedOk = false;
-                                    if (names[n] != p)
-                                        p = names[n];
-                                }
-                                lx.White();
-                                cols += (p, (representation[p] ?? Content).Parse(lx));
-                                comma = ',';
                                 lx.White();
                             }
                             if (lx.ch != end)
@@ -2871,14 +2777,12 @@ namespace Pyrrho.Level3
                             if (d == 0)
                                 d = int.MaxValue;
                             var r = (TRow)v;
-                            for (var b = rowType.First(); b != null && vb!=null && b.key() < d; 
+                            for (var b = rowType.First(); b != null && vb != null && b.key() < d;
                                 b = b.Next(), vb = vb.Next())
-                                if (representation[b.value()] is Domain dt &&
-                                    r[vb.value()] is TypedValue tv)
-                                {
-                                    var pp = b.value();
+                                if (b.value() is long pp && vb.value() is long vp &&
+                                    representation[pp] is Domain dt &&
+                                    r[vp] is TypedValue tv)
                                     vs += (pp, dt.Coerce(cx, tv));
-                                }
                             if (vb != null)
                                 goto bad;
                             return new TRow(this, vs);
@@ -2990,9 +2894,9 @@ namespace Pyrrho.Level3
                     if (ob is Document d){
                         var vs = CTree<long, TypedValue>.Empty;
                         for (var b = rowType.First(); b != null; b = b.Next())
-                            if (cx._Ob(b.value()) is DBObject oc && oc.NameFor(cx) is string cn)
+                            if (b.value() is long p && cx._Ob(p) is DBObject oc 
+                                && oc.NameFor(cx) is string cn)
                             {
-                                var p = oc.defpos;
                                 if (cn == null || cn == "")
                                     cn = "Col" + b.key();
                                 var di = cn.IndexOf(".");
@@ -3022,14 +2926,14 @@ namespace Pyrrho.Level3
                             {
                                 kb = kb.Next();
                                 var key = TRow.Empty;
-                                if (cx.groupCols[defpos] is Domain gc)
+                                if (cx.groupCols[defpos] is Domain gc && gc!=Domain.Null)
                                 {
                                     var ks = CTree<long, TypedValue>.Empty;
                                     for (var g = gc.rowType.First(); g != null; g = g.Next())
-                                        if (cx.obs[g.value()] is GroupSpecification gs && // ??
+                                        if (g.value() is long gp && 
+                                            cx.obs[gp] is GroupSpecification gs && // ??
                                                 cx._Dom(gs) is Domain gd)
                                         {
-                                            var gp = g.value();
                                             var nm = gs.alias ?? gs.NameFor(cx) ?? "";
                                             if (d[nm] is TypedValue tv)
                                                 ks += (gp, gd.Coerce(cx, tv));
@@ -3164,11 +3068,11 @@ namespace Pyrrho.Level3
                     if (ob is DocArray dc)
                     {
                         long n = 0;
-                        var va = CTree<TypedValue,long>.Empty;
+                        var va = BTree<TypedValue,long?>.Empty;
                         foreach (var o in dc.items)
                         {
                             var v = elType.Coerce(cx, o);
-                            var k = va.Contains(v)?va[v] : 0L;
+                            var k = va[v] ?? 0L;
                             va += (v, k);
                             n++;
                         }
@@ -3229,7 +3133,7 @@ namespace Pyrrho.Level3
                 Sqlx.DATE => Date,
                 Sqlx.DOCARRAY => Document,
                 Sqlx.DOCUMENT => Document,
-                Sqlx.DOCUMENTLITERAL => Document,
+         //       Sqlx.DOCUMENTLITERAL => Document,
                 Sqlx.INTEGER => Int,
                 Sqlx.INTEGERLITERAL => Int,
                 Sqlx.INTERVAL => Interval,
@@ -3375,13 +3279,12 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue Eval(Context cx)
         {
-            var v = base.Eval(cx);
-            if (rowType != CList<long>.Empty)
+            if (rowType != BList<long?>.Empty)
             {
                 var vs = CTree<long, TypedValue>.Empty;
                 for (var b = rowType.First(); b != null; b = b.Next())
-                    if (cx.obs[b.value()] is SqlValue sv)
-                        vs += (b.value(), sv.Eval(cx));
+                    if (b.value() is long p && cx.obs[p] is SqlValue sv)
+                        vs += (p, sv.Eval(cx));
                 return new TRow(this, vs);
             }
             return defaultValue;
@@ -3846,96 +3749,104 @@ namespace Pyrrho.Level3
         {
             return new Domain(defpos,m);
         }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new Domain(dp,m);
+        }
+        internal override DBObject New(Context cx, BTree<long, object> m)
+        {
+            var dm = (Domain)New(m);
+            if (cx.db.types[dm] is long p)
+                dm = (Domain)(cx.db.objects[p] ?? throw new PEException("PE98311"));
+            else
+                dm = (Domain)New(cx.GetUid(), m);
+            cx.db += (dm, cx.db.loadpos);
+            return (Domain)cx._Add(dm);
+        }
         internal override void _Add(Context cx)
         {
             if (structure >= 0 && cx.db.objects[structure] is Table t
-                && t is not VirtualTable)
+                && t is not VirtualTable && kind!=Sqlx.NODETYPE && kind!=Sqlx.EDGETYPE)
                 t._Add(cx);
             base._Add(cx);
         }
-        internal override Basis _Relocate(Context cx)
+        internal override DBObject Relocate(long dp, Context cx)
         {
-            var r = (defpos>=0)?(Domain)base._Relocate(cx):this;
-            if (constraints.Count>0)
-                r += (Constraints, cx.FixTlb(constraints));
-            if (elType !=Null)
-                r += (Element, cx.db.types[elType]);
-            if (orderFunc!=null)
-                r += (OrderFunc, orderFunc.Relocate(cx));
-            if (representation.Count>0)
-                r += (Representation, cx.FixTlD(representation));
-            if (rowType.Count>0)
-                r += (RowType, cx.FixLl(rowType));
-            if (structure > 0)
-                r += (Structure, cx.Fix(structure));
-            if (r.mem.Contains(Default) && r.defaultValue!=TNull.Value)
-                r += (Default, r.defaultValue.Relocate(cx));
+            var r = (Domain)base.Relocate(dp, cx);
             var ts = cx.newTypes;
-            if (ts.Contains(r))
+            if (ts[r] is long p)
             {
-                var p = ts[r];
-                if (p!=r.defpos)
-                    return (Domain?)(cx.obs[p]??cx.db.objects[p])??throw new PEException("PE1553");
+                if (p != r.defpos)
+                    return (Domain?)(cx.obs[p] ?? cx.db.objects[p]) ?? throw new PEException("PE1553");
                 else
-                    cx.newTypes = ts+(r, r.defpos);
+                    cx.newTypes = ts + (r, r.defpos);
             }
             return r;
         }
-        internal override Basis _Fix(Context cx)
+        protected override BTree<long,object> _Fix(Context cx,BTree<long,object>m)
         {
-            var np = cx.Fix(defpos);
-            if (np == defpos && np < Transaction.Executables)
-                return this;
-            if (cx.done[np] is DBObject rr)
-                return rr;
-            var r = (Domain)Relocate(np);
-            var nc = cx.FixTlb(constraints);
-            if (constraints!=nc)
-                r += (Constraints, nc);
+            if (kind == Sqlx.Null)
+                return m;
+            var r = base._Fix(cx, m);
+            if (constraints.Count > 0)
+            {
+                var nc = cx.FixTlb(constraints);
+                if (constraints != nc)
+                    r += (Constraints, nc);
+            }
             var no = orderFunc?.Fix(cx);
             if (orderFunc != no && no!=null)
                 r += (OrderFunc, no);
-            var nr = cx.FixTlD(representation);
-            if (representation !=nr)
-                r += (Representation, nr);
-            var et = elType.Fix(cx);
-            if (et != elType)
-                r += (Element, et);
-            var st = cx.Fix(structure);
-            if (st != structure)
-                r += (Structure, st);
-            var nt = cx.FixLl(rowType);
-            if (rowType!=nt)
-                r += (RowType, nt);
-            var na = cx.FixTlb(aggs);
-            if (aggs != na)
-                r += (Aggs, na);
-            if (mem.Contains(Default) && defaultValue?.dataType!=null)
+            if (representation.Count > 0)
+            {
+                var nr = cx.FixTlD(representation);
+                if (representation != nr)
+                    r += (Representation, nr);
+            }
+            if (elType != Null)
+            {
+                var et = elType.Fix(cx);
+                if (et != elType)
+                    r += (Element, et);
+            }
+            if (structure > 0)
+            {
+                var st = cx.Fix(structure);
+                if (st != structure)
+                    r += (Structure, st);
+            }
+            if (rowType.Count > 0)
+            {
+                var nt = cx.FixLl(rowType);
+                if (rowType != nt)
+                    r += (RowType, nt);
+            }
+            if (aggs.Count > 0)
+            {
+                var na = cx.FixTlb(aggs);
+                if (aggs != na)
+                    r += (Aggs, na);
+            }
+            if (mem.Contains(Default) && defaultValue!=TNull.Value)
                 r += (Default, defaultValue.Fix(cx));
-            cx.obs += (np, r);
-            cx.done += (np, r);
             return r;
         }
-        internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        protected override BTree<long,object> _Replace(Context cx, DBObject was, DBObject now, BTree<long,object>m)
         {
-            if (defpos < 0)
-                return this;
-            if (cx.done[defpos] is DBObject rr)
-                return rr;
-            var r = this;
+            var r = base._Replace(cx,was,now,m);
             var ch = false;
             var cs = CTree<long, bool>.Empty;
-            for (var b = r.constraints?.First(); b != null; b = b.Next())
+            for (var b = constraints?.First(); b != null; b = b.Next())
             {
-                var ck = (Check)cx._Replace(b.key(), was, now);
+                var ck = (Check)cx._Replace(b.key(),was, now);
                 ch = ch || b.key() != ck.defpos;
                 cs += (ck.defpos, true);
             }
             if (ch)
                 r += (Constraints, cs);
-            if (r.elType != Null)
+            if (elType != Null)
             {
-                var e = cx._Dom(r.elType)?._Replace(cx, was, now)??throw new PEException("PE1551");
+                var e = cx._Dom(elType)?.Replace(cx, was, now)??throw new PEException("PE1551");
                 if (e != elType)
                     r += (Element, e);
             }
@@ -3948,7 +3859,7 @@ namespace Pyrrho.Level3
             {
                 var od = b.value();
                 var k = b.key();
-                var dr = (Domain?)od?._Replace(cx, was, now)??throw new PEException("PE1550");
+                var dr = (Domain?)od?.Replace(cx, was, now)??throw new PEException("PE1550");
                 if (k == was.defpos || k==now.defpos)
                 {
                     k = now.defpos;
@@ -3961,7 +3872,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Representation, rs);
-            var rt = CList<long>.Empty;
+            var rt = BList<long?>.Empty;
             ch = false;
             for (var b=rowType.First();b!=null;b=b.Next())
             {
@@ -3975,11 +3886,7 @@ namespace Pyrrho.Level3
                 rt += np;
             }
             if (ch)
-            {
                 r += (RowType, rt);
-                cx.Add(r);
-            }
-            cx.done += (defpos, r);
             return r;
         }
         internal Domain Replaced(Context cx)
@@ -3990,7 +3897,7 @@ namespace Pyrrho.Level3
             for (var b = representation.First(); b != null; b = b.Next())
             {
                 var od = b.value();
-                var nk = cx.done[b.key()]?.defpos??b.key();
+                var nk = cx.done[b.key()]?.defpos??cx.uids[b.key()]??b.key();
                 var rr = od.Replaced(cx);
                 if (rr != od || nk != b.key())
                     ch = true;
@@ -3998,29 +3905,29 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 r += (Representation, rs);
-            var rt = CList<long>.Empty;
+            var rt = BList<long?>.Empty;
             ch = false;
             for (var b = rowType.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var np = cx.done[p]?.defpos??p;
-                if (p != np)
-                    ch = true;
-                rt += np;
-            }
+                if (b.value() is long p)
+                {
+                    var np = cx.done[p]?.defpos ?? cx.uids[p]?? p;
+                    if (p != np)
+                        ch = true;
+                    rt += np;
+                }
             if (ch)
                 r += (RowType, rt);
             return r;
         }
         internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
         {
-            var cs = CList<long>.Empty;
+            var cs = BList<long?>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var ch = false;
             var de = depth;
             BList<DBObject> ls;
                 for (var b = First(); b != null; b = b.Next())
-                    if (cx.obs[b.value()] is SqlValue v && cx._Dom(v) is Domain d)
+                    if (b.value() is long p && cx.obs[p] is SqlValue v && cx._Dom(v) is Domain d)
                     {
                         (ls, m) = v.Resolve(cx, f, m);
                         if (ls[0] is SqlValue nv && cx._Dom(nv) is Domain nd)
@@ -4111,30 +4018,18 @@ namespace Pyrrho.Level3
                     {
                         var a = (TArray)ob;
                         //           sb.Append("type=\"array\">");
-                        long ep;
-                        if (cx.db.types.Contains(elType))
-                            ep = cx.db.types[elType];
-                        else if (cx.newTypes.Contains(elType))
-                            ep = cx.newTypes[elType];
-                        else
-                            throw new PEException("PE48803");
-                        for (int j = 0; j < a.Length; j++)
-                            sb.Append("<item " + elType.Xml(cx, ep, a[j]) + "</item>");
+                        if ((cx.db.types[elType] ?? cx.newTypes[elType]) is long ep)
+                            for (int j = 0; j < a.Length; j++)
+                                sb.Append("<item " + elType.Xml(cx, ep, a[j]) + "</item>");
                         break;
                     }
                 case Sqlx.MULTISET:
                     {
                         var m = (TMultiset)ob;
                         //          sb.Append("type=\"multiset\">");
-                        long ep;
-                        if (cx.db.types.Contains(elType))
-                            ep = cx.db.types[elType];
-                        else if (cx.newTypes.Contains(elType))
-                            ep = cx.newTypes[elType];
-                        else
-                            throw new PEException("PE48804");
-                        for (var e = m.tree.First(); e != null; e = e.Next())
-                            sb.Append("<item " + elType.Xml(cx, ep, e.key()) + "</item>");
+                        if ((cx.db.types[elType] ?? cx.newTypes[elType]) is long ep)
+                            for (var e = m.tree.First(); e != null; e = e.Next())
+                                sb.Append("<item " + elType.Xml(cx, ep, e.key()) + "</item>");
                         break;
                     }
                 case Sqlx.ROW:
@@ -4183,10 +4078,6 @@ namespace Pyrrho.Level3
             }
             return sb.ToString();
         }
-        internal override DBObject Relocate(long dp)
-        {
-            return new Domain(dp,mem);
-        }
     }
     // shareable as of 26 April 2021
     internal class StandardDataType : Domain
@@ -4202,18 +4093,22 @@ namespace Pyrrho.Level3
         protected StandardDataType(long dp, BTree<long, object> m) : base(dp, m) { }
         public static StandardDataType operator+(StandardDataType dt,(long,object) x)
         {
+            var (dp, ob) = x;
+            if (dt.mem[dp] == ob)
+                return dt;
             return (StandardDataType)dt.New(dt.mem + x);
         }
         internal static StandardDataType Get(Sqlx undertok)
         {
+            if (undertok == Sqlx.ID)
+                throw new DBException("42108");
             return types[undertok]??throw new NotImplementedException();
         }
         static BTree<long,object> _Mem(OrderCategory oc, Domain? o, BTree<long, object>? u)
         {
-            if (u == null || o==null)
-                u = BTree<long, object>.Empty;
-            if (o != null)
-                u += (Element, o.defpos);
+            u ??= BTree<long, object>.Empty;
+            if (o is not null)
+                u += (Element, o);
             if (!u.Contains(Descending))
                 u += (Descending, Sqlx.ASC);
             if (!u.Contains(OrderCategory))
@@ -4246,7 +4141,7 @@ namespace Pyrrho.Level3
         internal static void SerialiseLevel(Writer wr, Level lev)
         {
             if (wr.cx.db.levels.Contains(lev))
-                wr.PutLong(wr.cx.db.levels[lev]);
+                wr.PutLong(wr.cx.db.levels[lev]??-1L);
             else
             {
                 wr.PutLong(-1L);
@@ -4693,37 +4588,43 @@ namespace Pyrrho.Level3
     internal class UDType : Domain
     {
         internal const long
-            Fields = -464, // CList<long> TableColumn
             Prefix = -390, // string
+            Subtypes = -155, // CTree<long,bool> UDType
             Suffix = -400, // string
             SuperShape = -318, // bool
             Under = -90; // UDType
-        public CList<long> fields => (CList<long>?)mem[Fields] ?? CList<long>.Empty;
         public string? prefix => (string?)mem[Prefix];
         public string? suffix => (string?)mem[Suffix];
         public Domain? super => (Domain?)mem[Under];
         public bool superShape => (bool)(mem[SuperShape] ?? false);
         public CTree<long,string> methods =>
             (CTree<long,string>?)mem[Database.Procedures] ?? CTree<long,string>.Empty;
-        public UDType(PType pt) : base(pt.ppos,_Mem(pt)) 
+        public CTree<long,bool> subtypes =>
+            (CTree<long,bool>)(mem[Subtypes] ??CTree<long,bool>.Empty);
+        internal UDType(Sqlx t) : base(--_uid,t,BTree<long,object>.Empty)
         { }
-        protected UDType(long dp,BTree<long,object>m) :base(dp,m)
+        public UDType(long dp, Context cx, Sqlx k, BList<DBObject> vs) 
+            : base(dp, cx, k, vs) { }
+        public UDType(long dp,BTree<long,object>m) :base(dp,m)
         { }
         public static UDType operator+(UDType t,(long,object)x)
         {
+            var (dp, ob) = x;
+            if (t.mem[dp] == ob)
+                return t;
             return (UDType)t.New(t.mem + x);
         }
         public static UDType operator -(UDType t, long x)
         {
             return (UDType)t.New(t.mem - x);
         }
-        public static BTree<long,object> _Mem(PType pt)
+        internal static BTree<long,object> _Mem(PType pt)
         {
             var r = (pt.structure?.mem??BTree<long, object>.Empty) 
                 + (Kind, Sqlx.TYPE) + (ObInfo.Name,pt.name);
             var dvs = CTree<long, TypedValue>.Empty;
-            var rs = (pt.under?.representation??CTree<long,Domain>.Empty)
-                + (pt.structure?.representation??CTree<long,Domain>.Empty);
+            var rt = pt.structure?.rowType??BList<long?>.Empty;
+            var rs = pt.structure?.representation??CTree<long, Domain>.Empty;
             for (var b = rs.First(); b != null; b = b.Next())
             {
                 var c = b.key();
@@ -4733,19 +4634,21 @@ namespace Pyrrho.Level3
             r += (DefaultRowValues, dvs);
             if (pt.under != null)
                 r += (Under, pt.under);
-            else if (pt.structure?.rowType == CList<long>.Empty)
+            else if (pt.structure?.rowType == BList<long?>.Empty)
                 r += (Under, pt.structure);
-            if (pt.structure!=null && pt.under!=null && pt.structure.rowType.CompareTo(pt.under.rowType)==0)
+            if (pt.structure!=null && pt.under!=null && 
+                Context.Match(pt.structure.rowType,pt.under.rowType))
                 r += (SuperShape, true);
+            r += (Display, rt.Length);
             return r;
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new UDType(defpos,m);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp,BTree<long,object>m)
         {
-            return new UDType(dp,mem);
+            return new UDType(dp, m + (Kind,Sqlx.TYPE));
         }
         internal new static Domain New(Context cx, BTree<long, object> m)
         {
@@ -4809,9 +4712,9 @@ namespace Pyrrho.Level3
         public override bool EqualOrStrongSubtypeOf(Domain dt)
         {
             for (Domain? s = this; s != null; s = (s as UDType)?.super)
-                if (s.Equals(dt))
+                if (s.CompareTo(dt)==0)
                     return true;
-            return base.EqualOrStrongSubtypeOf(dt);
+            return name==dt.name;
         }
         public override bool HasValue(Context cx, TypedValue v)
         {
@@ -4819,42 +4722,37 @@ namespace Pyrrho.Level3
             if (ki == Sqlx.UNION)
             {
                 for (var d = v.dataType; d != null; d = (d as UDType)?.super)
-                    if (mem.Contains(cx.db.types[d]))
+                    if (mem.Contains(cx.db.types[d] ?? throw new PEException("PE48813")))
                         return true;
                 return false;
             }
             return base.HasValue(cx, v);
         }
 
-        internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        protected override BTree<long, object> _Replace(Context cx, DBObject was, DBObject now, BTree<long, object>m)
         {
-            var r = (UDType)base._Replace(cx, was, now);
-            if (r.super?._Replace(cx, was, now) is Domain und
+            var r = base._Replace(cx, was, now,m);
+            if (super?.Replace(cx, was, now) is Domain und
     && und != super)
                 r += (Under, und);
-            if (r!=this)
-                r= (UDType)New(cx,r.mem);
-            cx.done += (defpos, r);
             return r;
         }
-        internal override Basis _Fix(Context cx)
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
-            var r = (UDType)base._Fix(cx);
+            var r = base._Fix(cx,m);
             var ns = super?.Fix(cx);
             if (super != ns && ns!=null)
                 r += (Under, ns);
+            var nu = cx.FixTlb(subtypes);
+            if (nu != subtypes)
+                r += (Subtypes, nu);
             if (defaultString == "")
                 r -= Default;
             return r;
         }
-        internal override Basis _Relocate(Context cx)
+        internal override Domain Constrain(Context cx, long lp, Domain dt)
         {
-            var r = (UDType)base._Relocate(cx);
-            if (super != null)
-                r += (Under, super.Relocate(cx));
-            if (defaultString == "")
-                r -= Default;
-            return r;
+             throw new DBException("42000",name);
         }
         /// <summary>
         /// Generate a row for the Role$Class table: includes a C# class definition
@@ -4888,7 +4786,7 @@ namespace Pyrrho.Level3
                 sb.Append("\r\n");
             }
             sb.Append("}\r\n");
-            return new TRow(cx, cx._Dom(from)??Null, new TChar(md.name??"??"), new TChar(""),
+            return new TRow(cx._Dom(from)??Null, new TChar(md.name??"??"), new TChar(""),
                 new TChar(sb.ToString()));
         }
         internal override int Typecode()
@@ -4910,6 +4808,111 @@ namespace Pyrrho.Level3
                 sb.Append(Uid(b.key()));
                 sb.Append(' ');
                 sb.Append(b.value());
+            }
+            return sb.ToString();
+        }
+    }
+
+    internal class NodeType : UDType
+    {
+        internal NodeType(Sqlx t) : base(t)
+        { }
+        public NodeType(PNodeType pt) : base(pt.ppos, _Mem(pt))
+        { }
+        public NodeType(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new NodeType(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object>m)
+        {
+            return new NodeType(dp, m + (Kind,Sqlx.NODETYPE));
+        }
+        public static NodeType operator+(NodeType nt,(long,object) x)
+        {
+            var (dp, ob) = x;
+            if (nt.mem[dp] == ob)
+                return nt;
+            return (NodeType)nt.New(nt.mem + x);
+        }
+        public override int Compare(TypedValue a, TypedValue b)
+        {
+            if (a == b) return 0;
+            if (a is TNull) return -1;
+            if (b is TNull) return 1;
+            var c = b.dataType.dbg.CompareTo(b.dataType.dbg);
+            if (c != 0)
+                return c;
+            return a.CompareTo(b);
+        }
+        internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
+    Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
+        {
+            cx.Add(this);
+            var m = BTree<long, object>.Empty + (_From, fm) + (_Ident, id);
+            if (a != null)
+                m += (_Alias, a);
+            var rowSet = (RowSet)cx._Add(new TableRowSet(id.iix.dp, cx, structure, m));
+#if MANDATORYACCESSCONTROL
+            Audit(cx, rowSet);
+#endif
+            return rowSet;
+        }
+    }
+    internal class EdgeType : NodeType
+    {
+        internal const long
+            ArrivingType = -467, // long NodeType
+            LeavingType = -464; // long NodeType
+        internal long arrivingType => (long)(mem[ArrivingType] ?? -1L);
+        internal long leavingType => (long)(mem[LeavingType] ?? -1L);
+        internal EdgeType(Sqlx t) : base(t)
+        { }
+        public EdgeType(PEdgeType pt) : base(pt.ppos, _Mem(pt))
+        { }
+        public EdgeType(long dp, BTree<long, object> m) : base(dp, m)
+        {  }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new EdgeType(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object>m)
+        {
+            return new EdgeType(dp, m+(Kind,Sqlx.EDGETYPE));
+        }
+        public static EdgeType operator +(EdgeType et, (long, object) x)
+        {
+            var (dp, ob) = x;
+            if (et.mem[dp] == ob)
+                return et;
+            return (EdgeType)et.New(et.mem + x);
+        }
+        public override int Compare(TypedValue a, TypedValue b)
+        {
+            if (a == b) return 0;
+            var c = a.dataType.defpos.CompareTo(b.dataType.defpos);
+            if (c != 0) return c;
+            // if we get to here they both have this as dataType
+            return ((TEdge)a).CompareTo((TEdge)b);
+        }
+        internal override DBObject Relocate(long dp, Context cx)
+        {
+            var r = (EdgeType)base.Relocate(dp, cx)
+                + (LeavingType,cx.Fix(leavingType))
+                + (ArrivingType,cx.Fix(arrivingType));
+            return (EdgeType)cx.Add(r);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (leavingType != -1L)
+            {
+                sb.Append(" Leaving "); sb.Append(Uid(leavingType));
+            }
+            if (arrivingType != -1L)
+            {
+                sb.Append(" Arriving "); sb.Append(Uid(arrivingType));
             }
             return sb.ToString();
         }

@@ -8,7 +8,7 @@ using System.IO;
 using static Pyrrho.Level3.Basis;
 using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -130,18 +130,17 @@ namespace Pyrrho.Level4
         internal Domain? rdt = null;
         public CalledActivation(Context cx, Procedure p)
             : base(cx, p)
-        { 
-            proc = p; 
+        {
+            proc = p;
             for (var b = p.ins.First(); b != null; b = b.Next())
-                locals += (b.value(),true);
+                if (b.value() is long c)
+                    locals += (c, true);
             if (p is Method mt)
             {
                 cmt = mt;
                 for (var b = mt.udType.rowType.First(); b != null; b = b.Next())
-                {
-                    var c = b.value();
-                    locals += (c, true);
-                }
+                    if (b.value() is long c)
+                        locals += (c, true);
             }
         }
         internal override TypedValue Ret()
@@ -285,10 +284,10 @@ namespace Pyrrho.Level4
                         // NB at this point obs[t] version of the trigger has the wrong action field
                         if (db.objects[t] is Trigger td)
                         {
-                            obs += (t, td);
+                            Add(td);
                             var ta = new TriggerActivation(this, _trs, td);
                             acts += (t, ta);
-                            ta.obs += (t, td);
+                            Add(td); // again!
                         }
                     }
             for (var b = table.rindexes.First(); b != null; b = b.Next())
@@ -296,19 +295,19 @@ namespace Pyrrho.Level4
                 {
                     var ri = rt.infos[role.defpos];
                     var cp = GetUid();
-                    var vs = BList<SqlValue>.Empty;
-                    var tr = CTree<long, long>.Empty;
+                    var vs = BList<DBObject>.Empty;
+                    var tr = BTree<long, long?>.Empty;
                     for (var c = rd.rowType.First(); c != null; c = c.Next())
-                        if (cx._Ob(c.value()) is SqlValue sc && sc.infos[role.defpos] is ObInfo ci)
+                        if (c.value() is long p && cx._Ob(p) is SqlValue sc 
+                            && sc.infos[role.defpos] is ObInfo ci)
                         {
-                            var p = c.value();
                             sc = new SqlCopy(GetUid(), cx, ci?.name ?? sc?.alias ?? sc?.name ?? "", cp, p);
-                            obs += (sc.defpos, sc);
+                            Add(sc);
                             vs += sc;
                             tr += (p, sc.defpos);
                         }
                     var cd = new Domain(GetUid(), cx, Sqlx.TABLE, vs);
-                    obs += (cd.defpos, cd);
+                    Add(cd);
                     for (var c = b.value()?.First(); c != null; c = c.Next())
                         if (c.value() is Domain xk && table.FindIndex(db, xk)?[0] is Level3.Index x)
                         {
@@ -316,22 +315,24 @@ namespace Pyrrho.Level4
                             if (x == null || rx == null)
                                 continue;
                             var fl = CTree<long, TypedValue>.Empty;
-                            var xm = BTree<long, long>.Empty;
+                            var xm = BTree<long, long?>.Empty;
                             var pb = rx.keys.First();
                             for (var rb = x.keys.First(); pb != null && rb != null;
                                 pb = pb.Next(), rb = rb.Next())
-                                xm += (rb.value(), pb.value());
+                                if (rb.value() is long rp && pb.value() is long pp)
+                                xm += (rp, pp);
                             for (var d = ts.matches.First(); d != null; d = d.Next())
-                                if (obs[d.key()] is SqlCopy sc)
-                                    fl += (xm[sc.copyFrom], d.value());
+                                if (obs[d.key()] is SqlCopy sc && xm[sc.copyFrom] is long xp)
+                                    fl += (xp, d.value());
                             var rf = new TableRowSet(ts.defpos, this, b.key());
                             if (fl != CTree<long, TypedValue>.Empty)
                                 rf += (RowSet.Filter, fl);
-                            obs += (rx.defpos, rx);
-                            obs += (rt.defpos, rt);
+                            Add(rx);
+                            Add(rt);
                             for (var xb = _Dom(rf)?.rowType.First(); xb != null; xb = xb.Next())
-                                if (obs[xb.value()] is SqlCopy xc && db.objects[xc.copyFrom] is TableColumn tc)
-                                    obs += (xc.copyFrom, tc);
+                                if (xb.value() is long xp && obs[xp] is SqlCopy xc 
+                                    && db.objects[xc.copyFrom] is TableColumn tc)
+                                    Add(tc);
                             if ((obs[rf.data] ?? obs[rf.defpos]) is RowSet da)
                             {
                                 var ra = new TableActivation(this, rf, da, tt);
@@ -344,18 +345,14 @@ namespace Pyrrho.Level4
                                             break;
                                         case PIndex.ConstraintType.SetDefaultUpdate:
                                             for (var kb = rx.keys.rowType.Last(); kb != null; kb = kb.Previous())
-                                            {
-                                                var p = kb.value();
-                                                if (ra.obs[p] is SqlValue sc && _Dom(sc) is Domain sd)
+                                                if (kb.value() is long p &&
+                                                    ra.obs[p] is SqlValue sc && _Dom(sc) is Domain sd)
                                                     ra.updates += (p, new UpdateAssignment(p, sd.defaultValue));
-                                            }
                                             break;
                                         case PIndex.ConstraintType.SetNullUpdate:
                                             for (var kb = rx.keys.rowType.Last(); kb != null; kb = kb.Previous())
-                                            {
-                                                var p = kb.value();
-                                                ra.updates += (p, new UpdateAssignment(p, TNull.Value));
-                                            }
+                                                if (kb.value() is long p)
+                                                    ra.updates += (p, new UpdateAssignment(p, TNull.Value));
                                             break;
                                     }
                                 else if (tt == PTrigger.TrigType.Delete)
@@ -367,18 +364,14 @@ namespace Pyrrho.Level4
                                             break;
                                         case PIndex.ConstraintType.SetDefaultDelete:
                                             for (var kb = rx.keys.rowType.Last(); kb != null; kb = kb.Previous())
-                                            {
-                                                var p = kb.value();
-                                                if (ra.obs[p] is SqlValue sc && _Dom(sc) is Domain sd)
+                                            if (kb.value() is long p &&
+                                                ra.obs[p] is SqlValue sc && _Dom(sc) is Domain sd)
                                                     ra.updates += (p, new UpdateAssignment(p, sd.defaultValue));
-                                            }
                                             break;
                                         case PIndex.ConstraintType.SetNullDelete:
                                             for (var kb = rx.keys.rowType.Last(); kb != null; kb = kb.Previous())
-                                            {
-                                                var p = kb.value();
-                                                ra.updates += (p, new UpdateAssignment(p, TNull.Value));
-                                            }
+                                            if (kb.value() is long p)
+                                                    ra.updates += (p, new UpdateAssignment(p, TNull.Value));
                                             break;
 
                                     }
@@ -512,6 +505,7 @@ namespace Pyrrho.Level4
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
                         _cx.db = db;
                         // Row-level after triggers
+                        values += (Trigger.NewRow, new TRow(tgc.dataType, newRow));
                         Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
                         break;
                     }
@@ -522,8 +516,7 @@ namespace Pyrrho.Level4
                             if (b.value() is UpdateAssignment ua)
                             {
                                 var tv = ua.Eval(this);
-                                var tp = trs.transTarget[ua.vbl];
-                                if (tp != 0)
+                                if (trs.transTarget[ua.vbl] is long tp)
                                     newRow += (tp, tv);
                                 else if (trs.targetTrans.Contains(ua.vbl)) // this is a surprise
                                     newRow += (ua.vbl, tv);
@@ -721,7 +714,7 @@ namespace Pyrrho.Level4
             {
                 assig = ru.assig;
                 if (_Ob(ru.urlCol) is SqlValue uv)
-                   obs += (ru.urlCol, uv);
+                   Add(uv);
                 var u = obs[ru.urlCol]?.Eval(this);
                 if (u == null || u == TNull.Value) // can happen for Insert with a named column list, and for Delete
                 {
@@ -769,7 +762,7 @@ namespace Pyrrho.Level4
                         _sql.Append(" values");
                         var cm = "(";
                         for (var b = _rr.remoteCols.First(); b != null; b = b.Next())
-                            if (vs[b.value()] is TypedValue tv)
+                            if (b.value() is long p && vs[p] is TypedValue tv)
                             {
                                 _sql.Append(cm); cm = ",";
                                 if (tv.dataType.kind == Sqlx.CHAR)
@@ -912,7 +905,7 @@ namespace Pyrrho.Level4
                         sql.Append(cm); cm = ",";
                         sql.Append('"'); sql.Append(nb.value());
                         sql.Append("\":");
-                        if (vs[b.value()] is TypedValue v && v.ToString() is string s)
+                        if (b.value() is long p && vs[p] is TypedValue v && v.ToString() is string s)
                             sql.Append((v is TChar) ? ("'" + s + "'") : s);
                     }
                     sql.Append("}]");
@@ -941,23 +934,24 @@ namespace Pyrrho.Level4
                         vs += (ua.vbl, ua.Eval(_cx));
                     }
                     var tb = _Dom(_rr)?.rowType.First();
-                    for (var b = _rr.remoteCols.First(); b != null && tb!=null; 
+                    for (var b = _rr.remoteCols.First(); b != null && tb != null;
                         b = b.Next(), tb = tb.Next())
-                    {
-                        sql.Append(cm); cm = ",";
-                        sql.Append('"'); 
-                        sql.Append(obs[b.value()]?.NameFor(this)??"");
-                        var tv = vs[tb.value()];
-                        sql.Append("\":");
-                        if (tv!=null && tv.dataType.kind == Sqlx.CHAR)
+                        if (b.value() is long p && tb.value() is long tp)
                         {
-                            sql.Append('\'');
-                            sql.Append(tv.ToString().Replace("'", "'''"));
-                            sql.Append('\'');
+                            sql.Append(cm); cm = ",";
+                            sql.Append('"');
+                            sql.Append(obs[p]?.NameFor(this) ?? "");
+                            var tv = vs[p];
+                            sql.Append("\":");
+                            if (tv != null && tv.dataType.kind == Sqlx.CHAR)
+                            {
+                                sql.Append('\'');
+                                sql.Append(tv.ToString().Replace("'", "'''"));
+                                sql.Append('\'');
+                            }
+                            else
+                                sql.Append(tv);
                         }
-                        else
-                            sql.Append(tv);
-                    }
                     sql.Append("}]");
                     RoundTrip(this, _vw.defpos, _tty, rq, url, sql);
                     var ur = new RemoteTableRow(np, vs, url, _rr);
@@ -990,7 +984,7 @@ namespace Pyrrho.Level4
         /// The trigger definition
         /// </summary>
         internal readonly Trigger? _trig;
-        internal readonly BTree<long, long>? trigTarget, targetTrig; // trigger->target, target->trigger
+        internal readonly BTree<long, long?>? trigTarget, targetTrig; // trigger->target, target->trigger
         /// <summary>
         /// Prepare for multiple executions of this trigger
         /// </summary>
@@ -1006,7 +1000,7 @@ namespace Pyrrho.Level4
             if (cx.db.objects[ot.defpos] is Trigger t0 && t0.Instance(trs.defpos, this) is Trigger tg
                 && cx.db.objects[trs.target] is Table tb && cx._Dom(tb) is Domain dm)
             {
-                obs += (tb.defpos, tb);
+                Add(tb);
                 _trig = tg;
                 (trigTarget, targetTrig) = _Map(dm, tg);
                 defer = _trig.tgType.HasFlag(PTrigger.TrigType.Deferred);
@@ -1016,19 +1010,18 @@ namespace Pyrrho.Level4
                     cx.deferred += this;
             }
         }
-        static (BTree<long,long>,BTree<long,long>) _Map(Domain dm,Trigger tg)
+        static (BTree<long,long?>,BTree<long,long?>) _Map(Domain dm,Trigger tg)
         {
-            var ma = BTree<long, long>.Empty;
-            var rm = BTree<long, long>.Empty;
+            var ma = BTree<long, long?>.Empty;
+            var rm = BTree<long, long?>.Empty;
             var sb = ((Domain?)tg.framing.obs[tg.domain])?.rowType.First();
             for (var b = dm.rowType.First(); b != null && sb != null; b = b.Next(),
                 sb = sb.Next())
-            {
-                var tp = sb.value();
-                var p = b.value();
-                ma += (tp, p);
-                rm += (p, tp);
-            }
+                if (sb.value() is long tp && b.value() is long p)
+                {
+                    ma += (tp, p);
+                    rm += (p, tp);
+                }
             return (ma,rm);
         }
         /// <summary>
@@ -1047,10 +1040,8 @@ namespace Pyrrho.Level4
             {
                 cu = new TransitionRowSet.TriggerCursor(this, trc._tgc);
                 for (var b = cu.dataType.rowType.First(); b != null; b = b.Next())
-                {
-                    var p = b.value();
-                    values += (p, cu[p]);
-                }
+                    if (b.value() is long p)
+                        values += (p, cu[p]);
             }
             if (defer)
                 return false;
@@ -1059,15 +1050,14 @@ namespace Pyrrho.Level4
             if (_trig.newRow != -1L && next.values[Trigger.NewRow] is TypedValue nt)
                 values += (_trig.newRow, nt);
             if (obs[_trig.oldTable] is TransitionTable ott && _Dom(ott) is Domain od){
-                next.obs += (ott.domain,od);
-                obs += (ott.defpos, new TransitionTableRowSet(ott.defpos, next, _trs,
+                next.Add(od);
+                Add(new TransitionTableRowSet(ott.defpos, next, _trs,
                     od, true));
             }
             if (obs[_trig.newTable] is TransitionTable ntt && _Dom(ntt) is Domain nd)
             {
-                next.obs += (ntt.domain, nd);
-                obs += (ntt.defpos, new TransitionTableRowSet(ntt.defpos, next, _trs,
-                    nd, false));
+                next.Add(nd);
+                Add(new TransitionTableRowSet(ntt.defpos, next, _trs, nd, false));
             }
             if (obs[_trig.action] is WhenPart wp)
             {
@@ -1087,11 +1077,11 @@ namespace Pyrrho.Level4
                     {
                         var ta = (TableActivation)next;
                         for (var b = cu?.dataType.rowType.First(); b != null; b = b.Next())
-                        {
-                            var p = b.value();
+                        if (b.value() is long p) {
                             var tv = values[p];
-                            if (tv!=null && tv != cu?[p] && ta.newRow != null && trigTarget.Contains(p)) // notify the TableActivation
-                                ta.newRow += (trigTarget[p], tv);
+                            if (tv!=null && tv != cu?[p] && ta.newRow != null && trigTarget.Contains(p)
+                                    && trigTarget[p] is long tp) // notify the TableActivation
+                                ta.newRow += (tp, tv);
                         }
                     }
                 }

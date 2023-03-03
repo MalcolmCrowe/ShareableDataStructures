@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System.Configuration;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -26,7 +26,7 @@ namespace Pyrrho.Level2
 		public string nameAndArity => name+"$"+parameters.Count;
         public Ident? source;
         public bool mth = false;
-        public CList<long> parameters = CList<long>.Empty;
+        public BList<long?> parameters = BList<long?>.Empty;
         public long proc = -1; // the procedure code is in Compiled.framing
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -34,8 +34,8 @@ namespace Pyrrho.Level2
             return -1;
         }
         internal int arity;
-        public PProcedure(string nm, CList<long> ar, Domain rt, Procedure? pr,Ident sce, 
-            long pp, Context cx) : this(Type.PProcedure,nm, ar, rt, pr, sce, pp, cx)
+        public PProcedure(string nm, BList<long?> ar, Domain rt, Procedure? pr,Ident sce, long nst,
+            long pp, Context cx) : this(Type.PProcedure,nm, ar, rt, pr, sce, nst, pp, cx)
         { }
         /// <summary>
         /// Constructor: a procedure or function definition from the Parser.
@@ -49,10 +49,11 @@ namespace Pyrrho.Level2
         /// <param name="ar">The arity</param>
         /// <param name="rt">The return type</param>
         /// <param name="pc">The procedure clause including parameters, or ""</param>
+        /// <param name="nst">The first possible framing object</param>
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, CList<long> ps, Domain rt, Procedure? pr,
-            Ident sce, long pp, Context cx) : base(tp,pp,cx,nm, pr?.defpos??-1L,rt)
+        protected PProcedure(Type tp, string nm, BList<long?> ps, Domain rt, Procedure? pr,
+            Ident sce, long nst, long pp, Context cx) : base(tp,pp,cx,nm, pr?.defpos??-1L,rt, nst)
 		{
             source = sce;
             parameters = ps;
@@ -178,8 +179,8 @@ namespace Pyrrho.Level2
                 + (DBObject._Framing, framing) + (Procedure.Body, proc)
                 + (DBObject.Owner, cx.user??User.None)
                 + (DBObject.Infos,new BTree<long,ObInfo>(cx.role.defpos,oi)));
-            var ps = ro.procedures??CTree<string,CTree<CList<Domain>,long>>.Empty;
-            var pn = (ps[name]??CTree<CList<Domain>,long>.Empty) + (cx.Signature(parameters),defpos);
+            var ps = ro.procedures??BTree<string,BTree<CList<Domain>,long?>>.Empty;
+            var pn = (ps[name]??BTree<CList<Domain>,long?>.Empty) + (cx.Signature(parameters),defpos);
             ro += (Role.Procedures, ps + (name, pn));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

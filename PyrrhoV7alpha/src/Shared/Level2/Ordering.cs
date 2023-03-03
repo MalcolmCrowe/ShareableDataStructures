@@ -3,7 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -82,9 +82,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
         {
-            if (!wr.cx.db.types.Contains(domain))
-                throw new PEException("PE48800");
-            wr.PutLong(wr.cx.db.types[domain]);
+            wr.PutLong(wr.cx.db.types[domain]??throw new PEException("PE48800"));
             funcdefpos = wr.cx.Fix(funcdefpos);
             wr.PutLong(funcdefpos);
             wr.PutInt((int)flags);
@@ -133,10 +131,8 @@ namespace Pyrrho.Level2
         {
             var dm = domain 
                 + (Domain.OrderFunc, (Procedure?)cx.db.objects[funcdefpos] ?? throw new DBException("42108"))
-                +(Domain.OrderCategory,flags);
-            if (!cx.db.types.Contains(domain))
-                throw new PEException("PE48801");
-            cx.db += (cx.db.types[domain],dm, p);
+                +(Domain.OrderCategory, flags);
+            cx.db += ((Domain)dm.New(cx,dm.mem), p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return dm;

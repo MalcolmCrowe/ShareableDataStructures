@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System.Data.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -38,11 +38,12 @@ namespace Pyrrho.Level2
         /// <param name="mt">The method type</param>
         /// <param name="td">The owning type</param>
         /// <param name="pc">The procedure clause</param>
+        /// <param name="nst">The first possible framing executable</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, CList<long> ar, Domain rt, 
-            MethodType mt, UDType td, Method? md, Ident sce,long pp, Context cx)
-            : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,pp,cx)
+        public PMethod(string nm, BList<long?> ar, Domain rt, 
+            MethodType mt, UDType td, Method? md, Ident sce,long nst, long pp, Context cx)
+            : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,nst, pp,cx)
 		{ }
         /// <summary>
         /// Constructor: a new Method definition from the Parser
@@ -52,14 +53,13 @@ namespace Pyrrho.Level2
         /// <param name="ar">The arity</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
-        /// <param name="td">The defining position of the type</param>
-        /// <param name="pc">The procedure clause including body</param>
-        /// <param name="u">The defining position for the method</param>
+        /// <param name="td">The user defined type</param>
+        /// <param name="nst">The first possible framing executable</param>
         /// /// <param name="db">The database</param>
-        protected PMethod(Type tp, string nm, CList<long> ar, 
-            Domain rt, MethodType mt, UDType td, Method? md, Ident sce,
+        protected PMethod(Type tp, string nm, BList<long?> ar, 
+            Domain rt, MethodType mt, UDType td, Method? md, Ident sce,long nst,
             long pp, Context cx)
-            : base(tp,nm,ar,rt,md,sce,pp,cx)
+            : base(tp,nm,ar,rt,md,sce,nst,pp,cx)
 		{
 			udt = td;
             _udt = td.defpos;
@@ -164,7 +164,7 @@ namespace Pyrrho.Level2
                 throw new PEException("PE0611");
             var um = ui.methodInfos;
             var sig = cx.Signature(parameters);
-            var om = um[name] ?? CTree<CList<Domain>, long>.Empty;
+            var om = um[name] ?? BTree<CList<Domain>, long?>.Empty;
             um += (name, om+(sig, mt.defpos));
             ui += (ObInfo.MethodInfos, um);
             var mi = new ObInfo(name, priv);

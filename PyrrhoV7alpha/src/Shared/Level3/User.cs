@@ -2,7 +2,7 @@ using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -51,11 +51,14 @@ namespace Pyrrho.Level3
         }
         public static User operator+(User u,(long,object)x)
         {
+            var (dp, ob) = x;
+            if (u.mem[dp] == ob)
+                return u;
             return (User)u.New(u.mem + x);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return new User(dp,mem);
+            return new User(dp, m);
         }
         /// <summary>
         /// a readable version of the user

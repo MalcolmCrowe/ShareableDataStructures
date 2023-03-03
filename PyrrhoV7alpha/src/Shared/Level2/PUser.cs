@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -94,7 +94,7 @@ namespace Pyrrho.Level2
             // and is granted User and Admin for the schema role
             var first = true;
             for (var b = cx.db.roles.First(); first && b != null; b = b.Next())
-                if ((cx.db.objects[b.value()] is User))
+                if (b.value() is long bp && cx.db.objects[bp] is User)
                     first = false;
             var pr = Grant.Privilege.Select;
             if (first)

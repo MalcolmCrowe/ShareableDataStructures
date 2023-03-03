@@ -19,9 +19,9 @@ You may incorporate the DLLs, including any of PyrrhoLink.dll, PyrrhoJC.jar
 and AWebSvr.dll in any product on a royalty-free basis, provided the use 
 of this code is suitably acknowledged.
 
-This is version 7.02(alpha) of the DBMS. The server is for .Net 6.
-It passes tests 1 to 24 of the PyrrhoTest program.
+This is version 7.03(alpha) of the DBMS. The server is for .Net 6.
+It passes tests 1 to 25 of the PyrrhoTest program.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-31 December 2022
+3 March 2023

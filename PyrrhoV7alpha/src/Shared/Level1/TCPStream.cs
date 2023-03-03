@@ -10,7 +10,7 @@ using Pyrrho.Level4;
 using Pyrrho.Security;
 using System.ComponentModel.DataAnnotations;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -39,7 +39,7 @@ namespace Pyrrho.Level1
         {
             // first 2 bytes indicate how many following bytes are good
             internal byte[] bytes = new byte[bSize];
-            internal ManualResetEvent wait = new ManualResetEvent(true);
+            internal ManualResetEvent wait = new (true);
         }
         /// <summary>
         /// The array of write buffers
@@ -48,7 +48,7 @@ namespace Pyrrho.Level1
         /// <summary>
         /// the single read buffer
         /// </summary>
-        internal Buffer rbuf = new Buffer();
+        internal Buffer rbuf = new ();
         /// <summary>
         /// points to the current write buffer
         /// </summary>
@@ -232,8 +232,7 @@ namespace Pyrrho.Level1
                 client.BeginSend(wbuf.bytes, 0, bSize, 0, new AsyncCallback(Callback1), wbuf);
                 wx = (wx + 1) & 1;
                 wbuf = wbufs[wx];
-                if (wbuf.wait != null)
-                    wbuf.wait.WaitOne();
+                wbuf.wait?.WaitOne();
             }
             catch (Exception)
             {
@@ -279,8 +278,7 @@ namespace Pyrrho.Level1
                 return;
             int ox = (wx + 1) & 1;
             Buffer obuf = wbufs[ox];
-            if (obuf.wait != null)
-                obuf.wait.WaitOne();
+            obuf.wait?.WaitOne();
             wbuf.wait = new ManualResetEvent(false);
             // now always send bSize bytes (not wcount)
             if (exception) // version 2.0
@@ -566,9 +564,8 @@ namespace Pyrrho.Level1
             PutInt(n);
             var j = 0;
             for (var b = r.columns.First(); b != null; b = b.Next(), j++)
-                if (_cx._Dom(b.value()) is Domain d)
+                if (b.value() is long p && _cx._Dom(p) is Domain d)
                 {
-                    var p = b.value();
                     PutString(Domain.NameFor(_cx, p, b.key()));
                     var c = r[p];
                     if (c is TArray ta && ta.Length >= 1)
@@ -624,11 +621,8 @@ namespace Pyrrho.Level1
             if (cx._Dom(r) is Domain dm)
                 for (var e = r.First(cx); e != null; e = e.Next(cx))
                     for (var b = dm.rowType.First(); b != null; b = b.Next())
-                    {
-                        if (cx._Dom(b.value()) is not Domain dt)
-                            throw new PEException("PE29002");
+                        if (b.value() is long p && cx._Dom(p) is Domain dt)
                             PutCell(cx, dt, e[b.key()]);
-                    }
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -652,14 +646,14 @@ namespace Pyrrho.Level1
                 string s = files[j];
                 int m = s.LastIndexOf("\\");
                 if (m >= 0)
-                    s = s.Substring(m + 1);
+                    s = s[(m + 1)..];
                 m = s.LastIndexOf("/");
                 if (m >= 0)
-                    s = s.Substring(m + 1);
+                    s = s[(m + 1)..];
                 int n = s.Length - 4;
                 if (s.IndexOf(".", 0, n) >= 0)
                     continue;
-                ar.Add(s.Substring(0, n));
+                ar.Add(s[..n]);
             }
             WriteByte((byte)Responses.Files);
             PutInt(ar.Count);
@@ -709,16 +703,17 @@ namespace Pyrrho.Level1
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
                 var j = 0;
-                for (var b=dt.First();j<m && b!=null;b=b.Next(),j++)
-                if (dm.representation[b.value()] is Domain dn){
-                    var i = b.key();
-                    PutString(result.NameFor(cx,i));
-                    if (dn.kind!=Sqlx.TYPE)
-                        PutString(dn.kind.ToString());
-                    else
-                        PutString(dn.name);
-                    PutInt(flags[j]);
-                }
+                for (var b = dt.First(); j < m && b != null; b = b.Next(), j++)
+                    if (b.value() is long p && dm.representation[p] is Domain dn)
+                    {
+                        var i = b.key();
+                        PutString(result.NameFor(cx, i));
+                        if (dn.kind != Sqlx.TYPE)
+                            PutString(dn.kind.ToString());
+                        else
+                            PutString(dn.name);
+                        PutInt(flags[j]);
+                    }
             }
             Flush();
         }
@@ -794,7 +789,8 @@ namespace Pyrrho.Level1
             int m = dt.Length;
             PutInt(m);
             for (var j = 0; j < m; j++)
-                if (cx.db.objects[dt[j]] is SqlCopy sc && cx.db.objects[sc.copyFrom] is TableColumn dn)
+                if (cx.db.objects[dt[j]??-1L] is SqlCopy sc 
+                    && cx.db.objects[sc.copyFrom] is TableColumn dn)
                 {
                     var n = sc.NameFor(cx);
                     PutString(n);
@@ -810,7 +806,7 @@ namespace Pyrrho.Level1
         /// Send ReadCheck information if present
         /// </summary>
         /// <param name="rs"></param>
-        internal (string?,string?) Check(Context cx, Cursor rb)
+        static internal (string?,string?) Check(Context cx, Cursor rb)
         {
             if (!cx.versioned)
                 return (null, null);
@@ -826,11 +822,11 @@ namespace Pyrrho.Level1
                         md.metadata.Contains(Sqlx.ENTITY)){
                     var tr = b.value();
                     sb.Append(cm); cm = ",";
-                    sb.Append("/");
+                    sb.Append('/');
                     sb.Append(tr.tabledefpos);
-                    sb.Append("/");
+                    sb.Append('/');
                     sb.Append(tr.defpos);
-                    sb.Append("/");
+                    sb.Append('/');
                     sb.Append(tr.ppos);
                 }
                 rc = sb.ToString();
@@ -1026,14 +1022,14 @@ namespace Pyrrho.Level1
                         var tf = ut.rowType.First();
                         if (ut.prefix != null)
                         {
-                            if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
+                            if (tf != null && tv is TRow tr && tr.values[tf.value()??-1L] is TypedValue nv)
                                 tv = nv;
                             PutString(ut.prefix + tv.ToString());
                             break;
                         }
                         if (ut.suffix !=null)
                         {
-                            if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
+                            if (tf != null && tv is TRow tr && tr.values[tf.value()??-1L] is TypedValue nv)
                                 tv = nv;
                             PutString(tv.ToString()+ut.suffix);
                             break;

@@ -3,7 +3,7 @@ using System.Collections.Generic;
 using System.Globalization;
 using System.Security.Cryptography;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -24,7 +24,7 @@ namespace Pyrrho.Common
         /// <summary>
         /// The radix-256 digits in the Integer
         /// </summary>
-		protected readonly byte[] bytes = new byte[0]; // high to low, first bit is sign bit
+		protected readonly byte[] bytes = Array.Empty<byte>(); // high to low, first bit is sign bit
         public int Length => bytes.Length;
         public byte this[int x] => bytes[x];
         /// <summary>
@@ -103,7 +103,7 @@ namespace Pyrrho.Common
 		public Integer(int iVal)
 		{
 			if (iVal==0)
-				bytes = new byte[0];
+				bytes = Array.Empty<byte>();
 			else if (iVal>=-127 && iVal<=127)
 			{
 				bytes = new byte[1];
@@ -137,7 +137,7 @@ namespace Pyrrho.Common
 		public Integer(long i64Val)
 		{
 			if (i64Val==0)
-				bytes = new byte[0];
+				bytes = Array.Empty<byte>();
 			else if (i64Val>=-127 && i64Val<=127)
 			{
 				bytes = new byte[1];
@@ -161,11 +161,11 @@ namespace Pyrrho.Common
 				bytes = new byte[v.Count];
 				int len = 0;
 				for (int j=v.Count-1;j>=0;j--)
-					bytes[len++] = (byte)v[j];
+					bytes[len++] = v[j];
 			}
 		}
-        public static Integer Zero = new Integer(0);
-        public static Integer One = new Integer(1);
+        public static Integer Zero = new (0);
+        public static Integer One = new (1);
         public bool IsZero()
         {
             for (int j = 0; j < bytes.Length; j++)
@@ -184,7 +184,7 @@ namespace Pyrrho.Common
             while (b > 0)
             {
                 r++;
-                b = b >> 1;
+                b >>= 1;
             }
             return r;
         }
@@ -486,7 +486,7 @@ namespace Pyrrho.Common
         /// <returns></returns>
 		public static Integer operator*(Integer a,Integer b)
 		{
-			Integer r = new Integer(0);
+			Integer r = new(0);
 			int s=0;
 			for (int j=b.bytes.Length-1;j>=0;j--,s++)
 				r = r.Add(a.Times(b.bytes[j]),s);
@@ -524,7 +524,7 @@ namespace Pyrrho.Common
             // first work out the most significant digit
             while (b <= a)
             {
-                a = a - b; // b is ds[ds.Count-1]
+                a -= b; // b is ds[ds.Count-1]
                 d++;
             }
             // fix the sign
@@ -538,7 +538,7 @@ namespace Pyrrho.Common
                 d = 0;
                 while (dv <= a)
                 {
-                    a = a - dv;
+                    a -= dv;
                     d++;
                 }
                 nb[j++] = (byte)d;
@@ -594,7 +594,7 @@ namespace Pyrrho.Common
 				Integer m = Pow10(n);
 				while (a.CompareTo(m)>=0)
 				{
-					a = a-m;
+					a -= m;
 					d++;
 				}
 				r += d;
@@ -613,17 +613,17 @@ namespace Pyrrho.Common
             if (str.Length == 0)
                 return Zero;
             if (str[0] == '+')
-                str = str.Substring(1);
+                str = str[1..];
             bool sgn = str[0] == '-';
 			if (sgn)
-				str = str.Substring(1);
-			Integer r = new Integer(0);
+				str = str[1..];
+			Integer r = new(0);
 			int n = str.Length-1;
 			int j = 0;
 			while (n>=0)
 			{
 				byte d = byte.Parse(str.Substring(j,1));
-				r = r + Pow10(n).Times(d);
+				r += Pow10(n).Times(d);
 				n--;
 				j++;
 			}
@@ -641,10 +641,10 @@ namespace Pyrrho.Common
 		public int CompareTo(object? obj)
 		{
 			Integer x;
-			if (obj is Integer)
-				x = (Integer)obj;
-			else if (obj is long)
-				x = new Integer((long)obj);
+			if (obj is Integer integer)
+				x = integer;
+			else if (obj is long @int)
+				x = new Integer(@int);
 			else
 				return new Numeric(this).CompareTo(obj);
 			int n = bytes.Length; // code copied from next routine (shift = 0) following profiling
@@ -870,7 +870,7 @@ namespace Pyrrho.Common
         /// <summary>
         /// The constant Decimal 0
         /// </summary>
-		internal static Numeric Zero = new Numeric(0L);
+		internal static Numeric Zero = new (0L);
         /// <summary>
         /// Creator: Remove trailing 0s from the mantissa by adjusting the scale
         /// </summary>
@@ -910,7 +910,7 @@ namespace Pyrrho.Common
             if (sg)
                 n = -n;
             if (n < x.mantissa)
-                n = n + d;
+                n += d;
             return new Numeric(n, x.scale);
         }
         public static Numeric Floor(Numeric x)
@@ -924,7 +924,7 @@ namespace Pyrrho.Common
             if (sg)
                 n = -n;
             if (n > x.mantissa)
-                n = n - d;
+                n -= d;
             return new Numeric(n, x.scale);
         }
         public Numeric Round(int sc)
@@ -939,7 +939,7 @@ namespace Pyrrho.Common
             Integer n = (m / d) * d;
             Integer r = m - n;
             if (r.Times(2).CompareTo(d)>=0)
-                n = n + d;
+                n += d;
             if (sg)
                 n = -n;
             return new Numeric(n, scale);
@@ -1086,16 +1086,16 @@ namespace Pyrrho.Common
 			Numeric b;
 			if (obj==null)
 				return 1;
-            if (obj is int)
-                b = new Numeric((long)(int)obj);
-            else if (obj is Numeric)
-                b = (Numeric)obj;
-            else if (obj is double)
-                b = new Numeric((double)obj);
-            else if (obj is long)
-                b = new Numeric((long)obj);
-            else if (obj is Integer)
-                b = new Numeric((Integer)obj, 0);
+            if (obj is int @int)
+                b = new Numeric(@int);
+            else if (obj is Numeric numeric)
+                b = numeric;
+            else if (obj is double @double)
+                b = new Numeric(@double);
+            else if (obj is long int1)
+                b = new Numeric(int1);
+            else if (obj is Integer integer)
+                b = new Numeric(integer, 0);
             else
                 throw new DBException("22201", obj).Pyrrho()
                     .AddType(Level3.Domain.Numeric).AddValue(new TChar(obj?.ToString()??""));
@@ -1119,10 +1119,10 @@ namespace Pyrrho.Common
 			if (scale<0)
 				return m+new string('0',-scale);
 			if (m[0]=='-' && scale>n-1)
-				return "-0."+new string('0',scale-n+1)+m.Substring(1);
+				return "-0."+new string('0',scale-n+1)+m[1..];
 			if (scale>=n)
 				return "0."+new string('0',scale-n)+m;
-			return m.Substring(0,n-scale)+"."+m.Substring(n-scale);
+			return m[..(n - scale)] +"."+m[(n - scale)..];
 		}
         public string DoubleFormat()
         {
@@ -1130,7 +1130,7 @@ namespace Pyrrho.Common
             int n = m.Length;
             if (n==1)
                 return ""+m[0]+".E"+(n-1-scale);
-            return m[0] + "." + m.Substring(1) + "E" + (n-1-scale);
+            return m[0] + "." + m[1..] + "E" + (n-1-scale);
         }
 
         public bool TryConvert(ref Integer r)
@@ -1144,7 +1144,7 @@ namespace Pyrrho.Common
         }
         public bool TryConvert(ref long r)
         {
-            Integer n = new Integer(0);
+            Integer n = new(0);
             if (!TryConvert(ref n))
                 return false;
             if (n.Length > 8)
@@ -1154,7 +1154,7 @@ namespace Pyrrho.Common
         }
         public bool TryConvert(ref int r)
         {
-            Integer n = new Integer(0);
+            Integer n = new(0);
             if (!TryConvert(ref n))
                 return false;
             if (n.Length > 4)
@@ -1175,14 +1175,14 @@ namespace Pyrrho.Common
 			int exp = 0;
 			if (m>0)
 			{
-				exp = int.Parse(s.Substring(m+1));
-				s = s.Substring(0,m);
+				exp = int.Parse(s[(m + 1)..]);
+				s = s[..m];
 			}
             int n = s.IndexOf('.');
             if (n < 0)
                 return new Numeric(Integer.Parse(s), -exp);
             int ln = s.Length;
-            return new Numeric(Integer.Parse(s.Substring(0, n) + s.Substring(n + 1)),
+            return new Numeric(Integer.Parse(s[..n] + s[(n + 1)..]),
                 ln - n - 1 - exp);
 		}
         public override bool Equals(object? obj)

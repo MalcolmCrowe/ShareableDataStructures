@@ -7,8 +7,9 @@ using Pyrrho.Level4;
 using System.Runtime.CompilerServices;
 using static Pyrrho.Level4.RowSet;
 using System.Configuration;
+using System.Diagnostics;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -33,6 +34,7 @@ namespace Pyrrho.Level3
             Indexes = -264, // CTree<Domain,CTree<long,bool>> SqlValue,Index
             KeyCols = -320, // CTree<long,bool> TableColumn (over all indexes)
             LastData = -258, // long
+            _NodeType = -86, // long NodeType
             RefIndexes = -250, // CTree<long,CTree<Domain.Domain>> referencing Table,referencing TableColumns,referenced TableColumns
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // CTree<long,bool> Check
@@ -65,27 +67,58 @@ namespace Pyrrho.Level3
         internal CTree<PTrigger.TrigType, CTree<long,bool>> triggers =>
             (CTree<PTrigger.TrigType, CTree<long, bool>>)(mem[Triggers] 
             ?? CTree<PTrigger.TrigType, CTree<long, bool>>.Empty);
+        internal long nodeType => (long)(mem[_NodeType] ?? -1L);
         internal virtual long lastData => (long)(mem[LastData] ?? 0L);
         /// <summary>
         /// Constructor: a new empty table
         /// </summary>
-        internal Table(PTable pt,Role ro,Context cx) :base(pt.ppos, BTree<long, object>.Empty
+        internal Table(PTable pt,Context cx) :base(pt.ppos, BTree<long, object>.Empty
             +(Definer,pt.definer)+(Owner,pt.owner)+(Infos,pt.infos)
-            +(_Framing,new Framing(cx,pt.nst)) +(LastChange, pt.ppos)
-            + (_Domain,pt.dataType.defpos)+(LastChange,pt.ppos)
+            +(_Framing,new Framing(cx,pt.nst)+pt.dataType) +(LastChange, pt.ppos)
+            + (_Domain,pt.dataType.defpos)
             +(Triggers, CTree<PTrigger.TrigType, CTree<long, bool>>.Empty)
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
         { }
         internal Table(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static Table operator+(Table tb,(Context,DBObject)x) // tc can be SqlValue for Type def
+        public static Table operator +(Table tb, (Context,int,DBObject) x) // tc can be SqlValue for Type def
         {
-            var (cx, tc) = x;
-            var cd = cx._Dom(tc)??throw new PEException("PE7000");
+            var (cx, i, tc) = x;
+            var td = cx._Dom(tb) ?? throw new PEException("PE7000");
+            var cd = cx._Dom(tc) ?? throw new PEException("PE70001");
+            if (i < 0)
+                i = td.Length;
+            var rt = Add(td.rowType, i, tc.defpos);
+            var rs = new CTree<long, Domain>(tc.defpos,cd);
+            for (var b = rt.First(); b != null; b = b.Next())
+                if (b.value() is long p && td.representation[p] is Domain d)
+                    rs += (p, d);
+            var dp = (td.defpos < 0) ? cx.GetUid() : td.defpos;
+            td = (Domain)cx.Add((Domain)td.New(dp,td.mem+(Domain.RowType,rt)+(Domain.Representation,rs)));
+            var fo = tb.framing.obs + (td.defpos,td);
+            var fr = tb.framing + (Framing.Obs, fo);
             var ts = tb.tableCols + (tc.defpos, cd);
-            var m = tb.mem + _Deps(tb.depth,tc) + (TableCols, ts);
+            var m = tb.mem + _Deps(tb.depth, tc) + (TableCols, ts) + (_Framing, fr) + (_Domain,td.defpos);
             if (tc.sensitive)
                 m += (Sensitive, true);
-            return (Table)tb.New(m);
+            return (Table)cx.Add((Table)tb.New(m));
+        }
+        internal static BList<long?> Add(BList<long?> a, int k, long v)
+        {
+            // this is a HACK: but we don't want pre-commit positions mixed with commited ones
+            var ig = (v < Transaction.TransPos) ? Transaction.TransPos : long.MaxValue;
+            //
+            var r = BList<long?>.Empty;
+            for (var b = a.First(); b != null; b = b.Next())
+            {
+                if (b.key() == k)
+                    r += v;
+                var p = b.value();
+                if (p != v && p < ig)
+                    r += p;
+            }
+            if (k<0 || a.Length == k)
+                r += v;
+            return r;
         }
         public static Table operator-(Table tb,long p)
         {
@@ -133,57 +166,48 @@ namespace Pyrrho.Level3
         {
             return new Table(defpos,m);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return new Table(dp, mem);
+            return new Table(dp, m);
         }
-        internal override Basis _Relocate(Context cx)
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
-            var r = (Table)base._Relocate(cx);
-            if (applicationPS>=0)
-                r += (ApplicationPS, cx.Fix(applicationPS));
-            r += (Indexes, cx.FixTDTlb(indexes));
-            r += (TableCols, cx.FixTlD(tableCols));
-            if (systemPS >= 0)
-                r += (SystemPS, cx.Fix(systemPS));
-            r += (TableChecks, cx.FixTlb(tableChecks));
-            r += (Triggers, cx.FixTTElb(triggers));
-            return r;
-        }
-        internal override Basis _Fix(Context cx)
-        {
-            var r = (Table) base._Fix(cx);
+            var r = base._Fix(cx,m);
             var na = cx.Fix(applicationPS);
             if (na!=applicationPS)
                 r += (ApplicationPS, na);
             var ni = cx.FixTDTlb(indexes);
             if (ni!=indexes)
                 r += (Indexes, ni);
+            var nr = cx.FixTlTDD(rindexes);
+            if (nr != rindexes)
+                r += (RefIndexes, ni);
             var tc = cx.FixTlD(tableCols);
             if (tc!=tableCols)
                 r += (TableCols, tc);
             var ns = cx.Fix(systemPS);
             if (ns!=systemPS)
                 r += (SystemPS, ns);
+            var nk = cx.FixTlb(keyCols);
+            if (nk != keyCols)
+                r += (KeyCols, nk);
             var nc = cx.FixTlb(tableChecks);
             if (nc!=tableChecks)
                 r += (TableChecks, nc);
             var nt = cx.FixTTElb(triggers);
             if (nt!=triggers)
                 r += (Triggers, nt);
+            var ut = cx.Fix(nodeType);
+            if (ut != nodeType)
+                r += (_NodeType, ut);
             return r;
         }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        protected override BTree<long, object> _Replace(Context cx, DBObject so, DBObject sv, BTree<long, object>m)
         {
-            if (cx.done[defpos] is DBObject rr)
-                return rr;
-            var r = base._Replace(cx,so,sv);
+            var r = base._Replace(cx,so,sv,m);
             var dm = cx.ObReplace(domain, so, sv);
             if (dm != domain)
                 r += (_Domain, dm);
-            if (r!=this)
-                r = (Table)New(cx,r.mem);
-            cx.done += (defpos, r);
             return r;
         }
         internal override void Cascade(Context cx,
@@ -195,8 +219,8 @@ namespace Pyrrho.Level3
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Index ix)
                         ix.Cascade(cx, a, u);
-            for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.value()] is Table tb)
+            for (var b = ro.dbobjects.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.db.objects[p] is Table tb)
                     for (var c = tb.indexes.First(); c != null; c = c.Next())
                         for (var d = c.value().First(); d != null; d = d.Next())
                             if (cx.db.objects[d.key()] is Index ix)
@@ -206,7 +230,7 @@ namespace Pyrrho.Level3
         internal override Database Drop(Database d, Database nd, long p)
         {
             for (var b = d.roles.First(); b != null; b = b.Next())
-                if (d.objects[b.value()] is Role ro && infos[b.value()] is ObInfo oi
+                if (b.value() is long bp && d.objects[bp] is Role ro && infos[bp] is ObInfo oi
                     && oi.name!=null)
                 {
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
@@ -217,6 +241,76 @@ namespace Pyrrho.Level3
         internal override Database DropCheck(long ck, Database nd, long p)
         {
             return nd + (this + (TableChecks, tableChecks - ck),p);
+        }
+        /// <summary>
+        /// Owing to an ALTER TYPE .. SET UNDER .. operation, we want to replace all references
+        /// to column was by the column now (it has the same name and domain). 
+        /// We will modify our Domain (the one in Framing) and nodeType.
+        /// We will change all our TableRows to reference the new column now instead of was.
+        /// There will be an Index for was whose entries will be imported into the Index for now.
+        /// (The old index for was is retained.)
+        /// We will change all procedure bodies and constraints too.
+        /// Then we will drop was. None of these changes should make entries in the log.
+        /// The transaction should check all this works before committing it.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="was"></param>
+        /// <param name="now">Column now is an another table (called nt below)</param>
+        internal Database MergeColumn(Context cx, TableColumn was, TableColumn now)
+        {
+            var r = this;
+            var od = cx.done;
+            var ds = cx.uids;
+            cx.done = ObTree.Empty;
+            cx.uids = BTree<long, long?>.Empty;
+            cx.uids += (was.defpos, now.defpos);
+            var nt = (Table)(cx._Ob(now.tabledefpos) ?? throw new PEException("PE66101"));
+            cx.uids += (UDType.Under, defpos); // sneaky
+            if (cx._Dom(this) is Domain dm)
+            {
+                dm -= was.defpos;
+                cx.done += (dm.defpos, dm);
+                r = r + (_Framing, framing + dm) + (TableCols,tableCols-was.defpos)
+                    +(KeyCols,keyCols-was.defpos+(now.defpos,true));
+            }
+            // Merge the index (each of these loops should have exactly one iteration)
+            for (var b = indexes.First(); b != null; b = b.Next())
+                if (b.key().representation.Contains(was.defpos))
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                        if (cx.db.objects[c.key()] is Index x && x.rows != null)
+                            for (var f = nt.indexes.First(); f != null; f = f.Next())
+                                if (f.key().representation.Contains(now.defpos))
+                                    for (var g = f.value().First(); g != null; g = g.Next())
+                                        if (cx.db.objects[g.key()] is Index y)
+                                        {
+                                            x += (Index.Keys,x.keys.Replaced(cx));
+                                            if (x.rows != null)
+                                                x += (Index.Tree, new MTree(cx, x.rows));
+                                            if (x.rows != null)
+                                                y += (Index.Tree, new MTree(x.rows, y.rows));
+                                            cx.db += (x, cx.db.loadpos);
+                                            cx.db += (y, cx.db.loadpos);
+                                        }
+            r = (Table)New(cx.Replace(was, now, r.mem));
+            nt += (TableRows, nt.tableRows + r.tableRows);
+            var ut = cx._Ob(nodeType)??throw new PEException("PE66102");
+            ut = (DBObject)ut.New(cx.Replace(was, now, ut.mem));
+            for (var b = cx.role.procedures.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.value() ?? -1L] is Procedure pr)
+                        cx.db += ((Procedure)New(cx.Replace(was, now, pr.mem)), cx.db.loadpos);
+            for (var b = cx.db.types.First(); b != null; b = b.Next())
+                if (b.key() is UDType u)
+                    for (var c = u.methods.First(); c != null; c = c.Next())
+                        if (cx.db.objects[c.key()] is Method me)
+                            cx.db += ((Method)New(cx.Replace(was, now, me.mem)), cx.db.loadpos);
+            cx.db -= was.defpos;
+            cx.db += (ut, cx.db.loadpos);
+            cx.db += (r, cx.db.loadpos);
+            cx.db += (nt, cx.db.loadpos);
+            cx.done = od;
+            cx.uids = ds;
+            return cx.db;
         }
         internal virtual Index? FindPrimaryIndex(Context cx)
         {
@@ -236,12 +330,12 @@ namespace Pyrrho.Level3
                     r += x;
             return (r==BList<Index>.Empty)?null:r.ToArray();
         }
-        internal Index[]? FindIndex(Database db, CList<long> cols,
+        internal Index[]? FindIndex(Database db, BList<long?> cols,
     PIndex.ConstraintType fl = (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique))
         {
             var r = BList<Index>.Empty;
             for (var b = indexes?.First(); b != null; b = b.Next())
-                if (b.key().rowType.CompareTo(cols) == 0)
+                if (Context.Match(b.key().rowType,cols))
                     for (var c = b.value().First(); c != null; c = c.Next())
                         if (db.objects[c.key()] is Index x && (x.flags & fl) != 0)
                             r += x;
@@ -251,6 +345,7 @@ namespace Pyrrho.Level3
             Grant.Privilege pr=Grant.Privilege.Select,string? a=null)
         {
             cx.Add(this);
+            cx.Add(framing);
             var m = BTree<long, object>.Empty + (_From, fm) + (_Ident,id);
             if (a != null)
                 m += (_Alias, a);
@@ -268,15 +363,16 @@ namespace Pyrrho.Level3
                 return true;
             return base.Denied(cx, priv);
         }
-        internal CTree<Domain, CTree<long,bool>> IIndexes(Context cx,CTree<long, long> sim)
+        internal CTree<Domain, CTree<long,bool>> IIndexes(Context cx,BTree<long, long?> sim)
         {
             var xs = CTree<Domain, CTree<long, bool>>.Empty;
             for (var b = indexes.First(); b != null; b = b.Next())
             {
-                var k = Domain.Row;
+                var bs = BList<DBObject>.Empty;
                 for (var c = b.key().First(); c != null; c = c.Next())
-                    k += (cx,sim[c.value()]);
-                k = (Domain)cx.Add(k);
+                    if (c.value() is long p && cx._Ob(sim[p]??-1L) is DBObject tp)
+                        bs += tp;
+                var k = (Domain)cx.Add(new Domain(cx.GetUid(),cx,Sqlx.ROW,bs,bs.Length));
                 xs += (k, b.value());
             }
             return xs;
@@ -288,7 +384,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(":"); sb.Append(Uid(domain));
+            sb.Append(" rows ");sb.Append(tableRows.Count);
             if (PyrrhoStart.VerboseMode && mem.Contains(Enforcement)) 
             { sb.Append(" Enforcement="); sb.Append(enforcement); }
             if (indexes.Count!=0) 
@@ -299,11 +395,12 @@ namespace Pyrrho.Level3
                 {
                     sb.Append(cm);cm = ";";
                     var cn = "(";
-                    for (var c=b.key().First();c!=null;c=c.Next())
-                    {
-                        sb.Append(cn);cn = ",";
-                        sb.Append(Uid(c.value()));
-                    }
+                    for (var c = b.key().First(); c != null; c = c.Next())
+                        if (c.value() is long p)
+                        {
+                            sb.Append(cn); cn = ",";
+                            sb.Append(Uid(p));
+                        }
                     sb.Append(")"); cn = "";
                     for (var c=b.value().First();c!=null;c=c.Next())
                     {
@@ -321,7 +418,7 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder();
             sb.Append(char.ToLower(s[0]));
-            sb.Append(s.Substring(1));
+            sb.Append(s.AsSpan(1));
             return sb.ToString();
         }
         /// <summary>
@@ -410,10 +507,11 @@ namespace Pyrrho.Level3
                         var sa = new StringBuilder();
                         var cm = "";
                         for (var d = b.key().First(); d != null; d = d.Next())
-                        {
-                            sa.Append(cm); cm = ",";
-                            sa.Append(cx.NameFor(d.value()));
-                        }
+                            if (d.value() is long p)
+                            {
+                                sa.Append(cm); cm = ",";
+                                sa.Append(cx.NameFor(p));
+                            }
                         if (!rt.metadata.Contains(Sqlx.ENTITY))
                             continue;
                         var rn = ToCamel(rt.name);
@@ -441,7 +539,7 @@ namespace Pyrrho.Level3
                             {
                                 cm = "";
                                 for (var bb = c.value().First(); bb != null; bb = bb.Next())
-                                if (cx._Ob(bb.value()) is DBObject ob && 
+                                if (bb.value() is long p && cx._Ob(p) is DBObject ob && 
                                         ob.infos[ro.defpos] is ObInfo vi && vi.name!=null){
                                     sa.Append(cm); cm = ",";
                                     sa.Append(vi.name);
@@ -453,11 +551,12 @@ namespace Pyrrho.Level3
                             // one-many relationship
                             var rb = c.value().First();
                             for (var xb = c.key().First(); xb != null && rb != null; xb = xb.Next(), rb = rb.Next())
-                            {
-                                sa.Append(cm); cm = "),(\"";
-                                sa.Append(cx.NameFor(xb.value())); sa.Append("\",");
-                                sa.Append(cx.NameFor(rb.value()));
-                            }
+                                if (xb.value() is long xp && rb.value() is long rp)
+                                {
+                                    sa.Append(cm); cm = "),(\"";
+                                    sa.Append(cx.NameFor(xp)); sa.Append("\",");
+                                    sa.Append(cx.NameFor(rp));
+                                }
                             sa.Append(")");
                             sb.Append("  public " + rt.name + "[] " + rn
                                 + "s => conn.FindWith<" + rt.name + ">(" + sa.ToString() + ");\r\n");
@@ -476,7 +575,8 @@ namespace Pyrrho.Level3
                                     var sk = new StringBuilder(); // e.g. Supplier primary key
                                     var cm = "\\\"";
                                     for (var c = tx.keys.First(); c != null; c = c.Next())
-                                        if (cx._Ob(c.value()) is DBObject ob && ob.infos[ro.defpos] is ObInfo ci &&
+                                        if (c.value() is long p && cx._Ob(p) is DBObject ob 
+                                            && ob.infos[ro.defpos] is ObInfo ci &&
                                                         ci.name != null)
                                         {
                                             sk.Append(cm); cm = "\\\",\\\"";
@@ -488,11 +588,12 @@ namespace Pyrrho.Level3
                                     var rb = px.keys.First();
                                     for (var xb = keys?.First(); xb != null && rb != null;
                                         xb = xb.Next(), rb = rb.Next())
-                                    {
-                                        sa.Append(cm); cm = "\\\" and \\\"";
-                                        sa.Append(cx.NameFor(xb.value())); sa.Append("\\\"=\\\"");
-                                        sa.Append(cx.NameFor(rb.value()));
-                                    }
+                                        if (xb.value() is long xp && rb.value() is long rp)
+                                        {
+                                            sa.Append(cm); cm = "\\\" and \\\"";
+                                            sa.Append(cx.NameFor(xp)); sa.Append("\\\"=\\\"");
+                                            sa.Append(cx.NameFor(rp));
+                                        }
                                     sa.Append("\\\"");
                                     var rn = ToCamel(rt.name);
                                     for (var i = 0; fields.Contains(rn); i++)
@@ -506,7 +607,7 @@ namespace Pyrrho.Level3
                     }
                 }
             sb.Append("}\r\n");
-            return new TRow(cx, fd, new TChar(md.name), new TChar(key),
+            return new TRow(fd, new TChar(md.name), new TChar(key),
                 new TChar(sb.ToString()));
         }
         /// <summary>
@@ -535,10 +636,11 @@ namespace Pyrrho.Level3
             if (mi.description != "")
                 sb.Append("/* " + mi.description + "*/\r\n");
             sb.Append("public class " + md.name + ((versioned) ? " extends Versioned" : "") + " {\r\n");
-            for(var b = md.rowType.First();b!=null;b=b.Next())
-            if (tableCols[b.value()] is Domain dt){
-                var p = b.key();
-                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
+            for (var b = md.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long bp && tableCols[bp] is Domain dt)
+                {
+                    var p = b.key();
+                    var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
                     if (keys != null)
                     {
                         int j;
@@ -548,12 +650,12 @@ namespace Pyrrho.Level3
                         if (j < keys.Length)
                             sb.Append("  @Key(" + j + ")\r\n");
                     }
-                dt.FieldJava(cx, sb);
-                sb.Append("  public " + tn + " " + cx.NameFor(p) + ";");
-                sb.Append("\r\n");
-            }
+                    dt.FieldJava(cx, sb);
+                    sb.Append("  public " + tn + " " + cx.NameFor(p) + ";");
+                    sb.Append("\r\n");
+                }
             sb.Append("}\r\n");
-            return new TRow(cx,fd,new TChar(md.name),new TChar(key),
+            return new TRow(fd,new TChar(md.name),new TChar(key),
                 new TChar(sb.ToString()));
         }
         /// <summary>
@@ -596,7 +698,7 @@ namespace Pyrrho.Level3
                 }
                 sb.Append("]\r\n");
             }
-            return new TRow(cx,fd, new TChar(md.name),new TChar(key),
+            return new TRow(fd, new TChar(md.name),new TChar(key),
                 new TChar(sb.ToString()));
         }
         internal virtual string BuildKey(Context cx,out Domain keys)
@@ -611,7 +713,7 @@ namespace Pyrrho.Level3
             var sk = new StringBuilder();
             if (keys != Domain.Row)
                 for (var i = 0; i < keys.Length; i++)
-                    if ( cx.db.objects[keys[i]] is TableColumn cd)
+                    if ( cx.db.objects[keys[i]??-1L] is TableColumn cd)
                     {
                         sk.Append(comma); comma = ",";
                         sk.Append(cd.NameFor(cx));
@@ -624,28 +726,28 @@ namespace Pyrrho.Level3
         internal const long
             _RestView = -372; // long RestView
         public long restView => (long)(mem[_RestView] ?? -1L);
-        internal VirtualTable(PTable pt, Role ro, Context cx) : base(pt, ro, cx)
+        internal VirtualTable(PTable pt, Context cx) : base(pt, cx)
         {
             cx.Add(this);
         }
-        internal VirtualTable(Ident tn, Context cx, Domain dm)
-            : this(new PTable(tn.ident, dm, tn.iix.dp, cx), cx)
+        internal VirtualTable(Ident tn, Context cx, Domain dm, long nst)
+            : this(new PTable(tn.ident, dm, nst, tn.iix.dp, cx), cx)
         { }
-        internal VirtualTable(PTable pt, Context cx)
-            : this(pt, cx.role, cx)
-        {  }
         protected VirtualTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static VirtualTable operator +(VirtualTable v, (long, object) x)
         {
+            var (dp, ob) = x;
+            if (v.mem[dp] == ob)
+                return v;
             return (VirtualTable)v.New(v.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new VirtualTable(defpos, m);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return new VirtualTable(dp, mem);
+            return (dp == defpos) ? this : new VirtualTable(dp, mem);
         }
         internal override ObInfo _ObInfo(long ppos, string name, Grant.Privilege priv)
         {
@@ -656,7 +758,7 @@ namespace Pyrrho.Level3
         {
             if (cx.db.objects[restView] is not RestView rv)
                 return null;
-            cx.obs += rv.framing.obs;
+            cx.Add(rv.framing);
             for (var b = indexes.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Index ix &&
@@ -669,7 +771,7 @@ namespace Pyrrho.Level3
             keys = Domain.Row;
             if (cx.db.objects[restView] is not RestView rv)
                 throw new PEException("PE5801");
-            cx.obs += rv.framing.obs;
+            cx.Add(rv.framing);
             for (var xk = indexes.First(); xk != null; xk = xk.Next())
                 for (var c = xk.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Index x && x.tabledefpos == defpos &&
@@ -679,7 +781,7 @@ namespace Pyrrho.Level3
             var sk = new StringBuilder();
             if (keys != Domain.Row)
                 for (var i = 0; i < keys.Length; i++)
-                    if (cx.obs[keys[i]] is SqlValue se)
+                    if (cx.obs[keys[i]??-1L] is SqlValue se)
                     {
                         sk.Append(comma);
                         comma = ",";

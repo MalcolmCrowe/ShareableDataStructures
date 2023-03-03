@@ -1,6 +1,6 @@
 ﻿using System.Text;
 using System.IO;
-using Pyrrho.Common;
+using PyrrhoBase;
 
 // Pyrrho Database Service by Malcolm Crowe at the Unbiversity of Paisley
 // (c) Malcolm Crowe, University of Paisley 2004-2006

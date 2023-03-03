@@ -7,7 +7,7 @@ using System.Xml;
 using System.Reflection.Metadata;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -115,8 +115,8 @@ namespace Pyrrho.Level2
                     var oi = os[-502]??throw new PEException("PE1410");
                     os -= -502;
                     os += (nr.defpos, oi);
-                    cx.db += (k, ob + (DBObject.Definer, nr.defpos)
-                          +(DBObject.Infos,os));
+                    cx.db += (k, ob.New(ob.mem+ (DBObject.Definer, nr.defpos)
+                          +(DBObject.Infos,os)));
                 }
             }
             cx.db = cx.db+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));

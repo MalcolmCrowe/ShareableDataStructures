@@ -9,7 +9,7 @@ using System.Collections.Generic;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -755,14 +755,6 @@ namespace Pyrrho
                     i = d.Fields(s, i, n);
                     return d;
                 }
-#if CLIENT
-                if (c=='(')
-                {
-                    var r = new PyrrhoRow();
-                    (r, i) = GetEntries(r, s, i, n);
-                    return r;
-                }
-#endif
                 if (c == '[')
                 {
                     var d = new DocArray();
@@ -907,74 +899,6 @@ namespace Pyrrho
             }
             throw new DocumentException("Hex digit expected at " + (i - 1));
         }
-#if CLIENT
-        (PyrrhoRow,int) GetEntries(PyrrhoRow r,string s,int i,int n)
-        {
-            ParseState state = ParseState.StartKey;
-            StringBuilder kb = null;
-            var keyquote = true;
-            while (i < n)
-            {
-                var c = s[i++];
-                switch (state)
-                {
-                    case ParseState.StartKey:
-                        kb = new StringBuilder();
-                        keyquote = true;
-                        if (char.IsWhiteSpace(c))
-                            continue;
-                        if (c == ')' && r.row.Length == 0)
-                            return (r,i);
-                        if (c != '"')
-                        {
-                            if (!char.IsLetter(c) && c != '_' && c != '$' && c != '.')
-                                throw new DocumentException("Expected name at " + (i - 1));
-                            keyquote = false;
-                            kb.Append(c);
-                        }
-                        state = ParseState.Key;
-                        continue;
-                    case ParseState.Key:
-                        if (c == '"')
-                        {
-                            state = ParseState.Colon;
-                            continue;
-                        }
-                        if (c == '=' && !keyquote)
-                            goto case ParseState.Colon;
-                        if (c == '\\')
-                            c = GetEscape(s, n, ref i);
-                        kb.Append(c);
-                        continue;
-                    case ParseState.Colon:
-                        if (Char.IsWhiteSpace(c))
-                            continue;
-                        if (c != '=')
-                            throw new DocumentException("Expected = at " + (i - 1));
-                        state = ParseState.StartValue;
-                        continue;
-                    case ParseState.StartValue:
-                        if (Char.IsWhiteSpace(c))
-                            continue;
-                        var cv = new CellValue();
-                        cv.val = GetValue(s, n, ref i);
-                        r+=(kb.ToString(), cv);
-                        state = ParseState.Comma;
-                        continue;
-                    case ParseState.Comma:
-                        if (Char.IsWhiteSpace(c))
-                            continue;
-                        if (c == ')')
-                            return (r,i);
-                        if (c != ',')
-                            throw new DocumentException("Expected , at " + (i - 1));
-                        state = ParseState.StartKey;
-                        continue;
-                }
-            }
-            throw new DocumentException("Incomplete syntax at " + (i - 1));
 
-        }
-#endif
     }
 }

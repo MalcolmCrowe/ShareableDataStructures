@@ -8,7 +8,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -204,12 +204,12 @@ namespace Pyrrho
         {
             var dt = e.dataType;
             var cm = "(";
-            for (var b = dt.rowType.First();b!=null;b=b.Next())
-            {
-                var p = b.value();
-                sbuild.Append(cm);
-                sbuild.Append(e[p]);
-            }
+            for (var b = dt.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p)
+                {
+                    sbuild.Append(cm);
+                    sbuild.Append(e[p]);
+                }
             sbuild.Append(")");
         }
         public override ETag SendResults(HttpListenerResponse rs, Transaction tr,Context cx, 
@@ -274,31 +274,31 @@ namespace Pyrrho
                     sbuild.Append(mi.description);
             }
             var oi = cx._Dom(fm)?.rowType;
-            if (chartType != CTree<Sqlx,TypedValue>.Empty)
+            if (chartType != CTree<Sqlx, TypedValue>.Empty)
             {
                 for (var co = oi?.First(); co != null; co = co.Next())
-                {
-                    var p = co.value();
-                    var sc = cx.obs[p] as SqlCopy;
-                    var cp = (sc != null) ? sc.copyFrom : p;
-                    var ci = cx._Ob(cp)?.infos[cx.role.defpos];
-                    if ((chartType[Sqlx.X] is TChar xc && xc.value==ci?.name)
-                        || ci?.metadata.Contains(Sqlx.X)==true)
+                    if (co.value() is long p)
                     {
-                        xcol = p;
-                        xdesc = ci.description;
+                        var sc = cx.obs[p] as SqlCopy;
+                        var cp = (sc != null) ? sc.copyFrom : p;
+                        var ci = cx._Ob(cp)?.infos[cx.role.defpos];
+                        if ((chartType[Sqlx.X] is TChar xc && xc.value == ci?.name)
+                            || ci?.metadata.Contains(Sqlx.X) == true)
+                        {
+                            xcol = p;
+                            xdesc = ci.description;
+                        }
+                        if ((chartType[Sqlx.Y] is TChar yc && yc.value == ci?.name)
+                            || ci?.metadata.Contains(Sqlx.Y) == true)
+                        {
+                            ycol = p;
+                            ydesc = ci.description;
+                        }
+                        if (chartType.Contains(Sqlx.CAPTION))
+                            ccol = cp;
                     }
-                    if ((chartType[Sqlx.Y] is TChar yc && yc.value == ci?.name)
-                        || ci?.metadata.Contains(Sqlx.Y)==true)
-                    {
-                        ycol = p;
-                        ydesc = ci.description;
-                    }
-                    if (chartType.Contains(Sqlx.CAPTION))
-                        ccol = cp;
-                }
-                if ((xcol ==0) && (ycol ==0))
-                    chartType = CTree<Sqlx,TypedValue>.Empty;
+                if ((xcol == 0) && (ycol == 0))
+                    chartType = CTree<Sqlx, TypedValue>.Empty;
             }
             if (chartType!=CTree<Sqlx,TypedValue>.Empty)
             {
@@ -319,7 +319,7 @@ namespace Pyrrho
             {
                 sbuild.Append("<table border><tr>");
                 for (var b = cx._Dom(rs)?.rowType.First(); b != null; b = b.Next())
-                    if (fm!=null && cx._Ob(fm.sIMap[b.value()]) is DBObject c &&
+                    if (fm!=null && b.value() is long p &&  cx._Ob(fm.sIMap[p]??-1L) is DBObject c &&
                         c.infos[cx.role.defpos] is ObInfo ci && ci.name != null)
                         sbuild.Append("<th>" + ci?.name ?? "" + "</th>");
                 sbuild.Append("</tr>");
@@ -354,11 +354,12 @@ namespace Pyrrho
             else
             {
                 sbuild.Append("<tr>");
-                for (var b=dt.rowType.First();b!=null;b=b.Next())
-                {
-                    var s = GetVal(e[b.value()]);
-                    sbuild.Append("<td>" + s + "</td>");
-                }
+                for (var b = dt.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                    {
+                        var s = GetVal(e[p]);
+                        sbuild.Append("<td>" + s + "</td>");
+                    }
                 sbuild.Append("</tr>");
             }
         }
@@ -579,6 +580,7 @@ namespace Pyrrho
             string dn,string etags)
         {
             cx.versioned = true;
+            rs.ContentType= "application/json";
             base.Header(rs, tr, cx, dn,etags);
         }
         public override void BeforeResults()
@@ -598,9 +600,9 @@ namespace Pyrrho
             var key = (cx.groupCols[rs.domain] is Domain gc) ? new TRow(gc, e.values) : TRow.Empty;
             sbuild.Append(cm); cm = ",";
             var rt = e.columns;
-            var doc = new TDocument();
+            var doc = TDocument.Null;
             for (var b = rt.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()] is SqlValue ci && e[ci.defpos] is TypedValue tv)
+                if (b.value() is long p && cx.obs[p] is SqlValue ci && e[ci.defpos] is TypedValue tv)
                 {
                     var n = ci.alias ?? ci.NameFor(cx);
                     if (n == "")
@@ -654,7 +656,8 @@ namespace Pyrrho
                     for (int i = 0; i < dt.Length; i++)
                         rc[i] = e.row[dt[i].defpos];
                     var fm = tp.qry as From;
-                    var tb = e._rs._tr.objects[fm.target] as Table;
+                    var ta = e._rs._tr.objects[fm.target];
+                    var tb = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt: ta as Table;
                     sbuild.Append(dt.Xml(tp._tr as Transaction, _cx,tb?.defpos??-1L, new TRow(dt, rc)));
                 } */
     }

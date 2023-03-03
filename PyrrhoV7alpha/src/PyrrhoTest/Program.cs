@@ -12,8 +12,9 @@ namespace Test
     {
         static int test = 0, qry = 0, testing = 0, cur=0;
         bool commit = false;
-        PyrrhoConnect conn,connA;
-        PyrrhoTransaction tr;
+        PyrrhoConnect conn;
+        PyrrhoConnect? connA = null;
+        PyrrhoTransaction? tr;
         Program(string[] args)
         {
 
@@ -31,7 +32,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("31 December 2022 Repeatable tests");
+                Console.WriteLine("3 March 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -56,10 +57,10 @@ namespace Test
             cur = q;
             conn.Act(cmd);
         }
-        void Commit(int q,string m=null)
+        void Commit(int q,string? m=null)
         {
             cur = q;
-            tr?.Commit(m);
+            tr?.Commit(m??"");
             tr = null;
         }
         void Begin()
@@ -109,37 +110,24 @@ namespace Test
             Test15();
             Test16();
             Test17();
-            Test18(); 
+            Test18();
             Test19();
             Test20();
             Test21();
             if (test == 0 || test > 21)
             {
-                // If the current user started the server, the databases are anonymous
-                // and current_role will be $Schema. To be accessible over the network
-                // an explicit role and user are required.
-                // Otherwise, the databases contain the user name already
-                // and their default role is the same as the database name.
                 var user = Environment.UserDomainName + "\\" + Environment.UserName;
                 connA = new PyrrhoConnect("Files=A");
                 connA.Act("create table D(e int primary key,f char,g char)");
                 connA.Act("insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')");
-                var cmd = connA.CreateCommand();
-                cmd.CommandText = "select current_role";
-                var r = cmd.ExecuteReader();
-                r.Read();
-                var needRole = r.GetString(0) != "A";
-                r.Close();
-                if (needRole)
-                {
-                    connA.Act("create role A");
-                    connA.Act("grant A to \"" + user + "\"");
-                }
+                connA.Act("create role A");
+                connA.Act("grant A to \"" + user +"\"");
                 Test22();
                 ResetA();
                 Test23();
             }
-            Test24(); 
+            Test24();
+            Test25();
         }
         void ResetA()
         {
@@ -673,17 +661,8 @@ namespace Test
             Begin();
             Act(167,"create table ad(a int,b char)");
             Act(168,"insert into ad values(20,'Twenty')");
-            if (qry == 0 || qry == 1)
-            {
-                CheckExceptionNonQuery(13, 1, "alter table ad add c char not null", "Table is not empty");
-                if (!commit)
-                {
-                    Begin();
-                    Act(169,"create table ad(a int,b char)");
-                    Act(170,"insert into ad values(20,'Twenty')");
-                }
-            }
-            Act(171,"alter table ad add c char default 'XX'");
+            Act(169, "alter table ad add c char not null"); // step 170 and query 1 have been withdrawn
+            Act(171,"alter table ad alter c set default 'XX'"); // this step has been modified
             Act(172,"insert into ad(a,b) values(2,'Two')");
             CheckResults(13, 2, "select * from ad", "[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]");
             Act(173,"alter table ad drop b");
@@ -1155,42 +1134,24 @@ namespace Test
             testing = 24;
             var user = Environment.UserDomainName + "\\" + Environment.UserName;
             var connB = new PyrrhoConnect("Files=DB");
-            connB.Open();
-            var cmd = connB.CreateCommand();
-            // see notes for connA above
-            cmd.CommandText = "select current_role";
-            var r = cmd.ExecuteReader();
-            r.Read();
-            var needRole = r.GetString(0) != "DB";
-            r.Close();
-            if (needRole)
-            {
-                connB.Act("create role DB");
-                connB.Act("grant DB to \"" + user + "\"");
-            }
             cur = 321;
             connB.Act("create table T(E int,F char)");
             cur = 322;
             connB.Act("insert into T values(3,'Three'),(6,'Six'),(4,'Vier'),(6,'Sechs')");
+            cur = 323;
+            connB.Act("create role DB");
+            cur = 324;
+            connB.Act("grant DB to \"" + user + "\"");
             connB.Close();
             var connC = new PyrrhoConnect("Files=DC");
-            connC.Open();
-            cmd = connC.CreateCommand();
-            // see notes for connA above
-            cmd.CommandText = "select current_role";
-            r = cmd.ExecuteReader();
-            r.Read();
-            needRole = r.GetString(0) != "DC";
-            r.Close();
-            if (needRole)
-            {
-                connC.Act("create role DC");
-                connC.Act("grant DC to \"" + user + "\"");
-            }
             cur = 325;
             connC.Act("create table U(E int,F char)");
             cur = 326;
             connC.Act("insert into U values(5,'Five'),(4,'Four'),(8,'Ate')");
+            cur = 327;
+            connC.Act("create role DC");
+            cur = 328;
+            connC.Act("grant DC to \"" + user + "\"");
             cur = 329;
             connC.Close();
             Act(330,"create view BV of (E int,F char) as get 'http://localhost:8180/DB/DB/t'");
@@ -1268,6 +1229,38 @@ namespace Test
                 "{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'}," +
                 "{E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},"+
                 "{E:8,D:'C',K:1,F:'Eight'}]");
+        }
+        public void Test25() 
+        {
+            if (test > 0 && test != 25)
+                return;
+            testing = 25;
+            Begin();
+            Act(346, "create type student as (matric char) nodetype");
+            Act(347, "insert into student values ('Fred','22/456')");
+            Act(348, "create type person nodetype");
+            Act(349, "alter type student set under person");
+            Act(350, "create type staff under person as (title char)");
+            Act(351, "insert into staff values ('Anne','Prof')");
+            CheckResults(25,1, "select *,specifictype() from person",
+                "[{ID:'Anne',SPECIFICTYPE:'STAFF'},{ID:'Fred',SPECIFICTYPE:'STUDENT'}]");
+            Act(352, "alter type person add dob date");
+            Act(354, "create type friend edgetype(person,person)");
+            Act(355, "create trigger sym after insert on friend referencing new as nr for each row" +
+                " if not exists (select id from friend where leaving=nr.arriving and arriving=nr.leaving)" +
+                " then insert into friend(leaving,arriving) values (nr.arriving,nr.leaving) end if");
+            Act(356, "insert into person values('Joe',date'25/04/1976'),('Mary',date'04/08/1992')");
+            Act(357, "insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')");
+            CheckResults(25, 2, "select id from friend where leaving='Fred'","[{ID:'4'}]");
+            CheckResults(25, 3, "match (\"Fred\")-[:friend]->(_x)","[{x:'Mary'}]");
+            Act(358, "create type product nodetype");
+            Act(359, "CREATE (Joe: Customer { \"Name\":'Joe Edwards', Address: '10 Station Rd.'})," +
+"(Joe) -[:Ordered { \"Date\":date'22/11/2002'} ]-> (Ord201: \"Order\") -[:Item { Qty: 5}]->(\"16/8x100\" : WoodScrew : Product)," +
+"(Ord201) -[:Item { Qty: 5}]->(\"Fibre 12cm\": WallPlug : Product)," +
+"(Ord201) -[:Item { Qty: 1}]->(\"500ml\" : RubberGlue : Product)");
+            CheckResults(25, 4, "match (_)-[:Item {Qty:_Q}]->(_Y:_T) where Q>4",
+                "[{Q:5,Y:'16/8x100',T:'WOODSCREW'},{Q:5,Y:'Fibre 12cm',T:'WALLPLUG'}]");
+            Rollback();
         }
         void CheckExceptionCommit(int t, int q,string m)
         {

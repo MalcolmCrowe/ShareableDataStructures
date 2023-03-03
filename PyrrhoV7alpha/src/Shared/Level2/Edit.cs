@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -31,7 +31,7 @@ namespace Pyrrho.Level2
         /// <param name="old">The previous version of the Domain</param>
         /// <param name="nm">The (new) name</param>
         /// <param name="sd">The (new) structure definition</param>
-        /// <param name="dt">The (new) Sql obs type</param>
+        /// <param name="dt">The (new) Domain</param>
         /// <param name="pb">The local database</param>
         public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
@@ -42,7 +42,7 @@ namespace Pyrrho.Level2
             {
                 if (!cx.db.types.Contains(old))
                     throw new DBException("42000");
-                _defpos = cx.db.types[old];
+                _defpos = cx.db.types[old] ?? -1L;
             }
             prev = old;
             _prev = prev.defpos;
@@ -83,14 +83,6 @@ namespace Pyrrho.Level2
 			base.Deserialise(rdr);
 		}
         /// <summary>
-        /// A readable version of the Edit
-        /// </summary>
-        /// <returns>the string representation</returns>
-		public override string ToString()
-		{
-			return "Edit ["+Pos(_defpos)+"] "+base.ToString();
-		}
-        /// <summary>
         /// Read Check: conflict if affected Physical is updated
         /// </summary>
         /// <param name="pos">the position</param>
@@ -116,6 +108,20 @@ namespace Pyrrho.Level2
                                 return new DBException("40079", defpos, that, ct);
                         break;
                     }
+                case Type.PDomain:
+                case Type.PDomain1:
+                case Type.Edit:
+                case Type.EditType:
+                case Type.PType:
+                case Type.PType1:
+                case Type.PNodeType:
+                case Type.PEdgeType:
+                    {
+                        var t = (PDomain)that;
+                        if (t.name==name)
+                            return new DBException("40079", defpos, that, ct);
+                        break;
+                    }
                 case Type.Drop:
                     if (((Drop)that).delpos == defpos)
                         return new DBException("40016", defpos, that, ct);
@@ -123,5 +129,151 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-	}
+    }
+    /// <summary>
+    /// An Edit record is to request an ALTER UDType
+    /// </summary>
+    internal class EditType : PType
+    {
+        internal long _defpos;
+        internal override long defpos => _defpos;
+        public Domain prev = Domain.Null;
+        internal long _prev;
+        /// <summary>
+        /// Constructor: an Edit request from the Parser.
+        /// Changes should propagate down to subtypes and up to supertype (TBD)
+        /// </summary>
+        /// <param name="old">The previous version of the Domain</param>
+        /// <param name="nm">The (new) name</param>
+        /// <param name="sd">The (new) structure definition</param>
+        /// <param name="pb">The local database</param>
+        public EditType(Ident nm, UDType old, Domain sd, Domain? un, long pp, Context cx)
+            : base(Type.EditType, nm, (UDType)(old.New(old.defpos,sd.mem)), un, pp, cx)
+        {
+            if (cx.db != null)
+            {
+                if (!cx.db.types.Contains(old))
+                    throw new DBException("42000");
+                _defpos = cx.db.types[old] ?? -1L;
+            }
+            prev = old;
+            _prev = prev.defpos;
+        }
+        /// <summary>
+        /// Constructor: an Edit request from the buffer
+        /// </summary>
+        /// <param name="bp">The buffer</param>
+        /// <param name="pos">The defining position</param>
+		public EditType(Reader rdr) : base(Type.EditType, rdr) { }
+        protected EditType(EditType x, Writer wr) : base(x, wr)
+        {
+            _defpos = wr.cx.Fix(x._defpos);
+            prev = (Domain)x.prev.Relocate(wr.cx);
+            _prev = prev.defpos;
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return new EditType(this, wr);
+        }
+        /// <summary>
+        /// Serialise this Physical to the PhysBase
+        /// </summary>
+        /// <param name="r">Reclocation info for Positions</param>
+        public override void Serialise(Writer wr)
+        {
+            wr.PutLong(_defpos);
+            base.Serialise(wr);
+        }
+        /// <summary>
+        /// Deserialise from the buffer
+        /// </summary>
+        /// <param name="buf">The buffer</param>
+        public override void Deserialise(Reader rdr)
+        {
+            _defpos = rdr.GetLong();
+            _prev = rdr.Prev(_defpos) ?? _defpos;
+            base.Deserialise(rdr);
+        }
+        /// <summary>
+        /// Read Check: conflict if affected Physical is updated
+        /// </summary>
+        /// <param name="pos">the position</param>
+        /// <returns>whether a conflict has occurred</returns>
+		public override DBException? ReadCheck(long pos, Physical r, PTransaction ct)
+        {
+            return (pos == defpos) ? new DBException("40009", pos, r, ct).Mix() : null;
+        }
+        public override long Affects => defpos;
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        {
+            switch (that.type)
+            {
+                case Type.Record3:
+                case Type.Record2:
+                case Type.Record:
+                case Type.Update1:
+                case Type.Update:
+                    {
+                        var t = (Record)that;
+                        for (var cp = t.fields.PositionAt(0); cp != null; cp = cp.Next())
+                            if (db.objects[cp.key()] is DBObject c && c.domain == defpos)
+                                return new DBException("40079", defpos, that, ct);
+                        break;
+                    }
+                case Type.PDomain:
+                case Type.PDomain1:
+                    {
+                        var t = (PDomain)that;
+                        if (t.name == name)
+                            return new DBException("40079", defpos, that, ct);
+                        break;
+                    }
+                case Type.Edit:
+                case Type.EditType:
+                case Type.PType:
+                case Type.PType1:
+                case Type.PNodeType:
+                case Type.PEdgeType:
+                    {
+                        var t = (PType)that;
+                        if (((UDType)t.dataType).subtypes.Contains(defpos))
+                            return new DBException("40079", defpos, that, ct);
+                        break;
+                    }
+                case Type.Drop:
+                    if (((Drop)that).delpos == defpos)
+                        return new DBException("40016", defpos, that, ct);
+                    break;
+            }
+            return base.Conflicts(db, cx, that, ct);
+        }
+        internal override DBObject Install(Context cx, long p)
+        {
+            var r = base.Install(cx, p);
+            if (under!=null)
+            {
+                dataType += (UDType.Under, under);
+                if (under is UDType du)
+                    cx.db += (dataType + (UDType.Subtypes, du.subtypes + (r.defpos, true)),cx.db.loadpos);
+                cx.Add(under);
+                cx.obs += (dataType.defpos,dataType);
+            }
+            if (dataType is NodeType ot && under is NodeType nt
+                && cx.db.objects[ot.structure] is Table st 
+                && ot.rowType[0] is long ip && cx.db.objects[ip] is TableColumn was
+                && nt.rowType[0] is long np && cx.db.objects[np] is TableColumn now)
+                    cx.db = st.MergeColumn(cx, was, now);
+            if (dataType is EdgeType et && under is EdgeType ft
+    && cx.db.objects[et.structure] is Table tt
+    && et.rowType[1] is long jp && cx.db.objects[jp] is TableColumn wat
+    && ft.rowType[1] is long op && cx.db.objects[op] is TableColumn nov)
+                cx.db = tt.MergeColumn(cx, wat, nov);
+            if (dataType is EdgeType gt && under is EdgeType ht
+    && cx.db.objects[gt.structure] is Table ut
+    && gt.rowType[2] is long kp && cx.db.objects[kp] is TableColumn wau
+    && ht.rowType[3] is long pp && cx.db.objects[pp] is TableColumn nox)
+                cx.db = ut.MergeColumn(cx, wau, nox);
+            return r;
+        }
+    }
 }

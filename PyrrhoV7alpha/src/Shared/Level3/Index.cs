@@ -3,7 +3,7 @@ using Pyrrho.Level4; // for rename/drop
 using Pyrrho.Common;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -93,21 +93,21 @@ namespace Pyrrho.Level3
                 r += (RefIndex, rx.defpos);
                 r += (RefTable, rx.tabledefpos);
             }
-            var cols = Domain.Row;
+            var rt = BList<long?>.Empty;
             var rs = CTree<long, Domain>.Empty;
             for (var b = c.columns.First(); b != null; b = b.Next())
-            {
-                var pos = b.value();
-                if (pos == 0 && cx.db.objects[c.tabledefpos] is Table tb &&
-                    cx.db.objects[tb.systemPS] is PeriodDef pd)
-                    pos = pd.startCol;
-                cols += (cx,pos);
-                rs += (pos, cx._Dom(pos)??throw new PEException("PE50201"));
-            }
-            var kd = new Domain(cx.GetUid(), cx, Sqlx.ROW, rs, cols.rowType, c.columns.Length);
+                if (b.value() is long pos)
+                {
+                    if (pos == 0 && cx.db.objects[c.tabledefpos] is Table tb &&
+                        cx.db.objects[tb.systemPS] is PeriodDef pd)
+                        pos = pd.startCol;
+                    rt += pos;
+                    rs += (pos, cx._Dom(pos) ?? throw new PEException("PE50201"));
+                }
+            var kd = new Domain(-1L, cx, Sqlx.ROW, rs, rt, rt.Length);
             TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?
                 TreeBehaviour.Allow : TreeBehaviour.Disallow;
-            r += (Keys, cols);
+            r += (Keys, kd);
             var rows = new MTree(kd, isfk, 0);
             r += (Tree, rows);
             return r;
@@ -142,19 +142,20 @@ namespace Pyrrho.Level3
         {
             var r = CList<TypedValue>.Empty;
             for (var b = keys.rowType.First(); b != null; b = b.Next())
-            {
-                if (vs[b.value()] is not TypedValue v)
-                    return null;
-                r += v;
-            }
+                if (b.value() is long p)
+                {
+                    if (vs[p] is not TypedValue v)
+                        return null;
+                    r += v;
+                }
             return r;
         }
-        internal CList<TypedValue>? MakeKey(CTree<long,TypedValue> vs,CTree<long,long> sIMap)
+        internal CList<TypedValue>? MakeKey(CTree<long,TypedValue> vs,BTree<long,long?> sIMap)
         {
             var r = CList<TypedValue>.Empty;
             for (var b = keys.rowType.First(); b != null; b = b.Next())
             {
-                if (sIMap.Contains(b.value()) && vs[sIMap[b.value()]] is TypedValue v)
+                if (b.value() is long p && sIMap[p] is long q && vs[q] is TypedValue v)
                     r += v;
                 else
                     return null;
@@ -174,6 +175,7 @@ namespace Pyrrho.Level3
             bool rx = ((flags & PIndex.ConstraintType.ForeignKey) == PIndex.ConstraintType.ForeignKey);
             bool ux = ((flags & (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique)) != PIndex.ConstraintType.NoType);
             if (tb.FindPrimaryIndex(cx) is Index px)
+            {
                 for (var d = px.rows?.First(); d != null; d = d.Next())
                     if (d.Value() is long pp && tb.tableRows[pp] is TableRow r)
                     {
@@ -182,35 +184,36 @@ namespace Pyrrho.Level3
                         {
                             if (rx)
                                 CheckRef(cx.db, m);
-                            if (ux && rows.Contains(m) && tb.infos[cx.role.defpos] is ObInfo oi && oi.name!=null)
+                            if (ux && rows.Contains(m) && tb.infos[cx.role.defpos] is ObInfo oi && oi.name != null)
                                 throw new DBException("44002", "PRIMARY/UNIQUE", oi.name).Mix()
                                     .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                                     .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
                             rs += (m, 0, pp);
                         }
                     }
-                    else
+            }
+            else
+            {
+                // there is no primary index, so we do it from the tableRows information
+                for (var pq = tb.tableRows.PositionAt(0); pq != null; pq = pq.Next())
+                {
+                    var rq = pq.value();
+                    var m = rq.MakeKey(this);
+                    if (m != null)
                     {
-                        // there is no primary index, so we do it from the tableRows information
-                        for (var pq = tb.tableRows.PositionAt(0); pq != null; pq = pq.Next())
+                        if (rx)
+                            CheckRef(cx.db, m);
+                        if (ux && rs.Contains(m))
                         {
-                            var rq = pq.value();
-                            var m = rq.MakeKey(this);
-                            if (m != null)
-                            {
-                                if (rx)
-                                    CheckRef(cx.db, m);
-                                if (ux && rs.Contains(m) )
-                                {
-                                    var oi = tb.infos[cx.role.defpos];
-                                    throw new DBException("44002", "PRIMARY/UNIQUE").Mix()
-                                          .Add(Sqlx.TABLE_NAME, new TChar(oi?.name??"??"))
-                                          .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
-                                }
-                                rs += (m, 0, pq.key());
-                            }
+                            var oi = tb.infos[cx.role.defpos];
+                            throw new DBException("44002", "PRIMARY/UNIQUE").Mix()
+                                  .Add(Sqlx.TABLE_NAME, new TChar(oi?.name ?? "??"))
+                                  .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
                         }
+                        rs += (m, 0, pq.key());
                     }
+                }
+            }
             return this + (Tree, rs);
         }
         /// <summary>
@@ -235,7 +238,7 @@ namespace Pyrrho.Level3
   //          if (reftabledefpos >= 0 && cx.db != null && cx.db.objects[reftabledefpos] is Table ta)
   //              ta.FindPrimaryIndex(cx)?.Cascade(cx, a, u);
             for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
-                if (cx.db?.objects[b.value()] is Table tb)
+                if (b.value() is long p && cx.db?.objects[p] is Table tb)
                     for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
                         for (var c = xb.value().First(); c != null; c = c.Next())
                             if (cx.db.objects[c.key()] is Index rx && rx.refindexdefpos == defpos)
@@ -277,6 +280,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            sb.Append(" count " + rows?.count);
             sb.Append(" Key:"); sb.Append(keys);
             sb.Append(" Kind="); sb.Append(flags);
             if (refindexdefpos != -1)
@@ -296,23 +300,13 @@ namespace Pyrrho.Level3
         {
             return new Index(defpos, m);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return new Index(dp, mem);
+            return new Index(dp, m);
         }
-        internal override Basis _Relocate(Context cx)
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
         {
-            var r = (Index)base._Relocate(cx);
-            r += (Adapter, cx.Fix(adapter));
-            r += (Keys, keys.Fix(cx));
-            r += (References, cx.Fix(references));
-            r += (RefIndex, cx.Fix(refindexdefpos));
-            r += (RefTable, cx.Fix(reftabledefpos));
-            return r;
-        }
-        internal override Basis _Fix(Context cx)
-        {
-            var r = (Index)base._Fix(cx);
+            var r = base._Fix(cx,m);
             var na = cx.Fix(adapter);
             if (na!=adapter)
             r += (Adapter, na);
@@ -334,59 +328,60 @@ namespace Pyrrho.Level3
         {
             sb.Append("// "); sb.Append(flags);
             var cm = "(";
-            for (var b=keys.First();b!=null;b=b.Next())
-            {
-                sb.Append(cm); cm = ",";
-                sb.Append(cx.NameFor(b.value()));
-            }
+            for (var b = keys.First(); b != null; b = b.Next())
+                if (b.value() is long p)
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(cx.NameFor(p));
+                }
             sb.Append(")");
             if (flags.HasFlag(PIndex.ConstraintType.ForeignKey))
             { sb.Append(" "); sb.Append(cx.NameFor(reftabledefpos)); }
             sb.Append("\r\n");
         }
     }
-/*    /// <summary>
-    /// A VirtualTable can have virtual indexes: they are for navigation properties
-    /// and do not attempt to act as constraints on the remote table
-    /// </summary>
-    internal class VirtualIndex : Index
-    {
-        public VirtualIndex(VIndex pt,Context cx) :base(pt.defpos,_Mem(cx,pt))
-        { }
-        public VirtualIndex(long dp,BTree<long,object> m) : base(dp,m)
-        { }
-        static BTree<long,object> _Mem(Context cx,VIndex px)
+    /*    /// <summary>
+        /// A VirtualTable can have virtual indexes: they are for navigation properties
+        /// and do not attempt to act as constraints on the remote table
+        /// </summary>
+        internal class VirtualIndex : Index
         {
-            var r = BTree<long, object>.Empty;
-            r += (TableDefPos, px.tabledefpos);
-            r += (IndexConstraint, px.flags);
-            if (px.reference > 0 && cx.db.objects[px.reference] is Index rx)
+            public VirtualIndex(VIndex pt,Context cx) :base(pt.defpos,_Mem(cx,pt))
+            { }
+            public VirtualIndex(long dp,BTree<long,object> m) : base(dp,m)
+            { }
+            static BTree<long,object> _Mem(Context cx,VIndex px)
             {
-                r += (RefIndex, rx.defpos);
-                r += (RefTable, rx.tabledefpos);
+                var r = BTree<long, object>.Empty;
+                r += (TableDefPos, px.tabledefpos);
+                r += (IndexConstraint, px.flags);
+                if (px.reference > 0 && cx.db.objects[px.reference] is Index rx)
+                {
+                    r += (RefIndex, rx.defpos);
+                    r += (RefTable, rx.tabledefpos);
+                }
+                var cols = BList<long?>.Empty;
+                var tb = (Table)cx.obs[px.tabledefpos];
+                cx.Add(tb.framing);
+                var dm = cx._Dom(tb);
+                for (var b = px.seqs.First(); b != null; b = b.Next())
+                {
+                    var seq = b.value();
+                    cols += dm.rowType[seq];
+                }
+                r += (Keys, cols);
+                return r;
             }
-            var cols = CList<long>.Empty;
-            var tb = (Table)cx.obs[px.tabledefpos];
-            cx.obs += tb.framing.obs;
-            var dm = cx._Dom(tb);
-            for (var b = px.seqs.First(); b != null; b = b.Next())
+            internal override Basis New(BTree<long, object> m)
             {
-                var seq = b.value();
-                cols += dm.rowType[seq];
+                return new VirtualIndex(defpos, m);
             }
-            r += (Keys, cols);
-            return r;
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new VirtualIndex(defpos, m);
-        }
-        internal override DBObject Relocate(long dp)
-        {
-            return new VirtualIndex(dp, mem);
-        }
-        internal override void Cascade(Context cx, Drop.DropAction a = Level2.Drop.DropAction.Restrict, BTree<long, TypedValue> u = null)
-        {
-        }
-    } */
+            internal override DBObject Relocate(long dp)
+            {
+                return (dp == defpos) ? this : new VirtualIndex(dp, mem);
+            }
+            internal override void Cascade(Context cx, Drop.DropAction a = Level2.Drop.DropAction.Restrict, BTree<long, TypedValue> u = null)
+            {
+            }
+        } */
 }

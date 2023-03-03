@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -184,14 +184,14 @@ namespace Pyrrho.Level2
             if (cx.db.objects[obj] is Procedure proc && proc is not Method)
             {
                 var nm = proc.infos[proc.definer]?.name??"";
-                var ps = rg.procedures[nm]??CTree<CList<Domain>,long>.Empty;
+                var ps = rg.procedures[nm]??BTree<CList<Domain>,long?>.Empty;
                 ps += (cx.Signature(proc.ins), obj);
                 rg += (Role.Procedures, rg.procedures+(nm,ps));
                 cx.db += (grantee, rg);
             }
             // install the privilege on the target object
             oi += (ObInfo.Privilege, pr);
-            ob += (DBObject.Infos,ob.infos + (grantee, oi));
+            ob = (DBObject)ob.New(ob.mem+(DBObject.Infos,ob.infos + (grantee, oi)));
             cx.db += (ob, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

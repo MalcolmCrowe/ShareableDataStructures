@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -121,7 +121,7 @@ namespace Pyrrho.Level2
                             // conflict if this updated one of our foreign keys
                                 for (var xb = rx?.keys.First();
                                         xb != null; xb = xb.Next())
-                                    if (fields.Contains(xb.value()))
+                                    if (xb.value() is long p && fields.Contains(p))
                                         throw new DBException("40086", u.ToString());
                         // conflict on columns in matching rows
                         if (defpos != u.defpos)
@@ -163,26 +163,43 @@ namespace Pyrrho.Level2
         internal override TableRow AddRow(Context cx)
         {
             var tb = (Table)(cx.db.objects[tabledefpos]??throw new DBException("42105"));
-            var was = tb.tableRows[defpos] ?? throw new DBException("42105");
-            var now = new TableRow(this, cx, was);
-            var same = true;
-            for (var b = fields.First(); same && b != null; b = b.Next())
-                if (tb.keyCols.Contains(b.key()))
-                    same = b.value().CompareTo(was.vals[b.key()]) == 0;
-            if (same)
-                return now;
-            for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
-                for (var c = xb.value().First(); c != null; c = c.Next())
-                    if (cx.db.objects[c.key()] is Level3.Index x
-                        && x.MakeKey(was.vals) is CList<TypedValue> ok
-                        && x.MakeKey(now.vals) is CList<TypedValue> nk
-                        && ok.CompareTo(nk) != 0)
-                    {
-                        x -= (ok, defpos);
-                        x += (nk, defpos);
-                        cx.db += (x, cx.db.loadpos);
-                    }
-            return now;
+            for (var tt = tb; tt != null;)
+            {
+                var was = tt.tableRows[defpos] ?? throw new DBException("42105");
+                var now = new TableRow(this, cx, was);
+                if (tt == tb && cx.db.objects[tb.nodeType] is NodeType tn
+                        && tn.rowType[0] is long p && now.vals[p] is TChar id
+                        && was.vals[p] is TChar od && id.value != od.value
+                        && cx.db.nodeIds[id.value] is TypedValue tv)
+                {
+                    if (tn is EdgeType te)
+                        cx.db = cx.db - (TEdge)tv + new TEdge(defpos, te, now.vals);
+                    else
+                        cx.db = cx.db - (TNode)tv + new TNode(defpos, tn, now.vals);
+                }
+                var same = true;
+                for (var b = fields.First(); same && b != null; b = b.Next())
+                    if (tb.keyCols.Contains(b.key()))
+                        same = b.value().CompareTo(was.vals[b.key()]) == 0;
+                if (same)
+                    return now;
+                for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
+                    for (var c = xb.value().First(); c != null; c = c.Next())
+                        if (cx.db.objects[c.key()] is Level3.Index x
+                            && x.MakeKey(was.vals) is CList<TypedValue> ok
+                            && x.MakeKey(now.vals) is CList<TypedValue> nk
+                            && ok.CompareTo(nk) != 0)
+                        {
+                            x -= (ok, defpos);
+                            x += (nk, defpos);
+                            cx.db += (x, cx.db.loadpos);
+                        }
+                tt = (cx._Ob(tt.nodeType) is NodeType nt && nt.super is NodeType su
+                    && cx._Ob(su.structure) is Table st) ? st : null;
+                if (tt == null)
+                    return now;
+            }
+            throw new DBException("42105");
         }
         public override long Affects => _defpos;
         public override long defpos => _defpos;

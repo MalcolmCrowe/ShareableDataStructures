@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -26,6 +26,7 @@ namespace Pyrrho.Level2
         internal Domain domain = Domain.Null;
         internal Domain? element = null, structure=null, under = null;
         internal long domdefpos = -1L;
+
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (domain.orderFunc != null && !Committed(wr, domain.orderFunc.defpos))
@@ -99,11 +100,12 @@ namespace Pyrrho.Level2
             {
                 var cs = CList<Domain>.Empty;
                 for (var b = dt.rowType.First(); b != null; b = b.Next())
-                {
-                    var cd = cx._Dom(dt.representation[b.value()])??throw new DBException("42105");
-                    d = Math.Max(d, cd.depth + 1);
-                    cs += cd;
-                }
+                    if (b.value() is long p)
+                    {
+                        var cd = cx._Dom(dt.representation[p]) ?? throw new DBException("42105");
+                        d = Math.Max(d, cd.depth + 1);
+                        cs += cd;
+                    }
                 for (var b = cx.obs.First(); b != null; b = b.Next())
                 {
                     var ob = b.value();
@@ -120,6 +122,7 @@ namespace Pyrrho.Level2
                 }
             }
             domain = (Domain)dt.Relocate(pp) + (DBObject._Depth,d);
+            cx.db += (Database.Types,cx.db.types + (domain, pp));
         }
         /// <summary>
         /// Constructor: a new Domain definition from the buffer
@@ -135,9 +138,9 @@ namespace Pyrrho.Level2
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
 		protected PDomain(Type t, Reader rdr) : base(t, rdr) { }
-        protected PDomain(PDomain x, Writer wr) : base(x, wr)
+        protected PDomain(PDomain x, Writer wr) : base(x,wr)
         {
-            domain = (Domain)x.domain._Relocate(wr.cx);
+            domain = (Domain)x.domain.Relocate(wr.cx);
         }
         static bool _Match(Context cx, CList<Domain> cs, Domain dc)
         {
@@ -147,7 +150,8 @@ namespace Pyrrho.Level2
             {
                 var cb = cs.First();
                 for (var c = dc.rowType.First(); c != null && cb!=null; c = c.Next(), cb = cb.Next())
-                    if (cx.obs[c.value()] is SqlValue v && v.domain.CompareTo(cb.value()) != 0)
+                    if (c.value() is long p && cx.obs[p] is SqlValue v 
+                        && v.domain.CompareTo(cb.value()) != 0)
                         return false;
             }
             return true;
@@ -176,11 +180,8 @@ namespace Pyrrho.Level2
             wr.PutString(domain.culture.Name);
             wr.PutString(domain.defaultString);
             if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET)
-            {
-                if (!wr.cx.db.types.Contains(domain.elType))
-                    throw new PEException("PE48802");
-                wr.PutLong(wr.cx.db.types[domain.elType]);
-            }
+                wr.PutLong(wr.cx.db.types[domain.elType]??
+                    throw new PEException("PE48802"));
             else
                 wr.PutLong(domain.structure);
  			base.Serialise(wr);
@@ -193,7 +194,7 @@ namespace Pyrrho.Level2
         {
             name = rdr.GetString();
             var kind = (Sqlx)rdr.GetInt();
-            domain = Domain.New(rdr.context,BTree<long, object>.Empty
+            domain = new Domain(ppos,BTree<long, object>.Empty
                 + (ObInfo.Name, name) + (Domain.Kind,kind)
                 + (Domain.Precision, rdr.GetInt())
                 + (Domain.Scale, rdr.GetInt())
@@ -277,15 +278,15 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role ?? throw new DBException("42105");
             var dt = domain;
-            cx.Add(dt);
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(domain.name, priv);
             dt += (DBObject.LastChange, p);
             dt += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
-            var st = CTree<string, long>.Empty;
+            cx.Add(dt);
+            var st = BTree<string, long?>.Empty;
             for (var b = dt.rowType.First(); b != null; b = b.Next())
-                if (cx._Ob(b.value()) is DBObject ob && ob.NameFor(cx) is string n)
-                    st += (n, b.value());
+                if (b.value() is long bp && cx._Ob(bp) is DBObject ob && ob.NameFor(cx) is string n)
+                    st += (n, bp);
             if (domain.name != "")
                 ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
             if (cx.db.format < 51 && domain.structure > 0)
@@ -376,7 +377,7 @@ namespace Pyrrho.Level2
             }
             return -1;
         }
-        Sqlx GetIntervalPart(Reader rdr)
+        static Sqlx GetIntervalPart(Reader rdr)
         {
             int j = rdr.GetInt();
             if (j < 0)

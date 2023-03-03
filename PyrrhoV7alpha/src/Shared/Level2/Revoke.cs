@@ -3,7 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -58,13 +58,13 @@ namespace Pyrrho.Level2
             oi += (ObInfo.Privilege, oi.priv & ~priv);
             if (oi.priv == Privilege.NoPrivilege)
             {
-                ob += (DBObject.Infos, ob.infos - cx.role.defpos);
+                ob = ob.New(ob.defpos,ob.mem+(DBObject.Infos, ob.infos - cx.role.defpos));
                 cx.Add(ob);
                 ob = cx._Ob(obj) ?? throw new PEException("PE42800");
                 ob.Cascade(cx,Drop.DropAction.Cascade);
             }
             else
-                ob += (DBObject.Infos, ob.infos + (cx.role.defpos, oi));
+                ob = ob.New(ob.defpos,ob.mem+(DBObject.Infos, ob.infos + (cx.role.defpos, oi)));
             cx.db += (ob, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

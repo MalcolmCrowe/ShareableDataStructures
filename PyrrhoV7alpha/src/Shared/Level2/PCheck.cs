@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -38,11 +38,12 @@ namespace Pyrrho.Level2
         /// <param name="ob">The object to which the check applies</param>
         /// <param name="nm">The name of the constraint</param>
         /// <param name="cs">The constraint as a string</param>
+        /// <param name="nst">Start of framing executables</param>
         /// <param name="db">The local database</param>
-        public PCheck(DBObject ob, string nm, SqlValue se, string cs, long pp, Context cx)
-            : this(Type.PCheck, ob, nm, se, cs, pp, cx) { }
-        protected PCheck(Type tp, DBObject ob, string nm, SqlValue se, string cs, 
-            long pp, Context cx) : base(tp,pp,cx,nm,ob.defpos,Domain.Bool)
+        public PCheck(DBObject ob, string nm, SqlValue se, string cs, long nst, long pp, Context cx)
+            : this(Type.PCheck, ob, nm, se, cs, nst, pp, cx) { }
+        protected PCheck(Type tp, DBObject ob, string nm, SqlValue se, string cs, long nst,
+            long pp, Context cx) : base(tp,pp,cx,nm,ob.defpos,Domain.Bool,nst)
 		{
 			ckobjdefpos = ob.defpos;
             defpos = ppos;
@@ -153,11 +154,11 @@ namespace Pyrrho.Level2
         {
             var (tr,ph) = base.Commit(wr, t);
             var pc = (PCheck)ph;
-            if (tr?.objects[defpos] is not DBObject ob || pc.framing.obs[pc.test] is not DBObject se
+            if (tr?.objects[defpos] is not Check ob || pc.framing.obs[pc.test] is not DBObject se
                 || tr?.objects[ckobjdefpos] is not DBObject co)
                 throw new PEException("PE1350");
             var ck = ob + (Check.Condition, se.defpos) + (DBObject._Framing, pc.framing);
-            co = co.Add((Check)ck, tr);
+            co = co.Add(ck, tr);
             wr.cx.instDFirst = -1;
             return ((Transaction)(tr + (ck, tr.loadpos)+(co,tr.loadpos)),ph);
         }
@@ -167,17 +168,18 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class PCheck2 : PCheck
     {
-      /// <summary>
+        /// <summary>
         /// Constructor: A new check constraint from the Parser
         /// </summary>
         /// <param name="dm">The object to which the check applies</param>
         /// <param name="so">The subobject to which the check applies</param>
         /// <param name="nm">The name of the constraint</param>
         /// <param name="cs">The constraint as a string</param>
+        /// <param name="nst">The first possible framing object</param>
         /// <param name="pb">The local database</param>
-        public PCheck2(DBObject ob, DBObject so, string nm, SqlValue se, string cs, long pp, 
+        public PCheck2(DBObject ob, DBObject so, string nm, SqlValue se, string cs, long nst, long pp, 
             Context cx)
-            : base(Type.PCheck2,ob,nm,se,cs,pp,cx)
+            : base(Type.PCheck2,ob,nm,se,cs,nst,pp,cx)
 		{
             subobjdefpos=so.defpos;
 		}
@@ -242,10 +244,8 @@ namespace Pyrrho.Level2
             cx.Install(ck, p);
             var nc = co.Add(ck, cx.db);
             cx.Install(nc, p);
-            // we don't install this new column in ck's framing, as there is
-            // no good way to maintain the surrounding context reliably in the framing
-
-            cx.db += (nc, p);
+            cx.Add(ck.framing);
+            cx.db += (ck, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return nc;

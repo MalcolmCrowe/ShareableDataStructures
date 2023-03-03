@@ -4,7 +4,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -36,7 +36,7 @@ namespace Pyrrho.Level4
         /// the target type
         /// </summary>
         public UDType? type;
-        public CList<long> ins = CList<long>.Empty; 
+        public BList<long?> ins = BList<long?>.Empty; 
         /// <summary>
         /// The return type
         /// </summary>

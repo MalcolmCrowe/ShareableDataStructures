@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -33,7 +33,7 @@ namespace Pyrrho.Level3
     {
         /// <summary>
         /// The MTree is implemented using a SqlTree for the keys at this level.
-        /// Thus impl.keyType is always info[keyLen] to implement an index at this level.
+        /// Thus impl.keyType is always info[keyLen-1] to implement an index at this level.
         /// </summary>
         internal readonly SqlTree? impl; 
         internal readonly Domain info; // same info for all levels!
@@ -73,7 +73,7 @@ namespace Pyrrho.Level3
             info = ti;
             off = ff;
             nullsAndDuplicates = fk;
-            if (!ti.rowType.Contains(ff) || ti.representation[ti.rowType[ff]] is not Domain sd)
+            if (!ti.rowType.Contains(ff) || ti.representation[ti.rowType[ff]??-1L] is not Domain sd)
                 throw new PEException("PE6001");
             if (k[ff] is not TypedValue head)
                 throw new PEException("PE6002");
@@ -93,6 +93,24 @@ namespace Pyrrho.Level3
                 impl = new SqlTree(sd, Sqlx.M, head, new TMTree(x));
             }
             count = 1;
+        }
+        internal MTree(Context cx,MTree x)
+        {
+            impl = x.impl;
+            info = x.info.Replaced(cx);
+            nullsAndDuplicates = x.nullsAndDuplicates;
+            off = x.off;
+            count = x.count;
+        }
+        internal MTree(MTree x,MTree? y)
+        {
+            impl = new SqlTree(Domain.Char, Sqlx.INT, 
+                ((x.impl??CTree<TypedValue,TypedValue>.Empty) + 
+                (y?.impl??CTree<TypedValue,TypedValue>.Empty)).root);
+            info = x.info;
+            nullsAndDuplicates = x.nullsAndDuplicates;
+            off = x.off;
+            count = x.count + (y?.count??0);
         }
         /// <summary>
         /// Constructor: implementation of add, update etc
@@ -161,19 +179,15 @@ namespace Pyrrho.Level3
         /// A key for this index has a null at position cur: return a suitable new value for this null
         /// </summary>
         /// <param name="key"></param>
-        /// <param name="off"></param>
+        /// <param name="ff">position in key</param>
         /// <param name="cur"></param>
         /// <returns></returns>
-        internal TypedValue NextKey(CList<TypedValue> key, int ff, int cur)
+        internal TypedValue NextKey(Sqlx kind, CList<TypedValue> key, int ff, int cur)
         {
             if (off < cur && Ensure(key,ff) is MTree mt) 
-                return mt.NextKey(key, ff + 1, cur);
-            var v = impl?.Last()?.key() ?? new TInt(0);
-            if (v.dataType.kind==Sqlx.INTEGER && v.ToInt() is int iv)
-                return new TInt(iv+1);
-            if (!info.rowType.Contains(ff) || info.representation[info.rowType[ff]] is not Domain sd)
-                throw new PEException("PE6001");
-            return sd.defaultValue??new TInt(0);
+                return mt.NextKey(kind,key, ff + 1, cur);
+            return impl?.AutoKey(kind) ?? ((kind == Sqlx.CHAR) ? 
+                new TChar("1") : new TInt(1));
         }
         /// <summary>
         /// Return the tree defined by the off-th key columns, or an empty one

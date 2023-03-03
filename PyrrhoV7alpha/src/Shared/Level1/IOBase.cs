@@ -7,7 +7,7 @@ using System.Text;
 using System.Threading;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -67,7 +67,7 @@ namespace Pyrrho.Level2
     {
         public Stream file; // shared with Reader(s)
         public long seg = -1;    // The SSegment uid for the start of a Commit once roles are defined
-                                 //       internal BTree<long, long> uids = BTree<long, long>.Empty; // used for movement of DbObjects
+                                 //       internal BTree<long, long?> uids = BTree<long, long?>.Empty; // used for movement of DbObjects
                                  //      internal BTree<long, RowSet> rss = BTree<long, RowSet>.Empty; // ditto RowSets
                                  // fixups: unknownolduid -> referer -> how->bool
         public long segment;  // the most recent PTransaction/PTriggeredAction written
@@ -81,7 +81,7 @@ namespace Pyrrho.Level2
             cx = c;
             file = f;
         }
-        public long Length => file.Length + buf.pos;
+        public long Length => file.Length + prevBufs.Count*Buffer.Size + buf.pos;
         public override void PutBuf()
         {
             file.Seek(0, SeekOrigin.End);
@@ -120,6 +120,8 @@ namespace Pyrrho.Level2
         }
         public void PutLong(long n)
         {
+            if (n >= Transaction.TransPos)
+                throw new PEException("PE4100");
             PutInteger(new Integer(n));
         }
         public void PutString(string s)
@@ -216,7 +218,6 @@ namespace Pyrrho.Level2
                 Physical.Type.Alter3 => new Alter3(this),
                 Physical.Type.AlterRowIri => new AlterRowIri(this),
                 Physical.Type.Change => new Change(this),
-                Physical.Type.Checkpoint => new Checkpoint(this),
                 Physical.Type.Curated => new Curated(this),
                 Physical.Type.Delete => new Delete(this),
                 Physical.Type.Drop => new Drop(this),
@@ -279,6 +280,9 @@ namespace Pyrrho.Level2
                 Physical.Type.Delete1 => new Delete1(this),
                 Physical.Type.Drop1 => new Drop1(this),
                 Physical.Type.RefAction => new RefAction(this),
+                Physical.Type.PNodeType=> new PNodeType(this),
+                Physical.Type.PEdgeType => new PEdgeType(this),
+                Physical.Type.EditType => new EditType(this),
                 _ => throw new PEException("PE35"),
             };
             p.Deserialise(this);
@@ -470,7 +474,7 @@ namespace Pyrrho.Level2
         }
         internal long? Prev(long pv)
         {
-            return (long?)context.db.objects[pv];
+            return ((DBObject?)context.db.objects[pv])?.defpos;
         }
         internal void Setup(PDomain pd)
         {

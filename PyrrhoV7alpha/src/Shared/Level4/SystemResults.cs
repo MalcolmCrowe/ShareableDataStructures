@@ -1,14 +1,11 @@
-using System;
-using System.CodeDom;
-using System.Globalization;
-using System.Net.Http.Headers;
 using System.Text;
-using System.Xml.Resolvers;
+using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -26,8 +23,7 @@ namespace Pyrrho.Level4
             SysCols = -175; // BTree<long,TableColumn>
         public BTree<long, TableColumn> sysCols =>
             (BTree<long, TableColumn>?)mem[SysCols] ?? BTree<long, TableColumn>.Empty;
-        public string name => (string?)mem[ObInfo.Name]??"";
-        public CList<long> sRowType => (CList<long>?)mem[InstanceRowSet.SRowType] ?? CList<long>.Empty;
+        public BList<long?> sRowType => (BList<long?>?)mem[InstanceRowSet.SRowType] ?? BList<long?>.Empty;
         internal SystemTable(string n)
             : base(--_uid, new BTree<long, object>(ObInfo.Name, n)
                   + (_Domain, --_uid)
@@ -42,6 +38,9 @@ namespace Pyrrho.Level4
         protected SystemTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SystemTable operator+(SystemTable s,(long,object)x)
         {
+            var (dp, ob) = x;
+            if (s.mem[dp] == ob)
+                return s;
             return new SystemTable(s.defpos, s.mem + x);
         }
         /// <summary>
@@ -87,14 +86,18 @@ namespace Pyrrho.Level4
         }
         public SystemTable AddIndex(params string[] k)
         {
-            var ks = Domain.Row;
+            var rt = BList<long?>.Empty;
+            var rs = CTree<long, Domain>.Empty;
             foreach (var c in k)
                 for (var b = sysCols.First(); b != null; b = b.Next())
                     if (b.value() is SystemTableColumn sc && sc.name == c)
                     {
-                        ks += sc;
+                        rt += sc.defpos;
+                        rs += (sc.defpos, (Domain)(Database._system.objects[sc.domain] ?? throw new PEException("PE0099")));
                         break;
                     }
+            var ks = new Domain(--_uid, BTree<long, object>.Empty + (Domain.Kind, Sqlx.ROW) + (Domain.RowType, rt)
+                + (Domain.Representation, rs));
             var x = new SystemIndex(defpos, ks);
             var sys = Database._system ?? throw new PEException("PE1014");
             Database._system = sys+ (x.defpos, x);
@@ -104,6 +107,10 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new SystemTable(defpos,m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new SystemTable(dp, m);
         }
         internal override string NameFor(Context cx)
         {
@@ -127,13 +134,11 @@ namespace Pyrrho.Level4
             Key = -389;
         public readonly bool DBNeeded = true;
         public int isKey => (int)(mem[Key]??-1);
-        public string? name => (string?)mem[ObInfo.Name];
         /// <summary>
         /// A table column for a System or Log table
         /// </summary>
         /// <param name="sd">the database</param>
         /// <param name="n"></param>
-        /// <param name="sq">the ordinal position</param>
         /// <param name="t">the dataType</param>
         internal SystemTableColumn(SystemTable t, string n, Domain dt, int k)
             : base(--_uid, BTree<long, object>.Empty + (ObInfo.Name, n) + (_Table, t.defpos) 
@@ -152,6 +157,9 @@ namespace Pyrrho.Level4
         protected SystemTableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SystemTableColumn operator+(SystemTableColumn s,(long,object) x)
         {
+            var (dp, ob) = x;
+            if (s.mem[dp] == ob)
+                return s;
             return new SystemTableColumn(s.defpos, s.mem + x);
         }
         internal override string NameFor(Context cx)
@@ -200,7 +208,7 @@ namespace Pyrrho.Level4
         {
             var sf = rs.sysFilt;
             if (sf != null && sf[i] is SystemFilter fi && rs.sysIx!=null 
-                && cx.obs[rs.sysIx.keys[i]] is SystemTableColumn stc && stc.name == s)
+                && cx.obs[rs.sysIx.keys[i]??-1L] is SystemTableColumn stc && stc.name == s)
             {
                 switch (op1)
                 {
@@ -319,13 +327,16 @@ namespace Pyrrho.Level4
         }
         public static SystemRowSet operator +(SystemRowSet rs, (long, object) x)
         {
+            var (dp, ob) = x;
+            if (rs.mem[dp] == ob)
+                return rs;
             return (SystemRowSet)rs.New(rs.mem + x);
         }
-        internal override DBObject Relocate(long dp)
+        internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return new SystemRowSet(dp, mem);
+            return new SystemRowSet(dp, m);
         }
-        internal static void Kludge(int k)
+        internal static void Kludge(int k) // k is there to provoke another kludge
         { }
         /// <summary>
         /// Class initialisation: define the system tables
@@ -359,6 +370,7 @@ namespace Pyrrho.Level4
             LogTriggerResults();
             LogTriggerUpdateColumnResults();
             LogTriggeredActionResults();
+            LogEdgeTypeResults();
             LogTypeResults();
             LogTypeMethodResults();
             //          LogTypeUnionResults();
@@ -400,6 +412,7 @@ namespace Pyrrho.Level4
             SysClassificationResults();
             SysClassifiedColumnDataResults();
             SysEnforcementResults();
+            SysGraphResults();
             SysAuditResults();
             SysAuditKeyResults();
             RolePrimaryKeyResults();
@@ -499,6 +512,7 @@ namespace Pyrrho.Level4
                 case "Sys$Classification": return SysClassificationBookmark.New(_cx, res);
                 case "Sys$ClassifiedColumnData": return SysClassifiedColumnDataBookmark.New(_cx, res);
                 case "Sys$Enforcement": return SysEnforcementBookmark.New(_cx, res);
+                case "Sys$Graph": return SysGraphBookmark.New(_cx,res);
                 case "Sys$Audit": return SysAuditBookmark.New(_cx, res);
                 case "Sys$AuditKey": return SysAuditKeyBookmark.New(_cx, res);
                 case "Role$PrimaryKey": return RolePrimaryKeyBookmark.New(_cx, res);
@@ -554,6 +568,7 @@ namespace Pyrrho.Level4
                 "Log$Trigger" => LogTriggerBookmark.New(res, _cx),
                 "Log$TriggerUpdateColumn" => LogTriggerUpdateColumnBookmark.New(res, _cx),
                 "Log$TriggeredAction" => LogTriggeredActionBookmark.New(res, _cx),
+                "Log$EdgeType" => LogEdgeTypeBookmark.New(res, _cx),
                 "Log$Type" => LogTypeBookmark.New(res, _cx),
                 "Log$TypeMethod" => LogTypeMethodBookmark.New(res, _cx),
                 "Log$Update" => LogUpdateBookmark.New(res, _cx),
@@ -724,7 +739,7 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx,SystemRowSet res,Physical ph)
             {
-                return new TRow(cx,cx._Dom(res)??Domain.Null,
+                return new TRow(cx._Dom(res)??Domain.Null,
                     Pos(ph.ppos),
                     new TChar(ph.ToString()),
                     new TChar(ph.type.ToString()),
@@ -826,7 +841,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 var al = ph as PColumn ?? throw new PEException("PE1610");
-                return new TRow(cx, cx._Dom(res)?? throw new PEException("PE6610"),
+                return new TRow(cx._Dom(res)?? throw new PEException("PE6610"),
                     Pos(al.ppos),
                     Pos(al.Affects));
             }
@@ -922,7 +937,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Change ch = (Change)ph;
-                return new TRow(cx, cx._Dom(res)??throw new PEException("PE6611"),
+                return new TRow(cx._Dom(res)??throw new PEException("PE6611"),
                     Pos(ch.ppos),
                     Pos(ch.Previous),
                     new TChar(ch.name));
@@ -1012,7 +1027,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Delete d = (Delete)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE6613"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE6613"),
                     Pos(d.ppos),
                     Pos(d.delpos));
             }
@@ -1102,7 +1117,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Drop d = (Drop)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE6614"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE6614"),
                     Pos(d.ppos),
                     Pos(d.delpos));
             }
@@ -1227,7 +1242,7 @@ namespace Pyrrho.Level4
             {
                 PMetadata m = (PMetadata)ph;
                 var md = m.Metadata();
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0310"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0310"),
                     Pos(m.ppos),
                     Pos(m.defpos),
                     new TChar(m.name ?? throw new PEException("PE0311")),
@@ -1324,7 +1339,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Modify m = (Modify)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0400"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0400"),
                     Pos(m.ppos),
                     Pos(m.modifydefpos),
                     new TChar(m.name),
@@ -1415,7 +1430,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PUser a = (PUser)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0230"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0230"),
                     Pos(a.ppos),
                     new TChar(a.name));
             }
@@ -1505,7 +1520,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PRole a = (PRole)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0403"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0403"),
                     Pos(a.ppos),
                     new TChar(a.name),
                     new TChar(a.details));
@@ -1598,7 +1613,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PCheck c = (PCheck)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0404"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0404"),
                     Pos(c.ppos),
                     Pos(c.ckobjdefpos),
                     Pos(c.subobjdefpos),
@@ -1687,7 +1702,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Classify c = (Classify)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0407"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0407"),
                     Pos(c.ppos),
                     Pos(c.obj),
                     new TChar(c.classification.ToString()),
@@ -1775,7 +1790,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph,long u)
             {
                 Clearance c = (Clearance)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0408"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0408"),
                     Pos(c.ppos),
                     Pos(u),
                     new TChar(c.clearance.ToString()),
@@ -1912,7 +1927,7 @@ namespace Pyrrho.Level4
                 if (ph is not PColumn c || cx._Dom(res) is not Domain dm ||
                     c.table is not Table tb)
                     throw new PEException("PE0410");
-                    return new TRow(cx, dm,
+                    return new TRow(dm,
                         Pos(c.ppos),
                         Pos(tb.defpos),
                         new TChar(c.name),
@@ -2015,7 +2030,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PPeriodDef c = (PPeriodDef)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0411"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0411"),
                     Pos(c.ppos),
                     Pos(c.tabledefpos),
                     new TChar(c.periodname),
@@ -2113,7 +2128,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                     var d = ((PDateType)ph).domain;
-                    return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0412"),
+                    return new TRow(cx._Dom(res) ?? throw new PEException("PE0412"),
                         Pos(ph.ppos),
                         new TChar(d.name),
                         new TChar(d.kind.ToString()),
@@ -2247,7 +2262,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Domain d = ((PDomain)ph).domain;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0413"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0413"),
                     Pos(ph.ppos),
                     new TChar(d.kind.ToString()),
                     new TChar(d.name),
@@ -2345,7 +2360,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Edit d = (Edit)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0415"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0415"),
                     Pos(d.ppos),
                     Pos(d._prev),
                     Pos(d.trans));
@@ -2400,7 +2415,7 @@ namespace Pyrrho.Level4
             {
                 if (cx._Dom(res) is not Domain dm || ph is not Enforcement en) 
                     throw new PEException("PE42112");
-                return new TRow(cx, dm, Pos(en.ppos), Pos(en.tabledefpos),
+                return new TRow(dm, Pos(en.ppos), Pos(en.tabledefpos),
                     new TInt((long)en.enforcement),Pos(en.trans));
             }
             protected override Cursor? _Next(Context _cx)
@@ -2521,7 +2536,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Grant g = (Grant)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0416"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0416"),
                     Pos(g.ppos),
                     new TInt((long)g.priv),
                     Pos(g.obj),
@@ -2622,7 +2637,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                     PIndex p = (PIndex)ph;
-                    return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0418"),
+                    return new TRow(cx._Dom(res) ?? throw new PEException("PE0418"),
                         Pos(p.ppos),
                         new TChar(p.name),
                         Pos(p.tabledefpos),
@@ -2744,7 +2759,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph,int _ix)
             {
                 PIndex x = (PIndex)ph;
-                return new TRow(cx, cx._Dom(res)??throw new PEException("PE42111"),
+                return new TRow(cx._Dom(res)??throw new PEException("PE42111"),
                     Pos(x.ppos),
                     new TInt(_ix),
                     Pos(x.columns[_ix]),
@@ -2838,7 +2853,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Ordering o = (Ordering)ph;
-                return new TRow(cx, cx._Dom(res)??throw new PEException("PE42109"),
+                return new TRow(cx._Dom(res)??throw new PEException("PE42109"),
                     Pos(o.ppos),
                     new TChar(o.domain.ToString()),
                     Pos(o.funcdefpos),
@@ -2962,7 +2977,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PProcedure p = (PProcedure)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0419"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0419"),
                     Pos(p.ppos),
                     new TChar(p.nameAndArity),
                     new TInt(p.arity),
@@ -3054,7 +3069,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Grant g = (Grant)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0420"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0420"),
                     Pos(g.ppos),
                     new TInt((long)g.priv),
                     Pos(g.obj),
@@ -3148,7 +3163,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PTable d = (PTable)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0421"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0421"),
                     Pos(d.ppos),
                     new TChar(d.name),
                     Pos(d.defpos),
@@ -3247,7 +3262,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PTrigger d = (PTrigger)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0422"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0422"),
                     Pos(d.ppos),
                     new TChar(d.name),
                     Pos(d.target),
@@ -3280,14 +3295,14 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the second part of the key
             /// </summary>
-            readonly BList<long> _sub;
+            readonly BList<long?> _sub;
             readonly int _ix;
             /// <summary>
             /// construct a new Log$TriggerUpdate enumerator
             /// </summary>
             /// <param name="r"></param>
             LogTriggerUpdateColumnBookmark(Context _cx, SystemRowSet res,int pos,Physical ph, long pp,
-                BList<long> s,int i): base(_cx,res,pos,ph, pp,_Value(_cx, res, ph,s,i))
+                BList<long?> s,int i): base(_cx,res,pos,ph, pp,_Value(_cx, res, ph,s,i))
             {
                 _sub = s;
                 _ix = i;
@@ -3385,12 +3400,12 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Pos,Column)
             /// </summary>
-            static TRow _Value(Context cx, SystemRowSet res, Physical ph,BList<long> _sub,int _ix)
+            static TRow _Value(Context cx, SystemRowSet res, Physical ph,BList<long?> _sub,int _ix)
             {
                 PTrigger pt = (PTrigger)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0423"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0423"),
                     Pos(pt.ppos),
-                    new TInt(_sub[_ix]),
+                    new TInt(_sub[_ix]??-1L),
                     Pos(pt.trans));
             }
         }
@@ -3473,7 +3488,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 TriggeredAction t = (TriggeredAction)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0424"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0424"),
                     Pos(t.ppos),
                     Pos(t.trigger),
                     Pos(t.trans));
@@ -3486,7 +3501,9 @@ namespace Pyrrho.Level4
         {
             var t = new SystemTable("Log$Type");
             t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
+            t += new SystemTableColumn(t, "Name", Domain.Char, 0);
             t+=new SystemTableColumn(t, "SuperType", Domain.Position,0);
+            t += new SystemTableColumn(t, "Graph", Domain.Char, 0);
             t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
@@ -3504,7 +3521,8 @@ namespace Pyrrho.Level4
             {
                 var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
                 for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PType||lb.value()==Physical.Type.PType1)
+                    if (lb.value() == Physical.Type.PType||lb.value()==Physical.Type.PType1
+                        || lb.value() == Physical.Type.PNodeType || lb.value() == Physical.Type.PEdgeType)
                     {
                         var (nph, np) = _cx.db.GetPhysical(lb.key());
                         var rb = new LogTypeBookmark(_cx, res, 0, nph, np);
@@ -3518,7 +3536,8 @@ namespace Pyrrho.Level4
             internal static LogTypeBookmark? New(SystemRowSet res, Context _cx)
             {
                 for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
-                    if (lb.value() == Physical.Type.PType || lb.value() == Physical.Type.PType1)
+                    if (lb.value() == Physical.Type.PType || lb.value() == Physical.Type.PType1
+                        || lb.value() == Physical.Type.PNodeType || lb.value() == Physical.Type.PEdgeType)
                     {
                         var (nph, np) = _cx.db.GetPhysical(lb.key());
                         var rb = new LogTypeBookmark(_cx, res, 0, nph, np);
@@ -3532,7 +3551,8 @@ namespace Pyrrho.Level4
             protected override Cursor? _Next(Context _cx)
             {
                 for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Alter)
+                    if (lb.value() == Physical.Type.PType || lb.value() == Physical.Type.PType1
+                        || lb.value() == Physical.Type.PNodeType || lb.value() == Physical.Type.PEdgeType)
                     {
                         var (nph, np) = _cx.db.GetPhysical(lb.key());
                         var rb = new LogTypeBookmark(_cx, res, 0, nph, np);
@@ -3547,7 +3567,8 @@ namespace Pyrrho.Level4
             {
                 for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
                     lb = lb.Previous())
-                    if (lb.value() == Physical.Type.Alter)
+                    if (lb.value() == Physical.Type.PType || lb.value() == Physical.Type.PType1
+                        || lb.value() == Physical.Type.PNodeType || lb.value() == Physical.Type.PEdgeType)
                     {
                         var (nph, np) = _cx.db.GetPhysical(lb.key());
                         var rb = new LogTypeBookmark(_cx, res, 0, nph, np);
@@ -3564,12 +3585,107 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 PType t = (PType)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0425"),
+                var un = (t.under is null) ? TNull.Value : Pos(t.under.defpos);
+                TypedValue gr = (t is PEdgeType) ? new TChar("EDGETYPE")
+                    : (t is PNodeType) ? new TChar("NODETTYPE") : TNull.Value;
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0425"),
                     Pos(t.ppos),
-                    new TChar(""), // under tbd
+                    new TChar(t.name),
+                    un,
+                    gr,
                     Pos(t.trans));
             }
          }
+        static void LogEdgeTypeResults()
+        {
+            var t = new SystemTable("Log$EdgeType");
+            t += new SystemTableColumn(t, "Pos", Domain.Position, 1);
+            t += new SystemTableColumn(t, "LeavingType", Domain.Position, 0);
+            t += new SystemTableColumn(t, "ArrivingType", Domain.Position, 0);
+            t += new SystemTableColumn(t, "Transaction", Domain.Position, 0);
+            t.AddIndex("Pos");
+            t.Add();
+        }
+        /// <summary>
+        /// an enumerator for the Log$EdgeType table
+        /// </summary>
+        internal class LogEdgeTypeBookmark : LogSystemBookmark
+        {
+            LogEdgeTypeBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
+                : base(_cx, r, pos, ph, pp, _Value(_cx, r, ph))
+            {
+            }
+            internal static LogEdgeTypeBookmark? New(Context _cx, SystemRowSet res)
+            {
+                var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
+                for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
+                    if (lb.value() == Physical.Type.PEdgeType)
+                    {
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEdgeTypeBookmark(_cx, res, 0, nph, np);
+                        if (!rb.Match(res))
+                            return null;
+                        if (Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            internal static LogEdgeTypeBookmark? New(SystemRowSet res, Context _cx)
+            {
+                for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
+                    if (lb.value() == Physical.Type.PEdgeType)
+                    {
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEdgeTypeBookmark(_cx, res, 0, nph, np);
+                        if (!rb.Match(res))
+                            return null;
+                        if (Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Next(Context _cx)
+            {
+                for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
+                    if (lb.value() == Physical.Type.PEdgeType)
+                    {
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEdgeTypeBookmark(_cx, res, 0, nph, np);
+                        if (!rb.Match(res))
+                            return null;
+                        if (Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Previous(Context _cx)
+            {
+                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null;
+                    lb = lb.Previous())
+                    if (lb.value() == Physical.Type.PEdgeType)
+                    {
+                        var (nph, np) = _cx.db.GetPhysical(lb.key());
+                        var rb = new LogEdgeTypeBookmark(_cx, res, 0, nph, np);
+                        if (!rb.Match(res))
+                            return null;
+                        if (Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            /// <summary>
+            /// the current value: (Pos,SuperType)
+            /// </summary>
+            static TRow _Value(Context cx, SystemRowSet res, Physical ph)
+            {
+                PEdgeType t = (PEdgeType)ph;
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0425"),
+                    Pos(t.ppos),
+                    Pos(t.structure?.rowType[1]??-1L),
+                    Pos(t.structure?.rowType[2]??-1L),
+                    Pos(t.trans));
+            }
+        }
         /// <summary>
         /// set up the Log$TypeMethod table
         /// </summary>
@@ -3658,7 +3774,7 @@ namespace Pyrrho.Level4
                 PMethod t = (PMethod)ph;
                 if (t.udt is null || cx._Dom(res) is not Domain dm)
                     throw new PEException("PE0426");
-                    return new TRow(cx, dm,
+                    return new TRow(dm,
                         Pos(t.ppos),
                         new TChar(t.udt.ToString()),
                         new TChar(t.name),
@@ -3759,7 +3875,7 @@ namespace Pyrrho.Level4
                     us = Pos(view.usingtbpos);
                 if (d is PRestView vw)
                     st = Pos(vw.structpos);
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0426"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0426"),
                     Pos(d.ppos),
                     new TChar(d.name),
                     Display(d.viewdef),
@@ -3887,7 +4003,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Record d = (Record)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0428"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0428"),
                     Pos(d.ppos),
                     Pos(d.tabledefpos),
                     Pos(d.subType),
@@ -3967,7 +4083,7 @@ namespace Pyrrho.Level4
                 Record r = (Record)ph;
                 long p = _fld.key();
                 var v = r.fields[p] ?? TNull.Value;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0430"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0430"),
                     Pos(r.ppos),
                     Pos(p),
                     new TChar(v.ToString()),
@@ -4108,7 +4224,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                 Update u = (Update)ph;
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0431"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0431"),
                     Pos(u.ppos),
                     Pos(u.defpos),
                     Pos(u.tabledefpos),
@@ -4205,7 +4321,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet res, Physical ph)
             {
                     PTransaction t = (PTransaction)ph;
-                    return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0434"),
+                    return new TRow(cx._Dom(res) ?? throw new PEException("PE0434"),
                         Pos(t.ppos),
                         new TInt(t.nrecs),
                         new TDateTime(new DateTime(t.time)),
@@ -4265,7 +4381,7 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx,SystemRowSet res,Role a)
             {
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0435"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0435"),
                     Pos(a.defpos),
                     new TChar(a.name??""));
             }
@@ -4347,7 +4463,7 @@ namespace Pyrrho.Level4
             /// </summary>
             static TRow _Value(Context cx, SystemRowSet res, User a)
             {
-                return new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0426"),
+                return new TRow(cx._Dom(res) ?? throw new PEException("PE0426"),
                     Pos(a.defpos),
                     new TChar(a.name??""),
                     (a.pwd==null)?TNull.Value:TBool.For(a.pwd.Length==0),
@@ -4384,13 +4500,13 @@ namespace Pyrrho.Level4
         // shareable as of 26 April 2021
         internal class SysRoleUserBookmark : SystemBookmark
         {
-            readonly ABookmark<string, long> _rbmk;
-            readonly ABookmark<string, long> _inner;
+            readonly ABookmark<string, long?> _rbmk;
+            readonly ABookmark<string, long?> _inner;
 
-            SysRoleUserBookmark(Context _cx, SystemRowSet srs,ABookmark<string,long> rbmk, 
-                ABookmark<string,long> inner,int pos) : base(_cx,srs,pos,inner.value(), 
-               ((User?)_cx.db.objects[inner.value()] ?? throw new PEException("PE0437")).defpos,  
-               _Value(_cx, srs, rbmk.value(),inner.value()))
+            SysRoleUserBookmark(Context _cx, SystemRowSet srs,ABookmark<string,long?> rbmk, 
+                ABookmark<string,long?> inner,int pos) : base(_cx,srs,pos,inner.value()??-1L, 
+               ((User?)_cx.db.objects[inner.value()??-1L] ?? throw new PEException("PE0437")).defpos,  
+               _Value(_cx, srs, rbmk.value()??-1L,inner.value()??-1L))
             {
                 _rbmk = rbmk;
                 _inner = inner;
@@ -4398,9 +4514,9 @@ namespace Pyrrho.Level4
             internal static SysRoleUserBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var rb = _cx.db.roles.First(); rb != null; rb = rb.Next())
-                    if (_cx.db.objects[rb.value()] is Role ro)
+                    if (_cx.db.objects[rb.value()??-1L] is Role ro)
                         for (var inner = ro.dbobjects.First(); inner != null; inner = inner.Next())
-                            if (_cx.db.objects[inner.value()] is User us &&
+                            if (_cx.db.objects[inner.value()??-1L] is User us &&
                                         us.infos[ro.defpos] is ObInfo ui &&
                                         ui.priv.HasFlag(Grant.Privilege.Usage))
                             {
@@ -4418,9 +4534,9 @@ namespace Pyrrho.Level4
                 var rbmk = _rbmk;
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
                 {
-                    if (_cx.db.objects[inner.value()] is User us &&
+                    if (inner.value() is long p && _cx.db.objects[p] is User us &&
                        us.infos[cr.defpos] is ObInfo ui &&
-                       ui.priv.HasFlag(Grant.Privilege.Usage))
+                       ui.priv.HasFlag(Grant.Privilege.Usage) && rbmk!=null)
                     {
                         var sb = new SysRoleUserBookmark(_cx, res, rbmk, inner, _pos + 1);
                         if (Eval(res.where, _cx))
@@ -4431,17 +4547,17 @@ namespace Pyrrho.Level4
                     while (inner == null)
                     {
                         rbmk = rbmk?.Next();
-                        if (rbmk == null)
+                        if (rbmk == null || rbmk.value() is not long rp)
                             return null;
-                        var ro = (Role)(_cx.db.objects[rbmk.value()]?? throw new PEException("PE440"));
+                        var ro = (Role)(_cx.db.objects[rp]?? throw new PEException("PE440"));
                         inner = ro.dbobjects.First();
                     }
-                    if (_cx.db.objects[inner.value()] is User ns &&
+                    if (_cx.db.objects[inner.value()??-1L] is User ns &&
                     ns.infos[cr.defpos] is ObInfo oi &&
-                    oi.priv.HasFlag(Grant.Privilege.Usage))
+                    oi.priv.HasFlag(Grant.Privilege.Usage) && rbmk!=null)
                     {
                         var sb = new SysRoleUserBookmark(_cx, res, rbmk, inner, _pos + 1);
-                        if (sb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (sb.Match(res) && Eval(res.where, _cx))
                             return sb;
                     }
                 }
@@ -4456,7 +4572,7 @@ namespace Pyrrho.Level4
                 if (_cx.db.objects[rpos] is not Role ro ||
                     _cx.db.objects[upos] is not User us || _cx._Dom(rs) is not Domain dm)
                     throw new PEException("PE0450");
-                return new TRow(_cx, dm,
+                return new TRow(dm,
                     new TChar(ro.name ?? ""),
                     new TChar(us.name ?? ""));
             }
@@ -4505,7 +4621,7 @@ namespace Pyrrho.Level4
                 if (_cx._Dom(rs) is not Domain dm || ph is not Audit au ||
                     au.user is not User us)
                     throw new PEException("PE0451");
-                return new TRow(_cx, dm,
+                return new TRow(dm,
                     Pos(au.ppos),
                     new TChar(us.name??""), Pos(au.table),
                     new TDateTime(new DateTime(au.timestamp)));
@@ -4587,7 +4703,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet res, Physical ph,
                 ABookmark<long, string> _in, int _ix)
             {
-                return new TRow(_cx,_cx._Dom(res) ?? throw new PEException("PE0452"), 
+                return new TRow(_cx._Dom(res) ?? throw new PEException("PE0452"), 
                     Pos(ph.ppos), new TInt(_ix),
                     Pos(_in.key()), new TChar(_in.value()));
             }
@@ -4692,7 +4808,7 @@ namespace Pyrrho.Level4
                         || cx.db.GetD(rw.ppos) is not Physical ph ||
                         cx._Dom(res) is not Domain dm)
                         throw new PEException("PE42120");
-                    return (rw.defpos, rw.ppos, new TRow(cx, dm, Pos(rw.ppos),
+                    return (rw.defpos, rw.ppos, new TRow(dm, Pos(rw.ppos),
                         new TChar(rw.GetType().Name),
                         new TChar(rw.classification.ToString()),
                         Pos(ph.trans)));
@@ -4703,7 +4819,7 @@ namespace Pyrrho.Level4
                     if (obm.value() is not DBObject ob || cx._Dom(res) is not Domain dm ||
                         cx.db is not Database db || db.GetD(ppos) is not Physical ph)
                         throw new PEException("PE0453");
-                    return (ob.defpos, ob.lastChange, new TRow(cx, dm, Pos(ppos),
+                    return (ob.defpos, ob.lastChange, new TRow(dm, Pos(ppos),
                         new TChar(ob.GetType().Name),
                         new TChar(ob.classification.ToString()),
                         Pos(ph.trans)));
@@ -4801,7 +4917,7 @@ namespace Pyrrho.Level4
             }
             static (long, long, TRow) _Value(Context cx,SystemRowSet res,TableRow rw)
             {
-                return (rw.defpos,rw.ppos, new TRow(cx, cx._Dom(res) ?? throw new PEException("PE0457"),
+                return (rw.defpos,rw.ppos, new TRow(cx._Dom(res) ?? throw new PEException("PE0457"),
                     Pos(rw.defpos),
                     new TChar(rw.classification.ToString()),
                     Pos(rw.ppos)));
@@ -4872,7 +4988,7 @@ namespace Pyrrho.Level4
                 var t = (Table)ob;
                 var oi = t.infos[ro.defpos];
                 Enforcement.Append(sb, t.enforcement);
-                return new TRow(cx, cx._Dom(rs) ?? throw new PEException("PE0460"), 
+                return new TRow(cx._Dom(rs) ?? throw new PEException("PE0460"), 
                     new TChar(oi?.name??""),
                     new TChar(sb.ToString()));
             }
@@ -4891,6 +5007,64 @@ namespace Pyrrho.Level4
             protected override Cursor? _Previous(Context cx)
             {
                 throw new NotImplementedException();
+            }
+        }
+        static void SysGraphResults()
+        {
+            var t = new SystemTable("Sys$Graph");
+            t += new SystemTableColumn(t, "Uid", Domain.Position, 0);
+            t += new SystemTableColumn(t, "Id", Domain.Char, 1);
+            t += new SystemTableColumn(t, "Type", Domain.Char, 0);
+            t.AddIndex("Id");
+            t.AddIndex("Pos");
+            t.Add();
+        }
+        internal class SysGraphBookmark : SystemBookmark
+        {
+            readonly ABookmark<long, TGraph> _bmk;
+            public SysGraphBookmark(Context cx, SystemRowSet r, int pos, 
+                ABookmark<long,TGraph> bmk) 
+                : base(cx, r, pos, bmk.key(), cx.db.loadpos, _Value(cx,r,bmk.value()))
+            {
+                _bmk = bmk;
+            }
+            internal static SysGraphBookmark? New(Context cx,SystemRowSet rs)
+            {
+                for (var bmk=cx.db.graphs.First();bmk!=null;bmk=bmk.Next())
+                {
+                    var rb = new SysGraphBookmark(cx, rs, 0, bmk);
+                    if (rb.Match(rs) && Eval(rs.where, cx))
+                        return rb;
+                }
+                return null;
+            }
+            static TRow _Value(Context cx,SystemRowSet rs,TGraph g)
+            {
+                if (g.nodes.First()?.value() is not TNode n ||
+                    cx._Dom(rs) is not Domain dr)
+                    throw new PEException("PE91046");
+                return new TRow(dr, Pos(n.uid),
+                    new TChar(n.id),
+                    new TChar(n.dataType.name));
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
+                {
+                    var rb = new SysGraphBookmark(cx, res, 0, bmk);
+                    if (rb.Match(res) && Eval(res.where, cx))
+                        return rb;
+                }
+                return null;
+            }
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+
+            internal override TypedValue New(Domain t)
+            {
+                return base.New(t);
             }
         }
         /// <summary>
@@ -4958,7 +5132,7 @@ namespace Pyrrho.Level4
                     vt.NameFor(_cx) is not string st || vw.infos[ro.defpos] is not ObInfo ov ||
                     _cx._Dom(rs) is not Domain dr)
                     throw new PEException("PE0460");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     Pos(pos),
                     new TChar(ov.name??""),
                     new TChar(vw.viewDef??""),
@@ -5051,7 +5225,7 @@ namespace Pyrrho.Level4
                 if (_cx.db is not Database db || _cx._Dom(rs) is not Domain dm ||
                     ob is not Domain domain || db.objects[ck] is not Check check)
                     throw new PEException("PE0471");
-                return (ck,new TRow(_cx,dm, 
+                return (ck,new TRow(dm, 
                     Pos(ck),
                     new TChar(domain.name),
                     new TChar(check.name??""),
@@ -5156,7 +5330,7 @@ namespace Pyrrho.Level4
                 var ch = (Check)ck;
                 if (_cx._Dom(rs) is not Domain dr || _cx._Ob(ch.checkobjpos) is not DBObject oc)
                     throw new PEException("PE0474");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     new TChar(oc.NameFor(_cx)),
                     new TChar(ch.name??""),
                     new TChar(ch.source));
@@ -5270,15 +5444,15 @@ namespace Pyrrho.Level4
                 var op = pd.infos[_cx.role.defpos];
                 string sn="", en="";
                 for (var b = dm.rowType.First(); b != null; b = b.Next())
-                    if (_cx._Ob(b.value()) is DBObject ob && ob.infos[ro.defpos] is ObInfo ci)
+                    if (b.value() is long p && _cx._Ob(p) is DBObject ob 
+                        && ob.infos[ro.defpos] is ObInfo ci)
                     {
-                        var p = b.value();
                         if (p == pd.startCol)
                             sn = ci.name ?? "";
                         if (p == pd.endCol)
                             en = ci.name ?? "";
                     }
-                return new TRow(_cx,_cx._Dom(rs) ?? throw new PEException("PE0483"), 
+                return new TRow(_cx._Dom(rs) ?? throw new PEException("PE0483"), 
                     Pos(t.defpos),
                     new TChar(oi.name??""),
                     new TChar(op?.name??""),
@@ -5353,16 +5527,16 @@ namespace Pyrrho.Level4
             /// Enumerators for implementation
             /// </summary>
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<string, long> _inner;
+            readonly ABookmark<string, long?> _inner;
             /// <summary>
             /// create the Sys$Column enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<string,long> inner)
-                : base(_cx,res, pos, inner.value(),((DBObject)outer.value()).lastChange,
-                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value(),
-                          _cx._Dom(inner.value()) ?? throw new PEException("PE0485")))
+                ABookmark<string,long?> inner)
+                : base(_cx,res, pos, inner.value()??-1L,((DBObject)outer.value()).lastChange,
+                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value()??-1L,
+                          _cx._Dom(inner.value()??-1L) ?? throw new PEException("PE0485")))
             {
                 _outer = outer;
                 _inner = inner;
@@ -5394,7 +5568,7 @@ namespace Pyrrho.Level4
                     || cx.db.objects[p] is not TableColumn tc
                     || tc.infos[ro.defpos] is not ObInfo si)
                     throw new PEException("PE0491");
-                return new TRow(cx,cx._Dom(rs) ?? throw new PEException("PE0492"),
+                return new TRow(cx._Dom(rs) ?? throw new PEException("PE0492"),
                     Pos(p),
                     new TChar(oi.name??""),
                     new TChar(si.name??""),
@@ -5527,16 +5701,16 @@ namespace Pyrrho.Level4
             /// 3 enumerators for implementation!
             /// </summary>
             readonly ABookmark<long,bool> _inner;
-            readonly ABookmark<string, long> _middle;
+            readonly ABookmark<string, long?> _middle;
             readonly ABookmark<long,object> _outer;
             /// <summary>
             /// create the Sys$ColumnCheck enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnCheckBookmark(Context cx, SystemRowSet res,int pos,ABookmark<long,object>outer,
-                ABookmark<string,long> middle,ABookmark<long,bool> inner)
+                ABookmark<string,long?> middle,ABookmark<long,bool> inner)
                 : base(cx,res,pos,inner.key(),((DBObject?)cx.db.objects[inner.key()])?.lastChange??-1L,
-                      _Value(cx,res,outer.value(),middle.value(),inner.key()))
+                      _Value(cx,res,outer.value(),middle.value()??-1L,inner.key()))
             {
                 _outer = outer;
                 _middle = middle;
@@ -5551,7 +5725,7 @@ namespace Pyrrho.Level4
                     if (outer.value() is Table tb && tb.infos[ro.defpos] is ObInfo oi)
                         for (var middle = oi.names.First(); middle != null;
                                 middle = middle.Next())
-                        if (cx.db.objects[middle.value()] is TableColumn tc
+                        if (middle.value() is long p && cx.db.objects[p] is TableColumn tc
                                 && tc.infos[ro.defpos] is not null)
                                 for (var inner = tc.constraints.First(); inner != null;
                                         inner = inner.Next())
@@ -5574,7 +5748,7 @@ namespace Pyrrho.Level4
                     _cx._Ob(tc) is not DBObject ot || ot.infos[ro.defpos] is not ObInfo ci ||
                     _cx.db.objects[ck] is not Check ch)
                     throw new PEException("PE0496");
-                return new TRow(_cx,_cx._Dom(rs) ?? throw new PEException("PE0497"), 
+                return new TRow(_cx._Dom(rs) ?? throw new PEException("PE0497"), 
                     Pos(ch.defpos),
                     new TChar(oi.name??""),
                     new TChar(ci.name??""),
@@ -5602,7 +5776,7 @@ namespace Pyrrho.Level4
                         continue;
                     }
                     if (middle != null && (middle = middle.Next()) != null)
-                        if (_cx.db.objects[middle.value()] is TableColumn tc &&
+                        if (middle.value() is long p && _cx.db.objects[p] is TableColumn tc &&
                             tc.infos[ro.defpos] is not null)
                         {
                             inner = tc.constraints.First();
@@ -5689,7 +5863,7 @@ namespace Pyrrho.Level4
                     tb.infos[ro.defpos] is not ObInfo dt ||
                     _cx._Dom(rs) is not Domain dm)
                         throw new PEException("PE42107");
-                return new TRow(_cx,dm,
+                return new TRow(dm,
                     new TChar(dt.name??""),
                     new TChar(dc.name??""),
                     new TChar(ro.name??""),
@@ -5807,7 +5981,7 @@ namespace Pyrrho.Level4
                     elname = dm.elType.name;
                 if (_cx._Dom(rs) is not Domain dr)
                         throw new PEException("PE42107");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     Pos(_cx.db.types[dm]),
                     new TChar(dm.name),
                     new TChar(dm.kind.ToString()),
@@ -5909,7 +6083,7 @@ namespace Pyrrho.Level4
                 var ri = rt?.infos[_cx.role.defpos];
                 var ad = _cx._Ob(x.adapter);
                 var ai = ad?.infos[_cx.role.defpos];
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                    Pos(x.defpos),
                    new TChar(oi.name),
                    new TChar(x.flags.ToString()),
@@ -5982,16 +6156,16 @@ namespace Pyrrho.Level4
             readonly ABookmark<long, object> _outer;
             readonly ABookmark<Domain, CTree<long,bool>> _second;
             readonly ABookmark<long,bool> _third;
-            readonly ABookmark<int, long> _inner;
+            readonly ABookmark<int, long?> _inner;
             /// <summary>
             /// create the Role$IndexKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexKeyBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<Domain, CTree<long, bool>> second, ABookmark<long, bool> third,
-                ABookmark<int, long> inner)
-                : base(_cx, res, pos, inner.value(), 0, _Value(_cx, res, inner.key(),
-                      (TableColumn)(_cx.db.objects[inner.value()] ?? throw new PEException("PE49212"))))
+                ABookmark<int, long?> inner)
+                : base(_cx, res, pos, inner.value()??-1L, 0, _Value(_cx, res, inner.key(),
+                      (TableColumn)(_cx.db.objects[inner.value()??-1L] ?? throw new PEException("PE49212"))))
             {
                 _outer = outer; _second = second; _third = third; _inner = inner;
             }
@@ -6019,7 +6193,7 @@ namespace Pyrrho.Level4
                 if (tc.infos[_cx.role.defpos] is not ObInfo oi ||
                     _cx._Dom(rs) is not Domain dm)
                     throw new DBException("42105");
-                return new TRow(_cx,dm,
+                return new TRow(dm,
                     Pos(tc.defpos),
                     new TChar(oi?.name??""),
                     new TInt(i));
@@ -6243,7 +6417,7 @@ namespace Pyrrho.Level4
                 string inv = "";
                 if (_cx._Ob(p.inverse) is DBObject io)
                     inv = io.NameFor(_cx);
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     Pos(p.defpos),
                     new TChar(oi.name),
                     new TInt(p.arity),
@@ -6295,13 +6469,13 @@ namespace Pyrrho.Level4
             /// enumerate the procedures tree
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int, long> _inner;
+            readonly ABookmark<int, long?> _inner;
             /// <summary>
             /// create the Rle$Parameter enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleParameterBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
-                ABookmark<int,long> inner, FormalParameter fp)
+                ABookmark<int,long?> inner, FormalParameter fp)
                 : base(_cx,res,pos,en.key(), fp.lastChange,
                       _Value(_cx,res,en.key(),inner.key(),fp))
             {
@@ -6313,7 +6487,7 @@ namespace Pyrrho.Level4
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
                     if (en.value() is Procedure p && p.arity > 0)
                         for (var inner = p.ins.First(); inner != null; inner = inner.Next())
-                            if (_cx.obs[inner.value()] is FormalParameter fp)
+                            if (inner.value() is long ip && _cx.obs[ip] is FormalParameter fp)
                             {
                                 var rb = new RoleParameterBookmark(_cx, res, 0, en, inner, fp);
                                 if (rb.Match(res) && Eval(res.where, _cx))
@@ -6328,7 +6502,7 @@ namespace Pyrrho.Level4
             {
                 if (_cx._Dom(rs) is not Domain dr || pp.name == null)
                     throw new PEException("PE23106");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     Pos(dp),
                     new TInt(i),
                     new TChar(pp.name),
@@ -6344,7 +6518,7 @@ namespace Pyrrho.Level4
                 var outer = _outer;
                 var inner = _inner;
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
-                    if (_cx.obs[inner.value()] is FormalParameter fp)
+                    if (inner.value() is long ip && _cx.obs[ip] is FormalParameter fp)
                     {
                         var rb = new RoleParameterBookmark(_cx, res, _pos + 1, outer, inner, fp);
                         if (rb.Match(res) && Eval(res.where, _cx))
@@ -6353,7 +6527,7 @@ namespace Pyrrho.Level4
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
                     if (outer.value() is Procedure p)
                         for (inner = p.ins.First(); inner != null; inner = inner.Next())
-                            if (_cx.obs[inner.value()] is FormalParameter fp)
+                            if (inner.value() is long ip && _cx.obs[ip] is FormalParameter fp)
                             {
                                 var rb = new RoleParameterBookmark(_cx, res, _pos + 1, outer, inner, fp);
                                 if (rb.Match(res) && Eval(res.where, _cx))
@@ -6424,7 +6598,7 @@ namespace Pyrrho.Level4
                     || ob.infos[ro.defpos] is not ObInfo oi || oi.name == null
                     || _cx.db.objects[xp] is not DBObject ox)
                     throw new DBException("42105");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     Pos(ob.defpos),
                     new TChar(ob.GetType().Name),
                     new TChar(oi.name),
@@ -6525,9 +6699,10 @@ namespace Pyrrho.Level4
                 Table t = (Table)ob;
                 if (_cx._Dom(rs) is not Domain dr || _cx._Dom(t) is not Domain rt)
                     throw new DBException("42105");
-                return new TRow(_cx,dr,
+                var oi = t.infos[_cx.role.defpos] ?? t.infos[t.definer];
+                return new TRow(dr,
                     Pos(t.defpos),
-                    new TChar(rt.name),
+                    new TChar(oi?.name??rt.name),
                     new TInt(rt.Length),
                     new TInt(t.tableRows.Count),
                     new TInt(t.triggers.Count),
@@ -6622,7 +6797,7 @@ namespace Pyrrho.Level4
                     tb.infos[ro.defpos] is not ObInfo oi || oi.name == null ||
                     _cx.db.objects[tg.definer] is not Role de)
                     throw new DBException("42105");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     Pos(tg.defpos),
                     new TChar(tg.name),
                     new TChar(tg.tgType.ToString()),
@@ -6694,13 +6869,13 @@ namespace Pyrrho.Level4
             readonly ABookmark<long,object> _outer;
             readonly ABookmark<PTrigger.TrigType, CTree<long, bool>> _middle;
             readonly ABookmark<long,bool> _inner;
-            readonly ABookmark<int, long> _fourth;
+            readonly ABookmark<int, long?> _fourth;
             RoleTriggerUpdateColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<PTrigger.TrigType, CTree<long, bool>> middle, ABookmark<long, bool> inner,
-                ABookmark<int,long> fourth,Trigger tg)
+                ABookmark<int,long?> fourth,Trigger tg)
                 : base(_cx,res, pos,inner.key(),0,
                       _Value(_cx,res,outer.value(),tg,
-                          fourth.value()))
+                          fourth.value()??-1L))
             {
                 _outer = outer;
                 _middle = middle;
@@ -6735,7 +6910,7 @@ namespace Pyrrho.Level4
                     _cx.db.objects[cp] is not TableColumn tc ||
                     tc.infos[ro.defpos] is not ObInfo ci)
                     throw new DBException("42015"); 
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     Pos(tg.defpos),
                     new TChar(ti.name??""),
                     new TChar(ci.name??""));
@@ -6804,8 +6979,9 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "SuperType", Domain.Char,0);
             t+=new SystemTableColumn(t, "OrderFunc", Domain.Char,0);
             t+=new SystemTableColumn(t, "OrderCategory", Domain.Char,0);
-            t+=new SystemTableColumn(t, "WithUri", Domain.Char,0);
+            t += new SystemTableColumn(t, "Suptypes", Domain.Char, 0);
             t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
+            t += new SystemTableColumn(t, "Graph", Domain.Char, 0);
             t.AddIndex("Pos");
             t.AddIndex("Name");
             t.Add();
@@ -6842,23 +7018,25 @@ namespace Pyrrho.Level4
                 return null;
             }
             /// <summary>
-            /// the current value: (Pos,Name,SuperType)
+            /// the current value: (Pos,Name)
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object ob)
             {
-                var t = (Domain)ob;
-                if (_cx.role is not Role ro || _cx._Dom(rs) is not Domain dr ||
-                    t.orderFunc is not Procedure fp || fp.infos[ro.defpos] is not ObInfo fi
-                    || fi.name is not string fn)
+                var t = (UDType)ob;
+                if (_cx.role is null || _cx._Dom(rs) is not Domain dr)
                     throw new DBException("42105");
-                return new TRow(_cx,dr,
-                    Pos(-1L),
+                TypedValue gr = (t is EdgeType) ? new TChar("EDGETYPE")
+                            : (t is NodeType) ? new TChar("NODETTYPE") : TNull.Value;
+                return new TRow(dr,
+                    Pos(t.defpos),
                     new TChar(t.name),
-                    new TChar((t as UDType)?.super?.name??""),
-                    new TChar(fn),
-                    new TChar((t.orderflags != OrderCategory.None) ? t.orderflags.ToString() : ""),
-                    new TChar(""),
-                    TNull.Value);
+                    new TChar(t.super?.name??""),
+                    (t.orderFunc is null)?TNull.Value:new TChar(t.orderFunc.NameFor(_cx)),
+                    new TChar((t.orderflags == OrderCategory.None) ? "":
+                        t.orderflags.ToString()),
+                    new TChar(t.subtypes.Count.ToString()),
+                    Pos(t.definer),
+                    gr);
             }
             /// <summary>
             /// Move to next Type
@@ -6906,15 +7084,15 @@ namespace Pyrrho.Level4
             /// enumerators for implementation
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<string, CTree<CList<Domain>,long>> _middle;
-            readonly ABookmark<CList<Domain>,long> _inner;
+            readonly ABookmark<string, BTree<CList<Domain>,long?>> _middle;
+            readonly ABookmark<CList<Domain>,long?> _inner;
             /// <summary>
             /// create the Role$Method enumerator
             /// </summary>
             /// <param name="r"></param>
             RoleMethodBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<string, CTree<CList<Domain>,long>> middle, ABookmark<CList<Domain>, long> inner)
-                : base(_cx,res,pos,inner.value(),0,_Value(_cx,res,outer.value(),inner.value()))
+                ABookmark<string, BTree<CList<Domain>,long?>> middle, ABookmark<CList<Domain>, long?> inner)
+                : base(_cx,res,pos,inner.value()??-1L,0,_Value(_cx,res,outer.value(),inner.value()??-1L))
             {
                 _outer = outer;
                 _middle = middle;
@@ -6945,7 +7123,7 @@ namespace Pyrrho.Level4
                     || p.infos[ro.defpos] is not ObInfo mi || _cx._Dom(rs) is not Domain dr
                     || _cx.db.objects[p.definer] is not Role de)
                     throw new DBException("42105");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                    new TChar(t.name),
                    new TChar(mi.name??""),
                    new TInt(p.arity),
@@ -7016,13 +7194,13 @@ namespace Pyrrho.Level4
             /// enumerators for implementation
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<string,long> _inner;
+            readonly ABookmark<string,long?> _inner;
             /// <summary>
             /// create the Sys$Privilege enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RolePrivilegeBookmark(Context _cx, SystemRowSet res,int pos,
-                ABookmark<long,object>outer, ABookmark<string,long>inner)
+                ABookmark<long,object>outer, ABookmark<string,long?>inner)
                 : base(_cx,res,pos,outer.key(),0,_Value(_cx,res,outer.value(),inner))
             {
                 _outer = outer;
@@ -7032,8 +7210,8 @@ namespace Pyrrho.Level4
             {
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     for (var inner = _cx.db.roles.First(); inner != null; inner = inner.Next())
-                        if (outer.value() is DBObject ob &&
-                            _cx.db.objects[inner.value()] is Role ro && ob.infos.Contains(ro.defpos))
+                        if (outer.value() is DBObject ob && inner.value() is long p &&
+                            _cx.db.objects[p] is Role ro && ob.infos.Contains(ro.defpos))
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, 0, outer, inner);
                             if (rb.Match(res) && Eval(res.where, _cx))
@@ -7044,14 +7222,15 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (ObjectType,Name,GranteeType,Grantee,Privilege)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, object ob,ABookmark<string,long> e)
+            static TRow _Value(Context _cx, SystemRowSet rs, object ob,ABookmark<string,long?> e)
             {
                 var t = (DBObject)ob;
                 if (_cx.role is not Role sr || _cx._Dom(rs) is not Domain dr || 
-                    _cx.db.objects[e.value()] is not Role ri || t.infos[sr.defpos] is not ObInfo oi
+                    e.value() is not long p ||
+                    _cx.db.objects[p] is not Role ri || t.infos[sr.defpos] is not ObInfo oi
                     || oi.name==null || _cx.db.objects[t.definer] is not Role de)
                     throw new PEException("PE49300");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     new TChar(t.GetType().Name),
                     new TChar(oi.name??""),
                     new TChar(ri.name??""),
@@ -7067,7 +7246,8 @@ namespace Pyrrho.Level4
                 var outer = _outer;
                 var inner = _inner;
                 for (inner = inner.Next(); inner != null; inner = inner.Next())
-                    if (_cx.db.objects[inner.value()] is Role ri && ri.infos.Contains(outer.key()))
+                    if (inner.value() is long p &&
+                        _cx.db.objects[p] is Role ri && ri.infos.Contains(outer.key()))
                     {
                         var rb = new RolePrivilegeBookmark(_cx, res, _pos + 1, outer, inner);
                         if (rb.Match(res) && Eval(res.where, _cx)
@@ -7078,7 +7258,8 @@ namespace Pyrrho.Level4
                     }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
                     for (inner = _cx.db.roles.First(); inner != null; inner = inner.Next())
-                        if (_cx.db.objects[inner.value()] is Role ri && ri.infos.Contains(outer.key()))
+                        if (inner.value() is long p && _cx.db.objects[p] is Role ri 
+                            && ri.infos.Contains(outer.key()))
                         {
                             var rb = new RolePrivilegeBookmark(_cx, res, _pos + 1, outer, inner);
                             if (rb.Match(res) && Eval(res.where, _cx)
@@ -7133,7 +7314,7 @@ namespace Pyrrho.Level4
                 if (_cx.role is not Role ro)
                     throw new PEException("PE49310");
                 for (var bm = _cx.db.objects.PositionAt(0); bm != null; bm = bm.Next())
-                    if (bm.value() is DBObject ob && ob.infos[_cx.role.defpos] is ObInfo oi)
+                    if (bm.value() is DBObject ob && ob.infos[ro.defpos] is ObInfo oi)
                     {
                         var ou = ObInfo.Metadata(oi.metadata, oi.description);
                         if (oi.name == "" && ou == "" && oi.description == "")
@@ -7155,7 +7336,7 @@ namespace Pyrrho.Level4
                 if (ob.infos[ro.defpos] is not ObInfo oi || oi.name == null)
                     throw new DBException("42105");
                 var dm = ob as Domain;
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     new TChar(ob.GetType().Name),
                     new TChar(oi.name),
                     new TChar(oi.description ?? ""),
@@ -7207,14 +7388,14 @@ namespace Pyrrho.Level4
         internal class RolePrimaryKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int, long> _inner;
+            readonly ABookmark<int, long?> _inner;
             /// <summary>
             /// create the Sys$PrimaryKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RolePrimaryKeyBookmark(Context _cx, SystemRowSet res,int pos,
-                ABookmark<long,object> outer, ABookmark<int,long>inner)
-                : base(_cx,res,pos,inner.value(),((Table)outer.value()).lastChange,
+                ABookmark<long,object> outer, ABookmark<int,long?>inner)
+                : base(_cx,res,pos,inner.value()??-1L,((Table)outer.value()).lastChange,
                       _Value(_cx,res,outer.value(),inner))
             {
                 _outer = outer;
@@ -7235,13 +7416,14 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value(table,ordinal,ident)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, object ob, ABookmark<int,long> e)
+            static TRow _Value(Context _cx, SystemRowSet rs, object ob, ABookmark<int,long?> e)
             {
                 var tb = (Table)ob;
                 if (_cx._Dom(rs) is not Domain dr || tb.infos[_cx.role.defpos] is not ObInfo oi
-                    || _cx.db.objects[e.value()] is not ObInfo ci)
+                    || e.value() is not long p
+                    || _cx.db.objects[p] is not ObInfo ci)
                     throw new DBException("42105");
-                return new TRow(_cx,dr,
+                return new TRow(dr,
                     new TChar(oi.name??""),
                     new TInt(e.key()),
                     new TChar(ci.name??""));
@@ -7509,7 +7691,8 @@ namespace Pyrrho.Level4
                 if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
-                var t = db.objects[_middle.key()] as Table;
+                var ta = db.objects[_middle.key()];
+                var t = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt : ta as Table;
                 if (db.objects[_inner.key()] is TableColumn c)
                     return new TRow(res, new TColumn("Id", new TInt(p.id)),
                         new TColumn("Table", new TChar(t.CurrentName(db))),
@@ -7521,7 +7704,8 @@ namespace Pyrrho.Level4
                 if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
-                var t = db.objects[_middle.key()] as Table;
+                var ta = db.objects[_middle.key()];
+                var t = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt : ta as Table;
                 if (db.objects[_inner.key()] is TableColumn c)
                     return new TRow(res, new TInt(p.id),
                         new TChar(t.CurrentName(db)), Pos(c.defpos), new TChar(c.CurrentName(db)));
@@ -7704,7 +7888,8 @@ namespace Pyrrho.Level4
                 if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
-                var t = db.objects[_second.key()] as Table;
+                var ta = db.objects[_second.key()];
+                var t = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt : ta as Table;
                 var r = _second.value().recs[_rx];
                 if (db.objects[_fourth.key()] is TableColumn c)
                     return new TRow(res.keyType, new TInt(p.id),
@@ -7718,7 +7903,8 @@ namespace Pyrrho.Level4
                 if (db.profile == null || _ix >= db.profile.transactions.Count)
                     return null;
                 var p = db.profile.transactions[_ix];
-                var t = db.objects[_second.key()] as Table;
+                var ta = db.objects[_second.key()];
+                var t = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt : ta as Table;
                 var r = _second.value().recs[_rx];
                 if (db.objects[_fourth.key()] is TableColumn c)
                     return new TRow(res, new TInt(p.id),

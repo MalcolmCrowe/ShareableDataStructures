@@ -1,9 +1,12 @@
+using System.Collections.Specialized;
 using System.Text;
+using System.Xml;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code, and use it subject for any purpose.
@@ -107,13 +110,136 @@ namespace Pyrrho.Common
         {
             return "TypedValue";
         }
-        internal virtual string ToString(CList<long> cs, Context cx)
+        internal virtual string ToString(BList<long?> cs, Context cx)
         {
             return ToString();
         }
         public virtual int CompareTo(object? obj)
         {
             return dataType.Compare(this,(obj as TypedValue)??TNull.Value);
+        }
+    }
+    
+    internal class TNode : TRow
+    {
+        public readonly long uid;
+        public virtual string id => this[0].ToString();
+        internal TNode(long dp, NodeType nt, CTree<long, TypedValue> vals)
+            : base(nt, vals)
+        { uid = dp; }
+        internal TNode(Cursor cu) 
+            :this(cu._dom as NodeType??throw new DBException("22000"),cu._ds,cu.values)
+        {  }
+        protected TNode(NodeType nt,BTree<long,(long,long)> ds,CTree<long,TypedValue>vals)
+            : this(ds.Contains(nt.defpos)?ds[nt.defpos].Item1:-1L,nt,vals)
+        {  }
+        public override int CompareTo(object? obj)
+        {
+            if (obj is not TNode n)
+                return 1;
+            return uid.CompareTo(n.uid);
+        }
+        internal TGraph? Graph(Database db)
+        {
+            for (var b = db.graphs.First(); b != null; b = b.Next())
+                if (b.value().nodes.Contains(uid))
+                    return b.value();
+            return null;
+        }
+        public override string ToString()
+        {
+            return "(" + id + " " + base.ToString()+")";
+        }
+    }
+    internal class TEdge : TNode
+    {
+        public string leaving => ((TChar)this[1]).value;
+        public string arriving => ((TChar)this[2]).value;
+        internal TEdge(long dp, EdgeType dt, CTree<long, TypedValue> v) : base(dp, dt, v)
+        { }
+        internal TEdge(Cursor cursor) : base(cursor) { }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException();
+        }
+        public TNode Leaving(Context cx)
+        {
+            if (dataType is not EdgeType et ||
+                cx._Dom(et.leavingType) is not NodeType lt ||
+                    values[et.leavingType] is not TInt lu ||
+                      cx._Ob(lt.structure) is not Table lb ||
+                        lb.tableRows[lu.value] is not TableRow lr)
+                throw new PEException("PE91102");
+            return new TNode(lu.value, lt, lr.vals);
+        }
+        public TNode Arriving(Context cx)
+        {
+            if (dataType is not EdgeType et ||
+                cx._Dom(et.arrivingType) is not NodeType at ||
+                    values[et.arrivingType] is not TInt au ||
+                      cx._Ob(at.structure) is not Table ab ||
+                        ab.tableRows[au.value] is not TableRow ar)
+                throw new PEException("PE91102");
+            return new TNode(au.value, at, ar.vals);
+        }
+    }
+    internal class TMatch : TNode 
+    {
+        public readonly CTree<long,TGParam> tgs;
+        public readonly BTree<string, TypedValue> props;
+        readonly string _id;
+        public override string id => _id;
+        internal TMatch(long dp, string i, NodeType nt, BTree<string,TypedValue> ns, Lexer lxr) 
+            : base(dp, nt, CTree<long,TypedValue>.Empty)
+        {
+            _id = i;
+            tgs = lxr.tgs;
+            props = ns;
+        }
+        internal bool CheckProps(Context cx, TNode n)
+        {
+            if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
+                for (var b = props.First(); b != null; b = b.Next())
+                    if (b.value() is TypedValue xv)
+                    {
+                        if (xv is TGParam tg)
+                        {
+                            if (tgs.Contains(tg.uid) || cx.binding[tg] is not TypedValue vv)
+                                continue;
+                            xv = vv;
+                        }
+                        switch (b.key())
+                        {
+                            case "ID":
+                                if (n.id != xv.ToString())
+                                    return false; break;
+                            case "LEAVING":
+                            case "ARRIVING":
+                                break;
+                            case "SPECIFICTYPE":
+                                if (!n.dataType.Match(xv.ToString()))
+                                    return false; break;
+                            default:
+                                if (oi.names[b.key()] is long p && xv != n.values[p])
+                                    return false;
+                                break;
+                        }
+                    }
+            return true;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(id);
+            sb.Append(':'); sb.Append(DBObject.Uid(uid));
+            var cm = '{';
+            for (var b=props.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm);cm = ',';
+                sb.Append(b.key()); sb.Append('=');sb.Append(b.value());
+            }
+            if (cm != '{')
+                sb.Append('}');
+            return sb.ToString();
         }
     }
     internal class TNull : TypedValue
@@ -279,7 +405,7 @@ namespace Pyrrho.Common
         {
             return value??"null";
         }
-        internal override string ToString(CList<long> cs,Context cx)
+        internal override string ToString(BList<long?> cs,Context cx)
         {
             return "'" + value + "'";
         }
@@ -477,6 +603,7 @@ namespace Pyrrho.Common
             return value.Ticks;
         }
     }
+  
     // shareable
     internal class THttpDate : TDateTime
     {
@@ -902,70 +1029,72 @@ namespace Pyrrho.Common
         internal readonly CTree<long, TypedValue> values;
         internal readonly int docCol = -1;  // note the position of a single document column if present
         internal int Length => dataType.Length;
-        internal CList<long> columns => dataType.rowType;
+        internal BList<long?> columns => dataType.rowType;
         internal static TRow Empty = new (Domain.Row, CTree<long, TypedValue>.Empty);
         public TRow(Domain dt,CTree<long,TypedValue> vs)
             :base(dt)
         {
             values = vs;
         }
-        public TRow(Domain dt, BTree<long, long>? map, BTree<long, TypedValue> vs)
+        public TRow(Domain dt, BTree<long, long?>? map, BTree<long, TypedValue> vs)
             : base(dt)
         {
             var v = CTree<long, TypedValue>.Empty;
             for (var b = map?.First(); b != null; b = b.Next())
-                if (dt.representation.Contains(b.key()))
-                    v += (b.key(), vs[b.value()] ?? TNull.Value);
+                if (dt.representation.Contains(b.key()) && b.value() is long p)
+                    v += (b.key(), vs[p] ?? TNull.Value);
             values = v;
         }
         public TRow(RowSet rs,Domain dm,TRow rw) : base(dm)
         {
             var vs = CTree<long, TypedValue>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var v = rw[p];
-                if (v == null)
-                    for (var c = rs.matching[p]?.First(); c != null && v == null; c = c.Next())
-                        v = rw[c.key()];
-                vs += (p, v ?? TNull.Value);
-            }
+                if (b.value() is long p)
+                {
+                    var v = rw[p];
+                    if (v == null)
+                        for (var c = rs.matching[p]?.First(); c != null && v == null; c = c.Next())
+                            v = rw[c.key()];
+                    vs += (p, v ?? TNull.Value);
+                }
             values = vs;
         }
-        public TRow(Domain dm,Domain cols,TRow rw) :base(dm)
+        public TRow(Domain dm, Domain cols, TRow rw) : base(dm)
         {
-            var vs = CTree<long,TypedValue>.Empty;
+            var vs = CTree<long, TypedValue>.Empty;
             var rb = rw.columns.First();
             var d = (cols == Domain.Row) ? dm : cols;
-            for (var b = d.First(); b != null && rb!=null; b = b.Next(),rb=rb.Next())
-                vs += (b.value(), rw[rb.value()]);
+            for (var b = d.First(); b != null && rb != null; b = b.Next(), rb = rb.Next())
+                if (b.value() is long k && rb.value() is long c)
+                    vs += (k, rw[c] ?? TNull.Value);
             values = vs;
         }
-        public TRow(TRow rw, Domain dm) :base(dm)
+        public TRow(TRow rw, Domain dm) : base(dm)
         {
             var v = CTree<long, TypedValue>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
-                v += (b.value(), rw[b.key()] ?? TNull.Value);
+                if (b.value() is long k)
+                    v += (k, rw[b.key()] ?? TNull.Value);
             values = v;
         }
         /// <summary>
         /// Constructor: values by columns
         /// </summary>
          /// <param name="v">The values</param>
-        public TRow(Context cx,Domain dt, params TypedValue[] v) : 
+        public TRow(Domain dt, params TypedValue[] v) : 
             base(dt)
         {
             var vals = CTree<long, TypedValue>.Empty;
             var i = 0;
             for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
-            {
-                var p = b.value();
-                var vi = (i < v.Length) ? v[i] : null;
-                if (vi != null)
-                    vals += (p, vi);
-                else if (dt.representation[p] is Domain dd)
-                    vals += (p, dd.defaultValue);
-            }
+                if (b.value() is long p)
+                {
+                    var vi = (i < v.Length) ? v[i] : null;
+                    if (vi != null)
+                        vals += (p, vi);
+                    else if (dt.representation[p] is Domain dd)
+                        vals += (p, dd.defaultValue);
+                }
             values = vals;
         }
         internal TRow(Domain dm, CList<TypedValue> v) : base(dm)
@@ -973,10 +1102,8 @@ namespace Pyrrho.Common
             var vals = CTree<long, TypedValue>.Empty;
             var tb = v.First();
             for (var b = dm.rowType.First(); b != null && tb!=null; b = b.Next(), tb=tb.Next())
-            {
-                var p = b.value();
-                vals += (p, tb.value());
-            }
+            if (b.value() is long p)
+                    vals += (p, tb.value());
             values = vals;
         }
         internal bool IsNull
@@ -987,7 +1114,7 @@ namespace Pyrrho.Common
                 if (d == 0)
                     d = int.MaxValue;
                 for (var b = dataType.rowType.First(); b != null && d>0; b = b.Next(),d--)
-                    if (values[b.value()] != TNull.Value)
+                    if (b.value() is long p && values[p] != TNull.Value)
                         return false;
                 return true;
             }
@@ -997,8 +1124,8 @@ namespace Pyrrho.Common
             var vs = CTree<long, TypedValue>.Empty;
             var nb = t.rowType.First();
             for (var b = dataType.rowType.First(); b != null && nb != null; b = b.Next(), nb = nb.Next())
-                if (values[b.value()] is TypedValue v)
-                vs += (nb.value(), v);
+                if (b.value() is long p && values[p] is TypedValue v && nb.value() is long np)
+                vs += (np, v);
             return new TRow(t, vs);
         }
         internal override TypedValue Fix(Context cx)
@@ -1013,12 +1140,12 @@ namespace Pyrrho.Common
         internal TypedValue this[int i]
         {
             get {
-                if (columns != null && columns.Contains(i))
-                    return values[columns[i]]??TNull.Value;
+                if (columns != null && columns[i] is long p)
+                    return values[p]??TNull.Value;
                 var j = 1;
-                for (var b = dataType.representation.First(); i >= j && b != null; b = b.Next(), j++)
+                for (var b = dataType.rowType.First(); i >= j && b != null; b = b.Next(), j++)
                     if (i == j)
-                        return values[b.key()]??TNull.Value;
+                        return values[b.value()??-1L]??TNull.Value;
                 return TNull.Value;
             }
         }
@@ -1029,9 +1156,9 @@ namespace Pyrrho.Common
                 return this;
             var vs = new TypedValue[dt.Length];
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
-                if (values[b.value()] is TypedValue v)
+                if (b.value() is long p && values[p] is TypedValue v)
                     vs[b.key()] = v;
-            return new TRow(cx, dt, vs);
+            return new TRow(dt, vs);
         }
         /// <summary>
         /// Make a readable representation of the Row
@@ -1040,15 +1167,16 @@ namespace Pyrrho.Common
         public override string ToString()
         {
             var str = new StringBuilder();
-            var cm = '(';
-            for (var b=columns.First();b!=null;b=b.Next())
-            {
-                str.Append(cm); cm = ',';
-                var p = b.value();
-                str.Append(DBObject.Uid(p)); str.Append('=');
-                str.Append(values[p]?? TNull.Value);
-            }
-            str.Append(')');
+            var cm = '[';
+            for (var b = columns.First(); b != null; b = b.Next())
+                if (b.value() is long p)
+                {
+                    str.Append(cm); cm = ',';
+                    str.Append(DBObject.Uid(p)); str.Append('=');
+                    str.Append(values[p] ?? TNull.Value);
+                }
+            if (cm!='[')
+                str.Append(']');
             return str.ToString();
         }
         internal override TypedValue[] ToArray()
@@ -1062,7 +1190,8 @@ namespace Pyrrho.Common
         {
             var r = CList<TypedValue>.Empty;
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
-                r += values[b.value()]??TNull.Value;
+                if (b.value() is long p)
+                    r += values[p] ?? TNull.Value;
             return r;
         }
     }
@@ -1078,7 +1207,7 @@ namespace Pyrrho.Common
         /// (the multiplicity of the key V as a member of the multiset).
         /// While this looks like MTree (which is TypedValue[] to long) it doesn't work the same way
         /// </summary>
-        internal CTree<TypedValue,long> tree; 
+        internal BTree<TypedValue,long?> tree; 
         /// <summary>
         /// Accessor
         /// </summary>
@@ -1094,17 +1223,17 @@ namespace Pyrrho.Common
         /// <param name="tr">The transaction</param>
         internal TMultiset(Domain dt) : base (dt)
         {
-            tree = CTree<TypedValue,long>.Empty;
+            tree = BTree<TypedValue,long?>.Empty;
             count = 0;
             // Disallow not Allow for duplicates (see below)
         }
         internal TMultiset(TMultiset tm) : base(tm.dataType)
         {
-            tree = CTree<TypedValue, long>.Empty;
+            tree = BTree<TypedValue, long?>.Empty;
             count = tm.count;
             // Disallow not Allow for duplicates (see below)
         }
-        internal TMultiset(Domain dt,CTree<TypedValue,long>t,long ct) :base(dt)
+        internal TMultiset(Domain dt,BTree<TypedValue,long?>t,long ct) :base(dt)
         {
             tree = t; count = ct;
         }
@@ -1130,11 +1259,8 @@ namespace Pyrrho.Common
                 tree+=(a, n);
             else if (distinct)
                 return;
-            else
-            {
-                long o = tree[a];
+            else if (tree[a] is long o)
                 tree+=(a, o + n);
-            }
             count += n;
         }
         /// <summary>
@@ -1168,11 +1294,11 @@ namespace Pyrrho.Common
         internal class MultisetBookmark : IBookmark<TypedValue>
         {
             readonly TMultiset _set;
-            readonly ABookmark<TypedValue, long> _bmk;
+            readonly ABookmark<TypedValue, long?> _bmk;
             readonly long _pos;
             readonly long? _rep;
             internal MultisetBookmark(TMultiset set, long pos, 
-                ABookmark<TypedValue, long> bmk, long? rep = null)
+                ABookmark<TypedValue, long?> bmk, long? rep = null)
             {
                 _set = set; _pos = pos; _bmk = bmk; _rep = rep;
             }
@@ -1184,7 +1310,7 @@ namespace Pyrrho.Common
                 {
                     if (rep!=null && rep>0)
                             return new MultisetBookmark(_set, _pos + 1, bmk, rep - 1);
-                    bmk = ABookmark<TypedValue, long>.Next(bmk, _set.tree);
+                    bmk = ABookmark<TypedValue, long?>.Next(bmk, _set.tree);
                     if (bmk == null)
                         return null;
                 }
@@ -1197,7 +1323,7 @@ namespace Pyrrho.Common
                 {
                     if (rep!=null && rep>0)
                             return new MultisetBookmark(_set, _pos - 1, bmk, rep - 1);
-                    bmk = ABookmark<TypedValue, long>.Previous(bmk, _set.tree);
+                    bmk = ABookmark<TypedValue, long?>.Previous(bmk, _set.tree);
                     if (bmk == null)
                         return null;
                 }
@@ -1224,7 +1350,7 @@ namespace Pyrrho.Common
         /// <param name="n">A multiplicity</param>
         internal void Remove(TypedValue a, long n)
         {
-            object o = tree[a];
+            var o = tree[a];
             if (o == null)
                 return; // was DBException 22103
             long m = (long)o;
@@ -1275,12 +1401,13 @@ namespace Pyrrho.Common
             {
                 r.tree = a.tree;
                 r.count = a.count;
-                for (var d=b.tree.First();d!=null;d=d.Next())
-                    r.Add(d.key(), d.value());
+                for (var d = b.tree.First(); d != null; d = d.Next())
+                    if (d.value() is long p)
+                        r.Add(d.key(), p);
             }
             else
             {
-                for (var d =a.tree.First();d!=null;d=d.Next())
+                for (var d = a.tree.First(); d != null; d = d.Next())
                     r.Add(d.key());
                 for (var d = b.tree.First(); d != null; d = d.Next())
                     if (!a.tree.Contains(d.key()))
@@ -1311,12 +1438,8 @@ namespace Pyrrho.Common
                 TypedValue v = d.key();
                 if (!b.tree.Contains(v))
                     r.Remove(v);
-                else if (all)
-                {
-                    long m = d.value();
-                    long n = b.tree[v];
+                else if (all && d.value() is long m && b.tree[v] is long n)
                     r.Add(v, (m<n) ? m : n);
-                }
                 else
                     r.Add(v);
             }
@@ -1337,19 +1460,13 @@ namespace Pyrrho.Common
                 return a;
             TMultiset r = new (a.dataType);
             for (var d = a.tree.First(); d != null; d = d.Next())
-            {
-                TypedValue v = d.key();
-                long m = d.value();
-                long n = 0;
-                object o = b.tree[v];
-                if (all)
+            if (d.value() is long m && d.key() is TypedValue v ){
+                if (all && b.tree[v] is long n)
                 {
-                    if (o != null)
-                        n = (long)o;
                     if (m > n)
                         r.Add(v, m - n);
                 }
-                else if (o == null)
+                else 
                     r.Add(v);
             }
             return r;
