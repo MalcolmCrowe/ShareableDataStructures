@@ -1326,10 +1326,8 @@ namespace Pyrrho.Level3
                     {
                         if (a is TArray x && b is TArray y)
                         {
-                            var xe = Context._system._Dom(x.dataType.elType);
-                            if (xe==null)
-                                throw new DBException("22202").Mix()
-                                    .AddValue(y.dataType);
+                            var xe = Context._system._Dom(x.dataType.elType)
+                                ?? throw new DBException("22202").Mix().AddValue(y.dataType);
                             if (x.dataType.elType != y.dataType.elType)
                                 throw new DBException("22202").Mix()
                                     .AddType(xe).AddValue(y.dataType); 
@@ -2398,7 +2396,7 @@ namespace Pyrrho.Level3
         /// <param name="len"></param>
         static void GetShortDatePattern(char f, ref char delim, out int delimsBefore, out int len)
         {
-            var pat = CultureInfo.CurrentCulture.DateTimeFormat.ShortDatePattern;
+            var pat = CultureInfo.CurrentUICulture.DateTimeFormat.ShortDatePattern;
             var found = false;
             delimsBefore = 0;
             int off = 0;
@@ -2690,7 +2688,8 @@ namespace Pyrrho.Level3
                                     return v;
                                 case Sqlx.CHAR:
                                     return new TDateTime(this, DateTime.Parse(v.ToString(),
-                                        v.dataType.culture));
+                                        (cx.conn.props["Locale"] is string lc)?new CultureInfo(lc)
+                                        :v.dataType.culture));
                             }
                             if (v is TDateTime dt)
                                 return new TDateTime(this, dt.value);
@@ -2705,7 +2704,8 @@ namespace Pyrrho.Level3
                                 return v;
                             case Sqlx.CHAR:
                                 return new TTimeSpan(this, TimeSpan.Parse(v.ToString(),
-                                    v.dataType.culture));
+                                    (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
+                                    : v.dataType.culture));
                         }
                         break;
                     case Sqlx.TIMESTAMP:
@@ -2716,7 +2716,8 @@ namespace Pyrrho.Level3
                                 return new TDateTime(this, ((TDateTime)v).value);
                             case Sqlx.CHAR:
                                 return new TDateTime(this, DateTime.Parse(v.ToString(),
-                                    v.dataType.culture));
+                                    (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
+                                    : v.dataType.culture));
                         }
                         if (v.ToLong() is long vm)
                             return new TDateTime(this, new DateTime(vm));

@@ -174,7 +174,7 @@ namespace Pyrrho.Level2
                 throw new DBException("42108", name);
             var oi = new ObInfo(name,
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute);
-            var pr = new Procedure(this, cx,
+            var pr = new Procedure(this, 
                 BTree<long, object>.Empty + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc)
                 + (DBObject.Owner, cx.user??User.None)

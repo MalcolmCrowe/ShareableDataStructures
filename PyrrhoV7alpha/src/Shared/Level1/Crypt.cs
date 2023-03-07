@@ -44,7 +44,7 @@ namespace Pyrrho.Security
         /// <summary>
         /// The multiplier used for encoding
         /// </summary>
-        long mult = 73928681;
+        readonly long mult = 73928681;
         /// <summary>
         /// Create the Crypt instance
         /// </summary>
@@ -70,8 +70,8 @@ namespace Pyrrho.Security
 				int m = f.IndexOf('=');
 				if (m<0)
 					goto bad;
-				string n = f.Substring(0,m);
-				string v = f.Substring(m+1);
+				string n = f[0..m];
+				string v = f[(m+1)..];
 				switch (n)
 				{
 					case "Provider": break;
@@ -82,6 +82,7 @@ namespace Pyrrho.Security
 					case "Stop": Send(Connecting.Stop, v); break;
                     case "User": Send(Connecting.User, v); break;
                     case "Base": Send(Connecting.Base, v); break;
+					case "Locale": Send(Connecting.Culture, v); break;
                     case "BaseServer": Send(Connecting.BaseServer, v); break;
                     case "Coordinator": Send(Connecting.Coordinator, v); break;
                     case "Password": Send(Connecting.Password, v); break;
@@ -202,7 +203,7 @@ namespace Pyrrho.Security
         /// </summary>
         /// <param name="stream">the stream</param>
         /// <returns>the long</returns>
-		long GetLong(Stream stream)
+		static long GetLong(Stream stream)
 		{
 			byte[] bytes = new byte[8];
 			stream.Read(bytes,0,8);

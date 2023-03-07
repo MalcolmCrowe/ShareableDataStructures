@@ -51,7 +51,7 @@ namespace Pyrrho.Level3
         /// Constructor: Build a level 3 procedure from a level 2 procedure
         /// </summary>
         /// <param name="p">The level 2 procedure</param>
-		public Procedure(PProcedure p, Context cx,BTree<long,object> m)
+		public Procedure(PProcedure p, BTree<long,object> m)
             : base( p.ppos, p.defpos, m + (ObInfo.Name,p.name)+(Definer,p.definer)+(Owner,p.owner)
                   + (Infos,p.infos)
                   + (Params, p.parameters) +(_Domain,p.dataType?.defpos??throw new DBException("42000")) 
@@ -64,7 +64,7 @@ namespace Pyrrho.Level3
         /// <param name="ps"></param>
         /// <param name="rt"></param>
         /// <param name="m"></param>
-        public Procedure(long defpos,Context cx,string n,BList<long?> ps, Domain dt, long definer,
+        public Procedure(long defpos,Context cx,BList<long?> ps, Domain dt, 
             BTree<long, object> m) : base(defpos, m +(Params,ps)+(_Domain,dt.defpos)
                 + (Definer, cx.role.defpos) + (Owner, cx.user?.defpos ?? -501L))
         { }

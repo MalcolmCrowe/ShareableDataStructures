@@ -6,6 +6,7 @@ using Pyrrho.Level3; // for Database
 using Pyrrho.Level4; // for Select
 using Pyrrho.Level1; // for DataFile option
 using Pyrrho.Common;
+using System.Globalization;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -75,6 +76,7 @@ namespace Pyrrho
             // process the connection string
             var fn = conn.props["Files"];
             var user = conn.props["User"];
+            Thread.CurrentThread.CurrentUICulture = new CultureInfo(conn.props["Locale"]??"");
             int p = -1;
             bool recovering = false;
             try
@@ -113,7 +115,7 @@ namespace Pyrrho
                             + " " + fn + " " + db.role.name);
                     db = db.Load();
                 }
-                cx = new Context(db);
+                cx = new Context(db,conn);
                 tcp.Write(Responses.Primary);
                 tcp.Flush();
             }
@@ -509,9 +511,7 @@ namespace Pyrrho
                                 if (ss.Length < 3)
                                     throw new DBException("Protocol error");
                                 var t = long.Parse(ss[1]);
-                                var tb = (Table?)db.objects[t];
-                                if (tb == null)
-                                    throw new DBException("42105");
+                                var tb = (Table?)db.objects[t]??throw new DBException("42105");
                                 var ti = tb.infos[db.role.defpos];
                                 var f = new TableRowSet(1L, cx, t);
                                 BTree<long, TargetActivation>? ans = null;
@@ -963,7 +963,7 @@ namespace Pyrrho
                 {
                     string? str = null;
                     int b = tcp.crypt.ReadByte();
-                    if (b < (int)Connecting.Password || b > (int)Connecting.Modify)
+                    if (b < (int)Connecting.Password || b > (int)Connecting.Culture)
                         throw new DBException("42105");
                     switch ((Connecting)b)
                     {
@@ -980,6 +980,7 @@ namespace Pyrrho
                         case Connecting.BaseServer: str = "BaseServer"; break;
                         case Connecting.Modify: str = "Modify"; break;
                         case Connecting.Length: str = "Length"; break;
+                        case Connecting.Culture: str = "Locale"; break;
                         default:
                             throw new DBException("42105");
                     }
@@ -1427,7 +1428,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.03alpha","(3 Mar 2023)", "http://www.pyrrhodb.com"
+            "7.03alpha","(7 Mar 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

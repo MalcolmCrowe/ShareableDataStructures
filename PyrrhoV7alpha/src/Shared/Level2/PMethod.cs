@@ -155,7 +155,7 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx, long p)
         {
             var rp = Database._system.role.defpos;
-            var mt = new Method(this,cx);
+            var mt = new Method(this);
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect |
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute;
             udt = (UDType?)(cx.db.objects[udt?.defpos??-1L]??udt);

@@ -53,7 +53,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="e">The Executables</param>
         /// <param name="tr">The transaction</param>
-		protected Context ObeyList(BList<long?> e, Context cx)
+		protected static Context ObeyList(BList<long?> e, Context cx)
         {
             if (e == null)
                 throw new DBException("42173");
@@ -253,8 +253,7 @@ namespace Pyrrho.Level3
             cx.exec = this;
             var act = new Activation(cx, label ?? "");
             act = (Activation)ObeyList(stms, act);
-            if (act.signal != null)
-                act.signal.Throw(cx);
+            act.signal?.Throw(cx);
             return act.SlideDown();
         }
         protected override BTree<long,object> _Replace(Context cx, DBObject so, DBObject sv, BTree<long,object>m)
@@ -360,7 +359,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a new local variable
         /// </summary>
-        public LocalVariableDec(long dp, Context cx, SqlValue v, BTree<long,object>?m=null)
+        public LocalVariableDec(long dp, SqlValue v, BTree<long,object>?m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Label, v.name??"")
           + (AssignmentStatement.Vbl, v.defpos)+(_Domain,v.domain))
         { }
@@ -530,8 +529,8 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="i">The name</param>
         /// <param name="c">The cursor specification</param>
-        public CursorDeclaration(long dp, Context cx,SqlCursor sc,RowSet c) 
-            : base(dp,cx,sc,new BTree<long,object>(CS,c.defpos)
+        public CursorDeclaration(long dp, SqlCursor sc,RowSet c) 
+            : base(dp,sc,new BTree<long,object>(CS,c.defpos)
                   +(_Domain,c.domain)) 
         { }
         protected CursorDeclaration(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -759,8 +758,7 @@ namespace Pyrrho.Level3
                 if (hdlr?.htype == Sqlx.EXIT && definer?.next is Context nx)
                     return nx;
                 var a = (Activation)cx;
-                if (a.signal != null)
-                    a.signal.Throw(cx);
+                a.signal?.Throw(cx);
             return cx;
         }
         public override string ToString()
@@ -1723,9 +1721,7 @@ namespace Pyrrho.Level3
             var na = cx;
             while (na==cx && a.signal == null && ((SqlValue?)cx.obs[search])?.Matches(cx)==true)
             {
-                var lp = new Activation(cx,label??"");
-                lp.cont = a;
-                lp.brk = a;
+                var lp = new Activation(cx, label ?? "") { cont = a, brk = a };
                 na = ObeyList(what, lp);
                 if (na == lp)
                     na = cx;
@@ -1915,7 +1911,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="s">The statements</param>
         /// <param name="n">The loop identifier</param>
-		public LoopStatement(long dp,string n,long i):base(dp,new BTree<long,object>(Label,n))
+		public LoopStatement(long dp,string n):base(dp,new BTree<long,object>(Label,n))
 		{ }
         protected LoopStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static LoopStatement operator+(LoopStatement s,(long,object)x)
@@ -2080,8 +2076,7 @@ namespace Pyrrho.Level3
                     ac.brk = cx as Activation;
                     ac.cont = ac;
                     ac = (Activation)ObeyList(stms, ac);
-                    if (ac.signal != null)
-                        ac.signal.Throw(cx);
+                    ac.signal?.Throw(cx);
                 }
                 return ac.SlideDown();
             }
@@ -2125,7 +2120,7 @@ namespace Pyrrho.Level3
         /// Constructor: an open statement from the parser
         /// </summary>
         /// <param name="n">the cursor name</param>
-		public OpenStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long, object>.Empty
+		public OpenStatement(long dp, SqlCursor c) : base(dp,BTree<long, object>.Empty
             +(FetchStatement.Cursor,c.defpos))
 		{ }
         protected OpenStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2191,7 +2186,7 @@ namespace Pyrrho.Level3
         /// Constructor: a close statement from the parser
         /// </summary>
         /// <param name="n">The name of the cursor</param>
-		public CloseStatement(long dp, SqlCursor c,long i) : base(dp,BTree<long, object>.Empty
+		public CloseStatement(long dp, SqlCursor c) : base(dp,BTree<long, object>.Empty
             +(FetchStatement.Cursor,c.defpos)+(_Domain,c.domain))
 		{ }
         protected CloseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2636,7 +2631,7 @@ namespace Pyrrho.Level3
                 throw new DBException("0K000").ISO();
             if (signal != null && cx.db!=null)
             {
-                string? sclass = signal.Substring(0, 2);
+                string? sclass = signal[0..2];
                 var dia = cx.tr.diagnostics;
                 dia += (Sqlx.RETURNED_SQLSTATE, new TChar(signal));
                 for (var s = setlist.First(); s != null; s = s.Next())
@@ -2760,7 +2755,7 @@ namespace Pyrrho.Level3
             var a = cx.GetActivation(); // from the top of the stack each time
             if (stype == Sqlx.RESIGNAL && !cx.tr.diagnostics.Contains(Sqlx.RETURNED_SQLSTATE))
                 throw new DBException("0K000").ISO();
-            string sclass = signal.Substring(0, 2);
+            string sclass = signal[0..2];
             var dia = cx.tr.diagnostics;
             dia += (Sqlx.RETURNED_SQLSTATE, new TChar(signal));
             if (exception is DBException dbex)
@@ -3129,7 +3124,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">The parsing context</param>
         internal QuerySearch(long dp, Context cx, RowSet f, DBObject tb,
-            Grant.Privilege how, CTree<UpdateAssignment, bool>? ua = null)
+            CTree<UpdateAssignment, bool>? ua = null)
             : base(dp, _Mem(cx,f,tb,ua) + (RowSet._Source, f.defpos))
         { }
         protected QuerySearch(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -3219,9 +3214,8 @@ namespace Pyrrho.Level3
         /// Constructor: A searched UPDATE statement from the parser
         /// </summary>
         /// <param name="cx">The context</param>
-        public UpdateSearch(long dp, Context cx, RowSet f, DBObject tb,
-            Grant.Privilege how)
-            : base(dp, cx, f, tb, how)
+        public UpdateSearch(long dp, Context cx, RowSet f, DBObject tb)
+            : base(dp, cx, f, tb)
         { }
         protected UpdateSearch(long dp, BTree<long, object> m) : base(dp, m) { }
         public static UpdateSearch operator +(UpdateSearch u, (long, object) x)
@@ -3304,23 +3298,25 @@ namespace Pyrrho.Level3
             (CTree<TGraph, bool>)(mem[Database.Graphs] ?? CTree<TGraph, bool>.Empty);
         internal CTree<long,bool> where =>
             (CTree<long, bool>)(mem[RowSet._Where]??CTree<long,bool>.Empty);
+        internal long body => (long)(mem[Procedure.Body] ?? -1L);
         public MatchStatement(long dp, CTree<TGraph, bool> gr, CTree<long, TGParam> ub,
             CTree<long,bool> wh,long st)
             : base(dp, new BTree<long,object>(GDefs,ub) + (Database.Graphs,gr)
-                  +(RowSet._Where,wh)+(Stmt,st))
+                  +(RowSet._Where,wh)+(Procedure.Body,st))
         { }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
         /// <summary>
-        /// We traverse the given graphs in the order given, matching with possible database nodes as we move.
+        /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.
+        /// The match graphs and the set of TGParams are in this MatchStatement.
+        /// The database graph is in cx.db.graphs and cx.db.nodeids.
         /// The state consists of
-        ///     The current expression graph node as two bookmarks (for chains, and nodes in the chain)
-        ///     A saved mapping from nodes to the set of matching database nodes (depends on bindings)
-        ///     The current matching database node as a bookmark in this mapping
-        ///     The saved binding state (the current binding state for TGParams is in cx.binding)
-        /// This state is implemented as a tuple, and saved in a BList for this tuple.
+        ///     The current TMatch as two bookmarks (for TGraph, and TMatch)
+        ///     The current TMatch as a bookmark in this mapping
+        ///     The current choice of TNode for the current TMatch
+        ///     The saved binding state for TGParams in cx.binding
         /// </summary>
-        /// <param name="cx"></param>
+        /// <param name="cx">The context</param>
         /// <returns></returns>
         public override Context Obey(Context cx)
         {
@@ -3336,9 +3332,6 @@ namespace Pyrrho.Level3
             var ers = new ExplicitRowSet(cx.GetUid(), cx, dt, BList<(long,TRow)>.Empty)
                 +(RowSet._Where,where);
             cx.Add(ers);
-            // define a state for the graph traversal (see above description)
-         //   var stk = BList<(ABookmark<TGraph, bool>?, ABookmark<long, TNode>?,
-         //       CTree<TNode,bool>, ABookmark<TNode,bool>?, CTree<TGParam, TypedValue>)>.Empty;
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
             cx.binding = CTree<TGParam, TypedValue>.Empty;
@@ -3347,13 +3340,12 @@ namespace Pyrrho.Level3
             if (gp?.key() is TGraph tg)
             {
                 var xb = tg.nodes.First();
-                ExpNode(cx, //ref stk,
-                           gp, xb, null, null);
+                ExpNode(cx, gp, xb, null);
             }
             cx.result = ers.defpos;
             return cx;
         }
-        void AddRow(Context cx)
+        static void AddRow(Context cx)
         {
             if (cx.obs[cx.result] is ExplicitRowSet ers && cx._Dom(ers) is Domain dt)
             {
@@ -3373,13 +3365,10 @@ namespace Pyrrho.Level3
         /// In ExpNode we will compute a set ds of database nodes that can correspond with xn.
         /// </summary>
         /// <param name="cx">The Context</param>
-        /// <param name="stk">The save state for backtracking</param>
-        /// <param name="gp">The position in graphs</param>
+        /// <param name="gp">The bookmark in the TGraphs</param>
         /// <param name="xb">The position in the current graph</param>
         /// <param name="px">The previous expression node if any</param>
-        void ExpNode(Context cx, // ref BList<(ABookmark<TGraph, bool>?, ABookmark<long, TNode>?,
-                                 // CTree<TNode,bool>, ABookmark<TNode, bool>?, CTree<TGParam, TypedValue>)> stk,
-                ABookmark<TGraph, bool>? gp, ABookmark<long, TNode>? xb, TNode? px, TNode? pd)
+        void ExpNode(Context cx, ABookmark<TGraph, bool>? gp, ABookmark<long, TNode>? xb, TNode? pd)
         {
             if (xb?.value() is not TMatch xn)
                 return;
@@ -3410,29 +3399,23 @@ namespace Pyrrho.Level3
                 if (b.value() is TNode n)
                         ds += (n, true);
             var df = ds.First();
- //           var j = stk.Length;
- //           stk += (gp,xb,ds,df,cx.binding);
             while (df!=null)
-                df = DbNode(cx, // ref stk,
-                               gp, xb, xn, df, px, pd);
- //           while (stk.Length > j)
- //               stk -= stk.Length - 1;
+                df = DbNode(cx, gp, xb, xn, df, pd);
         }
         /// <summary>
         /// For each dn in ds:
         /// If xn's specific properties do not match dx's then backtrack.
         /// We bind each t in t(xn), using the char values in dn.
         /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="stk"></param>
-        /// <param name="xb"></param>
-        /// <param name="xn"></param>
-        /// <param name="df"></param>
+        /// <param name="cx">The context<The /param>
+        /// <param name="gp">The bookmark for the match TGraph</paramr>
+        /// <param name="xb">The bookmark for the current TMatch</param>
+        /// <param name="xn">The current TMatch</param>
+        /// <param name="df">The bookmark for the current TNode</param>
+        /// <param name="pd">If not null, the TNode for the TMatch</param> 
         /// <returns></returns>
-        ABookmark<TNode, bool>? DbNode(Context cx, // ref BList<(ABookmark<TGraph, bool>?, ABookmark<long, TNode>?,
-                                                   // CTree<TNode, bool>, ABookmark<TNode, bool>?, CTree<TGParam, TypedValue>)> stk,
-            ABookmark<TGraph, bool>? gp, ABookmark<long, TNode>? xb, TMatch xn, ABookmark<TNode, bool> df,
-            TNode? px, TNode? pd)
+        ABookmark<TNode, bool>? DbNode(Context cx, ABookmark<TGraph, bool>? gp, ABookmark<long, TNode>? xb, 
+            TMatch xn, ABookmark<TNode, bool> df,TNode? pd)
         {
             var ob = cx.binding;
             var bi = cx.binding;
@@ -3463,29 +3446,45 @@ namespace Pyrrho.Level3
                             bi += (tg1, tv);
             cx.binding = bi;
             xb = xb?.Next();
-            TNode? xx = xn; // we don't pass in xn if we are starting a new graph
-            TNode? dx = dn;
+            TNode? dx = dn;// we don't pass in dn if we are starting a new graph
             if (xb==null)  // we have reached the end of a graph in the match
             {
-                xx = null;
                 dx = null;
                 gp = gp?.Next(); // start the next graph
                 if (gp?.key() is TGraph g)
                     xb = g.nodes.First();
             }
-            // stk +=(gp,xb,)
             if (xb != null) // go on to the next node in the expression graph
                 ExpNode(cx, // ref stk,
-                            gp, xb, xx, dx);
+                            gp, xb, dx);
             else   // we have finished the expression and should add a row
                 AddRow(cx);
         backtrack:
-            cx.binding = ob; // unbind all the bindings we made
+            cx.binding = ob; // unbind all the bindings from this recursion step
             return df.Next(); // try another node
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             throw new NotImplementedException();
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" GDefs (");
+            sb.Append(gDefs);
+            sb.Append(')');
+            sb.Append(" Graphs (");
+            sb.Append(graphs);
+            sb.Append(')');
+            if (where != CTree<long, bool>.Empty)
+            {
+                sb.Append(" Where "); sb.Append(where);
+            }
+            if (body>=0)
+            {
+                sb.Append(" Body "); sb.Append(Uid(body));
+            }
+            return sb.ToString();
         }
     }
 }

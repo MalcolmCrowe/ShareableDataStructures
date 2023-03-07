@@ -465,7 +465,7 @@ namespace Pyrrho.Level2
             if (pc.dataType!=null && pc.ups != "")
                 try
                 {
-                    pc.upd = new Parser(context).ParseAssignments(pc.ups, pc.dataType);
+                    pc.upd = new Parser(context).ParseAssignments(pc.ups);
                 }
                 catch (Exception)
                 {

@@ -491,7 +491,7 @@ namespace Pyrrho.Level3
 #if (!SILVERLIGHT) && (!ANDROID)
                             pn = WebUtility.UrlDecode(pn);
 #endif
-                            fc = new Parser(cx).ParseProcedureCall(pn,Domain.Content);
+                            fc = new Parser(cx).ParseProcedureCall(pn);
                         }
                         if (cx.db.objects[fc.procdefpos] is not Procedure pr)
                             throw new DBException("42108", cp);

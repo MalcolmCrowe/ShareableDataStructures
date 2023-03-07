@@ -293,7 +293,7 @@ namespace Pyrrho
                 var fmt = (string?)dict[sig];
                 if (fmt == null)
                     return "Signal " + sig;
-                StringBuilder sb = new StringBuilder();
+                StringBuilder sb = new ();
                 int j = 0;
                 while (j < fmt.Length)
                 {

@@ -39,8 +39,8 @@ namespace Pyrrho.Level3
         /// <param name="definer">the definer</param>
         /// <param name="owner">the owner</param>
         /// <param name="rs">the accessing roles</param>
-        public Method(PMethod m, Context cx)
-            : base(m, cx, BTree<long, object>.Empty + (_Framing,m.framing)
+        public Method(PMethod m)
+            : base(m, BTree<long, object>.Empty + (_Framing,m.framing)
                   + (TypeDef, m.udt??throw new PEException("PE48131"))
                   + (MethodType, m.methodType??throw new PEException("PE48132")))
         { }

@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Security;
 using System.Net;
 using System.Net.Sockets;
-using System.Xml.Schema;
+using System.Threading;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -647,6 +647,7 @@ namespace Pyrrho
         {
             string[] fields = cs.Split(';');
             crypt.Send(Connecting.User, Environment.UserDomainName + "\\" + Environment.UserName);
+            crypt.Send(Connecting.Culture, Thread.CurrentThread.CurrentUICulture.Name);
             for (int j = 0; j < fields.Length; j++)
             {
                 string f = fields[j];
@@ -660,7 +661,6 @@ namespace Pyrrho
                     case "Provider": break;
                     case "Host": break;
                     case "Port": break;
-                    case "Locale": break;
                     case "Files": crypt.Send(Connecting.Files, v); break;
                     case "Role": crypt.Send(Connecting.Role, v); break;
                     case "Stop": crypt.Send(Connecting.Stop, v); break;
