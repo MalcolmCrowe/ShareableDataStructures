@@ -298,12 +298,12 @@ namespace Pyrrho.Level3
             for (var b = cx.role.procedures.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.value() ?? -1L] is Procedure pr)
-                        cx.db += ((Procedure)New(cx.Replace(was, now, pr.mem)), cx.db.loadpos);
+                        cx.db += ((Procedure)pr.New(cx.Replace(was, now, pr.mem)), cx.db.loadpos);
             for (var b = cx.db.types.First(); b != null; b = b.Next())
                 if (b.key() is UDType u)
                     for (var c = u.methods.First(); c != null; c = c.Next())
                         if (cx.db.objects[c.key()] is Method me)
-                            cx.db += ((Method)New(cx.Replace(was, now, me.mem)), cx.db.loadpos);
+                            cx.db += ((Method)me.New(cx.Replace(was, now, me.mem)), cx.db.loadpos);
             cx.db -= was.defpos;
             cx.db += (ut, cx.db.loadpos);
             cx.db += (r, cx.db.loadpos);

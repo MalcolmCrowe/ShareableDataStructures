@@ -4535,7 +4535,10 @@ namespace Pyrrho.Level4
                         else if (fb?[tp] is TypedValue fv) // for matching cases
                             vs += (p, fv);
                     }
-                vs = CheckPrimaryKey(cx, trc, vs);
+                if (t.nodeType>=0)
+                    vs = CheckNodeId(cx,t,vs);
+                else
+                    vs = CheckPrimaryKey(cx, trc, vs);
                 cx.values += vs;
                 for (var b = rs.First(); b != null; b = b.Next()) // cs was t.tableCols
                     if (cx.obs[b.key()] is TableColumn tc)
@@ -4654,6 +4657,24 @@ namespace Pyrrho.Level4
                 if (v is TChar tc)
                     return new TChar((int.Parse(tc.value) + 1).ToString());
                 return new TInt((v.ToInt()??0) + 1);
+            }
+            /// <summary>
+            /// If the nodeId seems to be null, make a unique nodeId, by temporarily giving it
+            /// the string version of the new Record ppos. This will be replaced during Commit
+            /// to the (unique) ppos of the new Record.
+            /// </summary>
+            /// <param name="cx"></param>
+            /// <param name="t"></param>
+            /// <param name="vs"></param>
+            /// <returns></returns>
+            /// <exception cref="DBException"></exception>
+            static CTree<long,TypedValue> CheckNodeId(Context cx,Table t,CTree<long,TypedValue> vs)
+            {
+                var x = t.FindPrimaryIndex(cx)??throw new DBException("42105");
+                var p = x.keys[0]??-1L;
+                if (vs[p] is not TypedValue v || v == TNull.Value)
+                    vs += (p, new TChar(cx.db.nextPos.ToString()));
+                return vs;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {

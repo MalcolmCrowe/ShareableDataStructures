@@ -103,7 +103,7 @@ namespace Test
             Test13();
             Test14();
             Test15();
-            Test16(); 
+            Test16();
             Test17();
             Test18();
             Test19();
@@ -121,7 +121,7 @@ namespace Test
                 ResetA();
                 Test23();
             } 
-            Test24(); 
+            Test24();
             Test25();
         }
         void ResetA()
@@ -1246,7 +1246,7 @@ namespace Test
                 " then insert into friend(leaving,arriving) values (nr.arriving,nr.leaving) end if");
             Act(356, "insert into person values('Joe',date'1976-04-25'),('Mary',date'1992-08-04')");
             Act(357, "insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')");
-            CheckResults(25, 2, "select id from friend where leaving='Fred'","[{ID:'4'}]");
+            CheckResults(25, 2, "select count(*) from friend where leaving='Fred'","[{COUNT:1}]");
             CheckResults(25, 3, "match (\"Fred\")-[:friend]->(_x)","[{x:'Mary'}]");
             Act(358, "create type product nodetype");
             Act(359, "CREATE (Joe: Customer { \"Name\":'Joe Edwards', Address: '10 Station Rd.'})," +
