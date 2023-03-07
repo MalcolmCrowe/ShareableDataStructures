@@ -196,7 +196,7 @@ namespace Pyrrho.Common
             tgs = lxr.tgs;
             props = ns;
         }
-        internal bool CheckProps(Context cx, TNode n)
+        internal bool CheckProps(Context cx, TNode n, ref CTree<TMatch,TEdge> chk)
         {
             if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
                 for (var b = props.First(); b != null; b = b.Next())
@@ -215,12 +215,27 @@ namespace Pyrrho.Common
                                     return false; break;
                             case "LEAVING":
                             case "ARRIVING":
+                                if (n is not TEdge e)
+                                    return false;
+                                if (oi.names[b.key()] is long p && e.values[p] is TNode r)
+                                {
+                                    if (xv is TGParam q)
+                                    {
+                                        if (cx.binding[q] is null)
+                                            chk += (this, e);
+                                        else if (cx.binding[q] is TypedValue vq &&
+                                            vq.ToString() != r.id)
+                                            return false;
+                                    }
+                                    else if (xv.ToString() != r.id)
+                                        return false;
+                                }
                                 break;
                             case "SPECIFICTYPE":
                                 if (!n.dataType.Match(xv.ToString()))
                                     return false; break;
                             default:
-                                if (oi.names[b.key()] is long p && xv != n.values[p])
+                                if (oi.names[b.key()] is long d && xv != n.values[d])
                                     return false;
                                 break;
                         }

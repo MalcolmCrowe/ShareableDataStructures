@@ -1,6 +1,7 @@
 using System;
 using System.ComponentModel;
 using System.Runtime.CompilerServices;
+using System.Runtime.ExceptionServices;
 using System.Security.AccessControl;
 using System.Text;
 using System.Xml;
@@ -3337,16 +3338,21 @@ namespace Pyrrho.Level3
             cx.binding = CTree<TGParam, TypedValue>.Empty;
             cx.result = ers.defpos;
             var gp = graphs.First();
+            var chk = CTree<TMatch, TEdge>.Empty;
             if (gp?.key() is TGraph tg)
             {
                 var xb = tg.nodes.First();
-                ExpNode(cx, gp, xb, null);
+                ExpNode(cx, gp, xb, null,ref chk);
             }
             cx.result = ers.defpos;
             return cx;
         }
-        static void AddRow(Context cx)
+        static void MaybeAddRow(Context cx,CTree<TMatch,TEdge> chk)
         {
+            for (var b=chk.First();b!=null;b=b.Next())
+                if (!b.key().CheckProps(cx,b.value(),ref chk))
+                        return;
+            // everything has been checked
             if (cx.obs[cx.result] is ExplicitRowSet ers && cx._Dom(ers) is Domain dt)
             {
                 var vs = CTree<long,TypedValue>.Empty;
@@ -3367,9 +3373,12 @@ namespace Pyrrho.Level3
         /// <param name="cx">The Context</param>
         /// <param name="gp">The bookmark in the TGraphs</param>
         /// <param name="xb">The position in the current graph</param>
-        /// <param name="px">The previous expression node if any</param>
-        void ExpNode(Context cx, ABookmark<TGraph, bool>? gp, ABookmark<long, TNode>? xb, TNode? pd)
+        /// <param name="pd">The previous database node if any</param>
+        /// <param name="chk">Node assignments to to be further checked</param>
+        void ExpNode(Context cx, ABookmark<TGraph, bool>? gp, ABookmark<long, TNode>? xb, 
+            TNode? pd, ref CTree<TMatch,TEdge> chk)
         {
+            chk ??= CTree<TMatch, TEdge>.Empty;
             if (xb?.value() is not TMatch xn)
                 return;
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
@@ -3400,7 +3409,8 @@ namespace Pyrrho.Level3
                         ds += (n, true);
             var df = ds.First();
             while (df!=null)
-                df = DbNode(cx, gp, xb, xn, df, pd);
+                df = DbNode(cx, gp, xb, xn, df, pd, ref chk);
+            return;
         }
         /// <summary>
         /// For each dn in ds:
@@ -3413,13 +3423,14 @@ namespace Pyrrho.Level3
         /// <param name="xn">The current TMatch</param>
         /// <param name="df">The bookmark for the current TNode</param>
         /// <param name="pd">If not null, the TNode for the TMatch</param> 
-        /// <returns></returns>
-        ABookmark<TNode, bool>? DbNode(Context cx, ABookmark<TGraph, bool>? gp, ABookmark<long, TNode>? xb, 
-            TMatch xn, ABookmark<TNode, bool> df,TNode? pd)
+        /// <param name="chk">A set of edge assignments that have not been completely checked</param>
+        /// <returns>the next value of df if any</returns>
+        ABookmark<TNode, bool>? DbNode(Context cx, ABookmark<TGraph, bool>? gp, 
+            ABookmark<long, TNode>? xb, TMatch xn, ABookmark<TNode, bool> df,TNode? pd, ref CTree<TMatch,TEdge> chk)
         {
             var ob = cx.binding;
             var bi = cx.binding;
-            if (df.key() is not TNode dn || !xn.CheckProps(cx,dn))
+            if (df.key() is not TNode dn || !xn.CheckProps(cx,dn,ref chk))
                 goto backtrack;
             if (dn is TEdge de && pd != null && pd.id != de.leaving)
                 goto backtrack;
@@ -3429,8 +3440,7 @@ namespace Pyrrho.Level3
                 {
                     switch (tg.kind)
                     {
-                        case Sqlx.RARROWBASE:
-                        case Sqlx.ARROW:
+                        case Sqlx.RPAREN:
                         case Sqlx.LPAREN: bi += (tg, new TChar(dn.id)); break;
                         case Sqlx.COLON: bi += (tg, new TChar(dn.dataType.name)); break;
                     }
@@ -3455,10 +3465,9 @@ namespace Pyrrho.Level3
                     xb = g.nodes.First();
             }
             if (xb != null) // go on to the next node in the expression graph
-                ExpNode(cx, // ref stk,
-                            gp, xb, dx);
-            else   // we have finished the expression and should add a row
-                AddRow(cx);
+                ExpNode(cx, gp, xb, dx, ref chk);
+            else   // we have finished the expression and may be able to add a row
+                MaybeAddRow(cx,chk);
         backtrack:
             cx.binding = ob; // unbind all the bindings from this recursion step
             return df.Next(); // try another node

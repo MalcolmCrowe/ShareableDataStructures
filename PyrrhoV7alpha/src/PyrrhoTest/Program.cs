@@ -1,10 +1,5 @@
 ﻿using System;
 using Pyrrho;
-using System.Threading.Tasks;
-using System.Collections.Generic;
-using Pyrrho.Common;
-using System.Collections.Concurrent;
-using System.Security.Cryptography;
 
 namespace Test
 {
@@ -32,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("3 March 2023 Repeatable tests");
+                Console.WriteLine("7 March 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -108,7 +103,7 @@ namespace Test
             Test13();
             Test14();
             Test15();
-            Test16();
+            Test16(); 
             Test17();
             Test18();
             Test19();
@@ -125,8 +120,8 @@ namespace Test
                 Test22();
                 ResetA();
                 Test23();
-            }
-            Test24();
+            } 
+            Test24(); 
             Test25();
         }
         void ResetA()
@@ -1249,13 +1244,13 @@ namespace Test
             Act(355, "create trigger sym after insert on friend referencing new as nr for each row" +
                 " if not exists (select id from friend where leaving=nr.arriving and arriving=nr.leaving)" +
                 " then insert into friend(leaving,arriving) values (nr.arriving,nr.leaving) end if");
-            Act(356, "insert into person values('Joe',date'25/04/1976'),('Mary',date'04/08/1992')");
+            Act(356, "insert into person values('Joe',date'1976-04-25'),('Mary',date'1992-08-04')");
             Act(357, "insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')");
             CheckResults(25, 2, "select id from friend where leaving='Fred'","[{ID:'4'}]");
             CheckResults(25, 3, "match (\"Fred\")-[:friend]->(_x)","[{x:'Mary'}]");
             Act(358, "create type product nodetype");
             Act(359, "CREATE (Joe: Customer { \"Name\":'Joe Edwards', Address: '10 Station Rd.'})," +
-"(Joe) -[:Ordered { \"Date\":date'22/11/2002'} ]-> (Ord201: \"Order\") -[:Item { Qty: 5}]->(\"16/8x100\" : WoodScrew : Product)," +
+"(Joe) -[:Ordered { \"Date\":date'2002-11-22'} ]-> (Ord201: \"Order\") -[:Item { Qty: 5}]->(\"16/8x100\" : WoodScrew : Product)," +
 "(Ord201) -[:Item { Qty: 5}]->(\"Fibre 12cm\": WallPlug : Product)," +
 "(Ord201) -[:Item { Qty: 1}]->(\"500ml\" : RubberGlue : Product)");
             CheckResults(25, 4, "match (_)-[:Item {Qty:_Q}]->(_Y:_T) where Q>4",
