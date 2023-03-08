@@ -3326,7 +3326,9 @@ namespace Pyrrho.Level3
             for (var b = gDefs.First(); b != null && b.key()<Transaction.Executables; b = b.Next())
                 if (b.value() is TGParam g && g.id!="_"){
                     rt += g.uid;
-                    re += (g.uid, Domain.Char);
+                    re += (g.uid, g.dataType);
+                    var i = new Iix(g.uid);
+                    cx.defs += (new Ident(g.id[1..], i), i);
                 }
             var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length);
             cx.Add(dt);

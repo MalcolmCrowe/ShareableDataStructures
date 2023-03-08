@@ -578,7 +578,7 @@ namespace Pyrrho.Level4
                 if (char.IsLetter(ch))
                     while (char.IsLetter(ch))
                         Advance();
-                var tg = new TGParam(Position,new string(input, start, pos - start),
+                var tg = new TGParam(Position,new string(input, start, pos - start).ToUpper(),
                         tok,Domain.Content,CTree<string,TypedValue>.Empty);
                 tgs += (tg.uid, tg);
                 val = tg;

@@ -1271,7 +1271,7 @@ namespace Pyrrho
         public static string hostname = "localhost";
         public static int port = 5433;
         internal static bool VerboseMode = false, TutorialMode = false, DebugMode = false, 
-            HTTPFeedbackMode = false,ShowPlan = false, ShowGraph = false;
+            HTTPFeedbackMode = false,ShowPlan = false;
         /// <summary>
         /// The main service loop of the Pyrrho DBMS is here
         /// </summary>
@@ -1361,7 +1361,6 @@ namespace Pyrrho
                     switch (args[k][1])
                     {
                         case 'R': ShowPlan = true; break;
-                        case 'G': ShowGraph = true; break;
                         case 's': httpport = (p < 0) ? 8180 : p; break;
                         case 'S': httpsport = (p < 0) ? 8133 : p; break;
                     }
@@ -1428,7 +1427,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.03alpha","(7 Mar 2023)", "http://www.pyrrhodb.com"
+            "7.03alpha","(8 Mar 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

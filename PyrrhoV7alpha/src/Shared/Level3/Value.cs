@@ -4881,7 +4881,7 @@ namespace Pyrrho.Level3
             if (cx.obs[call] is not CallStatement pc || cx.db.objects[pc.procdefpos] is not Procedure proc)
                 throw new PEException("PE6840");
             proc = (Procedure)proc.Instance(id.iix.dp, cx);
-            var prs = new ProcRowSet(id.iix.dp, this, cx);
+            var prs = new ProcRowSet(this, cx);
             cx.Add(prs);
             if (cx._Dom(proc) is not Domain pd || cx._Dom(prs) is not Domain rd)
                 throw new PEException("PE6841");

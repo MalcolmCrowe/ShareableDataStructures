@@ -1542,8 +1542,7 @@ namespace Pyrrho.Level4
         internal TRow row => (TRow)(mem[Singleton]??TRow.Empty);
         internal TrivialRowSet(Context cx) 
             : this(cx.GetUid(),cx,TRow.Empty) { }
-        internal TrivialRowSet(long dp, Context cx, TRow r,
-            Grant.Privilege pr=Grant.Privilege.Select,string? a=null)
+        internal TrivialRowSet(long dp, Context cx, TRow r, string? a=null)
             : base(dp, cx, _Mem(dp,cx,r.dataType,a)+(Singleton,r))
         {
             cx.Add(this);
@@ -1570,11 +1569,11 @@ namespace Pyrrho.Level4
         }
         protected override Cursor? _First(Context _cx)
         {
-            return new TrivialCursor(_cx,this,-1L);
+            return new TrivialCursor(_cx,this);
         }
         protected override Cursor? _Last(Context _cx)
         {
-            return new TrivialCursor(_cx, this, -1L);
+            return new TrivialCursor(_cx, this);
         }
         internal override int Cardinality(Context cx)
         {
@@ -1586,7 +1585,7 @@ namespace Pyrrho.Level4
             for (var b=row.dataType.rowType.First(); b != null && kb!=null; b=b.Next(),kb=kb.Next())
                 if (kb.value()!=TNull.Value)
                     return null;
-            return new TrivialCursor(_cx, this, -1L);
+            return new TrivialCursor(_cx, this);
         }
         internal override DBObject New(long dp, BTree<long, object>m)
         {
@@ -1621,7 +1620,7 @@ namespace Pyrrho.Level4
         internal class TrivialCursor : Cursor
         {
             readonly TrivialRowSet trs;
-            internal TrivialCursor(Context _cx, TrivialRowSet t,long d) 
+            internal TrivialCursor(Context _cx, TrivialRowSet t) 
                 :base(_cx,t,0,E,t.row)
             {
                 trs = t;
@@ -1746,14 +1745,10 @@ namespace Pyrrho.Level4
                 _srs = srs;
             }
             SelectedCursor(SelectedCursor cu,Context cx,long p,TypedValue v)
-                :base(cu,cx,AllowRvv(cu._srs,p),v)
+                :base(cu,cx,p,v)
             {
                 _bmk = cu._bmk;
                 _srs = cu._srs;
-            }
-            static long AllowRvv(RowSet rs,long p)
-            {
-                return p; //??
             }
             internal static SelectedCursor? New(Context cx,SelectedRowSet srs)
             {
@@ -2715,7 +2710,7 @@ namespace Pyrrho.Level4
             var sr = BList<long?>.Empty;        // our total SRow type
             var tr = BTree<long, long?>.Empty;  // mapping to physical columns
             var ns = BTree<string, long?>.Empty; // column names
-            (rt,rs,sr,tr,ns) = ColsFrom(cx,dp,tb,dt,rt,rs,sr,tr,ns);
+            (rt,rs,sr,tr,ns) = ColsFrom(cx,dp,tb,rt,rs,sr,tr,ns);
             var xs = CTree<Domain, CTree<long, bool>>.Empty;
             var pk = Domain.Row;
             for (var b = tb.indexes.First(); b != null; b = b.Next())
@@ -2756,14 +2751,14 @@ namespace Pyrrho.Level4
             return r;
         }
         static (BList<long?>,CTree<long,Domain>,BList<long?>,BTree<long,long?>,BTree<string,long?>)
-            ColsFrom(Context cx,long dp,Table tb, Domain dt, 
+            ColsFrom(Context cx,long dp,Table tb, 
                 BList<long?>rt, CTree<long, Domain>rs, BList<long?> sr,BTree<long, long?>tr, BTree<string, long?>ns)
         {
             if (cx._Ob(tb.nodeType) is NodeType nt && nt.super is NodeType su && cx._Ob(su.structure) is Table st)
             {
                 cx.Add(st.framing);
                 if (cx._Dom(st) is Domain sd)
-                    (rt, rs, sr, tr, ns) = ColsFrom(cx, dp, st, su, rt, rs, sr, tr, ns);
+                    (rt, rs, sr, tr, ns) = ColsFrom(cx, dp, st, rt, rs, sr, tr, ns);
             }
             for (var b = tb.tableCols.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is TableColumn tc)
@@ -3797,13 +3792,13 @@ namespace Pyrrho.Level4
         internal BList<long?> sqlRows =>
             (BList<long?>?)mem[SqlRows]??BList<long?>.Empty;
         internal SqlRowSet(long dp, Context cx, Domain xp, BList<long?> rs)
-            : base(dp, cx, _Mem(dp, cx, xp, rs) + (SqlRows, rs)
+            : base(dp, cx, _Mem(cx, xp, rs) + (SqlRows, rs)
                   + (_Depth, cx.Depth(rs, new BList<DBObject?>(xp))))
         {
             cx.Add(this);
         }
         protected SqlRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(long dp,Context cx, Domain dm, BList<long?> rs)
+        static BTree<long,object> _Mem(Context cx, Domain dm, BList<long?> rs)
         {
             var ns = BTree<string, long?>.Empty;
             for (var b = dm.Needs(cx).First(); b != null; b = b.Next())
@@ -4094,7 +4089,7 @@ namespace Pyrrho.Level4
     internal class ProcRowSet : RowSet
     {
         internal SqlCall call => (SqlCall)(mem[SqlCall.Call]??throw new DBException("42000"));
-        internal ProcRowSet(long dp, SqlCall ca, Context cx) 
+        internal ProcRowSet(SqlCall ca, Context cx) 
             :base(cx.GetUid(),cx,_Mem(cx,ca) 
             +(SqlCall.Call,ca)+(_Depth,ca.depth+1))
         {
@@ -4167,7 +4162,7 @@ namespace Pyrrho.Level4
             readonly ABookmark<int, TypedValue> _bmk;
             ProcRowSetCursor(Context cx, ProcRowSet prs, int pos,
                 ABookmark<int, TypedValue> bmk, TRow rw)
-                : base(cx, prs, bmk.key(), E, new TRow(rw, cx._Dom(prs) ?? throw new PEException("PE49207")))
+                : base(cx, prs, pos, E, new TRow(rw, cx._Dom(prs) ?? throw new PEException("PE49207")))
             { 
                 _prs = prs; _bmk = bmk;
                 cx.values += values;
@@ -4774,14 +4769,14 @@ namespace Pyrrho.Level4
         /// <param name="trs"></param>
         internal TransitionTableRowSet(long dp, Context cx, TransitionRowSet trs, 
             Domain dm,bool old)
-            : base(dp, cx, _Mem(cx, dp, trs, dm, old)
+            : base(dp, cx, _Mem(cx, trs, dm, old)
                   + (RSTargets, trs.rsTargets) + (Target,trs.target)
                   +(_Depth,Context.Depth(trs,dm)))
         {
             cx.Add(this);
         }
         protected TransitionTableRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx,long dp,TransitionRowSet trs,Domain dm,bool old)
+        static BTree<long,object> _Mem(Context cx,TransitionRowSet trs,Domain dm,bool old)
         {
             var dat = BTree<long, TableRow>.Empty;
             if ((!old) && cx.newTables.Contains(trs.defpos)
@@ -4904,14 +4899,14 @@ namespace Pyrrho.Level4
         internal int size => (int)(mem[Size] ?? 0);
         internal override Assertions Requires => Assertions.MatchesTarget;
         internal RowSetSection(Context _cx,RowSet s, int o, int c)
-            : base(_cx.GetUid(),_Mem(_cx,s)+(Offset,o)+(Size,c)+(_Source,s.defpos)
+            : base(_cx.GetUid(),_Mem(s)+(Offset,o)+(Size,c)+(_Source,s.defpos)
                   +(RSTargets,s.rsTargets) + (_Domain,s.domain)
                   +(Table.LastData,s.lastData))
         {
             _cx.Add(this);
         }
         protected RowSetSection(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx,RowSet r)
+        static BTree<long,object> _Mem(RowSet r)
         {
             var m = BTree<long, object>.Empty + (ISMap, r.iSMap) + (SIMap, r.sIMap);
             if (r.names != BTree<string, long?>.Empty)
@@ -5695,7 +5690,7 @@ namespace Pyrrho.Level4
                 }
                 if (having.Count > 0)
                 {
-                    var sw = HavingString(cx, namesMap);
+                    var sw = HavingString(cx);
                     if (sw.Length > 0)
                     {
                         sql.Append(" having ");
@@ -5840,7 +5835,7 @@ namespace Pyrrho.Level4
             }
             return sb.ToString();
         }
-        public string HavingString<V>(Context cx, CTree<long, V> cs) where V : IComparable
+        public string HavingString(Context cx)
         {
             var sb = new StringBuilder();
             var cm = "";
@@ -6011,7 +6006,7 @@ namespace Pyrrho.Level4
         internal BList<long?> usingCols =>
             (BList<long?>?)mem[UsingCols]??BList<long?>.Empty;
         public RestRowSetUsing(Iix lp,Context cx,RestView vw, long rp,
-            TableRowSet uf, Domain q)  :base(lp.dp,_Mem(lp.dp,cx,rp,uf,q) 
+            TableRowSet uf)  :base(lp.dp,_Mem(cx,rp,uf) 
                  + (RestTemplate, rp) + (ObInfo.Name, vw.NameFor(cx))
                  + (RSTargets,new BTree<long, long?>(vw.viewPpos, lp.dp))
                  + (RestView.UsingTableRowSet, uf.defpos)  
@@ -6022,7 +6017,7 @@ namespace Pyrrho.Level4
         }
         protected RestRowSetUsing(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long,object> _Mem(long dp,Context cx,long rp, TableRowSet uf,Domain q)
+        static BTree<long,object> _Mem(Context cx,long rp, TableRowSet uf)
         {
             var r = BTree<long, object>.Empty;
             var rr = (RowSet?)cx.obs[rp];
@@ -6271,14 +6266,14 @@ namespace Pyrrho.Level4
             TargetTable = -369; // long Table
         public long targetTable => (long)(mem[TargetTable] ?? -1L);
         public LogRowsRowSet(long dp, Context cx, long td)
-            : base(dp, _Mem(cx, dp, td))
+            : base(dp, _Mem(cx, td))
         {
             cx.db = cx.db.BuildLog();
             cx.Add(this);
         }
         protected LogRowsRowSet(long dp,BTree<long,object> m) :base(dp,m)
         { }
-        static BTree<long,object> _Mem(Context cx, long dp, long td)
+        static BTree<long,object> _Mem(Context cx, long td)
         {
             var tb = cx.db.objects[td] as Table ??
                 throw new DBException("42131", "" + td).Mix();
@@ -6456,13 +6451,13 @@ namespace Pyrrho.Level4
         public long logCol => (long)(mem[LogCol] ?? -1L);
         public long logRow => (long)(mem[LogRow] ?? -1L);
         public LogRowColRowSet(long dp, Context cx, long r, long c)
-        : base(dp, _Mem(cx, dp, c) + (LogRow, r) + (LogCol, c))
+        : base(dp, _Mem(cx, c) + (LogRow, r) + (LogCol, c))
         {
             cx.Add(this);
         }
         protected LogRowColRowSet(long dp,BTree<long,object>m) :base(dp,m)
         { }
-        static BTree<long,object> _Mem(Context cx, long dp, long cd)
+        static BTree<long,object> _Mem(Context cx, long cd)
         {
             var db = cx.db ?? throw new DBException("42105");
             var tc = db.objects[cd] as TableColumn ??

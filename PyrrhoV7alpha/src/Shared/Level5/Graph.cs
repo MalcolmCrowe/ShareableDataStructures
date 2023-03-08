@@ -199,7 +199,7 @@ namespace Pyrrho.Level5
     {
         internal readonly long uid; 
         internal readonly string id;
-        internal readonly Sqlx kind; // LPAREN node, ARROW/RARROWBASE edge, COLON specifictype, EQL property
+        internal readonly Sqlx kind; // LPAREN node, RPAREN edge, COLON specifictype, EQL property
         internal readonly CTree<string, TypedValue> constraints;
         public TGParam(long dp, string i, Sqlx k,Domain dt, CTree<string, TypedValue> constraints) : base(dt)
         {

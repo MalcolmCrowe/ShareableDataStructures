@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("7 March 2023 Repeatable tests");
+                Console.WriteLine("8 March 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -1247,7 +1247,7 @@ namespace Test
             Act(356, "insert into person values('Joe',date'1976-04-25'),('Mary',date'1992-08-04')");
             Act(357, "insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')");
             CheckResults(25, 2, "select count(*) from friend where leaving='Fred'","[{COUNT:1}]");
-            CheckResults(25, 3, "match (\"Fred\")-[:friend]->(_x)","[{x:'Mary'}]");
+            CheckResults(25, 3, "match (\"Fred\")-[:friend]->(_x)","[{X:'Mary'}]");
             Act(358, "create type product nodetype");
             Act(359, "CREATE (Joe: Customer { \"Name\":'Joe Edwards', Address: '10 Station Rd.'})," +
 "(Joe) -[:Ordered { \"Date\":date'2002-11-22'} ]-> (Ord201: \"Order\") -[:Item { Qty: 5}]->(\"16/8x100\" : WoodScrew : Product)," +

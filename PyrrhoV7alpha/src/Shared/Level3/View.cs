@@ -574,7 +574,7 @@ namespace Pyrrho.Level3
             InstanceRowSet irs = rrs;
             if (usingTableRowSet >= 0)
                 irs = new RestRowSetUsing(cx.GetIid(), cx, this, rrs.defpos,
-                    (TableRowSet)(cx.obs[usingTableRowSet]??throw new DBException("42105")),d);
+                    (TableRowSet)(cx.obs[usingTableRowSet]??throw new DBException("42105")));
             var m = irs.mem;
             var rt = irs.rsTargets;
             var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns

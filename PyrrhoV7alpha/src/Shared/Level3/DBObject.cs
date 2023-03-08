@@ -549,7 +549,7 @@ namespace Pyrrho.Level3
         internal virtual RowSet RowSets(Ident id,Context cx, Domain q, long fm, 
             Grant.Privilege pr=Grant.Privilege.Select,string? a=null)
         {
-            return new TrivialRowSet(id.iix.dp, cx, new TRow(q, cx.values),pr,a);
+            return new TrivialRowSet(id.iix.dp, cx, new TRow(q, cx.values),a);
         }
         /// <summary>
         /// Creates new instances of objects in framing lists.

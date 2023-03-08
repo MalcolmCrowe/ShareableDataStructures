@@ -1185,6 +1185,20 @@ namespace Pyrrho.Level4
             Next();
             TMatch? r = null;
             var b = lxr.val; // The node name: must be TGParam or TChar
+            if (b is TGParam bf)
+            {
+                var fi = bf.id[1..];
+                for (var bb=cx.undefined.First();bb!=null;bb=bb.Next())
+                    if (cx.obs[bb.key()] is SqlValue sv && sv.name==fi)
+                    {
+                        cx.undefined -= sv.defpos;
+                        b = new TGParam(sv.defpos, bf.id, bf.kind, bf.dataType, bf.constraints);
+                        for (var gb = lxr.tgs.First(); gb != null; gb = gb.Next())
+                            if (gb.value()?.id == bf.id)
+                               lxr.tgs += (gb.key(), (TGParam)b);
+                        break;
+                    }
+            }
             TypedValue? a = null;
             if (tok == Sqlx.NODE) // b is TGParam
                 Next();
@@ -1201,7 +1215,7 @@ namespace Pyrrho.Level4
             {
                 Next();
                 a = lxr.val;  // A node or edge type
-                if (r is TNode)
+                if (r is not null)
                     throw new DBException("42000");
                 if (b.ToString().StartsWith('_') && cx.role.dbobjects[a.ToString()] is long p)
                     dt = (NodeType)(cx.db.objects[p] ?? Domain.EdgeType);
@@ -1212,7 +1226,7 @@ namespace Pyrrho.Level4
                 c += ("SPECIFICTYPE", a);
             if (tok == Sqlx.LBRACE)
             {
-                if (r is TNode)
+                if (r is not null)
                     throw new DBException("42000");
                 Next();
                 if (tok != Sqlx.RBRACE)
@@ -7773,6 +7787,12 @@ namespace Pyrrho.Level4
                 Next();
                 var v = ParseSqlValueList(xp);
                 return (SqlValue)cx.Add(new SqlRowArray(lp.dp, cx, xp, v));
+            }
+            if (Match(Sqlx.MATCH))
+            {
+                ParseSqlMatchStatement();
+                var rs = cx.obs[cx.result] as RowSet ?? throw new DBException("42000");
+                return (SqlValue)cx.Add(new SqlValueSelect(cx.GetUid(), cx, rs,xp));
             }
             Mustbe(Sqlx.TABLE);
             return SqlNull.Value; // not reached
