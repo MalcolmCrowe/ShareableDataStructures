@@ -1030,9 +1030,6 @@ namespace Pyrrho.Level4
                 Mustbe(Sqlx.RBRACE);
             }
             ls += ("ID", (SqlValue)cx.Add(new SqlLiteral(b.iix.dp, new TChar(b.ToString()))));
-            for (var lb = ls.First(); lb != null; lb = lb.Next())
-                if (lb.value() is not SqlLiteral)
-                    throw new DBException("42161", "Literal",lb.value()?.name??lb.key());
             var ll = BList<DBObject>.Empty;
             if (ln == null)
             {
@@ -1955,27 +1952,32 @@ namespace Pyrrho.Level4
         }
         NodeType CheckNodeType(NodeType nt,CTree<string,SqlValue>ls)
         {
-            if (cx._Ob(nt.structure) is not Table tb || nt.infos[nt.definer] is not ObInfo ni
-                || cx._Dom(tb) is not Domain od)
-                throw new DBException("42133",nt.name);
+            if (cx._Ob(nt.structure) is not Table tb || nt.infos[nt.definer] is not ObInfo ni)
+                throw new DBException("PE42133",nt.name);
             var nc = (int)ni.names.Count;
+            var ot = tb;
             for (var b = ls?.First(); b != null; b = b.Next())
-                if (!ni.names.Contains(b.key()))
+                if (b.value() is SqlValue sv && sv.name is string n && !ni.names.Contains(n))
                 {
                     var d = cx._Dom(b.value()) ?? Domain.Content;
-                    var pc = new PColumn3(tb, b.key(), nc++, d, "", TNull.Value, "", 
-                        CTree<UpdateAssignment, bool>.Empty,
+                    var pc = new PColumn3(tb, n, nc++, d, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
                     true, GenerationRule.None, cx.db.nextStmt, cx.db.nextPos, cx);
                     tb = (Table)(cx.Add(pc) ?? throw new DBException("42105"));
                 }
-            var dt = cx._Dom(tb)??throw new DBException("42105");
-            if (dt == od)
+            if (tb == ot)
                 return nt;
-            return (NodeType)cx.Add(nt+(Domain.RowType,dt.rowType)+(Domain.Representation,dt.representation));
+            var dm = cx.Add(new Edit(nt, nt.name, cx._Dom(tb)??Domain.Content, 
+                cx.db.nextPos, cx)) ?? throw new DBException("42105");
+            // convert to a NodeType
+            return (NodeType)cx.Add(new NodeType(dm.defpos, dm.mem));
         }
         EdgeType CheckEdgeType(EdgeType et, CTree<string,SqlValue> ls)
         {
-            et = (EdgeType)CheckNodeType(et, ls);
+            var nt = CheckNodeType(et, ls);
+            if (nt != et) // convert to an EdgeType
+                et = (EdgeType)cx.Add(new EdgeType(nt.defpos, nt.mem));
+            if (cx._Ob(et.structure) is not Table)
+                throw new DBException("PE42133", nt.name);
             if (NodeTypeFor(ls["LEAVING"]?.ToString()??"") is long lp && cx._Ob(lp) is NodeType lt
                 && cx._Dom(cx._Ob(et.leavingType)) is Domain el
                 && !lt.EqualOrStrongSubtypeOf(el))
