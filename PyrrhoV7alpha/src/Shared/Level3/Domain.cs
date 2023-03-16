@@ -4621,11 +4621,11 @@ namespace Pyrrho.Level3
         }
         internal static BTree<long,object> _Mem(PType pt)
         {
-            var r = (pt.structure?.mem??BTree<long, object>.Empty) 
+            var r = (pt.dataType.mem??BTree<long, object>.Empty) 
                 + (Kind, Sqlx.TYPE) + (ObInfo.Name,pt.name);
             var dvs = CTree<long, TypedValue>.Empty;
-            var rt = pt.structure?.rowType??BList<long?>.Empty;
-            var rs = pt.structure?.representation??CTree<long, Domain>.Empty;
+            var rt = pt.dataType.rowType??BList<long?>.Empty;
+            var rs = pt.dataType.representation??CTree<long, Domain>.Empty;
             for (var b = rs.First(); b != null; b = b.Next())
             {
                 var c = b.key();
@@ -4635,10 +4635,10 @@ namespace Pyrrho.Level3
             r += (DefaultRowValues, dvs);
             if (pt.under != null)
                 r += (Under, pt.under);
-            else if (pt.structure?.rowType == BList<long?>.Empty)
-                r += (Under, pt.structure);
-            if (pt.structure!=null && pt.under!=null && 
-                Context.Match(pt.structure.rowType,pt.under.rowType))
+            else if (pt.dataType.rowType == BList<long?>.Empty)
+                r += (Under, pt.dataType);
+            if (pt.dataType !=null && pt.under!=null && 
+                Context.Match(pt.dataType.rowType??BList<long?>.Empty,pt.under.rowType))
                 r += (SuperShape, true);
             r += (Display, rt.Length);
             return r;

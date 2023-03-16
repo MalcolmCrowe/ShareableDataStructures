@@ -28,7 +28,6 @@ namespace Pyrrho.Level2
 	internal class PType : Compiled
 	{
         internal Domain? under = null;
-        internal Domain? structure = null; // Care: this.dataType.structure is a tabledefpos!
         internal virtual long defpos => ppos;
         /// <summary>
         /// Constructor: A user-defined type definition from the Parser.
@@ -42,12 +41,10 @@ namespace Pyrrho.Level2
         {
             name = nm.ident;
             dataType += (ObInfo.Name, nm.ident);
-            structure = new Domain(dm.defpos,dm.mem + (Domain.Kind,Sqlx.TABLE) - Domain.Structure);
-            cx.Add(structure);
             var ps = ((Transaction)cx.db).physicals;
-            var pt = (PTable)(ps[dataType.structure] ?? new PTable(nm.ident,structure,cx.db.nextStmt,pp,cx));
+            var pt = (PTable)(ps[dataType.structure] ?? new PTable(nm.ident,dataType,cx.db.nextStmt,pp,cx));
             pt.nodeType = dm.defpos;
-            pt.framing += (Framing.Obs, pt.framing.obs + (structure.defpos, structure));
+            pt.framing += (Framing.Obs, pt.framing.obs + (dataType.defpos,dataType));
             cx.db += (Transaction.Physicals, ps + (pt.ppos, pt));
             under = un;
             framing = Framing.Empty;
@@ -74,13 +71,12 @@ namespace Pyrrho.Level2
         protected PType(PType x, Writer wr) : base(x, wr)
         {
             name = x.name;
-            structure = (Domain?)x.structure?.Fix(wr.cx);
             under = (Domain?)x.under?.Fix(wr.cx);
         }
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (under != null && !Committed(wr, under.defpos)) return under.defpos;
-            for (var b = structure?.rowType.First(); b != null; b = b.Next())
+            for (var b = dataType.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && p <= Transaction.Executables && !Committed(wr, p))
                         return p;
             return -1L;
@@ -89,10 +85,9 @@ namespace Pyrrho.Level2
         {
             if (under != null && tr.physicals[under.defpos] is PType upt)
                 ds += upt.Dependent(tr, ds);
-            if (structure != null)
-                for (var b = structure.representation.First(); b != null; b = b.Next())
-                    if (tr.physicals[b.value().defpos] is PType spt)
-                        ds += spt.Dependent(tr, ds);
+            for (var b = dataType.representation.First(); b != null; b = b.Next())
+                if (tr.physicals[b.value().defpos] is PType spt)
+                    ds += spt.Dependent(tr, ds);
             return ds;
         }
         protected override Physical Relocate(Writer wr)
@@ -151,7 +146,6 @@ namespace Pyrrho.Level2
             if (dt != null)
                 m = m + (Domain.Representation, dt.representation)
                 + (Domain.RowType, dt.rowType);
-            structure = new Domain(dt?.defpos ?? -1L, Sqlx.TABLE, m);
             m = m + (ObInfo.Name, name) + (Domain.Kind, k) + (Domain.Structure, st);
             if (un > 0)
             {
@@ -184,8 +178,6 @@ namespace Pyrrho.Level2
 		public override string ToString() 
 		{
             var r = GetType().Name + " "+ name;
-            if (structure!= null) 
-                r +="["+ DBObject.Uid(dataType.structure)+"]";
             if (under!=null)
                 r += " Under: " + DBObject.Uid(under.defpos);
             return r;
@@ -245,7 +237,7 @@ namespace Pyrrho.Level2
             var oi = new ObInfo(name, priv);
             oi += (ObInfo.SchemaKey, p);
             var ns = BTree<string, long?>.Empty;
-            for (var b = structure?.rowType.First(); b != null; b = b.Next())
+            for (var b = dataType.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long bp && cx.obs[bp] is TableColumn tc)
                     ns += (tc.infos[tc.definer]?.name ?? "??", tc.defpos);
             oi += (ObInfo.Names, ns);

@@ -131,6 +131,10 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.role;
+            if (dataType.infos[ro.defpos] is ObInfo oi)
+                dataType += (DBObject.Infos, dataType.infos + (ro.defpos, oi - ObInfo.Name));
+            if (dataType.name!="")
+                dataType = new Domain(dataType.defpos,dataType.mem- ObInfo.Name); // -= on Domain means something else
             var tb = (name[0] == '(') ? new VirtualTable(this, cx) : new Table(this, cx);
             if (nodeType >= 0)
                 tb += (Table._NodeType, nodeType);

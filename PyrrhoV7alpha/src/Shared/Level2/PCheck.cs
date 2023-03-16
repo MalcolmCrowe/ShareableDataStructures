@@ -244,7 +244,7 @@ namespace Pyrrho.Level2
             cx.Install(ck, p);
             var nc = co.Add(ck, cx.db);
             cx.Install(nc, p);
-            cx.Add(ck.framing);
+    //        cx.Add(ck.framing);
             cx.db += (ck, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

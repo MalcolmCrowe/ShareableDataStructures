@@ -253,7 +253,6 @@ namespace Pyrrho.Level2
             cx.parse = op;
             if (cx.db is Transaction tr && tr.physicals[table.defpos] is Compiled pt)
                 pt.framing = table.framing;
-            cx.Add(table.framing);
             if (cx.db.format < 51)
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

@@ -650,7 +650,7 @@ namespace Pyrrho.Level4
                 return null;
             if (ob is Domain domain)
                 return domain;
-            Add(ob.framing);
+      //      Add(ob.framing);
             return (Domain?)obs[ob.domain] ?? (Domain?)db.objects[ob.domain] ?? Domain.Content;
         }
         internal Domain? _Dom(long dp)
@@ -1859,10 +1859,11 @@ namespace Pyrrho.Level4
             for (var b=oi.First();b!=null;b=b.Next())
             {
                 var k = b.key();
-                var nk = Fix(k);
-                if (k != nk)
+                var ns = (ObInfo)b.value().Fix(this);
+               var nk = Fix(k);
+                if (k != nk || ns!=b.value())
                     ch = true;
-                r += (nk, (ObInfo)b.value().Fix(this));
+                r += (nk, ns);
             }
             return ch? r: oi;
         }

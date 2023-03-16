@@ -74,7 +74,8 @@ namespace Pyrrho.Level3
         /// </summary>
         internal Table(PTable pt,Context cx) :base(pt.ppos, BTree<long, object>.Empty
             +(Definer,pt.definer)+(Owner,pt.owner)+(Infos,pt.infos)
-            +(_Framing,new Framing(cx,pt.nst)+pt.dataType) +(LastChange, pt.ppos)
+            +(_Framing,new Framing(cx, pt.nst) + pt.dataType)
+            +(LastChange, pt.ppos)
             + (_Domain,pt.dataType.defpos)
             +(Triggers, CTree<PTrigger.TrigType, CTree<long, bool>>.Empty)
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
@@ -304,7 +305,8 @@ namespace Pyrrho.Level3
                     for (var c = u.methods.First(); c != null; c = c.Next())
                         if (cx.db.objects[c.key()] is Method me)
                             cx.db += ((Method)me.New(cx.Replace(was, now, me.mem)), cx.db.loadpos);
-            cx.db -= was.defpos;
+            if (was.defpos!=now.defpos)
+                cx.db -= was.defpos;
             cx.db += (ut, cx.db.loadpos);
             cx.db += (r, cx.db.loadpos);
             cx.db += (nt, cx.db.loadpos);
@@ -412,6 +414,7 @@ namespace Pyrrho.Level3
                 sb.Append(" KeyCols: "); sb.Append(keyCols);
             }
             if (triggers.Count!=0) { sb.Append(" Triggers:"); sb.Append(triggers); }
+            if (nodeType>=0) { sb.Append(" NodeType "); sb.Append(Uid(nodeType)); }
             return sb.ToString();
         }
         internal static string ToCamel(string s)

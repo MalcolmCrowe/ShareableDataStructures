@@ -3681,8 +3681,8 @@ namespace Pyrrho.Level4
                 PEdgeType t = (PEdgeType)ph;
                 return new TRow(cx._Dom(res) ?? throw new PEException("PE0425"),
                     Pos(t.ppos),
-                    Pos(t.structure?.rowType[1]??-1L),
-                    Pos(t.structure?.rowType[2]??-1L),
+                    Pos(t.dataType.rowType[1]??-1L),
+                    Pos(t.dataType.rowType[2]??-1L),
                     Pos(t.trans));
             }
         }

@@ -576,7 +576,7 @@ namespace Pyrrho.Level3
         protected override BTree<long, object> _Replace(Context cx, DBObject so, DBObject sv, BTree<long, object>m)
         {
             var r = base._Replace(cx, so, sv,m);
-            var nc = ((SqlValue?)cx.obs[cs])?.Replace(cx, so, sv)?.defpos;
+            var nc = cx.obs[cs]?.Replace(cx, so, sv)?.defpos;
             if (nc != cs && nc!=null)
                 r += (CS, nc);
             return r;
@@ -893,10 +893,10 @@ namespace Pyrrho.Level3
         protected override BTree<long,object> _Replace(Context cx, DBObject so, DBObject sv,BTree<long,object>m)
         {
             var r = base._Replace(cx, so, sv, m);
-            var nb = ((SqlValue?)cx.obs[vbl])?.Replace(cx, so, sv)?.defpos;
+            var nb = cx.obs[vbl]?.Replace(cx, so, sv)?.defpos;
             if (nb != vbl && nb!=null)
                 r += (Vbl, nb);
-            var na = ((SqlValue?)cx.obs[val])?.Replace(cx, so, sv)?.defpos;
+            var na = cx.obs[val]?.Replace(cx, so, sv)?.defpos;
             if (na != val && na!=null)
                 r += (Val, na);  
             return r;

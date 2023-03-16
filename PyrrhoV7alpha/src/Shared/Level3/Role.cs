@@ -177,6 +177,10 @@ namespace Pyrrho.Level3
                 return oi;
             return new ObInfo(oi.mem + x);
         }
+        public static ObInfo operator-(ObInfo oi,long p)
+        {
+            return new ObInfo(oi.mem - p);
+        }
         public static ObInfo operator +(ObInfo d, PMetadata pm)
         {
             d += (_Metadata, pm.Metadata());

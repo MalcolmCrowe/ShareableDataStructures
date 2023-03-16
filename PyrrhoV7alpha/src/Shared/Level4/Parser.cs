@@ -1008,8 +1008,9 @@ namespace Pyrrho.Level4
                 else
                 {
                     var l0 = BTree<string, SqlValue>.Empty;
-                    var wt = (dt is EdgeType) ? BuildEdgeType(c, l0, (dt.defpos < 0) ? -1L : dt.structure)
-                                        : BuildNodeType(c, l0, (dt.defpos < 0) ? -1L : dt.structure);
+                    var wt = (dt is EdgeType) ? 
+                        BuildEdgeType(c, l0, Domain.TypeSpec, (dt.defpos < 0) ? -1L : dt.structure)
+                      : BuildNodeType(c, l0, Domain.TypeSpec, (dt.defpos < 0) ? -1L : dt.structure);
                     dt = (NodeType)(cx.Add(wt) ??
                         throw new PEException("PE91210"));
                     cx.db += (Database.NextStmt, cx.db.nextStmt + 1);
@@ -1038,7 +1039,7 @@ namespace Pyrrho.Level4
                 if (cx.role.dbobjects[a.ident] is long np && cx._Ob(np) is NodeType nodetype)
                     nt = CheckNodeType(nodetype, ls);
                 else // create a new NodeType
-                    nt = BuildNodeType(a, ls, (dt.defpos < 0) ? -1L : dt.structure); // dt is supertype
+                    nt = BuildNodeType(a, ls, Domain.TypeSpec, (dt.defpos < 0) ? -1L : dt.structure); // dt is supertype
                 var t = new TableRowSet(cx.GetUid(), cx, nt.structure);
                 cx.Add(t);
                 var dm = cx._Dom(t) ?? throw new DBException("42105");
@@ -1078,7 +1079,7 @@ namespace Pyrrho.Level4
             if (cx.role.dbobjects[a.ident] is long p && cx._Ob(p) is EdgeType edgetype)
                 et = CheckEdgeType(edgetype, ls);
             else // create a new EdgeType
-                et = BuildEdgeType(a, ls, (dt.defpos < 0) ? -1L : dt.structure);
+                et = BuildEdgeType(a, ls, Domain.TypeSpec, (dt.defpos < 0) ? -1L : dt.structure);
             var ts = new TableRowSet(cx.GetUid(), cx, et.structure);
             cx.Add(ts);
             var de = cx._Dom(et) ?? throw new DBException("42105");
@@ -1598,7 +1599,7 @@ namespace Pyrrho.Level4
                 if (udm is UDType)
                     under = (UDType)udm;
                 else
-                    under = (UDType)(dt.New(-1L,udm.mem));
+                    under = (UDType)(dt.New(-1L, udm.mem));
             }
             if (tok == Sqlx.AS)
             {
@@ -1622,9 +1623,9 @@ namespace Pyrrho.Level4
             var tp = cx.db.nextPos;
             UDType ut;
             if (under is EdgeType)
-                ut = BuildEdgeType(typename, BTree<string, SqlValue>.Empty, under.structure);
+                ut = BuildEdgeType(typename, BTree<string, SqlValue>.Empty, dt, under.structure);
             else if (under is NodeType)
-                ut = BuildNodeType(typename, BTree<string, SqlValue>.Empty, under.structure);
+                ut = BuildNodeType(typename, BTree<string, SqlValue>.Empty, dt, under.structure);
             else
             {
                 PType pt = new (typename, dt, under, tp, cx);
@@ -1660,7 +1661,7 @@ namespace Pyrrho.Level4
                 if (m.Contains(Sqlx.NODETYPE) && ut is not NodeType)
                 {
                     ls += ("ID", (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), TNull.Value, Domain.Char)));
-                    BuildNodeType(typename, ls, dt.structure, false);
+                    BuildNodeType(typename, ls, Domain.TypeSpec, dt.structure, false);
                     RemovePType(typename.ident);
                 }
                 else if (m.Contains(Sqlx.EDGETYPE) && ut is not NodeType) // or EdgeType
@@ -1670,7 +1671,7 @@ namespace Pyrrho.Level4
                     ls += ("ARRIVING", (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), TNull.Value, Domain.Char)));
                     var ln = (TChar)(m[Sqlx.ARROWBASE] ?? throw new PEException("PE92410"));
                     var an = (TChar)(m[Sqlx.ARROW] ?? throw new PEException("PE92411"));
-                    cx.Add(BuildEdgeType(typename, ls, dt.structure, false) +(EdgeType.LeavingType,ln)+(EdgeType.ArrivingType,an));
+                    cx.Add(BuildEdgeType(typename, ls, Domain.TypeSpec, dt.structure, false) +(EdgeType.LeavingType,ln)+(EdgeType.ArrivingType,an));
                     RemovePType(typename.ident);
                 }
                 else if (m != CTree<Sqlx, TypedValue>.Empty)
@@ -1709,10 +1710,13 @@ namespace Pyrrho.Level4
         /// <param name="pp">The new structure position: we promise a new PTable for this</param>
         /// <param name="typename">The new node type name</param>
         /// <param name="ls">The properties from an inline document, or default values</param>
-        /// <param name="st">The structure of the supertype (or -1L)</param>
+        /// <param name="cs">Properties from a type clause</param>
+        /// <param name="up">The supertype table (or -1L)</param>
+        /// <param name="check">Raise 42014 if we have an existing type with this name</param>
         /// <returns>The new node type: we promise a new PNodeType for this</returns>
         /// <exception cref="DBException"></exception>
-        NodeType BuildNodeType(Ident typename, BTree<string, SqlValue> ls, long up, bool check=true)
+        NodeType BuildNodeType(Ident typename, BTree<string, SqlValue> ls, UDType cs, 
+            long up, bool check=true)
         {
             var un = BTree<string, long?>.Empty; // existing properties from supertype
             Domain? ud = null;
@@ -1743,8 +1747,8 @@ namespace Pyrrho.Level4
             else
                 st = (Table)(cx.db.objects[pt.defpos]?? throw new DBException("42105"));
              cx.Add(st);
-            var rt = BList<long?>.Empty;
-            var rs = CTree<long, Domain>.Empty;
+            var rt = cs.rowType;
+            var rs = cs.representation;
             var sr = BList<long?>.Empty;
             var ss = CTree<long, Domain>.Empty;
             var sn = BTree<string, long?>.Empty; // properties we are adding
@@ -1802,8 +1806,10 @@ namespace Pyrrho.Level4
             cx.Add(nt);
             if (up < 0) // suppress UNDER in this case
                 ud = null;
+            var cns = cs.infos[cx.role.defpos]?.names ?? BTree<string, long?>.Empty;
             nt = (NodeType)(cx.Add(new PNodeType(typename,nt, ut, cx.db.nextPos, cx)) ?? throw new DBException("42105"));
-            nt += (DBObject.Infos, new BTree<long,ObInfo>(cx.role.defpos,new ObInfo(tn.ident, Grant.Privilege.Usage)));
+            nt += (DBObject.Infos, new BTree<long,ObInfo>(cx.role.defpos,new ObInfo(tn.ident, Grant.Privilege.Usage)
+                +(ObInfo.Names,sn+cns)));
             var dl = cx.db.loadpos;
             var ro = cx.role + (Role.DBObjects, cx.role.dbobjects + (tn.ident + ":", st.defpos) + (tn.ident, nt.defpos));
             cx.db = cx.db + (nt, dl) + (st, dl) + (ro, dl);
@@ -1820,10 +1826,13 @@ namespace Pyrrho.Level4
         /// <param name="pp">The new structure position: we promise a new PTable for this</param>
         /// <param name="typename">The new edge type name</param>
         /// <param name="ls">The properties from an inline document, or default values</param>
-        /// <param name="st">The structure of the supertype (or -1L)</param>
+        /// <param name="cs">Properties from a type clause</param>
+        /// <param name="up">The table for the supertype (or -1L)</param>
+        /// <param name="check">Raise 42014 on conflict with existing object type</param>
         /// <returns>The new edge type: we promise a new PEdgeType for this</returns>
         /// <exception cref="DBException"></exception>
-        EdgeType BuildEdgeType(Ident typename,BTree<string,SqlValue> ls,long up,bool check=true)
+        EdgeType BuildEdgeType(Ident typename,BTree<string,SqlValue> ls,UDType cs,
+            long up,bool check=true)
         {
             var un = BTree<string, long?>.Empty; // existing properties from supertype
             Domain? ud = null;
@@ -1844,8 +1853,8 @@ namespace Pyrrho.Level4
             var st = (Table)((cx.Add(pt) ?? throw new DBException("42105"))
                 ?? throw new DBException("42000"));
             cx.Add(st);
-            var rt = BList<long?>.Empty;
-            var rs = CTree<long, Domain>.Empty;
+            var rt = cs.rowType;
+            var rs = cs.representation;
             var sr = BList<long?>.Empty;
             var ss = CTree<long, Domain>.Empty;
             var sn = BTree<string, long?>.Empty; // properties we are adding
@@ -1939,7 +1948,9 @@ namespace Pyrrho.Level4
                 et += (EdgeType.ArrivingType, an.dataType.defpos);
             cx.Add(et);
             et = (EdgeType)(cx.Add(new PEdgeType(typename, et, ud, cx.db.nextPos, cx)) ?? throw new DBException("42105"));
-            et += (DBObject.Infos, new BTree<long,ObInfo>(cx.role.defpos,new ObInfo(tn.ident, Grant.Privilege.Usage)));
+            var cns = cs.infos[cx.role.defpos]?.names ?? BTree<string, long?>.Empty;
+            et += (DBObject.Infos, new BTree<long,ObInfo>(cx.role.defpos,new ObInfo(tn.ident, Grant.Privilege.Usage)
+                +(ObInfo.Names,sn+cns)));
             var dl = cx.db.loadpos;
             var ro = cx.role + (Role.DBObjects, cx.role.dbobjects + (tn.ident + ":", st.defpos) + (tn.ident, et.defpos));
             cx.db = cx.db + (et, dl) + (st, dl) + (ro,dl);
@@ -1985,7 +1996,7 @@ namespace Pyrrho.Level4
                 var pp = cx.db.nextPos;
                 var pi = new Ident(pp.ToString() + ":", new Iix(pp));
                 var xt = (Domain)cx.Add(et + (EdgeType.LeavingType, 
-                    BuildNodeType(pi, CTree<string,SqlValue>.Empty,el.structure).defpos));
+                    BuildNodeType(pi, CTree<string,SqlValue>.Empty, Domain.TypeSpec, el.structure).defpos));
                 cx.Add(xt);
      //           cx.Add(new EditType(new Ident(lt.name,new Iix(lt.defpos)),lt,el,xt,cx.db.nextPos,cx));
             }
@@ -1996,7 +2007,7 @@ namespace Pyrrho.Level4
                 var pp = cx.db.nextPos;
                 var pi = new Ident(pp.ToString() + ":", new Iix(pp));
                 var xt = (Domain)cx.Add(et + (EdgeType.LeavingType, 
-                    BuildNodeType(pi, CTree<string,SqlValue>.Empty, ea.structure).defpos));
+                    BuildNodeType(pi, CTree<string,SqlValue>.Empty, Domain.TypeSpec, ea.structure).defpos));
                 cx.Add(xt);
      //           cx.Add(new EditType(new Ident(at.name, new Iix(at.defpos)), at, ea, xt, cx.db.nextPos, cx));
             }
@@ -4774,6 +4785,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.ID);
             tb = cx.GetObject(o.ident) as Table??
                 throw new DBException("42107", o).Mix();
+            cx.Add(tb.framing);
             var op = cx.parse;
             cx.parse = ExecuteStatus.Compile;
             ParseAlterTableOps(tb);

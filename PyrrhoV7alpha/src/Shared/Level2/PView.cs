@@ -283,7 +283,7 @@ namespace Pyrrho.Level2
             cx._Add(rv);
             cx.db = cx.db + (ro, p) + (rv, p) + (vt,p);
             cx.Install(rv, p);
-            cx.Add(rv.framing);
+       //     cx.Add(rv.framing);
             return rv;
         }
         public override string ToString()

@@ -2998,10 +2998,6 @@ namespace Pyrrho.Level3
         public SqlRow(long dp, Context cx, BList<DBObject> vs, BTree<long, object>? m = null)
             : base(dp, _Mem(cx,vs,m) + _Deps(vs))
         { }
-        internal SqlRow(long dp, Domain dm, BList<DBObject> vs) : base(dp, _Mem(dm, vs)) { }
-        internal SqlRow(Context cx, Table tb, long dp)
-            : base(cx.GetUid(), _Mem(dp,cx,tb)+(Dependents,new CTree<long,bool>(tb.defpos,true)))
-        { }
         public SqlRow(long dp, Context cx, Domain xp, BList<long?> vs, BTree<long, object>? m = null)
             : base(dp, _Inf(cx, m, xp, vs) + _Deps(cx,vs))
         { }
@@ -3015,40 +3011,6 @@ namespace Pyrrho.Level3
                 m += (ob.defpos, ob);
             }
             return m;
-        }
-        static BTree<long,object> _Mem(Domain dm,BList<DBObject> vs)
-        {
-            var r = new BTree<long, object>(_Domain, dm.defpos);
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && vs[b.key()] is SqlValue v)
-                    r += (p, v);
-            return r;
-        }
-        /// <summary>
-        /// Annoyingly, a tablerow reference needs to be instanced
-        /// </summary>
-        /// <param name="dp">the defpos of the Record in the table</param>
-        /// <param name="cx"></param>
-        /// <param name="nt">the node type</param>
-        /// <returns></returns>
-        /// <exception cref="PEException"></exception>
-        static BTree<long, object> _Mem(long dp, Context cx, Table tb)
-        {
-            var r = BTree<long, object>.Empty;
-            var tr = tb.tableRows[dp] ?? throw new PEException("PE917456");
-            var td = cx._Dom(tb) ?? throw new PEException("PE917457");
-            var sl = BList<DBObject>.Empty;
-            for (var b = td.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p)
-                {
-                    var v = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), tr.vals[p] ?? TNull.Value));
-                    sl += v;
-                    r += (p, v);
-                }
-            var dm = (Domain)cx.Add(new Domain(cx.GetUid(), cx, Sqlx.ROW, sl));
-            r += (_Domain, dm.defpos);
-            r += (_Depth, 2);
-            return r;
         }
         protected static BTree<long, object> _Inf(Context cx, BTree<long, object>? m,
     Domain xp, BList<long?> vs)
@@ -3589,10 +3551,10 @@ namespace Pyrrho.Level3
             for (var b = rows.First(); b != null && isConst; b = b.Next())
                 if (b.value() is long p)
                 {
-                    var v = cx.obs[p] ?? throw new DBException("42000");
+                    var v = cx.obs[p] ?? throw new DBException("42000",dp);
                     isConst = (v as SqlValue)?.isConstant(cx) == true;
                     var x = v.Eval(cx);
-                    var y = x.ToArray() ?? throw new DBException("42000");
+                    var y = x.ToArray() ?? throw new DBException("42000",dp);
                     rs += (v.defpos, new TRow(xp, y));
                 }
             if (isConst)
@@ -7090,7 +7052,7 @@ namespace Pyrrho.Level3
                             case Sqlx.CAST:
                             case Sqlx.XMLCAST:
                                 if (cx._Dom(this) is not Domain dm)
-                                    throw new DBException("42000");
+                                    throw new DBException("42000",kind);
                                 sb.Append(kind); sb.Append('(');
                                 sb.Append(vl); sb.Append(" as ");
                                 sb.Append(dm.name); sb.Append(')');
