@@ -42,7 +42,10 @@ namespace Pyrrho.Level2
         /// <param name="curpos">The current position in the datafile</param>
         public PTable(string nm,Domain d, long nst, long pp, Context cx)
             : this(Type.PTable, nm, d, nst, pp, cx)
-        { }
+        {
+            if (nm.Contains("::"))
+                ;
+        }
         /// <summary>
         /// Constructor: a Table definition from the Parser.
         /// We assume that code for framing has not yet been parsed
@@ -53,7 +56,10 @@ namespace Pyrrho.Level2
         /// <param name="curpos">The current position in the datafile</param>
         protected PTable(Type t, string nm, Domain d, long nst, long pp, Context cx)
             : base(t, pp, cx, nm, d, nst)
-        { } 
+        {
+            if (nm.Contains("::"))
+                ;
+        } 
         /// <summary>
         /// Constructor: a Table definition from the buffer
         /// </summary>
@@ -75,6 +81,9 @@ namespace Pyrrho.Level2
 		protected PTable(Type t, Reader rdr) : base(t,rdr) {}
         protected PTable(PTable x, Writer wr) : base(x, wr)
         {
+            name = wr.cx.NewNode(wr.Length, x.name.Trim(':'));
+            if (x.name.EndsWith(':'))
+                name += ':';
             nodeType = wr.cx.Fix(x.nodeType);
             rowiri = x.rowiri;
         }

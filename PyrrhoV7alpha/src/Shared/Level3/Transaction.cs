@@ -188,6 +188,7 @@ namespace Pyrrho.Level3
                 throw new PEException("PE0100");
             var rdr = new Reader(new Context(db), loadpos);
             var wr = new Writer(new Context(db), df);
+            wr.cx.newnodes = cx.newnodes;
             wr.cx.nextHeap = cx.nextHeap; // preserve Compiled objects framing
             var tb = physicals.First(); // start of the work we want to commit
             var since = rdr.GetAll();
@@ -305,6 +306,7 @@ namespace Pyrrho.Level3
                 df.Flush();
                 wr.cx.db += (LastModified, File.GetLastWriteTimeUtc(name));
                 wr.cx.result = -1L;
+                cx.newnodes += wr.cx.newnodes; 
                 var r = new Database(wr.Length,wr.cx.db.mem);
                 lock (_lock)
                     databases += (name, r-Role-User);

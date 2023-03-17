@@ -102,7 +102,7 @@ namespace Pyrrho.Level3
             off = x.off;
             count = x.count;
         }
-        internal MTree(MTree x,MTree? y)
+ /*       internal MTree(MTree x,MTree? y)
         {
             impl = new SqlTree(Domain.Char, Sqlx.INT, 
                 ((x.impl??CTree<TypedValue,TypedValue>.Empty) + 
@@ -111,7 +111,7 @@ namespace Pyrrho.Level3
             nullsAndDuplicates = x.nullsAndDuplicates;
             off = x.off;
             count = x.count + (y?.count??0);
-        }
+        } */
         /// <summary>
         /// Constructor: implementation of add, update etc
         /// </summary>

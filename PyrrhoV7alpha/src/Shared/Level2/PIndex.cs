@@ -138,7 +138,9 @@ namespace Pyrrho.Level2
         public PIndex(Type t, Reader rdr) : base(t, rdr) { }
         protected PIndex(PIndex x, Writer wr) : base(x, wr)
         {
-            name = x.name;
+            name = wr.cx.NewNode(wr.Length, x.name.Trim(':'));
+            if (x.name.EndsWith(':'))
+                name += ':';
             tabledefpos = wr.cx.Fix(x.tabledefpos);
             var bs = BList<DBObject>.Empty;
             for (var b = x.columns.First(); b != null; b = b.Next())

@@ -121,7 +121,8 @@ namespace Pyrrho.Level4
         internal CTree<long, bool> rdC = CTree<long, bool>.Empty; // read TableColumns defpos
         internal CTree<long, CTree<long, bool>> rdS = CTree<long, CTree<long, bool>>.Empty; // specific read TableRow defpos
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
-        internal CTree<TGParam,TypedValue> binding = CTree<TGParam,TypedValue>.Empty; 
+        internal CTree<TGParam,TypedValue> binding = CTree<TGParam,TypedValue>.Empty;
+        internal BTree<long, long?> newnodes = BTree<long, long?>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
         /// We only send versioned information if 
@@ -359,6 +360,20 @@ namespace Pyrrho.Level4
                 ExecuteStatus.Parse or ExecuteStatus.Compile => db.nextStmt - 1,
                 _ => nextHeap - 1,
             };
+        }
+        internal string NewNode(long pp,string v)
+        {
+            if (long.TryParse(v, out var c) && c >= Transaction.TransPos)
+            {
+                if (newnodes[c] is long q)
+                    return q.ToString();
+                else
+                {
+                    newnodes += (c, pp);
+                    return pp.ToString();
+                }
+            }
+            return v;
         }
         internal int Depth(BList<long?> os, BList<DBObject?> ps)
         {

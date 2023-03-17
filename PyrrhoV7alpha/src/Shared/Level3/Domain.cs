@@ -4810,6 +4810,16 @@ namespace Pyrrho.Level3
                 sb.Append(' ');
                 sb.Append(b.value());
             }
+            if (subtypes!=CTree<long,bool>.Empty)
+            {
+                sb.Append(" Subtypes [");cm = "";
+                for (var b=subtypes.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key()));
+                }
+                sb.Append(']');
+            }
             return sb.ToString();
         }
     }

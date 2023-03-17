@@ -1223,7 +1223,7 @@ namespace Pyrrho.Level4
                 Next();
             }
             var c = CTree<string, TypedValue>.Empty;
-            if (a != null)
+            if (a != null && a != TNull.Value)
                 c += ("SPECIFICTYPE", a);
             if (tok == Sqlx.LBRACE)
             {
@@ -1734,7 +1734,10 @@ namespace Pyrrho.Level4
                         un += (s, p);
             }
             var nst = cx.db.nextStmt;
-            var tn = new Ident(typename.ident + ":", typename.iix);
+            var tl = typename.ident;
+            if (!tl.EndsWith(':'))
+                tl += ":";
+            var tn = new Ident(tl, typename.iix);
             Table st;
             var pt = FindPTable(tn.ident);
             if (pt == null)

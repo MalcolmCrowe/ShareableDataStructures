@@ -287,8 +287,9 @@ namespace Pyrrho.Level3
                                             x += (Index.Keys,x.keys.Replaced(cx));
                                             if (x.rows != null)
                                                 x += (Index.Tree, new MTree(cx, x.rows));
-                                            if (x.rows != null)
-                                                y += (Index.Tree, new MTree(x.rows, y.rows));
+                                            for (var h = x.rows?.First(); h != null; h = h.Next())
+                                                if (h.Value() is long p)
+                                                    y += (h.key(), p);
                                             cx.db += (x, cx.db.loadpos);
                                             cx.db += (y, cx.db.loadpos);
                                         }

@@ -118,9 +118,9 @@ namespace Pyrrho.Level2
             for (var b = x.fields.PositionAt(0); b != null; b = b.Next())
             {
                 var v = b.value();
-                if (x.nodeOrEdge && v is TChar t && long.TryParse(t.value, out var c)
-                    && c>=Transaction.TransPos)
-                    v = new TChar(ppos.ToString());
+                if (x.nodeOrEdge && v is TChar t && wr.cx.NewNode(ppos, t.value) is string w
+                    && t.value != w)
+                    v = new TChar(w);
                 fields += (wr.cx.Fix(b.key()), v);
             }
         }

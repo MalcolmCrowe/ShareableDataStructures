@@ -41,7 +41,7 @@ namespace Pyrrho.Level2
             if (cx.db != null)
             {
                 if (!cx.db.types.Contains(old))
-                    throw new DBException("42000");
+                    throw new DBException("42000",nm);
                 _defpos = cx.db.types[old] ?? -1L;
             }
             prev = old;
@@ -143,17 +143,19 @@ namespace Pyrrho.Level2
         /// Constructor: an Edit request from the Parser.
         /// Changes should propagate down to subtypes and up to supertype (TBD)
         /// </summary>
-        /// <param name="old">The previous version of the Domain</param>
         /// <param name="nm">The (new) name</param>
+        /// <param name="old">The previous version of the Domain</param>
         /// <param name="sd">The (new) structure definition</param>
-        /// <param name="pb">The local database</param>
+        /// <param name="un">The UNDER domain if any</param>
+        /// <param name="pp">The ppos for this log record</param>
         public EditType(Ident nm, UDType old, Domain sd, Domain? un, long pp, Context cx)
-            : base(Type.EditType, nm, (UDType)(old.New(old.defpos,sd.mem)), un, pp, cx)
+            : base(Type.EditType, nm, 
+                  (UDType)(old.New(old.defpos,sd.mem + (Domain.Structure,old.structure))), un, pp, cx)
         {
             if (cx.db != null)
             {
                 if (!cx.db.types.Contains(old))
-                    throw new DBException("42000");
+                    throw new DBException("42000",nm.iix.dp);
                 _defpos = cx.db.types[old] ?? -1L;
             }
             prev = old;
@@ -192,6 +194,7 @@ namespace Pyrrho.Level2
         {
             _defpos = rdr.GetLong();
             _prev = rdr.Prev(_defpos) ?? _defpos;
+            prev = (Domain)(rdr.context._Ob(_prev)??Domain.Content);
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -249,30 +252,24 @@ namespace Pyrrho.Level2
         }
         internal override DBObject Install(Context cx, long p)
         {
-            var r = base.Install(cx, p);
-            if (under!=null)
+            var r = (Domain)base.Install(cx, p);
+            if (under != null)
             {
                 dataType += (UDType.Under, under);
                 if (under is UDType du)
-                    cx.db += (dataType + (UDType.Subtypes, du.subtypes + (r.defpos, true)),cx.db.loadpos);
+                    cx.db += (dataType + (UDType.Subtypes, du.subtypes + (r.defpos, true)), cx.db.loadpos);
                 cx.Add(under);
-                cx.obs += (dataType.defpos,dataType);
+                cx.obs += (dataType.defpos, dataType);
             }
-            if (dataType is NodeType ot && under is NodeType nt
-                && cx.db.objects[ot.structure] is Table st 
-                && ot.rowType[0] is long ip && cx.db.objects[ip] is TableColumn was
-                && nt.rowType[0] is long np && cx.db.objects[np] is TableColumn now)
+            var n = (under is EdgeType) ? 3 : 1;
+            for (var i = 0; i < n; i++)
+                if (prev is NodeType ot && under is NodeType nt
+                    && cx.db.objects[ot.structure] is Table st
+                    && ot.rowType[i] is long ip && cx.db.objects[ip] is TableColumn was
+                    && nt.rowType[i] is long np && cx.db.objects[np] is TableColumn now)
                     cx.db = st.MergeColumn(cx, was, now);
-            if (dataType is EdgeType et && under is EdgeType ft
-    && cx.db.objects[et.structure] is Table tt
-    && et.rowType[1] is long jp && cx.db.objects[jp] is TableColumn wat
-    && ft.rowType[1] is long op && cx.db.objects[op] is TableColumn nov)
-                cx.db = tt.MergeColumn(cx, wat, nov);
-            if (dataType is EdgeType gt && under is EdgeType ht
-    && cx.db.objects[gt.structure] is Table ut
-    && gt.rowType[2] is long kp && cx.db.objects[kp] is TableColumn wau
-    && ht.rowType[3] is long pp && cx.db.objects[pp] is TableColumn nox)
-                cx.db = ut.MergeColumn(cx, wau, nox);
+            r = (Domain)(cx.db.objects[r.defpos] ?? r);
+            cx.db += (r.defpos, r, cx.db.loadpos);
             return r;
         }
     }

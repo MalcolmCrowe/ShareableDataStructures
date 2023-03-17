@@ -70,8 +70,10 @@ namespace Pyrrho.Level2
         { }
         protected PType(PType x, Writer wr) : base(x, wr)
         {
-            name = x.name;
-            under = (Domain?)x.under?.Fix(wr.cx);
+            name = wr.cx.NewNode(wr.Length,x.name.Trim(':'));
+            if (x.name.EndsWith(':'))
+                name += ':';
+            under = (UDType?)x.under?.Fix(wr.cx);
         }
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -142,18 +144,35 @@ namespace Pyrrho.Level2
                 rdr.context.Add(ts);
                 rdr.context.db += (ts, rdr.context.db.loadpos);
             }
-            var dt = rdr.context._Dom(ts);
-            if (dt != null)
+            var dt = rdr.context._Dom(ts)??Domain.Content;
+            var ns = BTree<string,(int,long?)>.Empty;
                 m = m + (Domain.Representation, dt.representation)
                 + (Domain.RowType, dt.rowType);
+                for (var b = dt.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p && rdr.context.NameFor(p) is string n)
+                        ns += (n, (b.key(),p));
             m = m + (ObInfo.Name, name) + (Domain.Kind, k) + (Domain.Structure, st);
             if (un > 0)
-            {
-                under = (Domain)(rdr.context.db.objects[un] ?? Domain.Null);
-                var nrt = under.rowType;
-                for (var b = dt?.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p)
-                        nrt += p;
+            { // it can happen that under is more recent than dt (EditType), so be careful
+                under = (UDType)(rdr.context.db.objects[un] ?? Domain.TypeSpec);
+                for (var b = under.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p && rdr.context.NameFor(p) is string n)
+                    {
+                        if (ns.Contains(n))
+                        {
+                            var (i, iq) = ns[n];
+                            if (iq == null || p > iq)
+                                ns += (n, (i, p));
+                        }
+                        else
+                            ns += (n, ((int)ns.Count, p));
+                    }
+                var tr = BTree<int, long?>.Empty;
+                for (var b = ns.First(); b != null; b = b.Next())
+                    tr += b.value();
+                var nrt = BList<long?>.Empty;
+                for (var b = tr.First();b!=null;b=b.Next())
+                    nrt += b.value();
                 if (dt != null)
                     m += (Domain.Representation, dt.representation + under.representation);
                 m += (Domain.RowType, nrt);
