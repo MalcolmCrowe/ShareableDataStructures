@@ -5,6 +5,7 @@ using Pyrrho.Level5;
 using System.ComponentModel.Design;
 using System.Globalization;
 using System.Runtime.InteropServices;
+using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -98,27 +99,21 @@ namespace Pyrrho.Level4
         internal Iix LexPos()
         {
             var lp = lxr.Position;
-            switch (cx.parse)
+            return cx.parse switch
             {
-                case ExecuteStatus.Obey:
-                    return cx.Ix(lp, lp);
-                case ExecuteStatus.Prepare:
-                    return new Iix(lp,cx,cx.nextHeap++);
-                default:
-                    return new Iix(lp, cx, cx.GetUid());
-            }
+                ExecuteStatus.Obey => cx.Ix(lp, lp),
+                ExecuteStatus.Prepare => new Iix(lp, cx, cx.nextHeap++),
+                _ => new Iix(lp, cx, cx.GetUid()),
+            };
         }
         internal long LexDp()
         {
-            switch (cx.parse)
+            return cx.parse switch
             {
-                case ExecuteStatus.Obey:
-                    return lxr.Position;
-                case ExecuteStatus.Prepare:
-                    return cx.nextHeap++;
-                default:
-                    return cx.GetUid();
-            }
+                ExecuteStatus.Obey => lxr.Position,
+                ExecuteStatus.Prepare => cx.nextHeap++,
+                _ => cx.GetUid(),
+            };
         }
         /// <summary>
         /// Move to the next token
@@ -408,6 +403,7 @@ namespace Pyrrho.Level4
                     ?? throw new DBException("42135", nm.ToString());
                 if (cx.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
                     cx.Add(new Clearance(usr.defpos, lv, tr.nextPos));
+                return;
             }
             else if (Match(Sqlx.PASSWORD))
             {
@@ -428,20 +424,18 @@ namespace Pyrrho.Level4
                         throw new DBException("42135", rid);
                 }
                 Mustbe(Sqlx.TO);
-                var grantees = ParseGranteeList(Array.Empty<PrivNames>());
+                var grantees = ParseGranteeList(BList<PrivNames>.Empty);
                 if (cx.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
                 {
                     var irolepos = -1L;
                     if (irole != null && irole.name!=null)
                     {
-                        tr.AccessRole(cx,true, new string[] { irole.name }, grantees, false);
+                        tr.AccessRole(cx,true, new CList<string> ( irole.name ), grantees, false);
                         irolepos = irole.defpos;
                     }
-                    for (var i = 0; i < grantees.Length; i++)
-                    {
-                        var us = grantees[i];
+                    for (var b=grantees.First();b!=null;b=b.Next())
+                        if (b.value() is DBObject us)
                         cx.Add(new Authenticate(us.defpos, pwd.ToString(), irolepos,tr.nextPos));
-                    }
                 }
             }
             Match(Sqlx.OWNER, Sqlx.USAGE);
@@ -461,7 +455,7 @@ namespace Pyrrho.Level4
             {
                 var roles = ParseRoleNameList();
                 Mustbe(Sqlx.TO);
-                var grantees = ParseGranteeList(new PrivNames[] { new PrivNames(Sqlx.USAGE) });
+                var grantees = ParseGranteeList(new BList<PrivNames>( new PrivNames(Sqlx.USAGE) ));
                 bool opt = ParseAdminOption();
                 if (cx.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
                     tr.AccessRole(cx,true, roles, grantees, opt);
@@ -578,22 +572,22 @@ namespace Pyrrho.Level4
 		/// ObjectPrivileges = ALL PRIVILEGES | Action { ',' Action } .
         /// </summary>
         /// <returns>The list of privileges</returns>
-		PrivNames[] ParsePrivileges()
+		BList<PrivNames> ParsePrivileges()
         {
-            var r = new List<PrivNames>();
+            var r = BList<PrivNames>.Empty;
             if (tok == Sqlx.ALL)
             {
                 Next();
                 Mustbe(Sqlx.PRIVILEGES);
-                return Array.Empty<PrivNames>();
+                return r;
             }
-            r.Add(ParsePrivilege());
+            r+=ParsePrivilege();
             while (tok == Sqlx.COMMA)
             {
                 Next();
-                r.Add(ParsePrivilege());
+                r+=ParsePrivilege();
             }
-            return r.ToArray();
+            return r;
         }
         /// <summary>
 		/// Action = 	SELECT [ '(' id { ',' id } ')' ]
@@ -632,18 +626,15 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="priv">the list of privieges to grant</param>
         /// <returns>the updated database objects</returns>
-		DBObject[] ParseGranteeList(PrivNames[] priv)
+		BList<DBObject> ParseGranteeList(BList<PrivNames> priv)
         {
-            var r = new List<DBObject>
-            {
-                ParseGrantee(priv)
-            };
+            var r = new BList<DBObject>(ParseGrantee(priv));
             while (tok == Sqlx.COMMA)
             {
                 Next();
-                r.Add(ParseGrantee(priv));
+                r+=ParseGrantee(priv);
             }
-            return r.ToArray();
+            return r;
         }
         /// <summary>
         /// helper for non-reserved words
@@ -663,7 +654,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="priv">the list of privileges</param>
         /// <returns>the updated grantee</returns>
-		DBObject ParseGrantee(PrivNames[] priv)
+		DBObject ParseGrantee(BList<PrivNames> priv)
         {
             Sqlx kind = Sqlx.USER;
             if (Match(Sqlx.PUBLIC))
@@ -703,7 +694,7 @@ namespace Pyrrho.Level4
                     break;
                 default: throw new DBException("28101").Mix();
             }
-            if (ob == SqlNull.Value && (priv == null || priv.Length != 1 || priv[0].priv != Sqlx.OWNER))
+            if (ob == SqlNull.Value && (priv == null || priv.Length != 1 || priv[0]?.priv != Sqlx.OWNER))
                 throw new DBException("28102", kind, n).Mix();
             if (ob == null)
                 throw new PEException("PE2401");
@@ -743,21 +734,21 @@ namespace Pyrrho.Level4
         /// Role_id { ',' Role_id }
         /// </summary>
         /// <returns>The list of Roles</returns>
-		string[] ParseRoleNameList()
+		CList<string> ParseRoleNameList()
         {
-            var r = new List<string>();
+            var r = CList<string>.Empty;
             if (tok == Sqlx.ID)
             {
-                r.Add(lxr.val.ToString());
+                r += lxr.val.ToString();
                 Next();
                 while (tok == Sqlx.COMMA)
                 {
                     Next();
-                    r.Add(lxr.val.ToString());
+                    r += lxr.val.ToString();
                     Mustbe(Sqlx.ID);
                 }
             }
-            return r.ToArray();
+            return r;
         }
         /// <summary>
 		/// Revoke = 	REVOKE [GRANT OPTION FOR] Privileges FROM GranteeList
@@ -773,7 +764,7 @@ namespace Pyrrho.Level4
             {
                 var priv = ParseRoleNameList();
                 Mustbe(Sqlx.FROM);
-                var grantees = ParseGranteeList(Array.Empty<PrivNames>());
+                var grantees = ParseGranteeList(BList<PrivNames>.Empty);
                 if (opt == Sqlx.GRANT)
                     throw new DBException("42116").Mix();
                 if (cx.parse == ExecuteStatus.Obey && cx.db is Transaction tr)
@@ -2542,11 +2533,13 @@ namespace Pyrrho.Level4
             if (Match(Sqlx.ARRAY))
             {
                 dom = (Domain)cx.Add(new Domain(cx.GetUid(),Sqlx.ARRAY, type));
+                cx.Add(dom);
                 Next();
             }
             else if (Match(Sqlx.MULTISET))
             {
                 dom = (Domain)cx.Add(new Domain(cx.GetUid(),Sqlx.MULTISET, type));
+                cx.Add(dom);
                 Next();
             }
             var ua = CTree<UpdateAssignment,bool>.Empty;
@@ -2597,8 +2590,27 @@ namespace Pyrrho.Level4
                 tc = cx.Modify(pc,tc,nst);
                 tb = cx.Modify(tb, nst); // maybe the framing changes since nst are irrelevant??
             }
+            var od = dom;
             if (type != null && tok == Sqlx.COLLATE)
                 dom = new Domain(pc.ppos,type.kind,type.mem+(Domain.Culture,new CultureInfo(ParseCollate())));
+            if (StartMetadata(Sqlx.TYPE))
+            {
+                var md = ParseMetadata(Sqlx.TYPE);
+                var tn = cx.NameFor(tc.defpos);
+                var pm = new PMetadata(tn, 0, tc, md, cx.db.nextPos);
+                cx.Add(pm);
+                var oi = tc.infos[cx.role.defpos] ?? new ObInfo(tn);
+                oi += (ObInfo._Metadata,md);
+                tc += (DBObject.Infos, tc.infos + (cx.role.defpos, oi));
+                dom += (DBObject.Infos, dom.infos + (cx.role.defpos, oi));
+            }
+            if (dom!=od)
+            {
+                dom = (Domain)dom.Relocate(cx.GetUid());
+                cx.Add(dom);
+                tc += (DBObject._Domain, dom.defpos);
+                cx.Add(tc); 
+            }
             return tb;
         }
 /*        /// <summary>
@@ -2806,14 +2818,15 @@ namespace Pyrrho.Level4
             {
                 case Sqlx.TABLE: return Match(Sqlx.ENTITY, Sqlx.PIE, Sqlx.HISTOGRAM, Sqlx.LEGEND, Sqlx.LINE, 
                     Sqlx.POINTS, Sqlx.DROP,Sqlx.JSON, Sqlx.CSV, Sqlx.CHARLITERAL, Sqlx.RDFLITERAL, Sqlx.REFERRED, 
-                    Sqlx.ETAG);
+                    Sqlx.ETAG, Sqlx.SECURITY);
                 case Sqlx.COLUMN: return Match(Sqlx.ATTRIBUTE, Sqlx.X, Sqlx.Y, Sqlx.CAPTION, Sqlx.DROP, 
-                    Sqlx.CHARLITERAL, Sqlx.RDFLITERAL,Sqlx.REFERS);
+                    Sqlx.CHARLITERAL, Sqlx.RDFLITERAL,Sqlx.REFERS, Sqlx.SECURITY);
                 case Sqlx.FUNCTION: return Match(Sqlx.ENTITY, Sqlx.PIE, Sqlx.HISTOGRAM, Sqlx.LEGEND,
                     Sqlx.LINE, Sqlx.POINTS, Sqlx.DROP, Sqlx.JSON, Sqlx.CSV, Sqlx.INVERTS, Sqlx.MONOTONIC);
                 case Sqlx.VIEW: return Match(Sqlx.ENTITY, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, 
                     Sqlx.PASSWORD,Sqlx.CHARLITERAL,Sqlx.RDFLITERAL,Sqlx.ETAG,Sqlx.MILLI);
-                case Sqlx.TYPE: return Match(Sqlx.PREFIX, Sqlx.SUFFIX, Sqlx.NODETYPE, Sqlx.EDGETYPE);
+                case Sqlx.TYPE: return Match(Sqlx.PREFIX, Sqlx.SUFFIX, Sqlx.NODETYPE, Sqlx.EDGETYPE, 
+                    Sqlx.SENSITIVE, Sqlx.CARDINALITY);
                 case Sqlx.ANY:
                     Match(Sqlx.DESC, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, Sqlx.PASSWORD,
                         Sqlx.ENTITY,Sqlx.PIE,Sqlx.HISTOGRAM,Sqlx.LEGEND,Sqlx.LINE,Sqlx.POINTS,Sqlx.REFERRED,
@@ -2856,10 +2869,6 @@ namespace Pyrrho.Level4
                 {
                     case Sqlx.CHARLITERAL:
                         ds = drop ? new TChar("") : o;
-                        break;
-                    case Sqlx.RDFLITERAL:
-                        Next();
-                        iri = drop ? new TChar("") : lxr.val;
                         break;
                     case Sqlx.INVERTS:
                         {
@@ -2919,7 +2928,11 @@ namespace Pyrrho.Level4
                             }
                             m += (tk, o);
                             break;
-                        }
+                        }   
+                    case Sqlx.RDFLITERAL:
+                        Next();
+                        iri = drop ? new TChar("") : lxr.val;
+                        break;
                     case Sqlx.EDGETYPE:
                         {
                             m += (tok, o);
@@ -2937,6 +2950,22 @@ namespace Pyrrho.Level4
                             m += (Sqlx.ARROW, an);
                             Mustbe(Sqlx.ID);
                             Mustbe(Sqlx.RPAREN);
+                            break;
+                        }
+                    case Sqlx.CARDINALITY:
+                        {
+                            Next();
+                            Mustbe(Sqlx.LPAREN);
+                            var lw = lxr.val;
+                            Mustbe(Sqlx.INTEGERLITERAL);
+                            m += (Sqlx.MIN, lw);
+                            if (tok==Sqlx.TO)
+                            {
+                                Next();
+                                lw = lxr.val;
+                                Mustbe(Sqlx.INTEGERLITERAL, Sqlx.TIMES);
+                                m += (Sqlx.MAX, lw);
+                            }
                             break;
                         }
                     default:
@@ -8559,7 +8588,7 @@ namespace Pyrrho.Level4
                         if (v.Length == 0)
                             throw new DBException("22103").ISO();
                         Mustbe(Sqlx.RBRACK);
-                        return (SqlValue)cx.Add(new SqlValueArray(lp.dp, xp, v));
+                        return (SqlValue)cx.Add(new SqlValueMultiset(lp.dp, xp, v));
                     }
                 case Sqlx.NEW:
                     {

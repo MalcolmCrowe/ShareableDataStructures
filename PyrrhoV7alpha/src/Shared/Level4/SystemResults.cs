@@ -1,5 +1,4 @@
 using System.Text;
-using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
@@ -68,12 +67,12 @@ namespace Pyrrho.Level4
             var tr = cx.tr;
             if (priv != Grant.Privilege.Select || tr==null || tr.user==null)
                 return true;
-            // Sys$ tables are public
-            if (name.StartsWith("Sys$") || name.StartsWith("Role$"))
+            // Role$ tables are public
+            if (name.StartsWith("Role$"))
                 return false;
-            // Log$ ROWS etc tables are private to the database owner
-            if (tr.user?.defpos == tr.owner)
-                return false;
+            // All other systems tables are private to the database owner
+            if (tr.user?.defpos != tr.owner)
+                return true;
             return base.Denied(cx, priv);
         }
         public void Add()

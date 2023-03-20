@@ -282,12 +282,7 @@ namespace Pyrrho
         {
             try
             {
-                if (dict == null)
-#if SILVERLIGHT || WINDOWS_PHONE
-                    dict = new Dictionary<string,string>();
-#else
-                    dict = new Hashtable();
-#endif
+                dict ??= new Hashtable();
                 if (!SqlStateDone)
                     InitSqlstate();
                 var fmt = (string?)dict[sig];

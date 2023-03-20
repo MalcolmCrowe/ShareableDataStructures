@@ -207,7 +207,7 @@ namespace Pyrrho.Level3
                     case Sqlx.MIME:
                     case Sqlx.SQLAGENT:
                         sb.Append(b.key());
-                        sb.Append(" "); sb.Append(b.value().ToString());
+                        sb.Append(' '); sb.Append(b.value().ToString());
                         continue;
                     case Sqlx.PASSWORD:
                         sb.Append(b.key());
@@ -215,15 +215,28 @@ namespace Pyrrho.Level3
                         continue;
                     case Sqlx.IRI:
                         sb.Append(b.key());
-                        sb.Append(" "); sb.Append(b.value().ToString());
+                        sb.Append(' '); sb.Append(b.value().ToString());
                         continue;
                     case Sqlx.NO: 
                         if (description != "")
-                        { sb.Append(" "); sb.Append(description); }
+                        { sb.Append(' '); sb.Append(description); }
                         continue;
                     case Sqlx.INVERTS:
                         sb.Append(b.key());
                         sb.Append(" "); sb.Append(DBObject.Uid(b.value().ToLong()??-1L));
+                        continue;
+                    case Sqlx.MIN:
+                    case Sqlx.MAX:
+                        {
+                            sb.Append("CARDINALITY ");
+                            var lw = md[Sqlx.MIN]?.ToInt();
+                            var hi = md[Sqlx.MAX]?.ToInt();
+                            sb.Append(lw);
+                            if (hi is not null && b.key() == Sqlx.MIN)
+                                continue; // already displayed
+                            sb.Append(" TO ");
+                            sb.Append(hi);
+                        }
                         continue;
                     default:
                         sb.Append(b.key());
@@ -246,7 +259,7 @@ namespace Pyrrho.Level3
             }
             if (mem.Contains(Description))
             {
-                sb.Append(" "); sb.Append(description);
+                sb.Append(' '); sb.Append(description);
             }
             return sb.ToString();
         }

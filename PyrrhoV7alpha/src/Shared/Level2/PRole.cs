@@ -248,6 +248,16 @@ namespace Pyrrho.Level2
                         sb.Append(b.value());
                         sb.Append("\" ");
                         break;
+                    case Sqlx.MAX:
+                    case Sqlx.MIN:  
+                        {
+                            var lw = detail[Sqlx.MIN];
+                            var hi = detail[Sqlx.MAX]??new TChar("*");
+                            sb.Append("CARDINALITY("); sb.Append(lw);
+                            { sb.Append(" TO "); sb.Append(hi); }
+                            sb.Append(')');
+                        }
+                        break;
                     default:
                         sb.Append(b.key());
                         sb.Append(' ');

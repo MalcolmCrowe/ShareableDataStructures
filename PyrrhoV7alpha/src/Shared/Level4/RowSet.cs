@@ -970,7 +970,7 @@ namespace Pyrrho.Level4
                 if (!Context.Match(groupings,og))
                     r += (GroupCols, cx.GroupCols(groupings));
             }
-            if (cx._Replace(target, so, sv) is RowSet tg && tg.defpos != target)
+            if (target>0 && cx._Replace(target, so, sv) is RowSet tg && tg.defpos != target)
                 r += (Target, tg);
             var ua = CTree<UpdateAssignment, bool>.Empty;
             for (var b = assig?.First(); b != null; b = b.Next())
@@ -3142,13 +3142,13 @@ namespace Pyrrho.Level4
                         var iq = bmk.Value();
                         if (iq == null || table.tableRows[iq.Value] is not TableRow rec)
                             continue;
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                         if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
-                            && _cx.db._user != table.definer
-                            && _cx.db._user != _cx.db.owner
+                            && _cx.db.user.defpos != table.definer
+                            && _cx.db.user.defpos != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
                             continue;
-#endif
+//#endif
                         var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
                             if (rb.Matches(_cx))
                             {
@@ -3162,13 +3162,13 @@ namespace Pyrrho.Level4
                 for (var b = table.tableRows.First(); b != null; b = b.Next())
                 {
                     var rec = b.value();
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                         _cx.db.user != null && _cx.db.user.defpos != table.definer
-                         && _cx.db._user != _cx.db.owner
+                         && _cx.db.user.defpos != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-#endif
+//#endif
                     var rb = new TableCursor(_cx, trs, table, 0, rec, b);
                     if (rb.Matches(_cx))
                     {
@@ -3189,13 +3189,13 @@ namespace Pyrrho.Level4
                     for (var bmk = t.PositionAt(key, 0); bmk != null; bmk = bmk.Previous())
                         if (bmk.Value() is long q && table.tableRows[q] is TableRow rec)
                         {
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                         if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
-                            && _cx.db._user != table.definer
-                            && _cx.db._user != _cx.db.owner
+                            && _cx.db.user.defpos != table.definer
+                            && _cx.db.user.defpos != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
                             continue;
-#endif
+//#endif
                             var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
                             if (rb.Matches(_cx))
                             {
@@ -3207,13 +3207,13 @@ namespace Pyrrho.Level4
                 for (var b = table.tableRows.Last(); b != null; b = b.Previous())
                 {
                     var rec = b.value();
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
                         _cx.db.user != null && _cx.db.user.defpos != table.definer
-                         && _cx.db._user != _cx.db.owner
+                         && _cx.db.user.defpos != _cx.db.owner
                         && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                         continue;
-#endif
+//#endif
                     var rb = new TableCursor(_cx, trs, table, 0, rec, b);
                     if (rb.Matches(_cx))
                     {
@@ -3240,12 +3240,13 @@ namespace Pyrrho.Level4
                         var rec = _table.tableRows[mb.Value()??-1L];
                         if (rec == null)
                             continue;
-#if MANDATORYACCESSCONTROL
-                        if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
-                            _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
+//#if MANDATORYACCESSCONTROL
+                        if (table.enforcement.HasFlag(Grant.Privilege.Select) 
+                            && _cx.db.user.defpos != table.definer 
+                            && _cx.db.user.defpos != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                             continue;
-#endif
+//#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, null, mb,
                             rec.MakeKey(_trs.keys.rowType));
                         if (rb.Matches(_cx))
@@ -3262,12 +3263,13 @@ namespace Pyrrho.Level4
                         if (bmk == null)
                             return null;
                         var rec = bmk.value();
-#if MANDATORYACCESSCONTROL
-                        if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
-                            _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
+//#if MANDATORYACCESSCONTROL
+                        if (table.enforcement.HasFlag(Grant.Privilege.Select) 
+                            && _cx.db.user.defpos != table.definer 
+                            && _cx.db.user.defpos != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                             continue;
-#endif
+//#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, bmk);
                         if (rb.Matches(_cx))
                         {
@@ -3293,12 +3295,13 @@ namespace Pyrrho.Level4
                         var rec = _table.tableRows[mb.Value()??-1L];
                         if (rec == null)
                             continue;
-#if MANDATORYACCESSCOLNTROL
-                        if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
-                            _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
+//#if MANDATORYACCESSCOLNTROL
+                        if (table.enforcement.HasFlag(Grant.Privilege.Select) 
+                            && _cx.db.user.defpos != table.definer 
+                            && _cx.db.user.defpos != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                             continue;
-#endif
+//#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, null, mb,
                             rec.MakeKey(_trs.keys.rowType));
                         if (rb.Matches(_cx))
@@ -3315,12 +3318,13 @@ namespace Pyrrho.Level4
                         if (bmk == null)
                             return null;
                         var rec = bmk.value();
-#if MANDATORYACCESSCONTROL
-                        if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
-                            _cx.db._user != table.definer && _cx.db._user != _cx.db.owner
+//#if MANDATORYACCESSCONTROL
+                        if (table.enforcement.HasFlag(Grant.Privilege.Select) 
+                            && _cx.db.user.defpos != table.definer 
+                            && _cx.db.user.defpos != _cx.db.owner
                             && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
                             continue;
-#endif
+//#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, bmk);
                         if (rb.Matches(_cx))
                         {
@@ -4574,9 +4578,7 @@ namespace Pyrrho.Level4
                                && rx.rows != null && ix.MakeKey(r._rec.vals) is CList<TypedValue> k &&
                                k[0] is not TNull)
                         {
-                            /*           if (rx is VirtualIndex)
-                                           continue; */
-                if (cx.db.objects[ix.adapter] is Procedure ad)
+                            if (cx.db.objects[ix.adapter] is Procedure ad)
                             {
                                 cx = (TableActivation)ad.Exec(cx, ix.keys.rowType);
                                 k = ((TRow)cx.val).ToKey();
@@ -4585,12 +4587,14 @@ namespace Pyrrho.Level4
                             {
                                 for (var bp = cx.pending.First(); bp != null; bp = bp.Next())
                                     if (bp.value() is CTree<long, TypedValue> vk && rx.MakeKey(vk) is CList<TypedValue> pk
-                                        && pk.CompareTo(k)==0)
-                                            goto skip;
+                                        && pk.CompareTo(k) == 0)
+                                        goto skip;
                                 throw new DBException("23000", "missing foreign key "
                                     + cx.NameFor(ix.tabledefpos) + k.ToString());
                             skip:;
                             }
+                            if (rx.infos[rx.definer]?.metadata?[Sqlx.MAX]?.ToInt() is int mx && mx!=-1 &&  rx.rows?.Cardinality(k) > mx)
+                                throw new DBException("21000");
                         }
                 return r;
             }

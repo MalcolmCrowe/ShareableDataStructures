@@ -724,8 +724,8 @@ namespace Pyrrho.Common
         internal object[] objects; // additional obs for insertion in (possibly localised) message format
         // diagnostic info (there is an active transaction unless we have just done a rollback)
         internal ATree<Sqlx, TypedValue> info = new BTree<Sqlx, TypedValue>(Sqlx.TRANSACTION_ACTIVE, new TInt(1));
-        readonly TChar iso = new TChar("ISO 9075");
-        readonly TChar pyrrho = new TChar("Pyrrho");
+        readonly TChar iso = new ("ISO 9075");
+        readonly TChar pyrrho = new ("Pyrrho");
         /// <summary>
         /// Raise an exception to be localised and formatted by the client
         /// </summary>
@@ -841,7 +841,7 @@ namespace Pyrrho.Common
     {
         internal const long
             RVV = -193; // Rvv
-        internal new static Rvv Empty = new Rvv();
+        internal new static Rvv Empty = new ();
         internal long version => First()?.value()?.Last()?.value() ?? 0L;
         Rvv() : base()
         { }
@@ -996,14 +996,14 @@ namespace Pyrrho.Common
             if (u.Length == 1) // happens with _
                 return -1L;
             var v = long.Parse(u.Substring(1));
-            switch(u[0])
+            return u[0] switch
             {
-                case '%': return v + Transaction.HeapStart;
-                case '`': return v + Transaction.Executables;
-                case '#': return v + Transaction.Analysing;
-                case '!': return v + Transaction.TransPos;
-            }
-            return -1L; // should not occur
+                '%' => v + Transaction.HeapStart,
+                '`' => v + Transaction.Executables,
+                '#' => v + Transaction.Analysing,
+                '!' => v + Transaction.TransPos,
+                _ => -1L,// should not occur
+            };
         }
         /// <summary>
         /// String version of an rvv

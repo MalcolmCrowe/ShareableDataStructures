@@ -676,8 +676,7 @@ namespace Pyrrho.Level3
                         var m = new TMultiset(el);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                            if (GetDataType(rdr) is Domain dt)
-                                m.Add(dt.Get(log, rdr, pp));
+                             m.Add(el.Get(log, rdr, pp));
                         return m;
                     }
                 case Sqlx.REF:
@@ -2069,6 +2068,7 @@ namespace Pyrrho.Level3
                             return null;
                         }
                     }
+                case Sqlx.MULTISET:
                 case Sqlx.ARRAY:
                     {
                         if (lx._cx == null)
@@ -3014,7 +3014,7 @@ namespace Pyrrho.Level3
                                             if (fc.mset is null)
                                                 throw new PEException("PE1961");
                                             for (int j = 0; j < mm.Length; j++)
-                                                fc.mset.Add(dm.Coerce(cx, mm[j].Value));
+                                                fc.mset = fc.mset.Add(dm.Coerce(cx, mm[j].Value));
                                         }
                                         break;
                                     case Sqlx.SOME:
@@ -3468,6 +3468,16 @@ namespace Pyrrho.Level3
                     if (cx._Dom(elType) is not Domain de)
                         break;
                     return Coerce(cx,de.Eval(lp,cx,a, op, b));
+                case Sqlx.MULTISET:
+                    {
+                        if (cx._Dom(elType) is not Domain me)
+                            break;
+                        var ms = (TMultiset)a;
+                        var e = me.Coerce(cx, b);
+                        if (e is not null)
+                            return ms.Add(e);
+                        break;
+                    }
             }
             throw new DBException("22005", kind, a).ISO();
         }
@@ -4865,9 +4875,9 @@ namespace Pyrrho.Level3
             if (a != null)
                 m += (_Alias, a);
             var rowSet = (RowSet)cx._Add(new TableRowSet(id.iix.dp, cx, structure, m));
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
             Audit(cx, rowSet);
-#endif
+//#endif
             return rowSet;
         }
     }

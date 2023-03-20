@@ -839,6 +839,10 @@ namespace Pyrrho.Common
             var ts = BList<TypedValue>.Empty;
             foreach (var x in a)
                 ts += x;
+            if (dt.infos[dt.definer]?.metadata?[Sqlx.MIN]?.ToInt() is int lw && ts.Length < lw)
+                throw new DBException("21000");
+            if (dt.infos[dt.definer]?.metadata?[Sqlx.MAX]?.ToInt() is int hi && ts.Length > hi)
+                throw new DBException("21000");
             list = ts;
         }
         internal TArray(Domain dt, BList<TypedValue> a) : base(dt) { list = a; }
@@ -1222,7 +1226,7 @@ namespace Pyrrho.Common
         /// (the multiplicity of the key V as a member of the multiset).
         /// While this looks like MTree (which is TypedValue[] to long) it doesn't work the same way
         /// </summary>
-        internal BTree<TypedValue,long?> tree; 
+        internal readonly BTree<TypedValue,long?> tree; 
         /// <summary>
         /// Accessor
         /// </summary>
@@ -1266,25 +1270,25 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="a">An object</param>
         /// <param name="n">a multiplicity</param>
-        internal void Add(TypedValue a, long n)
+        internal TMultiset Add(TypedValue a, long n)
         {
              if (!dataType.elType.CanTakeValueOf(a.dataType))
                 throw new DBException("22005", dataType.elType, a).ISO();
-            if (!tree.Contains(a))
-                tree+=(a, n);
-            else if (distinct)
-                return;
-            else if (tree[a] is long o)
-                tree+=(a, o + n);
-            count += n;
+            var nt = tree;
+            if (!nt.Contains(a))
+                nt+=(a, n);
+            else if (nt[a] is long o)
+                nt+=(a, o + n);
+            var nc = count + n;
+            return new TMultiset(dataType, nt, nc);
         }
         /// <summary>
         /// Mutator: Add object a
         /// </summary>
         /// <param name="a">An object</param>
-        internal void Add(TypedValue a)
+        internal TMultiset Add(TypedValue a)
         {
-            Add(a, 1L);
+            return Add(a, 1L);
         }
         /// <summary>
         /// Whether an element is already in the multiset
@@ -1363,17 +1367,19 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="a">An object</param>
         /// <param name="n">A multiplicity</param>
-        internal void Remove(TypedValue a, long n)
+        internal TMultiset Remove(TypedValue a, long n)
         {
             var o = tree[a];
             if (o == null)
-                return; // was DBException 22103
+                return this; // was DBException 22103
             long m = (long)o;
+            var nt = tree;
             if (m <= n)
-                tree -= a;
+                nt -= a;
             else
-                tree+=(a, m - n);
-            count -= n;
+                nt+=(a, m - n);
+            var nc = count - n;
+            return new TMultiset(dataType, nt, nc);
         }
         /// <summary>
         /// Mutator: remove object a
@@ -1414,19 +1420,17 @@ namespace Pyrrho.Common
             TMultiset r = new (a);
             if (all)
             {
-                r.tree = a.tree;
-                r.count = a.count;
                 for (var d = b.tree.First(); d != null; d = d.Next())
                     if (d.value() is long p)
-                        r.Add(d.key(), p);
+                        r = r.Add(d.key(), p);
             }
             else
             {
                 for (var d = a.tree.First(); d != null; d = d.Next())
-                    r.Add(d.key());
+                    r = r.Add(d.key());
                 for (var d = b.tree.First(); d != null; d = d.Next())
                     if (!a.tree.Contains(d.key()))
-                        r.Add(d.key());
+                        r = r.Add(d.key());
             }
             return r;
         }
@@ -1492,16 +1496,23 @@ namespace Pyrrho.Common
         /// <returns>a string</returns>
         public override string ToString()
         {
-            string str = "MULTISET(";
-            bool first = true;
+            var sb = new StringBuilder("MULTISET(");
+            var cm = "";
             for (var b = tree.First(); b != null; b = b.Next())
             {
-                if (!first)
-                    str += ",";
-                for (var i = 0; i < b.value(); i++)
-                    str += b.key().ToString();
+                sb.Append(cm); cm = ",";
+                if (b.value() is long n)
+                {
+                    cm = "";
+                    for (var i = 0; i < n; i++)
+                    {
+                        sb.Append(cm); cm = ",";
+                        sb.Append(b.key());
+                    }
+                }
             }
-            return str + ")";
+            sb.Append(')');
+            return sb.ToString();
         }
     }
     /// <summary>

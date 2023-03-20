@@ -208,10 +208,16 @@ namespace Pyrrho.Level2
                 domain += (Domain.DefaultString, ds);
             }
             var sd = (Domain?)rdr.context._Ob(rdr.GetLong());
-            if (kind == Sqlx.TYPE)
+            if (sd is not null && kind == Sqlx.TYPE)
+            {
                 structure = sd;
-            else
+                domain += (Domain.Structure, sd);
+            }
+            else if (sd is not null)
+            {
                 element = sd;
+                domain += (Domain.Element, sd);
+            }
             base.Deserialise(rdr);
             rdr.Setup(this);
         }

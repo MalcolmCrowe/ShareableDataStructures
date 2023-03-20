@@ -4232,22 +4232,22 @@ namespace Pyrrho.Level3
         }
     }
     /// <summary>
-    /// an multiset value
+    /// a multiset value
     /// // shareable as of 26 April 2021
     /// </summary>
     internal class SqlValueMultiset : SqlValue
     {
         internal const long
-            MultiSqlValues = -302; // CTree<long,bool> SqlValue
+            MultiSqlValues = -302; // BList<long?> SqlValue
         /// <summary>
         /// the array
         /// </summary>
-        public CTree<long,bool> multi => (CTree<long,bool>)(mem[MultiSqlValues] ?? CTree<long,bool>.Empty);
+        public BList<long?> multi => (BList<long?>)(mem[MultiSqlValues] ?? BList<long?>.Empty);
         /// <summary>
         /// construct an SqlValueMultiset value
         /// </summary>
         /// <param name="a">the array</param>
-        public SqlValueMultiset(long dp, Domain xp, CTree<long,bool> v)
+        public SqlValueMultiset(long dp, Domain xp, BList<long?> v)
             : base(dp, BTree<long, object>.Empty + (_Domain, xp.defpos) + (MultiSqlValues, v))
         { }
         protected SqlValueMultiset(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -4277,19 +4277,19 @@ namespace Pyrrho.Level3
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
             var r = base._Fix(cx,m);
-            r += (MultiSqlValues, cx.FixTlb(multi));
+            r += (MultiSqlValues, cx.FixLl(multi));
             return r;
         }
-        protected override BTree<long, object> _Replace(Context cx, DBObject so, DBObject sv, BTree<long, object>m)
+        protected override BTree<long, object> _Replace(Context cx, DBObject so, DBObject sv, BTree<long, object> m)
         {
             var r = base._Replace(cx, so, sv, m);
-            var mu = CTree<long, bool>.Empty;
+            var mu = BList<long?>.Empty;
             for (var b = multi.First(); b != null; b = b.Next())
-            {
-                var v = cx.ObReplace(b.key(), so, sv);
-                if (v != b.key())
-                    mu += (v, true);
-            }
+                if (b.value() is long p){
+                    var v = cx.ObReplace(p, so, sv);
+                    if (v != b.key())
+                        mu += v;
+                }
             if (mu != multi)
                 r += (MultiSqlValues, mu);
             return r;
@@ -4303,7 +4303,7 @@ namespace Pyrrho.Level3
             var ag = dm.aggs;
             var ch = false;
             for (var b = multi.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v)
+                if (b.value() is long p && cx.obs[p] is SqlValue v)
                 {
                     var a = v.AddFrom(cx, q);
                     if (a.defpos != b.key())
@@ -4332,14 +4332,14 @@ namespace Pyrrho.Level3
         internal override bool KnownBy(Context cx, RowSet q, bool ambient = false)
         {
             for (var b = multi?.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v && !v.KnownBy(cx, q, ambient))
+                if (b.value() is long p && cx.obs[p] is SqlValue v && !v.KnownBy(cx, q, ambient))
                     return false;
             return true;
         }
         internal override bool KnownBy<V>(Context cx, CTree<long, V> cs, bool ambient = false)
         {
             for (var b = multi?.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v && !v.KnownBy(cx, cs, ambient))
+                if (b.value() is long p && cx.obs[p] is SqlValue v && !v.KnownBy(cx, cs, ambient))
                     return false;
             return true;
         }
@@ -4350,7 +4350,7 @@ namespace Pyrrho.Level3
             var r = CTree<long, Domain>.Empty;
             var y = true;
             for (var b = multi?.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v)
+                if (b.value() is long p && cx.obs[p] is SqlValue v)
                 {
                     r += v.KnownFragments(cx, kb, ambient);
                     y = y && r.Contains(b.key());
@@ -4368,24 +4368,28 @@ namespace Pyrrho.Level3
             var vs = BTree<TypedValue,long?>.Empty;
             var n = 0;
             for (var b = multi?.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()]?.Eval(cx) is TEdge te)
+                if (b.value() is long p && cx.obs[p]?.Eval(cx) is TypedValue te && te!=TNull.Value)
                 {
                     vs += (te, 1L);
                     n++;
                 }
+            if (dm.infos[dm.definer]?.metadata?[Sqlx.MIN]?.ToInt() is int lw && n < lw)
+                throw new DBException("21000");
+            if (dm.infos[dm.definer]?.metadata?[Sqlx.MAX]?.ToInt() is int hi && n > hi)
+                throw new DBException("21000");
             return new TMultiset(dm, vs, n);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
             for (var b = multi.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v)
+                if (b.value() is long p && cx.obs[p] is SqlValue v)
                     tg = v.StartCounter(cx, rs, tg);
             return tg;
         }
         internal override BTree<long, Register> AddIn(Context cx, Cursor rb, BTree<long, Register> tg)
         {
             for (var b = multi.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v)
+                if (b.value() is long p && cx.obs[p] is SqlValue v)
                     tg = v.AddIn(cx, rb, tg);
             return base.AddIn(cx, rb, tg);
         }
@@ -4397,7 +4401,7 @@ namespace Pyrrho.Level3
         internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
         {
             for (var b = multi.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v)
+                if (b.value() is long p && cx.obs[p] is SqlValue v)
                     qn = v.Needs(cx, r, qn);
             return qn;
         }
@@ -4408,7 +4412,7 @@ namespace Pyrrho.Level3
             var d = depth;
             var vs = BList<long?>.Empty;
             for (var b = multi.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v)
+                if (b.value() is long p && cx.obs[p] is SqlValue v)
                 {
                     (ls, m) = v.Resolve(cx, f, m);
                     if (ls[0] is SqlValue nv && nv.defpos != v.defpos)
@@ -6586,7 +6590,7 @@ namespace Pyrrho.Level3
                             cx.Add(new Domain(cx.GetUid(),Sqlx.MULTISET,dm)));
                     else if (fc.mset.Contains(v))
                         return;
-                    fc.mset.Add(v);
+                    fc.mset = fc.mset.Add(v);
                 }
             }
             switch (kind)
@@ -6619,7 +6623,7 @@ namespace Pyrrho.Level3
                         fc.mset ??= new TMultiset(dm);
                         var v = vl.Eval(cx);
                         if (v != TNull.Value)
-                            fc.mset.Add(v);
+                            fc.mset = fc.mset.Add(v);
                         break;
                     }
                 case Sqlx.COUNT:
