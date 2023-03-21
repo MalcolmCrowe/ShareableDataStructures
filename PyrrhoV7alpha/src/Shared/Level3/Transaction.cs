@@ -824,19 +824,19 @@ namespace Pyrrho.Level3
         /// <param name="obj">the database object</param>
         /// <param name="grantees">a list of grantees</param>
         static void DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
-            DBObject[] grantees)
+            BList<DBObject> grantees)
         {
             var np = cx.db.nextPos;
-            if (grantees != null) // PUBLIC
-                foreach (var mk in grantees)
-                {
-                    long gee = -1;
-                    gee = mk.defpos;
-                    if (grant)
-                        cx.Add(new Grant(pr, obj, gee, np++, cx));
-                    else
-                        cx.Add(new Revoke(pr, obj, gee, np++, cx));
-                }
+            if (grantees != BList<DBObject>.Empty) // PUBLIC
+                for (var b = grantees.First(); b != null; b = b.Next())
+                    if (b.value() is DBObject mk)
+                    {
+                        var gee = mk.defpos;
+                        if (grant)
+                            cx.Add(new Grant(pr, obj, gee, np++, cx));
+                        else
+                            cx.Add(new Revoke(pr, obj, gee, np++, cx));
+                    }
         }
         /// <summary>
         /// Implement Grant/Revoke on a list of TableColumns
@@ -847,7 +847,7 @@ namespace Pyrrho.Level3
         /// <param name="tb">the table</param>
         /// <param name="list">(Privilege,columnnames[])</param>
         /// <param name="grantees">a list of grantees</param>
-        static void AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, DBObject[] grantees)
+        static void AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, BList<DBObject> grantees)
         {
             var rt = cx._Dom(tb) ?? Domain.Content;
             var ne = list.cols != BTree<string, bool>.Empty;
@@ -868,7 +868,7 @@ namespace Pyrrho.Level3
         /// <param name="roles">a list of Roles (ids)</param>
         /// <param name="grantees">a list of Grantees</param>
         /// <param name="opt">whether with ADMIN option</param>
-		internal void AccessRole(Context cx, bool grant, string[] rols, DBObject[] grantees, bool opt)
+		internal void AccessRole(Context cx, bool grant, CList<string> rols, BList<DBObject> grantees, bool opt)
         {
             var db = this;
             Grant.Privilege op = Grant.Privilege.NoPrivilege;
@@ -878,8 +878,8 @@ namespace Pyrrho.Level3
                 op = Grant.Privilege.AdminRole;
             else // grant
                 op = Grant.Privilege.UseRole;
-            foreach (var s in rols)
-                if (roles.Contains(s) && objects[roles[s]??-1L] is Role ro)
+            for (var b = rols.First(); b!=null;b=b.Next())
+                if (b.value() is string s && roles.Contains(s) && objects[roles[s]??-1L] is Role ro)
                     DoAccess(cx, grant, op, ro.defpos, grantees);
         }
         /// <summary>
@@ -890,7 +890,7 @@ namespace Pyrrho.Level3
         /// <param name="dp">the database object defining position</param>
         /// <param name="grantees">a list of grantees</param>
         /// <param name="opt">whether with GRANT option (grant) or GRANT for (revoke)</param>
-        internal void AccessObject(Context cx, bool grant, PrivNames[] privs, long dp, DBObject[] grantees, bool opt)
+        internal void AccessObject(Context cx, bool grant, BList<PrivNames> privs, long dp, BList<DBObject> grantees, bool opt)
         {
             if (role!=null && objects[dp] is DBObject ob && ob.infos[role.defpos] is ObInfo gd)
             {
@@ -917,8 +917,8 @@ namespace Pyrrho.Level3
                     }
                 }
                 else
-                    foreach (var mk in privs)
-                    {
+                    for (var b = privs.First();b!=null;b=b.Next())
+                    if (b.value() is PrivNames mk){
                         Grant.Privilege q = Grant.Privilege.NoPrivilege;
                         switch (mk.priv)
                         {
