@@ -4228,7 +4228,22 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            return "VALUES..";
+            var sb = new StringBuilder("ARRAY[");
+            sb.Append(Uid(domain)); sb.Append("]");
+            if (array.Count > 0)
+            {
+                var cm = "(";
+                for (var b = array.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                    {
+                        sb.Append(cm); cm = ",";
+                        sb.Append(Uid(p));
+                    }
+                sb.Append(')');
+            }
+            if (svs >= 0)
+                sb.Append(Uid(svs));
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -4373,10 +4388,6 @@ namespace Pyrrho.Level3
                     vs += (te, 1L);
                     n++;
                 }
-            if (dm.infos[dm.definer]?.metadata?[Sqlx.MIN]?.ToInt() is int lw && n < lw)
-                throw new DBException("21000");
-            if (dm.infos[dm.definer]?.metadata?[Sqlx.MAX]?.ToInt() is int hi && n > hi)
-                throw new DBException("21000");
             return new TMultiset(dm, vs, n);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
@@ -4426,7 +4437,17 @@ namespace Pyrrho.Level3
         }
         public override string ToString()
         {
-            return "VALUES..";
+            var sb = new StringBuilder("MULTISET[");
+            sb.Append(Uid(domain)); sb.Append("](");
+            var cm = "";
+            for (var b=multi.First();b!=null;b=b.Next())
+                if (b.value() is long p)
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(p));
+                }
+            sb.Append(')');
+            return sb.ToString();
         }
     }
 

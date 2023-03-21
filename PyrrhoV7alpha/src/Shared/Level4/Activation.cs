@@ -389,7 +389,7 @@ namespace Pyrrho.Level4
                 case PTrigger.TrigType.Insert:
                     if (table.Denied(cx, Grant.Privilege.Insert))
                         throw new DBException("42105", table.NameFor(cx));
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                     // parameter cl is only supplied when d_User.defpos==d.owner
                     // otherwise check if we should compute it
                     if (cx.db.user != null &&
@@ -405,7 +405,7 @@ namespace Pyrrho.Level4
                         // (a subset of the user’s references)
                         level = uc.ForInsert(table.classification);
                     }
-#endif
+//#endif
                     break;
                 case PTrigger.TrigType.Update:
                     if (table.Denied(cx, Grant.Privilege.Update))
@@ -452,13 +452,13 @@ namespace Pyrrho.Level4
                     break;
                 case PTrigger.TrigType.Delete:
                     if (table.Denied(cx, Grant.Privilege.Delete)
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                         ||
                         (table.enforcement.HasFlag(Grant.Privilege.Delete) &&
-                        cx.db.user.clearance.minLevel > 0 &&
-                        (cx.db.user.clearance.minLevel != targetInfo.classification.minLevel ||
-                        cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel))
-#endif
+                        cx.db.user is not null && cx.db.user.clearance.minLevel > 0 &&
+                        (cx.db.user.clearance.minLevel != table.classification.minLevel ||
+                        cx.db.user.clearance.maxLevel != table.classification.maxLevel))
+//#endif
                         )
                         throw new DBException("42105", table.NameFor(cx));
                     level = user?.clearance??Level.D;
@@ -517,7 +517,10 @@ namespace Pyrrho.Level4
                             {
                                 var tv = ua.Eval(this);
                                 if (trs.transTarget[ua.vbl] is long tp)
+                                {
+                                    CheckMetadata(tp, tv);
                                     newRow += (tp, tv);
+                                }
                                 else if (trs.targetTrans.Contains(ua.vbl)) // this is a surprise
                                     newRow += (ua.vbl, tv);
                             }

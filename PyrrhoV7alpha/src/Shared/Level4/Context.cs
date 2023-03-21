@@ -1587,13 +1587,25 @@ namespace Pyrrho.Level4
                 _ => Domain.Char,
             };
         }
-        internal CList<TypedValue> MakeKey(BList<long?> s)
+        internal void CheckMetadata(long p,TypedValue v)
         {
-            var r = CList<TypedValue>.Empty;
-            for (var b = s.First(); b != null; b = b.Next())
-                if (b.value() is long p && obs[p] is SqlValue sv)
-                    r += sv.Eval(this);
-            return r;
+            if (_Ob(p) is DBObject ob && ob.infos[role.defpos] is ObInfo oi)
+                for (var b=oi.metadata.First();b!=null;b=b.Next())
+                    switch (b.key())
+                    {
+                        case Sqlx.MIN:
+                            {
+                                if (b.value().ToInt() > v.Cardinality())
+                                    throw new DBException("21000");
+                                break;
+                            }
+                        case Sqlx.MAX:
+                            {
+                                if (b.value().ToInt() < v.Cardinality())
+                                    throw new DBException("21000");
+                                break;
+                            }
+                    }
         }
         internal Procedure? GetProcedure(long lp,string n,CList<Domain> a)
         {

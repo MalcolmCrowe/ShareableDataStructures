@@ -78,6 +78,10 @@ namespace Pyrrho.Common
         {
             return null;
         }
+        internal virtual int Cardinality()
+        {
+            return 1;
+        }
         internal virtual TypedValue Fix(Context cx)
         {
             var dm = (Domain)dataType.Fix(cx);
@@ -272,6 +276,10 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException();
         }
+        internal override int Cardinality()
+        {
+            return 0;
+        }
         public override int CompareTo(object? obj)
         {
             if (obj == null || obj is TNull)
@@ -411,7 +419,6 @@ namespace Pyrrho.Common
         internal static TChar Empty = new ("");
         internal TChar(Domain dt, string s) : base(dt) { value = s; }
         internal TChar(string s) : this(Domain.Char, s) { }
-        internal TChar(Ident n) : this((n == null) ? "" : n.ident) { }
         internal override TypedValue New(Domain t)
         {
             return new TChar(t, value);
@@ -808,6 +815,10 @@ namespace Pyrrho.Common
     {
         internal MTree value;
         internal TMTree(MTree m) : base(Domain.MTree) { value = m; }
+        internal override int Cardinality()
+        {
+            return (int)value.count;
+        }
         internal override TypedValue New(Domain t)
         {
             return this; // approximate: use Relocate
@@ -824,6 +835,10 @@ namespace Pyrrho.Common
         {
             throw new NotImplementedException(); // use Relocate
         }
+        internal override int Cardinality()
+        {
+            return (int)value.Count;
+        }
         internal override TypedValue Fix(Context cx)
         {
             return new TPartial(cx.FixTlb(value));
@@ -839,10 +854,6 @@ namespace Pyrrho.Common
             var ts = BList<TypedValue>.Empty;
             foreach (var x in a)
                 ts += x;
-            if (dt.infos[dt.definer]?.metadata?[Sqlx.MIN]?.ToInt() is int lw && ts.Length < lw)
-                throw new DBException("21000");
-            if (dt.infos[dt.definer]?.metadata?[Sqlx.MAX]?.ToInt() is int hi && ts.Length > hi)
-                throw new DBException("21000");
             list = ts;
         }
         internal TArray(Domain dt, BList<TypedValue> a) : base(dt) { list = a; }
@@ -860,6 +871,10 @@ namespace Pyrrho.Common
             if (!ar.dataType.elType.CanTakeValueOf(v.dataType))
                 throw new DBException("22005", ar.dataType.elType, v.dataType);
             return new TArray(ar.dataType, ar.list + v);
+        }
+        internal override int Cardinality()
+        {
+            return Length;
         }
         internal int Length { get { return (int)list.Count; } }
         internal override TypedValue? this[string n]
@@ -1255,6 +1270,10 @@ namespace Pyrrho.Common
         internal TMultiset(Domain dt,BTree<TypedValue,long?>t,long ct) :base(dt)
         {
             tree = t; count = ct;
+        }
+        internal override int Cardinality()
+        {
+            return (int)count;
         }
         internal override TypedValue New(Domain t)
         {

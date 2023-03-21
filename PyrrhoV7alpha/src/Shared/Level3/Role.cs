@@ -228,14 +228,18 @@ namespace Pyrrho.Level3
                     case Sqlx.MIN:
                     case Sqlx.MAX:
                         {
-                            sb.Append("CARDINALITY ");
-                            var lw = md[Sqlx.MIN]?.ToInt();
                             var hi = md[Sqlx.MAX]?.ToInt();
-                            sb.Append(lw);
                             if (hi is not null && b.key() == Sqlx.MIN)
                                 continue; // already displayed
-                            sb.Append(" TO ");
-                            sb.Append(hi);
+                            sb.Append("CARDINALITY(");
+                            var lw = md[Sqlx.MIN]?.ToInt();
+                            sb.Append(lw);
+                            if (hi is not null)
+                            {
+                                sb.Append(" TO ");
+                                sb.Append(hi);
+                            }
+                            sb.Append(')');
                         }
                         continue;
                     default:
