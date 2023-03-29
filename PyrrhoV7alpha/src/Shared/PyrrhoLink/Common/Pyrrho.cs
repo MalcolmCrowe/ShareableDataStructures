@@ -50,6 +50,7 @@
     public enum Connecting
     {
         Password = 20, User = 21, Files = 22, Role = 23, Done = 24, Stop = 25, Host = 26, Key = 27,
-        Details = 28, Base = 29, Coordinator = 30, BaseServer = 31, Modify = 32, Length = 33
+        Details = 28, Base = 29, Coordinator = 30, BaseServer = 31, Modify = 32, Length = 33,
+        Culture = 34
     }
 }

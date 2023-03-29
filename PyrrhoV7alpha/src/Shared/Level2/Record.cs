@@ -161,8 +161,8 @@ namespace Pyrrho.Level2
             for (long j = 0; j < n; j++)
             {
                 long c = rdr.GetLong();
-                var (_, cdt) = rdr.GetColumnDomain(c); // nominal obs type from log
-                cdt = cdt.GetDataType(rdr); // actual obs type from buffer
+                var (_, cdt) = rdr.GetColumnDomain(c); // nominal ob type from log
+                cdt = cdt.GetDataType(rdr); // actual ob type from buffer
                 if (cdt != null)
                 {
                     var tv = cdt.Get(rdr.log, rdr, ppos);

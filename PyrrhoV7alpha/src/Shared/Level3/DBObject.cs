@@ -320,8 +320,8 @@ namespace Pyrrho.Level3
         {
             var m = mem;
             if (infos[cx.role.defpos] is ObInfo oi)
-                m += (Infos, infos + (cx.role.defpos, oi));
-            m = m + (ObInfo._Metadata, pm.detail) + (LastChange, pm.ppos);
+                m += (Infos, infos + (cx.role.defpos, oi+ (ObInfo._Metadata, pm.detail)));
+            m += (LastChange, pm.ppos);
             var r = New(defpos, m);
             cx.db += (r,p);
             return cx.Add(r);

@@ -666,17 +666,17 @@ namespace Pyrrho.Level3
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
                             if (GetDataType(rdr) is Domain dt)
-                                vs += dt.Get(log, rdr, pp);
-                        return new TArray(el, vs);
+                                vs += el.Coerce(rdr.context,dt.Get(log, rdr, pp));
+                        return new TArray(this, vs);
                     }
                 case Sqlx.MULTISET:
                     {
                         var dp = rdr.GetLong();
                         var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105");
-                        var m = new TMultiset(el);
+                        var m = new TMultiset(this);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                             m.Add(el.Get(log, rdr, pp));
+                             m = m.Add(el.Get(log, rdr, pp));
                         return m;
                     }
                 case Sqlx.REF:
@@ -790,8 +790,6 @@ namespace Pyrrho.Level3
                 DataType.Boolean => Bool,
                 DataType.Blob => Blob,
                 DataType.Row => Row,
-                DataType.Multiset => Multiset,
-                DataType.Array => Array,
                 DataType.Password => Password,
                 _ => this,
             };
@@ -2791,6 +2789,14 @@ namespace Pyrrho.Level3
                     case Sqlx.VALUE:
                     case Sqlx.NULL:
                         return v;
+                    case Sqlx.ARRAY:
+                        if (v is TArray && elType.CanTakeValueOf(v.dataType.elType))
+                            return v;
+                        break;
+                    case Sqlx.MULTISET:
+                        if (v is TMultiset && elType.CanTakeValueOf(v.dataType.elType))
+                            return v;
+                        break;
                 }
             bad: throw new DBException("22005", this, v.ToString()).ISO();
         }

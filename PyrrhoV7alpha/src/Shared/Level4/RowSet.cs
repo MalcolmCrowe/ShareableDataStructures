@@ -3144,9 +3144,9 @@ namespace Pyrrho.Level4
                             continue;
 //#if MANDATORYACCESSCONTROL
                         if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
-                            && _cx.db.user.defpos != table.definer
+                            && (_cx.db.user==null || (_cx.db.user.defpos != table.definer
                             && _cx.db.user.defpos != _cx.db.owner
-                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
+                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))))
                             continue;
 //#endif
                         var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
@@ -3164,9 +3164,9 @@ namespace Pyrrho.Level4
                     var rec = b.value();
 //#if MANDATORYACCESSCONTROL
                     if (table.enforcement.HasFlag(Grant.Privilege.Select) &&
-                        _cx.db.user != null && _cx.db.user.defpos != table.definer
+                        (_cx.db.user == null || (_cx.db.user.defpos != table.definer
                          && _cx.db.user.defpos != _cx.db.owner
-                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                        && !_cx.db.user.clearance.ClearanceAllows(rec.classification))))
                         continue;
 //#endif
                     var rb = new TableCursor(_cx, trs, table, 0, rec, b);
@@ -3191,9 +3191,9 @@ namespace Pyrrho.Level4
                         {
 //#if MANDATORYACCESSCONTROL
                         if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
-                            && _cx.db.user.defpos != table.definer
+                            && (_cx.db.user==null || (_cx.db.user.defpos != table.definer
                             && _cx.db.user.defpos != _cx.db.owner
-                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))
+                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))))
                             continue;
 //#endif
                             var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
@@ -3242,9 +3242,9 @@ namespace Pyrrho.Level4
                             continue;
 //#if MANDATORYACCESSCONTROL
                         if (table.enforcement.HasFlag(Grant.Privilege.Select) 
-                            && _cx.db.user.defpos != table.definer 
+                            && (_cx.db.user==null || (_cx.db.user.defpos != table.definer 
                             && _cx.db.user.defpos != _cx.db.owner
-                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification))))
                             continue;
 //#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, null, mb,
@@ -3265,9 +3265,9 @@ namespace Pyrrho.Level4
                         var rec = bmk.value();
 //#if MANDATORYACCESSCONTROL
                         if (table.enforcement.HasFlag(Grant.Privilege.Select) 
-                            && _cx.db.user.defpos != table.definer 
+                            && (_cx.db.user==null || (_cx.db.user.defpos != table.definer 
                             && _cx.db.user.defpos != _cx.db.owner
-                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification))))
                             continue;
 //#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, bmk);
@@ -3297,9 +3297,9 @@ namespace Pyrrho.Level4
                             continue;
 //#if MANDATORYACCESSCOLNTROL
                         if (table.enforcement.HasFlag(Grant.Privilege.Select) 
-                            && _cx.db.user.defpos != table.definer 
-                            && _cx.db.user.defpos != _cx.db.owner
-                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                            && (_cx.db.user == null || (_cx.db.user.defpos != table.definer 
+                            && _cx.db.user.defpos != _cx.db.owner 
+                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification))))
                             continue;
 //#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, null, mb,
@@ -3320,9 +3320,9 @@ namespace Pyrrho.Level4
                         var rec = bmk.value();
 //#if MANDATORYACCESSCONTROL
                         if (table.enforcement.HasFlag(Grant.Privilege.Select) 
-                            && _cx.db.user.defpos != table.definer 
-                            && _cx.db.user.defpos != _cx.db.owner
-                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification))
+                            && (_cx.db.user == null || (_cx.db.user.defpos != table.definer 
+                            && _cx.db.user.defpos != _cx.db.owner 
+                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification))))
                             continue;
 //#endif
                         var rb = new TableCursor(_cx, _trs, _table, _pos + 1, rec, bmk);
@@ -4507,30 +4507,32 @@ namespace Pyrrho.Level4
             internal static TargetCursor? New(TableActivation cx, TransitionCursor? trc,
                 bool check)
             {
-                if (trc == null || cx.next==null)
+                if (trc == null || cx.next == null)
                     return null;
                 var vs = CTree<long, TypedValue>.Empty;
                 var trs = trc._trs;
                 if (cx.db.objects[cx._tgt] is not Table t)
                     return null;
-    /*            cx.Add(t.framing);
-                if (cx._Dom(t) is not Domain dm)
-                    return null; */
+                /*            cx.Add(t.framing);
+                            if (cx._Dom(t) is not Domain dm)
+                                return null; */
                 var rt = BList<long?>.Empty;
                 var rs = CTree<long, Domain>.Empty;
-                (rt, rs) = ColsFrom(cx,t,rt,rs);
-                if (rt==BList<long?>.Empty)
+                (rt, rs) = ColsFrom(cx, t, rt, rs);
+                if (rt == BList<long?>.Empty)
                     return null;
                 var dm = new Domain(t.domain, cx, Sqlx.TABLE, rs, rt, rt.Length);
-                var fb = (cx._tty!=PTrigger.TrigType.Insert)?
-                    cx.next.cursors[trs.rsTargets[cx._tgt]??-1L]:null;
-                rt = trc._trs.insertCols??dm.rowType;
+                var fb = (cx._tty != PTrigger.TrigType.Insert) ?
+                    cx.next.cursors[trs.rsTargets[cx._tgt] ?? -1L] : null;
+                rt = trc._trs.insertCols ?? dm.rowType;
                 for (var b = rt.First(); b != null; b = b.Next())
-                    if (b.value() is long p &&
-                        trs.targetTrans[p] is long tp)
+                    if (b.value() is long p && trs.targetTrans[p] is long tp)
                     {
                         if (trc[tp] is TypedValue v)
+                        {
+                            cx.CheckMetadata(tp, v);
                             vs += (p, v);
+                        }
                         else if (fb?[tp] is TypedValue fv) // for matching cases
                             vs += (p, fv);
                     }

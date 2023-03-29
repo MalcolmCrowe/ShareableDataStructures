@@ -389,7 +389,7 @@ namespace Pyrrho.Level4
                 case PTrigger.TrigType.Insert:
                     if (table.Denied(cx, Grant.Privilege.Insert))
                         throw new DBException("42105", table.NameFor(cx));
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                     // parameter cl is only supplied when d_User.defpos==d.owner
                     // otherwise check if we should compute it
                     if (cx.db.user != null &&
@@ -405,7 +405,7 @@ namespace Pyrrho.Level4
                         // (a subset of the user’s references)
                         level = uc.ForInsert(table.classification);
                     }
-#endif
+//#endif
                     break;
                 case PTrigger.TrigType.Update:
                     if (table.Denied(cx, Grant.Privilege.Update))
@@ -452,13 +452,13 @@ namespace Pyrrho.Level4
                     break;
                 case PTrigger.TrigType.Delete:
                     if (table.Denied(cx, Grant.Privilege.Delete)
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                         ||
                         (table.enforcement.HasFlag(Grant.Privilege.Delete) &&
-                        cx.db.user.clearance.minLevel > 0 &&
-                        (cx.db.user.clearance.minLevel != targetInfo.classification.minLevel ||
-                        cx.db.user.clearance.maxLevel != targetInfo.classification.maxLevel))
-#endif
+                        cx.db.user is not null && cx.db.user.clearance.minLevel > 0 &&
+                        (cx.db.user.clearance.minLevel != table.classification.minLevel ||
+                        cx.db.user.clearance.maxLevel != table.classification.maxLevel))
+//#endif
                         )
                         throw new DBException("42105", table.NameFor(cx));
                     level = user?.clearance??Level.D;
@@ -517,7 +517,10 @@ namespace Pyrrho.Level4
                             {
                                 var tv = ua.Eval(this);
                                 if (trs.transTarget[ua.vbl] is long tp)
+                                {
+                                    CheckMetadata(tp, tv);
                                     newRow += (tp, tv);
+                                }
                                 else if (trs.targetTrans.Contains(ua.vbl)) // this is a surprise
                                     newRow += (ua.vbl, tv);
                             }
@@ -532,19 +535,19 @@ namespace Pyrrho.Level4
                         if (fi == true) // an insteadof trigger has fired
                             return;
                         // Step C
-#if MANDATORYACCESSCONTROL
+//#if MANDATORYACCESSCONTROL
                         // If Update is enforced by the table, and a record selected for update 
                         // is not one to which the user has clearance 
                         // or does not match the user’s clearance level, 
                         // throw an Access Denied exception.
                         if (table.enforcement.HasFlag(Grant.Privilege.Update)
-                            && _cx.db.user != null
-                            && _cx.db.user.defpos != _cx.db.owner && ((rc != null) ?
+                            && (_cx.db.user == null ||
+                            (_cx.db.user.defpos != _cx.db.owner && ((rc != null) ?
                                  ((!level.ClearanceAllows(rc.classification))
                                  || level.minLevel != rc.classification.minLevel)
-                                 : level.minLevel > 0))
+                                 : level.minLevel > 0))))
                             throw new DBException("42105");
-#endif
+//#endif
                         // Step D
                         tgc = (TransitionRowSet.TargetCursor)(cursors[_trs.defpos] ??
                             throw new PEException("PE631"));
@@ -552,7 +555,7 @@ namespace Pyrrho.Level4
                             if (b.value() is TypedValue nv)
                             {
                                 var k = b.key();
-                                if (rc.vals[k] is TypedValue v && v.CompareTo(nv) == 0)
+                                if (rc?.vals[k] is TypedValue v && v.CompareTo(nv) == 0)
                                     newRow -= k;
                                 else
                                     trc += (this, k, nv);
@@ -587,15 +590,16 @@ namespace Pyrrho.Level4
                         tgc = (TransitionRowSet.TargetCursor)(cursors[_trs.defpos] ??
                             throw new PEException("PE631"));
                         rc = tgc._rec ?? throw new PEException("PE631");
-#if MANDATORYACCESSCONTROL
-                        if (_cx.db.user.defpos != _cx.db.owner && table.enforcement.HasFlag(Grant.Privilege.Delete) ?
+//#if MANDATORYACCESSCONTROL
+                        if (_cx.db.user==null || 
+                            _cx.db.user.defpos != _cx.db.owner && table.enforcement.HasFlag(Grant.Privilege.Delete) ?
                             // If Delete is enforced by the table and the user has delete privilege for the table, 
                             // but the record to be deleted has a classification level different from the user 
                             // or the clearance does not allow access to the record, throw an Access Denied exception.
                             ((!level.ClearanceAllows(rc.classification)) || level.minLevel > rc.classification.minLevel)
                             : level.minLevel > 0)
                             throw new DBException("42105");
-#endif
+//#endif
                         for (var b = casc.First(); b != null; b = b.Next())
                             if (b.value() is TableActivation ct)
                                 rc.Cascade(ct);
