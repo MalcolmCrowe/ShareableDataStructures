@@ -68,7 +68,7 @@ namespace Pyrrho.Level3
         { }
         static BTree<long,object> _Mem(PTrigger p)
         {
-            var r = new BTree<long, object>(_Domain, p.dataType.defpos);
+            var r = new BTree<long, object>(_Domain, p.dataType);
             if (p.oldTable != null)
                 r += (OldTable, p.oldTable.iix.dp);
             if (p.newTable != null)
@@ -81,12 +81,39 @@ namespace Pyrrho.Level3
                 r += (UpdateCols, p.cols);
             return r;
         }
-        public static Trigger operator+(Trigger t,(long,object)x)
+        public static Trigger operator +(Trigger et, (long, object) x)
         {
+            var d = et.depth;
+            var m = et.mem;
             var (dp, ob) = x;
-            if (t.mem[dp] == ob)
-                return t;
-            return (Trigger)t.New(t.mem + x);
+            if (et.mem[dp] == ob)
+                return et;
+            if (ob is DBObject bb && dp != _Depth)
+            {
+                d = Math.Max(bb.depth + 1, d);
+                if (d > et.depth)
+                    m += (_Depth, d);
+            }
+            return (Trigger)et.New(m + x);
+        }
+
+        public static Trigger operator +(Trigger e, (Context, long, object) x)
+        {
+            var d = e.depth;
+            var m = e.mem;
+            var (cx, p, o) = x;
+            if (e.mem[p] == o)
+                return e;
+            if (p == UpdateCols)
+                m += (_Depth, cx._DepthBV(e.cols, d));
+            else
+            if (o is long q && cx.obs[q] is DBObject ob)
+            {
+                d = Math.Max(ob.depth + 1, d);
+                if (d > e.depth)
+                    m += (_Depth, d);
+            }
+            return (Trigger)e.New(m + (p, o));
         }
         /// <summary>
         /// a string representation of the trigger
@@ -124,14 +151,14 @@ namespace Pyrrho.Level3
         {
             return (dp == defpos) ? this : new Trigger(dp, mem);
         }
-        protected override BTree<long, object> _Replace(Context cx, DBObject so, DBObject sv, BTree<long, object>m)
+        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = base._Replace(cx, so, sv,m);
+            var r = (Trigger)base._Replace(cx, so, sv);
             if (table == so.defpos)
-                r += (RowSet.Target, sv.defpos);
+                r +=(cx, RowSet.Target, sv.defpos);
             var a = cx.ObReplace(action, so, sv);
             if (a != action)
-                r += (Action, a);
+                r +=(cx, Action, a);
             var ch = false;
             var cs = BList<long?>.Empty;
             for (var b = cols?.First(); b != null; b = b.Next())
@@ -142,26 +169,26 @@ namespace Pyrrho.Level3
                     ch = ch || c != b.value();
                 }
             if (ch)
-                r += (UpdateCols, cs);
+                r += (cx, UpdateCols, cs);
             var o = cx.ObReplace(oldRow, so, sv);
             if (o != oldRow)
-                r += (OldRow, o);
+                r +=(cx, OldRow, o);
             o = cx.ObReplace(newRow, so, sv);
             if (o != newRow)
-                r += (NewRow, o);
+                r +=(cx, NewRow, o);
             o = cx.ObReplace(oldTable, so, sv);
             if (o != oldTable)
-                r += (OldTable, o);
+                r +=(cx, OldTable, o);
             o = cx.ObReplace(newTable, so, sv);
             if (o != newTable)
-                r += (NewTable, o);
+                r +=(cx, NewTable, o);
             return r;
         }
         internal override Database Drop(Database d, Database nd, long p)
         {
             var tb = (Table)(nd.objects[table] ?? throw new DBException("42107", "??"));
             var tgs = CTree<PTrigger.TrigType, CTree<long, bool>>.Empty;
-            for (var b=tb.triggers.First();b!=null;b=b.Next())
+            for (var b=tb.triggers.First();b is not null;b=b.Next())
             {
                 var ts = CTree<long, bool>.Empty;
                 for (var c = b.value().First(); c != null; c = c.Next())
@@ -210,44 +237,45 @@ namespace Pyrrho.Level3
         internal bool old => (bool)(mem[Old]??false);
  //       internal long trig => (long)mem[Trig];
         internal TransitionTable(Ident ic, bool old, Context cx, RowSet fm, Trigger tg)
-                : base(ic.iix.dp,_Mem(cx, ic, fm) + (Old, old) + (Trig, tg.defpos))
+                : base(ic.iix.dp,BTree<long, object>.Empty + (_Domain, fm.domain) 
+                    + (ObInfo.Name, ic.ident)
+                  + (Target, fm.target) + (Old, old) + (Trig, tg.defpos))
         { }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static TransitionTable operator+(TransitionTable t,(long,object)x)
+        public static TransitionTable operator +(TransitionTable et, (long, object) x)
         {
+            var d = et.depth;
+            var m = et.mem;
             var (dp, ob) = x;
-            if (t.mem[dp] == ob)
-                return t;
-            return (TransitionTable)t.New(t.mem + x);
+            if (et.mem[dp] == ob)
+                return et;
+            if (ob is DBObject bb && dp != _Depth)
+            {
+                d = Math.Max(bb.depth + 1, d);
+                if (d > et.depth)
+                    m += (_Depth, d);
+            }
+            return (TransitionTable)et.New(m + x);
+        }
+
+        public static TransitionTable operator +(TransitionTable e, (Context, long, object) x)
+        {
+            var d = e.depth;
+            var m = e.mem;
+            var (cx, p, o) = x;
+            if (e.mem[p] == o)
+                return e;
+            if (o is long q && cx.obs[q] is DBObject ob)
+            {
+                d = Math.Max(ob.depth + 1, d);
+                if (d > e.depth)
+                    m += (_Depth, d);
+            }
+            return (TransitionTable)e.New(m + (p, o));
         }
         internal override Basis New(BTree<long, object> m)
         {
             return new TransitionTable(defpos,m);
-        }
-        static BTree<long,object> _Mem(Context cx,Ident ic,RowSet fm)
-        {
-            var cs = BList<long?>.Empty;
-            var vs = BList<SqlValue>.Empty;
-            var ds = CTree<long, bool>.Empty;
-            var d = 1+fm.depth;
-      /*      for (var b = cx._Dom(fm).rowType.First(); b != null; b = b.Next())
-            {
-                var p = b.value();
-                var c = (SqlValue)cx.obs[p];
-                var u = cx.GetIid();
-                var v = new SqlCopy(u, cx, c.name, ic.iix.dp, p);
-                cx.Add(v);
-                vs += v;
-                cs += v.defpos;
-                ds += (u.dp, true);
-                d = _Max(d, 1 + v.depth);
-            } 
-            var nd = new Domain(cx.GetUid(),cx,Sqlx.ROW,vs);
-            cx.Add(nd); */
-            return BTree<long, object>.Empty + (_Domain, fm.domain) 
-                    + (ObInfo.Name, ic.ident)
-                  + (Dependents, ds) + (_Depth, d) + (ColIds, cs)
-                  + (Target, fm.target);
         }
         internal override DBObject New(long dp, BTree<long, object>m)
         {

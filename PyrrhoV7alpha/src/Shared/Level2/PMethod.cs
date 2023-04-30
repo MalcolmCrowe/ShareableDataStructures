@@ -34,6 +34,7 @@ namespace Pyrrho.Level2
         /// Constructor: a new Method definition from the Parser
         /// </summary>
         /// <param name="nm">The name $ arity of the method</param>
+        /// <param name="ar">The parameters</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
         /// <param name="td">The owning type</param>
@@ -41,7 +42,7 @@ namespace Pyrrho.Level2
         /// <param name="nst">The first possible framing executable</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PMethod(string nm, BList<long?> ar, Domain rt, 
+        public PMethod(string nm, Domain ar, Domain rt, 
             MethodType mt, UDType td, Method? md, Ident sce,long nst, long pp, Context cx)
             : this(Type.PMethod2,nm,ar,rt,mt,td,md,sce,nst, pp,cx)
 		{ }
@@ -50,13 +51,13 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="tp">The PMethod type</param>
         /// <param name="nm">The name of the method</param>
-        /// <param name="ar">The arity</param>
+        /// <param name="ar">The parameters</param>
         /// <param name="rt">The return type</param>
         /// <param name="mt">The method type</param>
         /// <param name="td">The user defined type</param>
         /// <param name="nst">The first possible framing executable</param>
         /// /// <param name="db">The database</param>
-        protected PMethod(Type tp, string nm, BList<long?> ar, 
+        protected PMethod(Type tp, string nm, Domain ar, 
             Domain rt, MethodType mt, UDType td, Method? md, Ident sce,long nst,
             long pp, Context cx)
             : base(tp,nm,ar,rt,md,sce,nst,pp,cx)
@@ -92,7 +93,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) 
 		{
-            if (udt is not UDType || methodType is null)
+            if (udt is null || methodType is null)
                 throw new PEException("PE42125");
             wr.PutLong(udt.defpos);
             wr.PutInt((int)methodType);
@@ -106,7 +107,7 @@ namespace Pyrrho.Level2
 		{
             var r = rd.GetLong();
             _udt = r;
-            udt = (UDType)(rd.context?._Dom(r) ?? throw new PEException("PE42126"));
+            udt = (UDType)(rd.context.db.objects[r] ?? throw new PEException("PE42126"));
 			methodType = (MethodType)rd.GetInt();
             base.Deserialise(rd);
             if (methodType == MethodType.Constructor)
@@ -124,7 +125,7 @@ namespace Pyrrho.Level2
 		}
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
-            if (udt is not UDType)
+            if (udt is null)
                 throw new PEException("PE42130");
             switch (that.type)
             {
@@ -163,7 +164,7 @@ namespace Pyrrho.Level2
                 udt.infos[cx.role.defpos] is not ObInfo ui)
                 throw new PEException("PE0611");
             var um = ui.methodInfos;
-            var sig = cx.Signature(parameters);
+            var sig = cx.Signature(mt);
             var om = um[name] ?? BTree<CList<Domain>, long?>.Empty;
             um += (name, om+(sig, mt.defpos));
             ui += (ObInfo.MethodInfos, um);

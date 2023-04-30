@@ -115,8 +115,8 @@ namespace Pyrrho.Level5
     internal class TGraph : TypedValue
     {
         internal readonly CTree<long, TNode> nodes; // and edges
-        internal readonly CTree<string, TNode> nids; // and edges
-        internal TGraph (CTree<long, TNode> ns, CTree<string, TNode> nids) : base(Domain.Graph)
+        internal readonly CTree<TChar, TNode> nids; // and edges
+        internal TGraph (CTree<long, TNode> ns, CTree<TChar, TNode> nids) : base(Domain.Graph)
         {
             nodes = ns;
             this.nids = nids;
@@ -124,7 +124,7 @@ namespace Pyrrho.Level5
         internal TGraph(TNode n) : base(Domain.Graph)
         {
             nodes = new CTree<long,TNode>(n.uid,n);
-            nids = new CTree<string, TNode>(n.id, n);
+            nids = new CTree<TChar, TNode>(n.id, n);
         }
         public static TGraph operator+(TGraph g,TNode n)
         {
@@ -150,7 +150,7 @@ namespace Pyrrho.Level5
                 if (c!=0) return c;
             }
             if (b != null) return 1;
-            if (tb!=null) return -1;
+            if (tb is not null) return -1;
             return 0;
         }
         internal static CTree<TGraph, bool> Add(CTree<TGraph, bool> t, TNode n)
@@ -160,8 +160,8 @@ namespace Pyrrho.Level5
             if (n is not TEdge)
                 return t + (new TGraph(n), true);
             // Edge: end nodes already must be in t, but may be in different TGraphs
-            var lu = n[1].ToString();
-            var au = n[2].ToString();
+            var lu = (TChar)n[1];
+            var au = (TChar)n[2];
             if (Find(t, lu) is not TGraph lg || Find(t, au) is not TGraph ag
                 || ag.Rep() is not TNode lr || ag.Rep() is not TNode ar)
                 return t;
@@ -170,7 +170,7 @@ namespace Pyrrho.Level5
             else // merge the graphs and add n
                 return t - ag -lg + (new TGraph(lg.nodes + ag.nodes + (n.uid, n), lg.nids + ag.nids + (n.id, n)), true);
         }
-        static TGraph? Find(CTree<TGraph, bool> t, string n)
+        static TGraph? Find(CTree<TGraph, bool> t, TChar n)
         {
             for (var b = t.First(); b != null; b = b.Next())
                 if (b.key().nids.Contains(n))
@@ -181,7 +181,7 @@ namespace Pyrrho.Level5
         {
             var sb = new StringBuilder("TGraph (");
             var cm = "[";
-            for (var b=nodes.First();b!=null;b=b.Next())
+            for (var b=nodes.First();b is not null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
                 sb.Append(b.value());
@@ -198,10 +198,10 @@ namespace Pyrrho.Level5
     internal class TGParam : TypedValue
     {
         internal readonly long uid; 
-        internal readonly string id;
+        internal readonly TChar id;
         internal readonly Sqlx kind; // LPAREN node, RPAREN edge, COLON specifictype, EQL property
-        internal readonly CTree<string, TypedValue> constraints;
-        public TGParam(long dp, string i, Sqlx k,Domain dt, CTree<string, TypedValue> constraints) : base(dt)
+        internal readonly CTree<TChar, TypedValue> constraints;
+        public TGParam(long dp, TChar i, Sqlx k,Domain dt, CTree<TChar, TypedValue> constraints) : base(dt)
         {
             uid = dp;
             id = i;
@@ -216,7 +216,7 @@ namespace Pyrrho.Level5
         {
             if (obj is TGParam tp)
             {
-                if (id != "_")
+                if (id.value != "_")
                 {
                     var c = id.CompareTo(tp.id);
                     if (c != 0)
@@ -227,7 +227,7 @@ namespace Pyrrho.Level5
         }
         public override string ToString()
         {
-            return id + ':'+DBObject.Uid(uid);
+            return id.value + ':'+DBObject.Uid(uid);
         }
     }
 

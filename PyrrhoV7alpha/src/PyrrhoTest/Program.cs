@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("8 March 2023 Repeatable tests");
+                Console.WriteLine("30 April 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -292,15 +292,15 @@ namespace Test
             CheckResults(7, 2, "select city, avg(Salary), count(*) as numPeople from people where country = 'GER' group by city having count(*) > 4",
                 "[{CITY:'Berlin',AVG:60333.3333333333,NUMPEOPLE:6},{CITY:'Munich',AVG:61833.3333333333,NUMPEOPLE:6}]");
             /* MariaDB examples */ 
-            Act(431, "CREATE TABLE student (\"name\" CHAR, test CHAR, score INT)");
-            Act(432, "INSERT INTO student VALUES" +
+            Act(431, "CREATE TABLE students (\"name\" CHAR, test CHAR, score INT)");
+            Act(432, "INSERT INTO students VALUES" +
               "('Chun', 'SQL', 75), ('Chun', 'Tuning', 73)," +
               "('Esben', 'SQL', 43), ('Esben', 'Tuning', 31)," +
               "('Kaolin', 'SQL', 56), ('Kaolin', 'Tuning', 88)," +
               "('Tatiana', 'SQL', 87), ('Tatiana', 'Tuning', 83)");
             CheckResults(7, 3, "SELECT \"name\", test, score, " +
                 "AVG(score) OVER (PARTITION BY test) AS average_by_test," +
-                "AVG(score) OVER (PARTITION BY \"name\") AS average_by_name FROM student",
+                "AVG(score) OVER (PARTITION BY \"name\") AS average_by_name FROM students",
                 "[{name:'Chun',TEST:'SQL',SCORE:75,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:74}," +
                 "{name:'Chun',TEST:'Tuning',SCORE:73,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:74}," +
                 "{name:'Esben',TEST:'SQL',SCORE:43,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:37}," +
@@ -1246,7 +1246,7 @@ namespace Test
                 " then insert into friend(leaving,arriving) values (nr.arriving,nr.leaving) end if");
             Act(356, "insert into person values('Joe',date'1976-04-25'),('Mary',date'1992-08-04')");
             Act(357, "insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')");
-            CheckResults(25, 2, "select count(*) from friend where leaving='Fred'","[{COUNT:1}]");
+            CheckResults(25, 2, "select count(*) from friend where 'Fred' in leaving", "[{COUNT:1}]");
             CheckResults(25, 3, "match (\"Fred\")-[:friend]->(_x)","[{X:'Mary'}]");
             Act(358, "create type product nodetype");
             Act(359, "CREATE (Joe: Customer { \"Name\":'Joe Edwards', Address: '10 Station Rd.'})," +

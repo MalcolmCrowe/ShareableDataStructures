@@ -272,7 +272,7 @@ namespace Pyrrho.Level4
             internal Idents ApplyDone(Context cx)
             {
                 var r = BTree<string, BTree<int,(Iix,Idents)>>.Empty;
-                for (var b=First();b!=null;b=b.Next())
+                for (var b=First();b is not null;b=b.Next())
                  if (b.value() is BTree<int,(Iix,Idents)> x){
                     for (var s = x.First(); s != null; s = s.Next())
                     {
@@ -280,8 +280,8 @@ namespace Pyrrho.Level4
                         if (p.dp != -1L && cx.done[p.dp] is DBObject nb)
                         {
                             p = new Iix(p.lp,p.sd,nb.defpos);
-                            for (var c = cx._Dom(nb)?.rowType.First(); c != null; c = c.Next())
-                                if (c.value() is long cp && cx.done[cp] is SqlValue v && v.name!=null)
+                            for (var c = nb.domain.rowType.First(); c != null; c = c.Next())
+                                if (c.value() is long cp && cx.done[cp] is SqlValue v && v.name is not null)
                                 {
                                     var ds = st[v.name] ?? BTree<int,(Iix,Idents)>.Empty;
                                     st = new Idents(st + (v.name, ds +(p.sd,(new Iix(v.defpos,p.sd,v.defpos),Empty))));
@@ -497,14 +497,14 @@ namespace Pyrrho.Level4
         }
         Sqlx MaybePrefix(string s)
         {
-            if (cx.parse==ExecuteStatus.Obey && cx.db!=null && cx.role!=null
-                && cx.db.objects[cx.db.prefixes[s]??-1L] is UDType dt && val!=null
-                && dt.name!=null)
+            if (cx.parse==ExecuteStatus.Obey && cx.db is not null && cx.role is not null
+                && cx.db.objects[cx.db.prefixes[s]??-1L] is UDType dt && val is not null
+                && dt.name is not null)
             {
                 var ps = pos;
                 Next();
                 var sig = new CList<Domain>(val.dataType);
-                if (dt.infos[cx.role.defpos] is ObInfo mi && dt.name!=null &&
+                if (dt.infos[cx.role.defpos] is ObInfo mi && dt.name is not null &&
                     mi.methodInfos[dt.name] is BTree<CList<Domain>,long?> md
                     && cx.db.objects[md[sig]??-1L] is Method mt)
                 {
@@ -527,9 +527,9 @@ namespace Pyrrho.Level4
                 var oldch = ch;
                 var t = Next();
                 var vs = val?.ToString();
-                if (t == Sqlx.ID && vs != null && cx.db!=null && cx.role!=null
+                if (t == Sqlx.ID && vs != null && cx.db is not null && cx.role is not null
                     && cx.db.objects[cx.db.suffixes[vs]??-1L] is UDType dt
-                    && dt.name != null && prevval!=null)
+                    && dt.name != null && prevval is not null)
                 {
                     if (dt.infos[cx.role.defpos] is ObInfo mi 
                         && mi.methodInfos[dt.name] is BTree<CList<Domain>, long?> md
@@ -578,8 +578,8 @@ namespace Pyrrho.Level4
                 if (char.IsLetter(ch))
                     while (char.IsLetter(ch))
                         Advance();
-                var tg = new TGParam(Position,new string(input, start, pos - start).ToUpper(),
-                        tok,Domain.Content,CTree<string,TypedValue>.Empty);
+                var tg = new TGParam(Position,new TChar(new string(input, start, pos - start).ToUpper()),
+                        tok,Domain.Content,CTree<TChar,TypedValue>.Empty);
                 tgs += (tg.uid, tg);
                 val = tg;
                 tok = Sqlx.NODE;

@@ -67,6 +67,17 @@ namespace Pyrrho.Level3
         {
             return m;
         }
+        /// <summary>
+        /// Context.MergeColumn uses a different cascade, can't use depths.
+        /// </summary>
+        /// <param name="dn">DBObjects we have done</param>
+        /// <param name="was">An old TableColumn uid</param>
+        /// <param name="now">A new one</param>
+        /// <returns></returns>
+        internal virtual Basis ShallowReplace(Context cx,long was,long now)
+        {
+            return this;
+        }
         protected virtual BTree<long,object> _Apply(Context cx,BTree<long,object>am,BTree<long,object>m)
         {
             return m;
@@ -153,7 +164,7 @@ namespace Pyrrho.Level3
             NextId = -58, // long:  will be used for next transaction
             NextPos = -395, // long: next proposed Physical record
             NextStmt = -393, // long: next space in compiled range
-            NodeIds = -471, // BTree<string,TNode> 
+            NodeIds = -471, // BTree<TChar,TNode> 
             Owner = -59, // long: the defpos of the owner user for the database
             Prefixes = -375, // BTree<string,long?> UDT
             Procedures = -95, // CTree<long,string> Procedure
@@ -202,8 +213,8 @@ namespace Pyrrho.Level3
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
-        public BTree<string, TNode> nodeIds =>
-            (BTree<string, TNode>)(mem[NodeIds] ?? BTree<string, TNode>.Empty); // ->uid
+        public BTree<TChar, TNode> nodeIds =>
+            (BTree<TChar, TNode>)(mem[NodeIds] ?? BTree<TChar, TNode>.Empty); // ->uid
         public CTree<long,TGraph> graphs =>
             (CTree<long,TGraph>)(mem[Graphs]??CTree<long,TGraph>.Empty);
         internal static Role schemaRole;
@@ -330,34 +341,40 @@ namespace Pyrrho.Level3
         {
             if (n.Graph(d) is not null)
                 return d;
-            var nt = n.dataType;
             var gs = d.graphs;
             if (d.objects[n.dataType.structure] is not Table tb ||
                 tb.tableRows[n.uid] is not TableRow tr)
                 return d;
             var ni = d.nodeIds + (n.id, n);
-            var m = d.mem + (NodeIds, ni);
-            if (n is not TEdge)
-                return d.New(d.loadpos, m + (Graphs, gs + (n.uid, new TGraph(n))));
+            d += (NodeIds, ni);
+            if (n is not TEdge e)
+                return d + (Graphs, d.graphs + (n.uid, new TGraph(n)));
             // Edge: end nodes already must be in the database, but may be in different TGraphs
-            var lu = n[1].ToString();
-            var au = n[2].ToString();
-            if (d.Graph(lu) is not TGraph lg || d.Graph(au) is not TGraph ag
-                || lg.Rep() is not TNode lr || ag.Rep() is not TNode ar)
-                return d;
-            if (lr.uid == ar.uid) // already connected
-                return d.New(d.loadpos, m + (Graphs, gs + (lr.uid, lg+n)));
-            // connect the two TGraphs and discard the higher one
-            if (lr.uid < ar.uid)
-            {
-                gs -= ar.uid;
-                gs += (lr.uid, new TGraph(lg.nodes + ag.nodes + (n.uid, n), lg.nids + ag.nids + (n.id, n)));
-            } else
-            {
-                gs -= lr.uid;
-                gs += (ar.uid, new TGraph(lg.nodes + ag.nodes + (n.uid, n), lg.nids + ag.nids + (n.id, n)));
-            }
-            return d.New(d.loadpos, m + (Graphs, gs));
+            for (var lb = ((TSet)e[1]).First(); lb != null; lb = lb.Next())
+                if (d.Graph((TChar)lb.Value()) is TGraph lg && lg.Rep() is TNode lr)
+                    for (var ab = ((TSet)e[2]).First(); ab != null; ab = ab.Next())
+                        if (d.Graph((TChar)ab.Value()) is TGraph ag && ag.Rep() is TNode ar)
+                        {
+                            if (lr.uid == ar.uid)
+                            { // already connected
+                                gs += (lr.uid, lg + e);
+                                continue;
+                            }
+                            // connect the two TGraphs and discard the higher one
+                            if (lr.uid < ar.uid)
+                            {
+                                gs -= ar.uid;
+                                gs += (lr.uid, new TGraph(lg.nodes + ag.nodes + (e.uid, e), 
+                                    lg.nids + ag.nids + (e.id, e)));
+                            }
+                            else
+                            {
+                                gs -= lr.uid;
+                                gs += (ar.uid, new TGraph(lg.nodes + ag.nodes + (e.uid, e), 
+                                    lg.nids + ag.nids + (e.id, e)));
+                            }
+                        }
+            return d + (Graphs, gs);
         }
         /// <summary>
         /// Actual removal of a node from the database cascades to edges leaving it or arriving at it.
@@ -372,7 +389,7 @@ namespace Pyrrho.Level3
             var ni = d.nodeIds - n.id;
             if (ni == d.nodeIds)
                 return d;
-            var nn = BTree<string, long?>.Empty;
+            var nn = BTree<TChar, TNode>.Empty;
             var ng = CTree<long,TGraph>.Empty;
             var nd = d.New(d.loadpos, d.mem + (Graphs, ng) + (NodeIds, nn));
             for (var b = ni.First(); b != null; b = b.Next())
@@ -382,7 +399,7 @@ namespace Pyrrho.Level3
                     nd += b.value();
             return nd;
         }
-        internal TGraph? Graph(string s)
+        internal TGraph? Graph(TChar s)
         {
             if (nodeIds[s] is TNode n)
                 for (var b = graphs.First(); b != null; b = b.Next())
@@ -480,13 +497,13 @@ namespace Pyrrho.Level3
             {
                 ro = (Role)(objects[roles[rn]??-1L]
                     ?? throw new DBException("42105")); // 3a
-                if (u!=null && ro.infos[u.defpos] is ObInfo ou
+                if (u is not null && ro.infos[u.defpos] is ObInfo ou
                         && ou.priv.HasFlag(Grant.Privilege.UseRole)) // user has usage
                     goto done;
                 if (ro.infos[guest.defpos] is ObInfo oi
                     && oi.priv.HasFlag(Grant.Privilege.UseRole)) // 3b public role
                     goto done;
-                if (u!=null && owner == u.defpos && ro == schema) // 3ci1
+                if (u is not null && owner == u.defpos && ro == schema) // 3ci1
                     goto done;
                 throw new DBException("42105");
             }

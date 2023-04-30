@@ -193,14 +193,14 @@ namespace Pyrrho.Common
             var cb = root;
             while (cb != null)
             {
-                var bpos = cb.PositionFor(this, key, out bool b);
+                var bpos = cb.PositionFor(this, key, out bool _);
                 bmk = new ABookmark<K, V>(cb, bpos, bmk);
                 if (bpos == cb.count)
                 {
-                    var inr = cb as Inner<K, V>;
-                    if (inr == null)
+                    if (cb is Inner<K, V> inr)
+                        cb = inr.gtr;
+                    else 
                         return null;
-                    cb = inr.gtr;
                 }
                 else
                     cb = cb.Slot(bpos).Value as Bucket<K, V>;
@@ -227,10 +227,10 @@ namespace Pyrrho.Common
                 }
             }
             if (cm==',')
-                sb.Append(")");
+                sb.Append(')');
             return sb.ToString();
         }
-        string Uid(long u)
+        static string Uid(long u)
         {
             if (u >= 0x7000000000000000)
                 return "%" + (u - 0x7000000000000000);
@@ -537,7 +537,7 @@ namespace Pyrrho.Common
                 d = stk._bucket.Slot(stkPos);
                 b = d.Value as Bucket<K, V>;
             }
-            while (d.Value is Bucket<K, V> && b!=null)
+            while (d.Value is Bucket<K, V> && b is not null)
             {
                 stk = new ABookmark<K, V>(b, b.EndPos, stk);
                 d = b.Slot(b.count - 1);

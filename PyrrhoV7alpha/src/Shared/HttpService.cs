@@ -32,15 +32,15 @@ namespace Pyrrho
         /// <summary>
         /// the host name
         /// </summary>
-        string host;
+        readonly string host;
         /// <summary>
         /// the port for HTTP
         /// </summary>
-		int port;
+		readonly int port;
         /// <summary>
         /// The port for HTTPS
         /// </summary>
-        int sport;
+        readonly int sport;
         /// <summary>
         /// constructor: set up the host and port for the HttpService
         /// </summary>
@@ -102,7 +102,7 @@ namespace Pyrrho
         /// Constructor for the web oputput class
         /// </summary>
         /// <param name="s">the output stream</param>
-        protected PyrrhoWebOutput(Transaction d,StringBuilder s,string? agent=null)
+        protected PyrrhoWebOutput(Transaction d,StringBuilder s)
         {
             sbuild = s;
             db = d;
@@ -116,7 +116,7 @@ namespace Pyrrho
             var r = (RowSet?)cx.obs[cx.result];
             Cursor? e = r?.First(cx);
             ETag et = ETag.Empty;
-            if (cx.db!=null && etags)
+            if (cx.db is not null && etags)
             {
                 if (cx.affected!=Rvv.Empty)
                     et = new ETag(cx.db, cx.affected);
@@ -129,7 +129,7 @@ namespace Pyrrho
                 } 
             }
             Header(rs, tr, cx, url,et.assertMatch.ToString());
-            if (r!=null)
+            if (r is not null)
             {
                 BeforeResults();
                 for (; e != null; e = e.Next(cx))
@@ -152,7 +152,7 @@ namespace Pyrrho
                 r = (RowSet?)cx.obs[us.source];
             if (r == null && cx.exec is SqlInsert si)
                 r = (RowSet?)cx.obs[si.source];
-            if (r != null && cx.db!=null && cx.db.role!=null
+            if (r != null && cx.db is not null && cx.db.role is not null
                 && cx._Ob(r.target) is DBObject ob && ob.infos[cx.db.role.defpos] is ObInfo oi)
             {
                 if (oi.description is string ds && ds != "")
@@ -210,7 +210,7 @@ namespace Pyrrho
                     sbuild.Append(cm);
                     sbuild.Append(e[p]);
                 }
-            sbuild.Append(")");
+            sbuild.Append(')');
         }
         public override ETag SendResults(HttpListenerResponse rs, Transaction tr,Context cx, 
             string dn,bool etags)
@@ -243,7 +243,7 @@ namespace Pyrrho
         string xdesc = "";
         string ydesc = "";
         string comma = "";
-        string query = "";
+        readonly string query = "";
         /// <summary>
         /// simple constructor
         /// </summary>
@@ -267,20 +267,19 @@ namespace Pyrrho
             var psr = new Parser(cx, query);
             chartType = psr.ParseMetadata(Sqlx.TABLE);
             var mi = om?.infos[tr.role.defpos];
-            if (mi!=null && om!=null && om.defpos > 0)
+            if (mi is not null && om is not null && om.defpos > 0)
             {
                 chartType += mi.metadata;
                 if (mi.description != "" && mi.description[0] == '<')
                     sbuild.Append(mi.description);
             }
-            var oi = cx._Dom(fm)?.rowType;
+            var oi = fm?.domain.rowType;
             if (chartType != CTree<Sqlx, TypedValue>.Empty)
             {
                 for (var co = oi?.First(); co != null; co = co.Next())
                     if (co.value() is long p)
                     {
-                        var sc = cx.obs[p] as SqlCopy;
-                        var cp = (sc != null) ? sc.copyFrom : p;
+                        var cp = (cx.obs[p] is SqlCopy sc) ? sc.copyFrom : p;
                         var ci = cx._Ob(cp)?.infos[cx.role.defpos];
                         if ((chartType[Sqlx.X] is TChar xc && xc.value == ci?.name)
                             || ci?.metadata.Contains(Sqlx.X) == true)
@@ -318,14 +317,14 @@ namespace Pyrrho
             else
             {
                 sbuild.Append("<table border><tr>");
-                for (var b = cx._Dom(rs)?.rowType.First(); b != null; b = b.Next())
-                    if (fm!=null && b.value() is long p &&  cx._Ob(fm.sIMap[p]??-1L) is DBObject c &&
+                for (var b = rs.domain.rowType.First(); b != null; b = b.Next())
+                    if (fm is not null && b.value() is long p &&  cx._Ob(fm.sIMap[p]??-1L) is DBObject c &&
                         c.infos[cx.role.defpos] is ObInfo ci && ci.name != null)
                         sbuild.Append("<th>" + ci?.name ?? "" + "</th>");
                 sbuild.Append("</tr>");
             }
         }
-        public string GetVal(TypedValue v)
+        public static string GetVal(TypedValue v)
         {
             return (v != TNull.Value) ? v.ToString() : "";
         }
@@ -348,7 +347,7 @@ namespace Pyrrho
                     sbuild.Append(",\"" + GetVal(e[ccol]) + "\"");
                 else
                     sbuild.Append(",\"" + GetVal(e[xcol]) + "\"");
-                sbuild.Append("]");
+                sbuild.Append(']');
                 comma = ",";
             }
             else
@@ -585,23 +584,23 @@ namespace Pyrrho
         }
         public override void BeforeResults()
         {
-            sbuild.Append("[");
+            sbuild.Append('[');
             cm = "";
         }
         public override void AfterResults()
         {
-            sbuild.Append("]");
+            sbuild.Append(']');
         }
         public override void PutRow(Context cx, Cursor e)
         {
             var rs = (RowSet?)cx.obs[e._rowsetpos];
             if (rs == null)
                 return;
-            var key = (cx.groupCols[rs.domain] is Domain gc) ? new TRow(gc, e.values) : TRow.Empty;
+            var key = (cx.groupCols[rs.domain.defpos] is Domain gc) ? new TRow(gc, e.values) : TRow.Empty;
             sbuild.Append(cm); cm = ",";
             var rt = e.columns;
             var doc = TDocument.Null;
-            for (var b = rt.First(); b != null; b = b.Next())
+            for (var b = rt.First(); b != null && b.key()<rs.domain.display; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is SqlValue ci && e[ci.defpos] is TypedValue tv)
                 {
                     var n = ci.alias ?? ci.NameFor(cx);
@@ -617,7 +616,6 @@ namespace Pyrrho
                 doc = doc.Add("$pos", new TInt(p));
                 doc = doc.Add("$check", new TInt(c));
             }
-            var dm = cx._Dom(rs)??throw new PEException("0098");
             for (var b = cx.funcs[e._rowsetpos]?[key]?.First(); b != null; b = b.Next())
                 doc = doc.Add("$" + DBObject.Uid(b.key()), new TDocument(b.value()));
             sbuild.Append(doc.ToString());
@@ -670,13 +668,13 @@ namespace Pyrrho
         /// The HttpContext
         /// </summary>
         protected HttpListenerContext client;
-        string agent;
+//        readonly string agent;
         protected PyrrhoWebOutput? woutput;
-        StringBuilder sbuild;
+        readonly StringBuilder sbuild;
         /// <summary>
         /// the database path
         /// </summary>
-        string path;
+        readonly string path;
 
         /// <summary>
         /// constructor
@@ -685,7 +683,7 @@ namespace Pyrrho
 		{
             client = h;
             path = h.Request.RawUrl ?? "";
-            agent = h.Request.UserAgent ?? "";
+//            agent = h.Request.UserAgent ?? "";
             sbuild = new StringBuilder();
 		}
          internal void Server()
@@ -723,16 +721,14 @@ namespace Pyrrho
                 var details = BTree<string, string>.Empty;
                 if (client.Request.Headers["Authorization"] is string h)
                 {
-                    var s = Encoding.UTF8.GetString(Convert.FromBase64String(h.Substring(6))).Split(':');
+                    var s = Encoding.UTF8.GetString(Convert.FromBase64String(h[6..])).Split(':');
                     details += ("User", s[0]);
                     details += ("Password", s[1]);
                 }
                 details += ("Files", dbn.ident);
                 details += ("Role", role);
                 var acc = client.Request.Headers["Accept"];
-                var d = Database.Get(details);
-                if (d == null)
-                    throw new DBException("3D000", dbn.ident);
+                var d = Database.Get(details)??throw new DBException("3D000", dbn.ident);
                 var db = d.Transact(Transaction.Analysing, "", new Connection(details));
                 if (d.lastModified != null)
                     db += (Database.LastModified, d.lastModified); // use the file time, not UTCNow
@@ -754,7 +750,7 @@ namespace Pyrrho
                 if (et != null)
                 {
                     if (et.StartsWith("W/"))
-                        et = et.Substring(2);
+                        et = et[2..];
                     var ets = et.Split(';');
                     for (var i = 0; i < ets.Length; i++)
                         rv += Rvv.Parse(ets[i].Trim().Trim('"'));
@@ -784,7 +780,7 @@ namespace Pyrrho
             }
             catch (DBException e)
             {
-                switch (e.signal.Substring(0, 2))
+                switch (e.signal[0..2])
                 {
                     case "22":
                     case "20": client.Response.StatusCode = 400; break;
@@ -833,32 +829,7 @@ namespace Pyrrho
                 Close();
             }
         }
-        /// <summary>
-        ///  for posted obs we use this routine
-        /// </summary>
-        /// <returns>a string</returns>
-		string ReadLine()
-		{
-			var a = new List<byte>();
-			byte b;
-			int i;
-			for (;;)
-			{
-				i = client.Request.InputStream.ReadByte();
-				if (i<0)
-					break;
-				b = (byte)i;
-				if (b>=32)
-					a.Add(b);
-				if (b=='\n' || b=='\0')
-					break;
-			}
-			byte[] bytes = new byte[a.Count];
-			for (int j=0;j<bytes.Length;j++)
-				bytes[j] = (byte)a[j];
-			return Encoding.UTF8.GetString(bytes,0,bytes.Length);
-		}
-        internal void TransactionOperation()
+        internal static void TransactionOperation()
         {
             // nothing - though it is a surprise if we get here
         }

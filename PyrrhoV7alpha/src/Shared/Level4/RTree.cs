@@ -110,7 +110,7 @@ namespace Pyrrho.Level4
         }
         public override Cursor? ResetToTiesStart(Context _cx, MTreeBookmark mb)
         {
-            if (mb!=null && mb.Value().HasValue)
+            if (mb is not null && mb.Value().HasValue)
                 return new RTreeBookmark(_cx,_rt, _pos+1, mb);
             return null;
         }

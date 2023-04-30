@@ -46,9 +46,6 @@ namespace Pyrrho.Level3
         /// The flags describe the type of index
         /// </summary>
         public PIndex.ConstraintType flags => (PIndex.ConstraintType)(mem[IndexConstraint] ?? 0);
-        /// <summary>
-        /// The indexed rows: note the strong types inside here will need to be updated if column names change
-        /// </summary>
         public MTree? rows => (MTree?)mem[Tree];
         public Domain keys => (Domain?)mem[Keys] ?? Domain.Null;
         /// <summary>
@@ -226,7 +223,7 @@ namespace Pyrrho.Level3
            /*           if (rx is VirtualIndex)
                           return; */
            db.objects[reftabledefpos] is Table tb && (rx.rows == null || !rx.rows.Contains(m))
-             && tb.infos[db.role.defpos] is ObInfo oi && oi.name!=null)
+             && tb.infos[db.role.defpos] is ObInfo oi && oi.name is not null)
                 throw new DBException("44002", "REFERENCES", oi.name).Mix()
                     .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                     .Add(Sqlx.CONSTRAINT_NAME, new TChar("REFERENCES"));
@@ -249,7 +246,6 @@ namespace Pyrrho.Level3
             if (nd.objects[tabledefpos] is Table tb)
             {
                 var xs = tb.indexes;
-                var ks = Domain.Row;
                 for (var b = tb.indexes.First(); b != null; b = b.Next())
                     if (b.value().Contains(defpos))
                     {
@@ -322,6 +318,18 @@ namespace Pyrrho.Level3
             var nt = cx.Fix(reftabledefpos);
             if (reftabledefpos!=nt)
                 r += (RefTable, nt);
+            return r;
+        }
+        internal override Basis ShallowReplace(Context cx, long was, long now)
+        {
+            var r = (Index)base.ShallowReplace(cx, was, now);
+            var ks = keys.ShallowReplace1(cx,was,now);
+            if (ks != keys)
+            {
+                r += (Keys, ks);
+                if (rows != null)
+                    r += (Tree, new MTree(rows, ks));
+            }
             return r;
         }
         internal override void Note(Context cx, StringBuilder sb)

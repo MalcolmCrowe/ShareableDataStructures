@@ -32,7 +32,7 @@ namespace Pyrrho.Level3
             Clause = -169,// string
             Inverse = -170, // long
             Monotonic = -171, // bool
-            Params = -172; // BList<long?>  FormalParameter
+            Params = -172; // Domain  
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
@@ -42,8 +42,8 @@ namespace Pyrrho.Level3
         /// These fields are filled in during Install.
         /// </summary>
         public long body => (long)(mem[Body]??-1L);
-		public BList<long?> ins => 
-            (BList<long?>?)mem[Params]?? BList<long?>.Empty;
+		public Domain ins => 
+            (Domain)(mem[Params]?? Domain.Null);
         public string clause => (string?)mem[Clause]??"";
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
@@ -54,7 +54,7 @@ namespace Pyrrho.Level3
 		public Procedure(PProcedure p, BTree<long,object> m)
             : base( p.ppos, p.defpos, m + (ObInfo.Name,p.name)+(Definer,p.definer)+(Owner,p.owner)
                   + (Infos,p.infos)
-                  + (Params, p.parameters) +(_Domain,p.dataType?.defpos??throw new DBException("42000")) 
+                  + (Params, p.parameters) +(_Domain,p.dataType) 
                   + (Body, p.proc) + (Clause, p.source?.ident??"") + (LastChange, p.ppos))
         { }
         /// <summary>
@@ -64,8 +64,8 @@ namespace Pyrrho.Level3
         /// <param name="ps"></param>
         /// <param name="rt"></param>
         /// <param name="m"></param>
-        public Procedure(long defpos,Context cx,BList<long?> ps, Domain dt, 
-            BTree<long, object> m) : base(defpos, m +(Params,ps)+(_Domain,dt.defpos)
+        public Procedure(long defpos,Context cx,Domain ps, Domain dt, 
+            BTree<long, object> m) : base(defpos, m +(Params,ps)+(_Domain,dt)
                 + (Definer, cx.role.defpos) + (Owner, cx.user?.defpos ?? -501L))
         { }
         protected Procedure(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -89,7 +89,7 @@ namespace Pyrrho.Level3
                 || !oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105");
             cx.Add(framing);
-            var n = (int)ins.Count;
+            var n = ins.Length;
             var acts = new TypedValue[n];
             var i = 0;
             for (var b = actIns.First(); b != null; b = b.Next(), i++)
@@ -151,12 +151,20 @@ namespace Pyrrho.Level3
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
             var r = base._Fix(cx,m);
-            var np = cx.FixLl(ins);
+            var np = (Domain)ins.Fix(cx);
             if (np!=ins)
                 r += (Params, np);
             var nb = cx.Fix(body);
             if (nb>=0)
                 r += (Body, nb);
+            return r;
+        }
+        internal override Basis ShallowReplace(Context cx, long was, long now)
+        {
+            var r = (Procedure)base.ShallowReplace(cx, was, now);
+            var ps = ins.ShallowReplace1(cx,was,now);
+            if (ps != ins)
+                r += (Params, ps);
             return r;
         }
         internal override void Cascade(Context cx,
@@ -179,10 +187,10 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             sb.Append(' '); sb.Append(infos[definer]?.name??"??");
             sb.Append(" Arity="); sb.Append(arity); sb.Append(" ");
-            if (domain!=Domain.Null.defpos) sb.Append(Uid(domain));
+            if (domain.kind!=Sqlx.Null) sb.Append(Uid(domain.defpos));
             sb.Append(" Params");
             var cm = '(';
-            for (var i = 0; i < (int)ins.Count; i++)
+            for (var i = 0; i < ins.Length; i++)
             {
                 sb.Append(cm); cm = ','; sb.Append(Uid(ins[i]??-1L));
             }

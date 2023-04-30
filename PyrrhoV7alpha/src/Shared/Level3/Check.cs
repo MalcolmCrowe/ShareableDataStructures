@@ -108,7 +108,7 @@ namespace Pyrrho.Level3
                 nd = ob.DropCheck(defpos, nd, p);
             for (var b = d.roles.First(); b != null; b = b.Next())
                 if (b.value() is long bp && d.objects[bp] is Role ro 
-                    && infos[ro.defpos] is ObInfo oi && oi.name!=null)
+                    && infos[ro.defpos] is ObInfo oi && oi.name is not null)
                 {
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
                     nd += (ro, p);

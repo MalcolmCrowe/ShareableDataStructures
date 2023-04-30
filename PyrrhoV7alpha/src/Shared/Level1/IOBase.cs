@@ -88,7 +88,7 @@ namespace Pyrrho.Level2
             for (var b = prevBufs.First(); b != null; b = b.Next())
             {
                 var bf = b.value().cont;
-                if (bf!=null)
+                if (bf is not null)
                     file.Write(bf, 0, Buffer.Size);
             }
             prevBufs = BList<Box>.Empty;
@@ -177,8 +177,7 @@ namespace Pyrrho.Level2
         }
         internal Reader(Context cx)
         {
-            var db = cx.db;
-            if (db == null)
+            if (cx.db is not Database db)
                 throw new PEException("PE1001");
             context = new Context(db)
             {
@@ -338,7 +337,7 @@ namespace Pyrrho.Level2
             if (tc == null)
                 return ("??", Domain.Content);
             var nm = tc.NameFor(context);
-            return (nm,context._Dom(tc)??throw new PEException("PE3005"));
+            return (nm,tc.domain);
         }
         internal Integer GetInteger()
         {
@@ -462,7 +461,7 @@ namespace Pyrrho.Level2
         }
         internal  void Upd(PColumn3 pc)
         {
-            if (pc.dataType!=null && pc.ups != "")
+            if (pc.dataType is not null && pc.ups != "")
                 try
                 {
                     pc.upd = new Parser(context).ParseAssignments(pc.ups);

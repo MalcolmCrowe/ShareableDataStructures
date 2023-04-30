@@ -113,13 +113,13 @@ INSERT INTO people(Id, Name, Salary, country, city) VALUES(82, 'John', 62000, 'G
 /* Queries */
 select city, avg(Salary), count(*) as numPeople from people where country = 'GER' group by city having count(*) > 4
 // MariaDB examples
-CREATE TABLE student ("name" CHAR, test CHAR, score INT)
-[INSERT INTO student VALUES('Chun', 'SQL', 75), ('Chun', 'Tuning', 73),
+CREATE TABLE students ("name" CHAR, test CHAR, score INT)
+[INSERT INTO students VALUES('Chun', 'SQL', 75), ('Chun', 'Tuning', 73),
  ('Esben', 'SQL', 43), ('Esben', 'Tuning', 31),
  ('Kaolin', 'SQL', 56), ('Kaolin', 'Tuning', 88),
  ('Tatiana', 'SQL', 87), ('Tatiana', 'Tuning', 83)]
 [SELECT "name", test, score, AVG(score) OVER (PARTITION BY test) AS average_by_test,
-  AVG(score) OVER (PARTITION BY "name") AS average_by_name FROM student]
+  AVG(score) OVER (PARTITION BY "name") AS average_by_name FROM students]
 ->[{name:'Chun',TEST:'SQL',SCORE:75,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:74},
 {name:'Chun',TEST:'Tuning',SCORE:73,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:74},
 {name:'Esben',TEST:'SQL',SCORE:43,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:37},
@@ -759,10 +759,10 @@ select * from vv
 update ww set f='Eight' where e=8
 insert into ww(D,E,F) values('B',7,'Seven')
 select * from vv
-[{E:3,F:'Tri'},{E:6,F:'Six'},             {E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'},
+[{E:3,F:'Tri'},{E:6,F:'Six'},{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'},
 {E:7,F:'Seven'}]
 select * from WW
-->[{E:3,D:'B',K:4,F:'Three'},               {E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'},               {E:9,D:'B',K:4,F:'Nine'},
+->[{E:3,D:'B',K:4,F:'Three'},{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'},{E:9,D:'B',K:4,F:'Nine'},
 {E:7,D:'B',K:4,F:'Seven'},
 {E:5,D:'C',K:1,F:'Five'},
 {E:4,D:'C',K:1,F:'Four'},
@@ -770,20 +770,11 @@ select * from WW
 delete from wW where E=7
 update vv set f='Ate' where e=8
 select * from vv
-->[{E:3,F:'Tri'},{E:6,F:'Six'},{E:4,F:'Vier'},
-{E:6,F:'Sechs'},{E:9,F:'Nine'}]
+->[{E:3,F:'Tri'},{E:6,F:'Six'},{E:4,F:'Vier'},{E:6,F:'Sechs'},{E:9,F:'Nine'}]
 select * from ww
-->[{E:3,D:'B',K:4,F:'Tri'},
-{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'},
-{E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},
-{E:8,D:'C',K:1,F:'Eight'}]
+->[{E:3,D:'B',K:4,F:'Tri'},{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'},
+{E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Eight'}]
 25:
-create type product nodetype
-[CREATE
-(Joe:Customer {"Name":'Joe Edwards', Address:'10 Station Rd.'}),
-(Joe)-[:Ordered {"Date":date'22/11/2002'} ]-> (Ord201:"Order")-[:Item {Qty: 5}]->("16/8x100" : WoodScrew : Product),
-(Ord201)-[:Item {Qty: 5}]->("Fibre 12cm": WallPlug : Product),
-(Ord201)-[:Item {Qty: 1}]->("500ml" : RubberGlue : Product)]
 create type student as (matric char) nodetype
 insert into student values ('Fred','22/456')
 create type person nodetype
@@ -799,5 +790,12 @@ then insert into friend(leaving,arriving) values (nr.arriving,nr.leaving) end if
 insert into person values('Joe',date'22/04/1950'),('Mary',date'04/08/1973')
 insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')
 select id from friend where leaving='Fred'
+select count(*) from friend where 'Fred' in leaving
 match ("Fred")-[:friend]->(_x)
+create type product nodetype
+[CREATE
+(Joe:Customer {"Name":'Joe Edwards', Address:'10 Station Rd.'}),
+(Joe)-[:Ordered {"Date":date'22/11/2002'} ]-> (Ord201:"Order")-[:Item {Qty: 5}]->("16/8x100" : WoodScrew : Product),
+(Ord201)-[:Item {Qty: 5}]->("Fibre 12cm": WallPlug : Product),
+(Ord201)-[:Item {Qty: 1}]->("500ml" : RubberGlue : Product)]
 match (_)-[:Item {Qty:_Q}]->(_Y:_T) where Q>4

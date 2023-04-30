@@ -199,7 +199,7 @@ namespace Pyrrho.Level2
         public CList<TypedValue> MakeKey(BList<long?> cols)
         {
             var r = CList<TypedValue>.Empty;
-            for (var b = cols.First();b!=null;b=b.Next())
+            for (var b = cols.First();b is not null;b=b.Next())
                 if (b.value() is long p)
                     r += fields[p]??TNull.Value;
             return r;
@@ -255,7 +255,7 @@ namespace Pyrrho.Level2
                     {
                         var del = (Delete)that;
                         for (var b = del.deC[tabledefpos]?.First(); b != null; b = b.Next())
-                            if (del.delrec!=null && 
+                            if (del.delrec is not null && 
                                 del.delrec.MakeKey(b.key().rowType).CompareTo(MakeKey(b.value().rowType)) == 0)
                                 return new DBException("40075", that);
                         break;
@@ -289,8 +289,7 @@ namespace Pyrrho.Level2
                         x += (k, defpos);
                         cx.db += (x, cx.db.loadpos);
                     }
-            if (cx.db.objects[tb.nodeType] is NodeType nt
-                && nt.rowType[0] is long p && now.vals[p] is TChar id)
+            if (cx.db.objects[tb.nodeType] is NodeType nt)
                 cx.db += (nt is EdgeType et)?new TEdge(defpos,et,fields)
                     : new TNode(defpos,nt,fields);
             return now;
@@ -350,7 +349,7 @@ namespace Pyrrho.Level2
             sb.Append(DBObject.Uid(tabledefpos));
             sb.Append(']');
             var cm = ": ";
-            for (var b=fields.PositionAt(0);b!=null;b=b.Next())
+            for (var b=fields.PositionAt(0);b is not null;b=b.Next())
             {
                 var k = b.key();
                 var v = b.value();

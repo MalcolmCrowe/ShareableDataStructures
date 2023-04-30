@@ -82,6 +82,8 @@ namespace Pyrrho.Common
         {
             return 1;
         }
+        internal virtual bool Contains(TypedValue e)
+        { return false; }
         internal virtual TypedValue Fix(Context cx)
         {
             var dm = (Domain)dataType.Fix(cx);
@@ -122,12 +124,17 @@ namespace Pyrrho.Common
         {
             return dataType.Compare(this,(obj as TypedValue)??TNull.Value);
         }
+        internal virtual TypedValue ShallowReplace(Context cx,long was, long now)
+        {
+            var dm = dataType.ShallowReplace1(cx,was,now);
+            return (dm.dbg != dataType.dbg) ? New(dm) : this;
+        }
     }
     
     internal class TNode : TRow
     {
         public readonly long uid;
-        public virtual string id => this[0].ToString();
+        public virtual TChar id => (TChar)this[0];
         internal TNode(long dp, NodeType nt, CTree<long, TypedValue> vals)
             : base(nt, vals)
         { uid = dp; }
@@ -157,8 +164,8 @@ namespace Pyrrho.Common
     }
     internal class TEdge : TNode
     {
-        public string leaving => ((TChar)this[1]).value;
-        public string arriving => ((TChar)this[2]).value;
+        public TSet leaving => (TSet)this[1];
+        public TSet arriving => (TSet)this[2];
         internal TEdge(long dp, EdgeType dt, CTree<long, TypedValue> v) : base(dp, dt, v)
         { }
         internal TEdge(Cursor cursor) : base(cursor) { }
@@ -189,22 +196,22 @@ namespace Pyrrho.Common
     }
     internal class TMatch : TNode 
     {
-        public readonly CTree<long,TGParam> tgs;
-        public readonly BTree<string, TypedValue> props;
-        readonly string _id;
-        public override string id => _id;
-        internal TMatch(long dp, string i, NodeType nt, BTree<string,TypedValue> ns, Lexer lxr) 
+        public readonly CTree<long,TGParam> tgs; 
+        public readonly CTree<TChar, TypedValue> props;
+        readonly TChar _id;
+        public override TChar id => _id;
+        internal TMatch(long dp, TChar i, NodeType nt, CTree<TChar,TypedValue> ns, Lexer lxr) 
             : base(dp, nt, CTree<long,TypedValue>.Empty)
         {
             _id = i;
             tgs = lxr.tgs;
             props = ns;
         }
-        internal bool CheckProps(Context cx, TNode n, ref CTree<TMatch,TEdge> chk)
+        internal bool CheckProps(Context cx, TNode n)
         {
             if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
                 for (var b = props.First(); b != null; b = b.Next())
-                    if (b.value() is TypedValue xv)
+                    if (b.value() is TypedValue xv && b.key().value is string k)
                     {
                         if (xv is TGParam tg)
                         {
@@ -212,46 +219,56 @@ namespace Pyrrho.Common
                                 continue;
                             xv = vv;
                         }
-                        switch (b.key())
+                        switch (k)
                         {
                             case "ID":
-                                if (n.id != xv.ToString())
+                                if (n.id.value != xv.ToString())
                                     return false; break;
                             case "LEAVING":
-                            case "ARRIVING":
+                            case "ARRIVING": // xv is still a TChar (these are hidden properties of TMatch)
                                 if (n is not TEdge e)
                                     return false;
-                                if (oi.names[b.key()] is long p && e.values[p] is TNode r)
-                                {
-                                    if (xv is TGParam q)
-                                    {
-                                        if (cx.binding[q] is null)
-                                            chk += (this, e);
-                                        else if (cx.binding[q] is TypedValue vq &&
-                                            vq.ToString() != r.id)
-                                            return false;
-                                    }
-                                    else if (xv.ToString() != r.id)
-                                        return false;
-                                }
+                                if (oi.names[k].Item2 is long p && e.values[p] is TSet vs)
+                                    for (var c = vs.First(); c != null; c = c.Next())
+                                        if (c.Value() is TChar vc && cx.db.nodeIds[vc] is TNode r)
+                                        {
+                                            if (xv is TMatch tm)
+                                            {
+                                                if (vs.Contains(tm.id))
+                                                    goto next;
+                                                for (var w = tm.tgs.First(); w != null; w = w.Next())
+                                                    if (w.value() is TGParam x)
+                                                        cx.binding += (x, r);
+                                                goto next;
+                                            }
+                                            if (xv is TGParam q)
+                                            {
+                                                if (cx.binding[q] is TypedValue vq &&
+                                                        vq != r.id)
+                                                    return false;
+                                            }
+                                            else if (xv != r.id)
+                                                return false;
+                                        }
                                 break;
                             case "SPECIFICTYPE":
                                 if (!n.dataType.Match(xv.ToString()))
                                     return false; break;
                             default:
-                                if (oi.names[b.key()] is long d && xv != n.values[d])
+                                if (oi.names[k].Item2 is long d && xv != n.values[d])
                                     return false;
                                 break;
                         }
+                    next:;
                     }
             return true;
         }
         public override string ToString()
         {
-            var sb = new StringBuilder(id);
+            var sb = new StringBuilder(id.ToString());
             sb.Append(':'); sb.Append(DBObject.Uid(uid));
             var cm = '{';
-            for (var b=props.First();b!=null;b=b.Next())
+            for (var b=props.First();b is not null;b=b.Next())
             {
                 sb.Append(cm);cm = ',';
                 sb.Append(b.key()); sb.Append('=');sb.Append(b.value());
@@ -274,7 +291,7 @@ namespace Pyrrho.Common
         }
         internal override TypedValue New(Domain t)
         {
-            throw new NotImplementedException();
+            return this;
         }
         internal override int Cardinality()
         {
@@ -868,13 +885,22 @@ namespace Pyrrho.Common
         }
         public static TArray operator+(TArray ar,TypedValue v)
         {
-            if (!ar.dataType.elType.CanTakeValueOf(v.dataType))
-                throw new DBException("22005", ar.dataType.elType, v.dataType);
+            if (ar.dataType.elType is null || !ar.dataType.elType.CanTakeValueOf(v.dataType))
+                throw new DBException("22005", ar.dataType.elType??Domain.Null, v.dataType);
             return new TArray(ar.dataType, ar.list + v);
         }
         internal override int Cardinality()
         {
             return Length;
+        }
+        internal override bool Contains(TypedValue e)
+        {
+            if (dataType.elType is null || !dataType.elType.CanTakeValueOf(e.dataType))
+                throw new DBException("22005", dataType.elType??Domain.Null, e.dataType);
+            for (var b = list.First(); b != null; b = b.Next())
+                if (b.value().CompareTo(e) == 0)
+                    return true;
+            return false;
         }
         internal int Length { get { return (int)list.Count; } }
         internal override TypedValue? this[string n]
@@ -892,7 +918,7 @@ namespace Pyrrho.Common
             var sb = new StringBuilder("[");
             var cm = "";
             if (list != null)
-                for(var b=list.First();b!=null;b=b.Next())
+                for(var b=list.First();b is not null;b=b.Next())
                 {
                     sb.Append(cm); cm = ",";
                     sb.Append(b.value().ToString());
@@ -954,10 +980,10 @@ namespace Pyrrho.Common
         public override string ToString()
         {
             var sb = new StringBuilder("byte[");
-            if (value!=null)
+            if (value is not null)
             sb.Append(value.Length);
             sb.Append(']');
-            if (value!=null && value.Length>0)
+            if (value is not null && value.Length>0)
             {
                 sb.Append("X'");
                 for(int i=0;i<value.Length;i++)
@@ -1040,7 +1066,7 @@ namespace Pyrrho.Common
                 return "";
             var sb = new StringBuilder();
             var cm = '{';
-            for (var b=md.First();b!=null;b=b.Next())
+            for (var b=md.First();b is not null;b=b.Next())
             {
                 sb.Append(cm); cm = ',';
                 sb.Append(b.key()); sb.Append(':');
@@ -1135,7 +1161,7 @@ namespace Pyrrho.Common
         {
             var vals = CTree<long, TypedValue>.Empty;
             var tb = v.First();
-            for (var b = dm.rowType.First(); b != null && tb!=null; b = b.Next(), tb=tb.Next())
+            for (var b = dm.rowType.First(); b != null && tb is not null; b = b.Next(), tb=tb.Next())
             if (b.value() is long p)
                     vals += (p, tb.value());
             values = vals;
@@ -1230,6 +1256,190 @@ namespace Pyrrho.Common
         }
     }
     /// <summary>
+    /// A set can be placed in a cell of a Table, so is treated as a value type.
+    /// Operations of UNION and INTERSECT etc are defined on sets.
+    ///     // shareable as of 26 April 2021
+    /// </summary>
+    internal class TSet : TypedValue
+    {
+        /// <summary>
+        /// Implement the set as a tree whose key is V and whose value is bool 
+        /// </summary>
+        internal readonly CTree<TypedValue, bool> tree;
+        /// <summary>
+        /// Constructor: a new Multiset
+        /// </summary>
+        internal TSet(Domain dt) : base(dt)
+        {
+            tree = CTree<TypedValue, bool>.Empty;
+        }
+        internal TSet(Domain dt, CTree<TypedValue, bool> t) : base(dt)
+        {
+            tree = t;
+        }
+        internal override int Cardinality()
+        {
+            return (int)tree.Count;
+        }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException(); // use Relocate
+        }
+        internal override TypedValue Fix(Context cx)
+        {
+            return new TSet((Domain)dataType.Fix(cx),tree);
+        }
+        internal TSet Add(TypedValue a)
+        {
+            var nt = tree;
+            if (dataType.elType is null || !a.dataType.EqualOrStrongSubtypeOf(dataType.elType))
+                throw new DBException("2200G", dataType.elType??Domain.Null, a.dataType);
+            if (!nt.Contains(a))
+                nt += (a, true);
+            return new TSet(dataType, nt);
+        }
+        /// <summary>
+        /// Whether an element is already in the set
+        /// </summary>
+        /// <param name="a">The element</param>
+        /// <returns>Whether it is in the set</returns>
+        internal override bool Contains(TypedValue a)
+        {
+            return tree.Contains(a);
+        }
+        internal SetBookmark? First()
+        {
+            var tf = tree.First();
+            return (tf == null) ? null : new SetBookmark(this, 0, tf);
+        }
+        internal SetBookmark? Last()
+        {
+            var tl = tree.Last();
+            return (tl == null) ? null : new SetBookmark(this, (int)tree.Count, tl);
+        }
+        // shareable as of 26 April 2021
+        internal class SetBookmark : IBookmark<TypedValue>
+        {
+            readonly TSet _set;
+            readonly ABookmark<TypedValue, bool> _bmk;
+            readonly long _pos;
+            internal SetBookmark(TSet set, long pos,  ABookmark<TypedValue, bool> bmk)
+            {
+                _set = set; _pos = pos; _bmk = bmk;
+            }
+            public SetBookmark? Next()
+            {
+                var bmk = ABookmark<TypedValue, bool>.Next(_bmk, _set.tree);
+                if (bmk == null) return null;
+                return new SetBookmark(_set,_pos+1, bmk);
+            }
+            public SetBookmark? Previous()
+            {
+                var bmk = ABookmark<TypedValue, bool>.Previous(_bmk, _set.tree);
+                if (bmk == null) return null;
+                return new SetBookmark(_set, _pos + 1, bmk);
+            }
+            public long Position()
+            {
+                return _pos;
+            }
+
+            public TypedValue Value()
+            {
+                return _bmk.key();
+            }
+
+            IBookmark<TypedValue>? IBookmark<TypedValue>.Next()
+            {
+                return Next();
+            }
+        }
+        /// <summary>
+        /// Mutator: remove object a
+        /// </summary>
+        /// <param name="a">An object</param>
+        internal TSet Remove(TypedValue a)
+        {
+            if (!tree.Contains(a))
+                return this;
+            return new TSet(dataType,tree - a);
+        }
+        /// <summary>
+        /// Creator: forms the union of two sets
+        /// </summary>
+        /// <param name="a">A first set</param>
+        /// <param name="b">A second set</param>
+        /// <returns>a new Multiset</returns>
+        internal static TSet? Union(TSet? a, TSet? b)
+        {
+            if (a == null || b == null)
+                return null;
+            var ae = a.dataType.elType;
+            var be = b.dataType.elType;
+            if (ae == Domain.Row)
+                ae = be;
+            if (be != Domain.Row && be != ae)
+                throw new DBException("22105").Mix();
+            return new TSet(a.dataType,a.tree+b.tree);
+        }
+        /// <summary>
+        /// Creator: forms the intersection of two sets
+        /// </summary>
+        /// <param name="a">A first multiset</param>
+        /// <param name="b">A second multiset</param>
+        /// <returns>a new Multiset</returns>
+        internal static TSet? Intersect(TSet? a, TSet? b)
+        {
+            if (a == null || b == null)
+                return null;
+            var ae = a.dataType.elType;
+            var be = b.dataType.elType;
+            if (ae == Domain.Row)
+                ae = be;
+            if (be != Domain.Row && be != ae)
+                throw new DBException("22105").Mix();
+            var t = a.tree;
+            for (var d = t.First(); d != null; d = d.Next())
+                if (d.key() is TypedValue v && !b.Contains(v))
+                    t -= v;
+            return new TSet(a.dataType, t);
+        }
+        /// <summary>
+        /// Creator: forms the difference of two sets
+        /// </summary>
+        /// <param name="a">A first set</param>
+        /// <param name="b">A second set</param>
+        /// <returns>a new Multiset</returns>
+        internal static TSet Except(TSet a, TSet b)
+        {
+            if (a == null)
+                return b;
+            if (b == null)
+                return a;
+            var t = a.tree;
+            for (var d = t.First(); d != null; d = d.Next())
+                if (d.key() is TypedValue v && b.Contains(v))
+                    t -= v;
+            return new TSet(a.dataType, t);
+        }
+        /// <summary>
+        /// Construct a string repreesntation of the set
+        /// </summary>
+        /// <returns>a string</returns>
+        public override string ToString()
+        {
+            var sb = new StringBuilder("SET(");
+            var cm = "";
+            for (var b = tree.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(b.key());
+            }
+            sb.Append(')');
+            return sb.ToString();
+        }
+    }
+    /// <summary>
     /// A Multiset can be placed in a cell of a Table, so is treated as a value type.
     /// Operations of UNION and INTERSECT etc are defined on Multisets.
     ///     // shareable as of 26 April 2021
@@ -1291,8 +1501,8 @@ namespace Pyrrho.Common
         /// <param name="n">a multiplicity</param>
         internal TMultiset Add(TypedValue a, long n)
         {
-             if (!dataType.elType.CanTakeValueOf(a.dataType))
-                throw new DBException("22005", dataType.elType, a).ISO();
+             if (dataType.elType is null || !dataType.elType.CanTakeValueOf(a.dataType))
+                throw new DBException("22005", dataType.elType??Domain.Null, a).ISO();
             var nt = tree;
             if (!nt.Contains(a))
                 nt+=(a, n);
@@ -1314,7 +1524,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="a">The element</param>
         /// <returns>Whether it is in the set</returns>
-        internal bool Contains(TypedValue a)
+        internal override bool Contains(TypedValue a)
         {
             return tree.Contains(a);
         }
@@ -1346,7 +1556,7 @@ namespace Pyrrho.Common
                 var rep = _rep;
                 for (; ; )
                 {
-                    if (rep!=null && rep>0)
+                    if (rep is not null && rep>0)
                             return new MultisetBookmark(_set, _pos + 1, bmk, rep - 1);
                     bmk = ABookmark<TypedValue, long?>.Next(bmk, _set.tree);
                     if (bmk == null)
@@ -1359,7 +1569,7 @@ namespace Pyrrho.Common
                 var rep = _rep;
                 for (; ; )
                 {
-                    if (rep!=null && rep>0)
+                    if (rep is not null && rep>0)
                             return new MultisetBookmark(_set, _pos - 1, bmk, rep - 1);
                     bmk = ABookmark<TypedValue, long?>.Previous(bmk, _set.tree);
                     if (bmk == null)
@@ -1404,9 +1614,9 @@ namespace Pyrrho.Common
         /// Mutator: remove object a
         /// </summary>
         /// <param name="a">An object</param>
-        internal void Remove(TypedValue a)
+        internal TMultiset Remove(TypedValue a)
         {
-            Remove(a, 1);
+            return Remove(a, 1);
         }
         /// <summary>
         /// Creator: A Multiset of the distinct objects of this
@@ -1415,7 +1625,7 @@ namespace Pyrrho.Common
         internal TMultiset Set() // return a multiset with same values but no duplicates
         {
             TMultiset m = new (this);
-            for (var b = m.tree.First();b!=null;b=b.Next())
+            for (var b = m.tree.First();b is not null;b=b.Next())
                 m.Add(b.key());
             return m;
         }
@@ -1471,7 +1681,7 @@ namespace Pyrrho.Common
             if (be != Domain.Row && be != ae)
                 throw new DBException("22105").Mix();
             TMultiset r = new (a);
-            for(var d = a.tree.First();d!=null;d=d.Next())
+            for(var d = a.tree.First();d is not null;d=d.Next())
             {
                 TypedValue v = d.key();
                 if (!b.tree.Contains(v))
@@ -1510,7 +1720,7 @@ namespace Pyrrho.Common
             return r;
         }
         /// <summary>
-        /// Construct a string repreesntation of the Multiset (for debugging)
+        /// Construct a string repreesntation of the Multiset 
         /// </summary>
         /// <returns>a string</returns>
         public override string ToString()
@@ -1518,18 +1728,15 @@ namespace Pyrrho.Common
             var sb = new StringBuilder("MULTISET(");
             var cm = "";
             for (var b = tree.First(); b != null; b = b.Next())
-            {
-                sb.Append(cm); cm = ",";
-                if (b.value() is long n)
+                if (b.value() is long n && n>0)
                 {
-                    cm = "";
-                    for (var i = 0; i < n; i++)
+                    sb.Append(cm); cm = ",";
+                    sb.Append(b.key());
+                    if (n!=1L)
                     {
-                        sb.Append(cm); cm = ",";
-                        sb.Append(b.key());
-                    }
+                        sb.Append('(');sb.Append(n); sb.Append(')');
+                    }    
                 }
-            }
             sb.Append(')');
             return sb.ToString();
         }
@@ -1576,14 +1783,14 @@ namespace Pyrrho.Common
         {
             var sb = new StringBuilder();
             sb.Append("<" + name);
-            for (var b=attributes.First();b!=null;b=b.Next())
+            for (var b=attributes.First();b is not null;b=b.Next())
                 sb.Append(" " + b.key() + "=\"" + b.value().ToString() + "\"");
             if (content != "")
                 sb.Append(">" + content + "</" + name + ">");
             else if (children.Count > 0)
             {
                 sb.Append('>');
-                for (var b=children.First();b!=null;b=b.Next())
+                for (var b=children.First();b is not null;b=b.Next())
                     sb.Append(b.value().ToString());
                 sb.Append("</" + name + ">");
             }

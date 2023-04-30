@@ -36,7 +36,7 @@ namespace Pyrrho.Level4
         /// the target type
         /// </summary>
         public UDType? type;
-        public BList<long?> ins = BList<long?>.Empty; 
+        public Domain ins = Domain.Null; 
         /// <summary>
         /// The return type
         /// </summary>

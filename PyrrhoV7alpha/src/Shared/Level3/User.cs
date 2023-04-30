@@ -67,7 +67,7 @@ namespace Pyrrho.Level3
         public override string ToString()
 		{
             var sb = new StringBuilder(base.ToString());
-            if (pwd!=null)
+            if (pwd is not null)
             { sb.Append(" Password:"); sb.Append((pwd.Length==0)?"":"****"); }
        //     if (mem.Contains(InitialRole))
        //     { sb.Append(" InitialRole:"); sb.Append(Uid(initialRole)); }

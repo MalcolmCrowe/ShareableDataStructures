@@ -1,8 +1,5 @@
-using System.Reflection;
 using System.Text;
-using System.Xml;
 using Pyrrho.Common;
-using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -22,7 +19,7 @@ namespace Pyrrho.Level3
     /// for partial ordering the final stage Slot Row all implement BTree (and are ATree(long,bool))
     /// Logically a MTree contains associations of form (key,pos)
     /// For partial orders this is implemented as a tree of (key,T) where T contains (pos,true).
-    /// All the implementation is done with SqlTrees.
+    /// All the implementation is done with SqlTrees or STree (STree allows set-valued keys).
     /// A null key is entered if permitted by allowNulls;
     /// of course in a multi-level MTree with allowNulls, any element of the key might be null.
     /// We detect partial ordering through the TreeBehaviour on onDuplicate.
@@ -94,24 +91,14 @@ namespace Pyrrho.Level3
             }
             count = 1;
         }
-        internal MTree(Context cx,MTree x)
+        internal MTree(MTree x,Domain ks)
         {
             impl = x.impl;
-            info = x.info.Replaced(cx);
+            info = ks;
             nullsAndDuplicates = x.nullsAndDuplicates;
             off = x.off;
             count = x.count;
         }
- /*       internal MTree(MTree x,MTree? y)
-        {
-            impl = new SqlTree(Domain.Char, Sqlx.INT, 
-                ((x.impl??CTree<TypedValue,TypedValue>.Empty) + 
-                (y?.impl??CTree<TypedValue,TypedValue>.Empty)).root);
-            info = x.info;
-            nullsAndDuplicates = x.nullsAndDuplicates;
-            off = x.off;
-            count = x.count + (y?.count??0);
-        } */
         /// <summary>
         /// Constructor: implementation of add, update etc
         /// </summary>
@@ -186,7 +173,7 @@ namespace Pyrrho.Level3
         {
             if (off < cur && Ensure(key,ff) is MTree mt) 
                 return mt.NextKey(kind,key, ff + 1, cur);
-            return impl?.AutoKey(kind) ?? ((kind == Sqlx.CHAR) ? 
+            return (impl as SqlTree)?.AutoKey(kind) ?? ((kind == Sqlx.CHAR) ? 
                 new TChar("1") : new TInt(1));
         }
         /// <summary>
@@ -215,10 +202,17 @@ namespace Pyrrho.Level3
         {
             if (k[ff] is not TypedValue h) // happens if a short key is supplied
                 return count!=0;
-            if (impl==null || !impl.Contains(h))
+            if (h is TSet ts)
+            {
+                for (var b = ts.First(); b != null; b = b.Next())
+                    if (b.Value() is TypedValue e && !Contains(k-ff+(ff,e), ff))
+                        return false;
+                return true;
+            }
+            if (impl == null || !impl.Contains(h))
                 return false;
             var tv = impl[h];
-            if (tv!=null && tv is TMTree tm && tm.value is MTree mt)
+            if (tv is not null && tv is TMTree tm && tm.value is MTree mt)
                 return mt.Contains(k,ff+1);
             return true;
         }
@@ -243,7 +237,7 @@ namespace Pyrrho.Level3
                 return TreeBehaviour.Allow;
             }
             TypedValue nv;
-            SqlTree st = t.impl; // care: t is immutable
+            var st = t.impl; // care: t is immutable
             if (st[head] is TypedValue tv)
             {
                 switch (tv.dataType.kind)
@@ -413,7 +407,7 @@ namespace Pyrrho.Level3
                     st = (SqlTree)st.Remove(head);
                     break;
             }
-            if (t!=null && t.info!=null)
+            if (t is not null && t.info is not null)
                 t = (st==null)?null:new MTree(t, st, nc);
         }
         /// <summary>
@@ -480,7 +474,7 @@ namespace Pyrrho.Level3
             t = new MTree(t, st, nc);
         }
         /// <summary>
-        /// Get an ABookmark at the start of partial lookup. 
+        /// Get a ABookmark at the start of partial lookup. 
         /// </summary>
         /// <param name="m">A list of keys, guaranteed in the right order!</param>
         /// <returns> T:ATree(long,bool), M:MTree or else TInt</returns>
@@ -632,13 +626,13 @@ namespace Pyrrho.Level3
             ABookmark<long, bool>? pmk = null;
              for (; ; )
             {
-                if (inner!=null)
+                if (inner is not null)
                 {
                     inner = inner.Next();
                     if (inner != null)
                         goto done;
                 }
-                if (pmk!=null)
+                if (pmk is not null)
                 {
                     pmk = pmk.Next();
                     if (pmk != null)
@@ -823,7 +817,7 @@ namespace Pyrrho.Level3
         internal bool hasMore(int depth)
         {
             if (depth > 1)
-                return _pmk?.Next()!=null || (_inner!=null && _inner.hasMore(depth - 1));
+                return _pmk?.Next() is not null || (_inner is not null && _inner.hasMore(depth - 1));
             var ov = _outer.value();
             switch(ov.dataType.kind)
             {
@@ -852,7 +846,7 @@ namespace Pyrrho.Level3
         {
             if (_changed)
                 return true;
-            if (depth > 1 && _inner!=null)
+            if (depth > 1 && _inner is not null)
                 return _inner.changed(depth - 1);
             return false;
         }

@@ -110,7 +110,7 @@ namespace Pyrrho
                     }
                     db = new Database(fn, fp, new FileStream(fp,
                         FileMode.Open, FileAccess.ReadWrite, FileShare.None));
-                    if (PyrrhoStart.VerboseMode && db.role!=null)
+                    if (PyrrhoStart.VerboseMode && db.role is not null)
                         Console.WriteLine("Server " + cid + " " + user
                             + " " + fn + " " + db.role.name);
                     db = db.Load();
@@ -222,7 +222,7 @@ namespace Pyrrho
                         // close the reader
                         case Protocol.CloseReader:
                             {
-                                if (cx!=null)
+                                if (cx is not null)
                                     db = db.RdrClose(ref cx);
                                 rb = null;
                                 break;
@@ -422,6 +422,8 @@ namespace Pyrrho
                                     {
                                         if (PyrrhoStart.ShowPlan)
                                             res.ShowPlan(cx);
+                                        var s = cx.obs.ToString();
+                                        var ss = cx.db.objects[23]?.ToString();
                                         rb = res.First(cx);
                                         while (rb != null && rb.IsNull)
                                             rb = rb.Next(cx);
@@ -494,7 +496,7 @@ namespace Pyrrho
                                     db = db.RdrClose(ref cx);
                                 }
                                 else
-                                    tcp.PutColumns(cx, cx._Dom(tb)??throw new PEException("PE1404"));
+                                    tcp.PutColumns(cx, tb.domain);
                                 break;
                             }
                         case Protocol.Post:
@@ -516,7 +518,7 @@ namespace Pyrrho
                                 var f = new TableRowSet(1L, cx, t);
                                 BTree<long, TargetActivation>? ans = null;
                                 CTree<long, TypedValue> old=CTree<long,TypedValue>.Empty, vs;
-                                var dm = cx._Dom(f)??Domain.Content;
+                                var dm = f.domain;
                                 vs = dm.Parse(cx, ss[2]);
                                 var data = new TrivialRowSet(cx.GetUid(), cx, new TRow(dm, vs));
                                 ans = f.Insert(cx, data, dm);
@@ -544,7 +546,7 @@ namespace Pyrrho
                                 {
                                     var ep = rv[t]?.Last()?.value()??-1L;
                                     var en = 0;
-                                    var td = cx._Dom(tb);
+                                    var td = tb.domain;
                                     for (var b = td?.rowType.First(); b != null; b = b.Next())
                                         if (b.value() is long a)
                                         {
@@ -594,7 +596,7 @@ namespace Pyrrho
                                     throw new DBException("42105");
                                 var ti = tb.infos[ro.defpos];
                                 var f = new TableRowSet(1L, cx, t);
-                                var dm = cx._Dom(f)??Domain.Null;
+                                var dm = f.domain;
                                 BTree<long, TargetActivation>? ans = null;
                                 CTree<long, TypedValue>? old = null, vs = null;
                                 if (long.TryParse(ss[2], out long dp) && long.TryParse(ss[3], out long pp)
@@ -625,14 +627,14 @@ namespace Pyrrho
                                             cx.db = ta.db;
                                             ta.Finish();
                                             vs = ta.newRow;
-                                            if (cx.affected!=null && ta.affected!=null)
+                                            if (cx.affected is not null && ta.affected is not null)
                                                 cx.affected += ta.affected;
                                         }
                                     }
                                 var oc = cx;
-                                if (cx.db!=null)
+                                if (cx.db is not null)
                                     db = cx.db.RdrClose(ref cx);
-                                var td = cx._Dom(tb)??Domain.Null;
+                                var td = tb.domain;
                                 if (cx.role != null && cx.affected is Rvv rv && rv.Contains(t))
                                 {
                                     var ep = rv[t]?.Last()?.value();
@@ -686,26 +688,26 @@ namespace Pyrrho
                                 var ti = tb.infos[ro.defpos];
                                 var f = new TableRowSet(1L, cx, t);
                                 BTree<long, TargetActivation>? ans = null;
-                                if (cx._Dom(f) is Domain dm && long.TryParse(ss[2], out long dp) 
+                                if (f.domain is Domain dm && long.TryParse(ss[2], out long dp) 
                                     && long.TryParse(ss[3], out long pp)
                                     && tb.tableRows[dp] is TableRow tr && tr.ppos == pp)
                                 {
                                     var r = new TRow(dm, f.iSMap, tr.vals);
                                     var ib = TableRowSet.TableCursor.New(cx, f, dp);
                                     ans = f.Delete(cx, f);
-                                    if (ib!=null && ans?.First()?.value() is TableActivation ta)
+                                    if (ib is not null && ans?.First()?.value() is TableActivation ta)
                                     {
                                         ta.cursors += (ta._fm.defpos, ib);
                                         ta.EachRow(ib._pos);
                                         cx.db = ta.db;
                                         ta.Finish();
-                                        if (cx.affected!=null && ta.affected!=null)
+                                        if (cx.affected is not null && ta.affected is not null)
                                             cx.affected += ta.affected;
                                     }
                                 }
-                                if (cx.db!=null)
+                                if (cx.db is not null)
                                 db = cx.db.RdrClose(ref cx);
-                                if (ans != BTree<long, TargetActivation>.Empty && cx.affected!=null)
+                                if (ans != BTree<long, TargetActivation>.Empty && cx.affected is not null)
                                 {
                                     tcp.Write(Responses.Done);
                                     tcp.PutInt((int)cx.affected.Count);
@@ -1040,7 +1042,7 @@ namespace Pyrrho
             }
             else
                 for (var b = rb.dataType.representation.First(); b != null; b = b.Next(), i++)
-                    domains += (i, cx._Dom(b.value()) ?? Domain.Content);
+                    domains += (i, b.value()?.domain ?? Domain.Content);
             var dc = domains[nextCol] ?? throw new PEException("PE1401");
             var ds = rb.display;
             if (ds == 0)
@@ -1122,6 +1124,8 @@ namespace Pyrrho
                     return lc + 1 + RowLength(cx, (TRow)tv);
                 case Sqlx.ARRAY:
                     return lc + 1 + ArrayLength(cx, (TArray)tv);
+                case Sqlx.SET:
+                    return lc + 1 + SetLength(cx, (TSet)o);
                 case Sqlx.MULTISET:
                     return lc + 1 + MultisetLength(cx, (TMultiset)o);
                 case Sqlx.TABLE:
@@ -1183,15 +1187,22 @@ namespace Pyrrho
         }
         int ArrayLength(Context cx, TArray a)
         {
-            int len = 4 + StringLength("ARRAY") + TypeLength(cx._Dom(a.dataType.elType)??Domain.Content);
+            int len = 4 + StringLength("ARRAY") + TypeLength(a.dataType.elType?.domain ??Domain.Content);
             for (var b = a.list.First(); b != null; b = b.Next())
                 len += 1 + DataLength(cx, b.value());
             return len;
         }
         int MultisetLength(Context cx, TMultiset m)
         {
-            int len = 4 + StringLength("MULTISET") + TypeLength(cx._Dom(m.dataType.elType) ?? Domain.Content);
+            int len = 4 + StringLength("MULTISET") + TypeLength(m.dataType.elType?.domain ?? Domain.Content);
             for (var e = m.First(); e != null; e = e.Next())
+                len += 1 + DataLength(cx, e.Value());
+            return len;
+        }
+        int SetLength(Context cx,TSet s)
+        {
+            int len = 4 + StringLength("SET") + TypeLength(s.dataType.elType?.domain ?? Domain.Content);
+            for (var e = s.First(); e != null; e = e.Next())
                 len += 1 + DataLength(cx, e.Value());
             return len;
         }
@@ -1205,9 +1216,9 @@ namespace Pyrrho
         static int SchemaLength(Context cx, RowSet r)
         {
             int len = 5;
-            var dm = cx._Dom(r)??Domain.Content;
+            var dm = r.domain;
             int m = dm.display;
-            if (m > 0 && cx.role!=null)
+            if (m > 0 && cx.role is not null)
             {
                 len += StringLength(cx.obs[r.defpos]?.infos[cx.role.defpos]?.name??"");
                 int[] flags = new int[m];
@@ -1215,7 +1226,7 @@ namespace Pyrrho
                 var j = 0;
                 for (var b = dm.representation.First(); b != null; b = b.Next(), j++)
                 {
-                    var d = cx._Dom(b.value())??Domain.Content;
+                    var d = b.value()?.domain ??Domain.Content;
                     len += StringLength(((SqlValue?)cx.obs[b.key()])?.name??"")
                         + TypeLength(d);
                 }
@@ -1427,7 +1438,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.03alpha","(21 Mar 2023)", "http://www.pyrrhodb.com"
+            "7.03alpha","(30 Apr 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

@@ -125,7 +125,7 @@ namespace Pyrrho.Level2
         {
             if (Committed(wr,ppos)) // already done
                 return (tr,this);
-            for (;tr!=null ; ) // check for uncommitted dependents
+            for (;tr is not null ; ) // check for uncommitted dependents
             {
                 var pd = Dependent(wr,tr);
                 if (Committed(wr,pd))
@@ -161,7 +161,7 @@ namespace Pyrrho.Level2
             rdr.Segment(this);
         }
         public override string ToString() { return type.ToString(); }
-        protected string Pos(long p)
+        protected static string Pos(long p)
         {
             return DBObject.Uid(p);
         }
@@ -192,7 +192,7 @@ namespace Pyrrho.Level2
                 return s;
             var sb = new StringBuilder();
             var cp = 0;
-            for (var b=digested.First();b!=null;b=b.Next())
+            for (var b=digested.First();b is not null;b=b.Next())
             {
                 var sp = wr.cx.Fix(b.key())-ppos;
                 if (sp <= 0)
@@ -434,6 +434,7 @@ namespace Pyrrho.Level2
     {
         public long definer;
         public long owner;
+        internal Domain dataType = Domain.Null;
         public BTree<long, ObInfo> infos = BTree<long, ObInfo>.Empty;
         public string name
         {
@@ -451,13 +452,12 @@ namespace Pyrrho.Level2
         /// <param name="cx">A Context with the definer's details</param>
         /// <param name="nm">The definer's name for the new object</param>
         /// <param name="priv">The definer's privileges on the new object</param>
-        protected Defined(Type tp, long pp, Context cx, string nm = "", Grant.Privilege priv=Grant.Privilege.NoPrivilege) 
+        protected Defined(Type tp, long pp, Context cx, string nm, Grant.Privilege priv) 
             : base(tp, pp)
         {
             definer = cx.role.defpos;
             owner = cx.user?.defpos ?? -1L;
-            if (priv != Grant.Privilege.NoPrivilege) 
-                infos += (definer, new ObInfo(nm, priv));
+            infos += (definer, new ObInfo(nm, priv));
         }
         /// <summary>
         /// Create a new Defined object
@@ -472,20 +472,17 @@ namespace Pyrrho.Level2
         {
             definer = rdr.context.role.defpos;
             owner = rdr.context.user?.defpos ?? -1L;
-            if (priv != Grant.Privilege.NoPrivilege)
-                infos += (definer, new ObInfo(nm, priv));
+            infos += (definer, new ObInfo(nm, priv));
         }
         protected Defined(Defined ph, Writer writer) : base(ph, writer) 
         {
             definer = Fix(ph.ppos, ph.definer, writer);
             owner = Fix(ph.ppos, ph.owner,writer);
             var r = BTree<long, ObInfo>.Empty;
-            for (var b=ph.infos.First();b!=null;b=b.Next())
+            for (var b=ph.infos.First();b is not null;b=b.Next())
                 r += (Fix(ph.ppos, b.key(), writer),(ObInfo)b.value().Fix(writer.cx));
             infos = r;
-        }
-        internal Defined(Type tp,Writer wr) : this(tp, wr.Length, wr.cx) 
-        { 
+            dataType = ph.dataType;
         }
         long Fix(long pp,long p,Writer wr)
         {
@@ -500,23 +497,44 @@ namespace Pyrrho.Level2
                     return b.key();
             return -1;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(' '); sb.Append(name);
+            if (dataType.defpos >= 0 && dataType.defpos!=ppos)
+            {
+                sb.Append('['); sb.Append(DBObject.Uid(dataType.defpos)); sb.Append(']');
+            }
+            if (dataType.Length > 0)
+            {
+                var cm = "";
+                sb.Append('(');
+                for (var b = dataType.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                    {
+                        sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(p));
+                    }
+                sb.Append(')');
+            }
+            else
+            { sb.Append(' '); sb.Append(dataType.kind); }
+            return sb.ToString();
+        }
     }
     /// <summary>
-    /// Compiled objects are Modify, PColumn, PCheck, PProcedure, PTrigger, PView, PTable
+    /// Compiled objects are Modify, PCheck, PProcedure, PTrigger
     /// </summary>
     internal abstract class Compiled : Defined
     {
         internal Framing framing = Framing.Empty;
         public long nst = Transaction.Executables; // must be set to cx.db.nextStmt before parsing of code
-        internal Domain dataType; // no column info for PTable (just TABLE,TYPE etc) 
-                                  // column info for PType, PNodeType etc
         protected Compiled(Type tp, long pp, Context cx, string nm, long tgt, Domain dom, long ns)
             : base(tp, pp, cx, nm, Grant.AllPrivileges)
         {
             var oc = cx.parse;
             framing = new Framing(cx,nst);
             nst = ns;
-            dataType = cx._Dom(framing.obs[framing.result]) ?? cx._Dom(cx.obs[tgt]) ?? dom;
+            dataType = framing.obs[framing.result]?.domain ?? cx.obs[tgt]?.domain ?? dom;
             cx.parse = oc;
         }
         protected Compiled(Type tp, long pp, Context cx, string nm, Domain dm, long ns)
@@ -553,16 +571,6 @@ namespace Pyrrho.Level2
             wr.cx.instDFirst = -1L;
             return base.Commit(wr, tr);
         }
-        public virtual BList<long?> Dependent(Transaction tr,BList<long?> ds)
-        {
-            return ds;
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" Domain "); sb.Append(dataType);
-            return sb.ToString();
-        }
     }
     internal class Post : Physical
     {
@@ -590,8 +598,7 @@ namespace Pyrrho.Level2
         HttpRequestMessage GetRequest()
         {
             var vw = (RestView)(_cx.obs[_vw]??_cx.db.objects[_vw] ??throw new DBException("42105"));
-            string? user = vw.clientName ?? _cx.user?.name, 
-                password = vw.clientPassword;
+            string? user = _cx.user?.name, password = null;
             var ss = url.Split('/');
             if (ss.Length > 3)
             {
@@ -605,7 +612,7 @@ namespace Pyrrho.Level2
                 }
             }
             var ix = url.LastIndexOf('/');
-            HttpRequestMessage rq = new() { RequestUri = new Uri(url.Substring(0, ix)) };
+            HttpRequestMessage rq = new() { RequestUri = new Uri(url[0..ix]) };
             rq.Headers.Add("UserAgent","Pyrrho " + PyrrhoStart.Version[1]);
             if (user != null)
             {
@@ -617,7 +624,7 @@ namespace Pyrrho.Level2
             {
                 if (_cx.obs[_cx.result] is RowSet rs && rs.First(_cx) is Cursor cu)
                     rq.Headers.Add("If-Match",cu._Rvv(_cx).ToString());
-                else if (_cx.db!=null)
+                else if (_cx.db is not null)
                 {
                     rq.Headers.Add("If-Match", "W/\"" + _cx.db.loadpos + "\"");
                     if (_cx.db.lastModified is DateTime dt)
@@ -637,7 +644,7 @@ namespace Pyrrho.Level2
                 sb.Append(sql);
                 sb.Append("\r\n");
                 var ix = url.LastIndexOf('/');
-                TargetActivation.RoundTrip(_cx, _vw, tp, rq, url.Substring(0,ix), sb);
+                TargetActivation.RoundTrip(_cx, _vw, tp, rq, url[0..ix], sb);
                 committed = true;
             }
             return (tr,this);
@@ -658,10 +665,10 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             var sb = new StringBuilder("Post");
-            sb.Append(" "); sb.Append(target);
-            sb.Append(" "); sb.Append(url);
-            sb.Append(" "); sb.Append(sql);
-            sb.Append(" "); sb.Append(DBObject.Uid(_vw));
+            sb.Append(' '); sb.Append(target);
+            sb.Append(' '); sb.Append(url);
+            sb.Append(' '); sb.Append(sql);
+            sb.Append(' '); sb.Append(DBObject.Uid(_vw));
             return sb.ToString();
         }
     }

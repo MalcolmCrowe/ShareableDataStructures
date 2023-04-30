@@ -291,7 +291,7 @@ namespace Pyrrho.Common
         SELECT = 252,
         SENSITIVE = 253,    
         SESSION_USER = 254,
-        SET = 255,
+        SET = 255,  // must be 255
         SIGNAL = 256, //vol 4
         TIME = 257, // must be 257
         TIMESTAMP = 258, // must be 258
@@ -404,7 +404,7 @@ namespace Pyrrho.Common
         LEQ = 364, // <=
         LPAREN = 365, // (
         LSS = 366, // <
-        MEXCEPT = 366, // 
+        MEXCEPT = 367, // 
         MINTERSECT = 368, //
         MINUS = 369, // -
         MUNION = 370, // 
@@ -557,53 +557,53 @@ namespace Pyrrho.Common
         MINVALUE = 516,
         MONOTONIC = 517, // Pyrrho 5.7
         MORE = 518,
-        MUMPS = 519,
-        NAME = 520,
-        NAMES = 521,
-        NESTING = 522,
-        NEXT = 523,
-        NFC = 524,
-        NFD = 525,
-        NFKC = 526,
-        NFKD = 527,
-        NODE = 528, // 7.03
-        NODETYPE = 529, // Metadata 7.03
-        NORMALIZED = 530,
-        NULLABLE = 531,
-        NULLS = 532,
-        NUMBER = 533,
-        OCCURRENCE = 534,
-        OCTETS = 535,
-        OPTION = 536,
-        OPTIONS = 537,
-        ORDERING = 538,
-        ORDINALITY = 539,
-        OTHERS = 540,
-        OUTPUT = 541,
-        OVERRIDING = 542,
-        OWNER = 543, // Pyrrho
-        P = 544,
-        PAD = 545,
-        PARAMETER_MODE = 546,
-        PARAMETER_NAME = 547,
-        PARAMETER_ORDINAL_POSITION = 548,
-        PARAMETER_SPECIFIC_CATALOG = 549,
-        PARAMETER_SPECIFIC_NAME = 550,
-        PARAMETER_SPECIFIC_SCHEMA = 551,
-        PARTIAL = 552,
-        PASCAL = 553,
-        PATH = 554,
-        PIE = 555, // Pyrrho 4.5
-        PLACING = 556,
-        PL1 = 557,
-        POINTS = 558, // Pyrrho 4.5
-        PRECEDING = 559,
-        PREFIX = 560, // Pyrrho 7.01
-        PRESERVE = 561,
-        PRIOR = 562,
-        PRIVILEGES = 563,
-        PROFILING = 564, // Pyrrho
-        PROVENANCE = 565, // Pyrrho obsolete from 7.02
+        MULTIPLICITY = 519, // Pyrrho 7.03
+        MUMPS = 520,
+        NAME = 521,
+        NAMES = 522,
+        NESTING = 523,
+        NEXT = 524,
+        NFC = 525,
+        NFD = 526,
+        NFKC = 527,
+        NFKD = 528,
+        NODE = 529, // 7.03
+        NODETYPE = 530, // Metadata 7.03
+        NORMALIZED = 531,
+        NULLABLE = 532,
+        NULLS = 533,
+        NUMBER = 534,
+        OCCURRENCE = 535,
+        OCTETS = 536,
+        OPTION = 537,
+        OPTIONS = 538,
+        ORDERING = 539,
+        ORDINALITY = 540,
+        OTHERS = 541,
+        OUTPUT = 542,
+        OVERRIDING = 543,
+        OWNER = 544, // Pyrrho
+        P = 545,
+        PAD = 546,
+        PARAMETER_MODE = 547,
+        PARAMETER_NAME = 548,
+        PARAMETER_ORDINAL_POSITION = 549,
+        PARAMETER_SPECIFIC_CATALOG = 550,
+        PARAMETER_SPECIFIC_NAME = 551,
+        PARAMETER_SPECIFIC_SCHEMA = 552,
+        PARTIAL = 553,
+        PASCAL = 554,
+        PATH = 555,
+        PIE = 556, // Pyrrho 4.5
+        PLACING = 557,
+        PL1 = 558,
+        POINTS = 559, // Pyrrho 4.5
+        PRECEDING = 560,
+        PREFIX = 561, // Pyrrho 7.01
+        PRESERVE = 562,
+        PRIOR = 563,
+        PRIVILEGES = 564,
+        PROFILING = 565, // Pyrrho
         PUBLIC = 566,
         READ = 567,
         REFERRED = 568, // 5.2
@@ -702,7 +702,7 @@ namespace Pyrrho.Common
         DomainRef,  // typedefpos, Integer els, els x obs 
         Blob,       // Integer length, length x byte: Opaque binary type (Clob is String)
         Row,        // spec, Integer cols, cols x obs
-        Multiset,   // Integer els, els x obs
+        Multiset,   // Integer els, els x obs (also for Set)
         Array,		// Integer els, els x obs
         Password   // A more secure type of string (write-only)
     }
@@ -927,7 +927,7 @@ namespace Pyrrho.Common
                     }
                     else return false;
             }
-            if (eu!=null)
+            if (eu is not null)
             {
                 var ck = THttpDate.Parse(eu);
                 if (ck != null && db.lastModified > ck.value)
@@ -995,7 +995,7 @@ namespace Pyrrho.Common
                 return long.Parse(u);
             if (u.Length == 1) // happens with _
                 return -1L;
-            var v = long.Parse(u.Substring(1));
+            var v = long.Parse(u[1..]);
             return u[0] switch
             {
                 '%' => v + Transaction.HeapStart,

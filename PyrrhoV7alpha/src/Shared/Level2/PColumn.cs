@@ -20,9 +20,11 @@ namespace Pyrrho.Level2
 	/// A PColumn belongs to a PTable and has a name, a sequence no, and a domain
 	/// Both domains and TableColumns have check constraints, defaults and collates
 	/// Though this seems redundant it is asking for trouble not to respect this SQL convention
-	/// in the database structs. (Actually domain defaults are more restrictive.)
-	/// Columns may have a notNull constraint and integrity, uniqueness and referential constraints.
-    /// Obsolete: see PColumn2
+	/// in the database structures. 
+    /// (Domain defaults are widely used, but Domain programmable constraints are not currenmtly needed.)
+	/// Columns may have a notNull constraint and integrity, uniqueness and referential constraints, 
+    /// and their Framing contains code to implement generation rules and check constraints.
+    /// Obsolete: see PColumn2, PColumn3
 	/// </summary>
 	internal class PColumn : Compiled
 	{
@@ -54,16 +56,6 @@ namespace Pyrrho.Level2
             }
             return -1;
         }
-        public override BList<long?> Dependent(Transaction tr, BList<long?> ds)
-        {
-            if (domdefpos > tr.loadpos)
-            {
-                if (tr.physicals[domdefpos] is PType udt)
-                    ds = udt.Dependent(tr,ds);
-                ds += domdefpos;
-            }
-            return ds;
-        }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
         /// </summary>
@@ -72,15 +64,12 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the columns</param>
         /// <param name="sq">The 0-based position in the table</param>
         /// <param name="dm">The domain</param>
-        /// <param name="tc">The target object for the generation rule or -1</param>
-        /// <param name="nst">The first possible framing object</param>
         /// <param name="tb">The local database</param>
-        public PColumn(Type t, Table pr, string nm, int sq, Domain dm,long tc, long nst, long pp, 
-            Context cx) : base(t,pp,cx,nm,tc,dm,nst)
+        public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
+            Context cx) : base(t,pp,cx,nm,dm,-1L)
 		{
 			table = pr;
 			seq = sq;
-            framing = Framing.Empty;
             tabledefpos = pr.defpos;
             dataType = dm;
             domdefpos = dm.defpos;
@@ -100,7 +89,7 @@ namespace Pyrrho.Level2
 		protected PColumn(Type t,Reader rdr) : base(t,rdr) {}
         protected PColumn(PColumn x, Writer wr) : base(x, wr)
         {
-            if (x.table != null && x.dataType!=null)
+            if (x.table != null && x.dataType is not null)
             {
                 table = (Table)x.table.Fix(wr.cx);
                 tabledefpos = table.defpos;
@@ -137,7 +126,7 @@ namespace Pyrrho.Level2
         {
             tabledefpos = rdr.GetLong();
             table = (Table)(rdr.GetObject(tabledefpos)
-                ??new Table(defpos,BTree<long,object>.Empty+(DBObject._Domain,Domain.Content.defpos)));
+                ??new Table(defpos,BTree<long,object>.Empty+(DBObject._Domain,Domain.Content)));
             name = rdr.GetString();
             seq = rdr.GetInt();
             domdefpos = rdr.GetLong();
@@ -196,14 +185,14 @@ namespace Pyrrho.Level2
 		public override string ToString()
         {
             var sb = new StringBuilder(GetType().Name);
-            sb.Append(" "); sb.Append(name); sb.Append(" for ");
+            sb.Append(' '); sb.Append(name); sb.Append(" for ");
             sb.Append(Pos(tabledefpos));
-            sb.Append("("); sb.Append(seq); sb.Append(")[");
+            sb.Append('('); sb.Append(seq); sb.Append(")[");
             if (domdefpos >= 0)
                 sb.Append(DBObject.Uid(domdefpos));
             else
                 sb.Append(dataType); 
-            sb.Append("]");
+            sb.Append(']');
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx, long p)
@@ -216,6 +205,7 @@ namespace Pyrrho.Level2
                 return null;
             cx.Install(dataType, p);
             var tc = new TableColumn(table, this, dataType, ro, cx.user);
+            tc += (DBObject._Framing, framing);
             var rp = ro.defpos;
             var oi = table.infos[rp];
             if (oi == null)
@@ -226,11 +216,7 @@ namespace Pyrrho.Level2
             cx.Add(tc);
             if (table.defpos < 0)
                 throw new DBException("42105");
-            var op = cx.parse;
-            cx.parse = ExecuteStatus.Compile;
-            cx.Add(tb.framing);
             table += (cx, seq, tc);
-            table += (DBObject._Framing, table.framing);
             table += (DBObject.LastChange, ppos);
             cx.Install(table, p);
             if (cx.db.objects[table.nodeType] is NodeType nt)
@@ -248,11 +234,10 @@ namespace Pyrrho.Level2
                         cx.db += (st, cx.db.loadpos);
                         ts += (st, st.defpos);
                     }
+                table += (DBObject._Domain, nt);
+                cx.Install(table, p);
                 cx.db += (Database.Types, ts);
             }
-            cx.parse = op;
-            if (cx.db is Transaction tr && tr.physicals[table.defpos] is Compiled pt)
-                pt.framing = table.framing;
             if (cx.db.format < 51)
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
@@ -282,8 +267,8 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn2(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            bool nn, GenerationRule ge, long nst, long pp, Context cx)
-            : this(Type.PColumn2,pr,nm,sq,dm,ds,dv,nn,ge,nst, pp,cx)
+            bool nn, GenerationRule ge, long pp, Context cx)
+            : this(Type.PColumn2,pr,nm,sq,dm,ds,dv,nn,ge,pp,cx)
 		{ }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -298,12 +283,17 @@ namespace Pyrrho.Level2
         /// <param name="ge">the Generation Rule</param>
         /// <param name="db">The database</param>
         protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, string ds,
-            TypedValue v, bool nn, GenerationRule ge, long nst, long pp, Context cx)
-            : base(t,pr,nm,sq,(Domain)dm.New(cx,dm.mem+(Domain.Default,v)),ge.target,nst,pp,cx)
+            TypedValue v, bool nn, GenerationRule ge, long pp, Context cx)
+            : base(t,pr,nm,sq,dm+(Domain.Default,v),pp,cx)
 		{
 			dfs = ds;
 			notNull = nn;
 			generated = ge;
+            if (ge.gen == Generation.Expression)
+            {
+                generated += (RowSet.Target, ppos);
+                framing = new Framing(cx, ge.nextStmt);
+            }
 		}
         /// <summary>
         /// Constructor: A new Column definition from the buffer
@@ -322,8 +312,8 @@ namespace Pyrrho.Level2
         {
             dfs = x.dfs;
             notNull = x.notNull;
-            generated = x.generated;
-            framing = (Framing)x.framing.Relocate(wr.cx);
+            generated = (GenerationRule)x.generated.Fix(wr.cx);
+            framing = (Framing)x.framing.Fix(wr.cx);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -362,7 +352,7 @@ namespace Pyrrho.Level2
                 }
                 else
                     generated = new GenerationRule(Generation.Expression,
-                        dfs, SqlNull.Value, defpos);
+                        dfs, SqlNull.Value, defpos, rdr.context.db.nextStmt);
             }
         }
         internal override void OnLoad(Reader rdr)
@@ -374,11 +364,14 @@ namespace Pyrrho.Level2
             {
                 table = tb;
                 var psr = new Parser(rdr, new Ident(dfs, rdr.context.Ix(ppos + 1))); // calls ForConstraintParse
+                var op = rdr.context.parse;
+                rdr.context.parse = ExecuteStatus.Compile;
                 var nst = psr.cx.db.nextStmt;
                 var sv = psr.ParseSqlValue(dataType);
                 psr.cx.Add(sv);
-                framing = new Framing(psr.cx,nst);
                 generated += (GenerationRule.GenExp, sv.defpos);
+                framing = new Framing(rdr.context, nst);
+                rdr.context.parse = op;
             }
         }
         public override string ToString()
@@ -410,9 +403,9 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn3(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge, long nst, long pp,
+            string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge, long pp,
             Context cx)
-            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, nst, pp, cx)
+            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -428,8 +421,8 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ds, 
             TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
-            GenerationRule ge, long nst, long pp, Context cx)
-            : base(t, pr, nm, sq, dm, ds, dv, nn, ge, nst, pp, cx)
+            GenerationRule ge, long pp, Context cx)
+            : base(t, pr, nm, sq, dm, ds, dv, nn, ge, pp, cx)
         {
             upd = ua;
             ups = us;
@@ -525,7 +518,7 @@ namespace Pyrrho.Level2
         /// <param name="dm">The domain defining position</param>
         /// <param name="db">The local database</param>
         public PColumnPath(long co, string pa, long dm, long pp, Context cx)
-            : base(Type.ColumnPath, pp, cx)
+            : base(Type.ColumnPath, pp, cx, "", Grant.AllPrivileges)
         { 
             coldefpos = co;
             path = pa;

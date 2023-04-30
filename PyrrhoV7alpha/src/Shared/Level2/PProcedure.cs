@@ -23,10 +23,10 @@ namespace Pyrrho.Level2
         /// The defining position for the Procedure
         /// </summary>
 		public virtual long defpos { get { return ppos; }}
-		public string nameAndArity => name+"$"+parameters.Count;
+		public string nameAndArity => name+"$"+parameters.Length;
         public Ident? source;
         public bool mth = false;
-        public BList<long?> parameters = BList<long?>.Empty;
+        public Domain parameters = Domain.Null;
         public long proc = -1; // the procedure code is in Compiled.framing
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -34,7 +34,7 @@ namespace Pyrrho.Level2
             return -1;
         }
         internal int arity;
-        public PProcedure(string nm, BList<long?> ar, Domain rt, Procedure? pr,Ident sce, long nst,
+        public PProcedure(string nm, Domain ar, Domain rt, Procedure? pr,Ident sce, long nst,
             long pp, Context cx) : this(Type.PProcedure,nm, ar, rt, pr, sce, nst, pp, cx)
         { }
         /// <summary>
@@ -46,13 +46,13 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="tp">The PProcedure or PMethod type</param>
         /// <param name="nm">The name of the proc/func</param>
-        /// <param name="ar">The arity</param>
+        /// <param name="ps">The parameters</param>
         /// <param name="rt">The return type</param>
         /// <param name="pc">The procedure clause including parameters, or ""</param>
         /// <param name="nst">The first possible framing object</param>
         /// <param name="db">The database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PProcedure(Type tp, string nm, BList<long?> ps, Domain rt, Procedure? pr,
+        protected PProcedure(Type tp, string nm, Domain ps, Domain rt, Procedure? pr,
             Ident sce, long nst, long pp, Context cx) : base(tp,pp,cx,nm, pr?.defpos??-1L,rt, nst)
 		{
             source = sce;
@@ -71,8 +71,8 @@ namespace Pyrrho.Level2
         protected PProcedure(PProcedure x, Writer wr) : base(x, wr)
         {
             source = x.source;
-            if (x.parameters!=null)
-             parameters = wr.cx.FixLl(x.parameters);
+            if (x.parameters is not null)
+             parameters = (Domain)x.parameters.Fix(wr.cx);
             arity = x.arity;
             proc = wr.cx.Fix(x.proc);
         }
@@ -180,7 +180,7 @@ namespace Pyrrho.Level2
                 + (DBObject.Owner, cx.user??User.None)
                 + (DBObject.Infos,new BTree<long,ObInfo>(cx.role.defpos,oi)));
             var ps = ro.procedures??BTree<string,BTree<CList<Domain>,long?>>.Empty;
-            var pn = (ps[name]??BTree<CList<Domain>,long?>.Empty) + (cx.Signature(parameters),defpos);
+            var pn = (ps[name]??BTree<CList<Domain>,long?>.Empty) + (cx.Signature(pr),defpos);
             ro += (Role.Procedures, ps + (name, pn));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

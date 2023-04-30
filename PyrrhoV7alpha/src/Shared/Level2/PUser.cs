@@ -108,7 +108,7 @@ namespace Pyrrho.Level2
             if (first)
             {
                 cx.db = cx.db + (Database.Owner, nu.defpos);
-                if (cx.db is Transaction tr && tr.user!=null && tr.user.name==nu.name)
+                if (cx.db is Transaction tr && tr.user is not null && tr.user.name==nu.name)
                     cx.db = cx.db + (Database.User, nu) + (Database.Role, ro);
             }
             return nu;

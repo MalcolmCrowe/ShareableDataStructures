@@ -91,9 +91,9 @@ namespace Pyrrho.Level3
             Exclude = -222,// Sqlx
             High = -223, //WindowBound
             Low = -224,// WindowBound
-            Order = -225, // long Domain (extends the partition type)
+            Order = -225, // Domain (extends the partition type)
             OrderWindow = -226, // string
-            PartitionType = -229, // long Domain
+            PartitionType = -229, // Domain
             Units = -230, // Sqlx
             WQuery = -231; // long RowSet
         /// <summary>
@@ -107,11 +107,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// a specified ordering, extending the partition if any
         /// </summary>
-        internal long order => (long)(mem[Order]??-1L);
+        internal Domain order => (Domain)(mem[Order]??Domain.Row);
         /// <summary>
         /// The partitionType is the partition columns for the window if any
         /// </summary>
-        internal long partition => (long)(mem[PartitionType]??-1L);
+        internal Domain partition => (Domain)(mem[PartitionType]??Domain.Row);
         /// <summary>
         /// ROW or RANGE if have window frame
         /// </summary>
@@ -135,19 +135,6 @@ namespace Pyrrho.Level3
         internal WindowSpecification(long lp) : base(lp,BTree<long, object>.Empty) { }
         protected WindowSpecification(long dp, BTree<long, object> m)
             : base(dp, m) { }
-        protected WindowSpecification(long dp,Context cx,BTree<long, object> m) 
-            : base(dp,_Mem(cx,m)) { }
-        static BTree<long,object> _Mem(Context cx,BTree<long,object> m)
-        {
-            var d = 1;
-            var pp = (long)(m[PartitionType] ?? -1L);
-            if (cx._Dom(pp) is DBObject pb)
-                d = pb.depth + 1;
-            var op = (long)(m[Order] ?? -1L);
-            if (cx._Dom(op) is DBObject ob)
-                d = ob.depth + 1;
-            return m + (_Depth,d);
-        }
         public static WindowSpecification operator+(WindowSpecification w,(long,object)x)
         {
             var (dp, ob) = x;
@@ -158,11 +145,11 @@ namespace Pyrrho.Level3
         public static WindowSpecification operator +(WindowSpecification w, (Context,long, object) x)
         {
             var (cx, p, o) = x;
-            return new WindowSpecification(w.defpos,cx,w.mem + (p,o));
+            return new WindowSpecification(w.defpos,w.mem + (p,o));
         }
         internal CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
         {
-            for (var b = cx._Dom(order)?.rowType.First(); b != null; b = b.Next())
+            for (var b = order.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p&& cx.obs[p] is SqlValue v)
                     qn = v.Needs(cx, r, qn);
             return qn;
@@ -175,14 +162,14 @@ namespace Pyrrho.Level3
         {
             return new WindowSpecification(dp, m);
         }
-        protected override BTree<long, object> _Replace(Context cx, DBObject so, DBObject sv, BTree<long, object>m)
+        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = base._Replace(cx, so, sv,m);
-            var np = cx._Dom(partition)?.Replace(cx, so, sv).defpos ??-1L;
-            if (np != (cx.done[partition]?.defpos ?? partition))
+            var r = (WindowSpecification)base._Replace(cx, so, sv);
+            var np = partition.Replace(cx, so, sv);
+            if (np != partition)
                 r += (PartitionType, np);
-            var no = cx._Dom(order)?.Replace(cx, so, sv).defpos ??-1L;
-            if (no != (cx.done[order]?.defpos ?? order))
+            var no = order.Replace(cx, so, sv);
+            if (no != order)
                 r += (Order, no);
             return r;
         }
@@ -190,16 +177,16 @@ namespace Pyrrho.Level3
         {
             var r = base._Fix(cx,m);
             var nh = high?.Fix(cx);
-            if (nh != high && nh!=null)
+            if (nh != high && nh is not null)
                 r += (High, nh);
             var nl = low?.Fix(cx);
-            if (nl != low && nl!=null)
+            if (nl != low && nl is not null)
                 r += (Low, nl);
-            var no = ((Domain?)cx._Dom(order)?.Fix(cx))?.defpos??-1L;
-            if (no != (cx.done[order]?.defpos ?? order))
+            var no = order.Fix(cx);
+            if (no != order)
                 r += (Order, no);
-            var np = ((Domain?)cx._Dom(partition)?.Fix(cx))?.defpos??-1L;
-            if (np!=(cx.done[partition]?.defpos ?? partition))
+            var np = partition.Fix(cx);
+            if (np!=partition)
                 r += (PartitionType, np);
             var nq = cx.Fix(query);
             if (nq != query)
@@ -219,9 +206,7 @@ namespace Pyrrho.Level3
                 return true;
             if (order == w.order)
                 return true;
-            if (cx._Dom(order) is Domain od && cx._Dom(w.order) is Domain wd)
-                return Context.Match(od.rowType,wd.rowType);
-            return false;
+            return Context.Match(order.rowType,w.order.rowType);
         }
         internal override DBObject QParams(Context cx)
         {
@@ -229,12 +214,12 @@ namespace Pyrrho.Level3
             var h = high?.distance;
             if (h is TQParam tq)
                 h = cx.values[tq.qid.dp];
-            if (h!=null && h != high?.distance)
+            if (h is not null && h != high?.distance)
                 r += (High, h);
             var w = low?.distance;
             if (w is TQParam tr)
                 w = cx.values[tr.qid.dp];
-            if (w!=null && w != low?.distance)
+            if (w is not null && w != low?.distance)
                 r += (Low, w);
             return new WindowSpecification(defpos,r);
         }
@@ -243,17 +228,17 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(" Window ");
             sb.Append(Uid(defpos));
             if (query >= 0) { sb.Append(" Query "); sb.Append(Uid(query));  }
-            if (orderWindow!=null) { sb.Append(" OWin "); sb.Append(orderWindow); }
-            if (partition >= 0)
+            if (orderWindow is not null) { sb.Append(" OWin "); sb.Append(orderWindow); }
+            if (partition!=Domain.Row)
             {
-                sb.Append(" Partition "); sb.Append(Uid(partition));
+                sb.Append(" Partition "); sb.Append(partition);
             }
-            if (order>=0)
+            if (order!=Domain.Row)
             { 
-                sb.Append(" Order "); sb.Append(Uid(order));
+                sb.Append(" Order "); sb.Append(order);
             }
             if (units != Sqlx.NO) { sb.Append(" Units "); sb.Append(units); }
-            if (low!=null) { sb.Append(" Low "); sb.Append(low); }
+            if (low is not null) { sb.Append(" Low "); sb.Append(low); }
             if (high != null) { sb.Append(" High "); sb.Append(high); }
             if (exclude != Sqlx.Null) { sb.Append(" Exclude "); sb.Append(exclude); }
             return sb.ToString();
@@ -262,40 +247,33 @@ namespace Pyrrho.Level3
         {
             BList<DBObject>ls;
             var ch = false;
-            var de = depth;
             var mm = mem;
-            if (cx.obs[partition] is Domain op)
+            if (partition!=Domain.Row)
             {
-                (ls, m) = op.Resolve(cx, f, m);
-                if (ls[0] is Domain np && np.defpos != op.defpos)
+                (ls, m) = partition.Resolve(cx, f, m);
+                if (ls[0] is Domain np && np!=partition)
                 {
                     ch = true; 
-                    de = Math.Max(de, np.depth + 1);
                     mm += (PartitionType, np);
-                    mm += (_Depth, de);
                 }
             }
-            if (cx.obs[order] is Domain od)
+            if (order!=Domain.Row)
             {
-                (ls, m) = od.Resolve(cx, f, m);
-                if (ls[0] is Domain nd && nd.defpos!=od.defpos)
+                (ls, m) = order.Resolve(cx, f, m);
+                if (ls[0] is Domain nd && nd != order)
                 {
                     ch = true; 
-                    de = Math.Max(de, nd.depth + 1);
                     mm += (Order, nd);
-                    mm += (_Depth, de);
                 }
             }
-            if (cx.obs[query] is RowSet rs && cx._Dom(rs) is Domain dr)
+            if (cx.obs[query] is RowSet rs )
             {
-                (ls, m) = dr.Resolve(cx, f, m);
-                if (ls[0] is Domain nr && nr.defpos != dr.defpos)
+                (ls, m) = rs.domain.Resolve(cx, f, m);
+                if (ls[0] is Domain nr && nr.defpos != rs.domain.defpos)
                 {
                     ch = true;
-                    rs = rs.Apply(new BTree<long, object>(_Domain, nr),cx);
-                    de = Math.Max(de, rs.depth + 1);
+                    rs.Apply(new BTree<long, object>(_Domain, nr),cx);
                     mm += (WQuery, nr);
-                    mm += (_Depth, de);
                 }
             }
             return ch?(new BList<DBObject>((DBObject)New(mm)), m):(BList<DBObject>.Empty,m);
@@ -329,7 +307,7 @@ namespace Pyrrho.Level3
             :base(dp,m) { }
         static BTree<long,object> _Mem(Context cx,BTree<long,object>? m)
         {
-            m = m??BTree<long, object>.Empty;
+            m ??= BTree<long, object>.Empty;
             if (m[Members] is CTree<long, int> ms)
             {
                 long[] x = new long[ms.Count];
@@ -341,7 +319,6 @@ namespace Pyrrho.Level3
                     if (cx._Ob(x[i]) is DBObject ob)
                         bs += ob;
                 var ks = (Domain)cx.Add(new Domain(cx.GetUid(), cx, Sqlx.ROW, bs, bs.Length));
-                m += (_Depth, ks.depth + 1);
                 m += (Index.Keys, ks);
             }
             return m;
@@ -361,7 +338,7 @@ namespace Pyrrho.Level3
         }
         internal bool Has(Context cx,string s)
         {
-            for (var b=members.First();b!=null;b=b.Next())
+            for (var b=members.First();b is not null;b=b.Next())
                 if (cx.obs[b.key()] is SqlValue v && v.name == s)
                     return true;
             for (var b = groups.First(); b != null; b = b.Next())
@@ -381,33 +358,36 @@ namespace Pyrrho.Level3
         }
         internal bool Known(Context cx, RestRowSet rrs)
         {
-            var cs = CTree<long, bool>.Empty;
+  /*          var cs = CTree<long, bool>.Empty;
             for (var b = rrs.remoteCols.First(); b != null; b = b.Next())
                 if (b.value() is long p)
-                    cs += (p, true);
+                    cs += (p, true); */
             for (var b = groups.First(); b != null; b = b.Next())
                 if (!b.value().Known(cx, rrs))
                     return false;
+            //           for (var b = members.First(); b != null; b = b.Next())
+            //               if (!cs.Contains(b.value()))
+            //                   return false;
             for (var b = members.First(); b != null; b = b.Next())
-                if (!cs.Contains(b.value()))
+                if (cx.obs[b.key()] is SqlValue v && !v.KnownBy(cx, rrs))
                     return false;
             return true;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" ");
+            sb.Append(' ');
             sb.Append(kind.ToString());
-            sb.Append(" ");
+            sb.Append(' ');
             var cm = "(";
-            for (var b=members.First();b!=null;b=b.Next())
+            for (var b=members.First();b is not null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(Uid(b.key())); sb.Append("=");
+                sb.Append(Uid(b.key())); sb.Append('=');
                 sb.Append(b.value());
             }
             if (cm == ",")
-                sb.Append(")");
+                sb.Append(')');
             if (groups.Count != 0)
             {
                 cm = "[";
@@ -416,7 +396,7 @@ namespace Pyrrho.Level3
                     sb.Append(cm); cm = ",";
                     sb.Append(b.value());
                 }
-                sb.Append("]");
+                sb.Append(']');
             }
             return sb.ToString();
         }
@@ -468,18 +448,8 @@ namespace Pyrrho.Level3
         /// </summary>
         internal BList<long?> sets =>
             (BList<long?>?)mem[Sets] ?? BList<long?>.Empty;
-        internal GroupSpecification(long lp, Context cx, BTree<long, object> m) : base(lp, _Mem(cx, m)) { }
+        internal GroupSpecification(long lp, Context cx, BTree<long, object> m) : base(lp,m) { }
         internal GroupSpecification(long lp, BTree<long, object> m) : base(lp, m) { }
-        static BTree<long, object> _Mem(Context cx, BTree<long, object>m)
-        {
-            var d = 1;
-            var ss = (BList<long?>)(m[Sets]??BList<long?>.Empty);
-            for (var b = ss.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue v)
-                    d = Math.Max(d, v.depth + 1);
-            m+=(_Depth, d);
-            return m;
-        }
         public static GroupSpecification operator+(GroupSpecification gs,(long,object)x)
         {
             var (dp, ob) = x;
@@ -491,12 +461,6 @@ namespace Pyrrho.Level3
         {
             var (cx, k, v) = x;
             var m = gs.mem + (k,v);
-            var d = gs.depth;
-            if (v is BList<long?> cs)
-                for (var b = cs.First(); b != null; b = b.Next())
-                    if (b.value() is long p && cx.obs[p] is DBObject ob)
-                        d = Math.Max(d, ob.depth + 1);
-            m += (_Depth, d);
             return (GroupSpecification)cx.Add((GroupSpecification)gs.New(m));
         }
         public bool Has(Context cx,long s)
@@ -542,6 +506,15 @@ namespace Pyrrho.Level3
                 if (b.value() is long p && cx.obs[p] is SqlValue v && !v.Grouped(cx, this))
                     return false;
             return true;
+        }
+        internal GroupSpecification Known(Context cx,RestRowSet rr)
+        {
+            var ss = BList<long?>.Empty;
+            for (var b = sets.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is Grouping g && g.Known(cx, rr))
+                    ss += p;
+            return (ss == sets) ? this :
+                (GroupSpecification)cx.Add(new GroupSpecification(cx.GetUid(), mem + (Sets, ss)));
         }
         public override string ToString()
         {
@@ -616,18 +589,18 @@ namespace Pyrrho.Level3
             if (val >= 0)
             { sb.Append(" Val: "); sb.Append(DBObject.Uid(val)); }
             else
-            { sb.Append("="); sb.Append(lit); }
+            { sb.Append('='); sb.Append(lit); }
             return sb.ToString();
         }
         public int CompareTo(object? obj)
         {
-            if (obj==null) return 1;
+            if (obj == null) return 1;
             var that = (UpdateAssignment)obj;
             int c = vbl.CompareTo(that.vbl);
             if (c != 0)
                 return c;
             c = val.CompareTo(that.val);
-            return (c!=0)? c: lit.CompareTo(that.lit);
+            return (c != 0) ? c : lit.CompareTo(that.lit);
         }
     }
 }

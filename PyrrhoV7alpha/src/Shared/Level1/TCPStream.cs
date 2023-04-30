@@ -503,7 +503,7 @@ namespace Pyrrho.Level1
         }
         internal void PutWarnings(Context cx)
         {
-            for (var b=cx?.warnings.First();b!=null;b=b.Next())
+            for (var b=cx?.warnings.First();b is not null;b=b.Next())
             {
                 var e = (DBException)b.value();
                 Write(Responses.Warning);
@@ -584,7 +584,7 @@ namespace Pyrrho.Level1
         {
             PutString("ARRAY");
             int n = a.Length;
-            var et = _cx._Dom(a.dataType.elType) ?? 
+            var et = a.dataType.elType ??
                 ((a.Length > 0) ? a[0].dataType : Domain.Content);
             PutString(et.ToString());
             PutInt(et.Typecode());
@@ -599,12 +599,26 @@ namespace Pyrrho.Level1
         internal void PutMultiset(Context cx, TMultiset m)
         {
             PutString("MULTISET");
-            var et = cx._Dom(m.dataType.elType) ?? m.dataType ?? Domain.Content;
+            var et = m.dataType.elType ?? m.dataType ?? Domain.Content;
             PutString(et.ToString());
             PutInt(et.Typecode());
             PutInt((int)m.Count);
             for (var e = m.First(); e != null; e = e.Next())
                 PutCell(cx,et, e.Value());
+        }
+        /// <summary>
+        /// send a Set to the client
+        /// </summary>
+        /// <param name="m">the Multiset</param>
+        internal void PutSet(Context cx, TSet m)
+        {
+            PutString("SET");
+            var et = m.dataType.elType ?? m.dataType ?? Domain.Content;
+            PutString(et.ToString());
+            PutInt(et.Typecode());
+            PutInt((int)m.tree.Count);
+            for (var e = m.First(); e != null; e = e.Next())
+                PutCell(cx, et, e.Value());
         }
         /// <summary>
         /// Send a Table to the client
@@ -618,11 +632,10 @@ namespace Pyrrho.Level1
             for (var e = r.First(cx); e != null; e = e.Next(cx))
                 n++;
             PutInt(n);
-            if (cx._Dom(r) is Domain dm)
-                for (var e = r.First(cx); e != null; e = e.Next(cx))
-                    for (var b = dm.rowType.First(); b != null; b = b.Next())
-                        if (b.value() is long p && cx._Dom(p) is Domain dt)
-                            PutCell(cx, dt, e[b.key()]);
+            for (var e = r.First(cx); e != null; e = e.Next(cx))
+                for (var b = r.domain.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p && cx._Dom(p) is Domain dt)
+                        PutCell(cx, dt, e[b.key()]);
         }
         /// <summary>
         /// Send an array of bytes to the client (e.g. a blob)
@@ -667,7 +680,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema(Context cx)
         {
-            if (cx.obs[cx.result] is not RowSet result || cx._Dom(result) is not Domain dm)
+            if (cx.obs[cx.result] is not RowSet result)
             {
 #if EMBEDDED
                 WriteByte(11);
@@ -682,8 +695,8 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema);
 #endif
-            var dt = dm.rowType;
-            int m = dm.display;
+            var dt = result.domain.rowType;
+            int m = result.domain.display;
             if (m == 0)
                 m = dt.Length;
             PutInt(m);
@@ -704,7 +717,7 @@ namespace Pyrrho.Level1
                 result.Schema(cx, flags);
                 var j = 0;
                 for (var b = dt.First(); j < m && b != null; b = b.Next(), j++)
-                    if (b.value() is long p && dm.representation[p] is Domain dn)
+                    if (b.value() is long p && result.domain.representation[p] is Domain dn)
                     {
                         var i = b.key();
                         PutString(result.NameFor(cx, i));
@@ -723,7 +736,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutSchema1(Context cx,RowSet result)
         {
-            if (result == null || cx._Dom(result) is not Domain dt)
+            if (result == null)
             {
 #if EMBEDDED
                 WriteByte(11);
@@ -739,19 +752,19 @@ namespace Pyrrho.Level1
             Write(Responses.Schema1);
 #endif
             PutLong(result.lastChange);// compute the schemakey
-            int m = dt.display;
+            int m = result.domain.display;
             PutInt(m);
             if (m == 0)
                 Console.WriteLine("No columns?");
-            if (m > dt.Length)
-                Console.WriteLine("Unreasonable rowType length " + dt.Length + " < " + m);
+            if (m > result.domain.Length)
+                Console.WriteLine("Unreasonable rowType length " + result.domain.Length + " < " + m);
             if (m > 0)
             {
                 PutString("Data");
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
                 var j = 0;
-                for (var b=dt.representation.First();b!=null;b=b.Next(),j++)
+                for (var b=result.domain.representation.First();b is not null;b=b.Next(),j++)
                 {
                     var n = cx.NameFor(b.key());
                     PutString(n);
@@ -794,9 +807,8 @@ namespace Pyrrho.Level1
                 {
                     var n = sc.NameFor(cx);
                     PutString(n);
-                    var dm = cx._Dom(sc)??Domain.Null;
-                    PutString((dm.kind == Sqlx.DOCUMENT) ? "DOCUMENT": n);
-                    var flags = dm.Typecode() + (dn.notNull ? 0x100 : 0) +
+                    PutString((sc.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT": n);
+                    var flags = sc.domain.Typecode() + (dn.notNull ? 0x100 : 0) +
                     ((dn.generated != GenerationRule.None) ? 0x200 : 0);
                     PutInt(flags);
                 }
@@ -844,12 +856,12 @@ namespace Pyrrho.Level1
         internal void PutCell(Context _cx, Domain dt, TypedValue p, string? rv=null, string? rc=null)
         {
             p = dt.Coerce(_cx, p);
-            if (rv!=null && rv!=null)
+            if (rv is not null && rv is not null)
             {
                 WriteByte(3);
                 PutString(rv);
             } 
-            if (rc!=null && rc!=null)
+            if (rc is not null && rc is not null)
             {
                 WriteByte(4);
                 PutString(rc);
@@ -862,14 +874,14 @@ namespace Pyrrho.Level1
             }
             if (dt.CompareTo(p.dataType)==0)
                 WriteByte(1);
-            else if ((dt as UDType)?.prefix is string pf)
+            else if (dt is UDType ut && ut.prefix is string pf)
             {
                 WriteByte(5);
                 PutString(pf);
                 PutString(p.dataType.name);
                 PutInt(p.dataType.Typecode());
             }
-            else if ((dt as UDType)?.suffix is string sf)
+            else if (dt is UDType vt && vt.suffix is string sf)
             {
                 WriteByte(6);
                 PutString(sf);
@@ -1002,6 +1014,13 @@ namespace Pyrrho.Level1
                 case Sqlx.REF:
                 case Sqlx.ROW: PutRow(_cx, (TRow)tv); break; // different!
                 case Sqlx.ARRAY: PutArray(_cx, (TArray)tv); break;
+                case Sqlx.SET:
+                    {
+                        if (tv is TSet d)
+                            PutSet(_cx, d);
+                        else throw new PEException("PE42166");
+                        break;
+                    }
                 case Sqlx.MULTISET:
                     {
                         if (tv is TMultiset d)
@@ -1027,7 +1046,7 @@ namespace Pyrrho.Level1
                             PutString(ut.prefix + tv.ToString());
                             break;
                         }
-                        if (ut.suffix !=null)
+                        if (ut.suffix is not null)
                         {
                             if (tf != null && tv is TRow tr && tr.values[tf.value()??-1L] is TypedValue nv)
                                 tv = nv;

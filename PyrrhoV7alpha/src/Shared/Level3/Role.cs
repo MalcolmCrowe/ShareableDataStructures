@@ -103,7 +103,7 @@ namespace Pyrrho.Level3
                 }
             if (cm == ',') sb.Append(')');
             sb.Append(" Procedures:"); cm = '(';
-            for (var b=procedures.First();b!=null;b=b.Next())
+            for (var b=procedures.First();b is not null;b=b.Next())
             {
                 sb.Append(cm); cm = ';';
                 sb.Append(b.key()); sb.Append('=');
@@ -142,7 +142,7 @@ namespace Pyrrho.Level3
             Inverts = -353, // long SqlProcedure
             MethodInfos = -252, // CTree<string, CTree<int,long?>> Method
             Name = -50, // string
-            Names = -282, // CTree<string,long?> TableColumn (SqlValues in RowSet)
+            Names = -282, // BTree<string,(int,long?)> TableColumn (SqlValues in RowSet)
             SchemaKey = -286, // long (highwatermark for schema changes)
             Privilege = -253; // Grant.Privilege
         public string description => mem[Description]?.ToString() ?? "";
@@ -155,8 +155,8 @@ namespace Pyrrho.Level3
         public CTree<Sqlx, TypedValue> metadata =>
             (CTree<Sqlx, TypedValue>?)mem[_Metadata] ?? CTree<Sqlx, TypedValue>.Empty;
         public string? name => (string?)mem[Name] ?? "";
-        internal BTree<string,long?> names =>
-            (BTree<string, long?>?)mem[Names]??BTree<string,long?>.Empty;
+        internal BTree<string,(int,long?)> names =>
+            (BTree<string, (int,long?)>?)mem[Names]??BTree<string,(int, long?)>.Empty;
         internal long schemaKey => (long)(mem[SchemaKey] ?? -1L);
         /// <summary>
         /// ObInfo for Table, TableColumn, Procedure etc have role-specific RowType in domains
@@ -242,6 +242,23 @@ namespace Pyrrho.Level3
                             sb.Append(')');
                         }
                         continue;
+                    case Sqlx.MINVALUE:
+                    case Sqlx.MAXVALUE:
+                        {
+                            var hi = md[Sqlx.MAXVALUE]?.ToInt();
+                            if (hi is not null && b.key() == Sqlx.MINVALUE)
+                                continue; // already displayed
+                            sb.Append("MULTIPLICITY(");
+                            var lw = md[Sqlx.MINVALUE]?.ToInt();
+                            sb.Append(lw);
+                            if (hi is not null)
+                            {
+                                sb.Append(" TO ");
+                                sb.Append(hi);
+                            }
+                            sb.Append(')');
+                        }
+                        continue;
                     default:
                         sb.Append(b.key());
                         continue;
@@ -273,18 +290,51 @@ namespace Pyrrho.Level3
             var ni = cx.Fix(inverts);
             if (ni!=inverts)
                 r += (Inverts, ni);
-            var ns = BTree<string, long?>.Empty;
+            var ns = BTree<string, (int,long?)>.Empty;
             var ch = false;
             for (var b = names.First(); b != null; b = b.Next())
-            if (b.value() is long p){
-                p = cx.Fix(p);
-                if (p != b.value())
-                    ch = true;
-                ns += (b.key(), p);
-            }
+                if (b.value().Item2 is long p)
+                {
+                    p = cx.Fix(p);
+                    if (p != b.value().Item2)
+                        ch = true;
+                    ns += (b.key(), (b.value().Item1, p));
+                }
             if (ch)
                 r += (Names, ns);
             return r;
+        }
+        internal override Basis ShallowReplace(Context cx, long was, long now)
+        {
+            var r = this;
+            var md = ShallowReplace(cx, metadata, was, now);
+            if (md != metadata)
+                r += (_Metadata, md);
+            var ns = ShallowReplace(cx, names, was, now);
+            if (ns != names)
+                r += (Names, ns);
+            return r;
+        }
+        CTree<Sqlx,TypedValue> ShallowReplace(Context cx,CTree<Sqlx,TypedValue> md,long was, long now)
+        {
+            for (var b=md.First();b!=null;b=b.Next())
+                if (b.value() is TypedValue v)
+                {
+                    var nv = v.ShallowReplace(cx, was, now);
+                    if (nv != v)
+                        md += (b.key(), nv);
+                }
+            return md;
+        }
+        BTree<string,(int,long?)>ShallowReplace(Context cx,BTree<string,(int,long?)> ns, long was, long now)
+        {
+            for (var b = ns.First(); b != null; b = b.Next())
+            {
+                var (i, p) = b.value();
+                if (p!=null && p.Value==was)
+                    ns += (b.key(), (i,now));
+            }
+            return ns;
         }
     }
 }

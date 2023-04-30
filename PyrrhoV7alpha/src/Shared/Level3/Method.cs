@@ -103,7 +103,7 @@ namespace Pyrrho.Level3
             for (var b = ut.representation.First(); b != null; b = b.Next())
                 if (targ[b.key()] is TypedValue tv)
                     cx.values += (b.key(), tv);
-            var n = (int)ins.Count;
+            var n = ins.Length;
             var acts = new TypedValue[n];
             var i = 0;
             for (var b = actIns.First(); i < n && b != null; b = b.Next(), i++)
@@ -142,7 +142,7 @@ namespace Pyrrho.Level3
                     }
             if (this is Method mt && mt.methodType == PMethod.MethodType.Constructor)
                 cx.val = new TRow(mt.udType, act.values);
-            else if (r!=null)
+            else if (r is not null)
                 cx.val = r;
             return cx;
         }

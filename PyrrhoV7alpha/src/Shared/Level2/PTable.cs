@@ -40,8 +40,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTable(string nm,Domain d, long nst, long pp, Context cx)
-            : this(Type.PTable, nm, d, nst, pp, cx)
+        public PTable(string nm,Domain d, long pp, Context cx)
+            : this(Type.PTable, nm, d, pp, cx)
         {  }
         /// <summary>
         /// Constructor: a Table definition from the Parser.
@@ -51,21 +51,16 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PTable(Type t, string nm, Domain d, long nst, long pp, Context cx)
-            : base(t, pp, cx, nm, d, nst)
-        { } 
+        protected PTable(Type t, string nm, Domain d, long pp, Context cx)
+            : base(t, pp, cx, nm, d, -1L)
+        {  } 
         /// <summary>
         /// Constructor: a Table definition from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
 		public PTable(Reader rdr) : base (Type.PTable,rdr)
-		{
-            var op = rdr.context.parse;
-            rdr.context.parse = ExecuteStatus.Compile;
-            dataType = (Domain)Domain.TableType.Relocate(rdr.context.GetUid());
-            rdr.context.parse = op;
-        }
+		{  }
         /// <summary>
         /// Constructor: a Table definition from the buffer
         /// </summary>
@@ -101,7 +96,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-			base.Deserialise(rdr); // skips to Physical.Serialise
+			base.Deserialise(rdr); 
         }
         /// <summary>
         /// A readable version of this Physical
@@ -109,7 +104,13 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
         public override string ToString()
 		{
-			return "PTable "+name;
+			var sb = new StringBuilder("PTable ");
+            sb.Append(name);
+            if (nodeType>=0)
+            {
+                sb.Append(" NodeType ");sb.Append(DBObject.Uid(nodeType));
+            }
+            return sb.ToString();
 		}
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -138,7 +139,7 @@ namespace Pyrrho.Level2
                 dataType += (DBObject.Infos, dataType.infos + (ro.defpos, oi - ObInfo.Name));
             if (dataType.name!="")
                 dataType = new Domain(dataType.defpos,dataType.mem- ObInfo.Name); // -= on Domain means something else
-            var tb = (name[0] == '(') ? new VirtualTable(this, cx) : new Table(this, cx);
+            var tb = (name[0] == '(') ? new VirtualTable(this, cx) : new Table(this);
             if (nodeType >= 0)
                 tb += (Table._NodeType, nodeType);
             ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
@@ -147,15 +148,14 @@ namespace Pyrrho.Level2
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            framing = tb.framing;
             cx.Install(tb, p);
             return tb;
         }
     }
     internal class PTable1 : PTable
     {
-        protected PTable1(Type typ, string ir, string nm, Domain d, long nst, long pp, Context cx)
-            : base(typ, nm, d, nst, pp, cx)
+        protected PTable1(Type typ, string ir, string nm, Domain d,long pp, Context cx)
+            : base(typ, nm, d, pp, cx)
         {
             rowiri = ir;
         }
@@ -191,7 +191,7 @@ namespace Pyrrho.Level2
     {
         public long rowpos;
         public AlterRowIri(long pr, string ir, Domain d, long pp, Context cx) 
-            : base(Type.AlterRowIri, ir, "", d, cx.db.nextStmt, pp, cx)
+            : base(Type.AlterRowIri, ir, "", d, pp, cx)
         {
             rowpos = pr;
         }

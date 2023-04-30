@@ -279,8 +279,9 @@ namespace Pyrrho.Common
                 {
                     case Sqlx.INT:
                     case Sqlx.INTEGER:
-                        tv = new TInteger(r.sumInteger ?? throw new PEException("PE0810"));
-                        if (tv==TNull.Value)
+                        if (r.sumInteger is Integer im)
+                            tv = new TInteger(im);
+                        else
                             tv = new TInt(r.sumLong);
                         break;
                     case Sqlx.REAL:
@@ -773,7 +774,7 @@ namespace Pyrrho.Common
             {
                 if (f.value().Item1 == "_id" && excludeid)
                     continue;
-                if (proj!=null)
+                if (proj is not null)
                 {
                     var fv = proj[f.value().Item1];
                     if ((fv == null) != exclude)
@@ -906,7 +907,7 @@ namespace Pyrrho.Common
             var we = was.First();
             var ne = now.First();
             int m = 0;
-            while (we!=null && ne!=null)
+            while (we is not null && ne is not null)
             {
                 m = we.key();
                 var (n,v) = we.value();
@@ -943,13 +944,13 @@ namespace Pyrrho.Common
                 else // we can't merge the list of names
                     goto all;
             }
-            while (we!=null)
+            while (we is not null)
             {
                 m = we.key();
                 details+=new Action(m, Verb.Remove, we.value().Item1, TNull.Value);
                 we = we.Next();
             }
-            while (ne!=null)
+            while (ne is not null)
             {
                 if (was.Contains(ne.value().Item1))
                     goto all;

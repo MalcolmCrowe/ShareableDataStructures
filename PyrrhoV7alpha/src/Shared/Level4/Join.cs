@@ -36,7 +36,7 @@ namespace Pyrrho.Level4
             JoinKind = -204, // Sqlx
             JoinUsing = -208, // BTree<long,long?> SqlValue SqlValue (right->left)
             Natural = -207, // Sqlx
-            OnCond = -344; // BTree<long,long?> SqlValue SqlValue for simple equality
+            OnCond = -381; // BTree<long,long?> SqlValue SqlValue for simple equality
         /// <summary>
         /// NATURAL or USING or NO (the default)
         /// </summary>
@@ -73,11 +73,11 @@ namespace Pyrrho.Level4
         /// <param name="j">The Join part</param>
 		public JoinRowSet(long dp,Context _cx, RowSet lr, Sqlx k,RowSet rr,
             BTree<long,object>? m = null) :
-            base(dp, _cx, _Mem(_cx,dp,m,k,lr,rr))
+            base(dp, _cx, _Mem(_cx,m,k,lr,rr))
         {
             _cx.Add(this);
         }
-        static BTree<long,object> _Mem(Context cx, long dp,BTree<long, object>? m,
+        static BTree<long,object> _Mem(Context cx, BTree<long, object>? m,
             Sqlx k,RowSet lr, RowSet rr)
         {
             m ??= BTree<long, object>.Empty;
@@ -87,16 +87,13 @@ namespace Pyrrho.Level4
             m += (ISMap, lr.iSMap + rr.iSMap);
             m += (SIMap, lr.sIMap + rr.sIMap);
             var oc = (BTree<long, long?>)(m[OnCond] ?? BTree<long, long?>.Empty);
-            var jc = (CTree<long, bool>)(m[JoinCond] ?? CTree<long, bool>.Empty);
-            if (cx._Dom(lr) is not Domain dl || cx._Dom(rr) is not Domain dr)
-                throw new PEException("PE7901");
             // Step 1: examine the names and find names in common
             var cm = CTree<string, (long, long)>.Empty; // common names
             var ns = CTree<long,string>.Empty; // all names
             var lc = CTree<long,bool>.Empty; // left columns to rename (true) or drop (false)
             var rc = CTree<long,bool>.Empty; // right columns to rename (true) or drop (false)
             for (var b = lr.names.First(); b != null; b = b.Next())
-                if (rr.names[b.key()] is long rk && b.value() is long lk)
+                if (rr.names[b.key()].Item2 is long rk && b.value().Item2 is long lk)
                 {
                     var n = b.key();
                     ns += (lk, n);
@@ -105,7 +102,7 @@ namespace Pyrrho.Level4
                     rc += (rk, true);
                 }
             for (var b = rr.names.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                if (b.value().Item2 is long p)
                 ns += (p, b.key());
             // Step 2: consider NATURAL and USING
             if (cm!=CTree<string,(long,long)>.Empty)
@@ -140,54 +137,56 @@ namespace Pyrrho.Level4
             var ls = BList<string>.Empty;
             var rs = BList<string>.Empty;
             var lm = BTree<string, SqlValue>.Empty;
-            var nn = BTree<string, long?>.Empty;
+            var nn = BTree<string, (int,long?)>.Empty;
             var cs = BList<long?>.Empty;
             var fs = BList<long?>.Empty;
             var re = CTree<long, Domain>.Empty;
-            for (var b = dl.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue sv && sv.name is string n 
-                    && cx._Dom(sv) is Domain sd)
+            for (var b = lr.domain.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is SqlValue sv)
                 {
+                    var n = sv.name ?? ("Col" + cs.Length);
                     lm += (n, sv);
-                    re += (sv.defpos, sd);
-                    if (((!lc.Contains(sv.defpos)) ||lc[sv.defpos]) && !cm.Contains(n))
+                    re += (sv.defpos, sv.domain);
+                    if (((!lc.Contains(sv.defpos)) || lc[sv.defpos]) && !cm.Contains(n))
                     {
                         ls += n;
-                        nn += (n, sv.defpos);
+                        nn += (n, (b.key(),sv.defpos));
                         cs += sv.defpos;
                     }
                     else if (cm.Contains(n))
                     {
                         var ln = (lr.alias ?? lr.name) + "." + n;
                         var nl = sv + (_Alias, ln);
-                        m = cx.Replace(sv, nl, m);
+                        cx.Replace(sv, nl);
                         ls += ln;
-                        nn += (ln, sv.defpos);
+                        nn += (ln, (b.key(), sv.defpos));
                         cs += sv.defpos;
-                    } else
+                    }
+                    else
                         fs += sv.defpos;
                 }
-            for (var b = dr.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue rv && rv.name is string n
-                    && cx._Dom(rv) is Domain rd)
+            for (var b = rr.domain.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is SqlValue rv)
                 {
+                    var n = rv.name ?? ("Col" + cs.Length);
                     lm += (n, rv);
-                    re += (rv.defpos, rd);
-                    if (((!rc.Contains(rv.defpos))||rc[rv.defpos]) && !cm.Contains(n))
+                    re += (rv.defpos, rv.domain);
+                    if (((!rc.Contains(rv.defpos)) || rc[rv.defpos]) && !cm.Contains(n))
                     {
                         rs += n;
-                        nn += (n, rv.defpos);
+                        nn += (n, (b.key(), rv.defpos));
                         cs += rv.defpos;
                     }
                     else if (cm.Contains(n))
                     {
                         var rn = (rr.alias ?? rr.name) + "." + n;
                         var nr = rv + (_Alias, rn);
-                        m = cx.Replace(rv, nr, m);
+                        cx.Replace(rv, nr);
                         rs += rn;
-                        nn += (rn, rv.defpos);
+                        nn += (rn, (b.key(), rv.defpos));
                         cs += rv.defpos;
-                    } else
+                    }
+                    else
                         fs += rv.defpos;
                 }
             var ds = cs.Length;
@@ -213,10 +212,10 @@ namespace Pyrrho.Level4
                     if (b.value() is long ri && cx._Ob(ri) is DBObject nr && cx._Ob(b.key()) is DBObject nl)
                     {
                         var le = b.key();
-                        lo = (Domain)lo.New(cx, lo.mem + (Domain.RowType, lo.rowType + le)
-                            + (Domain.Representation, lo.representation + (le, cx._Dom(nl) ?? Domain.Content)));
-                        ro = (Domain)ro.New(cx, ro.mem + (Domain.RowType, ro.rowType + ri)
-                            + (Domain.Representation, ro.representation + (ri, cx._Dom(nr) ?? Domain.Content)));
+                        lo = (Domain)lo.New(lo.mem + (Domain.RowType, lo.rowType + le)
+                            + (Domain.Representation, lo.representation + (le, nl.domain)));
+                        ro = (Domain)ro.New(ro.mem + (Domain.RowType, ro.rowType + ri)
+                            + (Domain.Representation, ro.representation + (ri, nr.domain)));
                         var ml = ma[le] ?? CTree<long, bool>.Empty;
                         var mr = ma[ri] ?? CTree<long, bool>.Empty;
                         ma = ma + (le, ml + (ri, true))
@@ -237,9 +236,8 @@ namespace Pyrrho.Level4
                 m += (Matching, ma);
                 m += (OnCond, oc);
             }
-            m += (_Domain, dm.defpos);
+            m += (_Domain, dm);
             m += (RSTargets, lr.rsTargets + rr.rsTargets);
-            m += (_Depth, Math.Max(lr.depth, rr.depth) + 1);
             return m;
         }
         protected JoinRowSet(long dp, BTree<long, object> m) : base(dp, m)
@@ -277,12 +275,36 @@ namespace Pyrrho.Level4
                 }
             return 0;
         }
-        public static JoinRowSet operator +(JoinRowSet rs, (long, object) x)
+        public static JoinRowSet operator +(JoinRowSet et, (long, object) x)
         {
+            var d = et.depth;
+            var m = et.mem;
             var (dp, ob) = x;
-            if (rs.mem[dp] == ob)
+            if (et.mem[dp] == ob)
+                return et;
+            if (ob is DBObject bb && dp != _Depth)
+            {
+                d = Math.Max(bb.depth + 1, d);
+                if (d > et.depth)
+                    m += (_Depth, d);
+            }
+            return (JoinRowSet)et.New(m + x);
+        }
+        public static JoinRowSet operator +(JoinRowSet rs, (Context, long, object) x)
+        {
+            var d = rs.depth;
+            var m = rs.mem;
+            var (cx, p, o) = x;
+            if (rs.mem[p] == o)
                 return rs;
-            return (JoinRowSet)rs.New(rs.mem + x);
+            switch(p)
+            {
+                case JoinCond: m += (_Depth, cx._DepthTVX((CTree<long, bool>)o, d)); break;
+                case JoinUsing:
+                case OnCond:m += (_Depth, cx._DepthTVV((BTree<long, long?>)o, d)); break;
+                default: m = rs._Depths(cx, m, d, p, o);break;
+            }
+            return (JoinRowSet)rs.New(m + (p, o));
         }
         internal override int Cardinality(Context cx)
         {
@@ -318,13 +340,14 @@ namespace Pyrrho.Level4
                         ?? throw new PEException("PE196");
                     var rv = (SqlValue?)cx.obs[se.right] ?? throw new PEException("PE1500");
                     if (!Context.HasItem(lo.rowType, lv.defpos))
-                        lf = (RowSet)lf.Orders(cx,(Domain)lf.New(cx, lo.mem + (Domain.RowType, lo.rowType + lv.defpos) + (Domain.Representation, lo.representation + (lv.defpos, cx._Dom(lv) ?? Domain.Content))));
+                        lf = (RowSet)lf.Orders(cx,(Domain)lf.New(lo.mem + (Domain.RowType, lo.rowType + lv.defpos) 
+                            + (Domain.Representation, lo.representation + (lv.defpos, lv.domain))));
                     if (!Context.HasItem(ro.rowType, rv.defpos))
-                        rg = (RowSet)rg.Orders(cx,(Domain)rg.New(cx, ro.mem + (Domain.RowType, ro.rowType + rv.defpos)
-                            + (Domain.Representation, ro.representation + (rv.defpos, cx._Dom(rv) ?? Domain.Content)))); ;
+                        rg = (RowSet)rg.Orders(cx,(Domain)rg.New(ro.mem + (Domain.RowType, ro.rowType + rv.defpos)
+                            + (Domain.Representation, ro.representation + (rv.defpos, rv.domain)))); ;
                 }
-            var dl = cx._Dom(lf)??throw new PEException("PE1500");
-            var dr = cx._Dom(rg) ?? throw new PEException("PE1500");
+            var dl = lf.domain;
+            var dr = rg.domain;
             if (joinCond.Count == 0)
                 for (var b = ord?.First(); b != null; b = b.Next()) // test all of these 
                     if (b.value() is long p)
@@ -333,16 +356,16 @@ namespace Pyrrho.Level4
                         var ro = rg.ordSpec;
                         if (dl.rowType.Has(p)// && !(left.rowSet is IndexRowSet))
                             && !Context.HasItem(lo.rowType, p) && cx._Ob(p) is SqlValue sv)
-                            lf = (RowSet)lf.Orders(cx, (Domain)lf.New(cx, lo.mem + (Domain.RowType, lo.rowType + sv.defpos)
-                            + (Domain.Representation, lo.representation + (sv.defpos, cx._Dom(sv) ?? Domain.Content))));
+                            lf = (RowSet)lf.Orders(cx, (Domain)lf.New(lo.mem + (Domain.RowType, lo.rowType + sv.defpos)
+                            + (Domain.Representation, lo.representation + (sv.defpos, sv.domain))));
                         if (dr.rowType.Has(p)// && !(right.rowSet is IndexRowSet))
                             && !Context.HasItem(ro.rowType, p) && cx._Ob(p) is SqlValue sw)
-                            rg = (RowSet)rg.Orders(cx,(Domain)rg.New(cx, ro.mem + (Domain.RowType, ro.rowType + sw.defpos)
-                            + (Domain.Representation, ro.representation + (sw.defpos, cx._Dom(sw) ?? Domain.Content))));
+                            rg = (RowSet)rg.Orders(cx,(Domain)rg.New(ro.mem + (Domain.RowType, ro.rowType + sw.defpos)
+                            + (Domain.Representation, ro.representation + (sw.defpos, sw.domain))));
                     }
             cx.Add(lf);
             cx.Add(rg);
-            return (RowSet)New(cx, r.mem + (JoinKind, k) + (JoinCond, jc));
+            return (RowSet)cx.Add((RowSet)New(r.mem + (JoinKind, k) + (JoinCond, jc)));
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
@@ -386,9 +409,9 @@ namespace Pyrrho.Level4
                 r += (ps, cr);
             return r;
         }
-        protected override BTree<long, object> _Replace(Context cx, DBObject so, DBObject sv, BTree<long, object>m)
+        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = base._Replace(cx, so, sv,m);
+            var r = (JoinRowSet)base._Replace(cx, so, sv);
             var jc = joinCond;
             for (var b = jc.First(); b != null; b = b.Next())
             {
@@ -397,7 +420,7 @@ namespace Pyrrho.Level4
                     jc += (b.key(), true);
             }
             if (jc != joinCond)
-                r += (JoinCond, jc);
+                r +=(cx, JoinCond, jc);
             r += (JFirst, cx.ObReplace(first, so, sv));
             r += (JSecond, cx.ObReplace(second, so, sv));
             if (so.defpos != sv.defpos)
@@ -414,12 +437,17 @@ namespace Pyrrho.Level4
                     oc += (nk, nv);
                 }
                 if (ch)
-                    r += (OnCond, oc);
+                    r+=(cx, OnCond, oc);
             }
             return r;
         }
         internal override RowSet Apply(BTree<long, object> mm,Context cx,BTree<long,object>? m=null)
         {
+            if (cx.undefined != CTree<long, int>.Empty)
+            {
+                cx.Later(defpos, mm);
+                return this;
+            }
             var fi = (RowSet?)cx.obs[first]??throw new PEException("PE1407");
             var se = (RowSet?)cx.obs[second]??throw new PEException("PE1407");
             var mg = matching;
@@ -441,12 +469,10 @@ namespace Pyrrho.Level4
                         var ls = se.Knows(cx, le.defpos);
                         var rf = fi.Knows(cx, ri.defpos);
                         var rs = se.Knows(cx, ri.defpos);
-                        if (!((lf && rs) || (ls && rf)))
-                            continue;
                         wh -= sv.defpos;
                         if (sv.kind == Sqlx.EQL)
                         {
-                            if (lc && lv!=null)
+                            if (lc && lv != null)
                             {
                                 if (rc)
                                 {
@@ -459,10 +485,10 @@ namespace Pyrrho.Level4
                                 {
                                     if (rf)
                                     {
-                                        fi = fi.Apply(mm + (_Matches, fi.matches + (ri.defpos, lv)),cx);
+                                        fi = fi.Apply(mm + (_Matches, fi.matches + (ri.defpos, lv)), cx);
                                         for (var c = matching[ri.defpos]?.First(); c != null; c = c.Next())
                                             if (se.Knows(cx, c.key()))
-                                                se = se.Apply(mm + (_Matches, se.matches + (c.key(), lv)),cx);
+                                                se = se.Apply(mm + (_Matches, se.matches + (c.key(), lv)), cx);
                                     }
                                     else if (rs)
                                     {
@@ -473,11 +499,11 @@ namespace Pyrrho.Level4
                                     }
                                 }
                             }
-                            else if (rc && rv!=null)
+                            else if (rc && rv != null)
                             {
                                 if (lf)
                                 {
-                                    fi = fi.Apply(mm + (_Matches, fi.matches + (le.defpos, rv)),cx);
+                                    fi = fi.Apply(mm + (_Matches, fi.matches + (le.defpos, rv)), cx);
                                     for (var c = matching[le.defpos]?.First(); c != null; c = c.Next())
                                         if (se.Knows(cx, c.key()))
                                             se = se.Apply(mm + (_Matches, se.matches + (c.key(), rv)), cx);
@@ -492,6 +518,8 @@ namespace Pyrrho.Level4
                             }
                             else
                             {
+                                if (!((lf && rs) || (ls && rf)))
+                                    continue;
                                 var ml = mg[le.defpos] ?? CTree<long, bool>.Empty;
                                 var mr = mg[ri.defpos] ?? CTree<long, bool>.Empty;
                                 mg = mg + (le.defpos, ml + (ri.defpos, true))
@@ -500,8 +528,10 @@ namespace Pyrrho.Level4
                                 if (lf && rs && cx.obs[sv.left] is SqlValue vl && cx.obs[sv.right] is SqlValue vr)
                                 {
                                     mm += (OnCond, onCond + (sv.left, sv.right));
-                                    lo = (Domain)lo.New(cx, lo.mem + (Domain.RowType, lo.rowType + vl.defpos) + (Domain.Representation, lo.representation + (vl.defpos, cx._Dom(vl) ?? Domain.Content)));
-                                    ro = (Domain)ro.New(cx, ro.mem + (Domain.RowType, ro.rowType + vr.defpos) + (Domain.Representation, ro.representation + (vr.defpos, cx._Dom(vr) ?? Domain.Content)));
+                                    lo = (Domain)lo.New(lo.mem + (Domain.RowType, lo.rowType + vl.defpos)
+                                        + (Domain.Representation, lo.representation + (vl.defpos, vl.domain)));
+                                    ro = (Domain)ro.New(ro.mem + (Domain.RowType, ro.rowType + vr.defpos)
+                                        + (Domain.Representation, ro.representation + (vr.defpos, vr.domain)));
                                 }
                                 else if (ls && rf)
                                 {
@@ -509,8 +539,10 @@ namespace Pyrrho.Level4
                                     if (cx.obs[ns.left] is SqlValue nl && cx.obs[ns.right] is SqlValue nr)
                                     {
                                         mm += (OnCond, onCond + (ns.left, ns.right));
-                                        lo = (Domain)lo.New(cx, lo.mem + (Domain.RowType, lo.rowType + nl.defpos) + (Domain.Representation, lo.representation + (nl.defpos, cx._Dom(nl) ?? Domain.Content)));
-                                        ro = (Domain)ro.New(cx, ro.mem + (Domain.RowType, ro.rowType + nr.defpos) + (Domain.Representation, ro.representation + (nr.defpos, cx._Dom(nr) ?? Domain.Content)));
+                                        lo = (Domain)lo.New(lo.mem + (Domain.RowType, lo.rowType + nl.defpos)
+                                            + (Domain.Representation, lo.representation + (nl.defpos, nl.domain)));
+                                        ro = (Domain)ro.New(ro.mem + (Domain.RowType, ro.rowType + nr.defpos)
+                                            + (Domain.Representation, ro.representation + (nr.defpos, nr.domain)));
                                     }
                                 }
                                 mm += (JoinCond, oj + (sv.defpos, true));
@@ -528,17 +560,15 @@ namespace Pyrrho.Level4
                 if (joinKind == Sqlx.CROSS)
                     m += (JoinKind, Sqlx.INNER);
                 m += (OnCond, v);
-                fi = fi.Sort(cx, (Domain)lo.New(cx, lo.mem + (Domain.RowType, lo.rowType + fi.ordSpec.rowType)
+                fi = fi.Sort(cx, (Domain)lo.New(lo.mem + (Domain.RowType, lo.rowType + fi.ordSpec.rowType)
                     + (Domain.Representation, lo.representation + fi.ordSpec.representation)), fi.distinct);
-                se = se.Sort(cx, (Domain)ro.New(cx, ro.mem + (Domain.RowType, ro.rowType + se.ordSpec.rowType)
+                se = se.Sort(cx, (Domain)ro.New(ro.mem + (Domain.RowType, ro.rowType + se.ordSpec.rowType)
                     + (Domain.Representation, ro.representation + se.ordSpec.representation)), se.distinct);
             }
             m += (JFirst, fi.defpos);
             m += (JSecond, se.defpos);
             if (mm[Assig] is CTree<UpdateAssignment, bool>sg)
             {
-                if (cx._Dom(fi) is not Domain fd || cx._Dom(se) is not Domain sd)
-                    throw new PEException("PE47170");
                 var sf = fi.assig;
                 var ss = se.assig;
                 var gs = assig;
@@ -547,12 +577,12 @@ namespace Pyrrho.Level4
                     var ua = b.key();
                     if (!Knows(cx,ua.vbl))
                         sg -= b.key();
-                    if (fd.representation.Contains(ua.vbl))
+                    if (fi.domain.representation.Contains(ua.vbl))
                     {
                         gs -= ua;
                         sf += (ua, true);
                     }
-                    if (sd.representation.Contains(ua.vbl))
+                    if (se.domain.representation.Contains(ua.vbl))
                     {
                         gs -= ua;
                         ss += (ua, true);
@@ -608,7 +638,7 @@ namespace Pyrrho.Level4
             { 
                 sb.Append(" JoinCond: ");
                 var cm = "(";
-                for (var b=joinCond.First();b!=null;b=b.Next())
+                for (var b=joinCond.First();b is not null;b=b.Next())
                 {
                     sb.Append(cm); cm = ",";
                     sb.Append(Uid(b.key()));
@@ -651,8 +681,7 @@ namespace Pyrrho.Level4
         internal readonly BTree<long, Cursor> _ts;
         protected JoinBookmark(Context cx, JoinRowSet jrs, Cursor? left, bool ul, Cursor? right,
             bool ur, int pos) : base(cx, jrs, pos, (left?._ds??E)+(right?._ds??E), 
-                _Vals(cx._Dom(jrs)??throw new PEException("PE1402"), 
-                    cx._Dom(cx.obs[jrs.first])??throw new PEException("PE1403"), left, ul, right, ur))
+                _Vals(jrs.domain,cx.obs[jrs.first]?.domain??throw new PEException("PE1403"), left, ul, right, ur))
         {
             _jrs = jrs;
             _left = left;
@@ -745,7 +774,6 @@ namespace Pyrrho.Level4
         }
         InnerJoinBookmark(InnerJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
         { }
-        InnerJoinBookmark(Context cx, InnerJoinBookmark cu) : base(cx, cu) { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new InnerJoinBookmark(this, cx, p, v);
@@ -894,10 +922,6 @@ namespace Pyrrho.Level4
         }
         LeftJoinBookmark(LeftJoinBookmark cu, Context cx, long p, TypedValue v) : base(cu, cx, p, v)
         { }
-        LeftJoinBookmark(Context cx,LeftJoinBookmark cu):base(cx,cu)
-        {
-            hideRight = (Cursor?)cu.hideRight?.Fix(cx);
-        }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new LeftJoinBookmark(this, cx, p, v);
@@ -1056,7 +1080,6 @@ namespace Pyrrho.Level4
         }
         RightJoinBookmark(RightJoinBookmark cu,Context cx,long p,TypedValue v):base(cu, cx, p, v) 
         { }
-        RightJoinBookmark(Context cx, RightJoinBookmark cu) : base(cx, cu) { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new RightJoinBookmark(this, cx, p, v);
@@ -1211,7 +1234,6 @@ namespace Pyrrho.Level4
         { }
         FullJoinBookmark(FullJoinBookmark cu,Context cx, long p, TypedValue v):base(cu,cx,p,v)
         { }
-        FullJoinBookmark(Context cx, FullJoinBookmark cu) : base(cx, cu) { }
         protected override Cursor New(Context cx, long p, TypedValue v)
         {
             return new FullJoinBookmark(this, cx, p, v);
@@ -1351,8 +1373,6 @@ namespace Pyrrho.Level4
         { }
         CrossJoinBookmark(CrossJoinBookmark cu, Context cx, long p, TypedValue v) 
             : base(cu, cx, p, v) { }
-        CrossJoinBookmark(Context cx,CrossJoinBookmark cu):base(cx,cu)
-        { }
         public static CrossJoinBookmark? New(Context cx,JoinRowSet j)
         {
             if (cx.obs[j.first] is not RowSet fi || cx.obs[j.second] is not RowSet se)

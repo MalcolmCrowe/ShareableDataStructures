@@ -19,7 +19,7 @@ namespace Pyrrho.Common
     /// <summary>
     /// A strongly typed Tree where the key is an ITypedValue
     /// </summary>
-    /// <typeparam name="K">The Key type</typeparam>
+    /// <typeparam name="K">The Key type - may be a set type</typeparam>
     /// <typeparam name="V">The value type</typeparam>
     internal class CTree<K, V> : BTree<K, V>,IComparable
     where K : IComparable where V : IComparable
@@ -69,7 +69,7 @@ namespace Pyrrho.Common
         /// <returns>The new CTree</returns>
         protected override ATree<K, V> Add(K k, V v)
         {
-            if (root!=null && Contains(k))
+            if (root is not null && Contains(k))
                 return new CTree<K, V>(root.Update(this, k, v));
             return Insert(k, v);
         }
@@ -123,7 +123,7 @@ namespace Pyrrho.Common
             var that = (CTree<K,V>)obj??Empty;
             var tb = that.First();
             var b = First();
-            for (;b!=null && tb!=null;b=b.Next(),tb=tb.Next())
+            for (;b is not null && tb is not null;b=b.Next(),tb=tb.Next())
             {
                 var c = b.key().CompareTo(tb.key());
                 if (c != 0)
@@ -132,7 +132,7 @@ namespace Pyrrho.Common
                 if (c != 0)
                     return c;
             }
-            return (b != null)? 1 : (tb!=null)?-1: 0;
+            return (b != null)? 1 : (tb is not null)?-1: 0;
         }
 
         public static CTree<K, V> operator +(CTree<K, V> tree, (K, V) v)
@@ -173,7 +173,6 @@ namespace Pyrrho.Common
     /// A generic strongly-typed Tree for values in the database.
     /// The tree's single-level key and value type are determined at creation.
     /// IMMUTABLE
-    ///     // shareable as of 26 April 2021
     /// </summary>
     internal class SqlTree : CTree<TypedValue, TypedValue>
     {
@@ -182,7 +181,8 @@ namespace Pyrrho.Common
         /// </summary>
         public readonly Sqlx kind;
         /// <summary>
-        /// A simple Domain (no columns)
+        /// A simple Domain (no columns). 
+        /// keyType.kind==Sqlx.SET and keyType.elType!= Domain.Null for set valued foreign keys
         /// </summary>
         public Domain keyType; 
         /// <summary>
@@ -197,7 +197,7 @@ namespace Pyrrho.Common
             kind = k;
         }
         /// <summary>
-        /// Constructor: a tree at a given depth with a given initial entry.
+        /// Constructor: a tree with a given initial entry.
         /// </summary>
         /// <param name="ti">The treeinfo for the SqlTree</param>
         /// <param name="vType">the nominal value type</param>
@@ -238,7 +238,7 @@ namespace Pyrrho.Common
         /// <returns>The new tree</returns>
         protected override ATree<TypedValue, TypedValue> Add(TypedValue k, TypedValue v)
         {
-            if (root!=null && Contains(k))
+            if (root is not null && Contains(k))
                 return new SqlTree(keyType, kind, root.Update(this, k, v));
             return Insert(k, v);
         }
@@ -341,7 +341,7 @@ namespace Pyrrho.Common
             }
             if (kt == Sqlx.CHAR)
             {
-                for (var b = PositionAt(new TChar("A"))?.Previous(); b!=null;b=b.Previous())
+                for (var b = PositionAt(new TChar("A"))?.Previous(); b is not null;b=b.Previous())
                 {
                     var s = b.key().ToString();
                     if (s.CompareTo("1")<0)
@@ -359,6 +359,26 @@ namespace Pyrrho.Common
                 return new TChar(nk.ToString());
             }
             throw new DBException("22209", kind);
+        }
+        public CTree<TypedValue, bool> Get(TypedValue k)
+        {
+            if (k.dataType != keyType.elType) throw new DBException("42000");
+            var r = CTree<TypedValue, bool>.Empty;
+            for (var b = First(); b != null; b = b.Next())
+                if (b.key() is TSet ts && ts.tree.Contains(k))
+                    r += (b.value(), true);
+            return r;
+        }
+        public override bool Contains(TypedValue k)
+        {
+            if (k.dataType == keyType.elType)
+            {
+                for (var b = First(); b != null; b = b.Next())
+                    if (b.key() is TSet ts && ts.tree.Contains(k))
+                        return true;
+                return false;
+            }
+            return base.Contains(k);
         }
     }
     internal class CList<V> : BList<V>, IComparable where V : IComparable
@@ -412,7 +432,7 @@ namespace Pyrrho.Common
             var that = (CList<V>)obj;
             var b = First();
             var tb = that.First();
-            for (;b!=null && tb!=null; b=b.Next(),tb=tb.Next())
+            for (;b is not null && tb is not null; b=b.Next(),tb=tb.Next())
             {
                 var c = b.value().CompareTo(tb.value());
                 if (c != 0)

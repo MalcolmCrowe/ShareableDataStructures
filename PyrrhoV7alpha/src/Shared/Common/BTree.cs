@@ -24,7 +24,7 @@ namespace Pyrrho.Common
     public class BTree<K,V> : ATree<K,V> 
         where K: IComparable
     {
-        public readonly static BTree<K, V> Empty = new BTree<K, V>();
+        public readonly static BTree<K, V> Empty = new ();
         /// <summary>
         /// Constructor
         /// </summary>
@@ -71,7 +71,7 @@ namespace Pyrrho.Common
         /// <returns>The new BTree</returns>
         protected override ATree<K,V> Add(K k, V v)
         {
-            if (Contains(k) && root!=null)
+            if (Contains(k) && root is not null)
                 return new BTree<K,V>(root.Update(this, k, v));
             return Insert(k, v);
         }
@@ -434,7 +434,7 @@ namespace Pyrrho.Common
             if (b is Inner<K,V> bi)
                 g = bi.gtr;
             var s = ab.ToArray();
-            if (g == null && s!=null) // we use Size entries from s for each new Bucket (all Leaves)
+            if (g == null && s is not null) // we use Size entries from s for each new Bucket (all Leaves)
             {
                 var ss = new KeyValuePair<K,V>[s.Length];
                 for (j = 0; j < s.Length; j++)
@@ -468,7 +468,7 @@ namespace Pyrrho.Common
                 }
                 return new Inner<K,V>(new Leaf<K,V>(ss, sce, s.Length - 1), total-1, ts);
             }
-            else if (g!=null && s!=null)// we use Size+1 entries from s for each new Bucket: g is an extra one
+            else if (g is not null && s is not null)// we use Size+1 entries from s for each new Bucket: g is an extra one
             {
                 var ss = new KeyValuePair<K, Bucket<K,V>>[s.Length];
                 for (j = 0; j < s.Length; j++)
@@ -798,7 +798,7 @@ namespace Pyrrho.Common
     /// <typeparam name="V"></typeparam>
     public class BList<V> : BTree<int, V>
     {
-        public new static readonly BList<V> Empty = new BList<V>();
+        public new static readonly BList<V> Empty = new ();
         public int Length => (int)Count;
         protected BList() : base() { }
         BList(BTree<int, V> t) : base(t.root) { }
@@ -830,7 +830,7 @@ namespace Pyrrho.Common
             var r = BTree<int,V>.Empty;
             var done = false;
             var c = 0;
-            for (var b= First();b!=null;b=b.Next())
+            for (var b= First();b is not null;b=b.Next())
             {
                 if (b.key() == k)
                 {

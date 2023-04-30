@@ -3,6 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using System.Globalization;
 using System.Runtime.Intrinsics.Arm;
+using System.Text;
 using System.Xml;
 using System.Xml.Linq;
 
@@ -25,7 +26,7 @@ namespace Pyrrho.Level2
 	///		representation	uses structDef field in Domain
 	///	so attributes are TableColumns of the referenced PTable
 	/// </summary>
-	internal class PType : Compiled
+	internal class PType : Defined
 	{
         internal Domain? under = null;
         internal virtual long defpos => ppos;
@@ -37,17 +38,17 @@ namespace Pyrrho.Level2
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
         protected PType(Type t, Ident nm, UDType dm, Domain? un, long pp, Context cx)
-            : base(t, pp, cx, nm.ident, dm, cx.db.nextStmt)
+            : base(t, pp, cx, nm.ident, Grant.AllPrivileges)
         {
             name = nm.ident;
-            dataType += (ObInfo.Name, nm.ident);
+            var dm1 = (t==Type.EditType)? dm: (Domain)dm.Relocate(pp);
+            dataType = dm1 + (ObInfo.Name,nm.ident);
             var ps = ((Transaction)cx.db).physicals;
-            var pt = (PTable)(ps[dataType.structure] ?? new PTable(nm.ident,dataType,cx.db.nextStmt,pp,cx));
-            pt.nodeType = dm.defpos;
-            pt.framing += (Framing.Obs, pt.framing.obs + (dataType.defpos,dataType));
+            var pt = (PTable)(ps[dataType.structure] ?? new PTable(nm.ident,dataType,pp,cx));
+            if (t==Type.PNodeType||t==Type.PEdgeType)
+                pt.nodeType = dm.defpos;
             cx.db += (Transaction.Physicals, ps + (pt.ppos, pt));
             under = un;
-            framing = Framing.Empty;
         }
         public PType(Ident nm, UDType dm, Domain? un, long pp, Context cx)
             : this(Type.PType, nm, dm, un, pp, cx) { }
@@ -74,6 +75,7 @@ namespace Pyrrho.Level2
             if (x.name.EndsWith(':'))
                 name += ':';
             under = (UDType?)x.under?.Fix(wr.cx);
+            dataType = (UDType)dataType.Fix(wr.cx);
         }
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -82,15 +84,6 @@ namespace Pyrrho.Level2
                 if (b.value() is long p && p <= Transaction.Executables && !Committed(wr, p))
                         return p;
             return -1L;
-        }
-        public override BList<long?> Dependent(Transaction tr, BList<long?> ds)
-        {
-            if (under != null && tr.physicals[under.defpos] is PType upt)
-                ds += upt.Dependent(tr, ds);
-            for (var b = dataType.representation.First(); b != null; b = b.Next())
-                if (tr.physicals[b.value().defpos] is PType spt)
-                    ds += spt.Dependent(tr, ds);
-            return ds;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -111,7 +104,7 @@ namespace Pyrrho.Level2
             wr.PutInt((int)dataType.charSet);
             wr.PutString(dataType.culture.Name);
             wr.PutString(dataType.defaultString);
-            wr.PutLong(dataType.structure);
+            wr.PutLong(wr.cx.Fix(dataType.structure));
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -126,8 +119,10 @@ namespace Pyrrho.Level2
             var k = (Sqlx)rdr.GetInt();
             m = m + (Domain.Precision, rdr.GetInt())
                 + (Domain.Scale, rdr.GetInt())
+                + (DBObject.Definer, rdr.context.role.defpos)
                 + (Domain.Charset, (CharSet)rdr.GetInt())
                 + (Domain.Culture, PDomain.GetCulture(rdr.GetString()));
+            var oi = new ObInfo(name, Grant.AllPrivileges);
             var ds = rdr.GetString();
             if (ds.Length > 0
                 && k == Sqlx.CHAR && ds[0] != '\'')
@@ -144,13 +139,12 @@ namespace Pyrrho.Level2
                 rdr.context.Add(ts);
                 rdr.context.db += (ts, rdr.context.db.loadpos);
             }
-            var dt = rdr.context._Dom(ts)??Domain.Content;
+            var dt = ts?.domain??Domain.Content;
+            m = m + (Domain.Representation, dt.representation) + (Domain.RowType, dt.rowType);
             var ns = BTree<string,(int,long?)>.Empty;
-                m = m + (Domain.Representation, dt.representation)
-                + (Domain.RowType, dt.rowType);
-                for (var b = dt.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p && rdr.context.NameFor(p) is string n)
-                        ns += (n, (b.key(),p));
+            for (var b = dt.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && rdr.context.NameFor(p) is string n)
+                    ns += (n, (b.key(), p));
             m = m + (ObInfo.Name, name) + (Domain.Kind, k) + (Domain.Structure, st);
             if (un > 0)
             { // it can happen that under is more recent than dt (EditType), so be careful
@@ -171,15 +165,15 @@ namespace Pyrrho.Level2
                 for (var b = ns.First(); b != null; b = b.Next())
                     tr += b.value();
                 var nrt = BList<long?>.Empty;
-                for (var b = tr.First();b!=null;b=b.Next())
+                for (var b = tr.First(); b is not null; b = b.Next())
                     nrt += b.value();
                 if (dt != null)
                     m += (Domain.Representation, dt.representation + under.representation);
                 m += (Domain.RowType, nrt);
                 m += (UDType.Under, under);
             }
-            var op = rdr.context.parse;
-            rdr.context.parse = ExecuteStatus.Compile;
+            oi += (ObInfo.Names, ns);
+            m += (DBObject.Infos, new BTree<long, ObInfo>(rdr.context.role.defpos, oi));
             dataType = k switch
             {
                 Sqlx.TYPE => new UDType(defpos, m),
@@ -187,7 +181,6 @@ namespace Pyrrho.Level2
                 Sqlx.EDGETYPE => new EdgeType(defpos,m),
                 _ => Domain.Null
             };
-            rdr.context.parse = op;
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -196,10 +189,10 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
 		{
-            var r = GetType().Name + " "+ name;
-            if (under!=null)
-                r += " Under: " + DBObject.Uid(under.defpos);
-            return r;
+            var sb = new StringBuilder(base.ToString());
+            if (under != null)
+            { sb.Append(" Under: "); sb.Append(DBObject.Uid(under.defpos)); }
+            return sb.ToString();
 		}
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -248,42 +241,62 @@ namespace Pyrrho.Level2
                     break;
             }
             return base.Conflicts(db, cx, that, ct);
-        }
+        } 
         internal override DBObject Install(Context cx, long p)
         {
             var ro = cx.role;
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(name, priv);
             oi += (ObInfo.SchemaKey, p);
-            var ns = BTree<string, long?>.Empty;
+            var ns = BTree<string, (int,long?)>.Empty;
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long bp && cx.obs[bp] is TableColumn tc)
-                    ns += (tc.infos[tc.definer]?.name ?? "??", tc.defpos);
+                    ns += (tc.infos[tc.definer]?.name ?? "??", (b.key(),tc.defpos));
             oi += (ObInfo.Names, ns);
             ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var os = new BTree<long, ObInfo>(Database._system.role.defpos, oi)
                 + (ro.defpos, oi);
             var ts = cx.db.types - dataType;
-            dataType = (Domain)(dataType.New(defpos, dataType.mem+ (DBObject.Infos, os)+(DBObject.Definer, cx.role.defpos)));
-            cx.Add(dataType);
-            if (cx.db.format < 51)
-                ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            ts += (dataType, defpos);
-            if ((dataType as UDType)?.super is UDType s && cx.db.objects[s.defpos] is UDType su)
+            if ((dataType as UDType)?.super is UDType s && cx.db.objects[s.defpos] is UDType su
+                && cx.db.objects[s.structure] is Table tu)
             {
                 su += (UDType.Subtypes, su.subtypes + (ppos,true));
                 cx.db += (su, p);
                 ts += (su, su.defpos);
+                tu += (DBObject._Domain, su);
+                cx.db += (tu.defpos, tu);
+                for (var b = su.subtypes.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is UDType ad && cx.db.objects[ad.structure] is Table at)
+                    {
+                        ad += (UDType.Under, su);
+                        at += (DBObject._Domain, ad); // but not LastChange?
+                        cx.db += (at.defpos, at);
+                        cx.db += (ad.defpos, ad);
+                    }
+                dataType += (UDType.Under, su);
             }
-            if (cx._Ob(dataType.structure) is Table ut)
+            dataType = dataType + (DBObject.Infos, os) + (DBObject.Definer, cx.role.defpos);
+            cx.Add(dataType);
+            if (cx.db.format < 51)
+                ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
+            ts += (dataType, defpos);
+            if (cx.db.objects[dataType.structure] is Table tb)
             {
-                ut += (Table._NodeType, defpos);
-                cx.Add(ut);
-                cx.db += (ut, cx.db.loadpos);
+                var ti = tb.infos[cx.role.defpos] ?? new ObInfo(name + ":");
+                if (this is PNodeType)
+                {
+                    tb += (Table._NodeType, defpos);
+                    ti += (ObInfo._Metadata, ti.metadata + (dataType.kind, TNull.Value));
+                }
+                tb += (DBObject._Domain, dataType);
+                ti += (ObInfo.Names, ns);
+                tb += (DBObject.Infos, tb.infos + (cx.role.defpos, ti));
+                cx.db += (tb, p);
             }
             cx.db = cx.db + (ro, p) + (ppos, dataType, p) + (Database.Types,ts);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            
             return dataType;
         }
     }

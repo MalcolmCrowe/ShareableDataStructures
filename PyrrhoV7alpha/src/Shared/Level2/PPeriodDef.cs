@@ -57,7 +57,7 @@ namespace Pyrrho.Level2
         /// <param name="wh">The PhysBase</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PPeriodDef(Table tb, string p, long s, long e, long pp, Context cx)
-            : base(Type.PeriodDef, pp, cx)
+            : base(Type.PeriodDef, pp, cx, "", Grant.AllPrivileges)
         {
             tabledefpos = tb.defpos;
             periodname = p;

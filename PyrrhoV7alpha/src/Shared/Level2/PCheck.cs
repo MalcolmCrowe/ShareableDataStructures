@@ -102,7 +102,7 @@ namespace Pyrrho.Level2
         }
         internal override void OnLoad(Reader rdr)
         {
-            if (check != "" && check!=null)
+            if (check != "" && check is not null)
             {
                 var ob = (DBObject?)rdr.context.db.objects[ckobjdefpos]??throw new PEException("PE1437");
                 var psr = new Parser(rdr, new Ident(check, rdr.context.Ix(ppos+1)));

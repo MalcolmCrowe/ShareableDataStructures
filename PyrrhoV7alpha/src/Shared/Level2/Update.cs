@@ -98,7 +98,7 @@ namespace Pyrrho.Level2
                         var de = (Delete)that;
                         if (de.delpos == defpos)
                             return new DBException("40029", defpos, that, ct);
-                        for (var b = de.deC[tabledefpos]?.First();b!=null;b=b.Next())
+                        for (var b = de.deC[tabledefpos]?.First();b is not null;b=b.Next())
                         if (db.objects[tabledefpos] is Table tb && tb.FindIndex(db, b.key())?[0] is Level3.Index x
                             && x.MakeKey(fields) is CList<TypedValue> pk && x.rows?.Contains(pk)==true)
                                 return new DBException("40085", de.delpos);
@@ -170,7 +170,7 @@ namespace Pyrrho.Level2
                 if (tt == tb && cx.db.objects[tb.nodeType] is NodeType tn
                         && tn.rowType[0] is long p && now.vals[p] is TChar id
                         && was.vals[p] is TChar od && id.value != od.value
-                        && cx.db.nodeIds[id.value] is TypedValue tv)
+                        && cx.db.nodeIds[id] is TypedValue tv)
                 {
                     if (tn is EdgeType te)
                         cx.db = cx.db - (TEdge)tv + new TEdge(defpos, te, now.vals);

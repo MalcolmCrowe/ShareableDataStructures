@@ -64,7 +64,7 @@ namespace Pyrrho.Level2
             var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv, Context._system);
             domdefpos = pp;
             name = nm;
-            domain = new Domain(-1L, dt, DBObject._Deps(1,structure,element,under)
+            domain = new Domain(-1L, dt, BTree<long,object>.Empty + (DBObject._Depth,SqlValue._Depths(structure,element,under))
                 + (Domain.Precision, dl) + (Domain.Scale, sc)
                 + (Domain.Charset, ch) + (DBObject.LastChange,pp)
                 + (Domain.Culture, CultureInfo.GetCultureInfo(co))
@@ -79,7 +79,7 @@ namespace Pyrrho.Level2
             : this(Type.PDomain, nm, dt, pp, cx) { }
 
         protected PDomain(Type t, string nm, Domain dt, long pp, Context cx)
-        : base(t, pp, cx)
+        : base(t, pp, cx, nm, Grant.AllPrivileges)
         {
             domain = dt + (ObInfo.Name, nm);
         }
@@ -93,35 +93,9 @@ namespace Pyrrho.Level2
         public PDomain(Domain dt, long pp, Context cx)
             : this(Type.PDomain, dt, pp, cx) { }
         protected PDomain(Type t, Domain dt, long pp, Context cx)
-        : base(t, pp, cx)
+        : base(t, pp, cx, dt.name, Grant.AllPrivileges)
         {
-            var d = 1;
-            if (dt.representation.Count > 0 && dt.structure < 0)
-            {
-                var cs = CList<Domain>.Empty;
-                for (var b = dt.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p)
-                    {
-                        var cd = cx._Dom(dt.representation[p]) ?? throw new DBException("42105");
-                        d = Math.Max(d, cd.depth + 1);
-                        cs += cd;
-                    }
-                for (var b = cx.obs.First(); b != null; b = b.Next())
-                {
-                    var ob = b.value();
-                    if (ob is Domain dc && _Match(cx, cs, dc))
-                    {
-                        dt += (Domain.Structure, dc.defpos);
-                        break;
-                    }
-                    else if (cx._Dom(ob) is Domain db && _Match(cx, cs, db))
-                    {
-                        dt += (Domain.Structure, db.defpos);
-                        break;
-                    }
-                }
-            }
-            domain = (Domain)dt.Relocate(pp) + (DBObject._Depth,d);
+            domain = (Domain)dt.Relocate(pp);
             cx.db += (Database.Types,cx.db.types + (domain, pp));
         }
         /// <summary>
@@ -137,7 +111,10 @@ namespace Pyrrho.Level2
         /// <param name="t">The PDomain type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected PDomain(Type t, Reader rdr) : base(t, rdr) { }
+		protected PDomain(Type t, Reader rdr) : base(t, rdr) 
+        {
+            domain += (DBObject.Definer, rdr.context.role.defpos);
+        }
         protected PDomain(PDomain x, Writer wr) : base(x,wr)
         {
             domain = (Domain)x.domain.Relocate(wr.cx);
@@ -149,7 +126,7 @@ namespace Pyrrho.Level2
             if (dc.structure >= 0 && dc.rowType.Count == cs.Count)
             {
                 var cb = cs.First();
-                for (var c = dc.rowType.First(); c != null && cb!=null; c = c.Next(), cb = cb.Next())
+                for (var c = dc.rowType.First(); c != null && cb is not null; c = c.Next(), cb = cb.Next())
                     if (c.value() is long p && cx.obs[p] is SqlValue v 
                         && v.domain.CompareTo(cb.value()) != 0)
                         return false;
@@ -179,9 +156,9 @@ namespace Pyrrho.Level2
             wr.PutInt((int)domain.charSet);
             wr.PutString(domain.culture.Name);
             wr.PutString(domain.defaultString);
-            if (domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET)
-                wr.PutLong(wr.cx.db.types[domain.elType]??
-                    throw new PEException("PE48802"));
+            if ((domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET || domain.kind==Sqlx.SET)
+                && domain.elType is not null)
+                wr.PutLong(wr.cx.db.types[domain.elType]??throw new PEException("PE48802"));
             else
                 wr.PutLong(domain.structure);
  			base.Serialise(wr);

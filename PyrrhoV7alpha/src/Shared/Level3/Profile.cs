@@ -80,7 +80,7 @@ namespace Pyrrho.Level3
                 return false;
             var a = tables.First();
             var b = t.tables.First();
-            for (;a!=null && b!=null ; a=a.Next(),b=b.Next())
+            for (;a is not null && b is not null ; a=a.Next(),b=b.Next())
             {
                 if (a.key()!=b.key())
                     return false;
@@ -235,7 +235,7 @@ namespace Pyrrho.Level3
                 return false;
             var a = read.First();
             var b = t.read.First();
-            for(;a!=null&&b!= null; a=a.Next(), b=b.Next())
+            for(;a is not null&&b!= null; a=a.Next(), b=b.Next())
                 if (a.key() != b.key())
                     return false;
             if (ckix != t.ckix || specific != t.specific || blocked != t.blocked)
@@ -399,7 +399,7 @@ namespace Pyrrho.Level3
                 return false;
             var a = f.First();
             var b = fields.PositionAt(0);
-            for (;a!=null && b!=null;a=a.Next(),b=b.Next())
+            for (;a is not null && b is not null;a=a.Next(),b=b.Next())
                 if (a.key() != b.key())
                     return false;
             return true;
@@ -427,7 +427,7 @@ namespace Pyrrho.Level3
             w.WriteAttributeString("Id", id.ToString());
             w.WriteAttributeString("Occurrences", num.ToString());
             for (var s = fields.PositionAt(0);s!= null;s=s.Next())
-            if (db.role!=null && db.objects[s.key()] is TableColumn tc && tc.infos[db.role.defpos] is ObInfo ci && ci.name!=null){
+            if (db.role is not null && db.objects[s.key()] is TableColumn tc && tc.infos[db.role.defpos] is ObInfo ci && ci.name is not null){
                 w.WriteStartElement("Field");
                 w.WriteAttributeString("ColPos", s.key().ToString());
                 w.WriteAttributeString("RecCol", ci.name);

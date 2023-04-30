@@ -219,7 +219,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,table))
                 throw new DBException("0000"); // audit of uncommitted object ???
             if (!Committed(wr,_user)) return _user; // ad-hoc user
-            for (var b=match.First();b!=null;b=b.Next())
+            for (var b=match.First();b is not null;b=b.Next())
                 if (!Committed(wr,b.key()))
                     throw new DBException("0000"); // audit of uncommitted object ???
             return -1;
@@ -261,7 +261,7 @@ namespace Pyrrho.Level2
             wr.PutLong(table);
             wr.PutLong(timestamp);
             wr.PutLong(match.Count);
-            for (var b = match.First();b!=null;b=b.Next())
+            for (var b = match.First();b is not null;b=b.Next())
                 wr.PutLong(wr.cx.Fix(b.key()));
             for (var b = match.First(); b != null; b = b.Next())
                 wr.PutString(b.value());
@@ -270,7 +270,7 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             var sb = new StringBuilder();
-            if (user!=null && user.defpos>=0)
+            if (user is not null && user.defpos>=0)
             { sb.Append("Audit: "); sb.Append(user.name); }
             sb.Append(" ["); sb.Append(table); sb.Append("] ");
             sb.Append(new DateTime(timestamp));
@@ -278,7 +278,7 @@ namespace Pyrrho.Level2
             {
                 sb.Append(" {");
                 var cm = "";
-                for (var b=match.First(); b!=null; b=b.Next())
+                for (var b=match.First(); b is not null; b=b.Next())
                 {
                     sb.Append(cm); cm = ",";
                     sb.Append(b.key()); sb.Append("='");

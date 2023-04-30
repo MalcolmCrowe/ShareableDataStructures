@@ -50,7 +50,7 @@ namespace Pyrrho.Level2
         /// <param name="fl">The ordering flags</param>
         /// <param name="db">The local database</param>
         public Ordering(Domain tp, long fn, OrderCategory fl, long pp, Context cx)
-            : base(Type.Ordering,pp,cx)
+            : base(Type.Ordering,pp,cx,"",Grant.AllPrivileges)
         {
             domain = tp;
             domdefpos = tp.defpos;
@@ -132,7 +132,8 @@ namespace Pyrrho.Level2
             var dm = domain 
                 + (Domain.OrderFunc, (Procedure?)cx.db.objects[funcdefpos] ?? throw new DBException("42108"))
                 +(Domain.OrderCategory, flags);
-            cx.db += ((Domain)dm.New(cx,dm.mem), p);
+            cx.Add(dm);
+            cx.db += (dm, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return dm;
