@@ -766,12 +766,27 @@ namespace Pyrrho.Level4
         }
         internal TypedValue RevIndex(Context cx,long t,Domain d)
         {
-  /*          if (cx.cursors[t] is Cursor cu && cx.db.objects[t] is Table tb)
+            if (cx.cursors[defpos] is Cursor cu && cx.db.objects[t] is Table tb
+                 && tb.FindPrimaryIndex(cx) is Level3.Index px)
+            {
+                var r = new TSet(new Domain(-1L,Sqlx.SET,px.keys));
                 for (var b = tb.indexes[d]?.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is Level3.Index x
-                        && x.flags == PIndex.ConstraintType.ForeignKey
-                        && x.rows.Get(x.MakeKey(cu.values),0) is TypedValue v)
-                        Console.WriteLine(v.ToString()); */
+                        && x.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+                    {
+                        var vs = CTree<long, TypedValue>.Empty;
+                        for (var c = x.keys.First(); c != null; c = c.Next())
+                            if (c.value() is long p)
+                                vs += (p, cu[c.key()]);
+                        if (x.MakeKey(vs) is CList<TypedValue> k)
+                            for (var c = x.rows?.PositionAt(k, 0); c != null; c = c.Next())
+                                if (c.key().CompareTo(k)==0 && c.Value() is long rp
+                                    && tb.tableRows[rp] is TableRow tr
+                                    && px.MakeKey(tr.vals) is CList<TypedValue> vv)
+                                    r = r.Add(new TRow(px.keys,vv));
+                    }
+                return r;
+            }
             return TNull.Value;
         }
         internal virtual string DbName(Context cx)

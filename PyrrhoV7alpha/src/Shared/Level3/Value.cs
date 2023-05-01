@@ -7154,17 +7154,29 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.OF:
                     {
+                        string e = "";
                         if (cx.obs[from] is RowSet rs)
                             for (var b = rs.rsTargets.First(); b != null; b = b.Next())
-                                if (cx.db.objects[b.key()] is Table rt)
+                                if (cx.db.objects[b.key()] is Table rt
+                                    && b.value() is long sp && cx.obs[sp] is RowSet sc)
                                     for (var c = rt.rindexes.First(); c != null; c = c.Next())
                                         if (c.value().First()?.key() is Domain dm
-                                            && dm.rowType.First()?.value() is long cp
-                                            && cx.db.objects[cp] is TableColumn tc
-                                            && tc.infos[cx.role.defpos] is ObInfo ti
-                                            && ti.name == val.ToString())
-                                            return rs.RevIndex(cx, c.key(), dm);
-                        throw new DBException("42112", val.ToString());
+                                            && cx.obs[val] is SqlLiteral sv
+                                            && sv.val is TArray vl)
+                                        {
+                                            var i = 0;
+                                            for (var db = dm.First(); db != null && i < vl.Length; db = db.Next(), i++)
+                                                if (db.value() is long op && cx.db.objects[op] is DBObject oc
+                                                        && oc.infos[cx.role.defpos] is ObInfo ci)
+                                                {
+                                                    e = ((TChar)vl[i]).value;
+                                                    if (ci.name != e)
+                                                        goto next;
+                                                }
+                                            return sc.RevIndex(cx, c.key(), dm);
+                                        next:;
+                                        }
+                        throw new DBException("42112", e);
                     }
                 case Sqlx.OVERLAY:
                     {
@@ -10157,13 +10169,6 @@ cx.obs[high] is not SqlValue hi)
             for (var b = r.First(); b != null; b = b.Next())
                 d = Math.Max(b.value().depth + 1, d);
             return d;
-        }
-        static CTree<long,bool> _Ds(SqlValue a,BList<Domain>r)
-        {
-            var t = new CTree<long, bool>(a.defpos, true);
-            for (var b = r.First(); b != null; b = b.Next())
-                t += (b.value().defpos,true);
-            return t;
         }
         public static TypePredicate operator +(TypePredicate et, (long, object) x)
         {

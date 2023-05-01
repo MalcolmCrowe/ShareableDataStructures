@@ -4150,7 +4150,7 @@ namespace Pyrrho.Level4
                 return (SqlValue)cx.Add(new SqlFunction(sp.dp, cx, Sqlx.SECURITY, null, null, null, Sqlx.NO));
             }
             if (Match(Sqlx.PARTITION, Sqlx.POSITION, Sqlx.VERSIONING, Sqlx.CHECK, 
-                Sqlx.SYSTEM_TIME, Sqlx.LAST_DATA, Sqlx.OF))
+                Sqlx.SYSTEM_TIME, Sqlx.LAST_DATA))
             {
                 SqlValue ps = new SqlFunction(LexPos().dp, cx, tok, null, null, null, Sqlx.NO);
                 Next();
@@ -4167,14 +4167,7 @@ namespace Pyrrho.Level4
                         ps += (cx, SqlFunction._Val, sv.defpos);
                     } else
                         Mustbe(Sqlx.RPAREN);
-                } else if (tok==Sqlx.LPAREN && ((SqlFunction)ps).kind == Sqlx.OF)
-                {
-                    Next();
-                    var n = lxr.val;
-                    Mustbe(Sqlx.ID);
-                    Mustbe(Sqlx.RPAREN);
-                    ps += (cx, SqlFunction._Val, new SqlLiteral(cx.GetUid(), n));
-                }
+                } 
                 return (SqlValue)cx.Add(ps);
             }
             var ttok = tok;
@@ -8969,6 +8962,23 @@ namespace Pyrrho.Level4
                     }
 #endif
                 case Sqlx.OCTET_LENGTH: goto case Sqlx.CHAR_LENGTH;
+                case Sqlx.OF:
+                    {
+                        kind = tok;
+                        Next();
+                        TChar n;
+                        var ns = new TArray(Domain.Char); // happens to be suitable
+                        while (tok != Sqlx.RPAREN)
+                        {
+                            Next();
+                            n = lxr.val as TChar ?? throw new DBException("42000");
+                            ns += n;
+                            Mustbe(Sqlx.ID);
+                        }
+                        Mustbe(Sqlx.RPAREN);
+                        val = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), ns));
+                        break;
+                    }
                 case Sqlx.PARTITION:
                     {
                         kind = tok;
