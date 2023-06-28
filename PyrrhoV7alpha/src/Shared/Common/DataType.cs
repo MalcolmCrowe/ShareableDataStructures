@@ -812,7 +812,7 @@ namespace Pyrrho.Common
     /// Note that Intervals cannot have both year-month and day-second fields.
     /// Shareable
     /// </summary>
-	internal class Interval
+	internal class Interval : IComparable
     {
         internal readonly int years = 0, months = 0;
         internal readonly long ticks = 0;
@@ -824,6 +824,20 @@ namespace Pyrrho.Common
             if (yearmonth)
                 return "" + years + "Y" + months + "M";
             return "" + ticks;
+        }
+        public int CompareTo(object? obj)
+        {
+            if (obj is Interval that && yearmonth == that.yearmonth)
+            {
+                var c = years.CompareTo(that.years);
+                if (c != 0)
+                    return c;
+                c = months.CompareTo(that.months);
+                if (c != 0)
+                    return c;
+                return ticks.CompareTo(that.ticks);
+            }
+            else throw new DBException("22006");
         }
     }
     /// <summary>

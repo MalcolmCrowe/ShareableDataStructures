@@ -26,7 +26,7 @@ namespace Pyrrho
     /// and exits when the connection is closed. 
     /// There is a private PyrrhoServer instance for each thread.
     /// Communication is by asynchronous TCP transport, from a PyrrhoLink client or another server. 
-    /// For HTTP communication see HttpService.cs
+    /// Show HTTP communication see HttpService.cs
     /// </summary>
     internal class PyrrhoServer
     {
@@ -179,7 +179,7 @@ namespace Pyrrho
                         case Protocol.ExecuteNonQuery: //  SQL service
                             {
                                 var cmd = tcp.GetString();
-                                db = db.Transact(db.nextId, cmd, conn);
+                                db = db.Transact(db.nextId, conn);
                                 long t = 0;
                                 cx = new Context(db, cx??throw new PEException("PE1400"));
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
@@ -199,7 +199,7 @@ namespace Pyrrho
                         case Protocol.ExecuteNonQueryTrace: //  SQL service with trace
                             {
                                 var cmd = tcp.GetString();
-                                db = db.Transact(db.nextId, cmd, conn);
+                                db = db.Transact(db.nextId, conn);
                                 long t = 0;
                                 cx = new Context(db, cx ?? throw new PEException("PE1400"));
                                 var ts = db.loadpos;
@@ -230,7 +230,7 @@ namespace Pyrrho
                         // start a new transaction
                         case Protocol.BeginTransaction:
                             {
-                                db = db.Transact(db.nextId, "", conn, false);
+                                db = db.Transact(db.nextId, conn, false);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("Begin Transaction " + db.uid);
                                 cx = new Context(db, conn);
@@ -300,7 +300,7 @@ namespace Pyrrho
                         case Protocol.TypeInfo:
                             {
                                 string dts = "";
-                                db = db.Transact(db.nextId, "", conn);
+                                db = db.Transact(db.nextId, conn);
                                 try
                                 {
                                     var dp = db.role?.dbobjects[tcp.GetString()]??Domain.Content.defpos;
@@ -315,7 +315,7 @@ namespace Pyrrho
                             {
                                 var nm = tcp.GetString();
                                 var sql = tcp.GetString();
-                                db = db.Transact(db.nextId, sql, conn);
+                                db = db.Transact(db.nextId, conn);
                                 cx = new(db, conn) {
                                     parse = ExecuteStatus.Prepare
                                 };
@@ -344,7 +344,7 @@ namespace Pyrrho
                                 var ps = conn.prepared[nm]??
                                     throw new DBException("33000", nm);
                                 var cmp = sb.ToString();
-                                db = db.Transact(db.nextId, cmp, conn);
+                                db = db.Transact(db.nextId, conn);
                                 cx = new Context(db, cx ?? throw new PEException("PE1400"));
                                 db = new Parser(cx).ParseSql(ps, cmp);
                                 cx.db = db;
@@ -380,7 +380,7 @@ namespace Pyrrho
                                 var ps = conn.prepared[nm] ??
                                     throw new DBException("33000", nm);
                                 var cmp = sb.ToString();
-                                db = db.Transact(db.nextId, cmp, conn);
+                                db = db.Transact(db.nextId, conn);
                                 var ts = db.loadpos;
                                 cx = new(db, cx ?? throw new PEException("PE1400"));
                                 db = new Parser(cx).ParseSql(ps, cmp);
@@ -406,7 +406,7 @@ namespace Pyrrho
                                     throw new DBException("2E202").Mix();
                                 nextCol = 0; // discard anything left over from ReaderData
                                 var cmd = tcp.GetString();
-                                db = db.Transact(db.nextId, cmd, conn);
+                                db = db.Transact(db.nextId, conn);
                                 cx = new (db, cx??throw new PEException("PE1400"));
                                 //           Console.WriteLine(cmd);
                                 db = new Parser(cx).ParseSql(cmd, Domain.TableType);
@@ -422,6 +422,7 @@ namespace Pyrrho
                                     {
                                         if (PyrrhoStart.ShowPlan)
                                             res.ShowPlan(cx);
+                                        cx.rdC += res.dependents;
                                         var s = cx.obs.ToString();
                                         var ss = cx.db.objects[23]?.ToString();
                                         rb = res.First(cx);
@@ -444,7 +445,7 @@ namespace Pyrrho
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
                                 string[] path = tcp.GetString().Split('/');
-                                var tr = db.Transact(db.nextId, "", conn);
+                                var tr = db.Transact(db.nextId, conn);
                                 db = tr;
                                 cx = new(db, cx??throw new PEException("PE1400")) { versioned = true };
                                 tr.Execute(cx, k, "GET", db.name, path, "", "", "");
@@ -465,7 +466,7 @@ namespace Pyrrho
                         case Protocol.Get2: // GET rurl version for weakly-typed languages
                             {
                                 string[] path = tcp.GetString().Split('/');
-                                var tr = db.Transact(db.nextId, "", conn);
+                                var tr = db.Transact(db.nextId, conn);
                                 db = tr;
                                 cx = new Context(db, cx??throw new PEException("PE1400"));
                                 tr.Execute(cx, 0L, "GET",  db.name, path, "", "", "");
@@ -486,7 +487,7 @@ namespace Pyrrho
                         case Protocol.GetInfo: // for a table or structured type name for database[0]
                             {
                                 string tname = tcp.GetString();
-                                db = db.Transact(db.nextId, "", conn);
+                                db = db.Transact(db.nextId, conn);
                                 var tr = (Transaction)db;
                                 tcp.PutWarnings(cx ?? throw new PEException("PE1400"));
                                 if (cx.GetObject(tname) is not Table tb)
@@ -496,7 +497,7 @@ namespace Pyrrho
                                     db = db.RdrClose(ref cx);
                                 }
                                 else
-                                    tcp.PutColumns(cx, tb.domain);
+                                    tcp.PutColumns(cx, tb);
                                 break;
                             }
                         case Protocol.Post:
@@ -505,7 +506,7 @@ namespace Pyrrho
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
                                 var s = tcp.GetString();
-                                db = db.Transact(db.nextId, "", conn);
+                                db = db.Transact(db.nextId, conn);
                                 cx = new (db, cx ?? throw new PEException("PE1400"));
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("POST " + s);
@@ -518,14 +519,13 @@ namespace Pyrrho
                                 var f = new TableRowSet(1L, cx, t);
                                 BTree<long, TargetActivation>? ans = null;
                                 CTree<long, TypedValue> old=CTree<long,TypedValue>.Empty, vs;
-                                var dm = f.domain;
-                                vs = dm.Parse(cx, ss[2]);
-                                var data = new TrivialRowSet(cx.GetUid(), cx, new TRow(dm, vs));
-                                ans = f.Insert(cx, data, dm);
+                                vs = f.Parse(cx, ss[2]);
+                                var data = new TrivialRowSet(cx.GetUid(), cx, new TRow(f, vs));
+                                ans = f.Insert(cx, data, f);
                                 if (data.First(cx) is Cursor ib)
                                 {
                                     old = CTree<long, TypedValue>.Empty;
-                                    for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                    for (var b = f.rowType.First(); b != null; b = b.Next())
                                         if (b.value() is long bp && f.iSMap[bp] is long fp &&
                                             vs[p] is TypedValue tt)
                                             old += (fp, tt);
@@ -546,20 +546,19 @@ namespace Pyrrho
                                 {
                                     var ep = rv[t]?.Last()?.value()??-1L;
                                     var en = 0;
-                                    var td = tb.domain;
-                                    for (var b = td?.rowType.First(); b != null; b = b.Next())
+                                    for (var b = tb?.rowType.First(); b != null; b = b.Next())
                                         if (b.value() is long a)
                                         {
-                                            var dt = td?.representation[a] ?? Domain.Content;
+                                            var dt = tb?.representation[a] ?? Domain.Content;
                                             if (dt.Compare(old[a] ?? TNull.Value, vs[a] ?? TNull.Value) != 0)
                                                 en++;
                                         }
                                     tcp.Write(Responses.Entity);
                                     tcp.PutInt(en);
-                                    for (var b = td?.rowType.First(); b != null; b = b.Next())
+                                    for (var b = tb?.rowType.First(); b != null; b = b.Next())
                                         if (b.value() is long a)
                                         {
-                                            var dt = td?.representation[a] ?? Domain.Content;
+                                            var dt = tb?.representation[a] ?? Domain.Content;
                                             if (dt.Compare(old[a] ?? TNull.Value, vs[a] ?? TNull.Value) != 0)
                                             {
                                                 tcp.PutString(cx.NameFor(a));
@@ -581,7 +580,7 @@ namespace Pyrrho
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
                                 var s = tcp.GetString();
-                                db = db.Transact(db.nextId, s, conn);
+                                db = db.Transact(db.nextId, conn);
                                 cx = new Context(db, conn);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("PUT " + s);
@@ -596,7 +595,6 @@ namespace Pyrrho
                                     throw new DBException("42105");
                                 var ti = tb.infos[ro.defpos];
                                 var f = new TableRowSet(1L, cx, t);
-                                var dm = f.domain;
                                 BTree<long, TargetActivation>? ans = null;
                                 CTree<long, TypedValue>? old = null, vs = null;
                                 if (long.TryParse(ss[2], out long dp) && long.TryParse(ss[3], out long pp)
@@ -604,14 +602,14 @@ namespace Pyrrho
                                     if (TableRowSet.TableCursor.New(cx, f, dp) is Cursor ib)
                                     {
                                         old = tr.vals;
-                                        vs = dm.Parse(cx, ss[4]);
+                                        vs = f.Parse(cx, ss[4]);
                                         var us = BTree<long, UpdateAssignment>.Empty;
-                                        for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                        for (var b = f.rowType.First(); b != null; b = b.Next())
                                             if (b.value() is long c)
                                             {
                                                 var ov = ib.values[c] ?? TNull.Value;
                                                 var nv = vs[c] ?? TNull.Value;
-                                                var dt = dm.representation[c] ?? Domain.Content;
+                                                var dt = f.representation[c] ?? Domain.Content;
                                                 if (dt.Compare(ov, nv) != 0)
                                                 {
                                                     var ns = (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), nv));
@@ -634,24 +632,23 @@ namespace Pyrrho
                                 var oc = cx;
                                 if (cx.db is not null)
                                     db = cx.db.RdrClose(ref cx);
-                                var td = tb.domain;
                                 if (cx.role != null && cx.affected is Rvv rv && rv.Contains(t))
                                 {
                                     var ep = rv[t]?.Last()?.value();
                                     var en = 0;
-                                    for (var b = td.rowType.First(); b != null; b = b.Next())
+                                    for (var b = tb.rowType.First(); b != null; b = b.Next())
                                         if (b.value() is long a)
                                         {
-                                            var dt = td.representation[a] ?? Domain.Content;
+                                            var dt = tb.representation[a] ?? Domain.Content;
                                             if (vs?.Contains(a) == true && dt.Compare(old?[a] ?? TNull.Value, vs?[a] ?? TNull.Value) != 0)
                                                 en++;
                                         }
                                     tcp.Write(Responses.Entity);
                                     tcp.PutInt(en);
-                                    for (var b = td.rowType.First(); b != null; b = b.Next())
-                                        if (b.value() is long a && td.representation[a] is Domain dt &&
-                                                vs?.Contains(a) == true && cx._Ob(a) is DBObject oe &&
-                                                oe.infos[cx.role.defpos] is ObInfo ci &&
+                                    for (var b = tb.rowType.First(); b != null; b = b.Next())
+                                        if (b.value() is long a && tb.representation[a] is Domain dt &&
+                                                vs?.Contains(a) == true 
+                                                && dt.infos[cx.role.defpos] is ObInfo ci &&
                                                 dt.Compare(old?[a] ?? TNull.Value, vs?[a] ?? TNull.Value) != 0)
                                         {
                                             tcp.PutString(ci.name ?? "");
@@ -672,7 +669,7 @@ namespace Pyrrho
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
                                 var s = tcp.GetString();
-                                db = db.Transact(db.nextId, s, conn);
+                                db = db.Transact(db.nextId, conn);
                                 cx = new Context(db, conn);
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("DELETE " + s);
@@ -688,11 +685,11 @@ namespace Pyrrho
                                 var ti = tb.infos[ro.defpos];
                                 var f = new TableRowSet(1L, cx, t);
                                 BTree<long, TargetActivation>? ans = null;
-                                if (f.domain is Domain dm && long.TryParse(ss[2], out long dp) 
+                                if (long.TryParse(ss[2], out long dp) 
                                     && long.TryParse(ss[3], out long pp)
                                     && tb.tableRows[dp] is TableRow tr && tr.ppos == pp)
                                 {
-                                    var r = new TRow(dm, f.iSMap, tr.vals);
+                                    var r = new TRow(f, f.iSMap, tr.vals);
                                     var ib = TableRowSet.TableCursor.New(cx, f, dp);
                                     ans = f.Delete(cx, f);
                                     if (ib is not null && ans?.First()?.value() is TableActivation ta)
@@ -719,14 +716,14 @@ namespace Pyrrho
                             }
                         case Protocol.Get1:
                             {
-                                db = db.Transact(db.nextId, "",conn);
+                                db = db.Transact(db.nextId, conn);
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
                                 goto case Protocol.Get;
                             }
                         case Protocol.Rest:
                             {
-                                var tr = db.Transact(db.nextId, "",conn);
+                                var tr = db.Transact(db.nextId, conn);
                                 db = tr;
                                 cx = new(db, cx??throw new PEException("PE1400"));
                                 var vb = tcp.GetString();
@@ -1042,7 +1039,7 @@ namespace Pyrrho
             }
             else
                 for (var b = rb.dataType.representation.First(); b != null; b = b.Next(), i++)
-                    domains += (i, b.value()?.domain ?? Domain.Content);
+                    domains += (i, b.value() ?? Domain.Content);
             var dc = domains[nextCol] ?? throw new PEException("PE1401");
             var ds = rb.display;
             if (ds == 0)
@@ -1131,7 +1128,9 @@ namespace Pyrrho
                 case Sqlx.TABLE:
                     if (o is Cursor c && cx.obs[c._rowsetpos] is RowSet rs)
                         return lc + 1 + TableLength(cx, rs);
-                    return lc + 1 + TableLength(cx, (RowSet)o);
+                    if (o is RowSet ro)
+                        return lc + 1 + TableLength(cx, ro);
+                    break;
                 case Sqlx.INTERVAL:
                     return lc + 10; // 1+ 1byte + (1long or 2xint)
                 case Sqlx.TYPE:
@@ -1187,21 +1186,21 @@ namespace Pyrrho
         }
         int ArrayLength(Context cx, TArray a)
         {
-            int len = 4 + StringLength("ARRAY") + TypeLength(a.dataType.elType?.domain ??Domain.Content);
+            int len = 4 + StringLength("ARRAY") + TypeLength(a.dataType.elType ??Domain.Content);
             for (var b = a.list.First(); b != null; b = b.Next())
                 len += 1 + DataLength(cx, b.value());
             return len;
         }
         int MultisetLength(Context cx, TMultiset m)
         {
-            int len = 4 + StringLength("MULTISET") + TypeLength(m.dataType.elType?.domain ?? Domain.Content);
+            int len = 4 + StringLength("MULTISET") + TypeLength(m.dataType.elType ?? Domain.Content);
             for (var e = m.First(); e != null; e = e.Next())
                 len += 1 + DataLength(cx, e.Value());
             return len;
         }
         int SetLength(Context cx,TSet s)
         {
-            int len = 4 + StringLength("SET") + TypeLength(s.dataType.elType?.domain ?? Domain.Content);
+            int len = 4 + StringLength("SET") + TypeLength(s.dataType.elType ?? Domain.Content);
             for (var e = s.First(); e != null; e = e.Next())
                 len += 1 + DataLength(cx, e.Value());
             return len;
@@ -1216,17 +1215,16 @@ namespace Pyrrho
         static int SchemaLength(Context cx, RowSet r)
         {
             int len = 5;
-            var dm = r.domain;
-            int m = dm.display;
+            int m = r.display;
             if (m > 0 && cx.role is not null)
             {
                 len += StringLength(cx.obs[r.defpos]?.infos[cx.role.defpos]?.name??"");
                 int[] flags = new int[m];
                 r.Schema(cx, flags);
                 var j = 0;
-                for (var b = dm.representation.First(); b != null; b = b.Next(), j++)
+                for (var b = r.representation.First(); b != null; b = b.Next(), j++)
                 {
-                    var d = b.value()?.domain ??Domain.Content;
+                    var d = b.value() ??Domain.Content;
                     len += StringLength(((SqlValue?)cx.obs[b.key()])?.name??"")
                         + TypeLength(d);
                 }
@@ -1438,7 +1436,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.03alpha","(1 May 2023)", "http://www.pyrrhodb.com"
+            "7.04alpha","(28 June 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

@@ -28,7 +28,6 @@ namespace Pyrrho.Level2
         public DropAction dropAction=DropAction.Restrict;
         public override long Dependent(Writer wr, Transaction tr)
         {
-
             if (!Committed(wr,delpos)) return delpos;
             return -1;
         }
@@ -193,7 +192,7 @@ namespace Pyrrho.Level2
                 case Type.Modify: if (delpos == ((Modify)that).modifydefpos)
                         return new DBException("40069", delpos, that, ct);
                     break;
-                case Type.Ordering: if (delpos == db.types[((Ordering)that).domain])
+                case Type.Ordering: if (delpos == db.Find(((Ordering)that).domain)?.defpos)
                         return new DBException("40049", delpos, that, ct);
                     break;
                 case Type.PeriodDef:

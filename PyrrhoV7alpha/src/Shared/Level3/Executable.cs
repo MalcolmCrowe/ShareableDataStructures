@@ -31,7 +31,7 @@ namespace Pyrrho.Level3
     /// The behaviour of condition handlers and loops requires some infrastructure here.
     /// By default a compound statement executes its list of statements in sequence. But this ordering can be disturbed,
     /// and the transaction.breakto if not null will pop blocks off the stack until we catch the break.
-    /// For example RETURN will set breakto to the previous stack (dynLink), as will the execution of an EXIT handler.
+    /// Show example RETURN will set breakto to the previous stack (dynLink), as will the execution of an EXIT handler.
     /// CONTINUE will set breakto to the end of the enlcosing looping construct.
     /// BREAK will set breakto to just outside the current looping construct.
     /// BREAK nnn will set breakto just outside the named looping construct.
@@ -105,7 +105,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class RollbackStatement : Executable
     {
         public RollbackStatement(long dp) : base(dp) { }
@@ -124,17 +124,12 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Select Statement can be used in a stored procedure so is a subclass of Executable
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class SelectStatement : Executable
     {
         internal const long
-            SourceSQL = -195, //string
             Union = -196; // long RowSet
-        /// <summary>
-        /// The source string
-        /// </summary>
-        public string? _source => (string?)mem[SourceSQL];
         /// <summary>
         /// The QueryExpression 
         /// </summary>
@@ -224,7 +219,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Compound Statement for the SQL procedure language
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class CompoundStatement : Executable
     {
@@ -330,7 +325,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class PreparedStatement : Executable
     {
         internal const long
@@ -423,7 +418,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A local variable declaration.
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class LocalVariableDec : Executable
     {
@@ -439,7 +434,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public LocalVariableDec(long dp, SqlValue v, BTree<long,object>?m=null)
          : base(dp, (m??BTree<long, object>.Empty) + (Label, v.name??"")
-          + (AssignmentStatement.Vbl, v.defpos)+(_Domain,v.domain))
+          + (AssignmentStatement.Vbl, v.defpos))
         { }
         protected LocalVariableDec(long dp, BTree<long, object> m) : base(dp, m) { }
         public static LocalVariableDec operator +(LocalVariableDec et, (long, object) x)
@@ -505,8 +500,7 @@ namespace Pyrrho.Level3
             var a = (Activation)cx;
             a.exec = this;
             var vb = (SqlValue)(cx.obs[vbl] ?? throw new PEException("PE1101"));
-            var dm = vb.domain;
-            TypedValue tv = cx.obs[init]?.Eval(cx)??dm.defaultValue;
+            TypedValue tv = cx.obs[init]?.Eval(cx)??vb.domain.defaultValue;
             a.locals += (defpos, true); // local variables need special handling
             cx.AddValue(vb, tv); // We expect a==cx, but if not, tv will be copied to a later
             return cx;
@@ -532,7 +526,7 @@ namespace Pyrrho.Level3
 	}
     /// <summary>
     /// A procedure formal parameter has mode and result info
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class FormalParameter : SqlValue
     {
@@ -553,8 +547,8 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="m">The mode</param>
 		public FormalParameter(long vp, Sqlx m, string n,Domain dt)
-            : base(vp,new BTree<long, object>(ParamMode, m)+(ObInfo.Name,n)+(AssignmentStatement.Val,vp)
-                  +(_Domain,dt))
+            : base(vp, new BTree<long, object>(ParamMode, m)+(ObInfo.Name,n)
+                  +(AssignmentStatement.Val,vp)+(_Domain,dt))
         { }
         protected FormalParameter(long dp,BTree<long, object> m) : base(dp,m) { }
 
@@ -640,7 +634,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A local cursor
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class CursorDeclaration : LocalVariableDec
     {
@@ -657,8 +651,7 @@ namespace Pyrrho.Level3
         /// <param name="i">The name</param>
         /// <param name="c">The cursor specification</param>
         public CursorDeclaration(long dp, SqlCursor sc,RowSet c) 
-            : base(dp,sc,new BTree<long,object>(CS,c.defpos)
-                  +(_Domain,c.domain)) 
+            : base(dp,sc, new BTree<long, object>(CS,c.defpos)+(_Domain,c)) 
         { }
         protected CursorDeclaration(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CursorDeclaration operator +(CursorDeclaration et, (long, object) x)
@@ -741,7 +734,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An Exception handler for a stored procedure
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class HandlerStatement : Executable
 	{
@@ -857,7 +850,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Handler helps implementation of exception handling
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class Handler : Executable
 	{
@@ -974,7 +967,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Break statement for a stored procedure
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class BreakStatement : Executable
 	{
@@ -1045,7 +1038,7 @@ namespace Pyrrho.Level3
 	}
     /// <summary>
     /// An assignment statement for a stored procedure
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class AssignmentStatement : Executable
     {
@@ -1126,12 +1119,12 @@ namespace Pyrrho.Level3
         public override Context Obey(Context cx)
         {
             cx.exec = this;
-            var vb = cx.obs[vbl] ?? (DBObject?) cx.db.objects[vbl];
+            var vb = cx._Ob(vbl);
             var dm = vb?.domain??Domain.Content;
-            if (vb is not null && dm != null && cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
+            if (dm != null && cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
             {
                 var v = dm.Coerce(cx,tv);
-                cx.values += (vbl, v);
+                cx.values += (vb?.defpos??-1L, v);
             }
             return cx;
         }
@@ -1161,7 +1154,7 @@ namespace Pyrrho.Level3
     /// A multiple assignment statement for a stored procedure.
     /// The right hand side must be row valued, and the left hand side is a
     /// list of variable identifiers.
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class MultipleAssignment : Executable
     {
@@ -1190,8 +1183,8 @@ namespace Pyrrho.Level3
         protected MultipleAssignment(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Context cx,BList<Ident> lh,SqlValue rg)
         {
-            var dm = rg.domain ??Domain.Null;
-            var r = new BTree<long,object>(Rhs,rg.defpos);
+            var dm = rg.domain ?? Domain.Null;
+            var r = new BTree<long, object>(Rhs, rg.defpos);
             var ls = BList<long?>.Empty;
             for (var b = lh.First(); b != null; b = b.Next())
                 if (b.value() is Ident id && cx.obs[id.iix.dp] is SqlValue v
@@ -1200,7 +1193,7 @@ namespace Pyrrho.Level3
                     dm = dm.Constrain(cx, id.iix.lp, vd);
                     ls += v.defpos;
                 }
-            return r +(List,ls)+(LhsType,dm);
+            return r +(List,ls)+(LhsType,rg);
         }
         public static MultipleAssignment operator +(MultipleAssignment et, (long, object) x)
         {
@@ -1309,7 +1302,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A return statement for a stored procedure or function
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class ReturnStatement : Executable
     {
@@ -1406,7 +1399,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Case statement for a stored procedure
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class SimpleCaseStatement : Executable
     {
@@ -1429,12 +1422,12 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a case statement from the parser
         /// </summary>
-        public SimpleCaseStatement(long dp,Context cx,SqlValue op,BList<WhenPart> ws,
+        public SimpleCaseStatement(long dp,SqlValue op,BList<WhenPart> ws,
             BList<long?> ss) : 
-            base(dp,_Mem(cx,op,ws,ss))
+            base(dp,_Mem(op,ws,ss))
         { }
         protected SimpleCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long, object> _Mem(Context cx, SqlValue op, BList<WhenPart> ws,
+        static BTree<long, object> _Mem(SqlValue op, BList<WhenPart> ws,
             BList<long?> ss)
         {
             var r = new BTree<long, object>(_Operand, op.defpos);
@@ -1558,7 +1551,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A searched case statement
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class SearchedCaseStatement : Executable
 	{
@@ -1573,11 +1566,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a searched case statement from the parser
         /// </summary>
-		public SearchedCaseStatement(long dp,Context cx,BList<WhenPart>ws,BList<long?>ss) 
-            : base(dp,_Mem(cx,ws,ss))
+		public SearchedCaseStatement(long dp,BList<WhenPart>ws,BList<long?>ss) 
+            : base(dp,_Mem(ws,ss))
         {  }
         protected SearchedCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx,BList<WhenPart>ws,BList<long?>ss)
+        static BTree<long,object> _Mem(BList<WhenPart>ws,BList<long?>ss)
         {
             var r = BTree<long, object>.Empty;
             if (ss != BList<long?>.Empty)
@@ -1693,7 +1686,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A when part for a searched case statement or trigger action
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class WhenPart :Executable
 	{
@@ -1814,7 +1807,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An if-then-else statement for a stored proc/func
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class IfThenElse : Executable
 	{
@@ -1842,7 +1835,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: an if-then-else statement from the parser
         /// </summary>
-		public IfThenElse(long dp,Context cx,SqlValue se,BList<long?>th,BList<long?>ei,BList<long?> el) 
+		public IfThenElse(long dp,SqlValue se,BList<long?>th,BList<long?>ei,BList<long?> el) 
             : base(dp,new BTree<long, object>(Search,se.defpos) +(Then,th) +(Elsif,ei) + (Else,el))
 		{}
         protected IfThenElse(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -1969,7 +1962,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class XmlNameSpaces : Executable
     {
         internal const long
@@ -2049,7 +2042,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A while statement for a stored proc/func
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class WhileStatement : Executable
 	{
@@ -2174,7 +2167,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A repeat statement for a stored proc/func
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class RepeatStatement : Executable
 	{
@@ -2296,7 +2289,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An Iterate (like C continue;) statement for a stored proc/func 
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class IterateStatement : Executable
 	{
@@ -2360,7 +2353,7 @@ namespace Pyrrho.Level3
 	}
     /// <summary>
     /// A Loop statement for a stored proc/func
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class LoopStatement : Executable
 	{
@@ -2477,7 +2470,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A for statement for a stored proc/func
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class ForSelectStatement : Executable
 	{
@@ -2501,7 +2494,7 @@ namespace Pyrrho.Level3
         /// Constructor: a for statement from the parser
         /// </summary>
         /// <param name="n">The label for the FOR</param>
-        public ForSelectStatement(long dp, Context cx, string n,Ident vn, 
+        public ForSelectStatement(long dp, string n,Ident vn, 
             RowSet rs,BList<long?>ss ) 
             : base(dp,BTree<long, object>.Empty+ (Sel,rs.defpos) + (Stms,ss)
                   +(Label,n)+(ForVn,vn.ident))
@@ -2617,7 +2610,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// An Open statement for a cursor
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class OpenStatement : Executable
 	{
@@ -2707,7 +2700,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Close statement for a cursor
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class CloseStatement : Executable
 	{
@@ -2716,9 +2709,9 @@ namespace Pyrrho.Level3
         /// Constructor: a close statement from the parser
         /// </summary>
         /// <param name="n">The name of the cursor</param>
-		public CloseStatement(long dp, SqlCursor c) : base(dp,BTree<long, object>.Empty
-            +(FetchStatement.Cursor,c.defpos)+(_Domain,c.domain))
-		{ }
+		public CloseStatement(long dp, SqlCursor c) : base(dp, BTree<long, object>.Empty
+            + (FetchStatement.Cursor, c.defpos) + (_Domain, c.domain))
+        { }
         protected CloseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CloseStatement operator +(CloseStatement et, (long, object) x)
         {
@@ -2776,7 +2769,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public override Context Obey(Context cx)
         {
-            cx.Add(new EmptyRowSet(defpos,cx,domain));
+            cx.Add(new EmptyRowSet(defpos,cx,Domain.Null));
             return cx;
         }
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -2796,7 +2789,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A fetch statement for a stored proc/func
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class FetchStatement : Executable
 	{
@@ -2893,8 +2886,7 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context Obey(Context cx)
         {
-            if (cx.obs[cursor] is SqlCursor cu && cx.obs[cu.spec] is RowSet cs
-                &&  cs.domain is Domain cd)
+            if (cx.obs[cursor] is SqlCursor cu && cx.obs[cu.spec] is RowSet cs)
             {
                 // position the cursor as specified
                 var rqpos = 0L;
@@ -2933,7 +2925,7 @@ namespace Pyrrho.Level3
                 if (rb != null)
                 {
                     cx.values += (cu.defpos, rb);
-                    for (int i = 0; i < cd.rowType.Length; i++)
+                    for (int i = 0; i < cs.rowType.Length; i++)
                         if (rb[i] is TypedValue c && outs[i] is long ou 
                             &&  cx.obs[ou] is SqlValue sv)
                                 cx.AddValue(sv, c);
@@ -2979,7 +2971,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A call statement for a stored proc/func
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class CallStatement : Executable
     {
@@ -2991,9 +2983,9 @@ namespace Pyrrho.Level3
         /// </summary>
         public CallStatement(long dp, SqlCall c, BTree<long, object>? m = null)
     : base(dp, m ?? BTree<long, object>.Empty
-          + (_Domain, c.domain) 
+          + (_Domain, c.domain)
           + (Call, c.defpos) + (Dependents, new CTree<long, bool>(c.defpos, true))
-          + (ObInfo.Name, c.name??""))
+          + (ObInfo.Name, c.name ?? ""))
         { }
         protected CallStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static CallStatement operator +(CallStatement et, (long, object) x)
@@ -3072,7 +3064,7 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return (cx.obs[call] is SqlCall sc)? sc.Calls(defpos, cx) : false;
+            return (cx.obs[call] is SqlCall sc) && sc.Calls(defpos, cx);
         }
         public override string ToString()
         {
@@ -3084,7 +3076,6 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A signal statement for a stored proc/func
-    /// shareable as of 26 April 2021
     /// </summary>
     internal class SignalStatement : Executable
     {
@@ -3336,7 +3327,7 @@ namespace Pyrrho.Level3
                 if (h == null)
                 {
                     var c = cs.next;
-                    while (c != null && !(c is Activation))
+                    while (c != null && c is not Activation)
                         c = c.next;
                     cs = c as Activation;
                 }
@@ -3372,7 +3363,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A GetDiagnostics statement for a routine
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class GetDiagnostics : Executable
     {
@@ -3476,7 +3467,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Select statement: single row
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
 	internal class SelectSingle : Executable
     {
@@ -3744,7 +3735,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// QuerySearch is for DELETE and UPDATE 
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class QuerySearch : Executable
     {
@@ -3753,12 +3744,11 @@ namespace Pyrrho.Level3
         /// Constructor: a DELETE or UPDATE statement from the parser
         /// </summary>
         /// <param name="cx">The parsing context</param>
-        internal QuerySearch(long dp, Context cx, RowSet f, DBObject tb,
-            CTree<UpdateAssignment, bool>? ua = null)
-            : base(dp, _Mem(cx,f,tb,ua) + (RowSet._Source, f.defpos))
+        internal QuerySearch(long dp, RowSet f, CTree<UpdateAssignment, bool>? ua = null)
+            : base(dp, _Mem(ua) + (RowSet._Source, f.defpos))
         { }
         protected QuerySearch(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx, RowSet f,DBObject td,CTree<UpdateAssignment, bool>? ua)
+        static BTree<long,object> _Mem(CTree<UpdateAssignment, bool>? ua)
         {
             var r = BTree<long, object>.Empty;
             if (ua is not null)
@@ -3855,7 +3845,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Implement a searched UPDATE statement as a kind of QuerySearch
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class UpdateSearch : QuerySearch
     {
@@ -3863,8 +3853,8 @@ namespace Pyrrho.Level3
         /// Constructor: A searched UPDATE statement from the parser
         /// </summary>
         /// <param name="cx">The context</param>
-        public UpdateSearch(long dp, Context cx, RowSet f, DBObject tb)
-            : base(dp, cx, f, tb)
+        public UpdateSearch(long dp, RowSet f)
+            : base(dp, f)
         { }
         protected UpdateSearch(long dp, BTree<long, object> m) : base(dp, m) { }
         public static UpdateSearch operator +(UpdateSearch et, (long, object) x)
@@ -3966,14 +3956,14 @@ namespace Pyrrho.Level3
     {
         internal const long
             GDefs = -470;   // <CTree<long,TGParam>
-        internal CTree<long,TGParam> gDefs =>
-            (CTree<long,TGParam>)(mem[GDefs] ?? CTree<long,TGParam>.Empty);
+        internal CTree<string,TGParam> gDefs =>
+            (CTree<string,TGParam>)(mem[GDefs] ?? CTree<string,TGParam>.Empty);
         internal CTree<TGraph, bool> graphs =>
             (CTree<TGraph, bool>)(mem[Database.Graphs] ?? CTree<TGraph, bool>.Empty);
         internal CTree<long,bool> where =>
             (CTree<long, bool>)(mem[RowSet._Where]??CTree<long,bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
-        public MatchStatement(long dp, CTree<TGraph, bool> gr, CTree<long, TGParam> ub,
+        public MatchStatement(long dp, CTree<TGraph, bool> gr, CTree<string, TGParam> ub,
             CTree<long,bool> wh,long st)
             : base(dp, new BTree<long,object>(GDefs,ub) + (Database.Graphs,gr)
                   +(RowSet._Where,wh)+(Procedure.Body,st))
@@ -4030,13 +4020,19 @@ namespace Pyrrho.Level3
         {
             var rt = BList<long?>.Empty;
             var re = CTree<long, Domain>.Empty;
-            for (var b = gDefs.First(); b != null && b.key()<Transaction.Executables; b = b.Next())
-                if (b.value() is TGParam g && g.id.value!="_"){
+            for (var b = gDefs.First(); b != null; b = b.Next())
+                if (b.value() is TGParam g && g.id!="_"){
                     rt += g.uid;
                     re += (g.uid, g.dataType);
                     var i = new Iix(g.uid);
-                    cx.defs += (new Ident(g.id.value[1..], i), i);
+                    cx.defs += (new Ident(g.id[1..], i), i);
                 }
+            if (rt.Count==0)
+            {
+                var rc = new SqlLiteral(cx.GetUid(), "Match", TBool.True);
+                rt += rc.defpos;
+                re += (rc.defpos, Domain.Bool);
+            }
             var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length);
             cx.Add(dt);
             var ers = new ExplicitRowSet(cx.GetUid(), cx, dt, BList<(long,TRow)>.Empty)
@@ -4044,33 +4040,40 @@ namespace Pyrrho.Level3
             cx.Add(ers);
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
-            cx.binding = CTree<TGParam, TypedValue>.Empty;
+            cx.binding = CTree<string, TypedValue>.Empty;
             cx.result = ers.defpos;
-            var gp = graphs.First();
-            if (gp?.key() is TGraph tg)
+            var gf = graphs.First();
+            if (gf?.key() is TGraph tg)
             {
-                var xb = tg.nodes.First();
-                ExpNode(cx, gp, xb, null);
+                var xf = tg.nodes.First();
+                if (gf is not null && xf is not null)
+                    ExpNode(cx, gf, xf, Sqlx.Null, null);
             }
             cx.result = ers.defpos;
             return cx;
         }
-        static void AddRow(Context cx)
+        void AddRow(Context cx)
         {
             // everything has been checked
-            if (cx.obs[cx.result] is ExplicitRowSet ers && ers.domain is Domain dt)
+            if (cx.obs[cx.result] is ExplicitRowSet ers)
             {
-                var vs = CTree<long,TypedValue>.Empty;
-                for (var b = cx.binding.First(); b != null; b = b.Next())
-                    if (b.key() is TGParam tg && b.value() is TypedValue tv)
-                        vs += (tg.uid, tv);
-                ers += (cx,ExplicitRowSet.ExplRows,ers.explRows+(cx.GetUid(),new TRow(dt, vs)));
+                if (ers.rowType.Count == 1 && ers.rowType[0] is long p && ers.representation[p] == Domain.Bool
+                    && ers.explRows.Count == 0)
+                    ers += (cx, ExplicitRowSet.ExplRows, new BList<(long, TRow)>((p, new TRow(ers, TBool.True))));
+                else
+                {
+                    var vs = CTree<long, TypedValue>.Empty;
+                    for (var b = cx.binding.First(); b != null; b = b.Next())
+                        if (gDefs[b.key()] is TGParam tg && b.value() is TypedValue tv)
+                            vs += (tg.uid, (tv is TNode n)?new TChar(n.id) : tv);
+                    ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), new TRow(ers, vs)));
+                }
                 cx.Add(ers);
             }
         }
         /// <summary>
         /// We work through the given graph expression in the order given. 
-        /// For each expression node xn, there is at most one next node nx to move to. 
+        /// Show each expression node xn, there is at most one next node nx to move to. 
         /// We will remember our previous node px.
         /// There is a set gDefs(xn) of TGParams defined at xn. (The TGParam can be referenced later.)
         /// In ExpNode we will compute a set ds of database nodes that can correspond with xn.
@@ -4079,46 +4082,53 @@ namespace Pyrrho.Level3
         /// <param name="gp">The bookmark in the TGraphs</param>
         /// <param name="xb">The position in the current graph</param>
         /// <param name="pd">The previous database node if any</param>
-        void ExpNode(Context cx, ABookmark<TGraph, bool>? gp, ABookmark<long, TNode>? xb, TNode? pd)
+        void ExpNode(Context cx, ABookmark<TGraph, bool> gp, ABookmark<long, TNode> xb, Sqlx tok, TNode? pd)
         {
-            if (xb?.value() is not TMatch xn)
+            if (xb.value() is not TMatch xn)
                 return;
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             var ds = CTree<TNode, bool>.Empty; // the set of database nodes that can match with xn
-            if (pd is TEdge pe && pe.arriving is TSet ts) // the arriving nodes will match with xn
-            {
-                for(var b=ts.First();b is not null;b=b.Next())
-                if (cx.db.nodeIds[(TChar)b.Value()] is TNode n)
-                    ds += (n, true);
-            } else if (!xn.id.value.StartsWith('_')) // then there is only one possible matching database node
+            if (pd is TEdge pe && ((tok==Sqlx.ARROW)?pe.arriving:pe.leaving) is TChar t // this node will match with xn
+               && cx.db.nodeIds[t.value] is TNode tn)
+                ds += (tn, true);
+            else if (!xn.id.StartsWith('_')) // then there is only one possible matching database node
             {
                 if (cx.db.nodeIds[xn.id] is TNode n) // we will check properties match in DbNode
                     ds += (n, true);
-            } else if (xn.dataType != Domain.NodeType && xn.dataType != Domain.EdgeType) // has a specific type
+            }
+            else if (pd is not null && cx.db.objects[pd.nodeType.defpos] is Table pt)
             {
-                if (cx.db.objects[xn.dataType.structure] is Table tb)
-                    for (var b = tb.tableRows.First(); b != null; b = b.Next())
-                        if (b.value().vals[xn.dataType.rowType[0] ?? -1L] is TChar c
-                            && cx.db.nodeIds[c] is TNode n)
-                        {
-                            if (pd?.dataType is NodeType nt && n.dataType is EdgeType et
-                                && cx._Ob(et.leavingType) is Domain lt
-                                && !nt.EqualOrStrongSubtypeOf(lt))
-                                continue;
-                            if (pd is not null && n is TEdge e && !e.leaving.Contains(pd.id))
-                                continue;
-                            ds += (n, true);
-                        }
-            } else for(var b = cx.db.nodeIds.First();b is not null;b=b.Next())
-                if (b.value() is TNode n)
+                var st = xn.props[new TChar("SPECIFICTYPE")]?? TNull.Value;
+                while (pt.super is Table ps)
+                    pt = (Table)(cx.db.objects[ps.defpos]??throw new DBException("42105"));
+                for (var b = pt.rindexes.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is EdgeType rt)
+                    {
+                        if (st is TChar sc && sc.value != rt.name)
+                            continue;
+                        for (var g = b.value().First(); g != null; g = g.Next())
+                            if (g.key()[0] == ((xn.tok==Sqlx.ARROW)?rt.leaveCol:rt.arriveCol))
+                                for (var h = rt.indexes[g.key()]?.First(); h != null; h = h.Next())
+                                    if (h.key() is long hp && cx.db.objects[hp] is Index rx
+                                        && rx.rows?.impl?[new TChar(pd.id)] is TPartial tp)
+                                        for (var c = tp.value.First(); c != null; c = c.Next())
+                                            if (rt.tableRows[c.key()] is TableRow tr)
+                                                ds += (new TEdge(c.key(), rt, tr.vals), true);
+                    }
+            }
+            else for (var b = cx.db.nodeIds.First(); b != null; b = b.Next())
+                    if (b.value() is TNode n)
+                    {
+                        if (pd is not null && n is TEdge e && e.leaving.value != pd.id)
+                            continue;
                         ds += (n, true);
+                    }
             var df = ds.First();
             while (df is not null)
                 df = DbNode(cx, gp, xb, xn, df, pd);
-            return;
         }
         /// <summary>
-        /// For each dn in ds:
+        /// Show each dn in ds:
         /// If xn's specific properties do not match dx's then backtrack.
         /// We bind each t in t(xn), using the char values in dn.
         /// </summary>
@@ -4129,49 +4139,56 @@ namespace Pyrrho.Level3
         /// <param name="df">The bookmark for the current TNode</param>
         /// <param name="pd">If not null, the TNode for the TMatch</param> 
         /// <returns>the next value of df if any</returns>
-        ABookmark<TNode, bool>? DbNode(Context cx, ABookmark<TGraph, bool>? gp, 
-            ABookmark<long, TNode>? xb, TMatch xn, ABookmark<TNode, bool> df,TNode? pd)
+        ABookmark<TNode, bool>? DbNode(Context cx, ABookmark<TGraph, bool> gp, 
+            ABookmark<long, TNode> xb, TMatch xn, ABookmark<TNode, bool> df,TNode? pd)
         {
             var ob = cx.binding;
+            if (df.key() is not TNode dn  
+                    || (xn.nodeType.defpos >= 0 && !dn.nodeType.EqualOrStrongSubtypeOf(xn.nodeType))
+                    || !xn.CheckProps(cx,dn))
+                goto backtrack;
+            if (dn is TEdge de && pd is not null 
+                && ((xn.tok==Sqlx.ARROW)?de.leaving.value:de.arriving.value).CompareTo(pd.id)!=0)
+                goto backtrack;
             var bi = cx.binding;
-            if (df.key() is not TNode dn || !xn.CheckProps(cx,dn))
-                goto backtrack;
-            if (dn is TEdge de && pd != null && !de.leaving.Contains(pd.id))
-                goto backtrack;
-            var ns = CTree<TChar, TGParam>.Empty;
+            var ns = CTree<string, TGParam>.Empty;
             for (var b = xn.tgs.First(); b != null; b = b.Next())
-                if (b.value() is TGParam tg)
+                if (b.value() is TGParam tg && tg.id.ToString()!="_")
                 {
+                    var xi = tg.id;
+                    if (xi.Length > 0 && xi[0] == '_' || xi[0]==':')
+                        bi += (tg.id, dn);
                     switch (tg.kind)
-                    {
+                    { 
                         case Sqlx.RPAREN:
-                        case Sqlx.LPAREN: bi += (tg, dn.id); break;
-                        case Sqlx.COLON: bi += (tg, new TChar(dn.dataType.name)); break;
+                        case Sqlx.LPAREN: bi += (tg.id, dn); break;
+                        case Sqlx.COLON: bi += (tg.id, new TChar(dn.nodeType.name)); break;
                     }
                     ns += (tg.id, tg);
                 }
             var ps = CTree<string, TGParam>.Empty;
             for (var b = xn.props.First(); b != null; b = b.Next())
                 if (b.value() is TGParam tg && ns.Contains(tg.id))
-                    ps += (b.key().value, tg);
+                    ps += (b.key().ToString(), tg);
             for (var c = xn.columns.First(); c != null; c = c.Next())
                 if (c.value() is long p && cx.NameFor(p) is string nn
                     && ps[nn] is TGParam tg1 && dn.values[p] is TypedValue tv)
-                            bi += (tg1, tv);
+                            bi += (tg1.id, tv);
             cx.binding = bi;
-            xb = xb?.Next();
+            ABookmark<TGraph, bool>? gf = gp;
+            var xf = xb.Next();
             TNode? dx = dn;// we don't pass in dn if we are starting a new graph
-            if (xb==null)  // we have reached the end of a graph in the match
+            if (xf==null)  // we have reached the end of a graph in the match
             {
                 dx = null;
-                gp = gp?.Next(); // start the next graph
-                if (gp?.key() is TGraph g)
-                    xb = g.nodes.First();
+                gf = gp.Next(); // start the next graph
+                if (gf?.key() is TGraph g)
+                    xf = g.nodes.First();
             }
-            if (xb != null) // go on to the next node in the expression graph
-                ExpNode(cx, gp, xb, dx);
-            else   // we have finished the expression and may be able to add a row
-                AddRow(cx);
+            if (gf is null || xf is null) // we have finished the expression and may be able to add a row
+                AddRow(cx); 
+            else // go on to the next node in the expression graph
+                ExpNode(cx, gf, xf, xn.tok, dx);
         backtrack:
             cx.binding = ob; // unbind all the bindings from this recursion step
             return df.Next(); // try another node

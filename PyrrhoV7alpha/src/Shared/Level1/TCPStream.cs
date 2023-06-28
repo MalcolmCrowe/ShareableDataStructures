@@ -633,7 +633,7 @@ namespace Pyrrho.Level1
                 n++;
             PutInt(n);
             for (var e = r.First(cx); e != null; e = e.Next(cx))
-                for (var b = r.domain.rowType.First(); b != null; b = b.Next())
+                for (var b = r.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx._Dom(p) is Domain dt)
                         PutCell(cx, dt, e[b.key()]);
         }
@@ -695,8 +695,8 @@ namespace Pyrrho.Level1
 #else
             Write(Responses.Schema);
 #endif
-            var dt = result.domain.rowType;
-            int m = result.domain.display;
+            var dt = result.rowType;
+            int m = result.display;
             if (m == 0)
                 m = dt.Length;
             PutInt(m);
@@ -717,8 +717,10 @@ namespace Pyrrho.Level1
                 result.Schema(cx, flags);
                 var j = 0;
                 for (var b = dt.First(); j < m && b != null; b = b.Next(), j++)
-                    if (b.value() is long p && result.domain.representation[p] is Domain dn)
+                    if (b.value() is long p)
                     {
+                        if (result.representation[p] is not Domain dn)
+                            throw new PEException("PE24602");
                         var i = b.key();
                         PutString(result.NameFor(cx, i));
                         if (dn.kind != Sqlx.TYPE)
@@ -752,19 +754,19 @@ namespace Pyrrho.Level1
             Write(Responses.Schema1);
 #endif
             PutLong(result.lastChange);// compute the schemakey
-            int m = result.domain.display;
+            int m = result.display;
             PutInt(m);
             if (m == 0)
                 Console.WriteLine("No columns?");
-            if (m > result.domain.Length)
-                Console.WriteLine("Unreasonable rowType length " + result.domain.Length + " < " + m);
+            if (m > result.Length)
+                Console.WriteLine("Unreasonable rowType length " + result.Length + " < " + m);
             if (m > 0)
             {
                 PutString("Data");
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
                 var j = 0;
-                for (var b=result.domain.representation.First();b is not null;b=b.Next(),j++)
+                for (var b=result.representation.First();b is not null;b=b.Next(),j++)
                 {
                     var n = cx.NameFor(b.key());
                     PutString(n);
@@ -808,7 +810,7 @@ namespace Pyrrho.Level1
                     var n = sc.NameFor(cx);
                     PutString(n);
                     PutString((sc.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT": n);
-                    var flags = sc.domain.Typecode() + (dn.notNull ? 0x100 : 0) +
+                    var flags = sc.domain.Typecode() + (dn.domain.notNull ? 0x100 : 0) +
                     ((dn.generated != GenerationRule.None) ? 0x200 : 0);
                     PutInt(flags);
                 }

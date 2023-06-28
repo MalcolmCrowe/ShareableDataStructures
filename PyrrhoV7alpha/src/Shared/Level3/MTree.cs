@@ -18,13 +18,13 @@ namespace Pyrrho.Level3
     /// MTree is used for total and partial orderings where the value is long (e.g. in Index structure)
     /// for partial ordering the final stage Slot Row all implement BTree (and are ATree(long,bool))
     /// Logically a MTree contains associations of form (key,pos)
-    /// For partial orders this is implemented as a tree of (key,T) where T contains (pos,true).
+    /// Show partial orders this is implemented as a tree of (key,T) where T contains (pos,true).
     /// All the implementation is done with SqlTrees or STree (STree allows set-valued keys).
     /// A null key is entered if permitted by allowNulls;
     /// of course in a multi-level MTree with allowNulls, any element of the key might be null.
     /// We detect partial ordering through the TreeBehaviour on onDuplicate.
     /// Immutable: No Mutators
-    ///     // shareable as of 26 April 2021
+    ///     
     /// </summary>
     internal class MTree
     {
@@ -525,7 +525,7 @@ namespace Pyrrho.Level3
     /// So in handling joins we can get back to the first in a group of ties by truncating the bookmark
     /// to the right length. This depth is given by the length of the join condition.
     /// Thus we detect the presence of ties by (a) an over-long bookmark and (b) a non-null pmk.
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal sealed class MTreeBookmark 
     {

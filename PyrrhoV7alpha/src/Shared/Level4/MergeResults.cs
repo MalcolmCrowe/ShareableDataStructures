@@ -16,7 +16,7 @@ namespace Pyrrho.Level4
 {
     /// <summary>
     /// A MergeRowSet is for handling UNION, INTERSECT, EXCEPT
-    ///     /// shareable as of 26 April 2021
+    ///     /
     /// </summary>
     internal class MergeRowSet : RowSet
     {
@@ -50,7 +50,7 @@ namespace Pyrrho.Level4
         protected MergeRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Domain dm,RowSet a,RowSet b)
         {
-            var m = BTree<long, object>.Empty + (_Domain,dm);
+            var m = BTree<long, object>.Empty + (_Domain, dm);
             var la = a.lastData;
             var lb = b.lastData;
             if (la != 0L && lb != 0L)
@@ -131,7 +131,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// An enumerator for a mergerowset
     /// A class for shared MergeEnumerator machinery. Supports IntersectionEnumerator, ExceptEnumerator and UnionEnumerator
-    ///     /// shareable as of 26 April 2021
+    ///     /
     /// </summary>
     internal abstract class MergeBookmark : Cursor
     {
@@ -179,7 +179,7 @@ namespace Pyrrho.Level4
                 return -1;
             if (right == null)
                 return 1;
-            var dt = r.domain.rowType;
+            var dt = r.rowType;
             for (var i = 0; i < dt.Length; i++)
                 if (dt[i] is long n)
                 {
@@ -192,7 +192,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A Union enumerator for merge rowset
-    ///     /// shareable as of 26 April 2021
+    ///     /
     /// </summary>
     internal class UnionBookmark : MergeBookmark
     {
@@ -251,7 +251,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// An except enumerator for the merge rowset
-    ///     /// shareable as of 26 April 2021
+    ///     /
     /// </summary>
     internal class ExceptBookmark : MergeBookmark
     {
@@ -342,7 +342,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// An intersect enumerator for the merge row set
-    ///     /// shareable as of 26 April 2021
+    ///     /
     /// </summary>
     internal class IntersectBookmark : MergeBookmark
     {

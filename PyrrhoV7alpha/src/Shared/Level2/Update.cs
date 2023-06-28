@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using System;
+using System.Diagnostics.CodeAnalysis;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -160,46 +161,36 @@ namespace Pyrrho.Level2
                     return new DBException("40006",b.key(),this,ct).Mix();
             return null;
         }
-        internal override TableRow AddRow(Context cx)
+        protected override TableRow Now(Context cx)
         {
-            var tb = (Table)(cx.db.objects[tabledefpos]??throw new DBException("42105"));
-            for (var tt = tb; tt != null;)
+            var tb = cx._Ob(tabledefpos) as Table ?? throw new PEException("PE40407");
+            prevrec = tb.tableRows[defpos] ?? throw new DBException("42105");
+            return new TableRow(this,cx,prevrec);
+        }
+        internal override void AddRow(Table tt, TableRow now, Context cx)
+        {
+            if (prevrec is null) throw new PEException("PE40408");
+            if (tt.defpos == tabledefpos && tt is NodeType tn
+                    && tn.rowType[0] is long p && now.vals[p] is TChar id
+                    && prevrec.vals[p] is TChar od && id.value != od.value
+                    && cx.db.nodeIds[id.value] is TypedValue tv)
             {
-                var was = tt.tableRows[defpos] ?? throw new DBException("42105");
-                var now = new TableRow(this, cx, was);
-                if (tt == tb && cx.db.objects[tb.nodeType] is NodeType tn
-                        && tn.rowType[0] is long p && now.vals[p] is TChar id
-                        && was.vals[p] is TChar od && id.value != od.value
-                        && cx.db.nodeIds[id] is TypedValue tv)
-                {
-                    if (tn is EdgeType te)
-                        cx.db = cx.db - (TEdge)tv + new TEdge(defpos, te, now.vals);
-                    else
-                        cx.db = cx.db - (TNode)tv + new TNode(defpos, tn, now.vals);
-                }
-                var same = true;
-                for (var b = fields.First(); same && b != null; b = b.Next())
-                    if (tb.keyCols.Contains(b.key()))
-                        same = b.value().CompareTo(was.vals[b.key()]) == 0;
-                if (same)
-                    return now;
-                for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
-                    for (var c = xb.value().First(); c != null; c = c.Next())
-                        if (cx.db.objects[c.key()] is Level3.Index x
-                            && x.MakeKey(was.vals) is CList<TypedValue> ok
-                            && x.MakeKey(now.vals) is CList<TypedValue> nk
-                            && ok.CompareTo(nk) != 0)
-                        {
-                            x -= (ok, defpos);
-                            x += (nk, defpos);
-                            cx.db += (x, cx.db.loadpos);
-                        }
-                tt = (cx._Ob(tt.nodeType) is NodeType nt && nt.super is NodeType su
-                    && cx._Ob(su.structure) is Table st) ? st : null;
-                if (tt == null)
-                    return now;
+                if (tn is EdgeType te)
+                    cx.db = cx.db - (TEdge)tv + new TEdge(defpos, te, now.vals);
+                else
+                    cx.db = cx.db - (TNode)tv + new TNode(defpos, tn, now.vals);
             }
-            throw new DBException("42105");
+            for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
+                for (var c = xb.value().First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.key()] is Level3.Index x
+                        && x.MakeKey(prevrec.vals) is CList<TypedValue> ok
+                        && x.MakeKey(now.vals) is CList<TypedValue> nk
+                        && ok.CompareTo(nk) != 0)
+                    {
+                        x -= (ok, defpos);
+                        x += (nk, defpos);
+                        cx.db += (x, cx.db.loadpos);
+                    }
         }
         public override long Affects => _defpos;
         public override long defpos => _defpos;
@@ -235,11 +226,13 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            var fl = AddRow(cx);
             if (cx.db != null)
             {
                 if (cx.db.objects[tabledefpos] is Table tb)
+                {
+                    var fl = tb.tableRows[defpos] ?? throw new PEException("PE40406");
                     cx.Install(tb + new TableRow(this, cx, fl, _classification), p);
+                }
                 if (cx.db.mem.Contains(Database.Log))
                     cx.db += (Database.Log, cx.db.log + (ppos, type));
             }

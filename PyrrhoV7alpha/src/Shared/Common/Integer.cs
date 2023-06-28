@@ -1,3 +1,4 @@
+using Pyrrho.Level3;
 using System;
 using System.Collections.Generic;
 using System.Globalization;
@@ -622,7 +623,8 @@ namespace Pyrrho.Common
 			int j = 0;
 			while (n>=0)
 			{
-				byte d = byte.Parse(str.Substring(j,1));
+                if (!byte.TryParse(str.Substring(j, 1), out byte d))
+                    throw new DBException("22005", Domain.Int, str.Substring(j, 1));
 				r += Pow10(n).Times(d);
 				n--;
 				j++;
@@ -1098,7 +1100,7 @@ namespace Pyrrho.Common
                 b = new Numeric(integer, 0);
             else
                 throw new DBException("22201", obj).Pyrrho()
-                    .AddType(Level3.Domain.Numeric).AddValue(new TChar(obj?.ToString()??""));
+                    .AddType(Level3.Domain._Numeric).AddValue(new TChar(obj?.ToString()??""));
 			int na = a.scale, nb = b.scale;
 			a = Denormalise(nb-na);
 			b = b.Denormalise(na-nb);

@@ -6,6 +6,8 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Xml;
 using Pyrrho.Level5;
+using System.Runtime.Intrinsics.Arm;
+using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -86,7 +88,7 @@ namespace Pyrrho.Level2
             if (cx.tr==null || cx.db.user == null)
                 throw new DBException("42105");
             tabledefpos = tb.defpos;
-            nodeOrEdge = tb.nodeType >= 0;
+            nodeOrEdge = tb is NodeType;
             if (fl.Count == 0)
                 throw new DBException("2201C");
             fields = fl;
@@ -124,11 +126,19 @@ namespace Pyrrho.Level2
                 fields += (wr.cx.Fix(b.key()), v);
             }
         }
+ /*       public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (tr != null)
+                for (var t = tr.objects[tabledefpos] as Table; t != null;
+                    t = tr.objects[(t as UDType)?.super?.defpos ?? -1L] as Table)
+                    if (t.defpos<Transaction.TransPos)
+                        tr += (t.defpos, t + (Table.TableRows,t.tableRows - defpos));
+            return base.Commit(wr, tr);
+        } */
         protected override Physical Relocate(Writer wr)
         {
             return new Record(this, wr);
         }
-
         /// <summary>
         /// Serialise this Record to the PhysBase
         /// </summary>
@@ -154,7 +164,7 @@ namespace Pyrrho.Level2
         /// Deserialise a list of field values
         /// </summary>
         /// <param name="buf">The buffer</param>
-        internal virtual void GetFields(Reader rdr)
+        internal void GetFields(Reader rdr)
         {
             fields = CTree<long, TypedValue>.Empty;
             long n = rdr.GetLong();
@@ -174,7 +184,7 @@ namespace Pyrrho.Level2
         /// Serialise a set of field values
         /// </summary>
         /// <param name="r">Relocation information</param>
-        internal virtual void PutFields(Writer wr)  //LOCKED
+        internal void PutFields(Writer wr)  //LOCKED
         {
             if (wr.cx.db.objects[tabledefpos] is not Table tb)
                 throw new PEException("PE0300");
@@ -192,7 +202,7 @@ namespace Pyrrho.Level2
         }
         static CTree<long, Domain> ColsFrom(Context cx, Table tb, CTree<long, Domain> cdt)
         {
-            if (cx._Ob(tb.nodeType) is NodeType nt && nt.super is NodeType su && cx._Ob(su.structure) is Table st)
+            if (tb is NodeType nt && nt.super is Table st)
                 cdt = ColsFrom(cx, st, cdt);
             return cdt + tb.tableCols;
         }
@@ -268,54 +278,57 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="db"></param>
         /// <returns></returns>
-        internal virtual TableRow AddRow(Context cx)
+        internal virtual void AddRow(Table tt, TableRow now, Context cx)
         {
-            var now = new TableRow(this,cx);
-            if (cx.db==null || cx.db.objects[tabledefpos] is not Table tb)
+            if (cx.db==null)
                 throw new PEException("PE6900");
-            for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
+            if (tt.defpos == tabledefpos && tt is NodeType nt)
+                cx.db += (nt is EdgeType et) ? new TEdge(defpos, et, fields)
+                    : new TNode(defpos, nt, fields);
+            for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x 
                         && x.MakeKey(now.vals) is CList<TypedValue> k)
                     {
                         if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
                                 x.flags.HasFlag(PIndex.ConstraintType.Unique))
-                            && (x.rows?.Contains(k) == true))
+                            && (x.rows?.Contains(k) == true) && cx.db is Transaction
+                            && k[0] is TypedValue tk
+                            && x.rows?.impl?[tk]?.ToLong() is long q && q!=now.defpos)
                             throw new DBException("23000", "duplicate key ", k);
                         if (cx.db.objects[x.refindexdefpos] is Level3.Index rx &&
-                            /*            if (!(rx is VirtualIndex) && */
-                            rx.rows?.Contains(k)!=true)
+                            rx.rows?.Contains(k)!=true && cx.db is Transaction)
                             throw new DBException("23000", "missing foreign key ", k);
                         x += (k, defpos);
                         cx.db += (x, cx.db.loadpos);
                     }
-            if (cx.db.objects[tb.nodeType] is NodeType nt)
-                cx.db += (nt is EdgeType et)?new TEdge(defpos,et,fields)
-                    : new TNode(defpos,nt,fields);
-            return now;
+        }
+        protected virtual TableRow Now(Context cx)
+        {
+            return new TableRow(this, cx);
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            if (cx.db.objects[tabledefpos] is not Table tb || tb.infos[tb.definer] is not ObInfo oi)
+            if (cx._Ob(tabledefpos) is not Table tb || tb.infos[tb.definer] is not ObInfo oi)
                 throw new PEException("PE0301");
             var ost = subType;
             var tp = tabledefpos;
             try
             {
-                for (var tt = tb; tt != null;) 
+                var now = Now(cx);
+                for (var tt = tb; tt != null; tt=cx.db.objects[tt.super?.defpos??-1L] as Table) 
                 {
                     if (tt != tb)   // update supertypes: extra values are harmless
                     {
                         subType = tb.defpos;
                         tabledefpos = tt.defpos;
                     }
-                    tt += AddRow(cx);
+                    AddRow(tt, now,cx);
+                    tt += now;
                     tt += (Table.LastData, ppos);
                     cx.Install(tt, p);
-                    tt = (cx.db.objects[tt.nodeType] is NodeType nt && nt.super is NodeType su
-                        && cx.db.objects[su.structure] is Table st) ? st : null;
                 }
-                if (tb.nodeType >= 0 && cx.db.objects[tb.nodeType] is NodeType nd
+                if (tb is NodeType nd
                     && tb.FindPrimaryIndex(cx) is Level3.Index x
                     && x.keys[0] is long ip && fields[ip]?.ToString() is string n)
                     cx.db += (nd is EdgeType et) ? new TEdge(defpos, et, fields)
@@ -328,6 +341,8 @@ namespace Pyrrho.Level2
                         + e.objects[1].ToString());
                 throw;
             }
+            if (tb is NodeType nt)
+                cx.db += new TNode(defpos, nt, fields);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             subType = ost;
@@ -356,8 +371,10 @@ namespace Pyrrho.Level2
                 sb.Append(cm); cm = ",";
                 sb.Append(DBObject.Uid(k));sb.Append('=');sb.Append(v.ToString());
                 sb.Append("[");
-                if (v.dataType.defpos < 0) sb.Append(v.dataType.ToString());
-                else sb.Append(v.dataType.defpos);
+                if (v.dataType.kind != Sqlx.TYPE)
+                    sb.Append(v.dataType.kind);
+                else
+                    sb.Append(v.dataType.name);
                 sb.Append("]");
             }
             if (_classification != Level.D || type == Type.Update1)
@@ -366,7 +383,7 @@ namespace Pyrrho.Level2
         }
     }
     /// <summary>
-    /// For Record entries where values are subtypes of the expected types we can add type info
+    /// Show Record entries where values are subtypes of the expected types we can add type info
     /// </summary>
     internal class Record2 : Record
     {
@@ -418,7 +435,7 @@ namespace Pyrrho.Level2
         }
     }
     /// <summary>
-    /// For Record3 entries we also add classification info
+    /// Show Record3 entries we also add classification info
     /// </summary>
     internal class Record3 : Record2
     {

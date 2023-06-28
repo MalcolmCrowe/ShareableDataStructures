@@ -91,7 +91,7 @@ using System.Xml;
 
 // The set of graphs is totally ordered by the uids of their first node. 
 
-// For the data management language, an SqlNode is an SqlRow whose domain is a Node type.
+// Show the data management language, an SqlNode is an SqlRow whose domain is a Node type.
 // It may have an ad hoc (heap) uid. Evaluation of the SqlRow part gives a set of properties
 // and edges of the node. Evaluation of the SqlNode gives a rowset of TGraph values.
 // The datatype of TGraph is a primitive data type Graph that allows assignment of a JSON value as described above.
@@ -115,8 +115,8 @@ namespace Pyrrho.Level5
     internal class TGraph : TypedValue
     {
         internal readonly CTree<long, TNode> nodes; // and edges
-        internal readonly CTree<TChar, TNode> nids; // and edges
-        internal TGraph (CTree<long, TNode> ns, CTree<TChar, TNode> nids) : base(Domain.Graph)
+        internal readonly CTree<string, TNode> nids; // and edges
+        internal TGraph (CTree<long, TNode> ns, CTree<string, TNode> nids) : base(Domain.Graph)
         {
             nodes = ns;
             this.nids = nids;
@@ -124,7 +124,7 @@ namespace Pyrrho.Level5
         internal TGraph(TNode n) : base(Domain.Graph)
         {
             nodes = new CTree<long,TNode>(n.uid,n);
-            nids = new CTree<TChar, TNode>(n.id, n);
+            nids = new CTree<string, TNode>(n.id, n);
         }
         public static TGraph operator+(TGraph g,TNode n)
         {
@@ -157,12 +157,10 @@ namespace Pyrrho.Level5
         {
             if (Find(t, n.id) is not null)
                 return t;
-            if (n is not TEdge)
+            if (n is not TEdge e)
                 return t + (new TGraph(n), true);
             // Edge: end nodes already must be in t, but may be in different TGraphs
-            var lu = (TChar)n[1];
-            var au = (TChar)n[2];
-            if (Find(t, lu) is not TGraph lg || Find(t, au) is not TGraph ag
+            if (Find(t, e.leaving.value) is not TGraph lg || Find(t, e.arriving.value) is not TGraph ag
                 || ag.Rep() is not TNode lr || ag.Rep() is not TNode ar)
                 return t;
             if (lr.uid == ar.uid) // already connected: add n to one of them
@@ -170,7 +168,7 @@ namespace Pyrrho.Level5
             else // merge the graphs and add n
                 return t - ag -lg + (new TGraph(lg.nodes + ag.nodes + (n.uid, n), lg.nids + ag.nids + (n.id, n)), true);
         }
-        static TGraph? Find(CTree<TGraph, bool> t, TChar n)
+        static TGraph? Find(CTree<TGraph, bool> t, string n)
         {
             for (var b = t.First(); b != null; b = b.Next())
                 if (b.key().nids.Contains(n))
@@ -198,10 +196,10 @@ namespace Pyrrho.Level5
     internal class TGParam : TypedValue
     {
         internal readonly long uid; 
-        internal readonly TChar id;
+        internal readonly string id;
         internal readonly Sqlx kind; // LPAREN node, RPAREN edge, COLON specifictype, EQL property
-        internal readonly CTree<TChar, TypedValue> constraints;
-        public TGParam(long dp, TChar i, Sqlx k,Domain dt, CTree<TChar, TypedValue> constraints) : base(dt)
+        internal readonly CTree<TypedValue, TypedValue> constraints;
+        public TGParam(long dp, string i, Sqlx k,Domain dt, CTree<TypedValue, TypedValue> constraints) : base(dt)
         {
             uid = dp;
             id = i;
@@ -216,7 +214,7 @@ namespace Pyrrho.Level5
         {
             if (obj is TGParam tp)
             {
-                if (id.value != "_")
+                if (id != "_")
                 {
                     var c = id.CompareTo(tp.id);
                     if (c != 0)
@@ -227,286 +225,20 @@ namespace Pyrrho.Level5
         }
         public override string ToString()
         {
-            return id.value + ':'+DBObject.Uid(uid);
+            var sb = new StringBuilder(id);
+            sb.Append(':'); sb.Append(kind); sb.Append(':');sb.Append(DBObject.Uid(uid));
+            if (constraints!=CTree<TypedValue,TypedValue>.Empty)
+            {
+                var cm = "(";
+                for (var b=constraints.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(b.key()); sb.Append('='); sb.Append(b.value());
+                }
+                if (cm != "(")
+                    sb.Append(')');
+            } 
+            return sb.ToString();
         }
     }
-
-    /*    /// <summary>
-        /// SqlNode is an SqlRow whose first element is special: ID:CHAR.
-        /// Its domainis a NodeType in which (ID) is the primary index px.
-        /// </summary>
-        internal class SqlNode : SqlRow
-        {
-            internal const long
-                NominalType = -301, // long
-                Proposals = -175;   // BTree<string,SqlValue> to be added during binding
-            public long nominalType => (long)(mem[NominalType] ?? -1L);
-            /// <summary>
-            /// Before commit, we require props to be Empty, following binding
-            /// </summary>
-            internal BTree<string, SqlValue> props =>
-                (BTree<string, SqlValue>)(mem[Proposals] ?? BTree<string, SqlValue>.Empty);
-            protected SqlNode(long dp, BTree<long, object> m) : base(dp, m)
-            {  }
-            public SqlNode(long dp, NodeType xp, BList<DBObject> vs, BTree<long, object>? m = null) 
-                : base(dp, xp, vs)
-            {  }
-            internal override Basis New(BTree<long, object> m)
-            {
-                return new SqlNode(defpos,m);
-            }
-            public static SqlNode operator+(SqlNode s,(long,object)x)
-            {
-                var (dp, ob) = x;
-                if (s.mem[dp] == ob)
-                    return s;
-                return (SqlNode)s.New(s.mem + x);
-            }
-            internal override TypedValue Eval(Context cx)
-            {
-                if (cx._Dom(this) is not NodeType nt || cx.obs[nt.structure] is not Table tb
-                    || tb.FindPrimaryIndex(cx) is not Level3.Index px)
-                    return TNull.Value;
-                var sv = cx._Ob(nt.rowType[0]??-1L) as SqlValue;
-                if(sv==null)
-                    return TNull.Value;
-                var k = new CList<TypedValue>(sv.Eval(cx));
-                var p = px.rows?.Get(k, 0);
-                if (p==null)
-                    return TNull.Value;
-                var tr = tb.tableRows[p??-1L];
-                if (tr == null)
-                    return TNull.Value;
-                return new TNode(p ?? -1L, nt, tr.vals);
-            }
-            public override string ToString()
-            {
-                var sb = new StringBuilder(base.ToString());
-                if (nominalType>=0) 
-                {
-                    sb.Append(" NominalType "); sb.Append(Uid(nominalType));
-                }
-                if (props != CTree<string,SqlValue>.Empty)
-                {
-                    sb.Append(" Proposals (");
-                    var cm = "";
-                    for (var b = props.First(); b != null; b = b.Next())
-                    {
-                        sb.Append(cm); cm = ",";
-                        sb.Append(b.key()); sb.Append("=(");
-                        if (b.value() is SqlNode sn)
-                        { sb.Append(sn.GetType().Name); sb.Append(" " + sn.name); }
-                        else
-                            sb.Append(b.value()); 
-                        sb.Append(')');
-                    }
-                    sb.Append(')');
-                }
-                return sb.ToString();
-            }
-        }
-        internal class SqlNodeLiteral : SqlNode
-        {
-            public SqlNodeLiteral(Context cx,TableRow r)
-                : base(cx.GetUid(),_Mem(cx,r))
-            {  }
-            protected SqlNodeLiteral(long dp, BTree<long, object> m) 
-                : base(dp, m)
-            {   }
-            static BTree<long, object> _Mem(Context cx, TableRow r)
-            {
-                var m = BTree<long, object>.Empty;
-                var nt = (NodeType)(cx._Dom(cx._Ob(r.tabledefpos)) ?? throw new DBException("42000"));
-                for (var b = nt.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p && r.vals[p] is TypedValue v)
-                        m += (p, new SqlLiteral(cx.GetUid(), v));
-                return m;
-            }
-        }
-        /// <summary>
-        /// SqlEdge is an SqlRow whose first three elements are special: ID:CHAR, LEAVING:CHAR, ARRIVING:CHAR
-        /// Its Domain is an EdgeType et in which (ID) is the primary index px.
-        /// (LEAVING) references the NodeType et.LeavingType using index lx,
-        /// and (ARRIVING) references the NodeType et.ArrivingType using index ax.
-        /// It is bound if px.Contains(ID), in which case we also have lx.Contains(LEAVING) and ax.Contains(ARRIVING).
-        /// </summary>
-        internal class SqlEdge : SqlNode
-        {
-            protected SqlEdge(long dp, BTree<long, object> m) : base(dp, m)
-            {
-            }
-            public SqlEdge(long dp,EdgeType et, BList<DBObject> vs)
-                : base(dp, et, vs) { }
-            internal override Basis New(BTree<long, object> m)
-            {
-                return new SqlEdge(defpos, m);
-            }
-            public static SqlEdge operator +(SqlEdge s, (long, object) x)
-            {
-                var (dp, ob) = x;
-                if (s.mem[dp] == ob)
-                    return s;
-                return (SqlEdge)s.New(s.mem + x);
-            }
-        }
-        internal class SqlEdgeLiteral : SqlNode
-        {
-            public TNode node =>
-                (TNode)(mem[TrivialRowSet.Singleton] ?? throw new PEException("PE91207"));
-            public SqlEdgeLiteral(long dp, TNode rw)
-                : base(dp, BTree<long, object>.Empty + (_Domain, rw.dataType)
-                     + (TrivialRowSet.Singleton, rw))
-            { }
-            protected SqlEdgeLiteral(long dp, BTree<long, object> m) : base(dp, m)
-            { }
-            internal override TypedValue Eval(Context cx)
-            {
-                return node;
-            }
-        } */
-    /*    /// <summary>
-        /// An SqlGraph is an SqlValueMultiset whose domain is Domain.Graph, and evaluates to give a TGraph. 
-        /// Its values are SqlNodes from nominally disjoint graph expressions 
-        /// (note that disjoint graph expressions can evaluate to non-disjoint TGraphs)
-        /// </summary>
-        internal class SqlGraph : SqlValueMultiset
-        {
-            internal static SqlGraph Empty = new SqlGraph();
-            SqlGraph() : base(--_uid, Domain.Graph, CTree<long, bool>.Empty) { }
-            public SqlGraph(long dp, CTree<long, bool> v) : base(dp, Domain.Graph, v)
-            {
-            }
-            protected SqlGraph(long dp, BTree<long, object> m) : base(dp, m)
-            {
-            }
-            internal SqlGraph(long dp, Context cx) : this(dp, _Mem(dp, cx)) { }
-            /// <summary>
-            /// Build an SqlGraph for the whole database: each item is a path like the rows in CREATE, MATCH.
-            /// Each item starts with a node, and uses a set of nodes and unused edges.
-            /// The first item is the unused node with the largest number of edges leaving it, and
-            /// is followed by other items that start with this node.
-            /// </summary>
-            /// <param name="dp">The defpos for the SqlGraph</param>
-            /// <param name="cx">The context</param>
-            /// <returns>An SqlGraph for the whole database</returns>
-            static BTree<long,object> _Mem(long dp, Context cx)
-            {
-                var r = BTree<long,object>.Empty;
-                var un = cx.db.nodeIds; // the set of unused nodes and edges
-                while (un!=BTree<string,long?>.Empty)
-                {
-                    // first find the unused node with the largest number of leaving edges
-                }
-                return r;
-            }
-            public static SqlGraph operator+(SqlGraph s,(long,object)x)
-            {
-                return new SqlGraph(s.defpos, s.mem + x);
-            }
-            internal override Basis New(BTree<long, object> m)
-            {
-                return new SqlGraph(defpos,m);
-            }
-            internal override DBObject New(long dp, BTree<long, object> m)
-            {
-                return new SqlGraph(dp, m);
-            }
-            internal override TypedValue Eval(Context cx)
-            {
-                return (TMultiset)base.Eval(cx);
-            }
-        }
-        /// <summary>
-        /// An SqlMatchExpr is an SqlValue containing unbound identifiers. 
-        /// The result of a match is to give a number of alternative values for these identifiers, so
-        /// it evaluates as a TArray of such rows.
-        /// </summary>
-        internal class SqlMatchExpr : SqlValue
-        {
-            public SqlMatchExpr(Context cx, BList<long?> us, SqlGraph sg)
-                : base(cx.GetUid(),_Mem(cx,us,sg)) { }
-            static BTree<long,object> _Mem(Context cx,BList<long?> us,SqlGraph sg)
-            {
-                var r = BTree<long, object>.Empty;
-                return r;
-            }
-        } */
-    /*    // a document value (field keys are constant strings, values are expressions)
-        // this is very weakly typed!
-        internal class SqlDocument : SqlRow
-        {
-            internal BTree<string, SqlValue> props =>
-        (BTree<string, SqlValue>)(mem[SqlNode.Proposals] ?? BTree<string, SqlValue>.Empty);
-            public SqlDocument(Context cx) 
-                : base(cx.GetUid(),new BTree<long,object>(_Domain,Domain.Document))
-            { }
-            internal SqlDocument(long dp, BTree<long, object> m) : base(dp, m)
-            { }
-            public SqlDocument(Context cx, TDocument doc) : base(cx.GetUid(), _Mem(cx,doc))
-            { }
-            static BTree<long,object> _Mem(Context cx,TDocument doc)
-            {
-                var ps = BTree<string,SqlValue>.Empty;
-                for (var f = doc.First(); f != null; f = f.Next())
-                {
-                    var (n, v) = f.value();
-                    ps += (n, new SqlLiteral(cx.GetUid(),v));
-                }
-                return new BTree<long, object>(SqlNode.Proposals, ps);
-            }
-            public static SqlDocument operator +(SqlDocument s, (long, object) m)
-            {
-                return (SqlDocument)s.New(s.mem + m);
-            }
-            internal override Basis New(BTree<long, object> m)
-            {
-                return new SqlDocument(defpos, m);
-            }
-            internal override DBObject Relocate(long dp)
-            {
-                return (dp == defpos) ? this : new SqlDocument(dp, mem);
-            }
-            internal override BTree<long,Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
-            {
-                for (var b = props.First(); b != null; b = b.Next())
-                        tg = b.value().StartCounter(cx, rs, tg);
-                return base.StartCounter(cx,rs,tg);
-            }
-            internal override BTree<long, Register> AddIn(Context cx, Cursor rb, BTree<long, Register> tg)
-            {
-                var dm = cx._Dom(this);
-                for (var b = props.First(); b != null; b = b.Next())
-                        tg = b.value().AddIn(cx, rb, tg);
-                return tg;
-            }
-            internal override TypedValue Eval(Context cx)
-            {
-                var c = CList<(string, TypedValue)>.Empty;
-                var n = CTree<string, int>.Empty;
-                for (var b = props.First(); b != null; b = b.Next())
-                {
-                    c += (b.key(),b.value().Eval(cx));
-                    n += (b.key(),(int)c.Count);
-                }
-                return new TDocument(c,n);
-            }
-            public override string ToString()
-            {
-                var sb = new StringBuilder(base.ToString());
-                if (props != BTree<string, SqlValue>.Empty)
-                {
-                    sb.Append('{');
-                    var cm = "";
-                    for (var b = props.First(); b != null; b = b.Next())
-                    {
-                        sb.Append(cm); cm = ",";
-                        sb.Append(b.key());
-                        sb.Append(':');
-                        sb.Append(b.value().ToString());
-                    }
-                    sb.Append('}');
-                }
-                return sb.ToString();
-            }
-        } */
 }

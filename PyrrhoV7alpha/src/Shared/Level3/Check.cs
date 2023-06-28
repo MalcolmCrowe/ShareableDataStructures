@@ -21,7 +21,7 @@ namespace Pyrrho.Level3
     /// Immutable
     /// shareable
     /// </summary>
-    internal class Check : DBObject
+    internal class Check : Domain
     {
         internal const long
             Condition = -51, // long SqlValue
@@ -43,7 +43,7 @@ namespace Pyrrho.Level3
         /// <param name="definer">The defining role</param>
         /// <param name="owner">the owner</param>
 		public Check(PCheck c, Database db) 
-            : base(c.ppos, c.ppos, _Mem(db)
+            : base(c.ppos, Bool.mem
                   + (RowSet.Target,c.ckobjdefpos)+(Source,c.check ?? "")
                   + (Owner, c.owner) + (Definer,c.definer)
                   + (Infos, c.infos) +(ObInfo.Name,c.name)
@@ -51,7 +51,7 @@ namespace Pyrrho.Level3
                   + (ObInfo.Name,c.name??""))
         { }
         public Check(PCheck2 c, Database db)
-            : base(c.ppos, c.ppos, _Mem(db)
+            : base(c.ppos, Bool.mem
                                     + (Owner, c.owner) + (Definer, c.definer)
                   + (Infos, c.infos) + (ObInfo.Name, c.name)
           + (RowSet.Target, c.subobjdefpos) + (Source, c.check ?? "")

@@ -88,7 +88,7 @@ namespace Pyrrho.Level2
             nst = psr.cx.db.nextStmt;
             var un = psr.ParseViewDefinition(name) ?? throw new PEException("0035");
             //       var cs = psr.ParseCursorSpecification(Domain.TableType);
-            dataType = un.domain;
+            dataType = un;
             psr.cx.result = un.defpos;
             framing = new Framing(psr.cx, nst);
         }
@@ -99,7 +99,6 @@ namespace Pyrrho.Level2
                 m += (DBObject._Domain, dataType);
             m += (DBObject.Definer, cx.role.defpos);
             return m
-                + (View.ViewPpos, ppos)
                 + (DBObject._Framing, framing);
         }
         /// <summary>
@@ -208,7 +207,7 @@ namespace Pyrrho.Level2
         internal override void OnLoad(Reader rdr)
         {
             var psr = new Parser(rdr.context, viewdef);
-            var m = psr.ParseRowTypeSpec(Sqlx.VIEW).mem - Domain.Structure;
+            var m = psr.ParseRowTypeSpec(Sqlx.VIEW).mem - Domain.Under;
             var st = psr.cx.db.nextStmt;
             psr.cx.db += (Database.NextStmt, st + 1);
             dataType = new Domain(st, m);
@@ -300,11 +299,11 @@ namespace Pyrrho.Level2
         {
             var vs = BTree<string, DBObject>.Empty;
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is DBObject c)
+                if (b.value() is long p && dataType.representation[p] is DBObject c)
                     vs += (c.NameFor(cx), c);
             var ts = (Table)(cx.obs[usingTable] ?? throw new PEException("PE2421"));
-            for (var b = ts.domain.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is DBObject c && vs[c.NameFor(cx)] is DBObject oc)
+            for (var b = ts.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && ts.representation[p] is Domain c && vs[c.NameFor(cx)] is Domain oc)
                     cx.Replace(c, oc);
         }
         internal override void OnLoad(Reader rdr)

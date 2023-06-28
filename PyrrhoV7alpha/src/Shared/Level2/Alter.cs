@@ -68,6 +68,8 @@ namespace Pyrrho.Level2
             var ci = new ObInfo(name, priv);
             tc += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
             table += (cx, seq, tc);
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
+            seq = tc.seq;
             cx.Install(table, p);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
@@ -137,6 +139,8 @@ namespace Pyrrho.Level2
             var ci = new ObInfo(name, priv);
             table += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
             table += (cx, seq, tc);
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
+            seq = tc.seq;
             cx.Install(table, p);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))
@@ -159,8 +163,8 @@ namespace Pyrrho.Level2
         /// <param name="co">The ident defining position</param>
         /// <param name="nm">The (new) table column name</param>
         /// <param name="sq">The (new) table column position (0,1,..)</param>
-        /// <param name="tb">The table defining position</param>
-        /// <param name="dm">The (new) domain defining position</param>
+        /// <param name="tb">The table</param>
+        /// <param name="dm">The (new) domain </param>
         /// <param name="ds">The (new) default string</param>
         /// <param name="ua">The update assignment rule</param>
         /// <param name="nn">The (new) setting for NOT NULL</param>
@@ -220,11 +224,15 @@ namespace Pyrrho.Level2
                 throw new PEException("PE47122");
             ti += (ObInfo.SchemaKey, p);
             var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
+            cx.db += dataType;
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var oc = new ObInfo(name, priv);
             tc += (ro.defpos, oc);
+            cx.obs += (tc.defpos, tc);
             table += (cx, seq, tc);
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
+            seq = tc.seq;
             cx.Install(table, p);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))

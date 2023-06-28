@@ -10,7 +10,7 @@
     // All other use or distribution or the construction of any product incorporating 
     // this technology requires a license from the University of the West of Scotland.
     /// <summary>
-    /// For details of the Pyrrho protocol, see the manual Pyrrho.doc section 8.8, which
+    /// Show details of the Pyrrho protocol, see the manual Pyrrho.doc section 8.8, which
     /// gives the current list of codes.
     /// </summary>
     public enum Protocol
@@ -28,7 +28,7 @@
         CommitAndReportTrace = 75, ExecuteTrace = 76, CommitAndReport1 = 77, CommitAndReportTrace1 = 78
     }
     /// <summary>
-    /// For details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.8,
+    /// Show details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.8,
     /// which gives the currently supported list of codes.
     /// </summary>
     public enum Responses

@@ -1,4 +1,5 @@
 using System.Collections.Specialized;
+using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Xml;
 using Pyrrho.Level3;
@@ -133,17 +134,23 @@ namespace Pyrrho.Common
     
     internal class TNode : TRow
     {
+        public readonly NodeType nodeType;
         public readonly long uid;
-        public virtual TChar id => (TChar)this[0];
+        public readonly string id;
         internal TNode(long dp, NodeType nt, CTree<long, TypedValue> vals)
-            : base(nt, vals)
-        { uid = dp; }
-        internal TNode(Cursor cu) 
-            :this(cu._dom as NodeType??throw new DBException("22000"),cu._ds,cu.values)
-        {  }
-        protected TNode(NodeType nt,BTree<long,(long,long)> ds,CTree<long,TypedValue>vals)
-            : this(ds.Contains(nt.defpos)?ds[nt.defpos].Item1:-1L,nt,vals)
-        {  }
+            : base(nt.pathDomain, vals)
+        {
+            nodeType = nt;
+            id = vals[nt.idCol]?.ToString()??"_";
+            uid = dp; 
+        }
+        protected TNode(long dp, NodeType nt, string i, CTree<long, TypedValue> vals)
+    : base(nt.pathDomain, vals)
+        {
+            nodeType = nt;
+            id = i;
+            uid = dp;
+        }
         public override int CompareTo(object? obj)
         {
             if (obj is not TNode n)
@@ -164,102 +171,60 @@ namespace Pyrrho.Common
     }
     internal class TEdge : TNode
     {
-        public TSet leaving => (TSet)this[1];
-        public TSet arriving => (TSet)this[2];
+        internal const int LEAVING = 1, ARRIVING = 2; // default positions
+        public readonly TChar leaving;
+        public readonly TChar arriving;
         internal TEdge(long dp, EdgeType dt, CTree<long, TypedValue> v) : base(dp, dt, v)
-        { }
-        internal TEdge(Cursor cursor) : base(cursor) { }
+        {
+            leaving = v[dt.leaveCol] as TChar??new TChar("_");
+            arriving = v[dt.arriveCol] as TChar??new TChar("_");
+        }
         internal override TypedValue New(Domain t)
         {
             throw new NotImplementedException();
         }
-        public TNode Leaving(Context cx)
-        {
-            if (dataType is not EdgeType et ||
-                cx._Dom(et.leavingType) is not NodeType lt ||
-                    values[et.leavingType] is not TInt lu ||
-                      cx._Ob(lt.structure) is not Table lb ||
-                        lb.tableRows[lu.value] is not TableRow lr)
-                throw new PEException("PE91102");
-            return new TNode(lu.value, lt, lr.vals);
-        }
-        public TNode Arriving(Context cx)
-        {
-            if (dataType is not EdgeType et ||
-                cx._Dom(et.arrivingType) is not NodeType at ||
-                    values[et.arrivingType] is not TInt au ||
-                      cx._Ob(at.structure) is not Table ab ||
-                        ab.tableRows[au.value] is not TableRow ar)
-                throw new PEException("PE91102");
-            return new TNode(au.value, at, ar.vals);
-        }
     }
     internal class TMatch : TNode 
     {
-        public readonly CTree<long,TGParam> tgs; 
-        public readonly CTree<TChar, TypedValue> props;
-        readonly TChar _id;
-        public override TChar id => _id;
-        internal TMatch(long dp, TChar i, NodeType nt, CTree<TChar,TypedValue> ns, Lexer lxr) 
-            : base(dp, nt, CTree<long,TypedValue>.Empty)
+        public readonly Sqlx tok;
+        public readonly CTree<string,TGParam> tgs; 
+        public readonly CTree<TypedValue, TypedValue> props;
+        internal TMatch(long dp, string i, NodeType nt, Sqlx tk, CTree<TypedValue,TypedValue> ns, Lexer lxr) 
+            : base(dp, nt, i, CTree<long,TypedValue>.Empty)
         {
-            _id = i;
+            tok = tk;
             tgs = lxr.tgs;
             props = ns;
         }
         internal bool CheckProps(Context cx, TNode n)
         {
-            if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
+            if (n.nodeType.infos[cx.role.defpos] is ObInfo oi)
                 for (var b = props.First(); b != null; b = b.Next())
-                    if (b.value() is TypedValue xv && b.key().value is string k)
+                    if (b.value() is TypedValue xv && b.key().ToString() is string k)
                     {
                         if (xv is TGParam tg)
                         {
-                            if (tgs.Contains(tg.uid) || cx.binding[tg] is not TypedValue vv)
+                            if (tgs.Contains(tg.id) || cx.binding[tg.id] is not TypedValue vv)
                                 continue;
                             xv = vv;
                         }
                         switch (k)
                         {
                             case "ID":
-                                if (n.id.value != xv.ToString())
-                                    return false; break;
                             case "LEAVING":
-                            case "ARRIVING": // xv is still a TChar (these are hidden properties of TMatch)
-                                if (n is not TEdge e)
-                                    return false;
-                                if (oi.names[k].Item2 is long p && e.values[p] is TSet vs)
-                                    for (var c = vs.First(); c != null; c = c.Next())
-                                        if (c.Value() is TChar vc && cx.db.nodeIds[vc] is TNode r)
-                                        {
-                                            if (xv is TMatch tm)
-                                            {
-                                                if (vs.Contains(tm.id))
-                                                    goto next;
-                                                for (var w = tm.tgs.First(); w != null; w = w.Next())
-                                                    if (w.value() is TGParam x)
-                                                        cx.binding += (x, r);
-                                                goto next;
-                                            }
-                                            if (xv is TGParam q)
-                                            {
-                                                if (cx.binding[q] is TypedValue vq &&
-                                                        vq != r.id)
-                                                    return false;
-                                            }
-                                            else if (xv != r.id)
-                                                return false;
-                                        }
+                            case "ARRIVING":  // no need
                                 break;
                             case "SPECIFICTYPE":
                                 if (!n.dataType.Match(xv.ToString()))
-                                    return false; break;
+                                    return false;
+                                break; 
                             default:
+                                if (!oi.names.Contains(k))
+                                    return false;
                                 if (oi.names[k].Item2 is long d && xv != n.values[d])
                                     return false;
                                 break;
                         }
-                    next:;
                     }
             return true;
         }
@@ -267,6 +232,8 @@ namespace Pyrrho.Common
         {
             var sb = new StringBuilder(id.ToString());
             sb.Append(':'); sb.Append(DBObject.Uid(uid));
+            if (nodeType.defpos>=0)
+            { sb.Append('['); sb.Append(DBObject.Uid(nodeType.defpos)); sb.Append(']'); }
             var cm = '{';
             for (var b=props.First();b is not null;b=b.Next())
             {
@@ -367,6 +334,7 @@ namespace Pyrrho.Common
     internal class TInteger : TInt
     {
         internal readonly Integer ivalue;
+        static readonly Integer longMax = new (long.MaxValue), longMin = new (long.MinValue);
         internal TInteger(Domain dt, Integer i) : base(dt.Best(Domain.Int),0L) { ivalue = i; }
         internal TInteger(Integer i) : this(Domain.Int, i) { }
         internal override TypedValue Next()
@@ -387,7 +355,7 @@ namespace Pyrrho.Common
         }
         internal override long? ToLong()
         {
-            if (ivalue <long.MaxValue && ivalue>long.MinValue)
+            if (ivalue < longMax && ivalue > longMin)
                 return (long)ivalue;
             return null;
         }
@@ -453,8 +421,8 @@ namespace Pyrrho.Common
     internal class TNumeric : TypedValue
     {
         internal readonly Numeric value;
-        internal TNumeric(Domain dt, Numeric n) : base(dt.Best(Domain.Numeric)) { value = n; }
-        internal TNumeric(Numeric n) : this(Domain.Numeric, n) { }
+        internal TNumeric(Domain dt, Numeric n) : base(dt.Best(Domain._Numeric)) { value = n; }
+        internal TNumeric(Numeric n) : this(Domain._Numeric, n) { }
         internal override TypedValue New(Domain t)
         {
             return new TNumeric(t, value);
@@ -530,7 +498,7 @@ namespace Pyrrho.Common
         }
     }
 
-    // shareable as of 26 April 2021
+    
     internal class TSensitive : TypedValue
     {
         internal readonly TypedValue value;
@@ -585,7 +553,7 @@ namespace Pyrrho.Common
             return "?" + DBObject.Uid(qid.dp);
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class TUnion : TypedValue 
     {
         internal readonly TypedValue value = TNull.Value;
@@ -826,7 +794,7 @@ namespace Pyrrho.Common
     }
     /// <summary>
     /// This is really part of the implementation of multi-level indexes (MTree etc)
-    ///     // shareable as of 26 April 2021
+    ///     
     /// </summary>
     internal class TMTree: TypedValue
     {
@@ -861,7 +829,7 @@ namespace Pyrrho.Common
             return new TPartial(cx.FixTlb(value));
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class TArray : TypedValue
     {
         internal readonly BList<TypedValue> list; 
@@ -927,7 +895,7 @@ namespace Pyrrho.Common
             return sb.ToString();
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class TTypeSpec : TypedValue
     {
         readonly Domain _dataType;
@@ -1000,7 +968,7 @@ namespace Pyrrho.Common
             return sb.ToString();
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class TPeriod : TypedValue
     {
         internal readonly Period value;
@@ -1016,11 +984,11 @@ namespace Pyrrho.Common
     internal class TRvv : TypedValue
     {
         internal readonly Rvv rvv = Rvv.Empty;
-        internal TRvv(string match) : base (Domain.Rvv)
+        internal TRvv(string match) : base (Domain._Rvv)
         {
             rvv = Rvv.Parse(match)??Rvv.Empty;
         }
-        internal TRvv(Rvv r) : base(Domain.Rvv)
+        internal TRvv(Rvv r) : base(Domain._Rvv)
         {
             rvv = r;
         }
@@ -1030,7 +998,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="vs"></param>
-        internal TRvv(Context cx, CTree<long, TypedValue> vs) : base(Domain.Rvv)
+        internal TRvv(Context cx, CTree<long, TypedValue> vs) : base(Domain._Rvv)
         {
             var r = Rvv.Empty;
             var dp = vs[DBObject.Defpos]?.ToLong() ?? -1L;
@@ -1082,7 +1050,7 @@ namespace Pyrrho.Common
     /// Cursor and RowBookmark are TRows, and rows can be assigned to SqlValues if the columns
     /// match (not the uids).
     /// If the columns don't match then a map is required.
-    ///     // shareable as of 26 April 2021
+    ///     
     /// </summary>
     internal class TRow : TypedValue
     {
@@ -1105,18 +1073,21 @@ namespace Pyrrho.Common
                     v += (b.key(), vs[p] ?? TNull.Value);
             values = v;
         }
-        public TRow(RowSet rs,Domain dm,TRow rw) : base(dm)
+        public TRow(RowSet rs, Domain dm, TRow rw) : base((dm.Length==0)?rs:dm)
         {
             var vs = CTree<long, TypedValue>.Empty;
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p)
-                {
-                    var v = rw[p];
-                    if (v == null)
-                        for (var c = rs.matching[p]?.First(); c != null && v == null; c = c.Next())
-                            v = rw[c.key()];
-                    vs += (p, v ?? TNull.Value);
-                }
+            if (dm.Length == 0)
+                vs = rw.values;
+            else
+                for (var b = dm.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                    {
+                        var v = rw[p];
+                        if (v == null)
+                            for (var c = rs.matching[p]?.First(); c != null && v == null; c = c.Next())
+                                v = rw[c.key()];
+                        vs += (p, v ?? TNull.Value);
+                    }
             values = vs;
         }
         public TRow(Domain dm, Domain cols, TRow rw) : base(dm)
@@ -1258,7 +1229,7 @@ namespace Pyrrho.Common
     /// <summary>
     /// A set can be placed in a cell of a Table, so is treated as a value type.
     /// Operations of UNION and INTERSECT etc are defined on sets.
-    ///     // shareable as of 26 April 2021
+    ///     
     /// </summary>
     internal class TSet : TypedValue
     {
@@ -1317,7 +1288,7 @@ namespace Pyrrho.Common
             var tl = tree.Last();
             return (tl == null) ? null : new SetBookmark(this, (int)tree.Count, tl);
         }
-        // shareable as of 26 April 2021
+        
         internal class SetBookmark : IBookmark<TypedValue>
         {
             readonly TSet _set;
@@ -1442,7 +1413,7 @@ namespace Pyrrho.Common
     /// <summary>
     /// A Multiset can be placed in a cell of a Table, so is treated as a value type.
     /// Operations of UNION and INTERSECT etc are defined on Multisets.
-    ///     // shareable as of 26 April 2021
+    ///     
     /// </summary>
     internal class TMultiset : TypedValue
     {
@@ -1538,7 +1509,7 @@ namespace Pyrrho.Common
             var tl = tree.Last();
             return (tl==null)?null:new MultisetBookmark(this, count-1, tl);
         }
-        // shareable as of 26 April 2021
+        
         internal class MultisetBookmark : IBookmark<TypedValue>
         {
             readonly TMultiset _set;
@@ -1744,7 +1715,7 @@ namespace Pyrrho.Common
     /// <summary>
     /// The model for Xml values is that element ordering and repetition is important,
     /// but attributes are not ordered and have unique names.
-    ///     // shareable as of 26 April 2021
+    ///     
     /// </summary>
     internal class TXml : TypedValue
     {

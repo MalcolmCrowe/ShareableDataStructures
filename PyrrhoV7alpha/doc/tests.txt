@@ -126,7 +126,8 @@ CREATE TABLE students ("name" CHAR, test CHAR, score INT)
 {name:'Esben',TEST:'Tuning',SCORE:31,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:37},
 {name:'Kaolin',TEST:'SQL',SCORE:56,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:72},
 {name:'Kaolin',TEST:'Tuning',SCORE:88,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:72},
-{name:'Tatiana',TEST:'SQL',SCORE:87,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:85},             {name:'Tatiana',TEST:'Tuning',SCORE:83,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:85}]
+{name:'Tatiana',TEST:'SQL',SCORE:87,AVERAGE_BY_TEST:65.25,AVERAGE_BY_NAME:85}, 
+{name:'Tatiana',TEST:'Tuning',SCORE:83,AVERAGE_BY_TEST:68.75,AVERAGE_BY_NAME:85}]
 CREATE TABLE users (email CHAR,first_name CHAR, last_name CHAR,  account_type CHAR)
 [INSERT INTO users VALUES ('admin@boss.org', 'Admin', 'Boss', 'admin'),
  ('bob.carlsen@foo.bar', 'Bob', 'Carlsen','regular'),
@@ -135,7 +136,7 @@ CREATE TABLE users (email CHAR,first_name CHAR, last_name CHAR,  account_type CH
  ('root@boss.org', 'Root', 'Chief', 'admin')]
 [SELECT row_number() OVER (PARTITION BY account_type ORDER BY email) AS rnum,
   email, first_name, last_name, account_type FROM users]
-->[{RNUM:1,EMAIL:admin@boss.org',FIRST_NAME:'Admin',LAST_NAME:'Boss',ACCOUNT_TYPE:'admin'},            {RNUM:1,EMAIL:'bob.carlsen@foo.bar',FIRST_NAME:'Bob',LAST_NAME:'Carlsen',ACCOUNT_TYPE:'regular'},              {RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'},                {RNUM:3,EMAIL:'jphn.smaith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'},
+->[{RNUM:1,EMAIL:admin@boss.org',FIRST_NAME:'Admin',LAST_NAME:'Boss',ACCOUNT_TYPE:'admin'},            {RNUM:1,EMAIL:'bob.carlsen@foo.bar',FIRST_NAME:'Bob',LAST_NAME:'Carlsen',ACCOUNT_TYPE:'regular'},              {RNUM:2,EMAIL:'eddie.stevens@data.org',FIRST_NAME:'Eddie',LAST_NAME:'Stevens',ACCOUNT_TYPE:'regular'},                {RNUM:3,EMAIL:'john.smith@xyz.org',FIRST_NAME:'John',LAST_NAME:'Smith',ACCOUNT_TYPE:'regular'},
 {RNUM:2,EMAIL:root@boss.org',FIRST_NAME:'Root',LAST_NAME:'Chief',ACCOUNT_TYPE:'admin'}]
 /* LearnSQL examples */
 create table employee(employee_id int,full_name char,Department char,salary numeric(8,2))
@@ -782,20 +783,16 @@ alter type student set under person
 create type staff under person as (title char)
 insert into staff values ('Anne','Prof')
 select *,specifictype() from person
-alter type person add dob date
-create type friend edgetype(person,person)
-[create trigger sym after insert on friend referencing new as nr for each row 
-if not exists (select id from friend where leaving=nr.arriving and arriving=nr.leaving)
-then insert into friend(leaving,arriving) values (nr.arriving,nr.leaving) end if]
-insert into person values('Joe',date'22/04/1950'),('Mary',date'04/08/1973')
-insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')
-select id from friend where leaving='Fred'
-select count(*) from friend where 'Fred' in leaving
-match ("Fred")-[:friend]->(_x)
+create type married edgetype(bride=person,groom=person)
+insert into person values('Joe'),('Mary')
+insert into married(bride,groom) values('Mary','Fred')
+select id from married where groom='Fred'
+select count(*) from married where 'Fred'=groom
+match ("Fred")<-[:married]-(_x)
 create type product nodetype
 [CREATE
 (Joe:Customer {"Name":'Joe Edwards', Address:'10 Station Rd.'}),
 (Joe)-[:Ordered {"Date":date'22/11/2002'} ]-> (Ord201:"Order")-[:Item {Qty: 5}]->("16/8x100" : WoodScrew : Product),
 (Ord201)-[:Item {Qty: 5}]->("Fibre 12cm": WallPlug : Product),
 (Ord201)-[:Item {Qty: 1}]->("500ml" : RubberGlue : Product)]
-match (_)-[:Item {Qty:_Q}]->(_Y:_T) where Q>4
+match (_)-[:Item {Qty:_A}]->(_X:_T) where A>4

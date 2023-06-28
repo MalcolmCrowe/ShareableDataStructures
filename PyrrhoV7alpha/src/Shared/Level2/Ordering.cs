@@ -34,7 +34,7 @@ namespace Pyrrho.Level2
         public OrderCategory flags = OrderCategory.None;
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (domain != null && !wr.cx.db.types.Contains(domain))
+            if (domain != null && wr.cx.db.Find(domain) is null)
             {
                 domdefpos = domain.Create(wr, tr);
                 return domdefpos;
@@ -82,7 +82,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
         {
-            wr.PutLong(wr.cx.db.types[domain]??throw new PEException("PE48800"));
+            wr.PutLong(wr.cx.db.Find(domain)?.defpos??throw new PEException("PE48800"));
             funcdefpos = wr.cx.Fix(funcdefpos);
             wr.PutLong(funcdefpos);
             wr.PutInt((int)flags);
@@ -111,7 +111,7 @@ namespace Pyrrho.Level2
                 case Type.Drop:
                     {
                         var t = (Drop)that;
-                        if (db.types[domain] == t.delpos || funcdefpos == t.delpos)
+                        if (db.Find(domain)?.defpos == t.delpos || funcdefpos == t.delpos)
                             return new DBException("40010", funcdefpos, that, ct);
                         break;
                     }
@@ -131,7 +131,7 @@ namespace Pyrrho.Level2
         {
             var dm = domain 
                 + (Domain.OrderFunc, (Procedure?)cx.db.objects[funcdefpos] ?? throw new DBException("42108"))
-                +(Domain.OrderCategory, flags);
+                +(Domain._OrderCategory, flags);
             cx.Add(dm);
             cx.db += (dm, p);
             if (cx.db.mem.Contains(Database.Log))

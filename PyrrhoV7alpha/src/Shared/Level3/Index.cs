@@ -18,7 +18,7 @@ namespace Pyrrho.Level3
     /// This class corresponds to logical Index database objects.
     /// Indexes are database objects that are created by primary key and unique constraints.
     /// Indexes have unique names of form U(nnn), since they are not named in SQL.
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class Index : DBObject 
     {
@@ -196,8 +196,9 @@ namespace Pyrrho.Level3
                 {
                     var rq = pq.value();
                     var m = rq.MakeKey(this);
-                    if (m != null)
-                    {
+                    if (HasNull(m))
+                        m = rq.MakeKey(this, cx);
+                    if (!HasNull(m)) {
                         if (rx)
                             CheckRef(cx.db, m);
                         if (ux && rs.Contains(m))
@@ -212,6 +213,13 @@ namespace Pyrrho.Level3
                 }
             }
             return this + (Tree, rs);
+        }
+        bool HasNull(CList<TypedValue> k)
+        {
+            for (var b = k.First(); b != null; b = b.Next())
+                if (b.value() == TNull.Value)
+                    return true;
+            return false;
         }
         /// <summary>
         /// Check referential integrity
@@ -276,6 +284,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            sb.Append(" for "); sb.Append(Uid(tabledefpos));
             sb.Append(" count " + rows?.count);
             sb.Append(" Key:"); sb.Append(keys);
             sb.Append(" Kind="); sb.Append(flags);
@@ -318,6 +327,7 @@ namespace Pyrrho.Level3
             var nt = cx.Fix(reftabledefpos);
             if (reftabledefpos!=nt)
                 r += (RefTable, nt);
+            r -= Tree;  // Commit will enter the committed rows
             return r;
         }
         internal override Basis ShallowReplace(Context cx, long was, long now)
@@ -348,48 +358,4 @@ namespace Pyrrho.Level3
             sb.Append("\r\n");
         }
     }
-    /*    /// <summary>
-        /// A VirtualTable can have virtual indexes: they are for navigation properties
-        /// and do not attempt to act as constraints on the remote table
-        /// </summary>
-        internal class VirtualIndex : Index
-        {
-            public VirtualIndex(VIndex pt,Context cx) :base(pt.defpos,_Mem(cx,pt))
-            { }
-            public VirtualIndex(long dp,BTree<long,object> m) : base(dp,m)
-            { }
-            static BTree<long,object> _Mem(Context cx,VIndex px)
-            {
-                var r = BTree<long, object>.Empty;
-                r += (TableDefPos, px.tabledefpos);
-                r += (IndexConstraint, px.flags);
-                if (px.reference > 0 && cx.db.objects[px.reference] is Index rx)
-                {
-                    r += (RefIndex, rx.defpos);
-                    r += (RefTable, rx.tabledefpos);
-                }
-                var cols = BList<long?>.Empty;
-                var tb = (Table)cx.obs[px.tabledefpos];
-                cx.Add(tb.framing);
-                var dm = cx._Dom(tb);
-                for (var b = px.seqs.First(); b != null; b = b.Next())
-                {
-                    var seq = b.value();
-                    cols += dm.rowType[seq];
-                }
-                r += (Keys, cols);
-                return r;
-            }
-            internal override Basis New(BTree<long, object> m)
-            {
-                return new VirtualIndex(defpos, m);
-            }
-            internal override DBObject Relocate(long dp)
-            {
-                return (dp == defpos) ? this : new VirtualIndex(dp, mem);
-            }
-            internal override void Cascade(Context cx, Drop.DropAction a = Level2.Drop.DropAction.Restrict, BTree<long, TypedValue> u = null)
-            {
-            }
-        } */
 }

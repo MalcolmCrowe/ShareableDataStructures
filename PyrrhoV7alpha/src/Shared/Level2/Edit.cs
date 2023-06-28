@@ -1,5 +1,7 @@
 using System;
 using System.ComponentModel.DataAnnotations;
+using System.Reflection;
+using System.Runtime.Intrinsics.Arm;
 using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level1;
@@ -41,11 +43,7 @@ namespace Pyrrho.Level2
                   (dt as UDType)?.super,pp,cx)
         {
             if (cx.db != null)
-            {
-                if (!cx.db.types.Contains(old))
-                    throw new DBException("42000",nm);
-                _defpos = cx.db.types[old] ?? -1L;
-            }
+                _defpos = cx.db.Find(old)?.defpos ?? throw new DBException("42000",nm);
             prev = old;
             _prev = prev.defpos;
         }
@@ -106,7 +104,7 @@ namespace Pyrrho.Level2
                     {
                         var t = (Record)that;
                         for (var cp = t.fields.PositionAt(0); cp != null; cp = cp.Next())
-                         if (db.objects[cp.key()] is DBObject c && c.domain == prev)
+                         if (cx.db.objects[cp.key()] == prev)
                                 return new DBException("40079", defpos, that, ct);
                         break;
                     }
@@ -140,7 +138,7 @@ namespace Pyrrho.Level2
         internal long _defpos;
         internal override long defpos => _defpos;
         public Domain prev = Domain.Null;
-        readonly BTree<string, long?> hierCols;
+        readonly BTree<string, (int,long?)> hierCols;
         internal long _prev;
         /// <summary>
         /// Constructor: an Edit request from the Parser.
@@ -153,14 +151,11 @@ namespace Pyrrho.Level2
         /// <param name="pp">The ppos for this log record</param>
         public EditType(Ident nm, UDType old, Domain sd, Domain? un, long pp, Context cx)
             : base(Type.EditType, nm, 
-                  (UDType)(old.New(old.defpos,sd.mem + (Domain.Structure,old.structure))), un, pp, cx)
+                  (UDType)old.New(old.defpos,sd.mem), 
+                  un, cx.db.nextStmt, pp, cx)
         {
             if (cx.db != null)
-            {
-                if (!cx.db.types.Contains(old))
-                    throw new DBException("42000",nm.iix.dp);
-                _defpos = cx.db.types[old] ?? -1L;
-            }
+                _defpos = cx.db.Find(old)?.defpos ?? throw new DBException("42000",nm.iix.dp);
             prev = old;
             hierCols = old.HierarchyCols(cx);
             _prev = prev.defpos;
@@ -172,7 +167,7 @@ namespace Pyrrho.Level2
         /// <param name="pos">The defining position</param>
 		public EditType(Reader rdr) : base(Type.EditType, rdr) 
         {
-            hierCols = (prev as UDType)?.HierarchyCols(rdr.context)??BTree<string,long?>.Empty;
+            hierCols = (prev as UDType)?.HierarchyCols(rdr.context)??BTree<string,(int, long?)>.Empty;
         }
         protected EditType(EditType x, Writer wr) : base(x, wr)
         {
@@ -203,6 +198,7 @@ namespace Pyrrho.Level2
             _defpos = rdr.GetLong();
             _prev = rdr.Prev(_defpos) ?? _defpos;
             prev = (Domain)(rdr.context._Ob(_prev)??Domain.Content);
+            dataType = prev;
             base.Deserialise(rdr);
         }
         /// <summary>
@@ -227,7 +223,7 @@ namespace Pyrrho.Level2
                     {
                         var t = (Record)that;
                         for (var cp = t.fields.PositionAt(0); cp != null; cp = cp.Next())
-                            if (db.objects[cp.key()] is DBObject c && c.domain== prev)
+                            if (db.objects[cp.key()]== prev)
                                 return new DBException("40079", defpos, that, ct);
                         break;
                     }
@@ -260,26 +256,22 @@ namespace Pyrrho.Level2
         }
         internal override DBObject Install(Context cx, long p)
         {
+            var fix = CTree<long, bool>.Empty;
             var r = (Domain)base.Install(cx, p);
-            cx.db -= ppos; // we are changing the old Domain, not adding a new one
-            if (dataType is not NodeType st || cx.db.objects[st.structure] is not Table ts)
-                throw new DBException("PE408205");
+            if (dataType is not Table st)
+                throw new PEException("PE408205");
             // To make things easier we consider the merging of columns in two stages,
             // first deal with where our new columns match columns in the hierarchy
-            if (dataType.infos[cx.role.defpos] is ObInfo oi)
+            if (dataType.infos[cx.role.defpos] is ObInfo oi && prev.infos[cx.role.defpos] is ObInfo pi)
                 for (var b = oi.names.First(); b != null; b = b.Next())
                     if (b.value().Item2 is long np && !prev.representation.Contains(np) // new name
-                        && hierCols[b.key()] is long sp && cx.db.objects[sp] is Table t // in hierarchy
-                        && cx.db.objects[t.nodeType] is UDType s
-                        && s.infos[cx.role.defpos] is ObInfo si && si.names[b.key()].Item2 is long ep
+                        && hierCols[b.key()].Item2 is long ep  // in hierarchy
                         && np != ep)
                     {
                         var q = Math.Min(np, ep);
-                        cx.MergeColumn(Math.Max(np, ep), q);
-                        dataType = (UDType)(cx.db.objects[dataType.defpos] ?? throw new DBException("PE408200"));
-                        dataType -= q;
-                        dataType += (Domain.Display, dataType.Length);
-                        ts += (Table.TableCols, ts.tableCols - q);
+                        var nq = Math.Max(np, ep);
+                        cx.MergeColumn(q, nq); // ShallowReplace does the work
+                        fix += (dataType.defpos, true);
                     }
             under = (UDType?)cx.db.objects[under?.defpos ?? -1L];
             // The second stage of merging columns considers the columns from a new under
@@ -289,25 +281,30 @@ namespace Pyrrho.Level2
                 for (var b = prev.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long np && cx.db.objects[np] is TableColumn tc
                         && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string n
-                        && hc[n] is long sp && cx.db.objects[sp] is Table t // in hierarchy
-                        && cx.db.objects[t.nodeType] is UDType s
-                        && s.infos[cx.role.defpos] is ObInfo si && si.names[n].Item2 is long ep
+                        && hc[n].Item2 is long ep  // in hierarchy
                         && np != ep)
                     {
                         var q = Math.Min(np, ep);
-                        cx.MergeColumn(Math.Max(np, ep), q);
-                        dataType = (UDType)(cx.db.objects[dataType.defpos] ?? throw new DBException("PE408203"));
-                        dataType -= q;
-                        dataType += (Domain.Display, dataType.Length);
-                        ts += (Table.TableCols, ts.tableCols - q);
+                        var nq = Math.Max(np, ep);
+                        cx.MergeColumn(q, nq); // ShallowReplace does the work
+                        fix += (uD.defpos,true);
                     }
                 // under and dataType may have changed
+                dataType = (UDType)(cx.db.objects[dataType.defpos] ?? Domain.TypeSpec);
+                var ps = dataType.representation;
+                for (var dm = dataType.super; dm is not null; dm = dm.super)
+                    ps += dm.representation;
+                var rt = BList<long?>.Empty;
+                for (var b = ps.First(); b != null; b = b.Next())
+                    rt += b.key();
+                dataType += (Table.PathDomain, ((Table)dataType)._PathDomain(cx));
                 under = (UDType)(cx.db.objects[under.defpos] ?? throw new DBException("PE408202"));
                 // we need to add our tableRows to under 
-                if (under is NodeType nt && cx.db.objects[nt.structure] is Table tu)
+                if (under is NodeType nt && dataType is Table ns)
                 {
-                    for (var b = ts.tableRows.First(); b != null; b = b.Next())
-                        for (var xb = tu.indexes.First(); xb != null; xb = xb.Next())
+                    for (var b = ns.tableRows.First(); b != null; b = b.Next())
+                    {
+                        for (var xb = nt.indexes.First(); xb != null; xb = xb.Next())
                             for (var c = xb.value().First(); c != null; c = c.Next())
                                 if (cx.db.objects[c.key()] is Level3.Index x
                                     && x.MakeKey(b.value().vals) is CList<TypedValue> k)
@@ -315,20 +312,31 @@ namespace Pyrrho.Level2
                                     x += (k, b.key());
                                     cx.db += (x.defpos, x);
                                 }
-                    under = (UDType)(cx.db.objects[under.defpos] ?? throw new DBException("PE408204"));
+                    }
+                    under += (Table.TableRows, nt.tableRows + ns.tableRows);
                     // record that we are a subType of Under
-                    under += (UDType.Subtypes, uD.subtypes - ppos + (prev.defpos, true));
+                    under += (Domain.Subtypes, uD.subtypes - ppos + (prev.defpos, true));
                     cx.db += (under.defpos, under);
-                    dataType += (UDType.Under, under);
-                    tu += (Table.TableRows, tu.tableRows + ts.tableRows);
-                    tu = tu + (DBObject._Domain, under) + (DBObject.LastChange, ppos);
-                    cx.db += (tu.defpos, tu);
+                    dataType += (Domain.Under, under);
                 }
             }
-            // and record our new dataType
+            // record our new dataType
             cx.db += (dataType.defpos, dataType);
-            ts = ts + (DBObject._Domain, dataType) + (DBObject.LastChange, ppos);
-            cx.db += (ts.defpos, ts);
+            // and fix up the nodeIds list
+            var ni = cx.db.nodeIds;
+            for (var b = fix.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is NodeType nd)
+                {
+                    while (nd.super is NodeType d1)
+                        nd = d1;
+                    if (nd.FindPrimaryIndex(cx) is Level3.Index px)
+                        for (var c = px.rows?.First(); c != null; c = c.Next())
+                            if (c.key()[0] is TChar k && c.Value() is long kp && nd.tableRows[kp] is TableRow t
+                                && cx.db.objects[t.tabledefpos] is NodeType td)
+                                ni += (k.value, new TNode(kp, td, t.vals));
+                }
+            if (ni != cx.db.nodeIds)
+                cx.db += (Database.NodeIds, ni);
             return dataType;
         }
         public override string ToString()

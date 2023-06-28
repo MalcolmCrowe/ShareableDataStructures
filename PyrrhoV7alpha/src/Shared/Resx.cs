@@ -118,7 +118,7 @@ namespace Pyrrho
             dict.Add("2E302", "Type {0} does not define public field {1}");
             dict.Add("2E303", "Types {0} and {1} do not match");
             dict.Add("2E304", "GET rurl should begin with /");
-            dict.Add("2E305", "No obs returned by rurl {0}");
+            dict.Add("2E305", "No Pyrrho service on rurl {0}");
             dict.Add("2E307", "Obtain an up-to-date schema for {0} from Role$Class");
             dict.Add("2F003", "Prohibited SQL-statement attempted");
             dict.Add("2H000", "Collation error: {0}");

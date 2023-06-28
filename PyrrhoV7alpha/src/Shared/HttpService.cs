@@ -273,7 +273,7 @@ namespace Pyrrho
                 if (mi.description != "" && mi.description[0] == '<')
                     sbuild.Append(mi.description);
             }
-            var oi = fm?.domain.rowType;
+            var oi = fm?.rowType;
             if (chartType != CTree<Sqlx, TypedValue>.Empty)
             {
                 for (var co = oi?.First(); co != null; co = co.Next())
@@ -317,7 +317,7 @@ namespace Pyrrho
             else
             {
                 sbuild.Append("<table border><tr>");
-                for (var b = rs.domain.rowType.First(); b != null; b = b.Next())
+                for (var b = rs.rowType.First(); b != null; b = b.Next())
                     if (fm is not null && b.value() is long p &&  cx._Ob(fm.sIMap[p]??-1L) is DBObject c &&
                         c.infos[cx.role.defpos] is ObInfo ci && ci.name != null)
                         sbuild.Append("<th>" + ci?.name ?? "" + "</th>");
@@ -596,11 +596,11 @@ namespace Pyrrho
             var rs = (RowSet?)cx.obs[e._rowsetpos];
             if (rs == null)
                 return;
-            var key = (cx.groupCols[rs.domain.defpos] is Domain gc) ? new TRow(gc, e.values) : TRow.Empty;
+            var key = (cx.groupCols[rs.defpos] is Domain gc) ? new TRow(gc, e.values) : TRow.Empty;
             sbuild.Append(cm); cm = ",";
             var rt = e.columns;
             var doc = TDocument.Null;
-            for (var b = rt.First(); b != null && b.key()<rs.domain.display; b = b.Next())
+            for (var b = rt.First(); b != null && b.key()<rs.display; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is SqlValue ci && e[ci.defpos] is TypedValue tv)
                 {
                     var n = ci.alias ?? ci.NameFor(cx);
@@ -729,7 +729,7 @@ namespace Pyrrho
                 details += ("Role", role);
                 var acc = client.Request.Headers["Accept"];
                 var d = Database.Get(details)??throw new DBException("3D000", dbn.ident);
-                var db = d.Transact(Transaction.Analysing, "", new Connection(details));
+                var db = d.Transact(Transaction.Analysing, new Connection(details));
                 if (d.lastModified != null)
                     db += (Database.LastModified, d.lastModified); // use the file time, not UTCNow
                 if (acc != null && acc.Contains("text/plain"))

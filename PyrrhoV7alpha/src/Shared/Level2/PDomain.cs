@@ -24,7 +24,7 @@ namespace Pyrrho.Level2
         /// </summary>
 		public virtual long defpos { get { return ppos; } }
         internal Domain domain = Domain.Null;
-        internal Domain? element = null, structure=null, under = null;
+        internal Domain? element = null, under = null;
         internal long domdefpos = -1L;
 
         public override long Dependent(Writer wr, Transaction tr)
@@ -58,13 +58,13 @@ namespace Pyrrho.Level2
             }
             else
             {
-                k = Domain.Structure;
-                structure = sd;
+                k = Domain.Under;
+                under = sd;
             }
             var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv, Context._system);
             domdefpos = pp;
             name = nm;
-            domain = new Domain(-1L, dt, BTree<long,object>.Empty + (DBObject._Depth,SqlValue._Depths(structure,element,under))
+            domain = new Domain(-1L, dt, BTree<long,object>.Empty + (DBObject._Depth,SqlValue._Depths(element,under))
                 + (Domain.Precision, dl) + (Domain.Scale, sc)
                 + (Domain.Charset, ch) + (DBObject.LastChange,pp)
                 + (Domain.Culture, CultureInfo.GetCultureInfo(co))
@@ -96,7 +96,7 @@ namespace Pyrrho.Level2
         : base(t, pp, cx, dt.name, Grant.AllPrivileges)
         {
             domain = (Domain)dt.Relocate(pp);
-            cx.db += (Database.Types,cx.db.types + (domain, pp));
+            cx.db += domain;
         }
         /// <summary>
         /// Constructor: a new Domain definition from the buffer
@@ -118,20 +118,6 @@ namespace Pyrrho.Level2
         protected PDomain(PDomain x, Writer wr) : base(x,wr)
         {
             domain = (Domain)x.domain.Relocate(wr.cx);
-        }
-        static bool _Match(Context cx, CList<Domain> cs, Domain dc)
-        {
-            if (dc.defpos == -1L)
-                return false;
-            if (dc.structure >= 0 && dc.rowType.Count == cs.Count)
-            {
-                var cb = cs.First();
-                for (var c = dc.rowType.First(); c != null && cb is not null; c = c.Next(), cb = cb.Next())
-                    if (c.value() is long p && cx.obs[p] is SqlValue v 
-                        && v.domain.CompareTo(cb.value()) != 0)
-                        return false;
-            }
-            return true;
         }
         protected virtual PDomain New(Writer wr)
         {
@@ -158,9 +144,9 @@ namespace Pyrrho.Level2
             wr.PutString(domain.defaultString);
             if ((domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET || domain.kind==Sqlx.SET)
                 && domain.elType is not null)
-                wr.PutLong(wr.cx.db.types[domain.elType]??throw new PEException("PE48802"));
+                wr.PutLong(wr.cx.db.Find(domain.elType)?.defpos??throw new PEException("PE48802"));
             else
-                wr.PutLong(domain.structure);
+                wr.PutLong(-1L);
  			base.Serialise(wr);
 		}
         /// <summary>
@@ -187,8 +173,8 @@ namespace Pyrrho.Level2
             var sd = (Domain?)rdr.context._Ob(rdr.GetLong());
             if (sd is not null && kind == Sqlx.TYPE)
             {
-                structure = sd;
-                domain += (Domain.Structure, sd);
+                under = sd;
+                domain += (Domain.Under, sd);
             }
             else if (sd is not null)
             {
@@ -216,7 +202,7 @@ namespace Pyrrho.Level2
                     break;
                 case Type.PDomain1:
                 case Type.PDomain:
-                    if (nm == ((PDomain)that).domain.name)
+                    if (nm == ((PDomain)that).name)
                         return new DBException("40022", nm, that, ct);
                     break;
                 case Type.PTable:
@@ -268,15 +254,11 @@ namespace Pyrrho.Level2
             cx.Add(dt);
             var st = BTree<string, long?>.Empty;
             for (var b = dt.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long bp && cx._Ob(bp) is DBObject ob && ob.NameFor(cx) is string n)
+                if (b.value() is long bp && dt.representation[bp] is DBObject ob && ob.NameFor(cx) is string n)
                     st += (n, bp);
             if (domain.name != "")
                 ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
-            if (cx.db.format < 51 && domain.structure > 0)
-                ro += (Role.DBObjects, ro.dbobjects
-                    + ("" + domain.structure, domain.structure));
-            cx.db = cx.db + (ro, p) + (ppos, dt, p);
-            cx.db += (Database.Types, cx.db.types + (dt - Domain.Representation, ppos));
+            cx.db = cx.db + (ro, p) + dt;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return dt;

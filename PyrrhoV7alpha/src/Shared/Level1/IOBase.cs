@@ -120,8 +120,6 @@ namespace Pyrrho.Level2
         }
         public void PutLong(long n)
         {
-            if (n >= Transaction.TransPos)
-                throw new PEException("PE4100");
             PutInteger(new Integer(n));
         }
         public void PutString(string s)
@@ -480,7 +478,7 @@ namespace Pyrrho.Level2
             var ds = pd.domain.defaultString;
             var domain = pd.domain;
             if (ds.Length > 0
-                && pd.domain.kind == Sqlx.CHAR && ds[0] != '\'')
+                && pd.dataType.kind == Sqlx.CHAR && ds[0] != '\'')
                 ds = "'" + ds + "'";
             if (ds != "")
                 try
@@ -491,7 +489,7 @@ namespace Pyrrho.Level2
                 catch (Exception) { }
             pd.domain = domain;
             if (pd.domdefpos!=-1L)
-                context.db += (pd.domdefpos, pd.domain, Position);
+                context.db += pd.domain;
         }
         internal void Setup(Ordering od)
         {

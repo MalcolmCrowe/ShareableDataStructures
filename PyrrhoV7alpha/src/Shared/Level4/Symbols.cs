@@ -52,7 +52,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// Implement an identifier lexeme class.
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class Ident : IComparable
     {
@@ -152,7 +152,6 @@ namespace Pyrrho.Level4
         /// (There is an annoying aspect of this implementation: 
         ///  If we have a pair (Iix,Idents) and Idents is not empty, the sd part of the Iix
         ///  is incorrect but it is ignored)
-        /// shareable as of 26 April 2021
         /// </summary>
         internal class Idents : BTree<string, BTree<int,(Iix, Idents)>>
         {
@@ -187,7 +186,11 @@ namespace Pyrrho.Level4
                         else
                             s += (p.sd, (p, ts));
                     }
-                    else //if (id.sub==null)
+                    else if (id.sub != null)
+                        s += (p.sd, (new Iix(p, p.lp),
+                            new(new BTree<string, BTree<int, (Iix, Idents)>>
+                                (id.sub.ident, new BTree<int, (Iix, Idents)>(p.sd, (p, Empty))))));
+                    else
                         s += (p.sd, (p, Empty));
                     return new Idents(t + (id.ident, s));
                 }
@@ -218,15 +221,15 @@ namespace Pyrrho.Level4
             /// Rarely used: cx.Lookup is preferred since it
             /// uses the cx.obs information for well-defined objects.
             /// </summary>
-            /// <param name="x">A pair: (chain,depth)</param>
-            /// <returns>(Deepest Iix found, descendants, rest of chain)</returns>
-            internal (Iix,Idents?,Ident?) this[(Ident,int) x]
+            /// <param name="x">A triple: (chain,depth,breadcrumbtrail)</param>
+            /// <returns>(Deepest Iix found, breadcrumbtrail,descendants, rest of chain)</returns>
+            internal (BList<Iix>,Idents?,Ident?) this[(Ident,int,BList<Iix>) x]
             {
                 get
                 {
-                    var (ic, d) = x;
+                    var (ic, d, bc) = x;
                     if (ic == null || !Contains(ic.ident) || d < 1)
-                        return (Iix.None, null, ic);
+                        return (bc, null, ic);
                     var ix = Iix.None;
                     Idents ids = Empty;
                     var s = this[ic.ident] ?? BTree<int, (Iix, Idents)>.Empty;
@@ -234,8 +237,8 @@ namespace Pyrrho.Level4
                         if (s.Contains(sd))
                            (ix, ids) = s[sd];
                     if (ids != Empty && ic.sub != null && d > 1 && ids.Contains(ic.sub.ident))
-                        return ids[(ic.sub, d - 1)];
-                    return (ix, ids, ic.sub);
+                        return ids[(ic.sub, d - 1, bc + ix)];
+                    return (bc + ix, ids, ic.sub);
                 }
             }
             /// <summary>
@@ -249,10 +252,10 @@ namespace Pyrrho.Level4
                 {
                     if (!Contains(ic.ident))
                         return Iix.None;
-                    var (ob, _, s) = this[(ic, ic.Length)];
+                    var (bc, _, s) = this[(ic, ic.Length, BList<Iix>.Empty)];
                     if (s != null)
                         return Iix.None;
-                    return ob;
+                    return bc.Last()?.value()??Iix.None;
                 }
             }
             internal (Iix,Idents) this[(string?,int)x]
@@ -280,7 +283,7 @@ namespace Pyrrho.Level4
                         if (p.dp != -1L && cx.done[p.dp] is DBObject nb)
                         {
                             p = new Iix(p.lp,p.sd,nb.defpos);
-                            for (var c = nb.domain.rowType.First(); c != null; c = c.Next())
+                            for (var c = (nb as Domain)?.rowType.First(); c != null; c = c.Next())
                                 if (c.value() is long cp && cx.done[cp] is SqlValue v && v.name is not null)
                                 {
                                     var ds = st[v.name] ?? BTree<int,(Iix,Idents)>.Empty;
@@ -367,11 +370,11 @@ namespace Pyrrho.Level4
 		public TypedValue val = TNull.Value, prevval = TNull.Value;
         public TypedValue pushVal = TNull.Value;
         private readonly Context cx; // only used for type prefix/suffix things
-        public CTree<long, TGParam> tgs = CTree<long, TGParam>.Empty; // TGParam wizardry
+        public CTree<string,TGParam> tgs = CTree<string,TGParam>.Empty; // TGParam wizardry
         /// <summary>
         /// Entries in the reserved word table
         /// If there are more than 2048 reserved words, the server will hang
-        /// // shareable as of 26 April 2021
+        /// 
         /// </summary>
 		class ResWd
 		{
@@ -508,7 +511,7 @@ namespace Pyrrho.Level4
                     mi.methodInfos[dt.name] is BTree<CList<Domain>,long?> md
                     && cx.db.objects[md[sig]??-1L] is Method mt)
                 {
-                    cx.Add(new SqlLiteral(ps, Domain.Numeric.Coerce(cx, val)));
+                    cx.Add(new SqlLiteral(ps, Domain._Numeric.Coerce(cx, val)));
                     val = mt.Exec(cx, new BList<long?>(ps)).val;
                 } 
                 else
@@ -578,9 +581,9 @@ namespace Pyrrho.Level4
                 if (char.IsLetter(ch))
                     while (char.IsLetter(ch))
                         Advance();
-                var tg = new TGParam(Position,new TChar(new string(input, start, pos - start).ToUpper()),
-                        tok,Domain.Content,CTree<TChar,TypedValue>.Empty);
-                tgs += (tg.uid, tg);
+                var tg = new TGParam(Position,new string(input, start, pos - start).ToUpper(),
+                            tok,Domain.Content,CTree<TypedValue,TypedValue>.Empty);
+                tgs += (tg.id, tg);
                 val = tg;
                 tok = Sqlx.NODE;
                 return tok;

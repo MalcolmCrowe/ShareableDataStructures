@@ -1,5 +1,4 @@
 using System.Net;
-using System.Reflection;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -121,7 +120,7 @@ namespace Pyrrho.Level4
         internal CTree<long, bool> rdC = CTree<long, bool>.Empty; // read TableColumns defpos
         internal CTree<long, CTree<long, bool>> rdS = CTree<long, CTree<long, bool>>.Empty; // specific read TableRow defpos
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
-        internal CTree<TGParam, TypedValue> binding = CTree<TGParam, TypedValue>.Empty;
+        internal CTree<string, TypedValue> binding = CTree<string, TypedValue>.Empty;
         internal BTree<long, long?> newnodes = BTree<long, long?>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
@@ -196,19 +195,27 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         internal (DBObject?, Ident?) Lookup(long lp, Ident n, int d)
         {
-            var (ix, _, sub) = defs[(n, d)]; // chain lookup
-            if (ix != null)
+            var (bc, _, sub) = defs[(n, d, BList<Iix>.Empty)]; // chain lookup
+            DBObject? rr, r = null;
+            Ident? s = n;
+            for (var b = bc.First(); b != null; b = b.Next())
             {
-                if (obs[ix.dp] is DBObject ob)
+                rr = r;
+                var ix = b.value();
+                if (_Ob(ix.dp) is DBObject ob)
                 {
                     if (ix.sd < sD && ob.GetType().Name == "SqlValue") // an undefined identifier from a lower level
                         return (null, n);
-                    return ob._Lookup(lp, this, n.ident, sub);
+                    (r,s) = ob._Lookup(lp, this, n.ident, sub, rr);
+                    lp = GetUid();
+                    if (sub!=null)
+                        n = sub;
+                    continue;
                 }
                 if (ix.sd < sD) // an undefined identifier from a lower level
                     return (null, n);
             }
-            return (null, sub);
+            return (r,s);
         }
         internal CTree<long, bool> Needs(CTree<long, bool> nd,
         RowSet rs, Domain dm)
@@ -254,9 +261,23 @@ namespace Pyrrho.Level4
                     && obs[defs[ic.ToString()]?[ic.iix.sd].Item1.dp ?? -1L] is SqlValue s0)
                 v = s0;
             else if (defs.Contains(ic.ident))
-                v = obs[defs[ic.ident]?[ic.iix.sd].Item1.dp ?? -1L];
-            if (v != null && v.domain is Domain dv && !xp.CanTakeValueOf(dv))
-                throw new DBException("42000", ic);
+                v = obs[defs[ic.ident]?[ic.iix.sd].Item1.dp ?? -1L] as Domain;
+            if (v != null)
+            {
+                if (v.domain is Domain dv && !xp.CanTakeValueOf(dv))
+                    throw new DBException("42000", ic);
+                if (v.defpos >= Transaction.HeapStart)
+                    for (var f = obs[v.from] as RowSet; f != null;)
+                    {
+                        for (var b = f.matching[v.defpos]?.First(); b != null; b = b.Next())
+                            if (obs[b.key()] is SqlValue mv && mv.defpos < Transaction.HeapStart)
+                                return mv;
+                        var ff = f;
+                        f = obs[f.from] as RowSet;
+                        if (f == ff)
+                            break;
+                    }
+            }
             return v;
         }
         internal void CheckRemote(string url, string etag)
@@ -317,11 +338,6 @@ namespace Pyrrho.Level4
                 default:
                     return nextHeap++;
             }
-        }
-        internal Iix GetIid(int n)
-        {
-            var u = GetUid(n);
-            return Ix(u);
         }
         internal long GetUid(int n)
         {
@@ -536,7 +552,7 @@ namespace Pyrrho.Level4
                         {
                             if (lv.domain.kind == Sqlx.CONTENT || lv.GetType().Name == "SqlValue") // it has unknown type
                             {
-                                var nv = uv.Relocate(lv.defpos);
+                                var nv = (Domain)uv.Relocate(lv.defpos);
                                 Replace(lv, nv);
                                 Replace(uv, nv);
                             }
@@ -649,8 +665,8 @@ namespace Pyrrho.Level4
         internal DBObject Add(DBObject ob)
         {
             long rp;
-            if (obs[ob.defpos]?.dbg == ob.dbg)
-                return ob;
+            if (obs[ob.defpos] is DBObject nb && nb.dbg>=ob.dbg)
+                return nb;
             if (dbformat < 51)
             {
                 if (ob is SqlValue sv && (rp = sv.target) > 0 && sv.defpos > Transaction.TransPos
@@ -663,8 +679,8 @@ namespace Pyrrho.Level4
             if (obs[ob.defpos] is DBObject oo && oo.depth != ob.depth)
                 if (depths[oo.depth] is ObTree de)
                     depths += (oo.depth, de - ob.defpos);
-            if (ob.defpos != -1L)
-                _Add(ob + (DBObject._Depth, ob.depth));
+            if (ob.defpos != -1L && obs[ob.defpos]?.dbg!=ob.dbg) 
+                _Add(ob);
             if (ob.defpos >= Transaction.HeapStart)
                 done += (ob.defpos, ob);
             return ob;
@@ -674,13 +690,12 @@ namespace Pyrrho.Level4
             if (!obs.Contains(tb.defpos))
             {
                 Add(tb);
-                Add(tb.domain);
-                if (tb.domain is UDType ut)
+                if (tb is UDType ut)
                 {
-                    if (ut.super is Domain su && db.objects[su.structure] is Table ts)
-                            AddObs(ts);
+                    if (ut.super is Table su)
+                            AddObs(su);
                     for (var b = ut.subtypes.First();b!=null;b=b.Next())
-                        if (db.objects[b.key()] is Domain sd && db.objects[sd.structure] is Table st)
+                        if (db.objects[b.key()] is Table st)
                             AddObs(st);
                     for (var b = ut.methods.First(); b != null; b = b.Next())
                         if (!obs.Contains(b.key()) && db.objects[b.key()] is DBObject ob)
@@ -694,13 +709,12 @@ namespace Pyrrho.Level4
         /// <param name="ob"></param>
         internal void Install(DBObject ob, long p)
         {
-            if (db == null)
-                return;
             db += (ob, p);
             Add(ob);
-            var dm = ob.domain;
-            if (dm != null && ob.domain.defpos >= 0 && ob.domain.defpos < Transaction.TransPos)
-                Add(dm);
+  //          var dm = ob.domain;
+ //          if (dm != null && ob.domain.defpos!=ob.defpos && ob.domain.defpos >= 0 
+  //              && ob.domain.defpos < Transaction.TransPos)
+   //             Add(dm);
             if (ob.mem.Contains(DBObject._Framing))
             {
                 // For compiled objects the parser creates many identifiers with executable uids
@@ -708,9 +722,9 @@ namespace Pyrrho.Level4
                 // But the only objects with such uids that are persistent are in framings.
                 var t = ob.framing.obs.Last()?.key() ?? -1L;
                 if (t > db.nextStmt)
-                    db += (Database.NextStmt, t+1);
+                    db += (Database.NextStmt, t + 1);
                 // (We don't care if this process leaves gaps in the uid list)
-            } 
+            }
         }
         internal Context ForConstraintParse()
         {
@@ -719,7 +733,7 @@ namespace Pyrrho.Level4
             var cx = new Context(this) { parse = ExecuteStatus.Compile };
             var rs = CTree<long, Domain>.Empty;
             Ident? ti = null;
-            Table? tb = null;
+     //       Table? tb = null;
             for (var b = cx.obs?.PositionAt(0); b != null; b = b.Next())
                 if (role != null && b.value()?.infos[role.defpos] is ObInfo oi && oi.name is string nm)
                 {
@@ -738,27 +752,9 @@ namespace Pyrrho.Level4
                     }
                     cx.defs += (ic, ox);
                 }
-            if (tb != null)
-                cx.Add(tb + (Table.TableCols, rs));
+      //     if (tb != null)
+      //          cx.Add(tb + (Table.TableCols, rs));
             return cx;
-        }
-        internal Domain _DomAdd(Context cx, Domain dm, SqlValue sv)
-        {
-            if (sv.domain is not Domain sd)
-                throw new PEException("PE6700");
-            var r = new Domain(GetUid(), cx, dm.kind, dm.representation + (sv.defpos, sd),
-                dm.rowType + sv.defpos);
-            Add(r);
-            return r;
-        }
-        internal Domain _Dom(Domain dm, BList<long?> rt)
-        {
-            if (Match(dm.rowType,rt))
-                return dm;
-            dm = (Domain)dm.New(dm.mem+(Domain.RowType, rt));
-            if (db.Find(dm) is Domain r)
-                return r;
-            return (Domain)Add(dm);
         }
         internal static bool Match(BList<long?> a, BList<long?> b)
         {
@@ -796,6 +792,15 @@ namespace Pyrrho.Level4
             }
             else return 1;
         }
+        internal static bool CanCall(CList<Domain>m,CList<Domain>p)
+        {
+            var mb = m.First();
+            var pb = p.First();
+            for (; mb != null && pb != null; mb = mb.Next(), pb = pb.Next())
+                if (!mb.value().CanTakeValueOf(pb.value()))
+                    return false;
+            return mb == null && pb == null;
+        }
         internal Domain _Dom(Domain dm, long p, Domain d)
         {
             var rs = dm.representation;
@@ -814,8 +819,8 @@ namespace Pyrrho.Level4
         }
         internal Domain _Dom(long dp, params (long, object)[] xs)
         {
-            var ob = obs[dp] ?? (DBObject?)db.objects[dp];
-            var dm = ob?.domain ?? Domain.Null;
+            var ob = (obs[dp] ?? (DBObject?)db.objects[dp]);
+            var dm = ob as Domain ?? ob?.domain ?? Domain.Null;
             var m = dm.mem;
             var ch = false;
             foreach (var x in xs)
@@ -832,7 +837,7 @@ namespace Pyrrho.Level4
             Add(r);
             return r;
         }
-        internal BTree<long, object> Name(Ident n, BTree<long, object>? m = null)
+        internal BTree<long, object> Name(Ident n, BTree<long,object>? m=null)
         {
             var mm = (m ?? BTree<long, object>.Empty);
             mm += (DBObject.Infos, new BTree<long, ObInfo>(role.defpos, new ObInfo(n.ident)));
@@ -850,7 +855,7 @@ namespace Pyrrho.Level4
             return ob;
         }
         /// <summary>
-        /// For the _Replace algorithm we need to ensure that the depths information is kept consistent.
+        /// Show the _Replace algorithm we need to ensure that the depths information is kept consistent.
         /// </summary>
         /// <param name="m"></param>
         /// <param name="p"></param>
@@ -861,17 +866,28 @@ namespace Pyrrho.Level4
             if (m[p] == o)
                 return m;
             var md = (int)(m[DBObject._Depth] ?? 0);
-            var d = md;
+            m += (DBObject._Depth, _Depth(p, o, md));
+            return m + (p, o);
+        }
+        internal BTree<long,object> DoDepth(BTree<long,object>m)
+        {
+            var d = (int)(m[DBObject._Depth] ?? 0);
+            for (var b = m.First(); b != null; b = b.Next())
+                d = _Depth(b.key(), b.value(), d);
+            return m + (DBObject._Depth, d);
+        }
+        internal int _Depth(long p, object o, int d)
+        {
             if (o is long q)
             {
-                if (obs[q] is DBObject ob && ob.depth >= md)
+                if (obs[q] is DBObject ob && ob.depth >= d)
                     d = ob.depth + 1;
             }
             else
                 d = p switch
                 {
                     Domain.Aggs => _DepthTVX((CTree<long, bool>)o, d),
-                    SqlValueArray.Array => _DepthBV((BList<long?>)o, d),
+                    SqlValueArray._Array => _DepthBV((BList<long?>)o, d),
                     RowSet.Assig => _DepthTUb((CTree<UpdateAssignment, bool>)o, d),
                     SqlXmlValue.Attrs => _DepthBPXV((BList<(SqlXmlValue.XmlName, long)>)o, d),
                     SqlCall.Parms => _DepthBV((BList<long?>)o, d),
@@ -884,8 +900,8 @@ namespace Pyrrho.Level4
                     ExplicitRowSet.ExplRows => _DepthBPVX((BList<(long, TRow)>)o, d),
                     RowSet.Filter => _DepthTVX((CTree<long, TypedValue>)o, d),
                     SqlFunction.Filter => _DepthTVX((CTree<long, bool>)o, d),
-                    TransitionRowSet.ForeignKeys => _DepthTVX((CTree<long,bool>)o,d),
-                    TableColumn.Generated => _DepthG((GenerationRule) o, d),
+                    TransitionRowSet.ForeignKeys => _DepthTVX((CTree<long, bool>)o, d),
+                    TableColumn.Generated => _DepthG((GenerationRule)o, d),
                     RowSet.Groupings => _DepthBV((BList<long?>)o, d),
                     RowSet.GroupIds => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.Having => _DepthTVX((CTree<long, bool>)o, d),
@@ -898,7 +914,7 @@ namespace Pyrrho.Level4
                     RowSet._Matches => _DepthTVX((CTree<long, TypedValue>)o, d),
                     RowSet.Matching => _DepthTVTVb((CTree<long, CTree<long, bool>>)o, d),
                     Grouping.Members => _DepthTVX((CTree<long, int>)o, d),
-                    ObInfo.Names => _DepthTsPil((BTree<string, (int,long?)>)o, d),
+                    ObInfo.Names => _DepthTsPil((BTree<string, (int, long?)>)o, d),
                     RestView.NamesMap => _DepthTVX((CTree<long, string>)o, d),
                     JoinRowSet.OnCond => _DepthTVV((BTree<long, long?>)o, d),
                     FetchStatement.Outs => _DepthBV((BList<long?>)o, d),
@@ -909,6 +925,7 @@ namespace Pyrrho.Level4
                     Level3.Index.References => _DepthTVBt((BTree<long, BList<TypedValue>>)o, d),
                     Domain.Representation => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.RestRowSetSources => _DepthTVX((CTree<long, bool>)o, d),
+                    SqlCall.Result => Math.Max(((Domain)o).depth,d),
                     Domain.RowType => _DepthBV((BList<long?>)o, d),
                     SignalStatement.SetList => _DepthTXV((BTree<Sqlx, long?>)o, d),
                     GroupSpecification.Sets => _DepthBV((BList<long?>)o, d),
@@ -929,11 +946,9 @@ namespace Pyrrho.Level4
                     RowSet._Where => _DepthTVX((CTree<long, bool>)o, d),
                     RowSet.Windows => _DepthTVX((CTree<long, bool>)o, d),
                     QuantifiedPredicate.Vals => _DepthBV((BList<long?>)o, d),
-                    _ => Math.Max(md, 1)
+                    _ => Math.Max(d, 1)
                 };
-            if (d > md)
-                m += (DBObject._Depth, d);
-            return m + (p, o);
+            return d;
         }
         internal void _Remove(long dp)
         {
@@ -1006,9 +1021,11 @@ namespace Pyrrho.Level4
                         if (excframing && k >= Transaction.Executables
                             && k < Transaction.HeapStart)
                             continue;
-                        if (c.value() is DBObject op && obs[op.defpos] is DBObject oq)
+                        if (c.value() is DBObject op)
                         {
-                            var cv = oq.Replace(this, was, now); // may update done
+                            if (done[op.defpos] is DBObject oq && op.dbg!=oq.dbg)
+                                op = oq;
+                            var cv = op.Replace(this, was, now); // may update done
                             if (cv != op)
                                 bv += (k, cv);
                         }
@@ -1363,7 +1380,30 @@ namespace Pyrrho.Level4
             }
             return fl;
         }
+        /// <summary>
+        /// drop was if present in representation
+        /// </summary>
+        /// <param name="rs"></param>
+        /// <param name="was"></param>
+        /// <param name="now"></param>
+        /// <returns></returns>
         internal CTree<long, Domain> ShallowReplace(CTree<long, Domain> rs, long was, long now)
+        {
+            for (var b = rs.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                if (k == was)
+                {
+                    rs -= k;
+                    continue;
+                }
+                var v = b.value().ShallowReplace1(this,was,now);
+                if (v != b.value())
+                    rs += (k, v);
+            }
+            return rs;
+        }
+        internal CTree<long, Domain> ShallowReplace1(CTree<long, Domain> rs, long was, long now)
         {
             for (var b = rs.First(); b != null; b = b.Next())
             {
@@ -1373,8 +1413,8 @@ namespace Pyrrho.Level4
                     rs -= k;
                     k = now;
                 }
-                var v = b.value().ShallowReplace1(this,was,now);
-                if (k != b.key() || v != b.value())
+                var v = b.value().ShallowReplace1(this, was, now);
+                if (k!=b.key() || v != b.value())
                     rs += (k, v);
             }
             return rs;
@@ -1395,9 +1435,20 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b = rt.First(); b != null; b = b.Next())
                 if (b.value() == was)
+                    ch = true; // don't add now
+                else
+                    r += b.value();
+            return ch ? r : rt;
+        }
+        internal BList<long?> ShallowReplace1(BList<long?> rt, long was, long now)
+        {
+            var r = BList<long?>.Empty;
+            var ch = false;
+            for (var b = rt.First(); b != null; b = b.Next())
+                if (b.value() == was)
                 {
-                    r += now;
                     ch = true;
+                    r += now;
                 }
                 else
                     r += b.value();
@@ -1443,14 +1494,18 @@ namespace Pyrrho.Level4
         }
         internal DBObject _Replace(long dp, DBObject was, DBObject now)
         {
-            if (done[dp] is DBObject ob)
+            if (done[dp] is Domain ob)
                 return ob;
-            return _Ob(dp)?.Replace(this, was, now)
-                ?? throw new PEException("PE629");
+            return (_Ob(dp)?.Replace(this, was, now)
+                ?? throw new PEException("PE629"));
         }
         internal DBObject? _Ob(long dp)
         {
             return done[dp] ?? obs[dp] ?? (DBObject?)db.objects[dp];
+        }
+        internal Domain? _Dm(long dp)
+        {
+            return (done[dp] ?? obs[dp] ?? (DBObject?)db.objects[dp]) as Domain;
         }
         internal Iix Fix(Iix iix)
         {
@@ -1478,7 +1533,7 @@ namespace Pyrrho.Level4
                         case HandlerStatement.Action: v = Replaced((long)v); break;
                         case Level3.Index.Adapter: v = Replaced((long)v); break;
                         case Domain.Aggs: v = ReplacedTlb((CTree<long, bool>)v); break;
-                        case SqlValueArray.Array: v = ReplacedLl((BList<long?>)v); break;
+                        case SqlValueArray._Array: v = ReplacedLl((BList<long?>)v); break;
                         case SqlSelectArray.ArrayValuedQE: v = Replaced((long)v); break;
                         case RowSet.Assig: v = ReplacedTUb((CTree<UpdateAssignment, bool>)v); break;
                         case SqlXmlValue.Attrs: v = ReplacedLXl((BList<(SqlXmlValue.XmlName, long)>)v); break;
@@ -1490,18 +1545,17 @@ namespace Pyrrho.Level4
                         case SqlXmlValue.Children: v = ReplacedLl((BList<long?>)v); break;
                         case WhenPart.Cond: v = Replaced((long)v); break;
                         case Check.Condition: v = Replaced((long)v); break;
-                        case SqlXmlValue.Content: v = Replaced((long)v); break;
+                        case SqlXmlValue._Content: v = Replaced((long)v); break;
                         case FetchStatement.Cursor: v = Replaced((long)v); break;
                         case RowSet._Data: v = Replaced((long)v); break;
                         case Domain.DefaultRowValues: v = ReplacedTlV((CTree<long, TypedValue>)v); break;
-                        case DBObject._Domain: v = (Domain)(done[(v as Domain)?.defpos??-1L]??(v as Domain)??Domain.Null); break;
+                        case SqlTreatExpr._Diff: v = Replaced((BTree<long,object>)v); break;
                         case IfThenElse.Else: v = ReplacedLl((BList<long?>)v); break;
                         case SimpleCaseStatement.Else: v = ReplacedLl((BList<long?>)v); break;
                         case IfThenElse.Elsif: v = ReplacedLl((BList<long?>)v); break;
                         case LikePredicate.Escape: v = Replaced((long)v); break;
                         case ExplicitRowSet.ExplRows: v = ReplacedBlT((BList<(long, TRow)>)v); break;
                         case SqlValueSelect.Expr: v = Replaced((long)v); break;
-                        case SqlField.Field: v = Replaced((long)v); break;
                         case RowSet.Filter: v = ReplacedTlV((CTree<long, TypedValue>)v); break;
                         case SqlFunction.Filter: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case GenerationRule.GenExp: v = Replaced((long)v); break;
@@ -1542,7 +1596,6 @@ namespace Pyrrho.Level4
                         case FetchStatement.Outs: v = ReplacedLl((BList<long?>)v); break;
                         case SelectSingle.Outs: v = ReplacedLl((BList<long?>)v); break;
                         case Procedure.Params: v = ReplacedLl((BList<long?>)v); break;
-                        case SqlField.Parent: v = Replaced((long)v); break;
                         case WindowSpecification.PartitionType: v = ((Domain)v).Replaced(this); break;
                         //    case RowSet.Periods:        v = Replaced
                         case SqlCall.ProcDefPos: v = Replaced((long)v); break;
@@ -1554,6 +1607,7 @@ namespace Pyrrho.Level4
                         case Domain.Representation: v = ReplacedTlD((CTree<long, Domain>)v); break;
                         case RowSet.RestRowSetSources: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RestRowSetUsing.RestTemplate: v = Replaced((long)v); break;
+                        case SqlCall.Result: v = ((Domain)v).Replaced(this); break;
                         case ReturnStatement.Ret: v = Replaced((long)v); break;
                         case MemberPredicate.Rhs: v = Replaced((long)v); break;
                         case MultipleAssignment.Rhs: v = Replaced((long)v); break;
@@ -1579,7 +1633,7 @@ namespace Pyrrho.Level4
                         case CompoundStatement.Stms: v = ReplacedLl((BList<long?>)v); break;
                         case ForSelectStatement.Stms: v = ReplacedLl((BList<long?>)v); break;
                         case WhenPart.Stms: v = ReplacedLl((BList<long?>)v); break;
-                        case Domain.Structure: v = Replaced((long)v); break;
+         //               case Domain.Structure: v = Replaced((long)v); break;
                         case SqlValue.Sub: v = Replaced((long)v); break;
                         case SqlValueArray.Svs: v = Replaced((long)v); break;
                         case Level3.Index.TableDefPos: v = Replaced((long)v); break;
@@ -1621,6 +1675,10 @@ namespace Pyrrho.Level4
         }
         internal long Fix(long dp)
         {
+            // Take care about Relocate on Commit
+            if (parse == ExecuteStatus.Commit && dp > Transaction.TransPos
+                && !uids.Contains(dp))
+                undefined += (dp, (int)undefined.Count);
             // This is needed for Commit and for ppos->instance
             if (uids[dp] is long ep && ep != 0L)
                 return ep;
@@ -1667,10 +1725,10 @@ namespace Pyrrho.Level4
         internal void MergeColumn(long was, long now)
         {
             for (var b = db.objects.PositionAt(0L); b != null; b = b.Next())
-                if (b.value() is Domain dm)
+                if (b.value() is Domain d)
                 {
-                    var nb = (DBObject)dm.ShallowReplace(this, was, now);
-                    if (nb != dm)
+                    var nb = (DBObject)d.ShallowReplace(this, was, now);
+                    if (nb != d)
                         db += (b.key(), nb);
                 }
             for (var b = db.objects.PositionAt(0L);b!=null;b=b.Next())
@@ -1679,6 +1737,36 @@ namespace Pyrrho.Level4
                     var nb = (DBObject)ob.ShallowReplace(this, was, now);
                     if (nb != ob)
                         db += (b.key(), nb);
+                }
+        }
+        internal void AddDefs(Domain dm)
+        {
+            if (db == null)
+                return;
+            for (var b = dm.rowType.First(); b != null;// && b.key() < dm.display; 
+                    b = b.Next())
+                if (b.value() is long p)
+                {
+                    var ob = obs[p] ?? (DBObject?)db.objects[p];
+                    if (ob == null || role == null)
+                        return;
+                    var n = (ob is SqlValue v) ? (v.alias ?? v.name)
+                        : ob.infos[role.defpos]?.name;
+                    if (n == null)
+                        continue;
+                    var ic = new Ident(n, new Iix(dm.defpos));
+                    if (ob is TableColumn tc && db.objects[tc.tabledefpos] is EdgeType et)
+                    {
+                        if (tc.flags.HasFlag(PColumn.GraphFlags.LeaveCol)
+                        && db.objects[et.leavingType] is NodeType lt)
+                            AddDefs(ic, lt);
+                        else if (tc.flags.HasFlag(PColumn.GraphFlags.ArriveCol)
+                            && db.objects[et.arrivingType] is NodeType at)
+                            AddDefs(ic, at);
+                    }
+                    else
+                        AddDefs(ic, ob.domain);
+                    defs += (ic, ic.iix);
                 }
         }
         internal void AddDefs(Ident id, Domain dm, string? a = null)
@@ -1693,6 +1781,38 @@ namespace Pyrrho.Level4
                 ia = new Ident(a, id.iix);
             }
             for (var b = dm?.rowType.First(); b != null;// && b.key() < dm.display; 
+                    b = b.Next())
+                if (b.value() is long p)
+                {
+                    var px = Ix(id.iix.lp, p);
+                    var ob = obs[p] ?? (DBObject?)db.objects[p];
+                    if (ob == null || role == null)
+                        return;
+                    var n = (ob is SqlValue v) ? (v.alias ?? v.name)
+                        : ob.infos[role.defpos]?.name;
+                    if (n == null)
+                        continue;
+                    var ic = new Ident(n, px);
+                    var iq = new Ident(id, ic);
+                    //        if (defs[iq].dp < 0)
+                    defs += (iq, ic.iix);
+                    defs += (ic, ic.iix);
+                    if (ia != null)
+                        defs += (new Ident(ia, ic), ic.iix);
+                }
+        }
+        internal void AddDefs(Ident id, BList<long?> rt, string? a = null)
+        {
+            if (db == null)
+                return;
+            defs += (id.ident, id.iix, Ident.Idents.Empty);
+            Ident? ia = null;
+            if (a != null)
+            {
+                defs += (a, id.iix, Ident.Idents.Empty);
+                ia = new Ident(a, id.iix);
+            }
+            for (var b = rt.First(); b != null;// && b.key() < dm.display; 
                     b = b.Next())
                 if (b.value() is long p)
                 {
@@ -1729,7 +1849,7 @@ namespace Pyrrho.Level4
                         if (b.value() is BTree<int, (Iix, Ident.Idents)> bt
                             && bt.Last() is ABookmark<int, (Iix, Ident.Idents)> ab
                             && _Ob(ab.value().Item1.dp) is SqlValue ov)
-                        if (rs.names[b.key()].Item2 is long p && _Ob(p) is DBObject nb)
+                        if (rs.names[b.key()].Item2 is long p && _Ob(p) is Domain nb)
                                 ov.Define(this, p, rs, nb);
                     }
                 }
@@ -1743,13 +1863,12 @@ namespace Pyrrho.Level4
                         if (b.value() is BTree<int, (Iix, Ident.Idents)> bt
                             && bt.Last() is ABookmark<int, (Iix, Ident.Idents)> ab
                             && _Ob(ab.value().Item1.dp) is SqlValue ov &&
-                            rs.names[b.key()].Item2 is long p && _Ob(p) is DBObject nb)
+                            rs.names[b.key()].Item2 is long p && _Ob(p) is Domain nb)
                             ov.Define(this, p, rs, nb);
 
             }
             ids = defs[(a ?? rs.name ?? "", sD)].Item2;
-            var dm = rs.domain;
-            for (var b = dm?.rowType.First(); b != null; b = b.Next())
+            for (var b = rs.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && obs[p] is SqlValue c)
                 {
                     // update defs with the newly defined entries and their aliases
@@ -2013,27 +2132,27 @@ namespace Pyrrho.Level4
             }
             return ut;
         }
-        internal Domain GroupCols(BList<long?> gs, RowSet rs)
-        {
-            var gc = CTree<long, Domain>.Empty;
-            for (var b = gs.First(); b != null; b = b.Next())
-                if (b.value() is long p && obs[p] is SqlValue v
-                            && v.KnownBy(this, rs))
-                    gc += (p, _Dom(p));
-            var rt = BList<long?>.Empty;
-            for (var b = gc.First(); b != null; b = b.Next())
-                rt += b.key();
-            return new Domain(-1L, this, Sqlx.ROW, gc, rt);
-        }
         internal Domain GroupCols(BList<long?> gs,Domain dm)
         {
             var gc = CTree<long, Domain>.Empty;
+            var rs = dm as RowSet;
             for (var b = gs.First(); b != null; b = b.Next())
-                if (b.value() is long p && obs[p] is Grouping gg)
-                    for (var c = gg.keys.First(); c != null; c = c.Next())
-                        if (c.value() is long cp && _Dom(cp) is Domain cd
-                            && dm.representation.Contains(cp))
-                            gc += (cp, cd);
+                if (b.value() is long p)
+                {
+                    if (obs[p] is SqlValue v && rs != null && v.KnownBy(this, rs))
+                        gc += (p, _Dom(p));
+                    if (obs[p] is Grouping gg)
+                        for (var c = gg.keys.First(); c != null; c = c.Next())
+                            if (c.value() is long cp && _Dom(cp) is Domain cd)
+                            {
+                                if (dm.representation.Contains(cp))
+                                    gc += (cp, cd);
+                                for (var d = rs?.matching.PositionAt(cp); d != null; d = d.Next())
+                                    for (var e = d.value().First(); e != null; e = e.Next())
+                                        if (dm.representation.Contains(e.key()))
+                                            gc += (cp, cd);
+                            }
+                }
             var rt = BList<long?>.Empty;
             for (var b = gc.First(); b != null; b = b.Next())
                 rt += b.key();
@@ -2437,7 +2556,6 @@ namespace Pyrrho.Level4
     /// <summary>
     /// The Framing of an DBObject contains executable-range objects only,
     /// which were created by the Compiled classes on load or during parsing.
-    /// shareable as of 26 April 2021
     /// </summary>
     internal class Framing : Basis // for compiled code
     {
@@ -2680,7 +2798,6 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// A period specification occurs in a table reference: AS OF/BETWEEN/FROM
-    /// shareable as of 26 April 2021
     /// </summary>
     internal class PeriodSpec
     {

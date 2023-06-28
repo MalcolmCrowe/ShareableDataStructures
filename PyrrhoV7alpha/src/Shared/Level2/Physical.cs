@@ -1,14 +1,7 @@
-using System;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Text;
-using System.Diagnostics.Eventing.Reader;
-using System.Configuration;
-using System.CodeDom.Compiler;
-using System.Net.NetworkInformation;
-using System.Net;
-using System.ComponentModel.DataAnnotations;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -52,8 +45,8 @@ namespace Pyrrho.Level2
             NotUsed8, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
-            Update1, Delete1, Drop1, RefAction, Post, VIndex, // 71-76
-            PNodeType, PEdgeType, EditType // 77-78
+            Update1, Delete1, Drop1, RefAction, Post, // 71-75
+            PNodeType, PEdgeType, EditType // 76-78
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -488,6 +481,25 @@ namespace Pyrrho.Level2
         {
             return (p == pp) ? ppos : (wr.cx.uids[p] is long np) ? np : p;
         }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (dataType.defpos >= 0 && tr?.objects[dataType.defpos] is Domain nd && nd.dbg != dataType.dbg)
+            {
+                if (nd is Table tb)
+                {
+                    var rs = tb.tableRows;
+                    for (var b = rs.PositionAt(Transaction.TransPos); b != null; b = b.Next())
+                        rs -= b.key();
+                    tb = tb + (Table.TableRows, rs);
+                    var ri = tb.rindexes;
+                    for (var b = ri.PositionAt(Transaction.TransPos); b != null; b = b.Next())
+                        ri -= b.key();
+                    nd = tb + (Table.RefIndexes, ri);
+                }
+                dataType = nd;
+            }
+            return base.Commit(wr, tr);
+        }
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr, definer)) return definer;
@@ -501,22 +513,11 @@ namespace Pyrrho.Level2
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(' '); sb.Append(name);
-            if (dataType.defpos >= 0 && dataType.defpos!=ppos)
+            if (dataType.defpos >= 0 && dataType.defpos!=ppos && dataType!=Domain.NodeType && dataType!=Domain.EdgeType)
             {
                 sb.Append('['); sb.Append(DBObject.Uid(dataType.defpos)); sb.Append(']');
             }
-            if (dataType.Length > 0)
-            {
-                var cm = "";
-                sb.Append('(');
-                for (var b = dataType.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p)
-                    {
-                        sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(p));
-                    }
-                sb.Append(')');
-            }
-            else
+            if (dataType.Length == 0)
             { sb.Append(' '); sb.Append(dataType.kind); }
             return sb.ToString();
         }
@@ -534,7 +535,7 @@ namespace Pyrrho.Level2
             var oc = cx.parse;
             framing = new Framing(cx,nst);
             nst = ns;
-            dataType = framing.obs[framing.result]?.domain ?? cx.obs[tgt]?.domain ?? dom;
+            dataType = (Domain)(framing.obs[framing.result] ?? cx.obs[tgt] ?? dom);
             cx.parse = oc;
         }
         protected Compiled(Type tp, long pp, Context cx, string nm, Domain dm, long ns)
@@ -543,12 +544,16 @@ namespace Pyrrho.Level2
             dataType = dm;
             nst = ns;
         }
-        // Reader will update the name
+        // Reader will update the name and dataType
         protected Compiled(Type tp, Reader rdr) : base(tp, rdr,"",Grant.AllPrivileges)
         {
             framing = Framing.Empty; // fixed in OnLoad
             nst = rdr.context.db.nextStmt;
-            dataType = Domain.Content;
+            dataType = tp switch
+            {
+                Type.PTable => Domain.TableType,
+                _ => Domain.Content
+            };
         }
         protected Compiled(Compiled ph, Writer wr) : base(ph, wr)
         {
@@ -566,6 +571,15 @@ namespace Pyrrho.Level2
         {
             throw new NotImplementedException();
         }
+        /// <summary>
+        /// By the time this base method is called, dataType should have no 
+        /// columns with uids !0..
+        /// In some cases the overriding methods simply remove such old uids, 
+        /// because the final install will add the new uids.
+        /// </summary>
+        /// <param name="wr"></param>
+        /// <param name="tr"></param>
+        /// <returns></returns>
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
             wr.cx.instDFirst = -1L;

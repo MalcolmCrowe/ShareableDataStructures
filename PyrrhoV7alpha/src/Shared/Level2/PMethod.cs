@@ -113,6 +113,13 @@ namespace Pyrrho.Level2
             if (methodType == MethodType.Constructor)
                 dataType = udt;
         }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (tr is not null && _udt is long up && wr.cx.uids[up] is long np
+                && wr.cx.db.objects[np] is UDType nt)
+                wr.cx.db += (nt.defpos, nt + (Database.Procedures, nt.methods - ppos));
+            return base.Commit(wr, tr);
+        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -168,9 +175,12 @@ namespace Pyrrho.Level2
             var om = um[name] ?? BTree<CList<Domain>, long?>.Empty;
             um += (name, om+(sig, mt.defpos));
             ui += (ObInfo.MethodInfos, um);
+            var ms = udt.methods;
+            ms += (ppos, name);
             var mi = new ObInfo(name, priv);
             mt += (DBObject.Infos, new BTree<long, ObInfo>(rp, mi));
             udt += (DBObject.Infos, new BTree<long, ObInfo>(rp, ui));
+            udt += (Database.Procedures, ms);
             cx.db += (udt.defpos, udt);
             cx.db += (mt.defpos, mt);
             if (cx.db.mem.Contains(Database.Log))

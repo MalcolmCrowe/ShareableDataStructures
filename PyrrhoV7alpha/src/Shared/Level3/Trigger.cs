@@ -59,7 +59,7 @@ namespace Pyrrho.Level3
 		public Trigger(PTrigger p,Role ro)
             : base(p.ppos, 
                   _Mem(p) + (Action,p.def) + (ObInfo.Name,p.name) +(Owner,p.owner)
-                  +(Infos,p.infos)
+                  +(Infos,p.infos) + (_Domain,p.dataType)
                   + (Definer, p.definer) + (_From, p.from) + (TrigPpos, p.ppos)
                   + (_Framing, p.framing) + (RowSet.Target, p.target) + (TrigType, p.tgtype)
                   + (LastChange, p.ppos))
@@ -234,11 +234,12 @@ namespace Pyrrho.Level3
             Old = -327, // bool
             Trig = -326; // long
         internal BList<long?> colIds => (BList<long?>)(mem[ColIds] ?? BList<long?>.Empty);
+        internal long trig => (long)(mem[Trig] ?? -1L);
         internal bool old => (bool)(mem[Old]??false);
  //       internal long trig => (long)mem[Trig];
         internal TransitionTable(Ident ic, bool old, Context cx, RowSet fm, Trigger tg)
-                : base(ic.iix.dp,BTree<long, object>.Empty + (_Domain, fm.domain) 
-                    + (ObInfo.Name, ic.ident)
+                : base(ic.iix.dp, BTree<long, object>.Empty + (_Domain, fm) 
+                      + (ObInfo.Name, ic.ident)
                   + (Target, fm.target) + (Old, old) + (Trig, tg.defpos))
         { }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -279,14 +280,14 @@ namespace Pyrrho.Level3
         }
         internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return (dp == defpos) ? this : new TransitionTable(dp, mem);
+            return (dp == defpos && m==mem) ? this : new TransitionTable(dp, m);
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
             var r = base._Fix(cx,m);
-    //        var nt = cx.Fix(trig);
-    //        if (nt != trig)
-    //            r += (Trig, nt);
+            var nt = cx.Fix(trig);
+            if (nt != trig)
+                r += (Trig, nt);
             var nc = cx.FixLl(colIds);
             if (nc != colIds)
                 r += (ColIds, nc);

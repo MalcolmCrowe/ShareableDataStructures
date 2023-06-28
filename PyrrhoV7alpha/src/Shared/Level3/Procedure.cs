@@ -17,13 +17,15 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// A level 3 Procedure/Function object.
-    /// The domain for the Procedure/Function gives the return type.
+    /// The Procedure/Function properties contains the properties of the return type.
+    /// This makes for complications if the return type is a UDType or a Table, and
+    /// in that case we need to use _Dm(cx) to reconstruct the target type.
     /// The ObInfo is role-dependent and so is computed for the SqlCall.
     /// Similarly for the parameters.
     /// Execution always uses the definer's (PProcedure) versions, 
     /// fetched from the schema role.
     /// Immutable
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class Procedure : DBObject
 	{
@@ -52,9 +54,9 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="p">The level 2 procedure</param>
 		public Procedure(PProcedure p, BTree<long,object> m)
-            : base( p.ppos, p.defpos, m + (ObInfo.Name,p.name)+(Definer,p.definer)+(Owner,p.owner)
+            : base( p.ppos, m + (ObInfo.Name,p.name)+(Definer,p.definer)+(Owner,p.owner)
                   + (Infos,p.infos)
-                  + (Params, p.parameters) +(_Domain,p.dataType) 
+                  + (Params, p.parameters) + (_Domain, p.dataType)
                   + (Body, p.proc) + (Clause, p.source?.ident??"") + (LastChange, p.ppos))
         { }
         /// <summary>
@@ -65,7 +67,7 @@ namespace Pyrrho.Level3
         /// <param name="rt"></param>
         /// <param name="m"></param>
         public Procedure(long defpos,Context cx,Domain ps, Domain dt, 
-            BTree<long, object> m) : base(defpos, m +(Params,ps)+(_Domain,dt)
+            BTree<long, object> m) : base(defpos, m +(Params,ps) + (_Domain, dt)
                 + (Definer, cx.role.defpos) + (Owner, cx.user?.defpos ?? -501L))
         { }
         protected Procedure(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -185,9 +187,8 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(' '); sb.Append(infos[definer]?.name??"??");
+            sb.Append(' '); sb.Append(domain);
             sb.Append(" Arity="); sb.Append(arity); sb.Append(" ");
-            if (domain.kind!=Sqlx.Null) sb.Append(Uid(domain.defpos));
             sb.Append(" Params");
             var cm = '(';
             for (var i = 0; i < ins.Length; i++)

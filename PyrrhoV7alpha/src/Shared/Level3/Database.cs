@@ -103,7 +103,7 @@ namespace Pyrrho.Level3
             return ToString();
         }
     }
-    public enum ExecuteStatus { Parse, Obey, Prepare, Compile, SubView }
+    public enum ExecuteStatus { Parse, Obey, Prepare, Compile, Commit }
 
     /// <summary>
     /// Counter-intuitively, a logical database (embodied by the durable contents of the transaction log)
@@ -130,7 +130,6 @@ namespace Pyrrho.Level3
     /// can obviously play their part there. 
     /// 
     /// From version 7, the latest version of every record is held in memory.
-    /// shareable as of 26 April 2021
     /// </summary>
     internal class Database : Basis
     {
@@ -172,7 +171,7 @@ namespace Pyrrho.Level3
             Roles = -60, // BTree<string,long?>
             _Schema = -291, // long: the owner role for the database
             Suffixes = -376, // BTree<string,long?> UDT
-            Types = -61, // BTree<Domain,long?>
+            Types = -61, // BTree<Domain,long?> should only be used for system types and unnamed types
             User = -277, // User: always the connection user
             Users = -287; // BTree<string,long?> users defined in the database
         internal virtual long uid => -1;
@@ -200,7 +199,7 @@ namespace Pyrrho.Level3
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal int format => (int)(mem[Format] ?? 0);
-        public BTree<Domain, long?> types => (BTree<Domain, long?>?)mem[Types]??BTree<Domain,long?>.Empty;
+        internal BTree<Domain, long?> types => (BTree<Domain, long?>?)mem[Types]??BTree<Domain,long?>.Empty;
         public BTree<Level, long?> levels => (BTree<Level, long?>?)mem[Levels]??BTree<Level,long?>.Empty;
         public BTree<long, Level> cache => (BTree<long, Level>?)mem[LevelUids]??BTree<long,Level>.Empty;
         public DateTime? lastModified => (DateTime?)mem[LastModified];
@@ -213,8 +212,8 @@ namespace Pyrrho.Level3
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
-        public BTree<TChar, TNode> nodeIds =>
-            (BTree<TChar, TNode>)(mem[NodeIds] ?? BTree<TChar, TNode>.Empty); // ->uid
+        public BTree<string, TNode> nodeIds =>
+            (BTree<string, TNode>)(mem[NodeIds] ?? BTree<string, TNode>.Empty); // ->uid
         public CTree<long,TGraph> graphs =>
             (CTree<long,TGraph>)(mem[Graphs]??CTree<long,TGraph>.Empty);
         internal static Role schemaRole;
@@ -232,7 +231,7 @@ namespace Pyrrho.Level3
                     (User, su) +  (Owner, su.defpos));
             guestRole = new Role("GUEST", Guest, BTree<long, object>.Empty);
             _system = new Database("System", su, schemaRole, guestRole)+(_Schema,schemaRole.defpos);
-            SystemRowSet.Kludge(Domain.StandardTypesCount);
+            SystemRowSet.Kludge();
         }
         Database():base(BTree<long,object>.Empty) { }
         /// <summary>
@@ -324,11 +323,17 @@ namespace Pyrrho.Level3
             var (ro, p) = x;
             return d.New(p,d.mem+(ro.defpos,ro)+(Role,ro));
         }
-        public static Database operator+(Database d,(long,Domain,long)x)
+        public static Database operator+(Database d,Domain dm)
         {
-            var (dp, dm, curpos) = x;
-            var ts = d.types + (dm, dp);
-            return d.New(curpos, d.mem + (dp, dm) + (Types,ts));
+            var m = d.mem;
+            if (dm.name.Length == 0 || dm.defpos == -1L)
+            {
+                var ts = d.types + (dm, dm.defpos);
+                m += (Types, ts);
+            }
+            if (dm.defpos!=-1L)
+                m += (dm.defpos, dm);
+            return (Database)d.New(m);
         }
         /// <summary>
         /// This algorithm tolerates missing nodes
@@ -339,41 +344,41 @@ namespace Pyrrho.Level3
         /// <exception cref="PEException"></exception>
         public static Database operator +(Database d, TNode n) //or TEdge
         {
-            if (n.Graph(d) is not null)
+            if (n.id.ToString() == "_")
                 return d;
+            if (n.uid>Transaction.TransPos || n.Graph(d) is not null)
+            {
+                if (n.uid>Transaction.TransPos || !d.nodeIds.Contains(n.id))
+                    d += (NodeIds, d.nodeIds + (n.id, n));
+                return d;
+            }
             var gs = d.graphs;
-            if (d.objects[n.dataType.structure] is not Table tb ||
-                tb.tableRows[n.uid] is not TableRow tr)
-                return d;
             var ni = d.nodeIds + (n.id, n);
             d += (NodeIds, ni);
-            if (n is not TEdge e)
+            if (n is not TEdge e || e.dataType is not EdgeType et)
                 return d + (Graphs, d.graphs + (n.uid, new TGraph(n)));
-            // Edge: end nodes already must be in the database, but may be in different TGraphs
-            for (var lb = ((TSet)e[1]).First(); lb != null; lb = lb.Next())
-                if (d.Graph((TChar)lb.Value()) is TGraph lg && lg.Rep() is TNode lr)
-                    for (var ab = ((TSet)e[2]).First(); ab != null; ab = ab.Next())
-                        if (d.Graph((TChar)ab.Value()) is TGraph ag && ag.Rep() is TNode ar)
-                        {
-                            if (lr.uid == ar.uid)
-                            { // already connected
-                                gs += (lr.uid, lg + e);
-                                continue;
-                            }
-                            // connect the two TGraphs and discard the higher one
-                            if (lr.uid < ar.uid)
-                            {
-                                gs -= ar.uid;
-                                gs += (lr.uid, new TGraph(lg.nodes + ag.nodes + (e.uid, e), 
-                                    lg.nids + ag.nids + (e.id, e)));
-                            }
-                            else
-                            {
-                                gs -= lr.uid;
-                                gs += (ar.uid, new TGraph(lg.nodes + ag.nodes + (e.uid, e), 
-                                    lg.nids + ag.nids + (e.id, e)));
-                            }
-                        }
+            if (d.Graph(e.leaving.value) is TGraph lg && lg.Rep() is TNode lr
+            && d.Graph(e.arriving.value) is TGraph ag && ag.Rep() is TNode ar)
+            {
+                if (lr.uid == ar.uid)
+                { // already connected
+                    gs += (lr.uid, lg + e);
+                }
+                else
+                // connect the two TGraphs and discard the higher one
+                if (lr.uid < ar.uid)
+                {
+                    gs -= ar.uid;
+                    gs += (lr.uid, new TGraph(lg.nodes + ag.nodes + (e.uid, e),
+                        lg.nids + ag.nids + (e.id, e)));
+                }
+                else
+                {
+                    gs -= lr.uid;
+                    gs += (ar.uid, new TGraph(lg.nodes + ag.nodes + (e.uid, e),
+                        lg.nids + ag.nids + (e.id, e)));
+                }
+            }
             return d + (Graphs, gs);
         }
         /// <summary>
@@ -399,7 +404,7 @@ namespace Pyrrho.Level3
                     nd += b.value();
             return nd;
         }
-        internal TGraph? Graph(TChar s)
+        internal TGraph? Graph(string s)
         {
             if (nodeIds[s] is TNode n)
                 for (var b = graphs.First(); b != null; b = b.Next())
@@ -463,7 +468,7 @@ namespace Pyrrho.Level3
         /// <param name="sce"></param>
         /// <param name="auto"></param>
         /// <returns></returns>
-        public virtual Transaction Transact(long t, string sce,Connection con,bool? auto = null)
+        public virtual Transaction Transact(long t, Connection con,bool? auto = null)
         {
             // if not new, this database may be out of date: ensure we get the latest
             // and add the connection for the session
@@ -534,7 +539,7 @@ namespace Pyrrho.Level3
             done:
             if (u == null)
                 throw new DBException("42105");
-            var tr = new Transaction(r, t, sce, auto ?? autoCommit);
+            var tr = new Transaction(r, t, auto ?? autoCommit);
             if (u.defpos==-1L) // make a PUser for ad-hoc User, in case of Audit or Grant
             { 
                 var cx = new Context(tr);
@@ -553,14 +558,14 @@ namespace Pyrrho.Level3
         }
         public Procedure? GetProcedure(string n,CList<Domain> a)
         {
-            return (role.procedures[n] is BTree<CList<Domain>,long?> pt &&
-                pt.Contains(a))? objects[pt[a]??-1L] as Procedure:null;
+            return (role.procedures[n] is BTree<CList<Domain>, long?> pt &&
+                pt.Contains(a)) ? objects[pt[a] ?? -1L] as Procedure
+                : null;
         }
         public Domain? Find(Domain dm)
         {
-            dm -= Domain.OrderCategory; // probably OrderCategory.Primitive
-            dm -= Domain.Descending;
-            dm -= Domain.NotNull;
+            if ((dm.defpos != -1L && dm.defpos<Transaction.Analysing) || (dm.name?.Length > 0 && !char.IsLetter(dm.name[0])))
+                return dm;
             return objects[types[dm] ?? -1L] as Domain;
         }
         public virtual Database RdrClose(ref Context cx)

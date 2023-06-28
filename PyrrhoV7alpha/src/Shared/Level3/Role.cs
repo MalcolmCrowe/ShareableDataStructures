@@ -43,7 +43,7 @@ namespace Pyrrho.Level3
     /// an ongoing relationship between the roles (granting a role to a user does):
     /// for this reason granting a role to a role is deprecated.
     /// Immutable
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class Role : DBObject
     {
@@ -131,8 +131,13 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Immutable (everything in level 3 must be immutable)
-    /// mem includes Selectors and some metadata
-    /// // shareable as of 26 April 2021
+    /// mem includes Selectors and some metadata.
+    /// Names information works for UDType hierarchies as follows:
+    /// The Names property for a UDType (always computed on-demand)
+    /// is obtained by recursing through the obInfos for all types in the hierachy
+    /// with names info for a type taking precedence over supertypes.
+    /// On Select, corresponding data is then collected from the types and its supertypes.
+    /// The integer component gives the column position of the name in the table that defines it.
     /// </summary>
     internal class ObInfo : Basis
     {
@@ -140,7 +145,7 @@ namespace Pyrrho.Level3
             _Metadata = -254, // CTree<Sqlx,TypedValue>
             Description = -67, // string
             Inverts = -353, // long SqlProcedure
-            MethodInfos = -252, // CTree<string, CTree<int,long?>> Method
+            MethodInfos = -252, // CTree<string, BTree<CList<Domain>,long?>> Method
             Name = -50, // string
             Names = -282, // BTree<string,(int,long?)> TableColumn (SqlValues in RowSet)
             SchemaKey = -286, // long (highwatermark for schema changes)
@@ -148,7 +153,6 @@ namespace Pyrrho.Level3
         public string description => mem[Description]?.ToString() ?? "";
         public Grant.Privilege priv => (Grant.Privilege?)mem[Privilege]??Grant.Privilege.NoPrivilege;
         public long inverts => (long)(mem[Inverts] ?? -1L);
-        public string iri => (string?)mem[Domain.Iri] ?? "";
         public BTree<string, BTree<CList<Domain>, long?>> methodInfos =>
             (BTree<string, BTree<CList<Domain>, long?>>?)mem[MethodInfos] 
             ?? BTree<string, BTree<CList<Domain>, long?>>.Empty;

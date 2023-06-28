@@ -109,7 +109,7 @@ namespace Pyrrho.Level2
                 {
                     var k = b.key();
                     var ob = (DBObject)b.value();
-                    if (ob is Domain) // but Domains always belong to Database._system._role
+                    if (ob.GetType().Name=="Domain" || ob.defpos<=0) // but Domains always belong to Database._system._role
                         continue;
                     var os = ob.infos;
                     var oi = os[-502]??throw new PEException("PE1410");
@@ -132,6 +132,9 @@ namespace Pyrrho.Level2
             return nr;
         }
     }
+    /// <summary>
+    /// Not all metadata syntax gives a PMetadata: see PNodeType and PEdgeType
+    /// </summary>
      internal class PMetadata : Physical
      {
          public string? name = null;

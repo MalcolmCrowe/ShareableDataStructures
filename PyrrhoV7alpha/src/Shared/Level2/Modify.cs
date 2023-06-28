@@ -51,8 +51,8 @@ namespace Pyrrho.Level2
         /// <param name="pc">The (new) parameters and body of the routine</param>
         /// <param name="pb">The local database</param>
         public Modify(long dp, Procedure me, Ident sce, long nst, long pp, Context cx)
-            : base(Type.Modify, pp, _Pre(cx), me.NameFor(cx), me.body, 
-                  cx._Dom(me) ?? throw new PEException("PE48129"),nst)
+            : base(Type.Modify, pp, _Pre(cx), me.NameFor(cx), ((Method)me).udType.defpos,
+                  me.domain, nst)
 		{
             modifydefpos = dp;
             source = sce;
@@ -64,8 +64,7 @@ namespace Pyrrho.Level2
             return cx;
         }
         public Modify(string nm, long dp, RowSet rs, Ident sce, long pp, Context cx)
-            : base(Type.Modify, pp, cx, nm, rs.defpos, 
-                cx._Dom(rs) ?? throw new PEException("PE48130"), cx.db.nextStmt)
+            : base(Type.Modify, pp, cx, nm, rs, cx.db.nextStmt)
         {
             modifydefpos = dp;
             source = sce;
@@ -137,9 +136,9 @@ namespace Pyrrho.Level2
                     psr.cx.defs += (new Ident(p.name, ip), ip);
                 }
             psr.cx.Install(pr, 0);
+            odt.Defs(psr.cx);
             // and parse the body
-            if (rdr.context._Dom(pr) is not Domain dr || 
-                    psr.ParseProcedureStatement(dr) is not Executable bd)
+            if (psr.ParseProcedureStatement(pr.domain) is not Executable bd)
                 throw new PEException("PE1978");
             proc = bd.defpos;
             framing = new Framing(psr.cx,nst);
@@ -187,6 +186,8 @@ namespace Pyrrho.Level2
                 throw new PEException("PE48140");
             pr = pr + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc);
+            if (pr.methodType.HasFlag(PMethod.MethodType.Constructor))
+                pr += (DBObject._Domain, pr.udType);
             pr += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name,
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute)));
             if (cx.db.format < 51)

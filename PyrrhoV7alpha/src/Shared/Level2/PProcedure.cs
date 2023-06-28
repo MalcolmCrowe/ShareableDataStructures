@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using System.Configuration;
+using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -122,7 +123,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return GetType().Name + " "+name  + source?.ident ?? "??";
+            return GetType().Name + " " + name;
 		}
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -156,7 +157,14 @@ namespace Pyrrho.Level2
             var (rt, dt) = psr.ParseProcedureHeading(n);
             psr.cx._Add(dt);
             parameters = rt;
-            var pr = Install(psr.cx, rdr.Position);
+            dataType = dt;
+            framing = new Framing(psr.cx,nst); // heading only
+            var pr = (Procedure?)Install(psr.cx, rdr.Position);
+            if (pr is not null)
+            {
+                psr.cx.AddParams(pr);
+                rdr.context.Add(pr);
+            }
             psr.LexPos(); //synchronise with CREATE
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
@@ -164,7 +172,6 @@ namespace Pyrrho.Level2
                 proc = bd.defpos;
             psr.cx.parse = op;
             framing = new Framing(psr.cx,nst);
-            dataType = dt;
             rdr.context.db = psr.cx.db;
         }
         internal override DBObject? Install(Context cx, long p)
@@ -174,10 +181,15 @@ namespace Pyrrho.Level2
                 throw new DBException("42108", name);
             var oi = new ObInfo(name,
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute);
+            var ns = BTree<string, (int, long?)>.Empty;
+            for (var b = dataType.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long q && framing.obs[q] is SqlValue v &&  v.name is string n)
+                    ns += (n, (b.key(), q));
+            oi += (ObInfo.Names, ns);
             var pr = new Procedure(this, 
                 BTree<long, object>.Empty + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc)
-                + (DBObject.Owner, cx.user??User.None)
+                + (DBObject.Owner, cx.user??User.None) +(DBObject._Domain,dataType)
                 + (DBObject.Infos,new BTree<long,ObInfo>(cx.role.defpos,oi)));
             var ps = ro.procedures??BTree<string,BTree<CList<Domain>,long?>>.Empty;
             var pn = (ps[name]??BTree<CList<Domain>,long?>.Empty) + (cx.Signature(pr),defpos);
@@ -191,6 +203,8 @@ namespace Pyrrho.Level2
             cx.Install(pr, p);
             if (framing.obs.Count==0)
                 cx.AddParams(pr);
+            cx.db += (pr.domain.defpos, pr.domain);
+            cx.db += (pr.defpos, pr);
             return pr;
         }
     }

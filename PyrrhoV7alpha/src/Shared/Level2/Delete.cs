@@ -178,7 +178,7 @@ namespace Pyrrho.Level2
                     && tb.tableRows[delpos] is TableRow delRow)
                     {
                         rt = tb;
-                    if (tb.defpos == tabledefpos && cx.db.objects[tb.nodeType] is NodeType tn
+                    if (tb.defpos == tabledefpos && tb is NodeType tn
                             && tn.rowType[0] is long q && delRow.vals[q] is TChar id
                             && cx.db.nodeIds[id.value] is TNode nn)
                         cx.db -= nn;

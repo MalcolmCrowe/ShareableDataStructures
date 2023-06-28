@@ -147,7 +147,7 @@ namespace Pyrrho.Level2
             for (var b = x.columns.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
-                    var nc = wr.cx._Ob(wr.cx.Fix(p)) ?? throw new PEException("PE0098");
+                    var nc = wr.cx._Ob(wr.cx.Fix(p))?? throw new PEException("PE0098");
                     bs += nc;
                 }
             columns = (Domain)wr.cx.Add(new Domain(-1L, wr.cx, Sqlx.ROW, bs, bs.Length));
@@ -246,6 +246,19 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            var (nt,ph) = base.Commit(wr, tr);
+            if (tr is not null && wr.cx.db.objects[((PIndex)ph).tabledefpos] is Table tb
+                && wr.cx.db.objects[ph.ppos] is Level3.Index x)
+            {
+                if (tb.indexes[x.keys] is CTree<long, bool> ct)
+                    wr.cx.db += (tb.defpos, tb + (Table.Indexes,tb.indexes + (x.keys, ct - ppos)));
+                if (reference > 0 && wr.cx.db.objects[x.reftabledefpos] is Table rt)
+                    wr.cx.db += (rt.defpos, rt + (Table.RefIndexes,rt.rindexes - ppos));
+            }
+            return (nt,ph);
+        }
         /// <summary>
         /// A readable version of this Physical
         /// </summary>
@@ -263,9 +276,8 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            if (cx._Ob(tabledefpos) is not Table tb)
+            if (cx.db.objects[tabledefpos] is not Table tb)
                 return null;
-            // tb is a shadow table if ta is NodeType or EdgeType 
             var x = new Level3.Index(this, cx).Build(cx);
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
             tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
@@ -275,7 +287,7 @@ namespace Pyrrho.Level2
             {
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
                 var rt = (Table?)(cx.obs[x.reftabledefpos] ?? cx.db.objects[x.reftabledefpos]) ?? throw new PEException("PE1435");
-                var at = rt.rindexes[x.defpos] ?? CTree<Domain, Domain>.Empty;
+                var at = rt.rindexes[tb.defpos] ?? CTree<Domain, Domain>.Empty;
                 rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at + (x.keys, rx.keys)));
                 cx.Install(rt, p);
                 cx.Install(rx, p);
@@ -286,14 +298,23 @@ namespace Pyrrho.Level2
                 if (b.value() is long tc)
                 {
                     cs += tc;
-                    cx.Add(((TableColumn?)cx.db.objects[tc]) ?? throw new PEException("PE1436"));
+                    if (!cx.obs.Contains(tc))
+                        cx.Add(((TableColumn?)cx.db.objects[tc]) ?? throw new PEException("PE1436"));
                     kc += (tc, true);
                 }
+            if (tb is NodeType nt && nt.idCol > 0 && nt.idCol == x.keys[0])
+                tb += (NodeType.IdIx, x.defpos);
+            if (tb is EdgeType et && et.leaveCol > 0 && et.leaveCol == x.keys[0])
+                tb = tb + (EdgeType.LeaveIx, x.defpos) + (EdgeType.LeavingType, x.reftabledefpos);
+            if (tb is EdgeType eu && eu.arriveCol > 0 && eu.arriveCol == x.keys[0])
+                tb = tb + (EdgeType.ArriveIx, x.defpos) + (EdgeType.ArrivingType, x.reftabledefpos);
             tb += (Table.KeyCols, kc);
             tb += (DBObject.LastChange, defpos);
             cx.Install(tb, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
+            cx.db += (tb.defpos, tb);
+            cx.db += (x.defpos,x);
             return tb;
         }
     }

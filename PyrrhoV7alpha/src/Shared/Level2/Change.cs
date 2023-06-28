@@ -124,7 +124,7 @@ namespace Pyrrho.Level2
                         return new DBException("40032", ppos, that, ct);
                     break;
                 case Type.PDomain1:
-                case Type.PDomain: if (name.CompareTo(((PDomain)that).domain.name) == 0)
+                case Type.PDomain: if (name.CompareTo(((PDomain)that).name) == 0)
                         return new DBException("40022", name, that, ct);
                     break;
                 case Type.PType1:

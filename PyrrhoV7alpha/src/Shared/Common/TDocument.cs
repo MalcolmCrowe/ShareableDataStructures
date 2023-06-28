@@ -20,7 +20,7 @@ namespace Pyrrho.Common
     /// Json format is used in SQL.
     /// Alas: Json format has positional fields, so we can't use simple string->Column tree
     /// IMMUTABLE - all fields are private
-    ///     // shareable as of 26 April 2021
+    ///     
     /// </summary>
     internal class TDocument : TypedValue
     {
@@ -217,7 +217,7 @@ namespace Pyrrho.Common
                     }
                 }
                 if (i >= n || (s[i] != 'e' && s[i] != 'E'))
-                    return (nm, new TNumeric(Domain.Numeric, new Numeric(new Integer(whole), scale)));
+                    return (nm, new TNumeric(Domain._Numeric, new Numeric(new Integer(whole), scale)));
                 if (++i >= n)
                     throw ParseException("exponent part expected");
                 var esg = s[i] == '-';
@@ -881,12 +881,12 @@ namespace Pyrrho.Common
     /// a) they have the same _Id
     /// b) the list of fields can be merged, that is for names A and B
     /// if W.colNames[A] lt W.colNames[B] then N.colNames[A] lt colNames[B]
-    ///     // shareable as of 26 April 2021
+    ///     
     /// </summary>
     internal class Delta : TypedValue
     {
         internal enum Verb { Add,Change,Delta,Remove,All }
-        // shareable as of 26 April 2021
+        
         internal class Action
         {
             public readonly int ix;
@@ -986,7 +986,7 @@ namespace Pyrrho.Common
             return sb.ToString();
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class TDocArray :TypedValue
     {
         readonly BList<TypedValue> content = BList<TypedValue>.Empty;

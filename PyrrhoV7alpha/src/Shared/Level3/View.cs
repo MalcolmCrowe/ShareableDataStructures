@@ -1,15 +1,8 @@
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
-using System.Collections.Generic;
-using System;
 using System.Text;
-using System.Runtime.InteropServices;
-using System.Configuration;
-using System.Diagnostics.Eventing.Reader;
-using System.Net.NetworkInformation;
 using static Pyrrho.Level4.RowSet;
-using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -24,28 +17,24 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// A database object for a view.
-    /// The domain is computed from the pv.viewdef immediately.
+    /// The domain is adopted from the pv.viewdef immediately.
     /// Immutable
     /// However, we want to optimise queries deribed from views, so
     /// we use the second constructor to make a private immutable copy
     /// of the committed version.
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
-    internal class View : DBObject
+    internal class View : Domain
 	{
         internal const long
             ViewDef = -379, // string
-            ViewPpos = -377,// long View
-            ViewResult = -380, // long RowSet
-            ViewTable = -371; // long   Table
+            ViewResult = -380; // long RowSet
         public string viewDef => (string)(mem[ViewDef] ?? "");
-        public long viewPpos => (long)(mem[ViewPpos] ?? -1L);
         public long result => (long)(mem[ViewResult] ?? -1L);
-        internal long viewTable => (long)(mem[ViewTable] ?? -1L);
         public View(PView pv,Context cx,BTree<long,object>?m=null) 
-            : base(pv.ppos, pv._Dom(cx,m)
+            : base(pv.ppos, pv.dataType.mem + (m??BTree<long,object>.Empty)
                   + (ObInfo.Name,pv.name) + (Definer,pv.definer)
-                  +(Owner,pv.owner)+(Infos,pv.infos)
+                  +(Owner,pv.owner)+(Infos,pv.infos)+(_Framing,pv.framing)
                   + (ViewDef,pv.viewdef) + (ViewResult,pv.framing.result)
                   + (LastChange, pv.ppos) + (Owner, cx.user?.defpos??-501L))
         { }
@@ -87,7 +76,7 @@ namespace Pyrrho.Level3
         /// The EFFECT OF THESE CONTORTIONS ARE
         /// (1) uids of framing objects of any sort of committed Database.objects
         /// are never lexical or heap uids.
-        /// (2) For prepared statements the framing objects always have heap uids
+        /// (2) Show prepared statements the framing objects always have heap uids
         /// (prepared statements are never committed)
         /// (3) compiled objects referenced in Views in use (in Contexts) are always 
         /// on the heap, except for the domain uid for the View
@@ -107,13 +96,13 @@ namespace Pyrrho.Level3
             cx.uids += (defpos, ni);
             cx.Add((Framing)framing.Fix(cx)); // need virtual columns
             var ns = cx.Fix(st);
-            var dt = (Domain)domain.Fix(cx);
-            var vi = (View)Relocate(ni) + (ViewResult, ns) + (_From,lp) + (_Domain,dt);
+            var dt = (Domain)Fix(cx);
+            var vi = (View)Relocate(ni) + (ViewResult, ns) + (_From,lp);
             vi = (View)vi.Fix(cx);
             cx.Add(vi);
             var vn = new Ident(vi.NameFor(cx), cx.Ix(vi.defpos));
             var ods = cx.defs;
-            cx.AddDefs(vn, vi.domain,alias);
+            cx.AddDefs(vn, vi,alias);
             var ids = cx.defs[vn.ident]?[cx.sD].Item2;
             cx.done = ObTree.Empty;
             for (var b = ids?.First(); b != null; b = b.Next())
@@ -128,7 +117,7 @@ namespace Pyrrho.Level3
                         cx.obs[qx.dp] is SqlValue ov &&
                         cx.obs[vx.dp] is SqlValue tv)
                 {
-                    var nv = tv.Relocate(qx.dp);
+                    var nv = (SqlValue)tv.Relocate(qx.dp);
                     cx.Replace(ov, nv);
                     cx.Replace(tv, nv);
                     cx.undefined -= qx.dp;
@@ -143,7 +132,7 @@ namespace Pyrrho.Level3
                 if (cx.defs.Contains(iv.ident) && cx.defs[iv.ident]?[cx.sD].Item1.dp is long sp &&
                     cx.obs[cx.uids[sp] ?? sp] is SqlValue so)
                 {
-                    cx.Replace(so, so.Relocate(iv.iix.dp));
+                    cx.Replace(so, (SqlCopy)so.Relocate(iv.iix.dp));
                     if (!cx.obs.Contains(sp))
                         cx.uids += (sp, iv.iix.dp);
                 }
@@ -162,7 +151,7 @@ namespace Pyrrho.Level3
             vi = (View)(cx.obs[vi.defpos]??throw new DBException("PE030601"));
     //        cx.defs = on;
             cx.done = od;
-            return vi.RowSets(vn, cx, dt, vi.viewTable);
+            return vi.RowSets(vn, cx, dt,lp);
         }
         /// <summary>
         /// Triggered on the complete set if a view is referenced.
@@ -194,7 +183,7 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RoleClassValue(Context cx,DBObject from, ABookmark<long, object> _enu)
+        internal override TRow RoleClassValue(Context cx,RowSet from, ABookmark<long, object> _enu)
         {
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi || mi.name==null)
@@ -207,9 +196,9 @@ namespace Pyrrho.Level3
                 sb.Append("/// " + mi.description + "\r\n");
             sb.Append("/// </summary>\r\n");
             sb.Append("public class " + mi.name + " : Versioned {\r\n");
-            md.domain.DisplayType(cx,sb);
+            md.DisplayType(cx,sb);
             sb.Append("}\r\n");
-            return new TRow(md.domain,
+            return new TRow(md,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -220,7 +209,7 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RoleJavaValue(Context cx, DBObject from, ABookmark<long, object> _enu)
+        internal override TRow RoleJavaValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi
@@ -236,9 +225,9 @@ namespace Pyrrho.Level3
                 sb.Append(" * " + mi.description + "\r\n");
             sb.Append(" */\r\n");
             sb.Append("public class " + mi.name + " extends Versioned {\r\n");
-            DisplayJType(cx,md.domain, sb);
+            DisplayJType(cx,md, sb);
             sb.Append("}\r\n");
-            return new TRow(md.domain,
+            return new TRow(md,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -249,7 +238,7 @@ namespace Pyrrho.Level3
         /// <param name="from">the From</param>
         /// <param name="_enu">the bookmark in the RoleObjects enumeration</param>
         /// <returns></returns>
-        internal override TRow RolePythonValue(Context cx, DBObject from, ABookmark<long, object> _enu)
+        internal override TRow RolePythonValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi || mi.name == null)
@@ -262,8 +251,8 @@ namespace Pyrrho.Level3
                 sb.Append("# " + mi.description + "\r\n");
             sb.Append("class " + mi.name + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
-            DisplayPType(cx,md.domain, sb);
-            return new TRow(md.domain,
+            DisplayPType(cx,md, sb);
+            return new TRow(md,
                 new TChar(mi.name),
                 new TChar(""),
                 new TChar(sb.ToString()));
@@ -278,13 +267,13 @@ namespace Pyrrho.Level3
         {
             var i = 0;
             for (var b = dt.rowType.First();b is not null;b=b.Next(),i++)
-             if (b.value() is long p && cx.role is Role ro && cx._Ob(p) is DBObject ob && 
+             if (b.value() is long p && cx.role is Role ro && dt.representation[p] is Domain ob && 
                     ob.infos[ro.defpos] is ObInfo c && c.name is not null){
                 var n = c.name.Replace('.', '_');
                 var tn = c.name;
-                    var k = ob.domain.kind;
+                    var k = ob.kind;
                 if (k != Sqlx.TYPE && k != Sqlx.ARRAY && k != Sqlx.MULTISET && k!=Sqlx.SET)
-                    tn = ob.domain.SystemType.Name;
+                    tn = ob.SystemType.Name;
                 if (k == Sqlx.ARRAY || k == Sqlx.MULTISET || k==Sqlx.SET)
                 {
                     if (tn == "[]")
@@ -292,15 +281,15 @@ namespace Pyrrho.Level3
                     if (n.EndsWith("("))
                         n = "_F" + i;
                 }
-                ob.domain.FieldType(cx,sb);
+                ob.FieldType(cx,sb);
                 sb.Append("  public " + tn + " " + n + ";\r\n");
             }
             i = 0;
             for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
-                if (cx.role is  Role ro && b.value() is long p && cx._Ob(p) is DBObject ob && 
+                if (cx.role is  Role ro && b.value() is long p && dt.representation[p] is Domain ob && 
                     ob.infos[ro.defpos] is ObInfo ci && 
-                    (ob.domain.kind==Sqlx.ARRAY || ob.domain.kind==Sqlx.MULTISET || ob.domain.kind==Sqlx.SET)
-                    && ob.domain.elType is Domain ce)
+                    (ob.kind==Sqlx.ARRAY || ob.kind==Sqlx.MULTISET || ob.kind==Sqlx.SET)
+                    && ob.elType is Domain ce)
                 {
                     var tn = ci.name;
                     if (tn != null)
@@ -322,7 +311,7 @@ namespace Pyrrho.Level3
         {
             var i = 0;
             for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
-                if (cx.role != null && b.value() is long p && cx._Ob(p) is DBObject oc && 
+                if (cx.role != null && b.value() is long p && dt.representation[p] is DBObject oc && 
                     oc.infos[cx.role.defpos] is ObInfo c && c.name is not null &&
                     dt.representation[p] is Domain cd)
                 {
@@ -367,14 +356,6 @@ namespace Pyrrho.Level3
                 }
             return base.Drop(d, nd, p);
         }
-        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
-        {
-            var r = base._Fix(cx, m);
-            var vt = cx.Fix(viewTable);
-            if (vt != viewTable)
-                r += (ViewTable, vt);
-            return r;
-        }
         /// <summary>
         /// a readable version of the View
         /// </summary>
@@ -385,10 +366,6 @@ namespace Pyrrho.Level3
             if (viewDef !="")
             {
                 sb.Append(" ViewDef "); sb.Append(viewDef);
-            }
-            if (viewPpos >= 0)
-            {
-                sb.Append(" Ppos: "); sb.Append(Uid(viewPpos));
             }
             if (result >= 0)
             {
@@ -413,7 +390,7 @@ namespace Pyrrho.Level3
         internal const long
             Mime = -255, // string
             NamesMap = -399, // CTree<long,string> SqlValue (including exports)
-            UsingTable = -460; // long Table
+            UsingTable = -372; // long Table
         internal string? mime => (string?)mem[Mime];
         internal long usingTable => (long)(mem[UsingTable]??-1L);
         internal BTree<string,(int,long?)> names =>
@@ -428,8 +405,8 @@ namespace Pyrrho.Level3
         /// <param name="ow">the owner</param>
         /// <param name="rs">the list of grantees</param>
         public RestView(PRestView pv, Context cx) : base(pv, cx,
-            BTree<long, object>.Empty + (UsingTable, pv.usingTable) + (_Domain, pv.dataType)
-            + (ViewDef, pv.viewdef) + (ViewPpos, pv.ppos) + (_Depth,pv.dataType.depth+1)
+            pv.dataType.mem + (UsingTable, pv.usingTable) 
+            + (ViewDef, pv.viewdef) + (_Depth,pv.dataType.depth+1)
             + (NamesMap, (CTree<long, string>)(pv.dataType.mem[NamesMap]??CTree<long,string>.Empty))
             + (ObInfo.Names, (BTree<string, (int,long?)>)(pv.dataType.mem[ObInfo.Names]??BTree<string,(int, long?)>.Empty))
             +(Infos,new BTree<long,ObInfo>(cx.role.defpos,new ObInfo(pv.name,Grant.AllPrivileges))))
@@ -443,11 +420,11 @@ namespace Pyrrho.Level3
         internal override void _Add(Context cx)
         {
             base._Add(cx);
-            cx.obs += (domain.defpos,domain);
-            var ds = cx.depths[domain.depth] ?? ObTree.Empty;
-            ds += (domain.defpos, domain);
-            cx.depths += (domain.depth, ds);
-            cx.Add(domain);
+            cx.obs += (defpos,this);
+            var ds = cx.depths[depth] ?? ObTree.Empty;
+            ds += (defpos, this);
+            cx.depths += (depth, ds);
+            cx.Add(this);
         }
         internal override DBObject Add(Context cx, PMetadata pm, long p)
         {
@@ -505,40 +482,40 @@ namespace Pyrrho.Level3
             // set up instancing parameters
             var vn = new Ident(name, new Iix(lp,cx.sD,cx.GetUid()));
             cx.instDFirst = (cx.parse == ExecuteStatus.Obey) ? cx.nextHeap : cx.db.nextStmt;
-            cx.instSFirst = (domain.representation.First()?.key() ?? 0L) - 1;
-            cx.instSLast = domain.representation.Last()?.key() ?? -1L;
+            cx.instSFirst = (representation.First()?.key() ?? 0L) - 1;
+            cx.instSLast = representation.Last()?.key() ?? -1L;
             // construct our instanced virtual columns, and the instanced domain
             var rt = BList<long?>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var ns = BTree<string, (int,long?)>.Empty;
             var nm = CTree<long, string>.Empty;
-            for (var b = domain.rowType.First(); b != null; b = b.Next())
+            for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long k)
                 {
                     var nk = cx.Fix(k);
                     var n = namesMap[k] ?? "";
-                    var dm = domain.representation[k] ?? Domain.Null;
+                    var dm = representation[k] ?? Null;
                     rs += (nk, dm);
                     rt += nk;
                     nm += (nk, n);
                     ns += (n, (b.key(),nk));
                     var id = new Ident(n, new Iix(nk,cx.sD,nk));
                     var sv = new SqlRestValue(id,cx, dm);
-                    sv = (SqlRestValue)cx.Add(sv);
+                    cx.Add(sv);
                     cx.defs += (new Ident(vn, id), vn.iix);
                 }
             var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, rs, rt, rt.Length);
             var oi = infos[cx.role.defpos] ?? throw new DBException("42105");
-            var rv = new RestView(cx.GetUid(), BTree<long, object>.Empty + (UsingTable, usingTable)
-                + (_Domain, nd) + (NamesMap, nm) + (ObInfo.Names, ns) +(ViewDef,viewDef)
-                + (ViewPpos, viewPpos)+(_Depth,nd.depth+1)
+            var rv = new RestView(cx.GetUid(), nd.mem + (UsingTable, usingTable)
+                + (NamesMap, nm) + (ObInfo.Names, ns) +(ViewDef,viewDef)
+                + (_Depth,nd.depth+1)
                 + (Infos, new BTree<long, ObInfo>(cx.role.defpos,oi
                     + (ObInfo._Metadata,oi.metadata)+ (ObInfo.Names, ns))));
             rv = (RestView)cx.Add(rv);
             cx.AddDefs(vn, nd);
             var r = rv.RowSets(vn, cx, nd, lp);
             if (r is RestRowSetUsing rsu && cx.obs[rsu.usingTableRowSet] is TableRowSet utr)
-                for (var b = utr.domain.rowType.First(); b != null; b = b.Next())
+                for (var b = utr.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.obs[p] is SqlValue sv && sv.name is string sn
                         && cx.defs[sn]?[cx.sD].Item1?.dp is long q && cx.obs[q] is SqlValue sq
                         && sv.dbg!=sq.dbg)
@@ -565,7 +542,7 @@ namespace Pyrrho.Level3
                     var vx = cx.defs[(c, cx.sD)].Item1; // a reference in q to this
                     if (vx == qx || qx == Iix.None)
                         continue;
-                    if (qx.dp >= 0 && qx.sd >= vx.sd &&  // substitute the references for the instance columns
+                    if (qx.dp >= 0 && qx.dp!=vx.dp && qx.sd >= vx.sd &&  // substitute the references for the instance columns
                             cx.obs[qx.dp] is SqlValue ov &&
                             cx.obs[vx.dp] is SqlValue tv)
                     {
@@ -585,14 +562,13 @@ namespace Pyrrho.Level3
             var rt = irs.rsTargets;
             var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
             var tn = id.ident; // the object name
-            var dm = (Domain)(m[_Domain]??Domain.Null);
             var fa = (pr == Grant.Privilege.Select) ? Assertions.None : Assertions.AssignTarget;
             fa |= irs.asserts & Assertions.SpecificRows;
-            m = m + (ObInfo.Name, tn) + (Target, irs.target) + (Matching, mg)
+            m = m + (ObInfo.Name, tn) /*+ (Target, irs.target)*/ + (Matching, mg)
                    + (RSTargets, rt) + (Asserts, fa);
             if (a != null)
                 m += (_Alias, a);
-            if (irs.keys != Domain.Row)
+            if (irs.keys != Row)
                 m += (Index.Keys, irs.keys);
             irs = (InstanceRowSet)irs.Apply(m, cx); 
             cx.UpdateDefs(id, irs, a);
@@ -609,16 +585,15 @@ namespace Pyrrho.Level3
         /// <param name="from">The query</param>
         /// <param name="_enu">The object enumerator</param>
         /// <returns></returns>
-        internal override TRow RoleClassValue(Context cx, DBObject from,
+        internal override TRow RoleClassValue(Context cx, RowSet from,
             ABookmark<long, object> _enu)
         {
             if (cx.role == null) 
                 throw new DBException("42105");
-            var tb = (Table)(cx.db.objects[domain.structure] ?? throw new DBException("42105"));
+            var tb = (Table)(super as Table ?? throw new DBException("42105"));
             var ro = cx.role;
             var md = infos[ro.defpos] ?? throw new DBException("42105");
             cx.Add(framing);
-            var dm = tb.domain;
             var versioned = md.metadata.Contains(Sqlx.ENTITY);
             var key = tb.BuildKey(cx, out Domain keys);
             var fields = CTree<string, bool>.Empty;
@@ -631,7 +606,7 @@ namespace Pyrrho.Level3
             sb.Append("/// </summary>\r\n");
             sb.Append("[Table("); sb.Append(defpos); sb.Append(','); sb.Append(md.schemaKey); sb.Append(")]\r\n");
             sb.Append("public class " + md.name + (versioned ? " : Versioned" : "") + " {\r\n");
-            for (var b = dm.representation.First(); b != null; b = b.Next())
+            for (var b = tb.representation.First(); b != null; b = b.Next())
             {
                 var p = b.key();
                 var dt = b.value();
@@ -720,7 +695,7 @@ namespace Pyrrho.Level3
                             {
                                 cm = "";
                                 for (var bb = c.value().First(); bb != null; bb = bb.Next())
-                                    if (bb.value() is long bp && cx._Ob(bp) is DBObject vo 
+                                    if (bb.value() is long bp && c.value().representation[bp] is DBObject vo 
                                         && vo.infos[cx.role.defpos] is ObInfo vi)
                                     {
                                         sa.Append(cm); cm = ",";
@@ -757,7 +732,7 @@ namespace Pyrrho.Level3
                                     var cm = "\\\"";
                                     for (var c = tx.keys.First(); c != null; c = c.Next())
                                         if (c.value() is long p && cx.role != null 
-                                            && cx._Ob(p) is DBObject oc &&
+                                            && representation[p] is DBObject oc &&
                                             oc.infos[cx.role.defpos] is ObInfo ci)
                                         {
                                             sk.Append(cm); cm = "\\\",\\\"";
@@ -787,7 +762,7 @@ namespace Pyrrho.Level3
                                 }
                 }
             sb.Append("}\r\n");
-            return new TRow(from.domain, new TChar(md.name??""), new TChar(key),
+            return new TRow(from, new TChar(md.name??""), new TChar(key),
                 new TChar(sb.ToString()));
         }
         public override string ToString()

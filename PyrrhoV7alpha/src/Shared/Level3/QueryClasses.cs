@@ -20,7 +20,6 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// Implement bounds for a window in a windowed table
-    /// shareable as of 26 April 2021
     /// </summary>
     internal class WindowBound :Basis
     {
@@ -83,9 +82,9 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// A Window Specification from the parser
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
-    internal class WindowSpecification : DBObject
+    internal class WindowSpecification : Domain
     {
         internal const long
             Exclude = -222,// Sqlx
@@ -145,9 +144,9 @@ namespace Pyrrho.Level3
         public static WindowSpecification operator +(WindowSpecification w, (Context,long, object) x)
         {
             var (cx, p, o) = x;
-            return new WindowSpecification(w.defpos,w.mem + (p,o));
+            return new WindowSpecification(w.defpos,cx.DoDepth(w.mem + (p,o)));
         }
-        internal CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
+        internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
         {
             for (var b = order.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p&& cx.obs[p] is SqlValue v)
@@ -165,12 +164,13 @@ namespace Pyrrho.Level3
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (WindowSpecification)base._Replace(cx, so, sv);
+            var d = depth;
             var np = partition.Replace(cx, so, sv);
             if (np != partition)
-                r += (PartitionType, np);
+                r = r + (PartitionType, np) + (_Depth,Math.Max(np.depth+1,d));
             var no = order.Replace(cx, so, sv);
             if (no != order)
-                r += (Order, no);
+                r = r + (Order, no) + (_Depth,Math.Max(no.depth+1,d));
             return r;
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
@@ -245,10 +245,10 @@ namespace Pyrrho.Level3
         }
         internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
         {
-            BList<DBObject>ls;
+            BList<DBObject> ls;
             var ch = false;
             var mm = mem;
-            if (partition!=Domain.Row)
+            if (partition!=Row)
             {
                 (ls, m) = partition.Resolve(cx, f, m);
                 if (ls[0] is Domain np && np!=partition)
@@ -257,7 +257,7 @@ namespace Pyrrho.Level3
                     mm += (PartitionType, np);
                 }
             }
-            if (order!=Domain.Row)
+            if (order!=Row)
             {
                 (ls, m) = order.Resolve(cx, f, m);
                 if (ls[0] is Domain nd && nd != order)
@@ -268,19 +268,19 @@ namespace Pyrrho.Level3
             }
             if (cx.obs[query] is RowSet rs )
             {
-                (ls, m) = rs.domain.Resolve(cx, f, m);
-                if (ls[0] is Domain nr && nr.defpos != rs.domain.defpos)
+                (ls, m) = rs.Resolve(cx, f, m);
+                if (ls[0] is Domain nr && nr.defpos != rs.defpos)
                 {
                     ch = true;
-                    rs.Apply(new BTree<long, object>(_Domain, nr),cx);
+                    cx.Add(rs + (_Domain,nr));
                     mm += (WQuery, nr);
                 }
             }
-            return ch?(new BList<DBObject>((DBObject)New(mm)), m):(BList<DBObject>.Empty,m);
+            return ch?(new BList<DBObject>((Domain)New(mm)), m):(BList<DBObject>.Empty,m);
         }
     }
-    // shareable as of 26 April 2021
-    internal class Grouping :DBObject,IComparable
+    
+    internal class Grouping :Domain,IComparable
     {
         internal const long
             GroupKind = -232, //Sqlx
@@ -289,7 +289,6 @@ namespace Pyrrho.Level3
         /// <summary>
         /// GROUP, CUBE or ROLLUP
         /// </summary>
-        public Sqlx kind => (Sqlx)(mem[GroupKind]??Sqlx.GROUP);
         internal CList<Grouping> groups => 
             (CList<Grouping>)(mem[Groups]?? CList<Grouping>.Empty);
         /// <summary>
@@ -377,8 +376,6 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(' ');
-            sb.Append(kind.ToString());
-            sb.Append(' ');
             var cm = "(";
             for (var b=members.First();b is not null;b=b.Next())
             {
@@ -420,8 +417,7 @@ namespace Pyrrho.Level3
             r += (Members, nm);
             return r;
         }
-
-        public int CompareTo(object? obj)
+        public override int CompareTo(object? obj)
         {
             if (obj == null)
                 return 1;
@@ -432,7 +428,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Implement a GroupSpecfication
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class GroupSpecification : DBObject
     {
@@ -533,7 +529,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class UpdateAssignment : Basis,IComparable
     {
         internal const long

@@ -17,7 +17,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// A Level 3 Method definition (a subclass of Procedure)
     /// Immutable
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal class Method : Procedure
     {
@@ -71,11 +71,6 @@ namespace Pyrrho.Level3
         {
             cx.db += (this + (Body, m.proc) + (Params, m.parms)
                     + (_Framing, m.framing), p);
-        }
-        internal override DBObject Instance(long lp,Context cx, BList<Ident>? cs=null)
-        {
-            udType.Instance(lp,cx);
-            return base.Instance(lp,cx);
         }
         /// <summary>
         /// Execute a Method

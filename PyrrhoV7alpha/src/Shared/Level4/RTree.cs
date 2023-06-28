@@ -22,7 +22,6 @@ namespace Pyrrho.Level4
     /// Logically an RTree contains associations of form (TRow,RRow)
     /// RTree uses MTree for implementation.
     /// IMMUTABLE
-    /// shareable as of 26 April 2021
     /// </summary>
     internal class RTree
     {
@@ -83,7 +82,7 @@ namespace Pyrrho.Level4
             return RTreeBookmark.New(cx, this, key, ff);
         }
     }
-    // shareable as of 26 April 2021
+    
     internal class RTreeBookmark : Cursor
     {
         internal readonly RTree _rt;

@@ -42,7 +42,7 @@ namespace Pyrrho.Level2
         /// <param name="curpos">The current position in the datafile</param>
         public PTable(string nm,Domain d, long pp, Context cx)
             : this(Type.PTable, nm, d, pp, cx)
-        {  }
+        { }
         /// <summary>
         /// Constructor: a Table definition from the Parser.
         /// We assume that code for framing has not yet been parsed
@@ -139,7 +139,7 @@ namespace Pyrrho.Level2
                 dataType += (DBObject.Infos, dataType.infos + (ro.defpos, oi - ObInfo.Name));
             if (dataType.name!="")
                 dataType = new Domain(dataType.defpos,dataType.mem- ObInfo.Name); // -= on Domain means something else
-            var tb = (name[0] == '(') ? new VirtualTable(this, cx) : new Table(this);
+            var tb = /* (name[0] == '(') ? new VirtualTable(this, cx) :*/ new Table(this);
             if (nodeType >= 0)
                 tb += (Table._NodeType, nodeType);
             ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));

@@ -374,7 +374,7 @@ namespace Pyrrho.Common
             if (k.dataType == keyType.elType)
             {
                 for (var b = First(); b != null; b = b.Next())
-                    if (b.key() is TSet ts && ts.tree.Contains(k))
+                    if (b.value() is TSet ts && ts.tree.Contains(k))
                         return true;
                 return false;
             }

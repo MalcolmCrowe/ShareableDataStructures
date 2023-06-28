@@ -4,6 +4,8 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Configuration;
+using System.Xml;
+using System.Diagnostics.Tracing;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -45,8 +47,13 @@ namespace Pyrrho.Level2
 		public TypedValue dv => dataType?.defaultValue??TNull.Value; 
         public string dfs="",ups="";
         public BTree<UpdateAssignment,bool> upd = CTree<UpdateAssignment,bool>.Empty; // see PColumn3
-		public bool notNull = false;    // ditto
+		public bool notNull = false;    // see PColumn2
 		public GenerationRule generated = GenerationRule.None; // ditto
+        [Flags] // for Typed Graph Model June2023
+        internal enum GraphFlags { None = 0, IdCol = 1, LeaveCol = 2, ArriveCol = 4, SetValue = 8 }
+        public GraphFlags flags;
+        public long index;  // Leave or Arrive Ix
+        public long toType; // Leave or Arrive Type
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (table != null && dataType != null)
@@ -94,12 +101,71 @@ namespace Pyrrho.Level2
                 table = (Table)x.table.Fix(wr.cx);
                 tabledefpos = table.defpos;
                 seq = x.seq;
+                flags = x.flags;
+                if (flags.HasFlag(GraphFlags.ArriveCol))
+                    toType = wr.cx.Fix(((EdgeType)x.table).arrivingType);
+                else if (flags.HasFlag(GraphFlags.LeaveCol))
+                    toType = wr.cx.Fix(((EdgeType)x.table).leavingType);
                 domdefpos = x.domdefpos;
             }
         }
         protected override Physical Relocate(Writer wr)
         {
             return new PColumn(this, wr);
+        }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (tr is not null && wr.cx.uids[ppos] is long q
+                && wr.cx.db.objects[q] is Domain ndt)
+                dataType = ndt;
+            if (wr.cx.uids[tabledefpos] is long tp && wr.cx.db.objects[tp] is Table ta)
+            {
+                var rt = BList<long?>.Empty;
+                for (var b = ta.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p && p != ppos && p<Transaction.TransPos)
+                        rt += p;
+                ta += (Domain.RowType, rt);
+                ta += (Domain.Representation, ta.representation - ppos);
+                ta += (Table.PathDomain, ta._PathDomain(wr.cx));
+                wr.cx.db += (ta.defpos, ta);
+            }
+            if (flags.HasFlag(GraphFlags.ArriveCol))
+                index = (dataType as EdgeType)?.arriveIx ?? -1L; 
+            else if (flags.HasFlag(GraphFlags.IdCol))
+                index = (dataType as NodeType)?.idIx??-1L;
+            else if (flags.HasFlag(GraphFlags.IdCol))
+                index = (dataType as EdgeType)?.leaveIx ?? -1L;
+            var (nt,ph) = base.Commit(wr, tr);
+            if (wr.cx.uids[tabledefpos] is long t && wr.cx.db.objects[t] is Table tb)
+            {
+                var ot = tb;
+                var xs = tb.indexes;
+                for (var b = xs.First(); b != null; b = b.Next())
+                    if (b.key() is Domain d && d.Fix(wr.cx) is Domain nd && nd != d)
+                    {
+                        xs -= d;
+                        xs += (nd, b.value());
+                    }
+                if (xs != tb.indexes)
+                    tb += (Table.Indexes, xs);
+                var rx = tb.rindexes;
+                for (var b = rx.First(); b != null; b = b.Next())
+                    if (b.value() is CTree<Domain, Domain> td)
+                    {
+                        for (var c = td.First(); c != null; c = c.Next())
+                            if (c.value() is Domain d && d.Fix(wr.cx) is Domain nd && nd != d)
+                                td += (c.key(), nd);
+                        if (td != b.value())
+                            rx += (b.key(), td);
+                    }
+                if (rx != tb.rindexes)
+                    tb += (Table.RefIndexes, rx);
+                if (tb.keyCols.Contains(ppos))
+                    tb += (Table.KeyCols, tb.keyCols - ppos + (ph.ppos,true));
+                if (ot != tb)
+                    wr.cx.db += (tb.defpos, tb);
+            }
+            return (nt,ph);
         }
         /// <summary>
         /// Serialise this Physical to the PhysBase
@@ -111,10 +177,10 @@ namespace Pyrrho.Level2
                 return;
 			table = (Table)table.Fix(wr.cx);
             tabledefpos = table.defpos;
-            dataType = wr.cx.db.Find(dataType) ?? throw new PEException("PE0302");
             wr.PutLong(table.defpos);
             wr.PutString(name.ToString());
             wr.PutInt(seq);
+            domdefpos = wr.cx.Fix(domdefpos);
             wr.PutLong(domdefpos);
 			base.Serialise(wr);
 		}
@@ -126,7 +192,7 @@ namespace Pyrrho.Level2
         {
             tabledefpos = rdr.GetLong();
             table = (Table)(rdr.GetObject(tabledefpos)
-                ??new Table(defpos,BTree<long,object>.Empty+(DBObject._Domain,Domain.Content)));
+                ??new Table(defpos,BTree<long,object>.Empty));
             name = rdr.GetString();
             seq = rdr.GetInt();
             domdefpos = rdr.GetLong();
@@ -171,7 +237,7 @@ namespace Pyrrho.Level2
                         var d = (Drop)that;
                         if (table.defpos == d.delpos)
                             return new DBException("40012", table.defpos, that, ct);
-                        if (cx.db.types.Contains(dataType) && cx.db.types[dataType] == d.delpos)
+                        if (cx.db.Find(dataType)?.defpos == d.delpos)
                             return new DBException("40016", defpos, that, ct);  
                         break;
                     }
@@ -193,17 +259,24 @@ namespace Pyrrho.Level2
             else
                 sb.Append(dataType); 
             sb.Append(']');
+            if (flags != GraphFlags.None)
+                sb.Append(" " + flags);
+            if (index > 0)
+                sb.Append(" " + DBObject.Uid(index));
+            if (toType> 0)
+                sb.Append(" "+DBObject.Uid(toType));
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            if (table==null || cx.db.objects[table.defpos] is not Table tb)
-                return null;
-            table = tb;
-            var ro = (table is VirtualTable) ? Database._system?.role : cx.role;
+            var ro = /* (table is VirtualTable) ? Database._system?.role : */ cx.role;
             if (table == null || dataType == null || ro == null)
                 return null;
-            cx.Install(dataType, p);
+            // we allow a UDType to be converted to NodeType using metadata, so take care here
+            if (cx.db.objects[table.defpos] is Table t && t.kind == table.kind)
+                table = t;
+            if (dataType.defpos > 0)
+                cx.Install(dataType, p);
             var tc = new TableColumn(table, this, dataType, ro, cx.user);
             tc += (DBObject._Framing, framing);
             var rp = ro.defpos;
@@ -216,28 +289,22 @@ namespace Pyrrho.Level2
             cx.Add(tc);
             if (table.defpos < 0)
                 throw new DBException("42105");
-            table += (cx, seq, tc);
+            table += (cx, seq, tc); // this is where the NodeType stuff happens
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
+            seq = tc.seq; // the + operator may have changed seq
             table += (DBObject.LastChange, ppos);
+            for (var b = table.subtypes.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is NodeType st)
+                {
+                    st += (Domain.Under, table);
+                    cx.db += (st, cx.db.loadpos);
+                    cx.db += st;
+                }
             cx.Install(table, p);
-            if (cx.db.objects[table.nodeType] is NodeType nt)
-            {
-                var rt = nt.rowType + (seq, tc.defpos);
-                var ts = cx.db.types;
-                var rs = nt.representation + (tc.defpos, dataType);
-                nt = nt + (Domain.RowType, rt) + (Domain.Representation, rs);
-                ts += (nt, nt.defpos);
-                cx.db += (nt, cx.db.loadpos);
-                for (var b = nt.subtypes.First(); b != null; b = b.Next())
-                    if (cx._Ob(b.key()) is NodeType st)
-                    {
-                        st += (UDType.Under, nt);
-                        cx.db += (st, cx.db.loadpos);
-                        ts += (st, st.defpos);
-                    }
-                table += (DBObject._Domain, nt);
-                cx.Install(table, p);
-                cx.db += (Database.Types, ts);
-            }
+            if (table is UDType ut)
+                for (var b = ut.methods.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is Method me && me.udType.defpos == ut.defpos)
+                        cx.db += (me.defpos, me + (Method.TypeDef, ut));
             if (cx.db.format < 51)
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
@@ -251,7 +318,7 @@ namespace Pyrrho.Level2
     }
     /// <summary>
     /// PColumn2: this is an extension of PColumn to add some column constraints
-    /// For a general description see PColumn
+    /// Show a general description see PColumn
     /// </summary>
 	internal class PColumn2 : PColumn
 	{
@@ -370,7 +437,7 @@ namespace Pyrrho.Level2
                 var sv = psr.ParseSqlValue(dataType);
                 psr.cx.Add(sv);
                 generated += (GenerationRule.GenExp, sv.defpos);
-                framing = new Framing(rdr.context, nst);
+                framing = new Framing(psr.cx, nst);
                 rdr.context.parse = op;
             }
         }
@@ -385,11 +452,15 @@ namespace Pyrrho.Level2
 	}
     /// <summary>
     /// PColumn3: this is an extension of PColumn to add some column constraints.
-    /// Specifically we add the readonly constraint
+    /// Changed for the Typed Graph Model
     /// For a general description see PColumn
     /// </summary>
     internal class PColumn3 : PColumn2
     {
+        public PColumn3(UDType ut,string nm,int sq,Domain dm,long pp,Context cx)
+            :this (ut,nm,sq,dm, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
+                    true, GenerationRule.None, pp, cx)
+        { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
         /// </summary>
@@ -444,6 +515,8 @@ namespace Pyrrho.Level2
         {
             upd = x.upd;
             ups = x.ups;
+            index = wr.cx.Fix(index);
+            toType = wr.cx.Fix(toType);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -456,9 +529,9 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
         {
             wr.PutString(ups??""); 
-            wr.PutLong(-1);// backwards compatibility
-            wr.PutLong(-1);
-            wr.PutLong(-1);
+            wr.PutLong((long)flags);
+            wr.PutLong(index);
+            wr.PutLong(toType);
             base.Serialise(wr);
         }
         /// <summary>
@@ -469,9 +542,9 @@ namespace Pyrrho.Level2
         {
             ups = rdr.GetString();
             rdr.Upd(this);
-            rdr.GetLong();
-            rdr.GetLong();
-            rdr.GetLong();
+            flags = (GraphFlags)rdr.GetLong();
+            index = rdr.GetLong();
+            toType = rdr.GetLong();
             base.Deserialise(rdr);
         }
         public override string ToString()

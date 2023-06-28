@@ -24,7 +24,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// DBObject is the base class for Level 3 database objects (e.g. Table, Role, Procedure, Domain)
     /// Immutable
-    /// // shareable as of 26 April 2021
+    /// 
     /// </summary>
     internal abstract class DBObject : Basis
     {
@@ -39,7 +39,7 @@ namespace Pyrrho.Level3
             Defpos = -257, // long for Rest service
             Dependents = -65, // CTree<long,bool> (for Drop and Cascades)
             _Depth = -66,  // int (computed on cx.Add())
-            _Domain = -176, // Domain
+            _Domain = -192, // Domain 
             _Framing = -167, // Framing
             _From = -306, // long From
             _Ident = -409, // Ident (used in ForwardReference and RowSet)
@@ -67,9 +67,9 @@ namespace Pyrrho.Level3
         internal Level classification => (Level?)mem[Classification] ?? Level.D;
         internal BTree<long, ObInfo> infos =>
     (BTree<long, ObInfo>?)mem[Infos] ?? BTree<long, ObInfo>.Empty;
-        internal Domain domain => (Domain)(mem[_Domain] ?? Domain.Null);
         internal long from => (long)(mem[_From] ?? -1L);
         internal string name => (string)(mem[ObInfo.Name] ?? "");
+        public virtual Domain domain => (Domain)(mem[_Domain] ?? Domain.Null);
         /// <summary>
         /// This list does not include indexes/columns/rows for tables
         /// or other obvious structural dependencies
@@ -78,7 +78,7 @@ namespace Pyrrho.Level3
             (CTree<long, bool>?)mem[Dependents] ?? CTree<long, bool>.Empty;
         internal int depth => (int)(mem[_Depth] ?? 1);
         /// <summary>
-        /// For compiled code - triggers and Procedures
+        /// Show compiled code - triggers and Procedures
         /// </summary>
         internal Framing framing =>
             (Framing?)mem[_Framing] ?? Framing.Empty;
@@ -123,17 +123,19 @@ namespace Pyrrho.Level3
         {
             return this;
         }
-        internal virtual (DBObject?,Ident?) _Lookup(long lp, Context cx,string nm, Ident? n)
+        internal virtual (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? r)
         {
-            return (this,n);
+            return (this, n);
         }
-        internal static int _Max(params int[] x)
+        internal virtual long ColFor(Context cx, string c)
         {
-            var r = 0;
-            for (var i = 0; i < x.Length; i++)
-                if (x[i] > r)
-                    r = x[i];
-            return r;
+            for (var b = domain.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is DBObject ob &&
+                        ((p >= Transaction.TransPos && ob is SqlValue sv
+                            && (sv.alias ?? sv.name) == c)
+                        || ob.NameFor(cx) == c))
+                    return p;
+            return -1L;
         }
         /// <summary>
         /// Do not use this function in a constructor of a subclass of SqlValue or RowSet
@@ -260,6 +262,10 @@ namespace Pyrrho.Level3
                 cx.Add(r);
             return r;
         }
+        internal virtual DBObject AddFrom(Context cx, long q)
+        {
+            return cx.Add(this + (_From, q));
+        }
         internal CTree<long, TypedValue> Frame(CTree<long, TypedValue> vs)
         {
             var map = BTree<long, long?>.Empty;
@@ -275,8 +281,6 @@ namespace Pyrrho.Level3
         internal override Basis ShallowReplace(Context cx, long was, long now)
         {
             var r = this;
-            if (domain.defpos >= 0 && cx.db.objects[domain.defpos] is Domain nd && nd.dbg != domain.dbg)
-                r += (_Domain, nd);
             var fs = ShallowReplace(cx, infos, was, defpos);
             if (fs != infos)
                 r += (Infos, fs);
@@ -301,9 +305,6 @@ namespace Pyrrho.Level3
         protected override BTree<long,object> _Fix(Context cx,BTree<long,object> m)
         {
             var r = mem;
-            var dm = domain.Fix(cx);
-            if (dm != domain)
-                r += (_Domain, dm);
             var fm = cx.Fix(from);
             if (fm != from)
                 r += (_From, fm);
@@ -536,7 +537,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleClassValue(Context cx,DBObject from,
+        internal virtual TRow RoleClassValue(Context cx,RowSet from,
             ABookmark<long, object> _enu)
         {
             throw new NotImplementedException();
@@ -547,7 +548,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RoleJavaValue(Context cx, DBObject from, ABookmark<long, object> _enu)
+        internal virtual TRow RoleJavaValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
             throw new NotImplementedException();
         }
@@ -557,7 +558,7 @@ namespace Pyrrho.Level3
         /// <param name="from">A query</param>
         /// <param name="_enu">An enumerator for the set of database objects</param>
         /// <returns>A row for the Role$Class table</returns>
-        internal virtual TRow RolePythonValue(Context cx, DBObject from, ABookmark<long, object> _enu)
+        internal virtual TRow RolePythonValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
             throw new NotImplementedException();
         }
@@ -632,7 +633,6 @@ namespace Pyrrho.Level3
                 sb.Append(' '); sb.Append(id);
             }
             sb.Append(' '); sb.Append(Uid(defpos));
-            sb.Append(' '); sb.Append(domain);
             if (mem.Contains(Definer)) { sb.Append(" Definer="); sb.Append(Uid(definer)); }
             if (mem.Contains(Classification)) { sb.Append(" Classification="); sb.Append(classification); }
             if (mem.Contains(LastChange)) { sb.Append(" LastChange="); sb.Append(Uid(lastChange)); }
@@ -713,7 +713,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    internal class ForwardReference : DBObject
+    internal class ForwardReference : Domain
     {
         internal const long
             Subs = -382; // CTree<long,bool>
@@ -727,8 +727,8 @@ namespace Pyrrho.Level3
         /// <param name="lp">Lexical position: stored in LastChange</param>
         /// <param name="dr">Definer</param>
         /// <param name="m">Other properties, e.g. domain, depth</param>
-        public ForwardReference(Ident n, Context cx, BTree<long, object>? m = null) 
-            : base(n.iix.lp, n.iix.dp, cx.Name(n,m))
+        public ForwardReference(Ident n, Context cx) 
+            : base(n.iix.lp, n.iix.dp, cx.Name(n))
         {
             cx.Add(this);
             cx.undefined += (defpos,cx.sD);
@@ -750,6 +750,15 @@ namespace Pyrrho.Level3
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new ForwardReference(dp,m);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (subs!=CTree<long,bool>.Empty) 
+            {
+                sb.Append(" Subs: ");sb.Append(subs.ToString());
+            }
+            return sb.ToString();
         }
     }
 }
