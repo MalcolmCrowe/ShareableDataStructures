@@ -48,8 +48,8 @@ namespace Pyrrho.Level3
     internal class Role : DBObject
     {
         internal const long
-            DBObjects = -248, // CTree<string,long?> Domain/Table/View etc by name
-            Procedures = -249; // CTree<string,CTree<int,long?>> Procedure/Function by name and arity
+            DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
+            Procedures = -249; // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
         internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
@@ -144,8 +144,8 @@ namespace Pyrrho.Level3
         internal const long
             _Metadata = -254, // CTree<Sqlx,TypedValue>
             Description = -67, // string
-            Inverts = -353, // long SqlProcedure
-            MethodInfos = -252, // CTree<string, BTree<CList<Domain>,long?>> Method
+            Inverts = -353, // long Procedure
+            MethodInfos = -252, // BTree<string, BTree<CList<Domain>,long?>> Method
             Name = -50, // string
             Names = -282, // BTree<string,(int,long?)> TableColumn (SqlValues in RowSet)
             SchemaKey = -286, // long (highwatermark for schema changes)

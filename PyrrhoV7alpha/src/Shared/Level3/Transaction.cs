@@ -29,9 +29,9 @@ namespace Pyrrho.Level3
             AutoCommit = -278, // bool
             Diagnostics = -280, // BTree<Sqlx,TypedValue>
             _ETags = -374, // CTree<string,string> url, ETag
-            Physicals = -250, // BTree<long,Physical>
+            Physicals = -79, // BTree<long,Physical>
             Posts = -398, // bool
-            StartTime = -217, // DateTime
+            StartTime = -394, // DateTime
             Step = -276, // long
             TriggeredAction = -288; // long
         public BTree<Sqlx, TypedValue> diagnostics =>

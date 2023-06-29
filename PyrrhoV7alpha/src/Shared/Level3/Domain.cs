@@ -5126,7 +5126,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
     {
         internal const long
             IdCol = -472,  // long TableColumn
-            IdIx = -469;   // long Index
+            IdIx = -436;   // long Index
         internal NodeType(Sqlx t) : base(t)
         {  }
         public NodeType(long dp, BTree<long, object> m) : base(dp, m)
@@ -5303,7 +5303,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
     {
         internal const long
             ArriveCol = -474, // long TableColumn
-            ArriveIx = -471, // long Index
+            ArriveIx = -435, // long Index
             ArrivingEnds = -371, // bool
             ArrivingType = -467, // long NodeType
             LeaveCol = -473, // long TableColumn

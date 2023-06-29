@@ -890,7 +890,7 @@ namespace Pyrrho.Level3
     internal class SqlTreatExpr : SqlValue
     {
         internal const long
-            _Diff = -458, // BTree<long,object>
+            _Diff = -468, // BTree<long,object>
             TreatExpr = -313; // long SqlValue
         BTree<long, object> diff => (BTree<long, object>)(mem[_Diff] ?? BTree<long, object>.Empty);
         long val => (long)(mem[TreatExpr]??-1L);
@@ -1070,7 +1070,7 @@ namespace Pyrrho.Level3
     internal class SqlCaseSimple : SqlValue
     {
         internal const long 
-            Cases = -466,       // BList<(long,long)> SqlValue SqlValue 
+            Cases = -475,       // BList<(long,long)> SqlValue SqlValue 
             CaseElse = -228;    // long SqlValue
         public long val => (long)(mem[SqlFunction._Val] ?? -1L);
         public BList<(long, long)> cases =>
@@ -4980,7 +4980,7 @@ namespace Pyrrho.Level3
     internal class SqlValueSet : SqlValue
     {
         internal const long
-            Elements = -252; // BList<long?> SqlValue
+            Elements = -261; // BList<long?> SqlValue
         /// <summary>
         /// the array
         /// </summary>

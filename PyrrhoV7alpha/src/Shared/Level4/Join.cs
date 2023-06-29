@@ -36,7 +36,7 @@ namespace Pyrrho.Level4
             JoinKind = -204, // Sqlx
             JoinUsing = -208, // BTree<long,long?> SqlValue SqlValue (right->left)
             Natural = -207, // Sqlx
-            OnCond = -381; // BTree<long,long?> SqlValue SqlValue for simple equality
+            OnCond = -205; // BTree<long,long?> SqlValue SqlValue for simple equality
         /// <summary>
         /// NATURAL or USING or NO (the default)
         /// </summary>

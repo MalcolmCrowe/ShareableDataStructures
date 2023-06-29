@@ -232,7 +232,7 @@ namespace Pyrrho.Level3
         internal const long
             ColIds = -304, // BList<long?> TableColumn
             Old = -327, // bool
-            Trig = -326; // long
+            Trig = -458; // long
         internal BList<long?> colIds => (BList<long?>)(mem[ColIds] ?? BList<long?>.Empty);
         internal long trig => (long)(mem[Trig] ?? -1L);
         internal bool old => (bool)(mem[Old]??false);

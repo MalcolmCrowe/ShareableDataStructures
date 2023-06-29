@@ -88,7 +88,7 @@ namespace Pyrrho.Level4
             RowOrder = -404, // Domain
             RSTargets = -197, // BTree<long,long?> Table TableRowSet 
             SIMap = -214, // BTree<long,long?> TableColumn,SqlValue
-            _Scalar = -95, // bool
+            _Scalar = -206, // bool
             _Source = -151, // long RowSet
             Static = -152, // RowSet (defpos for STATIC)
             Stem = -211, // CTree<long,bool> RowSet 
