@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("30 April 2023 Repeatable tests");
+                Console.WriteLine("28 June 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -656,12 +656,12 @@ namespace Test
             Begin();
             Act(167,"create table ad(a int,b char)");
             Act(168,"insert into ad values(20,'Twenty')");
-            Act(169, "alter table ad add c char not null"); // step 170 and query 1 have been withdrawn
-            Act(171,"alter table ad alter c set default 'XX'"); // this step has been modified
+            Act(169, "alter table ad add c char"); 
+            Act(170,"alter table ad alter c set default 'XX'");
             Act(172,"insert into ad(a,b) values(2,'Two')");
-            CheckResults(13, 2, "select * from ad", "[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]");
+            CheckResults(13, 2, "select * from ad", "[{A:20,B:'Twenty',C:'XX'},{A:2,B:'Two',C:'XX'}]"); // results for column C modified May 2023
             Act(173,"alter table ad drop b");
-            CheckResults(13,3,"select * from ad", "[{A:20},{A:2,C:'XX'}]");
+            CheckResults(13,3,"select * from ad", "[{A:20,C:'XX'},{A:2,C:'XX'}]");
             Act(174,"alter table ad add primary key(a)");
             Act(175,"insert into ad values(21,'AB')");
             Act(176,"create table de (d int references ad)");
@@ -718,9 +718,9 @@ namespace Test
             }
             Act(204,"drop de cascade");
             Act(205,"alter table ad drop primary key(a)");
-            CheckResults(13,7, "select * from ad", "[{A:20},{A:2,C:'XX'},{A:21,C:'AB'}]");
+            CheckResults(13,7, "select * from ad", "[{A:20,C:'XX'},{A:2,C:'XX'},{A:21,C:'AB'}]");
             Act(206,"insert into ad(a) values(13)");
-            CheckResults(13,8, "select * from ad", "[{A:20},{A:2,C:'XX'},{A:21,C:'AB'},{A:13,C:'XX'}]");
+            CheckResults(13,8, "select * from ad", "[{A:20,C:'XX'},{A:2,C:'XX'},{A:21,C:'AB'},{A:13,C:'XX'}]");
             Act(207,"drop ad");
             if (qry == 0 || qry == 11)
             {
@@ -1239,22 +1239,18 @@ namespace Test
             Act(351, "insert into staff values ('Anne','Prof')");
             CheckResults(25,1, "select *,specifictype() from person",
                 "[{ID:'Anne',SPECIFICTYPE:'STAFF'},{ID:'Fred',SPECIFICTYPE:'STUDENT'}]");
-            Act(352, "alter type person add dob date");
-            Act(354, "create type friend edgetype(person,person)");
-            Act(355, "create trigger sym after insert on friend referencing new as nr for each row" +
-                " if not exists (select id from friend where leaving=nr.arriving and arriving=nr.leaving)" +
-                " then insert into friend(leaving,arriving) values (nr.arriving,nr.leaving) end if");
-            Act(356, "insert into person values('Joe',date'1976-04-25'),('Mary',date'1992-08-04')");
-            Act(357, "insert into friend(leaving,arriving) values('Joe','Mary'),('Mary','Fred')");
-            CheckResults(25, 2, "select count(*) from friend where 'Fred' in leaving", "[{COUNT:1}]");
-            CheckResults(25, 3, "match (\"Fred\")-[:friend]->(_x)","[{X:'Mary'}]");
+            Act(354, "create type married edgetype(bride=person,groom=person)");
+            Act(356, "insert into person values('Joe'),('Mary')");
+            Act(357, "insert into married(bride,groom) values ('Mary','Fred')");
+            CheckResults(25, 2, "select count(*) from married", "[{COUNT:1}]");
+            CheckResults(25, 3, "match (\"Fred\")<-[:married]-(_x)","[{X:'Mary'}]");
             Act(358, "create type product nodetype");
             Act(359, "CREATE (Joe: Customer { \"Name\":'Joe Edwards', Address: '10 Station Rd.'})," +
 "(Joe) -[:Ordered { \"Date\":date'2002-11-22'} ]-> (Ord201: \"Order\") -[:Item { Qty: 5}]->(\"16/8x100\" : WoodScrew : Product)," +
 "(Ord201) -[:Item { Qty: 5}]->(\"Fibre 12cm\": WallPlug : Product)," +
 "(Ord201) -[:Item { Qty: 1}]->(\"500ml\" : RubberGlue : Product)");
-            CheckResults(25, 4, "match (_)-[:Item {Qty:_Q}]->(_Y:_T) where Q>4",
-                "[{Q:5,Y:'16/8x100',T:'WOODSCREW'},{Q:5,Y:'Fibre 12cm',T:'WALLPLUG'}]");
+            CheckResults(25, 4, "match (_)-[:Item {Qty:_A}]->(_X:_T) where A>4",
+                "[{A:5,T:'WOODSCREW',X:'16/8x100'},{A:5,T:'WALLPLUG',X:'Fibre 12cm'}]");
             Rollback();
         }
         void CheckExceptionCommit(int t, int q,string m)
