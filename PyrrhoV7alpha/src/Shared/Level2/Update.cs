@@ -170,7 +170,7 @@ namespace Pyrrho.Level2
         internal override void AddRow(Table tt, TableRow now, Context cx)
         {
             if (prevrec is null) throw new PEException("PE40408");
-            if (tt.defpos == tabledefpos && tt is NodeType tn
+  /*          if (tt.defpos == tabledefpos && tt is NodeType tn
                     && tn.rowType[0] is long p && now.vals[p] is TChar id
                     && prevrec.vals[p] is TChar od && id.value != od.value
                     && cx.db.nodeIds[id.value] is TypedValue tv)
@@ -179,7 +179,7 @@ namespace Pyrrho.Level2
                     cx.db = cx.db - (TEdge)tv + new TEdge(defpos, te, now.vals);
                 else
                     cx.db = cx.db - (TNode)tv + new TNode(defpos, tn, now.vals);
-            }
+            } */
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x

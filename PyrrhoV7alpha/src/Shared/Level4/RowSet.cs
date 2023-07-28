@@ -1,14 +1,8 @@
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
-using System.Net;
-using System.Runtime.CompilerServices;
-using System.Runtime.Intrinsics.Arm;
-using System.Runtime.Intrinsics.X86;
-using System.Security.Cryptography;
+using Pyrrho.Level5;
 using System.Text;
-using System.Threading.Tasks.Dataflow;
-using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -1615,15 +1609,14 @@ namespace Pyrrho.Level4
         internal abstract BList<TableRow>? Rec();
         internal TNode? node(Context cx)
         {
-            if (this[0] is TChar v && cx.db.nodeIds[v.value] is TNode n)
-                return n;
+            if (cx.obs[_rowsetpos] is NodeType nt && Rec()?[0] is TableRow tr)
+                return new TNode(nt,tr);
             return null;
         }
         internal string NameFor(Context cx, int i)
         {
-    //        var rs = (RowSet)cx.obs[_rowsetpos];
             var p = _dom.rowType[i];
-            return ((SqlValue?)cx.obs[p??-1L])?.name??"";
+            return cx.obs[p??-1L]?.name??"";
         }
         public override string ToString()
         {
@@ -2585,7 +2578,7 @@ namespace Pyrrho.Level4
                 {
                     var rb = new SelectCursor(cx, _srs, bmk, _pos + 1);
                     for (var b = rb._dom.representation.First(); b != null; b = b.Next())
-                        ((SqlValue?)cx.obs[b.key()])?.OnRow(cx,rb);
+                        (cx.obs[b.key()] as SqlValue)?.OnRow(cx,rb);
                     if (rb.Matches(cx))
                         return rb;
                 }
@@ -2919,12 +2912,6 @@ namespace Pyrrho.Level4
             if (pk != null)
                 m += (Level3.Index.Keys,pk);
             var rr = BList<long?>.Empty;
-            if (tb.defpos < 0) // system tables have columns in the wrong order!
-            {
-                for (var b = rt.Last(); b != null; b = b.Previous())
-                    rr += b.value();
-                rt = rr;
-            }
             cx.AddDefs(tn, rt, (string?)m[_Alias]);
             var r = (m ?? BTree<long, object>.Empty)
                 + (RowType,rt) + (Representation,rs)+(Display,rt.Length)
@@ -3309,7 +3296,7 @@ namespace Pyrrho.Level4
             {
                 key ??= CList<TypedValue>.Empty;
                 if (_cx.role is not Role ro)
-                    throw new PEException("PE50310");
+                    throw new PEException("PE50320");
                 if (_cx.db.objects[trs.target] is not Table table || table.infos[ro.defpos] is null)
                     throw new DBException("42105");
                 if (trs.keys!=Row)
@@ -4880,14 +4867,10 @@ namespace Pyrrho.Level4
             {
                 _trs = trs;
                 _fbm = fbm;
-                var vs = CTree<long, TypedValue>.Empty;
                 var cx = ta.next;
                 for (var b = trs.iSMap.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.values[b.key()] is TypedValue v)
-                    {
-                        vs += (p, v);
                         cx.values += (p, v);
-                    }
                 _tgc = TargetCursor.New(ta, this, true); // retrieve it from ta
             }
             TransitionCursor(TransitionCursor cu, TableActivation ta, long p, TypedValue v)
@@ -4962,7 +4945,7 @@ namespace Pyrrho.Level4
                 var t = (Table?)ta.db.objects[ta._tgt] ?? throw new DBException("42105");
                 var tt = ta._trs.target;
                 var p = trc._ds.Contains(tt) ? trc._ds[tt].Item1 : -1L;
-                _rec = (fb is not null) ? t.tableRows[p] : new TableRow(t, this);
+                _rec = (fb is not null) ? t.tableRows[p] : new TableRow(ta.db.nextPos, t, this);
                 ta.values += (values, false);
                 for (var b = ((Table)_td).tableChecks.First(); b != null; b = b.Next())
                     if (b.key() is long cp && ta.db.objects[cp] is Check ck)
@@ -5013,9 +4996,9 @@ namespace Pyrrho.Level4
                         else if (fb?[tp] is TypedValue fv) // for matching cases
                             vs += (p, fv);
                     }
-                if (t is NodeType)
-                    vs = CheckNodeId(cx,t,vs);
-                else
+//                if (t is NodeType)
+//                    vs = CheckNodeId(cx,t,vs);
+//                else
                     vs = CheckPrimaryKey(cx, trc, vs);
                 cx.values += vs;
                 for (var b = t.tableCols.First(); b != null; b = b.Next()) 
@@ -5107,25 +5090,29 @@ namespace Pyrrho.Level4
             static CTree<long,TypedValue> CheckPrimaryKey(Context cx, TransitionCursor trc,
                 CTree<long,TypedValue>vs)
             {
-                if (cx is TableActivation ta && ta?.index != null)
+                if (cx is TableActivation ta && cx.db.objects[ta.index?.defpos??-1L] is Level3.Index ix)
                 {
                     var k = CList<TypedValue>.Empty;
-                    for (var b = ta.index.keys.First(); b != null; b = b.Next())
+                    for (var b = ix.keys.First(); b != null; b = b.Next())
                         if (b.value() is long p && (cx.obs[p] ?? cx.db.objects[p]) is TableColumn tc
                             && vs[tc.defpos] is TypedValue v)
                         {
-                            if (v == TNull.Value && ta.index.rows!=null)
+                            if (v == TNull.Value)
                             {
-                                v = ta.index.rows.NextKey(tc.domain.kind, k, 0, b.key());
-                                var tr = (Transaction)cx.db;
-                                for (var c = tr.physicals.PositionAt(tr.step); c != null; c = c.Next())
-                                    if (c.value() is Record r && r.fields.Contains(tc.defpos)
-                                        && r.fields[tc.defpos]?.CompareTo(v) == 0)
-                                        v = Inc(v);
-                                vs += (tc.defpos, v);
-                                cx.values += (trc._trs.targetTrans[tc.defpos]??-1L, v);
-                                if (ta.index.MakeKey(vs) is CList<TypedValue> pk)
-                                    ta.index += (Level3.Index.Tree, ta.index.rows + (pk,0, -1L));
+                                if (ix.rows is null)
+                                    v = tc.domain.kind == Sqlx.CHAR ? new TChar("1") : tc.domain.defaultValue;
+                                else {
+                                    v = ix.rows.NextKey(tc.domain.kind, k, 0, b.key());
+                                    var tr = (Transaction)cx.db;
+                                    for (var c = tr.physicals.PositionAt(tr.step); c != null; c = c.Next())
+                                        if (c.value() is Record r && r.fields.Contains(tc.defpos)
+                                            && r.fields[tc.defpos]?.CompareTo(v) == 0)
+                                            v = Inc(v);
+                                    vs += (tc.defpos, v);
+                                    cx.values += (trc._trs.targetTrans[tc.defpos] ?? -1L, v);
+                                    if (ix.MakeKey(vs) is CList<TypedValue> pk)
+                                        ta.index = ix + (Level3.Index.Tree, ix.rows + (pk, 0, -1L));
+                                }
                             }
                             k += v;
                         }

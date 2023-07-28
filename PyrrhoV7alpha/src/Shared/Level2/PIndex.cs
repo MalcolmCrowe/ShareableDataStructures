@@ -3,6 +3,7 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
 using System.Xml;
+using System.Runtime.Intrinsics.X86;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -282,11 +283,16 @@ namespace Pyrrho.Level2
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
             tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
             x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));
+            for (var st = tb.super as Table; st != null; st = st.super as Table)
+                for (var b = st.indexes[x.keys]?.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is Level3.Index sx && sx.rows is not null
+                        && sx.flags.HasFlag(ConstraintType.PrimaryKey))
+                        x += (Level3.Index.Tree, sx.rows);
             cx.Install(x, p);
             if (reference >= 0 && cx.db.objects[x.refindexdefpos] is Level3.Index rx)
             {
                 rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
-                var rt = (Table?)(cx.obs[x.reftabledefpos] ?? cx.db.objects[x.reftabledefpos]) ?? throw new PEException("PE1435");
+                var rt = (Table?)cx.db.objects[x.reftabledefpos] ?? throw new PEException("PE1435");
                 var at = rt.rindexes[tb.defpos] ?? CTree<Domain, Domain>.Empty;
                 rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at + (x.keys, rx.keys)));
                 cx.Install(rt, p);
@@ -294,19 +300,21 @@ namespace Pyrrho.Level2
             }
             var cs = BList<long?>.Empty;
             var kc = tb.keyCols;
+            var fl = PColumn.GraphFlags.None;
             for (var b = x.keys.First(); b != null; b = b.Next())
                 if (b.value() is long tc)
                 {
                     cs += tc;
-                    if (!cx.obs.Contains(tc))
-                        cx.Add(((TableColumn?)cx.db.objects[tc]) ?? throw new PEException("PE1436"));
+                    var c = (cx.db.objects[tc] as TableColumn) ?? throw new PEException("PE1437");
+                    cx.Add(c);
+                    fl |= c.flags;
                     kc += (tc, true);
                 }
-            if (tb is NodeType nt && nt.idCol > 0 && nt.idCol == x.keys[0])
+            if (fl.HasFlag(PColumn.GraphFlags.IdCol))
                 tb += (NodeType.IdIx, x.defpos);
-            if (tb is EdgeType et && et.leaveCol > 0 && et.leaveCol == x.keys[0])
+            if (fl.HasFlag(PColumn.GraphFlags.LeaveCol))
                 tb = tb + (EdgeType.LeaveIx, x.defpos) + (EdgeType.LeavingType, x.reftabledefpos);
-            if (tb is EdgeType eu && eu.arriveCol > 0 && eu.arriveCol == x.keys[0])
+            if (fl.HasFlag(PColumn.GraphFlags.ArriveCol))
                 tb = tb + (EdgeType.ArriveIx, x.defpos) + (EdgeType.ArrivingType, x.reftabledefpos);
             tb += (Table.KeyCols, kc);
             tb += (DBObject.LastChange, defpos);

@@ -173,7 +173,7 @@ namespace Pyrrho.Level3
         {
             if (off < cur && Ensure(key,ff) is MTree mt) 
                 return mt.NextKey(kind,key, ff + 1, cur);
-            return (impl as SqlTree)?.AutoKey(kind) ?? ((kind == Sqlx.CHAR) ? 
+            return impl?.AutoKey(kind) ?? ((kind == Sqlx.CHAR) ? 
                 new TChar("1") : new TInt(1));
         }
         /// <summary>

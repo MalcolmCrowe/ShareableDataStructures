@@ -391,12 +391,10 @@ namespace Pyrrho.Level2
         /// <param name="curpos">The position in the datafile</param>
         public PMetadata3(string nm, long sq, DBObject ob, CTree<Sqlx,TypedValue> md, long pp)
             : base(Type.Metadata3, nm, sq, ob, md, pp)
-        {
-        }
+        {  }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }
         protected PMetadata3(PMetadata3 x, Writer wr) : base(x, wr)
-        {
-        }
+        {  }
         protected override Physical Relocate(Writer wr)
         {
             return new PMetadata3(this, wr);

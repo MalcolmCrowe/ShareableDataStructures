@@ -483,7 +483,7 @@ namespace Pyrrho.Level3
         }
         internal virtual DBObject TypeOf(long lp,Context cx,TypedValue v)
         {
-            throw new System.NotImplementedException();
+            throw new NotImplementedException();
         }
         internal TypedValue Eval(Context cx)
         {
@@ -562,7 +562,17 @@ namespace Pyrrho.Level3
         {
             throw new NotImplementedException();
         }
-         /// <summary>
+        /// <summary>
+        /// Implementation of the Role$SQL table: Produce SQL for a RestView corresponding to a Table or similar
+        /// </summary>
+        /// <param name="from">A query</param>
+        /// <param name="_enu">An enumerator for the set of database objects</param>
+        /// <returns>A row for the Role$Class table</returns>
+        internal virtual TRow RoleSQLValue(Context cx, RowSet from, ABookmark<long, object> _enu)
+        {
+            throw new NotImplementedException();
+        }
+        /// <summary>
         /// Issues here: This object may not have been committed yet
         /// We only want to record audits in the PhysBase for committed obs
         /// </summary>

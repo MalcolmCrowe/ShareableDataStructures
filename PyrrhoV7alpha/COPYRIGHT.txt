@@ -19,10 +19,10 @@ You may incorporate the DLLs, including any of PyrrhoLink.dll, PyrrhoJC.jar
 and AWebSvr.dll in any product on a royalty-free basis, provided the use 
 of this code is suitably acknowledged.
 
-This is version 7.04(alpha) of the DBMS, compiled for .NET 6.0.
+This is version 7.05(alpha) of the DBMS, compiled for .NET 6.0.
 It passes tests 1 to 25 of the PyrrhoTest program, and should run on Windows,
 Linux, and MacOS with Mono.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-5 July 2023
+28 July 2023

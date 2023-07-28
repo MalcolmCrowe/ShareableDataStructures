@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System;
 using System.Net;
+using System.Transactions;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -301,10 +302,28 @@ namespace Pyrrho.Level3
                 }
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 cx.parse = ExecuteStatus.Obey;
-                wr.PutBuf();
-                df.Flush();
                 wr.cx.db += (LastModified, File.GetLastWriteTimeUtc(name));
                 wr.cx.result = -1L;
+                var at = CTree<long,Domain>.Empty;
+                for (var b = wr.cx.uids.First(); b != null; b = b.Next())
+                {
+                    var o = wr.cx.db.objects[b.value() ?? -1L];
+                    for (var a = wr.cx.db.objects[(o as Domain)?.super?.defpos ?? -1L] as Domain; a != null;
+                        a = wr.cx.db.objects[a.super?.defpos ?? -1L] as Domain)
+                        at += (a.defpos, a);
+                    for (var a = wr.cx.db.objects[(o as Index)?.reftabledefpos ?? -1L] as Domain; a != null;
+                        a = wr.cx.db.objects[a.super?.defpos ?? -1L] as Domain)
+                        at += (a.defpos, a);
+                }
+                for (var b = at.First();b!=null;b=b.Next())
+                    if (b.value() is Domain ad)
+                    {
+                        var na = (Domain)ad.Fix(wr.cx);
+                        if (na.mem.ToString() != ad.mem.ToString())
+                            wr.cx.db += na;
+                    }
+                wr.PutBuf();
+                df.Flush();
                 cx.newnodes += wr.cx.newnodes; 
                 var r = new Database(wr.Length,wr.cx.db.mem);
                 lock (_lock)
@@ -812,9 +831,10 @@ namespace Pyrrho.Level3
         /// <param name="pr">the privilege</param>
         /// <param name="obj">the database object</param>
         /// <param name="grantees">a list of grantees</param>
-        static void DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
+        static ExecuteList DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
             BList<DBObject> grantees)
         {
+            var es = ExecuteList.Empty;
             var np = cx.db.nextPos;
             if (grantees != BList<DBObject>.Empty) // PUBLIC
                 for (var b = grantees.First(); b != null; b = b.Next())
@@ -822,10 +842,11 @@ namespace Pyrrho.Level3
                     {
                         var gee = mk.defpos;
                         if (grant)
-                            cx.Add(new Grant(pr, obj, gee, np++, cx));
+                            es += cx.Add(new Grant(pr, obj, gee, np++, cx));
                         else
-                            cx.Add(new Revoke(pr, obj, gee, np++, cx));
+                            es += cx.Add(new Revoke(pr, obj, gee, np++, cx));
                     }
+            return es;
         }
         /// <summary>
         /// Implement Grant/Revoke on a list of TableColumns
@@ -836,18 +857,20 @@ namespace Pyrrho.Level3
         /// <param name="tb">the table</param>
         /// <param name="list">(Privilege,columnnames[])</param>
         /// <param name="grantees">a list of grantees</param>
-        static void AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, BList<DBObject> grantees)
+        static ExecuteList AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, BList<DBObject> grantees)
         {
+            var es = ExecuteList.Empty;
             var ne = list.cols != BTree<string, bool>.Empty;
             for (var b = tb.representation.First(); b != null; b = b.Next())
                 if (b.value() is DBObject oc && oc.infos[cx.role.defpos] is ObInfo ci && ci.name != null
                     && !ne && list.cols.Contains(ci.name))
                 {
                     list.cols -= ci.name;
-                    DoAccess(cx, grant, pr, b.key(), grantees);
+                    es += DoAccess(cx, grant, pr, b.key(), grantees);
                 }
             if (list.cols.First()?.key() is string cn)
                 throw new DBException("42112", cn);
+            return es;
         }
         /// <summary>
         /// Implement grant/revoke on a Role
@@ -856,8 +879,9 @@ namespace Pyrrho.Level3
         /// <param name="roles">a list of Roles (ids)</param>
         /// <param name="grantees">a list of Grantees</param>
         /// <param name="opt">whether with ADMIN option</param>
-		internal void AccessRole(Context cx, bool grant, CList<string> rols, BList<DBObject> grantees, bool opt)
+		internal ExecuteList AccessRole(Context cx, bool grant, CList<string> rols, BList<DBObject> grantees, bool opt)
         {
+            var es = ExecuteList.Empty;
             Grant.Privilege op;
             if (opt == grant) // grant with grant option or revoke
                 op = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
@@ -867,7 +891,8 @@ namespace Pyrrho.Level3
                 op = Grant.Privilege.UseRole;
             for (var b = rols.First(); b is not null;b=b.Next())
                 if (b.value() is string s && roles.Contains(s) && objects[roles[s]??-1L] is Role ro)
-                    DoAccess(cx, grant, op, ro.defpos, grantees);
+                    es += DoAccess(cx, grant, op, ro.defpos, grantees);
+            return es;
         }
         /// <summary>
         /// Implement grant/revoke on a database obejct
@@ -877,8 +902,9 @@ namespace Pyrrho.Level3
         /// <param name="dp">the database object defining position</param>
         /// <param name="grantees">a list of grantees</param>
         /// <param name="opt">whether with GRANT option (grant) or GRANT for (revoke)</param>
-        internal void AccessObject(Context cx, bool grant, BList<PrivNames> privs, long dp, BList<DBObject> grantees, bool opt)
+        internal ExecuteList AccessObject(Context cx, bool grant, BList<PrivNames> privs, long dp, BList<DBObject> grantees, bool opt)
         {
+            var es = ExecuteList.Empty;
             if (role is not null && objects[dp] is DBObject ob && ob.infos[role.defpos] is ObInfo gd)
             {
                 Grant.Privilege defp = Grant.Privilege.NoPrivilege;
@@ -899,7 +925,7 @@ namespace Pyrrho.Level3
                                 var pp = defp;
                                 if (grant)
                                     pp = gp;
-                                DoAccess(cx, grant, pp, c, grantees);
+                                es += DoAccess(cx, grant, pp, c, grantees);
                             }
                     }
                 }
@@ -933,14 +959,15 @@ namespace Pyrrho.Level3
                         {
                             if (changed)
                                 changed = grant;
-                            AccessColumns(cx, grant, q, (Table)ob, mk, grantees);
+                            es += AccessColumns(cx, grant, q, (Table)ob, mk, grantees);
                         }
                         else
                             p |= q;
                     }
                 if (changed)
-                    DoAccess(cx, grant, p, ob?.defpos ?? 0, grantees);
+                    es += DoAccess(cx, grant, p, ob?.defpos ?? 0, grantees);
             }
+            return es;
         }
         /// <summary>
         /// Called from the Parser.
@@ -954,7 +981,7 @@ namespace Pyrrho.Level3
         /// <param name="ct">The constraint type</param>
         /// <param name="afn">The adapter function if specified</param>
         /// <param name="cl">The set of Physicals being gathered by the parser</param>
-        public PIndex ReferentialConstraint(Context cx,Table tb, string name,
+        public Table ReferentialConstraint(Context cx,Table tb, string name,
             Domain key,Table rt, Domain refs, PIndex.ConstraintType ct, 
             string afn)
         {
@@ -967,8 +994,8 @@ namespace Pyrrho.Level3
                 throw new DBException("42111").Mix();
             if (rx.keys.Length != key.Length)
                 throw new DBException("22207").Mix();
-            return new PIndex1(name, tb, key, ct, rx.defpos, afn,
-                nextPos);
+            var px = new PIndex1(name, tb, key, ct, rx.defpos, afn,nextPos);
+            return (Table?)cx.Add(px)??throw new DBException("42105");
         }
     }
     /// <summary>

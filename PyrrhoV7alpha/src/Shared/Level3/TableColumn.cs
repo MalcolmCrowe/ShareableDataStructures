@@ -415,7 +415,7 @@ namespace Pyrrho.Level3
     /// and therefore can't subclass TRow.
     /// 
     /// </summary>
-    internal class TableRow
+    internal class TableRow : IEquatable<TableRow>
     {
         internal readonly long defpos;
         internal readonly long time;
@@ -426,6 +426,7 @@ namespace Pyrrho.Level3
         internal readonly long subType;
         internal readonly Level classification;
         internal readonly CTree<long, TypedValue> vals;
+        internal static TableRow Any = new TableRow(-1L); // creates a dummy TableRow for TMatch
         public TableRow(Record rc, Context cx)
         {
             defpos = rc.defpos;
@@ -467,16 +468,18 @@ namespace Pyrrho.Level3
             prev = r.prev;
             vals = vs;
         }
-        internal TableRow(Table tb,Cursor c)
+        internal TableRow(long dp,Table tb,Cursor c)
         {
-            (defpos,prev) = c._ds[tb.defpos];
+            defpos = dp;
+            prev = dp;
             subType = c.dataType.defpos;
             classification = tb.classification;
             tabledefpos = tb.defpos;
             vals = c.values;
         }
-        protected TableRow(long vp,CTree<long,TypedValue> vs)
+        internal TableRow(long vp,CTree<long,TypedValue>? vs=null)
         {
+            vs ??= CTree<long, TypedValue>.Empty;
             var dp = (vs[DBObject.Defpos] is TInt v)?v.ToLong()??-1L:-1L;
             var pp = vs[Table.LastData]?.ToLong() ?? 01L;
             defpos = dp;
@@ -601,6 +604,15 @@ namespace Pyrrho.Level3
             sb.Append(" Prev=");sb.Append(DBObject.Uid(prev));
             sb.Append(" Time=");sb.Append(new DateTime(time));
             return sb.ToString();
+        }
+        public bool Equals(TableRow? other)
+        {
+            if (other==null) return false;
+            if (tabledefpos>0 && tabledefpos != other.tabledefpos) return false;
+            if (defpos > 0 && defpos != other.defpos) return false;
+            for (var b = vals.First(); b != null; b = b.Next())
+                if (other.vals[b.key()]?.CompareTo(b.value()) != 0) return false;
+            return true;
         }
     }
     

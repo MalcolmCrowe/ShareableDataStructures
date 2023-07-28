@@ -37,17 +37,17 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the new type</param>
         /// <param name="dt">The representation datatype</param>
         /// <param name="db">The local database</param>
-        protected PType(Type t, Ident nm, UDType dm, Domain? un, long ns, long pp, Context cx)
-            : base(t, pp, cx, nm.ident, dm, ns)
+        protected PType(Type t, string nm, UDType dm, Domain? un, long ns, long pp, Context cx)
+            : base(t, pp, cx, nm, dm, ns)
         {
-            name = nm.ident;
+            name = nm;
             var dm1 = (t==Type.EditType)? dm: (Domain)dm.Relocate(pp);
-            dataType = dm1 + (ObInfo.Name,nm.ident);
+            dataType = dm1 + (ObInfo.Name,nm);
             under = un;
             if (un?.defpos>0)
                 dataType += (Domain.Under, un);
         }
-        public PType(Ident nm, UDType dm, Domain? un, long ns, long pp, Context cx)
+        public PType(string nm, UDType dm, Domain? un, long ns, long pp, Context cx)
             : this(Type.PType, nm, dm, un, ns, pp, cx) { }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer
@@ -163,7 +163,7 @@ namespace Pyrrho.Level2
             {
                 Sqlx.TYPE => new UDType(defpos, m),
                 Sqlx.NODETYPE => new NodeType(defpos, m),
-                Sqlx.EDGETYPE => new EdgeType(defpos,m),
+                Sqlx.EDGETYPE => new EdgeType(defpos,m,this),
                 _ => Domain.Null
             };
             base.Deserialise(rdr);
@@ -226,7 +226,7 @@ namespace Pyrrho.Level2
                     break;
             }
             return base.Conflicts(db, cx, that, ct);
-        } 
+        }
         internal override DBObject Install(Context cx, long p)
         {
             var ro = cx.role;
@@ -237,19 +237,20 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(name, priv);
             oi += (ObInfo.SchemaKey, p);
-            var ns = BTree<string, (int,long?)>.Empty;
-            for (var b = dataType.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long bp && cx.obs[bp] is TableColumn tc)
-                    ns += (tc.infos[tc.definer]?.name ?? "??", (b.key(),tc.defpos));
+            var ns = BTree<string, (int, long?)>.Empty;
+            for (var c = dataType as UDType; c != null; c = cx.db.objects[c.super?.defpos ?? -1L] as UDType)
+                for (var b = c.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long bp && cx.obs[bp] is TableColumn tc)
+                        ns += (tc.infos[tc.definer]?.name ?? "??", (b.key(), tc.defpos));
             oi += (ObInfo.Names, ns);
             ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var os = new BTree<long, ObInfo>(Database._system.role.defpos, oi)
                 + (ro.defpos, oi);
-            if (dataType is UDType ut && ut.super is UDType tu)
+            if (dataType is UDType ut && cx.db.objects[ut.super?.defpos ?? -1L] is UDType tu)
             {
                 dataType = tu.Inherit(ut);
-                dataType += (Table.PathDomain,((UDType)dataType)._PathDomain(cx));
-                tu += (Domain.Subtypes, tu.subtypes + (defpos,true));
+                dataType += (Table.PathDomain, ((UDType)dataType)._PathDomain(cx));
+                tu += (Domain.Subtypes, tu.subtypes + (defpos, true));
                 cx.db += (tu, p);
                 for (var b = tu.subtypes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is UDType at)
@@ -271,7 +272,7 @@ namespace Pyrrho.Level2
     }
     internal class PType1 : PType // retained but no longer used
     {
-        protected PType1(Type t, Ident nm, UDType dm, Domain? un, long ns, long pp, Context cx)
+        protected PType1(Type t, string nm, UDType dm, Domain? un, long ns, long pp, Context cx)
             :base(t,nm,dm,un, ns, pp, cx) { }
         /// <summary>
         /// Constructor: A user-defined type definition from the buffer

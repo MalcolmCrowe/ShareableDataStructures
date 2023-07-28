@@ -118,7 +118,15 @@ namespace Pyrrho.Level2
             if (tr is not null && wr.cx.uids[ppos] is long q
                 && wr.cx.db.objects[q] is Domain ndt)
                 dataType = ndt;
-            if (wr.cx.uids[tabledefpos] is long tp && wr.cx.db.objects[tp] is Table ta)
+            if (flags.HasFlag(GraphFlags.ArriveCol))
+                index = (dataType as EdgeType)?.arriveIx ?? -1L; 
+            else if (flags.HasFlag(GraphFlags.IdCol))
+                index = (dataType as NodeType)?.idIx??-1L;
+            else if (flags.HasFlag(GraphFlags.LeaveCol))
+                index = (dataType as EdgeType)?.leaveIx ?? -1L;
+            if (wr.cx.uids[tabledefpos] is long tp)
+                for (var ta =wr.cx.db.objects[tp] as Table; ta != null; 
+                    ta = wr.cx.db.objects[ta.super?.defpos??-1L] as Table)
             {
                 var rt = BList<long?>.Empty;
                 for (var b = ta.rowType.First(); b != null; b = b.Next())
@@ -129,12 +137,6 @@ namespace Pyrrho.Level2
                 ta += (Table.PathDomain, ta._PathDomain(wr.cx));
                 wr.cx.db += (ta.defpos, ta);
             }
-            if (flags.HasFlag(GraphFlags.ArriveCol))
-                index = (dataType as EdgeType)?.arriveIx ?? -1L; 
-            else if (flags.HasFlag(GraphFlags.IdCol))
-                index = (dataType as NodeType)?.idIx??-1L;
-            else if (flags.HasFlag(GraphFlags.IdCol))
-                index = (dataType as EdgeType)?.leaveIx ?? -1L;
             var (nt,ph) = base.Commit(wr, tr);
             if (wr.cx.uids[tabledefpos] is long t && wr.cx.db.objects[t] is Table tb)
             {
@@ -289,9 +291,11 @@ namespace Pyrrho.Level2
             cx.Add(tc);
             if (table.defpos < 0)
                 throw new DBException("42105");
+            seq = (tc.flags==GraphFlags.None) ? -1:tc.seq;
             table += (cx, seq, tc); // this is where the NodeType stuff happens
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
-            seq = tc.seq; // the + operator may have changed seq
+            tc += (TableColumn.Seq, seq);
+            cx.db += (tc.defpos, tc);
             table += (DBObject.LastChange, ppos);
             for (var b = table.subtypes.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is NodeType st)
@@ -301,6 +305,7 @@ namespace Pyrrho.Level2
                     cx.db += st;
                 }
             cx.Install(table, p);
+            cx.db += (table.defpos, table);
             if (table is UDType ut)
                 for (var b = ut.methods.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is Method me && me.udType.defpos == ut.defpos)
@@ -313,6 +318,7 @@ namespace Pyrrho.Level2
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tc, p);
+            cx.obs += (table.defpos, table);
             return table;
         }
     }

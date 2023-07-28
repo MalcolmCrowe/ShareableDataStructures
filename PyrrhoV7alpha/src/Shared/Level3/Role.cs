@@ -49,13 +49,18 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
+ //           EdgeTypes = -471, // BTree<string,BTree<string,BTree<string,long?>>>
             Procedures = -249; // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
-        internal BTree<string, long?> dbobjects => 
+       internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
         internal BTree<string, BTree<CList<Domain>,long?>> procedures => 
             (BTree<string, BTree<CList<Domain>,long?>>?)mem[Procedures]??BTree<string, BTree<CList<Domain>, long?>>.Empty;
-        public const Grant.Privilege use = Grant.Privilege.UseRole,
+ /*       internal BTree<string, BTree<string, BTree<string, long?>>> edgeTypes =>
+            (BTree<string, BTree<string, BTree<string, long?>>>?)mem[EdgeTypes]
+            ?? BTree<string, BTree<string, BTree<string, long?>>>.Empty; */
+
+         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>
         /// Just to create the schema and guest roles

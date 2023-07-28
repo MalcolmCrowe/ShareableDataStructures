@@ -41,7 +41,6 @@ namespace Pyrrho.Level4
             {
                 if (this == None)
                     return "None";
-                return "Ambiguous";
             }
             var sb = new StringBuilder(DBObject.Uid(sd));
             sb.Append(':'); sb.Append(DBObject.Uid(lp));
@@ -215,6 +214,12 @@ namespace Pyrrho.Level4
                     ts += (id.sub, n - 1);
                 return new Idents(t + (id.ident, s+(id.iix.sd,(id.iix, ts))));
             }
+            public static Idents operator-(Idents t,string s)
+            {
+                BTree<string, BTree<int, (Iix, Idents)>> n = t;
+                n -= s;
+                return (n.root != null) ? new Idents(n) : Empty;
+            }
             /// <summary>
             /// Identifier chain lookup function. Search in this
             /// for a given chain, stopping at a given depth.
@@ -370,7 +375,7 @@ namespace Pyrrho.Level4
 		public TypedValue val = TNull.Value, prevval = TNull.Value;
         public TypedValue pushVal = TNull.Value;
         private readonly Context cx; // only used for type prefix/suffix things
-        public CTree<string,TGParam> tgs = CTree<string,TGParam>.Empty; // TGParam wizardry
+        public CTree<long,TGParam>? tgs = null; // TGParam wizardry
         /// <summary>
         /// Entries in the reserved word table
         /// If there are more than 2048 reserved words, the server will hang
@@ -500,22 +505,53 @@ namespace Pyrrho.Level4
         }
         Sqlx MaybePrefix(string s)
         {
-            if (cx.parse==ExecuteStatus.Obey && cx.db is not null && cx.role is not null
-                && cx.db.objects[cx.db.prefixes[s]??-1L] is UDType dt && val is not null
+            var vo = (val is TChar tc) ? tc.value : s;
+            if (cx.defs.Contains(vo))
+                return tok;
+            if (cx.role.dbobjects.Contains(vo))
+                return tok;
+            if (cx.parse == ExecuteStatus.Obey && cx.db is not null 
+                && cx.role is not null && cx.db.prefixes!= BTree<string,long?>.Empty
+                && cx.db.objects[cx.db.prefixes[s] ?? -1L] is UDType dt && val is not null
                 && dt.name is not null)
             {
                 var ps = pos;
                 Next();
                 var sig = new CList<Domain>(val.dataType);
                 if (dt.infos[cx.role.defpos] is ObInfo mi && dt.name is not null &&
-                    mi.methodInfos[dt.name] is BTree<CList<Domain>,long?> md
-                    && cx.db.objects[md[sig]??-1L] is Method mt)
+                    mi.methodInfos[dt.name] is BTree<CList<Domain>, long?> md
+                    && cx.db.objects[md[sig] ?? -1L] is Method mt)
                 {
                     cx.Add(new SqlLiteral(ps, Domain._Numeric.Coerce(cx, val)));
                     val = mt.Exec(cx, new BList<long?>(ps)).val;
-                } 
+                }
                 else
-                    val = new TSubType(dt,val);
+                    val = new TSubType(dt, val);
+            }
+            else if (tgs!=null)
+            switch (prevtok){
+                    case Sqlx.LPAREN:
+                        {
+                            var tg = new TGParam(Position, vo, Domain.NodeType);
+                            tgs += (tg.uid, tg);
+                            break;
+                        }
+                    case Sqlx.ARROWBASE:
+                    case Sqlx.RARROW:
+                        {
+                            var tg = new TGParam(Position, vo, Domain.NodeType);
+                            tgs += (tg.uid, tg);
+                            break;
+                        }
+                    case Sqlx.LBRACE:
+                    case Sqlx.COMMA:
+                        break;
+                    default:
+                        {
+                            var tg = new TGParam(Position, vo, Domain.Char);
+                            tgs += (tg.uid, tg);
+                            break;
+                        }
             }
             return tok;
         }
@@ -575,19 +611,6 @@ namespace Pyrrho.Level4
             while (char.IsWhiteSpace(ch))
                 Advance();
             start = pos;
-            if (ch=='_')
-            {
-                Advance();
-                if (char.IsLetter(ch))
-                    while (char.IsLetter(ch))
-                        Advance();
-                var tg = new TGParam(Position,new string(input, start, pos - start).ToUpper(),
-                            tok,Domain.Content,CTree<TypedValue,TypedValue>.Empty);
-                tgs += (tg.id, tg);
-                val = tg;
-                tok = Sqlx.NODE;
-                return tok;
-            }
             if (char.IsLetter(ch))
             {
                 char c = ch;

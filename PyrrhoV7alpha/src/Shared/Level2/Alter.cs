@@ -174,7 +174,7 @@ namespace Pyrrho.Level2
         public Alter3(long co, string nm, int sq, Table tb, Domain dm, string ds,
             TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
             GenerationRule ge, long pp, Context cx) :
-            base(Type.Alter3, tb, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
+            base(Type.Alter3, tb, nm, -1, dm, ds, dv, us, ua, nn, ge, pp, cx)
 		{
             _defpos = co;
 		}
@@ -232,7 +232,7 @@ namespace Pyrrho.Level2
             cx.obs += (tc.defpos, tc);
             table += (cx, seq, tc);
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
-            seq = tc.seq;
+     //       seq = tc.seq;
             cx.Install(table, p);
             cx.db += (ro, p);
             if (cx.db.mem.Contains(Database.Log))

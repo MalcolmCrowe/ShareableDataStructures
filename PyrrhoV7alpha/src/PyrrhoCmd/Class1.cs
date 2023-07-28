@@ -42,6 +42,7 @@ namespace PyrrhoCmd
 		/// </summary>
 		static bool silent = false;
         static bool checks = false;
+        static bool allowask = false;
 #if (!NETCF)
         [STAThread]
 #endif
@@ -63,7 +64,9 @@ namespace PyrrhoCmd
             int k = 0;
             while (args.Length > k)
             {
-                if (args[k].StartsWith("-"))
+                if (args[k]=="+a")
+                    allowask = true;
+                else if (args[k].StartsWith("-"))
                     switch (args[k][1])
                     {
 #if (!NETCF)
@@ -94,7 +97,10 @@ namespace PyrrhoCmd
                     files += ((files.Length > 0) ? "," : "") + args[k];
                 k++;
             }
-            PyrrhoConnect db = new PyrrhoConnect("Provider=PyrrhoDBMS;Host=" + host + ";Port=" + port + ";Files=" + files);
+            var cs = "Provider=PyrrhoDBMS;Host=" + host + ";Port=" + port + ";Files=" + files;
+            if (allowask)
+                cs += ";AllowAsk=true";
+            PyrrhoConnect db = new PyrrhoConnect(cs);
             try
             {
                 db.Open();

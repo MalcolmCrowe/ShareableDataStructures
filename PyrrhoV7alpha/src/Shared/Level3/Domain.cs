@@ -4,6 +4,7 @@ using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -164,7 +165,7 @@ namespace Pyrrho.Level3
         public CTree<long, bool> constraints => (CTree<long, bool>?)mem[Constraints]??CTree<long,bool>.Empty;
         public CTree<long,Domain> representation => 
             (CTree<long,Domain>?)mem[Representation] ?? CTree<long,Domain>.Empty;
-        public BList<long?> rowType => (BList<long?>?)mem[RowType] ?? BList<long?>.Empty;
+        public virtual BList<long?> rowType => (BList<long?>?)mem[RowType] ?? BList<long?>.Empty;
         public int Length => rowType.Length;
         public Procedure? orderFunc => (Procedure?)mem[OrderFunc];
         public CTree<long,bool> aggs => 
@@ -237,9 +238,9 @@ namespace Pyrrho.Level3
         }
         static BTree<long, object> _Mem(Context cx,Sqlx t,CTree<long,Domain> rs, BList<long?> cs, int ds = 0)
         {
-            for (var b = cs.First(); b != null; b = b.Next())
-                if (b.value() is long p && !rs.Contains(p))
-                    throw new PEException("PE283");
+     //       for (var b = cs.First(); b != null; b = b.Next())
+     //           if (b.value() is long p && !rs.Contains(p))
+     //               throw new PEException("PE283");
             var d = cx._DepthTVD(rs,1);
             var m =  BTree<long,object>.Empty +(_Depth,d)+ (Representation, rs) + (RowType, cs) + (Kind, t)
                 + (Default, For(t).defaultValue);
@@ -353,9 +354,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     var nc = new SqlCopy(cx.GetUid(), cx, tc.name??tc.NameFor(cx), dp, tc,
                         BTree<long, object>.Empty + (SqlValue.SelectDepth, cx.sD));
                     nc = (SqlCopy)cx.Add(nc);
-                    var i = Seq(b.key(), p); // mostly set seq to -1
-                    rt = Add(rt, i, nc.defpos);
-                    sr = Add(sr, i, tc.defpos);
+                    rt = Add(rt, -1, nc.defpos, tc.defpos);
+                    sr = Add(sr, -1, tc.defpos, tc.defpos);
                     rs += (nc.defpos, nc.domain);
                     tr += (tc.defpos, nc.defpos);
                     ns += (nc.alias ?? nc.name ?? "", (j++, nc.defpos));
@@ -376,23 +376,36 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 }
             return (new Table(-1L,cx,rs,rt,rt.Length), rt, rs);
         }
-        protected virtual int Seq(int i,long p)
+        /// <summary>
+        /// We take a lot of trouble to ensure ID, LEAVING and ARRIVING are in positions 0,1,2
+        /// </summary>
+        /// <param name="a">Current rowType</param>
+        /// <param name="k">A suggested seq position</param>
+        /// <param name="v">The value to insert</param>
+        /// <param name="p">The tablecolumn (might not be the same as v)</param>
+        /// <returns></returns>
+        internal virtual BList<long?> Add(BList<long?> a, int k, long v, long p)
         {
-            return -1;
-        }
-        internal static BList<long?> Add(BList<long?> a, int k, long v)
-        {
+            while (k > a.Length)
+                a += -1L;
+            if (k < 0 || k==a.Length)
+                return a + v;
             var r = BList<long?>.Empty;
+            var was = -1L;
             for (var b = a.First(); b != null; b = b.Next())
             {
+                var w = b.value() ?? -1L;
                 if (b.key() == k)
+                {
                     r += v;
-                var p = b.value();
-                if (p != v)
-                    r += p;
+                    if (w != v && w >= 0L)
+                        was = w;
+                }
+                else if (w>=0)
+                    r += w;
             }
-            if (k < 0 || a.Length == k)
-                r += v;
+            if (was >= 0L)
+                r += was;
             return r;
         }
         public long? this[int i] => (i>=0 && i<rowType.Length)?rowType[i]:-1L;
@@ -682,12 +695,13 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 Sqlx.REAL => 8,
                 Sqlx.CHECK or Sqlx.LEVEL or Sqlx.NCHAR => 3,
                 Sqlx.CHAR => 3,
+                Sqlx.NODETYPE or Sqlx.EDGETYPE => 3, // a string versioon of the node/edge
                 Sqlx.TIMESTAMP => 4,
                 Sqlx.DATE => 13,
                 Sqlx.BLOB => 5,
                 Sqlx.ROW => 6,
                 Sqlx.ARRAY => 7,
-                Sqlx.SET =>7,
+                Sqlx.SET => 7,
                 Sqlx.MULTISET => 7,
                 Sqlx.TABLE => 7,
                 Sqlx.TYPE => 12,
@@ -2893,6 +2907,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 Sqlx.DATE or Sqlx.TIMESTAMP => ((TDateTime)v).value.ToString(culture),
                                 Sqlx.CHAR => ((TChar)v).ToString(),
                                 Sqlx.CHECK => ((TRvv)v).rvv.ToString(),
+                                Sqlx.NODETYPE or Sqlx.EDGETYPE => ((TNode)v).ToString(cx),
                                 _ => v.ToString(),
                             };
                             if (prec != 0 && str.Length > prec)
@@ -4186,28 +4201,28 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             var ch = false;
             var de = depth;
             BList<DBObject> ls;
-                for (var b = First(); b != null; b = b.Next())
-                    if (b.value() is long p && cx.obs[p] is SqlValue v)
+            for (var b = First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is SqlValue v)
+                {
+                    (ls, m) = v.Resolve(cx, f, m);
+                    if (ls[0] is SqlValue nv)
                     {
-                        (ls, m) = v.Resolve(cx, f, m);
-                        if (ls[0] is SqlValue nv)
+                        if (nv.defpos != v.defpos)
                         {
-                            if (nv.defpos != v.defpos)
-                            {
-                                ch = true; v = nv;
-                                de = Math.Max(de, Math.Max(nv.depth, nv.depth) + 1);
-                            }
-                            cs += v.defpos;
-                            rs += (v.defpos,v.domain);
+                            ch = true; v = nv;
+                            de = Math.Max(de, Math.Max(nv.depth, nv.depth) + 1);
                         }
+                        cs += v.defpos;
+                        rs += (v.defpos, v.domain);
                     }
+                }
             if (ch)
             {
                 var r = this;
                 if (r.defpos < Transaction.Analysing)
                     r = (Domain)Relocate(cx.GetUid());
-                r = (Domain)cx.Add((Domain)r.New(r.mem+(RowType,cs)+(Representation,rs)));
-                return (new BList<DBObject>(r),m);
+                r = (Domain)cx.Add((Domain)r.New(r.mem + (RowType, cs) + (Representation, rs)));
+                return (new BList<DBObject>(r), m);
             }
             return (new BList<DBObject>(this), m);
         }
@@ -4896,7 +4911,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal virtual UDType? New(Ident pn, Domain? un, long dp, Context cx)
         {
-            return (UDType?)cx.Add(new PType(pn, (UDType)TypeSpec.Relocate(dp), un, -1L, dp, cx));
+            return (UDType?)cx.Add(new PType(pn.ident, (UDType)TypeSpec.Relocate(dp), un, -1L, dp, cx));
         }
         internal Ident.Idents Defs(Context cx)
         {
@@ -5121,388 +5136,5 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             return sb.ToString();
         }
     }
-    // structural information about ID is copied to subtypes
-    internal class NodeType : UDType
-    {
-        internal const long
-            IdCol = -472,  // long TableColumn
-            IdIx = -436;   // long Index
-        internal NodeType(Sqlx t) : base(t)
-        {  }
-        public NodeType(long dp, BTree<long, object> m) : base(dp, m)
-        {  }
-        internal NodeType(Ident nm, UDType dt, Table? ut, Context cx)
-            : base(nm.iix.dp, _Mem(nm, dt, ut, cx))
-        {  }
-        static BTree<long, object> _Mem(Ident nm, UDType dt, Table? ut, Context cx)
-        {
-            var r = dt.mem + (Kind, Sqlx.NODETYPE);
-            r += (ObInfo.Name, nm.ident);
-            var oi = dt.infos[cx.role.defpos] ?? new ObInfo(nm.ident, Grant.AllPrivileges);
-            oi += (ObInfo.Name, nm.ident);
-            r += (Infos, dt.infos+(cx.role.defpos,oi));
-            r += (Definer, cx.role.defpos);
-            if (ut != null)
-                r += (Under, ut);
-            return r;
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new NodeType(defpos, m);
-        }
-        internal override DBObject New(long dp, BTree<long, object>m)
-        {
-            return new NodeType(dp, m + (Kind,Sqlx.NODETYPE));
-        }
-        internal override UDType New(Ident pn, Domain? un, long dp, Context cx)
-        {
-            return  (UDType)(cx.Add(new PNodeType(pn, (NodeType)NodeType.Relocate(dp), un, -1L,dp, cx))
-                ??throw new DBException("42105"));
-        }
-        protected override int Seq(int i, long p)
-        {
-            if (p == idCol)
-                return i;
-            return -1;
-        }
-        internal override Table _PathDomain(Context cx)
-        {
-            if (super is not UDType su)
-                return this;
-            var rt = BList<long?>.Empty;
-            var rs = su.pathDomain.representation;
-            rt += idCol;
-            rs += (idCol, Char);
-            for (var b=su.pathDomain.rowType.First();b!=null;b=b.Next())
-                if (b.value() is long p && p!=idCol && pathDomain.representation[p] is Domain cd)
-                {
-                    rt += p;
-                    rs += (p, cd);
-                }
-            for (var b = rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && p != idCol && representation[p] is Domain cd)
-                {
-                    rt += p;
-                    rs += (p, cd);
-                }
-            return new Table(-1L,cx,rs,rt,rt.Length);
-        }
-        internal override UDType Inherit(UDType to)
-        {
-            if (idCol >= 0)
-                to += (IdCol, idCol);
-            return to;
-        }
-        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
-        {
-            var r = base._Fix(cx, m);
-            var ic = cx.Fix(idCol);
-            if (ic != idCol)
-                r += (IdCol, ic);
-            var ix = cx.Fix(idIx);
-            if (ix != idIx)
-                r += (IdIx, ix);
-            return r;
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var np = cx.Fix(defpos);
-            var nm = _Fix(cx, mem);
-            if (np==defpos && nm==mem)
-                return this;
-            var r = New(np, nm);
-            if (defpos != -1L && cx.obs[defpos]?.dbg!=r.dbg)
-                cx.Add(r);
-            return r;
-        }
-        public static NodeType operator +(NodeType et, (long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is DBObject bb && dp != _Depth)
-            {
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (NodeType)et.New(m + x);
-        }
-        public static NodeType operator +(NodeType et, (Context, long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (cx, dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is long p && cx.obs[p] is DBObject bb)
-            {  
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (NodeType)et.New(m + (dp, ob));
-        }
-        internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? r)
-        {
-            if (infos[cx.role.defpos] is ObInfo oi && oi.names[nm].Item2 is long p && cx._Ob(p) is DBObject ob)
-            {
-                if (n is Ident ni)
-                    switch (ni.ident)
-                    {
-                        case "ID":
-                            break;
-                        default:
-                            return ob._Lookup(n.iix.dp, cx, n.ident, n.sub, null);
-                    }
-                return (new SqlCopy(cx.GetUid(), cx, nm, lp, ob), null);
-            }
-            return base._Lookup(lp, cx, nm, n, r);
-        }
-        public override Domain For()
-        {
-            return NodeType;
-        }
-        public override int Compare(TypedValue a, TypedValue b)
-        {
-            if (a == b) return 0;
-            if (a is TNull) return -1;
-            if (b is TNull) return 1;
-            var c = b.dataType.dbg.CompareTo(b.dataType.dbg);
-            if (c != 0)
-                return c;
-            return a.CompareTo(b);
-        }
-        internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
-    Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
-        {
-            cx.Add(this);
-            var m = BTree<long, object>.Empty + (_From, fm) + (_Ident, id);
-            if (a != null)
-                m += (_Alias, a);
-            var rowSet = (RowSet)cx._Add(new TableRowSet(id.iix.dp, cx, defpos, m));
-//#if MANDATORYACCESSCONTROL
-            Audit(cx, rowSet);
-//#endif
-            return rowSet;
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            if (idIx != -1L) sb.Append(" IdIx=" + Uid(idIx));
-            if (idCol != -1L) sb.Append(" IdCol=" + Uid(idCol));
-            return sb.ToString();
-        }
-    }
-    /// <summary>
-    /// structural information about leaving and arriving is copied to subtypes
-    /// </summary>
-    internal class EdgeType : NodeType
-    {
-        internal const long
-            ArriveCol = -474, // long TableColumn
-            ArriveIx = -435, // long Index
-            ArrivingEnds = -371, // bool
-            ArrivingType = -467, // long NodeType
-            LeaveCol = -473, // long TableColumn
-            LeaveIx = -470, // long Index
-            LeavingEnds = -377, // bool
-            LeavingType = -464; // long NodeType
-        public bool leavingEnds => (bool)(mem[LeavingEnds] ?? false);
-        public bool arrivingEnds => (bool)(mem[ArrivingEnds] ?? false);
-        internal EdgeType(Ident nm,UDType dt,Table? ut,Context cx,CTree<Sqlx,TypedValue>? md=null)
-            : base(nm.iix.dp,_Mem(nm,dt,ut,md,cx))
-        { }
-        internal EdgeType(Sqlx t) : base(t)
-        { }
-        public EdgeType(long dp, BTree<long, object> m) : base(dp, m)
-        { }
-        static BTree<long,object> _Mem(Ident nm,UDType dt,Table? ut,CTree<Sqlx,TypedValue>? md, Context cx)
-        {
-            var r = dt.mem + (Kind, Sqlx.EDGETYPE);
-            r += (ObInfo.Name, nm.ident);
-            var oi = dt.infos[cx.role.defpos] ?? new ObInfo(nm.ident, Grant.AllPrivileges);
-            oi += (ObInfo.Name, nm.ident);
-            r += (Infos, dt.infos+(cx.role.defpos,oi));
-            r += (Definer, cx.role.defpos);
-            if (ut != null)
-                r += (Under, ut);
-            var sl = false;
-            var sa = false;
-            if (md != null)
-            {
-                TChar? ln = null, an = null;
-                if (md[Sqlx.RARROWBASE] is TChar aa) { an = aa; sa = true; }
-                if (md[Sqlx.ARROW] is TChar ab) an = ab;
-                if (md[Sqlx.ARROWBASE] is TChar la) { ln = la; sl = true; }
-                if (md[Sqlx.RARROW] is TChar lb) ln = lb;
-                if (ln == null || an == null)
-                    throw new DBException("42000");
-                r += (LeavingType, cx.role.dbobjects[ln.value] ?? throw new DBException("42107", ln));
-                r += (ArrivingType, cx.role.dbobjects[an.value] ?? throw new DBException("42107", an));
-                if (sl) r += (LeavingEnds, true);
-                if (sa) r += (ArrivingEnds, true);
-            }
-            return r;
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new EdgeType(defpos, m);
-        }
-        internal override DBObject New(long dp, BTree<long, object>m)
-        {
-            return new EdgeType(dp, m+(Kind,Sqlx.EDGETYPE));
-        }
-        internal override UDType New(Ident pn, Domain? un, long dp, Context cx)
-        {
-            return (UDType)(cx.Add(new PEdgeType(pn, (EdgeType)EdgeType.Relocate(dp), un, -1L, dp, cx))
-                ??throw new DBException("42105"));
-        }
-        protected override int Seq(int i, long p)
-        {
-            if (p == leaveCol || p == arriveCol)
-                return i;
-            return base.Seq(i, p);
-        }
-        internal override Table _PathDomain(Context cx)
-        {
-            if (super is not UDType su)
-                return this;
-            var rt = BList<long?>.Empty;
-            var rs = su.pathDomain.representation;
-            rt += idCol;
-            rs += (idCol, Char);
-            rt += leaveCol;
-            rs += (leaveCol, leavingEnds?new TSet(Char).dataType:Char);
-            rt += arriveCol;
-            rs += (arriveCol, arrivingEnds ? new TSet(Char).dataType : Char);
-            for (var b = pathDomain.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p 
-                    && p != idCol && p!= leaveCol && p!=arriveCol
-                    && pathDomain.representation[p] is Domain cd)
-                {
-                    rt += p;
-                    rs += (p, cd);
-                }
-            for (var b = rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p 
-                    && p != idCol && p != leaveCol && p != arriveCol
-                    && representation[p] is Domain cd)
-                {
-                    rt += p;
-                    rs += (p, cd);
-                }
-            return new Table(-1L, cx, rs, rt, rt.Length);
-        }
-        internal override UDType Inherit(UDType to)
-        {
-            if (leaveCol >= 0)
-                to += (LeaveCol, leaveCol);
-            if (arriveCol >= 0)
-                to += (ArriveCol, arriveCol);
-            if (leavingType >= 0)
-                to += (LeavingType, leavingType);
-            if (arrivingType >= 0)
-                to += (ArrivingType, arrivingType);
-            return base.Inherit(to);
-        }
-        internal override Basis Fix(Context cx)
-        {
-            var r = New(cx.Fix(defpos), _Fix(cx, mem));
-            if (defpos != -1L)
-                cx.Add(r);
-            return r;
-        }
-        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
-        {
-            var r = base._Fix(cx, m);
-            var lt = cx.Fix(leavingType);
-            if (lt != leavingType)
-                r += (LeavingType, lt);
-            var at = cx.Fix(arrivingType);
-            if (at != arrivingType)
-                r += (ArrivingType, at);
-            var lc = cx.Fix(leaveCol);
-            if (lc != leaveCol)
-                r += (LeaveCol, lc);
-            var lx = cx.Fix(leaveIx);
-            if (lx != leaveIx)
-                r += (LeaveIx, lx);
-            var ac = cx.Fix(arriveCol);
-            if (ac != arriveCol)
-                r += (ArriveCol, ac);
-            var ax = cx.Fix(arriveIx);
-            if (ax != arriveIx)
-                r += (ArriveIx, ax);
-            return r;
-        }
-        public static EdgeType operator +(EdgeType et, (long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is DBObject bb && dp!=_Depth)
-            {
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (EdgeType)et.New(m + x);
-        }
-        public static EdgeType operator +(EdgeType et, (Context, long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (cx, dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is long p && et.representation[p] is DBObject bb)
-            {
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (EdgeType)et.New(m + (dp,ob));
-        }
-        public override Domain For()
-        {
-            return EdgeType;
-        }
-        public override int Compare(TypedValue a, TypedValue b)
-        {
-            if (a == b) return 0;
-            var c = a.dataType.defpos.CompareTo(b.dataType.defpos);
-            if (c != 0) return c;
-            // if we get to here they both have this as dataType
-            return ((TEdge)a).CompareTo((TEdge)b);
-        }
-        internal override DBObject Relocate(long dp, Context cx)
-        {
-            var r = (EdgeType)base.Relocate(dp, cx)
-                + (LeavingType,cx.Fix(leavingType))
-                + (ArrivingType,cx.Fix(arrivingType));
-            return (EdgeType)cx.Add(r);
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            if (leavingType != -1L)
-            {
-                sb.Append(" Leaving "); sb.Append(Uid(leavingType));
-                sb.Append("["+Uid(leaveIx)+"]");
-                sb.Append(" LeaveCol="); sb.Append(Uid(LeaveCol));
-            }
-            if (arrivingType != -1L)
-            {
-                sb.Append(" Arriving "); sb.Append(Uid(arrivingType));
-                sb.Append("["+Uid(arriveIx)+"]");
-                sb.Append(" LeaveCol="); sb.Append(Uid(ArriveCol));
-            }
-            return sb.ToString();
-        }
-    }
+
 }

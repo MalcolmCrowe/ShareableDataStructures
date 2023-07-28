@@ -21,18 +21,22 @@ namespace Pyrrho.Level4
             SysCols = -175; // BTree<long,TableColumn>
         public BTree<long, TableColumn> sysCols =>
             (BTree<long, TableColumn>?)mem[SysCols] ?? BTree<long, TableColumn>.Empty;
+        public long role => (long)(mem[Database.Role] ?? -1L);
         public BList<long?> sRowType => (BList<long?>?)mem[InstanceRowSet.SRowType] ?? BList<long?>.Empty;
-        internal SystemTable(string n)
-            : base(--_uid, new BTree<long, object>(ObInfo.Name, n)
-                  + (Infos, new BTree<long, ObInfo>(
-                      (n.StartsWith("Log$") ? Database.schemaRole?.defpos 
-                      : Database.guestRole?.defpos)??throw new PEException("PE1104"),
-                      new ObInfo(n, Grant.AllPrivileges))))
+        internal SystemTable(string n) : base(--_uid, _Mem(n))
         {
             var sys = Database._system ?? throw new PEException("PE1013");
-            Database._system = sys + (this, 0) + (Domain.TableType.Relocate(_uid), 0);
+            Database._system = sys + (this, 0) + (TableType.Relocate(_uid), 0);
         }
         protected SystemTable(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(string n)
+        {
+            var p = (n.StartsWith("Log$") ? Database.schemaRole?.defpos
+                      : Database.guestRole?.defpos) ?? throw new PEException("PE1104");
+            return new BTree<long, object>(ObInfo.Name, n)
+                  + (Database.Role, p)
+                  + (Infos, new BTree<long, ObInfo>(p, new ObInfo(n, Grant.AllPrivileges)));
+        }
         public static SystemTable operator+(SystemTable s,(long,object)x)
         {
             var (dp, ob) = x;
@@ -49,15 +53,36 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         public static SystemTable operator+(SystemTable s,SystemTableColumn c)
         {
-            return s + (SysCols, s.sysCols + (c.defpos, c))
+            var oi = s.infos[s.role]??throw new PEException("PE010100");
+            oi += (ObInfo.Names, oi.names+(c.name,(c.seq,c.defpos)));
+            return s + (SysCols, s.sysCols + (c.defpos, c)) + (Infos, s.infos+(s.role,oi))
                 + (InstanceRowSet.SRowType, s.sRowType + c.defpos)
                 + (RowType, s.rowType + c.defpos)
                 + (Representation, s.representation+(c.defpos,c.domain));
              //   + (TableCols, s.tableCols + (c.defpos, c.domain));
         }
-        internal override (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, BTree<string, (int, long?)>) ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr, BTree<string, (int, long?)> ns)
+        internal override (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, BTree<string, (int, long?)>)
+         ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr, BTree<string, (int, long?)> ns)
         {
             return (rowType, representation, rowType, tr, ns);
+            /*           var j = 0;
+                       for (var b = rowType.First(); b != null; b = b.Next())
+                           if (cx.db.objects[b.value() ?? -1L] is TableColumn tc && !tr.Contains(tc.defpos))
+                           {
+                               var nc = new SqlCopy(cx.GetUid(), cx, tc.NameFor(cx), dp, tc,
+                                   BTree<long, object>.Empty + (SqlValue.SelectDepth, cx.sD));
+                               var cd = representation[tc.defpos] ?? Content;
+                               if (cd != Content)
+                                   cd = (Domain)cd.Instance(dp, cx, null);
+                               nc = (SqlCopy)cx.Add(nc + (_Domain, cd));
+                               var sq = (tc.flags == PColumn.GraphFlags.None) ? -1 : tc.seq;
+                               rt = Add(rt, sq, nc.defpos, tc.defpos);
+                               sr = Add(sr, sq, tc.defpos, tc.defpos);
+                               rs += (nc.defpos, cd);
+                               tr += (tc.defpos, nc.defpos);
+                               ns += (nc.alias ?? nc.name ?? "", (j++, nc.defpos));
+                           }
+                       return (rt, rs, sr, tr, ns);*/
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -98,8 +123,8 @@ namespace Pyrrho.Level4
                         rs += (sc.defpos, sc.domain);
                         break;
                     }
-            var ks = new Domain(--_uid, BTree<long, object>.Empty + (Domain.Kind, Sqlx.ROW) + (Domain.RowType, rt)
-                + (Domain.Representation, rs));
+            var ks = new Domain(--_uid, BTree<long, object>.Empty + (Kind, Sqlx.ROW) + (RowType, rt)
+                + (Representation, rs));
             var x = new SystemIndex(defpos, ks);
             var sys = Database._system ?? throw new PEException("PE1014");
             Database._system = sys+ (x.defpos, x);
@@ -274,6 +299,7 @@ namespace Pyrrho.Level4
         internal SystemTable? sysFrom => (SystemTable?)mem[SysTable];
         internal SystemIndex? sysIx => (SystemIndex?)mem[SysIx];
         internal BList<SystemFilter> sysFilt => (BList<SystemFilter>?)mem[SysFilt]??BList<SystemFilter>.Empty;
+        internal new BList<long?> rowType => sRowType;
         /// <summary>
         /// Construct results for a system table.
         /// Independent of database, role, and user.
@@ -281,13 +307,10 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="f">the from part</param>
         internal SystemRowSet(Context cx, Domain dm,SystemTable f, CTree<long, bool>? w = null)
-            : base(cx.GetUid(), cx, f.defpos, _Mem(cx, dm, f, w))
-        {
-            var s = ToString();
-            cx.Add(this);
-        }
+            : base(cx.GetUid(), cx, f.defpos, _Mem(cx, f, w))
+        { }
         protected SystemRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx, Domain dm,SystemTable f, CTree<long, bool>? w)
+        static BTree<long,object> _Mem(Context cx, SystemTable f, CTree<long, bool>? w)
         {
             var mf = BTree<long,SystemFilter>.Empty;
             for (var b = w?.First(); b != null; b = b.Next())
@@ -316,7 +339,9 @@ namespace Pyrrho.Level4
                             sx = x;
                         }
                     }
-           var r = BTree<long,object>.Empty + (RowType,dm.rowType)+(Representation,dm.representation)
+            // NB: rowType stuff is done by TableRowSet
+            var oi = f.infos[cx.role.defpos]??throw new DBException("42105");
+            var r = new BTree<long,object>(ObInfo.Names,oi.names) 
                 +(SRowType,f.rowType)+(SysTable, f) + (SysFilt, sf);
             if (sx != null)
                 r += (SysIx, sx);
@@ -346,8 +371,6 @@ namespace Pyrrho.Level4
         {
             // level 2 stuff
             LogResults();
-            LogAlterResults();
-            LogChangeResults();
             LogDeleteResults();
             LogDropResults();
             LogModifyResults();
@@ -357,7 +380,6 @@ namespace Pyrrho.Level4
             LogColumnResults();
             LogDateTypeResults();
             LogDomainResults();
-            LogEditResults();
             LogEnforcementResults();
             LogGrantResults();
             LogIndexResults();
@@ -371,10 +393,8 @@ namespace Pyrrho.Level4
             LogTriggerResults();
             LogTriggerUpdateColumnResults();
             LogTriggeredActionResults();
-            LogEdgeTypeResults();
             LogTypeResults();
             LogTypeMethodResults();
-            //          LogTypeUnionResults();
             LogViewResults();
             LogRecordResults();
             LogRecordFieldResults();
@@ -389,22 +409,26 @@ namespace Pyrrho.Level4
             RoleColumnPrivilegeResults();
             RoleDomainResults();
             RoleDomainCheckResults();
+            RoleEdgeTypeResults();
             RoleIndexResults();
             RoleIndexKeyResults();
             RoleJavaResults();
+            RoleMethodResults();
+            RoleNodeTypeResults();
             RoleObjectResults();
             RoleParameterResults();
+            RolePrimaryKeyResults();
+            RolePrivilegeResults();
             RoleProcedureResults();
             RolePythonResults();
+            RoleSQLResults();
             RoleSubobjectResults();
             RoleTableResults();
-            RolePrivilegeResults();
             RoleTableCheckResults();
             RoleTablePeriodResults();
             RoleTriggerResults();
             RoleTriggerUpdateColumnResults();
             RoleTypeResults();
-            RoleMethodResults();
             SysRoleResults();
             SysUserResults();
             SysRoleUserResults();
@@ -447,8 +471,6 @@ namespace Pyrrho.Level4
             {
                 // level 2 stuff
                 case "Log$": return LogBookmark.New(_cx, res);
-                case "Log$Alter": return LogAlterBookmark.New(_cx, res);
-                case "Log$Change": return LogChangeBookmark.New(_cx, res);
                 case "Log$Check": return LogCheckBookmark.New(_cx, res);
                 case "Log$Classification": return LogClassificationBookmark.New(_cx, res);
                 case "Log$Clearance": return LogClearanceBookmark.New(_cx, res);
@@ -457,7 +479,6 @@ namespace Pyrrho.Level4
                 case "Log$Delete": return LogDeleteBookmark.New(_cx, res);
                 case "Log$Domain": return LogDomainBookmark.New(_cx, res);
                 case "Log$Drop": return LogDropBookmark.New(_cx, res);
-                case "Log$Edit": return LogEditBookmark.New(_cx, res);
                 case "Log$Enforcement": return LogEnforcementBookmark.New(_cx, res);
                 case "Log$Grant": return LogGrantBookmark.New(_cx, res);
                 case "Log$Index": return LogIndexBookmark.New(_cx, res);
@@ -478,7 +499,6 @@ namespace Pyrrho.Level4
                 case "Log$TriggeredAction": return LogTriggeredActionBookmark.New(_cx, res);
                 case "Log$Type": return LogTypeBookmark.New(_cx, res);
                 case "Log$TypeMethod": return LogTypeMethodBookmark.New(_cx, res);
-                //            case "Log$TypeUnion": return new LogTypeUnionEnumerator(r,matches);
                 case "Log$Update": return LogUpdateBookmark.New(_cx, res);
                 case "Log$User": return LogUserBookmark.New(_cx, res);
                 case "Log$View": return LogViewBookmark.New(_cx, res);
@@ -487,17 +507,20 @@ namespace Pyrrho.Level4
                 case "Role$Column": return RoleColumnBookmark.New(_cx, res);
                 case "Role$ColumnCheck": return RoleColumnCheckBookmark.New(_cx, res);
                 case "Role$ColumnPrivilege": return RoleColumnPrivilegeBookmark.New(_cx, res);
+                case "Role$EdgeType": return RoleEdgeTypeBookmark.New(_cx, res);
                 case "Role$Domain": return RoleDomainBookmark.New(_cx, res);
                 case "Role$DomainCheck": return RoleDomainCheckBookmark.New(_cx, res);
                 case "Role$Index": return RoleIndexBookmark.New(_cx, res);
                 case "Role$IndexKey": return RoleIndexKeyBookmark.New(_cx, res);
                 case "Role$Java": return RoleJavaBookmark.New(_cx, res);
                 case "Role$Method": return RoleMethodBookmark.New(_cx, res);
+                case "Role$NodeType": return RoleNodeTypeBookmark.New(_cx, res);
                 case "Role$Object": return RoleObjectBookmark.New(_cx, res);
                 case "Role$Parameter": return RoleParameterBookmark.New(_cx, res);
                 case "Role$Privilege": return RolePrivilegeBookmark.New(_cx, res);
                 case "Role$Procedure": return RoleProcedureBookmark.New(_cx, res);
                 case "Role$Python": return RolePythonBookmark.New(_cx, res);
+                case "Role$SQL": return RoleSQLBookmark.New(_cx, res);
                 case "Role$Subobject": return RoleSubobjectBookmark.New(_cx, res);
                 case "Role$Table": return RoleTableBookmark.New(_cx, res);
                 case "Role$TableCheck": return RoleTableCheckBookmark.New(_cx, res);
@@ -540,8 +563,6 @@ namespace Pyrrho.Level4
             {
                 // level 2 stuff
                 "Log$" => LogBookmark.New(res, _cx),
-                "Log$Alter" => LogAlterBookmark.New(res, _cx),
-                "Log$Change" => LogChangeBookmark.New(res, _cx),
                 "Log$Check" => LogCheckBookmark.New(res, _cx),
                 "Log$Classification" => LogClassificationBookmark.New(res, _cx),
                 "Log$Clearance" => LogClearanceBookmark.New(res, _cx),
@@ -550,7 +571,6 @@ namespace Pyrrho.Level4
                 "Log$Delete" => LogDeleteBookmark.New(res, _cx),
                 "Log$Domain" => LogDomainBookmark.New(res, _cx),
                 "Log$Drop" => LogDropBookmark.New(res, _cx),
-                "Log$Edit" => LogEditBookmark.New(res, _cx),
                 "Log$Enforcement" => LogEnforcementBookmark.New(res, _cx),
                 "Log$Grant" => LogGrantBookmark.New(res, _cx),
                 "Log$Index" => LogIndexBookmark.New(res, _cx),
@@ -569,7 +589,6 @@ namespace Pyrrho.Level4
                 "Log$Trigger" => LogTriggerBookmark.New(res, _cx),
                 "Log$TriggerUpdateColumn" => LogTriggerUpdateColumnBookmark.New(res, _cx),
                 "Log$TriggeredAction" => LogTriggeredActionBookmark.New(res, _cx),
-                "Log$EdgeType" => LogEdgeTypeBookmark.New(res, _cx),
                 "Log$Type" => LogTypeBookmark.New(res, _cx),
                 "Log$TypeMethod" => LogTypeMethodBookmark.New(res, _cx),
                 "Log$Update" => LogUpdateBookmark.New(res, _cx),
@@ -684,10 +703,11 @@ namespace Pyrrho.Level4
         static void LogResults()
         {
             var t = new SystemTable("Log$");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Desc", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Type", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Affects", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Desc", Char,0);
+            t+=new SystemTableColumn(t, "Type", Char,0);
+            t+=new SystemTableColumn(t, "Affects", Position,0);
+            t += new SystemTableColumn(t, "Transaction", Domain.Position, 0);
             t = t.AddIndex("Pos");
             t.Add();
         }
@@ -744,7 +764,8 @@ namespace Pyrrho.Level4
                     Pos(ph.ppos),
                     new TChar(ph.ToString()),
                     new TChar(ph.type.ToString()),
-                    Pos(ph.Affects));
+                    Pos(ph.Affects),
+                    Pos(ph.trans));
             }
             /// <summary>
             /// Move to the next log entry
@@ -782,205 +803,13 @@ namespace Pyrrho.Level4
             }
         }
         /// <summary>
-        /// set up the Log$Alter table
-        /// </summary>
-        static void LogAlterResults()
-        {
-            var t = new SystemTable("Log$Alter");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
-            t.AddIndex("Pos");
-            t.Add();
-        }
-        /// <summary>
-        /// An enumerator for the Log$Alter table
-        /// </summary>
-        internal class LogAlterBookmark : LogSystemBookmark
-        {
-            /// <summary>
-            /// construct the Log$Alter enumerator
-            /// </summary>
-            /// <param name="r">the rowset</param>
-            LogAlterBookmark(Context _cx,SystemRowSet r,int pos,Physical ph, long pp)
-                : base(_cx,r,pos,ph,pp, _Value(r, ph))
-            {
-            }
-            internal static LogAlterBookmark? New(Context _cx, SystemRowSet res)
-            {
-                var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
-                for (var lb = _cx.db.log?.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Alter || lb.value() == Physical.Type.Alter2
-                        || lb.value() == Physical.Type.Alter3)
-                    {
-                        var (nph, pp) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogAlterBookmark(_cx, res, 0, nph,pp);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            internal static LogAlterBookmark? New(SystemRowSet res, Context _cx)
-            {
-                for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
-                    if (lb.value() == Physical.Type.Alter || lb.value() == Physical.Type.Alter2
-                        || lb.value() == Physical.Type.Alter3)
-                    {
-                        var (nph, pp) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogAlterBookmark(_cx, res, 0, nph, pp);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            /// <summary>
-            /// the current record (Pos,DefPos,Transaction)
-            /// </summary>
-            static TRow _Value(SystemRowSet res, Physical ph)
-            {
-                var al = ph as PColumn ?? throw new PEException("PE1610");
-                return new TRow(res,
-                    Pos(al.ppos),
-                    Pos(al.Affects));
-            }
-            /// <summary>
-            /// move to the next Log$Alter entry
-            /// </summary>
-            /// <returns>whether there is a next entry</returns>
-            protected override Cursor? _Next(Context _cx)
-            {
-                for (var lb = _cx.db.log?.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Alter || lb.value() == Physical.Type.Alter2
-                        || lb.value() == Physical.Type.Alter3)
-                    {
-                        var (nph, pp) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogAlterBookmark(_cx, res, 0, nph, pp);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            protected override Cursor? _Previous(Context _cx)
-            {
-                for (var lb = _cx.db.log?.PositionAt(ph.ppos)?.Previous(); lb != null; 
-                    lb = lb.Previous())
-                    if (lb.value() == Physical.Type.Alter || lb.value() == Physical.Type.Alter2
-                        || lb.value() == Physical.Type.Alter3)
-                    {
-                        var (nph, pp) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogAlterBookmark(_cx, res, 0, nph, pp);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-        }
-        /// <summary>
-        /// set up the Log$Change table
-        /// </summary>
-        static void LogChangeResults()
-        {
-            var t = new SystemTable("Log$Change");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Previous", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t.AddIndex("Pos");
-            t.Add();
-        }
-        /// <summary>
-        /// an enumerator for Log$Change
-        /// </summary>
-        internal class LogChangeBookmark : LogSystemBookmark
-        {
-            LogChangeBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
-                : base(_cx,r, pos, ph, pp, _Value(r, ph))
-            {
-            }
-            internal static LogChangeBookmark? New(Context _cx,SystemRowSet res)
-            {
-                var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
-                for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Change)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogChangeBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            internal static LogChangeBookmark? New(SystemRowSet res, Context _cx)
-            {
-                for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
-                    if (lb.value() == Physical.Type.Change)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogChangeBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            /// <summary>
-            /// the current value: (Pos,Previous,Name,Transaction)
-            /// </summary>
-            static TRow _Value(SystemRowSet res, Physical ph)
-            {
-                Change ch = (Change)ph;
-                return new TRow(res,
-                    Pos(ch.ppos),
-                    Pos(ch.Previous),
-                    new TChar(ch.name));
-            }
-            protected override Cursor? _Next(Context _cx)
-            {
-                for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Change)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogChangeBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            protected override Cursor? _Previous(Context _cx)
-            {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
-                    lb = lb.Previous())
-                    if (lb.value() == Physical.Type.Change)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogChangeBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-        }
-        /// <summary>
         /// setup the Log$Delete table
         /// </summary>
         static void LogDeleteResults()
         {
             var t = new SystemTable("Log$Delete");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "DelPos", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "DelPos", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1068,9 +897,9 @@ namespace Pyrrho.Level4
         static void LogDropResults()
         {
             var t = new SystemTable("Log$Drop");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "DelPos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "DelPos", Position,0);
+            t+=new SystemTableColumn(t, "Transaction", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1260,10 +1089,10 @@ namespace Pyrrho.Level4
         static void LogModifyResults()
         {
             var t = new SystemTable("Log$Modify");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Proc", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Position,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Proc", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1286,7 +1115,7 @@ namespace Pyrrho.Level4
                         var rb = new LogModifyBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -1442,9 +1271,9 @@ namespace Pyrrho.Level4
         static void LogRoleResults()
         {
             var t = new SystemTable("Log$Role");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Details", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Details", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1533,11 +1362,11 @@ namespace Pyrrho.Level4
         static void LogCheckResults()
         {
             var t = new SystemTable("Log$Check");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Ref", Domain.Position,0);
-            t+=new SystemTableColumn(t, "ColRef", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Check", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Ref", Position,0);
+            t+=new SystemTableColumn(t, "ColRef", Position,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Check", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1603,7 +1432,7 @@ namespace Pyrrho.Level4
                         var rb = new LogCheckBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -1625,10 +1454,9 @@ namespace Pyrrho.Level4
         static void LogClassificationResults()
         {
             var t = new SystemTable("Log$Classification");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Obj", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Obj", Position,0);
+            t+=new SystemTableColumn(t, "Classification", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1706,17 +1534,15 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(c.ppos),
                     Pos(c.obj),
-                    new TChar(c.classification.ToString()),
-                    Pos(c.trans));
+                    new TChar(c.classification.ToString()));
             }
         }
         static void LogClearanceResults()
         {
             var t = new SystemTable("Log$Clearance");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "User", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Clearance", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "User", Position,0);
+            t+=new SystemTableColumn(t, "Clearance", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1794,8 +1620,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(c.ppos),
                     Pos(u),
-                    new TChar(c.clearance.ToString()),
-                    Pos(c.trans));
+                    new TChar(c.clearance.ToString()));
             }
         }
         /// <summary>
@@ -1804,16 +1629,19 @@ namespace Pyrrho.Level4
         static void LogColumnResults()
         {
             var t = new SystemTable("Log$Column");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Seq", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Domain", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Default", Domain.Char,0);
-            t+=new SystemTableColumn(t, "NotNull", Domain.Bool,0);
-            t+=new SystemTableColumn(t, "Generated", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Update", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t += new SystemTableColumn(t, "Defpos", Position, 0);
+            t+=new SystemTableColumn(t, "Table", Position,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Seq", Int,0);
+            t+=new SystemTableColumn(t, "Domain", Position,0);
+            t+=new SystemTableColumn(t, "Default", Char,0);
+            t+=new SystemTableColumn(t, "NotNull", Bool,0);
+            t+=new SystemTableColumn(t, "Generated", Char,0);
+            t+=new SystemTableColumn(t, "Update", Position,0);
+            t += new SystemTableColumn(t, "Flags", Char, 0);
+            t += new SystemTableColumn(t, "RefIndex", Position, 0);
+            t += new SystemTableColumn(t, "ToType", Position, 0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1930,6 +1758,7 @@ namespace Pyrrho.Level4
                     throw new PEException("PE0410");
                     return new TRow(res,
                         Pos(c.ppos),
+                        Pos(c.defpos),
                         Pos(tb.defpos),
                         new TChar(c.name),
                         new TInt(c.seq),
@@ -1938,7 +1767,9 @@ namespace Pyrrho.Level4
                         TBool.For(c.notNull),
                         new TChar(c.generated.ToString()),
                         Display(c.upd.ToString()),
-                        Pos(c.trans));
+                        new TChar(c.flags.ToString()),
+                        Pos(c.index),
+                        Pos(c.toType));
             }
          }
         /// <summary>
@@ -1947,13 +1778,12 @@ namespace Pyrrho.Level4
         static void LogTablePeriodResults()
         {
             var t = new SystemTable("Log$TablePeriod");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
-            t+=new SystemTableColumn(t, "PeriodName", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Versioning", Domain.Bool,0);
-            t+=new SystemTableColumn(t, "StartColumn", Domain.Position,0);
-            t+=new SystemTableColumn(t, "EndColumn", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Table", Position,0);
+            t+=new SystemTableColumn(t, "PeriodName", Char,0);
+            t+=new SystemTableColumn(t, "Versioning", Bool,0);
+            t+=new SystemTableColumn(t, "StartColumn", Position,0);
+            t+=new SystemTableColumn(t, "EndColumn", Position,0);
             t.AddIndex("Pos");
             t.Add();
 
@@ -2037,8 +1867,7 @@ namespace Pyrrho.Level4
                     new TChar(c.periodname),
                     TBool.True,
                     Pos(c.startcol),
-                    Pos(c.endcol),
-                    Pos(c.trans));
+                    Pos(c.endcol));
             }
          }
         /// <summary>
@@ -2052,7 +1881,6 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Kind", Domain.Char,0);
             t+=new SystemTableColumn(t, "StartField", Domain.Int,0);
             t+=new SystemTableColumn(t, "EndField",  Domain.Int,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2134,8 +1962,7 @@ namespace Pyrrho.Level4
                         new TChar(d.name),
                         new TChar(d.kind.ToString()),
                         new TChar(d.start.ToString()),
-                        new TChar(d.end.ToString()),
-                        Pos(ph.trans));
+                        new TChar(d.end.ToString()));
             }
          }
         /// <summary>
@@ -2144,17 +1971,16 @@ namespace Pyrrho.Level4
         static void LogDomainResults()
         {
             var t = new SystemTable("Log$Domain");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Kind", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "DataType", Domain.Char,0);
-            t+=new SystemTableColumn(t, "DataLength", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Scale", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Charset", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Collate", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Default", Domain.Char,0);
-            t+=new SystemTableColumn(t, "StructDef", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Kind", Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "DataType", Char,0);
+            t+=new SystemTableColumn(t, "DataLength", Int,0);
+            t+=new SystemTableColumn(t, "Scale", Int,0);
+            t+=new SystemTableColumn(t, "Charset", Char,0);
+            t+=new SystemTableColumn(t, "Collate", Char,0);
+            t+=new SystemTableColumn(t, "Default", Char,0);
+            t+=new SystemTableColumn(t, "StructDef", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2175,6 +2001,9 @@ namespace Pyrrho.Level4
                     {
                         case Physical.Type.PDomain:
                         case Physical.Type.PDomain1:
+                        case Physical.Type.PTable1:
+                        case Physical.Type.PNodeType:
+                        case Physical.Type.PEdgeType:
                         case Physical.Type.Edit:
                         case Physical.Type.PType:
                         case Physical.Type.PType1:
@@ -2273,98 +2102,7 @@ namespace Pyrrho.Level4
                     new TChar(d.charSet.ToString()),
                     new TChar(d.culture.Name),
                     Display(d.defaultString),
-                    new TChar(d.elType?.ToString()??""),
-                    Pos(ph.trans));
-            }
-         }
-        /// <summary>
-        /// set up the Log$Edit table
-        /// </summary>
-        static void LogEditResults()
-        {
-            var t = new SystemTable("Log$Edit");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Prev", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
-            t.AddIndex("Pos");
-            t.Add();
-        }
-        /// <summary>
-        /// an enumerator for Log$Edit
-        /// </summary>
-        internal class LogEditBookmark : LogSystemBookmark
-        {
-            LogEditBookmark(Context _cx,SystemRowSet r, int pos, Physical ph, long pp)
-                : base(_cx,r, pos, ph, pp, _Value(r, ph))
-            {  }
-            internal static LogEditBookmark? New(Context _cx,SystemRowSet res)
-            {
-                var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
-                for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Edit)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogEditBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            internal static LogEditBookmark? New(SystemRowSet res, Context _cx)
-            {
-                for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
-                    if (lb.value() == Physical.Type.Edit)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogEditBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            protected override Cursor? _Next(Context _cx)
-            {
-                for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.Edit)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogEditBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            protected override Cursor? _Previous(Context _cx)
-            {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null; 
-                    lb = lb.Previous())
-                    if (lb.value() == Physical.Type.Edit)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogEditBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            /// <summary>
-            /// the current value: (Pos,Prev,Transaction)
-            /// </summary>
-            static TRow _Value(SystemRowSet res, Physical ph)
-            {
-                Edit d = (Edit)ph;
-                return new TRow(res,
-                    Pos(d.ppos),
-                    Pos(d._prev),
-                    Pos(d.trans));
+                    new TChar(d.elType?.ToString()??""));
             }
          }
         static void LogEnforcementResults()
@@ -2373,7 +2111,6 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
             t+=new SystemTableColumn(t, "Table", Domain.Char,0);
             t+=new SystemTableColumn(t, "Flags", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2455,11 +2192,10 @@ namespace Pyrrho.Level4
         static void LogGrantResults()
         {
             var t = new SystemTable("Log$Grant");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Privilege", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Object", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Grantee", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Privilege", Int,0);
+            t+=new SystemTableColumn(t, "Object", Position,0);
+            t+=new SystemTableColumn(t, "Grantee", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2541,8 +2277,7 @@ namespace Pyrrho.Level4
                     Pos(g.ppos),
                     new TInt((long)g.priv),
                     Pos(g.obj),
-                    Pos(g.grantee),
-                    Pos(g.trans));
+                    Pos(g.grantee));
             }
         }
         /// <summary>
@@ -2551,13 +2286,12 @@ namespace Pyrrho.Level4
         static void LogIndexResults()
         {
             var t = new SystemTable("Log$Index");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Reference", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Adapter", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Table", Position,0);
+            t+=new SystemTableColumn(t, "Flags", Char,0);
+            t+=new SystemTableColumn(t, "Reference", Position,0);
+            t+=new SystemTableColumn(t, "Adapter", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2644,8 +2378,7 @@ namespace Pyrrho.Level4
                         Pos(p.tabledefpos),
                         new TChar(p.flags.ToString()),
                         Pos(p.reference),
-                        Display(p.adapter),
-                        Pos(p.trans));
+                        Display(p.adapter));
             }
          }
         /// <summary>
@@ -2654,10 +2387,9 @@ namespace Pyrrho.Level4
         static void LogIndexKeyResults()
         {
             var t = new SystemTable("Log$IndexKey");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "ColNo", Domain.Int,1);
-            t+=new SystemTableColumn(t, "Column", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "ColNo", Int,1);
+            t+=new SystemTableColumn(t, "Column", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2763,8 +2495,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(x.ppos),
                     new TInt(_ix),
-                    Pos(x.columns[_ix]),
-                    Pos(x.trans));
+                    Pos(x.columns[_ix]));
             }
         }
         /// <summary>
@@ -2773,11 +2504,11 @@ namespace Pyrrho.Level4
         static void LogOrderingResults()
         {
             var t = new SystemTable("Log$Ordering");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "TypeDefPos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "FuncDefPos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "OrderFlags", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "TypeDefPos", Position,0);
+            t+=new SystemTableColumn(t, "FuncDefPos", Position,0);
+            t+=new SystemTableColumn(t, "OrderFlags", Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2858,8 +2589,7 @@ namespace Pyrrho.Level4
                     Pos(o.ppos),
                     new TChar(o.ToString()),
                     Pos(o.funcdefpos),
-                    new TChar(o.flags.ToString()),
-                    Pos(o.trans));
+                    new TChar(o.flags.ToString()));
             }
         }
         /// <summary>
@@ -2868,12 +2598,11 @@ namespace Pyrrho.Level4
         static void LogProcedureResults()
         {
             var t = new SystemTable("Log$Procedure");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Arity", Domain.Int,0);
-            t+=new SystemTableColumn(t, "RetDefPos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Proc", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "RetDefPos", Position,0);
+            t+=new SystemTableColumn(t, "Proc", Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -2980,11 +2709,9 @@ namespace Pyrrho.Level4
                 PProcedure p = (PProcedure)ph;
                 return new TRow(res,
                     Pos(p.ppos),
-                    new TChar(p.nameAndArity),
-                    new TInt(p.arity),
+                    new TChar(p.name),
                     new TChar(p.dataType.ToString()),
-                    Display(p.source?.ident??""),
-                    Pos(p.trans));
+                    Display(p.source?.ident??""));
             }
         }
         /// <summary>
@@ -2993,11 +2720,10 @@ namespace Pyrrho.Level4
         static void LogRevokeResults()
         {
             var t = new SystemTable("Log$Revoke");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Privilege", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Object", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Grantee", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Privilege", Int,0);
+            t+=new SystemTableColumn(t, "Object", Position,0);
+            t+=new SystemTableColumn(t, "Grantee", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3074,8 +2800,7 @@ namespace Pyrrho.Level4
                     Pos(g.ppos),
                     new TInt((long)g.priv),
                     Pos(g.obj),
-                    Pos(g.grantee),
-                    Pos(g.trans));
+                    Pos(g.grantee));
             }
          }
         /// <summary>
@@ -3084,10 +2809,9 @@ namespace Pyrrho.Level4
         static void LogTableResults()
         {
             var t = new SystemTable("Log$Table");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Defpos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Defpos", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3167,8 +2891,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(d.ppos),
                     new TChar(d.name),
-                    Pos(d.defpos),
-                    Pos(d.trans));
+                    Pos(d.defpos));
             }
         }
         /// <summary>
@@ -3177,16 +2900,15 @@ namespace Pyrrho.Level4
         static void LogTriggerResults()
         {
             var t = new SystemTable("Log$Trigger");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
-            t+=new SystemTableColumn(t, "OldTable", Domain.Char,0);
-            t+=new SystemTableColumn(t, "NewTable", Domain.Char,0);
-            t+=new SystemTableColumn(t, "OldRow", Domain.Char,0);
-            t+=new SystemTableColumn(t, "NewRow", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Def", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Table", Position,0);
+            t+=new SystemTableColumn(t, "Flags", Char,0);
+            t+=new SystemTableColumn(t, "OldTable", Char,0);
+            t+=new SystemTableColumn(t, "NewTable", Char,0);
+            t+=new SystemTableColumn(t, "OldRow", Char,0);
+            t+=new SystemTableColumn(t, "NewRow", Char,0);
+            t+=new SystemTableColumn(t, "Def", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3209,7 +2931,7 @@ namespace Pyrrho.Level4
                         var rb = new LogTriggerBookmark(_cx, res, 0, nph, np);
                         if (!rb.Match(res))
                             return null;
-                        if (RowSet.Eval(res.where, _cx))
+                        if (Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -3272,8 +2994,7 @@ namespace Pyrrho.Level4
                     new TChar(d.newTable?.ident??""),
                     new TChar(d.oldRow?.ident??""),
                     new TChar(d.newRow?.ident??""),
-                    Display(d.src?.ident??""),
-                    Pos(d.trans));
+                    Display(d.src?.ident??""));
             }
         }
         /// <summary>
@@ -3282,9 +3003,8 @@ namespace Pyrrho.Level4
         static void LogTriggerUpdateColumnResults()
         {
             var t = new SystemTable("Log$TriggerUpdateColumn");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Column", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Column", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3406,16 +3126,14 @@ namespace Pyrrho.Level4
                 PTrigger pt = (PTrigger)ph;
                 return new TRow(res,
                     Pos(pt.ppos),
-                    new TInt(_sub[_ix]??-1L),
-                    Pos(pt.trans));
+                    new TInt(_sub[_ix]??-1L));
             }
         }
         static void LogTriggeredActionResults()
         {
             var t = new SystemTable("Log$TriggeredAction");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Trigger", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Trigger", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3491,8 +3209,7 @@ namespace Pyrrho.Level4
                 TriggeredAction t = (TriggeredAction)ph;
                 return new TRow(res,
                     Pos(t.ppos),
-                    Pos(t.trigger),
-                    Pos(t.trans));
+                    Pos(t.trigger));
             }
         }
         /// <summary>
@@ -3501,11 +3218,10 @@ namespace Pyrrho.Level4
         static void LogTypeResults()
         {
             var t = new SystemTable("Log$Type");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t += new SystemTableColumn(t, "Name", Domain.Char, 0);
-            t+=new SystemTableColumn(t, "SuperType", Domain.Position,0);
-            t += new SystemTableColumn(t, "Graph", Domain.Char, 0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t += new SystemTableColumn(t, "Name", Char, 0);
+            t+=new SystemTableColumn(t, "SuperType", Position,0);
+            t += new SystemTableColumn(t, "Graph", Char, 0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3593,110 +3309,18 @@ namespace Pyrrho.Level4
                     Pos(t.ppos),
                     new TChar(t.name),
                     un,
-                    gr,
-                    Pos(t.trans));
+                    gr);
             }
          }
-        static void LogEdgeTypeResults()
-        {
-            var t = new SystemTable("Log$EdgeType");
-            t += new SystemTableColumn(t, "Pos", Domain.Position, 1);
-            t += new SystemTableColumn(t, "LeavingType", Domain.Position, 0);
-            t += new SystemTableColumn(t, "ArrivingType", Domain.Position, 0);
-            t += new SystemTableColumn(t, "Transaction", Domain.Position, 0);
-            t.AddIndex("Pos");
-            t.Add();
-        }
-        /// <summary>
-        /// an enumerator for the Log$EdgeType table
-        /// </summary>
-        internal class LogEdgeTypeBookmark : LogSystemBookmark
-        {
-            LogEdgeTypeBookmark(Context _cx, SystemRowSet r, int pos, Physical ph, long pp)
-                : base(_cx, r, pos, ph, pp, _Value(r, ph))
-            {
-            }
-            internal static LogEdgeTypeBookmark? New(Context _cx, SystemRowSet res)
-            {
-                var start = res.Start(_cx, "Pos")?.ToLong() ?? 5;
-                for (var lb = _cx.db.log.PositionAt(start); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PEdgeType)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogEdgeTypeBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            internal static LogEdgeTypeBookmark? New(SystemRowSet res, Context _cx)
-            {
-                for (var lb = _cx.db.log.Last(); lb != null; lb = lb.Previous())
-                    if (lb.value() == Physical.Type.PEdgeType)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogEdgeTypeBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            protected override Cursor? _Next(Context _cx)
-            {
-                for (var lb = _cx.db.log.PositionAt(nextpos); lb != null; lb = lb.Next())
-                    if (lb.value() == Physical.Type.PEdgeType)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogEdgeTypeBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            protected override Cursor? _Previous(Context _cx)
-            {
-                for (var lb = _cx.db.log.PositionAt(ph.ppos)?.Previous(); lb != null;
-                    lb = lb.Previous())
-                    if (lb.value() == Physical.Type.PEdgeType)
-                    {
-                        var (nph, np) = _cx.db.GetPhysical(lb.key());
-                        var rb = new LogEdgeTypeBookmark(_cx, res, 0, nph, np);
-                        if (!rb.Match(res))
-                            return null;
-                        if (Eval(res.where, _cx))
-                            return rb;
-                    }
-                return null;
-            }
-            /// <summary>
-            /// the current value: (Pos,SuperType)
-            /// </summary>
-            static TRow _Value(SystemRowSet res, Physical ph)
-            {
-                PEdgeType t = (PEdgeType)ph;
-                return new TRow(res,
-                    Pos(t.ppos),
-                    Pos(t.dataType.rowType[1]??-1L),
-                    Pos(t.dataType.rowType[2]??-1L),
-                    Pos(t.trans));
-            }
-        }
         /// <summary>
         /// set up the Log$TypeMethod table
         /// </summary>
         static void LogTypeMethodResults()
         {
             var t = new SystemTable("Log$TypeMethod");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Type", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Type", Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3778,8 +3402,7 @@ namespace Pyrrho.Level4
                     return new TRow(res,
                         Pos(t.ppos),
                         new TChar(t.udt.ToString()),
-                        new TChar(t.name),
-                        Pos(t.trans));
+                        new TChar(t.name));
             }
         }
         /// <summary>
@@ -3788,12 +3411,11 @@ namespace Pyrrho.Level4
         static void LogViewResults()
         {
             var t = new SystemTable("Log$View");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Struct", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Using", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Select", Char,0);
+            t+=new SystemTableColumn(t, "Struct", Position,0);
+            t+=new SystemTableColumn(t, "Using", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -3879,8 +3501,7 @@ namespace Pyrrho.Level4
                     new TChar(d.name),
                     Display(d.viewdef),
                     st,
-                    us,
-                    Pos(d.trans));
+                    us);
             }
         }
         /// <summary>
@@ -3889,11 +3510,11 @@ namespace Pyrrho.Level4
         static void LogRecordResults()
         {
             var t = new SystemTable("Log$Record");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
-            t+=new SystemTableColumn(t, "SubType", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Table", Position,0);
+            t+=new SystemTableColumn(t, "SubType", Position,0);
+            t+=new SystemTableColumn(t, "Classification", Char,0);
+            t+=new SystemTableColumn(t, "Transaction", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -4006,8 +3627,7 @@ namespace Pyrrho.Level4
                     Pos(d.ppos),
                     Pos(d.tabledefpos),
                     Pos(d.subType),
-                    new TChar(d.classification.ToString()),
-                    Pos(d.trans));
+                    new TChar(d.classification.ToString()));
             }
         }
         /// <summary>
@@ -4016,10 +3636,9 @@ namespace Pyrrho.Level4
         static void LogRecordFieldResults()
         {
             var t = new SystemTable("Log$RecordField");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "ColRef", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Data", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "ColRef", Position,1);
+            t+=new SystemTableColumn(t, "Data", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -4085,8 +3704,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(r.ppos),
                     Pos(p),
-                    new TChar(v.ToString()),
-                    Pos(r.trans));
+                    new TChar(v.ToString()));
             }
             /// <summary>
             /// Move to next Field or Record
@@ -4141,12 +3759,11 @@ namespace Pyrrho.Level4
         static void LogUpdateResults()
         {
             var t = new SystemTable("Log$Update");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
-            t+=new SystemTableColumn(t, "SubType", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "DefPos", Position,0);
+            t+=new SystemTableColumn(t, "Table", Position,0);
+            t+=new SystemTableColumn(t, "SubType", Position,0);
+            t+=new SystemTableColumn(t, "Classification", Char,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -4228,8 +3845,7 @@ namespace Pyrrho.Level4
                     Pos(u.defpos),
                     Pos(u.tabledefpos),
                     Pos(u.subType),
-                    new TChar(u.classification.ToString()),
-                    Pos(u.trans));
+                    new TChar(u.classification.ToString()));
             }
         }
         /// <summary>
@@ -4238,12 +3854,11 @@ namespace Pyrrho.Level4
         static void LogTransactionResults()
         {
             var t = new SystemTable("Log$Transaction");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "NRecs", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Time", Domain.Int,0);
-            t+=new SystemTableColumn(t, "User", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Role", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Transaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "NRecs", Int,0);
+            t+=new SystemTableColumn(t, "Time", Int,0);
+            t+=new SystemTableColumn(t, "User", Position,0);
+            t+=new SystemTableColumn(t, "Role", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -4325,8 +3940,7 @@ namespace Pyrrho.Level4
                         new TInt(t.nrecs),
                         new TDateTime(new DateTime(t.time)),
                         Pos(t.ptuser?.defpos??-1L),
-                        Pos(t.ptrole.defpos),
-                        Pos(t.trans));
+                        Pos(t.ptrole.defpos));
             }
         }
         /// <summary>
@@ -4335,8 +3949,8 @@ namespace Pyrrho.Level4
         static void SysRoleResults()
         {
             var t = new SystemTable("Sys$Role");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,0);
+            t+=new SystemTableColumn(t, "Name", Char,1);
             t.AddIndex("Name");
             t.Add();
         }
@@ -4408,10 +4022,10 @@ namespace Pyrrho.Level4
         static void SysUserResults()
         {
             var t = new SystemTable("Sys$User");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "SetPassword", Domain.Bool,0); // usually null
-            t+=new SystemTableColumn(t, "Clearance", Domain.Char,0); // usually null, otherwise D to A
+            t+=new SystemTableColumn(t, "Pos", Position,0);
+            t+=new SystemTableColumn(t, "Name", Char,1);
+            t+=new SystemTableColumn(t, "SetPassword", Bool,0); // usually null
+            t+=new SystemTableColumn(t, "Clearance", Char,0); // usually null, otherwise D to A
             t.AddIndex("Name");
             t.Add();
         }
@@ -4490,8 +4104,8 @@ namespace Pyrrho.Level4
         static void SysRoleUserResults()
         {
             var t = new SystemTable("Sys$RoleUser");
-            t+=new SystemTableColumn(t, "Role", Domain.Char,1);
-            t+=new SystemTableColumn(t, "User", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Role", Char,1);
+            t+=new SystemTableColumn(t, "User", Char,1);
             t .AddIndex("Role", "User");
             t.Add();
         }
@@ -4578,10 +4192,10 @@ namespace Pyrrho.Level4
         static void SysAuditResults()
         {
             var t = new SystemTable("Sys$Audit");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "User", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Timestamp", Domain.Timestamp,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "User", Char,0);
+            t+=new SystemTableColumn(t, "Table", Position,0);
+            t+=new SystemTableColumn(t, "Timestamp", Timestamp,0);
             t.Add();
         }
         internal class SysAuditBookmark : SystemBookmark
@@ -4657,10 +4271,10 @@ namespace Pyrrho.Level4
         static void SysAuditKeyResults()
         {
             var t = new SystemTable("Sys$AuditKey");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
-            t+=new SystemTableColumn(t, "Col", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Key", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Seq", Int,1);
+            t+=new SystemTableColumn(t, "Col", Position,0);
+            t+=new SystemTableColumn(t, "Key", Char,0);
             t.Add();
         }
         internal class SysAuditKeyBookmark : SystemBookmark
@@ -4751,10 +4365,10 @@ namespace Pyrrho.Level4
         static void SysClassificationResults()
         {
             var t = new SystemTable("Sys$Classification");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Type", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "LastTransaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Type", Char,0);
+            t+=new SystemTableColumn(t, "Classification", Char,0);
+            t+=new SystemTableColumn(t, "LastTransaction", Position,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -4866,10 +4480,10 @@ namespace Pyrrho.Level4
         static void SysClassifiedColumnDataResults()
         {
             var t = new SystemTable("Sys$ClassifiedColumnData");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Col", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Classification", Domain.Char,0);
-            t+=new SystemTableColumn(t, "LastTransaction", Domain.Position,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Col", Position,1);
+            t+=new SystemTableColumn(t, "Classification", Char,0);
+            t+=new SystemTableColumn(t, "LastTransaction", Position,0);
             t.AddIndex("Pos", "Col");
             t.Add();
         }
@@ -4953,8 +4567,8 @@ namespace Pyrrho.Level4
         static void SysEnforcementResults()
         {
             var t = new SystemTable("Sys$Enforcement");
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Scope", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,1);
+            t+=new SystemTableColumn(t, "Scope", Char,1);
             t.AddIndex("Name", "Scope");
             t.Add();
         }
@@ -5009,10 +4623,9 @@ namespace Pyrrho.Level4
         static void SysGraphResults()
         {
             var t = new SystemTable("Sys$Graph");
-            t += new SystemTableColumn(t, "Uid", Domain.Position, 0);
-            t += new SystemTableColumn(t, "Id", Domain.Char, 1);
-            t += new SystemTableColumn(t, "Type", Domain.Char, 0);
-            t.AddIndex("Id");
+            t += new SystemTableColumn(t, "Uid", Position, 1);
+            t += new SystemTableColumn(t, "Id", Char, 0);
+            t += new SystemTableColumn(t, "Type", Char, 0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -5039,8 +4652,7 @@ namespace Pyrrho.Level4
             {
                 if (g.nodes.First()?.value() is not TNode n)
                     throw new PEException("PE91046");
-                return new TRow(rs, Pos(n.uid),
-                    n,
+                return new TRow(rs, n,
                     new TChar(n.dataType.name));
             }
             protected override Cursor? _Next(Context cx)
@@ -5069,12 +4681,12 @@ namespace Pyrrho.Level4
         static void RoleViewResults()
         {
             var t = new SystemTable("Role$View");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "View", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Struct", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Using", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "View", Char,1);
+            t+=new SystemTableColumn(t, "Select", Char,0);
+            t+=new SystemTableColumn(t, "Struct", Char,0);
+            t+=new SystemTableColumn(t, "Using", Char,0);
+            t+=new SystemTableColumn(t, "Definer", Char,0);
             t.AddIndex("View");
             t.AddIndex("Pos");
             t.Add();
@@ -5154,18 +4766,88 @@ namespace Pyrrho.Level4
                 throw new NotImplementedException();
             }
         }
+        static void RoleSQLResults()
+        {
+            var t = new SystemTable("Role$SQL");
+            t += new SystemTableColumn(t, "Name", Position, 1);
+            t += new SystemTableColumn(t, "Key", Char, 0);
+            t += new SystemTableColumn(t, "Definition", Char, 0);
+            t.AddIndex("Name");
+            t.Add();
+        }
+        /// <summary>
+        /// an enumerator for Role$View
+        /// </summary>
+        internal class RoleSQLBookmark : SystemBookmark
+        {
+            /// <summary>
+            /// enumerate the tables tree
+            /// </summary>
+            readonly ABookmark<long, object> _bmk;
+            /// <summary>
+            /// create the Sys$View enumerator
+            /// </summary>
+            /// <param name="r"></param>
+            RoleSQLBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> bmk)
+                : base(_cx, res, pos, bmk.key(), ((View)bmk.value()).lastChange,
+                      _Value(_cx, res, bmk))
+            {
+                _bmk = bmk;
+            }
+            internal static RoleSQLBookmark? New(Context _cx, SystemRowSet res)
+            {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49520");
+                for (var bmk = _cx.db.objects.PositionAt(0); bmk != null; bmk = bmk.Next())
+                    if (bmk.value() is View v && v.infos[ro.defpos] is not null)
+                    {
+                        var rb = new RoleSQLBookmark(_cx, res, 0, bmk);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            /// <summary>
+            /// the current value: (Name,Key,Definition)
+            /// </summary>
+            static TRow _Value(Context _cx, SystemRowSet rs, ABookmark<long,object>e)
+            {
+                return ((DBObject)e.value()).RoleSQLValue(_cx, rs, e);
+            }
+            /// <summary>
+            /// Move to the next View
+            /// </summary>
+            /// <returns>whether there is one</returns>
+            protected override Cursor? _Next(Context _cx)
+            {
+                if (_cx.role is not Role ro)
+                    throw new PEException("PE49521");
+                for (var bmk = _bmk.Next(); bmk != null; bmk = bmk.Next())
+                    if (bmk.value() is View v && v.infos[ro.defpos] is not null)
+                    {
+                        var rb = new RoleSQLBookmark(_cx, res, _pos + 1, bmk);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+        }
+
         /// <summary>
         /// set up the Role$DomainCheck table
         /// </summary>
         static void RoleDomainCheckResults()
         {
             var t = new SystemTable("Role$DomainCheck");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "DomainName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "DomainName", Char,0);
+            t+=new SystemTableColumn(t, "CheckName", Char,0);
+            t+=new SystemTableColumn(t, "Select", Char,0);
             t.AddIndex("Pos");
-            t.AddIndex("DomainName","CheckName");
             t.Add();
         }
         /// <summary>
@@ -5268,12 +4950,11 @@ namespace Pyrrho.Level4
         static void RoleTableCheckResults()
         {
             var t = new SystemTable("Role$TableCheck");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "TableName", Char,0);
+            t+=new SystemTableColumn(t, "CheckName", Char,0);
+            t+=new SystemTableColumn(t, "Select", Char,0);
             t.AddIndex("Pos");
-            t.AddIndex("TableName", "CheckName");
             t.Add();
         }
         /// <summary>
@@ -5369,12 +5050,13 @@ namespace Pyrrho.Level4
         /// </summary>
         static void RoleTablePeriodResults()
         {
-            var t = new SystemTable("Role$TablePaeriod");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "PeriodName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "PeriodStartColumn", Domain.Char,0);
-            t+=new SystemTableColumn(t, "PeriodEndColumn", Domain.Char,0);
+            var t = new SystemTable("Role$TablePeriod");
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "TableName", Char,0);
+            t+=new SystemTableColumn(t, "PeriodName", Char,0);
+            t+=new SystemTableColumn(t, "PeriodStartColumn", Char,0);
+            t+=new SystemTableColumn(t, "PeriodEndColumn", Char,0);
+            t.AddIndex("Pos");
             t.Add();
         }
         /// <summary>
@@ -5494,17 +5176,16 @@ namespace Pyrrho.Level4
         static void RoleColumnResults()
         {
             var t = new SystemTable("Role$Column");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
-            t+=new SystemTableColumn(t, "Domain", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Default", Domain.Char,0);
-            t+=new SystemTableColumn(t, "NotNull", Domain.Bool,0);
-            t+=new SystemTableColumn(t, "Generated", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Update", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Table", Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Seq", Int,0);
+            t+=new SystemTableColumn(t, "Domain", Position,0);
+            t+=new SystemTableColumn(t, "Default", Char,0);
+            t+=new SystemTableColumn(t, "NotNull", Bool,0);
+            t+=new SystemTableColumn(t, "Generated", Char,0);
+            t+=new SystemTableColumn(t, "Update", Char,0);
             t.AddIndex("Pos");
-            t.AddIndex("Table", "Name");
             t.Add();
         }
         /// <summary>
@@ -5608,9 +5289,9 @@ namespace Pyrrho.Level4
         static void RoleClassResults()
         {
             var t = new SystemTable("Role$Class");
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Key", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Key", Char,0);
+            t+=new SystemTableColumn(t, "Definition", Char,0);
             t.Add();
         }
         
@@ -5673,13 +5354,12 @@ namespace Pyrrho.Level4
         static void RoleColumnCheckResults()
         {
             var t = new SystemTable("Role$ColumnCheck");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0); 
-            t+=new SystemTableColumn(t, "TableName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "ColumnName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "CheckName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Select", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1); 
+            t+=new SystemTableColumn(t, "TableName", Char,0);
+            t+=new SystemTableColumn(t, "ColumnName", Char,0);
+            t+=new SystemTableColumn(t, "CheckName", Char,0);
+            t+=new SystemTableColumn(t, "Select", Char,0);
             t.AddIndex("Pos");
-            t.AddIndex("TableName", "CheckName");
             t.Add();
         }
         /// <summary>
@@ -5798,11 +5478,10 @@ namespace Pyrrho.Level4
         static void RoleColumnPrivilegeResults()
         {
             var t = new SystemTable("Role$ColumnPrivilege");
-            t+=new SystemTableColumn(t, "Table", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Column", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Grantee", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Privilege", Domain.Char,0);
-            t.AddIndex("Table", "Column", "Grantee");
+            t+=new SystemTableColumn(t, "Table", Char,0);
+            t+=new SystemTableColumn(t, "Column", Char,0);
+            t+=new SystemTableColumn(t, "Grantee", Char,0);
+            t+=new SystemTableColumn(t, "Privilege", Char,0);
             t.Add();
         }
         /// <summary>
@@ -5899,18 +5578,17 @@ namespace Pyrrho.Level4
         static void RoleDomainResults()
         {
             var t = new SystemTable("Role$Domain");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "DataType", Domain.Char,0);
-            t+=new SystemTableColumn(t, "DataLength", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Scale", Domain.Int,0);
-            t+=new SystemTableColumn(t, "StartField", Domain.Char,0);
-            t+=new SystemTableColumn(t, "EndField", Domain.Char,0);
-            t+=new SystemTableColumn(t, "DefaultValue", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Struct", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "DataType", Char,0);
+            t+=new SystemTableColumn(t, "DataLength", Int,0);
+            t+=new SystemTableColumn(t, "Scale", Int,0);
+            t+=new SystemTableColumn(t, "StartField", Char,0);
+            t+=new SystemTableColumn(t, "EndField", Char,0);
+            t+=new SystemTableColumn(t, "DefaultValue", Char,0);
+            t+=new SystemTableColumn(t, "Struct", Char,0);
+            t+=new SystemTableColumn(t, "Definer", Char,0);
             t.AddIndex("Pos");
-            t.AddIndex("Name");
             t.Add();
         }
         /// <summary>
@@ -6008,13 +5686,13 @@ namespace Pyrrho.Level4
         static void RoleIndexResults()
         {
             var t = new SystemTable("Role$Index");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t, "Table", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
-            t+=new SystemTableColumn(t, "RefTable", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Distinct", Domain.Char,0); // probably ""
-            t+=new SystemTableColumn(t, "Adapter", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Rows", Domain.Int,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Table", Char,0);
+            t+=new SystemTableColumn(t, "Flags", Char,0);
+            t+=new SystemTableColumn(t, "RefTable", Char,0);
+            t+=new SystemTableColumn(t, "Distinct", Char,0); // probably ""
+            t+=new SystemTableColumn(t, "Adapter", Char,0);
+            t+=new SystemTableColumn(t, "Rows", Int,0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -6128,10 +5806,9 @@ namespace Pyrrho.Level4
         static void RoleIndexKeyResults()
         {
             var t = new SystemTable("Role$IndexKey");
-            t+=new SystemTableColumn(t,"IndexName", Domain.Char,1);
-            t+=new SystemTableColumn(t, "TableColumn", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Position", Domain.Int,1);
-            t.AddIndex("IndexName", "TableColumn");
+            t+=new SystemTableColumn(t,"IndexName", Char,1);
+            t+=new SystemTableColumn(t, "TableColumn", Char,0);
+            t+=new SystemTableColumn(t, "Position", Int,1);
             t.AddIndex("IndexName", "Position");
             t.Add();
         }
@@ -6241,9 +5918,9 @@ namespace Pyrrho.Level4
         static void RoleJavaResults()
         {
             var t = new SystemTable("Role$Java");
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Key", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Key", Char,0);
+            t+=new SystemTableColumn(t, "Definition", Char,0);
             t.Add();
         }
         
@@ -6294,9 +5971,9 @@ namespace Pyrrho.Level4
         static void RolePythonResults()
         {
             var t = new SystemTable("Role$Python");
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Key", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Key", Char,0);
+            t+=new SystemTableColumn(t, "Definition", Char,0);
             t.Add();
         }
         
@@ -6316,7 +5993,7 @@ namespace Pyrrho.Level4
                     if (outer.value() is DBObject tb && (tb is Table || tb is View) && tb is not RestView)
                     {
                         var rb = new RolePythonBookmark(_cx,res, 0, outer);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -6328,7 +6005,7 @@ namespace Pyrrho.Level4
                     if (enu.value() is DBObject tb && (tb is Table || tb is View) && tb is not RestView)
                     {
                         var rb = new RolePythonBookmark(_cx,res, _pos+1, enu);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -6348,16 +6025,14 @@ namespace Pyrrho.Level4
         static void RoleProcedureResults()
         {
             var t = new SystemTable("Role$Procedure");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Arity", Domain.Int,1);
-            t+=new SystemTableColumn(t, "Returns", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Inverse", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Monotonic", Domain.Bool,0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Returns", Char,0);
+            t+=new SystemTableColumn(t, "Definition", Char,0);
+            t+=new SystemTableColumn(t, "Inverse", Char,0);
+            t+=new SystemTableColumn(t, "Monotonic", Bool,0);
+            t+=new SystemTableColumn(t, "Definer", Char,0);
             t.AddIndex("Pos");
-            t.AddIndex("Name", "Arity");
             t.Add();
         }
         /// <summary>
@@ -6406,7 +6081,6 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                     Pos(p.defpos),
                     new TChar(oi.name),
-                    new TInt(p.arity),
                     new TChar(p.ToString()),
                     new TChar(p.clause),
                     new TChar(inv),
@@ -6437,11 +6111,11 @@ namespace Pyrrho.Level4
         static void RoleParameterResults()
         {
             var t = new SystemTable("Role$Parameter");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,1);
-            t+=new SystemTableColumn(t,"Seq", Domain.Int,1);
-            t+=new SystemTableColumn(t,"Name", Domain.Char,0);
-            t+=new SystemTableColumn(t,"Type", Domain.Char,0);
-            t+=new SystemTableColumn(t,"Mode", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t,"Seq", Int,1);
+            t+=new SystemTableColumn(t,"Name", Char,0);
+            t+=new SystemTableColumn(t,"Type", Char,0);
+            t+=new SystemTableColumn(t,"Mode", Char,0);
             t.AddIndex("Pos","Seq");
             t.Add();
         }
@@ -6529,13 +6203,13 @@ namespace Pyrrho.Level4
         static void RoleSubobjectResults()
         {
             var t = new SystemTable("Role$Subobject");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Type", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Seq", Domain.Int,1);
-            t+=new SystemTableColumn(t, "Column", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Subobject", Domain.Char,0);
-            t.AddIndex("Type", "Name", "Seq");
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Type", Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Seq", Int,1);
+            t+=new SystemTableColumn(t, "Column", Char,0);
+            t+=new SystemTableColumn(t, "Subobject", Char,0);
+            t.AddIndex("Pos","Seq");
             t.Add();
         }
         /// <summary>
@@ -6632,16 +6306,15 @@ namespace Pyrrho.Level4
         static void RoleTableResults()
         {
             var t = new SystemTable("Role$Table");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Columns", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Rows", Domain.Int,0);
-            t+=new SystemTableColumn(t, "Triggers", Domain.Int,0);
-            t+=new SystemTableColumn(t, "CheckConstraints", Domain.Int,0);
-            t+=new SystemTableColumn(t, "RowIri", Domain.Char,0);
-            t+=new SystemTableColumn(t, "LastData", Domain.Int, 0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Columns", Int,0);
+            t+=new SystemTableColumn(t, "Rows", Int,0);
+            t+=new SystemTableColumn(t, "Triggers", Int,0);
+            t+=new SystemTableColumn(t, "CheckConstraints", Int,0);
+            t+=new SystemTableColumn(t, "RowIri", Char,0);
+            t+=new SystemTableColumn(t, "LastData", Int, 0);
             t.AddIndex("Pos");
-            t.AddIndex("Name");
             t.Add();
         }
         /// <summary>
@@ -6723,13 +6396,12 @@ namespace Pyrrho.Level4
         static void RoleTriggerResults()
         {
             var t = new SystemTable("Role$Trigger");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Flags", Domain.Char,0);
-            t+=new SystemTableColumn(t, "TableName", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Flags", Char,0);
+            t+=new SystemTableColumn(t, "TableName", Char,0);
+            t+=new SystemTableColumn(t, "Definer", Char,0);
             t.AddIndex("Pos");
-            t.AddIndex("Name");
             t.Add();
         }
         /// <summary>
@@ -6834,11 +6506,10 @@ namespace Pyrrho.Level4
         static void RoleTriggerUpdateColumnResults()
         {
             var t = new SystemTable("Role$TriggerUpdateColumn");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "ColumnName", Domain.Char,1);
-            t.AddIndex("Pos");
-            t.AddIndex("Name", "ColumnName");
+            t+=new SystemTableColumn(t, "Pos", Position,1);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "ColumnName", Char,1);
+            t.AddIndex("Pos","ColumnName");
             t.Add();
         }
         /// <summary>
@@ -6958,14 +6629,14 @@ namespace Pyrrho.Level4
         static void RoleTypeResults()
         {
             var t = new SystemTable("Role$Type");
-            t+=new SystemTableColumn(t, "Pos", Domain.Position,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "SuperType", Domain.Char,0);
-            t+=new SystemTableColumn(t, "OrderFunc", Domain.Char,0);
-            t+=new SystemTableColumn(t, "OrderCategory", Domain.Char,0);
-            t += new SystemTableColumn(t, "Subtypes", Domain.Char, 0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
-            t += new SystemTableColumn(t, "Graph", Domain.Char, 0);
+            t+=new SystemTableColumn(t, "Pos", Position,0);
+            t+=new SystemTableColumn(t, "Name", Char,1);
+            t+=new SystemTableColumn(t, "SuperType", Char,0);
+            t+=new SystemTableColumn(t, "OrderFunc", Char,0);
+            t+=new SystemTableColumn(t, "OrderCategory", Char,0);
+            t += new SystemTableColumn(t, "Subtypes", Int, 0);
+            t+=new SystemTableColumn(t, "Definer", Char,0);
+            t += new SystemTableColumn(t, "Graph", Char, 0);
             t.AddIndex("Pos");
             t.AddIndex("Name");
             t.Add();
@@ -6996,7 +6667,7 @@ namespace Pyrrho.Level4
                     if (en.value() is Domain)
                     {
                         var rb =new RoleTypeBookmark(_cx,res,0, en);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -7018,7 +6689,7 @@ namespace Pyrrho.Level4
                     (t.orderFunc is null)?TNull.Value:new TChar(t.orderFunc.NameFor(_cx)),
                     new TChar((t.orderflags == OrderCategory.None) ? "":
                         t.orderflags.ToString()),
-                    new TChar(t.subtypes.Count.ToString()),
+                    new TInt(t.subtypes.Count),
                     Pos(t.definer),
                     gr);
             }
@@ -7033,7 +6704,7 @@ namespace Pyrrho.Level4
                     if (en.value() is Domain)
                     {
                         var rb = new RoleTypeBookmark(_cx,res, _pos + 1, en);
-                        if (rb.Match(res) && RowSet.Eval(res.where, _cx))
+                        if (rb.Match(res) && Eval(res.where, _cx))
                             return rb;
                     }
                 return null;
@@ -7049,13 +6720,11 @@ namespace Pyrrho.Level4
         static void RoleMethodResults()
         {
             var t = new SystemTable("Role$Method");
-            t+=new SystemTableColumn(t, "Type", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Method", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Arity", Domain.Int,1);
-            t+=new SystemTableColumn(t, "MethodType", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definition", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
-            t.AddIndex("Name", "Method", "Arity");
+            t+=new SystemTableColumn(t, "Type", Char,0);
+            t+=new SystemTableColumn(t, "Method", Char,0);
+            t+=new SystemTableColumn(t, "MethodType", Char,0);
+            t+=new SystemTableColumn(t, "Definition", Char,0);
+            t+=new SystemTableColumn(t, "Definer", Char,0);
             t.Add();
         }
         /// <summary>
@@ -7110,7 +6779,6 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                    new TChar(t.name),
                    new TChar(mi.name??""),
-                   new TInt(p.arity),
                    new TChar(p.methodType.ToString()),
                    new TChar(p.clause),
                    new TChar(de.name??""));
@@ -7154,18 +6822,147 @@ namespace Pyrrho.Level4
                 throw new NotImplementedException();
             }
         }
+        static void RoleNodeTypeResults()
+        {
+            var t = new SystemTable("Role$NodeType");
+            t += new SystemTableColumn(t, "Pos", Char, 1);
+            t += new SystemTableColumn(t, "Name", Char, 0);
+            t += new SystemTableColumn(t, "IdName", Char, 0);
+            t += new SystemTableColumn(t, "LeavingName", Char, 0);
+            t += new SystemTableColumn(t, "LeavingType", Char, 0);
+            t += new SystemTableColumn(t, "ArrivingName", Char, 0);
+            t += new SystemTableColumn(t, "ArrivingType", Char, 0);
+            t.Add();
+        }
+        internal class RoleNodeTypeBookmark : SystemBookmark
+        {
+            readonly ABookmark<long, object> _fb;
+            RoleNodeTypeBookmark(Context cx, SystemRowSet r, int pos, ABookmark<long,object> fb, NodeType nt) 
+                : base(cx, r, pos, nt.defpos, nt.defpos, _Value(cx,r,nt))
+            {
+                _fb = fb;
+            }
+            internal static RoleNodeTypeBookmark? New(Context _cx, SystemRowSet res)
+            {
+                var ro = _cx.role ?? throw new DBException("42105");
+                for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
+                    if (outer.value() is NodeType ut)
+                    {
+                        var rb = new RoleNodeTypeBookmark(_cx, res, 0, outer, ut);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                for (var fb = _fb.Next(); fb != null; fb = fb.Next())
+                    if (fb.value() is NodeType nt)
+                    {
+                        var rb = new RoleNodeTypeBookmark(cx, res, _pos + 1, fb, nt);
+                        if (rb.Match(res) && Eval(res.where, cx))
+                            return rb;
+                    }
+                return null;
+            }
+
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+            static TRow _Value(Context _cx, SystemRowSet rs, NodeType nt)
+            {
+                if (_cx.role is not Role sr || nt.infos[sr.defpos] is not ObInfo oi
+                    || oi.name == null || _cx.db.objects[nt.idCol] is not TableColumn tc
+                    || tc.infos[_cx.role.defpos] is not ObInfo ci || ci.name==null)
+                    throw new PEException("PE49300");
+                var et = nt as EdgeType;
+                TypedValue lN = (_cx.db.objects[et?.leaveCol??-1L] is TableColumn lc
+                    && lc.infos[_cx.role.defpos] is ObInfo li && li.name is string ls)?new TChar(ls):TNull.Value;
+                TypedValue lT = (_cx.db.objects[et?.leavingType ?? -1L] is NodeType lt
+                    && lt.infos[_cx.role.defpos] is ObInfo tl && tl.name is string sl)?new TChar(sl):TNull.Value; 
+                TypedValue aN = (_cx.db.objects[et?.arriveCol??-1L] is TableColumn ac
+                    && ac.infos[_cx.role.defpos] is ObInfo ai && ai.name is string sa) ? new TChar(sa) : TNull.Value;
+                TypedValue aT = (_cx.db.objects[et?.arrivingType ?? -1L] is NodeType at
+                    && at.infos[_cx.role.defpos] is ObInfo ta && ta.name is string aa) ? new TChar(aa) : TNull.Value;
+                return new TRow(rs,
+                    Pos(nt.defpos),
+                    new TChar(oi.name),
+                    new TChar(ci.name),
+                    lN,lT,aN,aT);
+            }
+        }
+        static void RoleEdgeTypeResults()
+        {
+            var t = new SystemTable("Role$NodeType");
+            t += new SystemTableColumn(t, "Pos", Char, 1);
+            t += new SystemTableColumn(t, "Name", Char, 0);
+            t += new SystemTableColumn(t, "LeavingNodeType", Char, 0);
+            t += new SystemTableColumn(t, "ArrivingNodeType", Char, 0);
+            t += new SystemTableColumn(t, "IdName", Char, 0);
+            t += new SystemTableColumn(t, "LeavingName", Char, 0);
+            t += new SystemTableColumn(t, "ArrivingName", Char, 0);
+            t.Add();
+        }
+        internal class RoleEdgeTypeBookmark : SystemBookmark
+        {
+            readonly ABookmark<long, object> _fb;
+            RoleEdgeTypeBookmark(Context cx, SystemRowSet r, int pos, ABookmark<long, object> fb, EdgeType nt)
+                : base(cx, r, pos, nt.defpos, nt.defpos, _Value(cx, r, nt))
+            {
+                _fb = fb;
+            }
+            internal static RoleEdgeTypeBookmark? New(Context _cx, SystemRowSet res)
+            {
+                var ro = _cx.role ?? throw new DBException("42105");
+                for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
+                    if (outer.value() is EdgeType ut)
+                    {
+                        var rb = new RoleEdgeTypeBookmark(_cx, res, 0, outer, ut);
+                        if (rb.Match(res) && Eval(res.where, _cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                for (var fb = _fb.Next(); fb != null; fb = fb.Next())
+                    if (fb.value() is EdgeType nt)
+                    {
+                        var rb = new RoleEdgeTypeBookmark(cx, res, _pos + 1, fb, nt);
+                        if (rb.Match(res) && Eval(res.where, cx))
+                            return rb;
+                    }
+                return null;
+            }
+
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+            static TRow _Value(Context cx, SystemRowSet rs, NodeType nt)
+            {
+                return new TRow(rs,
+                    Pos(nt.defpos),
+                    new TChar(cx.NameFor(nt.defpos)),
+                    new TChar(cx.NameFor(nt.leavingType)),
+                    new TChar(cx.NameFor(nt.arrivingType)),
+                    new TChar(cx.NameFor(nt.idCol)),
+                    new TChar(cx.NameFor(nt.leaveCol)),
+                    new TChar(cx.NameFor(nt.arriveCol)));
+            }
+        }
         /// <summary>
         /// set up the Role$Privilege table
         /// </summary>
         static void RolePrivilegeResults()
         {
             var t = new SystemTable("Role$Privilege");
-            t+=new SystemTableColumn(t, "ObjectType", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Name", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Grantee", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Privilege", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Definer", Domain.Char,0);
-            t.AddIndex("ObjectType", "Name", "Grantee");
+            t+=new SystemTableColumn(t, "ObjectType", Char,0);
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Grantee", Char,0);
+            t+=new SystemTableColumn(t, "Privilege", Int,0);
+            t+=new SystemTableColumn(t, "Definer", Char,0);
             t.Add();
         }
         /// <summary>
@@ -7265,12 +7062,11 @@ namespace Pyrrho.Level4
         static void RoleObjectResults()
         {
             var t = new SystemTable("Role$Object");
-            t+=new SystemTableColumn(t, "Type", Domain.Char,1); 
-            t+=new SystemTableColumn(t, "Name", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Description", Domain.Char, 0);
-            t+=new SystemTableColumn(t, "Iri", Domain.Char, 0);
-            t+=new SystemTableColumn(t, "Metadata", Domain.Char,0);
-            t.AddIndex("Type", "Name");
+            t+=new SystemTableColumn(t, "Type", Char,0); 
+            t+=new SystemTableColumn(t, "Name", Char,0);
+            t+=new SystemTableColumn(t, "Description", Char, 0);
+            t+=new SystemTableColumn(t, "Iri", Char, 0);
+            t+=new SystemTableColumn(t, "Metadata", Char,0);
             t.Add();
         }
         /// <summary>
@@ -7359,10 +7155,9 @@ namespace Pyrrho.Level4
         static void RolePrimaryKeyResults()
         {
             var t = new SystemTable("Role$PrimaryKey");
-            t+=new SystemTableColumn(t, "Table", Domain.Char,1);
-            t+=new SystemTableColumn(t, "Ordinal", Domain.Int,1);
-            t+=new SystemTableColumn(t, "Column", Domain.Char,0);
-            t.AddIndex("Table", "Ordinal");
+            t+=new SystemTableColumn(t, "Table", Char,0);
+            t+=new SystemTableColumn(t, "Ordinal", Int,0);
+            t+=new SystemTableColumn(t, "Column", Char,0);
             t.Add();
         }
         /// <summary>
@@ -7442,461 +7237,6 @@ namespace Pyrrho.Level4
             }
         }
 
-#if PROFILES
-        /// <summary>
-        /// Make Transaction Profile Information accessible
-        /// </summary>
-        static void ProfileResults()
-        {
-            var t = new SystemTable("Profile$");
-            new SystemTableColumn(t, "Id", 0, Domain.Int);
-            new SystemTableColumn(t, "Occurrences",1,Domain.Int);
-            new SystemTableColumn(t, "Fails", 2, Domain.Int);
-            new SystemTableColumn(t, "Schema", 3, Domain.Bool);
-        }
-        /// <summary>
-        /// An enumerator for the Profile$ table
-        /// </summary>
-        internal class ProfileBookmark : SystemBookmark
-        {
-            /// <summary>
-            /// a local enumerator
-            /// </summary>
-            readonly int _ix;
-            /// <summary>
-            /// Constructor
-            /// </summary>
-            /// <param name="r"></param>
-            /// <param name="m"></param>
-            ProfileBookmark(SystemRowSet res, int ix)
-                : base(res,ix)
-            {
-                db = res.database;
-                _ix = ix;
-            }
-            internal static ProfileBookmark? New(SystemRowSet res)
-            {
-                var db = res.database;
-                if (db.profile?.transactions == null || db.profile.transactions.Count == 0)
-                    return null;
-                for (var ix = 0; ix < db.profile.transactions.Count; ix++)
-                {
-                    var rb = new ProfileBookmark(res, ix);
-                    if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                        return rb;
-                }
-                return null;
-            }
-            public override TRow CurrentKey()
-            {
-                if (db.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                return new TRow(res, new TColumn("Id", new TInt(p.id)));
-            }
-            public override TRow CurrentValue()
-            {
-                if (db.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                return new TRow(res,new TInt(p.id), 
-                        new TInt(p.num), new TInt(p.fails), TBool.For(p.schema));
-            }
-            public override Cursor Next()
-            {
-                for (; ; )
-                {
-                    if (db.profile == null || _ix + 1 >= db.profile.transactions.Count)
-                        return Null();
-                    var rb = new ProfileBookmark(res, _ix + 1);
-                    if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                        return rb;
-                }
-            }
-        }
-        static void ProfileTableResults()
-        {
-            var t = new SystemTable("Profile$Table");
-            new SystemTableColumn(t, "Id", Sqlx.INTEGER);
-            new SystemTableColumn(t, "Table", 0, Domain.Position);
-            new SystemTableColumn(t, "BlockAny", Sqlx.BOOLEAN); 
-            new SystemTableColumn(t, "Dels", Sqlx.INTEGER);
-            new SystemTableColumn(t, "Index", 0, Domain.Position);
-            new SystemTableColumn(t, "Pos", 0, Domain.Position);
-            new SystemTableColumn(t, "ReadRecs", Sqlx.INTEGER);
-            new SystemTableColumn(t, "Schema", Sqlx.BOOLEAN);
-        }
-        internal class ProfileTableBookmark : SystemBookmark
-        {
-            /// <summary>
-            /// The database (used for friendly names)
-            /// </summary>
-            readonly Database db;
-            readonly int _ix;
-            readonly ABookmark<long, TableProfile> _inner;
-            ProfileTableBookmark(SystemRowSet res,long pos,int ix,
-                ABookmark<long,TableProfile> inner)
-                : base(res,pos)
-            {
-                db = res.database;
-                _ix = ix;
-                _inner = inner;
-            }
-            internal static ProfileTableBookmark? New(SystemRowSet res)
-            {
-                var db = res.database;
-                if (db.profile?.transactions == null)
-                    return null;
-                for (int i = 0; i < db.profile.transactions.Count; i++)
-                    for (var inner = db.profile.transactions[i].tables.First(); inner != null; inner = inner.Next())
-                    {
-                        var rb = new ProfileTableBookmark(res, 0, i, inner);
-                        if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                            return rb;
-                    }
-                return null;
-            }
-            public override Cursor Next()
-            {
-                var ix = _ix;
-                var inner = _inner;
-                for (;;)
-                {
-                    if (inner != null && (inner = inner.Next()) != null)
-                        return new ProfileTableBookmark(res, _pos + 1, ix, inner);
-                    ix = -1;
-                    if (db.profile == null || ix + 1 >= db.profile.transactions.Count)
-                        return Null();
-                    var p = db.profile.transactions[ix + 1];
-                    inner = p.tables.First();
-                    if (inner != null)
-                    {
-                        var rb = new ProfileTableBookmark(res, _pos + 1, ix, inner);
-                        if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                            return rb;
-                    }
-                }
-            }
-            public override TRow CurrentKey()
-            {
-                if (db.profile == null || _ix<0 || _ix>= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                var t = db.objects[_inner.key()];
-                return new TRow(res, new TColumn("Id", new TInt(p.id)),
-                    new TColumn("Table", new TChar(t.NameInSession(db))));
-            }
-            public override TRow CurrentValue()
-            {
-                if (db.profile == null || _ix < 0 || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-
-                var t = db.objects[_inner.key()];
-                var c = _inner.value();
-                return new TRow(res, new TInt(p.id), new TChar(t.NameInSession(db)),
-                    TBool.For(c.blocked), new TInt(c.dels),
-                     Pos(c.ckix), Pos(c.tab), new TInt(c.specific), TBool.For(c.schema));
-            }
-        }
-        static void ProfileReadConstraintResults()
-        {
-            var t = new SystemTable("Profile$ReadConstraint");
-            new SystemTableColumn(t, "Id", Sqlx.INTEGER);
-            new SystemTableColumn(t, "Table", 0, Domain.Char);
-            new SystemTableColumn(t, "ColPos", 0, Domain.Position);
-            new SystemTableColumn(t, "ReadCol", 0, Domain.Char);
-        }
-        internal class ProfileReadConstraintBookmark : SystemBookmark
-        {
-            readonly Database db;
-            readonly int _ix;
-            readonly ABookmark<long, TableProfile> _middle;
-            readonly ABookmark<long,bool> _inner;
-            ProfileReadConstraintBookmark(SystemRowSet res,long pos,int ix,
-                ABookmark<long,TableProfile> middle,ABookmark<long,bool>inner)
-                : base(res,pos)
-            {
-                db = res.database;
-                _ix = ix;
-                _middle = middle;
-                _inner = inner;
-            }
-            internal static ProfileReadConstraintBookmark? New(SystemRowSet res)
-            {
-                var db = res.database;
-                if (db.profile?.transactions == null)
-                    return null;
-                for (int i = 0; i < db.profile.transactions.Count; i++)
-                    for (var middle = db.profile.transactions[i].tables.First(); middle != null;
-                        middle = middle.Next())
-                        for (var inner = middle.value().read.First(); inner != null; inner = inner.Next())
-                        {
-                            var rb = new ProfileReadConstraintBookmark(res, 0, i, middle, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                                return rb;
-                        }
-                return null;
-            }
-            public override Cursor Next()
-            {
-                var ix = _ix;
-                var middle = _middle;
-                var inner = _inner;
-                for (;;)
-                {
-                    if (inner != null && (inner = inner.Next()) != null)
-                        return new ProfileReadConstraintBookmark(res, _pos + 1, ix, middle, inner);
-                    if (middle != null && (middle=middle.Next())!= null)
-                    {
-                        var tp = middle.value();
-                        inner = tp.read.First();
-                        continue;
-                    }
-                    if (db.profile == null || ix + 1 >= db.profile.transactions.Count)
-                        return Null();
-                    var p = db.profile.transactions[++ix];
-                    middle = p.tables.First();
-                    if (middle != null)
-                    {
-                        var tp = middle.value();
-                        inner = tp.read.First();
-                        if (inner != null)
-                        {
-                            var rb = new ProfileReadConstraintBookmark(res, _pos + 1, ix, middle, inner);
-                            if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                                return rb;
-                        }
-                    }
-                }
-            }
-            public override TRow CurrentKey()
-            {
-                if (db.profile == null || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                var ta = db.objects[_middle.key()];
-                var t = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt : ta as Table;
-                if (db.objects[_inner.key()] is TableColumn c)
-                    return new TRow(res, new TColumn("Id", new TInt(p.id)),
-                        new TColumn("Table", new TChar(t.CurrentName(db))),
-                            new TColumn("ColPos", new TChar(c.CurrentName(db))));
-                return null;
-            }
-            public override TRow CurrentValue()
-            {
-                if (db.profile == null || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                var ta = db.objects[_middle.key()];
-                var t = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt : ta as Table;
-                if (db.objects[_inner.key()] is TableColumn c)
-                    return new TRow(res, new TInt(p.id),
-                        new TChar(t.CurrentName(db)), Pos(c.defpos), new TChar(c.CurrentName(db)));
-                return null;
-            }
-        }
-         static void ProfileRecordResults()
-        {
-            var t = new SystemTable("Profile$Record");
-            new SystemTableColumn(t, "Id", Sqlx.INTEGER);
-            new SystemTableColumn(t, "Table", 0, Domain.Char);
-            new SystemTableColumn(t, "Rid", 0, Domain.Char);
-            new SystemTableColumn(t, "Recs", Sqlx.INTEGER);
-        }
-        internal class ProfileRecordBookmark : SystemBookmark
-        {
-            readonly Database db;
-            readonly int _ix;
-            readonly ABookmark<long, TableProfile> _middle;
-            readonly int _rx;
-            ProfileRecordBookmark(SystemRowSet res,long pos,int ix,
-                ABookmark<long,TableProfile> middle,int rx)
-                : base(res,pos)
-            {
-                db = res.database;
-                _ix = ix;
-                _middle = middle;
-                _rx = rx;
-            }
-            internal static ProfileRecordBookmark? New(SystemRowSet res)
-            {
-                var db = res.database;
-                if (db.profile?.transactions == null)
-                    return null;
-                for (int i = 0; i < db.profile.transactions.Count; i++)
-                    for (var middle = db.profile.transactions[i].tables.First();
-                        middle != null; middle = middle.Next())
-                        if (middle.value().recs is List<RecordProfile> ls)
-                            for (var ix = 0; ix < ls.Count; ix++)
-                            {
-                                var rb = new ProfileRecordBookmark(res, 0, i, middle, ix);
-                                if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                                    return rb;
-                            }
-                return null;
-            }
-            public override Cursor Next()
-            {
-                var ix = _ix;
-                var middle = _middle;
-                var rx = _rx;
-                for (;;)
-                {
-                    if (middle is not null &&  rx+1 < middle.value().recs.Count)
-                    {
-                        var rb =new ProfileRecordBookmark(res, _pos + 1, ix, middle, rx+1);
-                        if (RowSet.Eval(res.where, res.tr, res))
-                            return rb;
-                    }
-                    if (middle != null && (middle = middle.Next())!= null)
-                    {
-                        rx = 0;
-                        continue;
-                    }
-                    if (ix + 1 >= db.profile.transactions.Count)
-                        return Null();
-                    var p = db.profile.transactions[++ix];
-                    middle = p.tables.First();
-                    if (middle != null)
-                        rx = -1;
-                }
-            }
-            public override TRow CurrentKey()
-            {
-                if (db.profile==null || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                var t = db.objects[_middle.key()];
-                var r = _middle.value().recs[_rx];
-                    return new TRow(res, new TColumn("Id",new TInt(p.id)),
-                        new TColumn("Table",new TChar(t.NameInSession(db))),
-                            new TColumn("Rid",new TInt(r.id)));
-            }
-            public override TRow CurrentValue()
-            {
-                if (db.profile == null || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                var t = db.objects[_middle.key()];
-                var r = _middle.value().recs[_rx];
-                return new TRow(res, new TInt(p.id),
-                        new TChar(t.NameInSession(db)), new TInt(r.id), new TInt(r.num));
-            }
-        }
-        static void ProfileRecordColumnResults()
-        {
-            var t = new SystemTable("Profile$RecordColumn");
-            new SystemTableColumn(t, "Id", Sqlx.INTEGER);
-            new SystemTableColumn(t, "Table", 0, Domain.Char);
-            new SystemTableColumn(t, "Rid", 0, Domain.Char);
-            new SystemTableColumn(t, "ColPos", 0, Domain.Char);
-            new SystemTableColumn(t, "RecCol", 0, Domain.Char);
-        }
-
-        internal class ProfileRecordColumnBookmark : SystemBookmark
-        {
-            readonly Database db = null;
-            readonly int _ix;
-            readonly ABookmark<long, TableProfile> _second;
-            readonly int _rx;
-            readonly ABookmark<long,  TypedValue> _fourth;
-            ProfileRecordColumnBookmark(SystemRowSet res,long pos,int ix,
-                ABookmark<long,TableProfile> second,int rx, ABookmark<long,TypedValue> fourth)
-                : base(res,pos)
-            {
-                db = res.database;
-                _ix = ix;
-                _second = second;
-                _rx = rx;
-                _fourth = fourth;
-            }
-            internal static ProfileRecordColumnBookmark? New(SystemRowSet res)
-            {
-                var db = res.database;
-                if (db.profile?.transactions == null)
-                    return null;
-                for (int i = 0; i < db.profile.transactions.Count; i++)
-                    for (var second = db.profile.transactions[i].tables.First();
-                        second != null; second = second.Next())
-                    {
-                        var rcs = second.value()?.recs;
-                        if (rcs != null)
-                            for (int j = 0; j < rcs.Count; j++)
-                                for (var fourth = rcs[j].fields.PositionAt(0); fourth != null; fourth = fourth.Next())
-                                {
-                                    var rb = new ProfileRecordColumnBookmark(res, 0, i, second, j, fourth);
-                                    if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                                        return rb;
-                                }
-                    }
-                return null;
-            }
-            public override Cursor Next()
-            {
-                var ix = _ix;
-                var second = _second;
-                var rx = _rx;
-                var fourth = _fourth;
-                for (; ; )
-                {
-                    if (fourth != null && (fourth = fourth.Next()) != null)
-                        return new ProfileRecordColumnBookmark(res, _pos + 1, ix, second, rx, fourth);
-                    fourth = null;
-                    if (second != null && rx + 1 < second.value().recs.Count)
-                    {
-                        var r = second.value().recs[++rx];
-                        fourth = r.fields.PositionAt(0);
-                        if (fourth != null)
-                        {
-                            var rb = new ProfileRecordColumnBookmark(res, _pos + 1, ix, second, rx, fourth);
-                            if (rb.Match(res) && RowSet.Eval(res.where, res.tr, res))
-                                return rb;
-                        }
-                        continue;
-                    }
-                    if (second != null && (second=second.Next())!= null)
-                    {
-                        rx = -1;
-                        continue;
-                    }
-                    if (ix + 1 >= db.profile.transactions.Count)
-                        return Null();
-                    var p = db.profile.transactions[++ix];
-                    second = p.tables.First();
-                    rx = -1;
-                }
-            }
-            public override TRow CurrentKey()
-            {
-                if (db.profile == null || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                var ta = db.objects[_second.key()];
-                var t = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt : ta as Table;
-                var r = _second.value().recs[_rx];
-                if (db.objects[_fourth.key()] is TableColumn c)
-                    return new TRow(res.keyType, new TInt(p.id),
-                        new TChar(t.CurrentName(db)),
-                            new TInt(r.id),
-                                new TChar(c.CurrentName(db)));
-                return null;
-            }
-            public override TRow CurrentValue()
-            {
-                if (db.profile == null || _ix >= db.profile.transactions.Count)
-                    return null;
-                var p = db.profile.transactions[_ix];
-                var ta = db.objects[_second.key()];
-                var t = (ta is EdgeType et) ? (Table)et : (ta is NodeType nt) ? (Table)nt : ta as Table;
-                var r = _second.value().recs[_rx];
-                if (db.objects[_fourth.key()] is TableColumn c)
-                    return new TRow(res, new TInt(p.id),
-                        new TChar(t.CurrentName(db)), new TInt(r.id), Pos(c.defpos), new TChar(c.CurrentName(db)));
-                return null;
-            }
-        }
-#endif
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());

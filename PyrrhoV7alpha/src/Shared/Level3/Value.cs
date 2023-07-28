@@ -6,6 +6,8 @@ using Pyrrho.Level4;
 using System.Xml;
 using System.Runtime.Intrinsics.Arm;
 using System.ComponentModel;
+using Pyrrho.Level5;
+using Pyrrho.Level1;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -55,7 +57,7 @@ namespace Pyrrho.Level3
         internal bool scalar => (bool)(mem[RowSet._Scalar]??(domain.kind!=Sqlx.TABLE && domain.kind!=Sqlx.CONTENT
             && domain.kind!=Sqlx.VALUE));
         public SqlValue(Ident nm,Context cx,Domain dt,BTree<long,object>?m=null)
-            :base(nm.iix.dp,cx.DoDepth(BTree<long,object>.Empty +(ObInfo.Name,nm.ident) 
+            :base(nm.iix.dp, cx.DoDepth((m??BTree<long,object>.Empty) +(ObInfo.Name,nm.ident) 
                  + (_Ident,nm) + (SelectDepth,nm.iix.sd) + (_Domain,dt)))
         {
             cx.Add(this);
@@ -315,18 +317,18 @@ namespace Pyrrho.Level3
             if (/*(*/GetType().Name != "SqlValue" /* || cx.obs[from] is VirtualTable)*/ && domain.kind != Sqlx.CONTENT)
                 return (new BList<DBObject>(this), m);
             var ns = (BTree<string, (int,long?)>)(m[ObInfo.Names] ?? BTree<string, (int,long?)>.Empty);
-            if (name != null && ns.Contains(name) && cx.obs[ns[name].Item2 ?? -1L] is SqlValue sv
-               && sv.domain.kind != Sqlx.CONTENT)
+            if (name != null && ns.Contains(name) && cx.obs[ns[name].Item2 ?? -1L] is DBObject ob
+             && (ob is SqlValue || ob is SystemTableColumn) && ob.domain.kind != Sqlx.CONTENT)
             {
-                var nv = (SqlValue)sv.Relocate(defpos);
+                var nv = ob.Relocate(defpos);
                 if (alias is string a)
                     nv += (_Alias, a);
                 cx.undefined -= defpos;
-                cx.Replace(sv, nv);
+                cx.Replace(ob, nv);
                 cx.Add(nv);
                 cx.NowTry();
             }
-            var r = (SqlValue)(cx.obs[defpos] ?? throw new PEException("PE20602"));
+            var r = cx.obs[defpos] ?? throw new PEException("PE20602");
             if (r.dbg != dbg)
             {
                 if (m[Table.Indexes] is CTree<Domain, CTree<long, bool>> ixs)
@@ -620,7 +622,7 @@ namespace Pyrrho.Level3
         public long copyFrom => (long)(mem[CopyFrom]??-1L);
         public SqlCopy(long dp, Context cx, string nm, long fp, long cp,
             BTree<long, object>? m = null)
-            : this(dp, cx, nm,fp, (Domain?)(cx.obs[cp]??cx.db.objects[cp]), m)
+            : this(dp, cx, nm,fp,(DBObject?)(cx.obs[cp]??cx.db.objects[cp]), m)
         {
             cx.undefined -= dp;
             cx.NowTry();
@@ -766,8 +768,8 @@ namespace Pyrrho.Level3
             { 
                 if (tv is TRow rw)
                     return rw[copyFrom] ?? dv;
-                if (tv is TChar tc && cx.db.nodeIds[tc.value] is TRow rn)
-                    return rn[copyFrom] ?? dv;
+                if (tv is TInt ti && sc.domain is NodeType nt && nt.tableRows[ti.value] is TableRow tr)
+                    return tr.vals[copyFrom] ?? dv;
             }
             return cx.values[defpos] ?? dv;
         }
@@ -804,7 +806,7 @@ namespace Pyrrho.Level3
         {  }
     }
     /// <summary>
-    /// A TYPE value for use in CAST
+    /// A TYPE value for use in CAST and in graphs
     ///     
     /// </summary>
     internal class SqlTypeExpr : SqlValue
@@ -995,26 +997,6 @@ namespace Pyrrho.Level3
                 }
             }
             return (new BList<DBObject>(r), m);
-        }
-        static BTree<long,object> Diff(Domain a,Domain b)
-        {
-            var r = a.mem;
-            for (var bm=b.mem.First();bm is not null;bm=bm.Next())
-            {
-                var k = bm.key();
-                var v = bm.value();
-                switch(k)
-                {
-                    case _Depth:
-                    case ObInfo.Name:
-                    case Domain.Kind:
-                        r -= k;
-                        continue;
-                }    
-                if ((!r.Contains(k)) || a.mem[k]!=v)
-                    r += (k, v);
-            }
-            return r;
         }
         internal override CTree<long,bool> IsAggregation(Context cx)
         {
@@ -1761,7 +1743,7 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.DOT:
                     dm = dr;
-                    if (left != null && left.name != "" && right != null && right.name != "")
+                    if (left?.name != null && left.name != "" && right?.name != null && right.name != "")
                         nm = left.name + "." + right.name;
                     break;
                 case Sqlx.EQL: dm = Domain.Bool; break;
@@ -2392,9 +2374,6 @@ namespace Pyrrho.Level3
                         TypedValue a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
                         if (a == TNull.Value)
                             return v;
-                        TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
-                        if (b == TNull.Value)
-                            return v;
                         if (a is TRow ra)
                         {
                             if (cx.obs[right] is SqlField sf)
@@ -2403,6 +2382,9 @@ namespace Pyrrho.Level3
                                 return ra.values[dp] ??
                                     ((sc.copyFrom is long cp) ? (ra.values[cp] ?? v) : v);
                         }
+                        TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
+                        if (b == TNull.Value)
+                            return v;
                         return v;
                     }
                 case Sqlx.EQL:
@@ -3338,7 +3320,7 @@ namespace Pyrrho.Level3
         static BTree<long, object> _Mem(Context cx, BList<DBObject> vs, BTree<long, object>? m)
         {
             var dm = (Domain)cx.Add(new Domain(cx.GetUid(), cx, Sqlx.ROW, vs));
-            m = new BTree<long,object>(_Domain,dm) + (Domain.Aggs, dm.aggs);
+            m ??= new BTree<long,object>(_Domain,dm) + (Domain.Aggs, dm.aggs);
             for (var b = vs.First(); b != null; b = b.Next())
             {
                 var ob = b.value();
@@ -5610,7 +5592,7 @@ namespace Pyrrho.Level3
         {
             var m = BTree<long, object>.Empty;
             var ro = cx.role ?? throw new DBException("42105");
-            if (proc.infos[cx.role.defpos] is not ObInfo pi || pi.name is not string)
+            if (proc.infos[ro.defpos] is not ObInfo pi || pi.name is null)
                 throw new DBException("42105");
             if (proc.domain.rowType.Count > 0)
             {
@@ -5618,6 +5600,7 @@ namespace Pyrrho.Level3
                     + (CallStatement.Call, dp);
                 cx.Add(prs);
                 m += (Result, prs);
+                m += (Infos, proc.infos);
             }
             return m;
         }
@@ -6077,7 +6060,7 @@ namespace Pyrrho.Level3
         /// <param name="u">the type</param>
         /// <param name="c">the call statement</param>
         public SqlConstructor(long dp, Context cx, Procedure pr, BList<long?> args)
-            : base(dp, cx,pr,args)
+            : base(dp, cx,pr, args)
         {
             cx.Add(this);
         }
@@ -8476,11 +8459,11 @@ namespace Pyrrho.Level3
             if (dr == 0)
                 dr = rq.rowType.Length;
             for (var c = rq.rowType.First(); c != null && c.key() < dr; c = c.Next())
-                if (c.value() is long p && cx.obs[p] is SqlValue v)
+                if (c.value() is long p && cx.obs[p] is DBObject ob)
                 {
-                    if (cx.obs[p] is SqlValue nv)
-                        v = nv;
-                    vs += cx.Add(v);
+                    if (cx.obs[p] is DBObject nv)
+                        ob = nv;
+                    vs += cx.Add(ob);
                 }
             return (vs, m);
         }
@@ -10645,10 +10628,10 @@ cx.obs[high] is not SqlValue hi)
         /// the base query
         /// </summary>
         public RowSetPredicate(long dp,Context cx,RowSet e) 
-            : base(dp,_Mem(cx,e)+(RSExpr,e.defpos))
+            : base(dp,_Mem(e)+(RSExpr,e.defpos))
         { }
         protected RowSetPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object>_Mem(Context cx,RowSet e)
+        static BTree<long,object>_Mem(RowSet e)
         {
             var m = BTree<long, object>.Empty;
             var dm = Domain.Bool;
@@ -11113,6 +11096,507 @@ cx.obs[high] is not SqlValue hi)
         public override string ToString()
         {
             return isnull?"is null":" is not null";
+        }
+    }
+    /// <summary>
+    /// SqlNode will evaluate to a TNode (and SqlEdge to a TEdge) once the enclosing
+    /// CreateStatement or MatchStatement has been Obeyed.
+    /// In general, any of the contained SqlValues in an SqlNode may evaluate to via a TGParam 
+    /// that should have been bound by MatchStatement.Obey.
+    /// However, TGParams are not found in CreateStatement graphs.
+    /// CreateStatement.Obey will traverse its GraphExpression so that the context maps SqlNodes to TNodes.
+    /// MatchStatement.Obey will traverse its GraphExpression binding as it goes, so that the dependent executable
+    /// is executed only for fully-bound SqlNodes.
+    /// </summary>
+    internal class SqlNode : SqlValue
+    {
+        internal const long
+            DocValue = -477,    // BTree<long,long?> SqlValue -> TChar SqlValue
+            IdValue = -480,     // long             SqlValue of Int
+            LabelValue = -476,  // BList<long?>     SqlValue of TypeSpec (most-specific is last) -> TTypeSpec
+            State = -245;       // CTree<long,TGParam> tgs in this SqlNode  (always empty for CreateStatement)
+        public BTree<long, long?>? docValue => (BTree<long, long?>?)mem[DocValue];
+        public long idValue => (long)(mem[IdValue] ?? -1L);
+        public BList<long?> label => 
+            (BList<long?>)(mem[LabelValue]??BList<long?>.Empty);
+        public CTree<long, TGParam> state =>
+            (CTree<long, TGParam>)(mem[State] ?? CTree<long, TGParam>.Empty);
+        public Sqlx tok => (Sqlx)(mem[SqlValueExpr.Op] ?? Sqlx.Null);
+        public SqlNode(Ident nm, Context cx, long i, BList<long?> l, BTree<long, long?>? d, 
+            CTree<long,TGParam> tgs,NodeType? dm=null,BTree<long,object>? m = null) 
+            : base(nm, cx, dm??((m is null)?Domain.NodeType:Domain.EdgeType), _Mem(i,l,d,tgs,m))
+        {  }
+        protected SqlNode(long dp, BTree<long, object> m) : base(dp, m)
+        {  }
+        static BTree<long,object> _Mem(long i, BList<long?> l,BTree<long,long?>? d,CTree<long,TGParam> tgs,
+            BTree<long,object>?m)
+        {
+            m ??= BTree<long, object>.Empty;
+            if (i > 0)
+                m += (IdValue, i);
+            if (l!=BList<long?>.Empty)
+                m += (LabelValue, l);
+            if (d is not null)
+                m += (DocValue, d);
+            m += (State, tgs);
+            return m;
+        }
+        public static SqlNode operator+(SqlNode n,(long,object)x)
+        {
+            return (SqlNode)n.New(n.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new SqlNode(defpos,m);
+        }
+        internal override TypedValue _Eval(Context cx)
+        {
+            return cx.values[defpos] ?? cx.binding[idValue] ?? TNull.Value;
+        }
+        internal NodeType? MostSpecificType(Context cx)
+        {
+            return cx.GType(label.Last()?.value());
+        }
+        protected virtual (NodeType,CTree<Sqlx,TypedValue>) 
+            _NodeType(Context cx, CTree<string,SqlValue> ls, NodeType dt)
+        {
+            var nd = this;
+            // a label with at least one char SqlValue must be here
+            // evaluate them all as TTypeSpec or TChar
+            var tl = nd.label;
+            var ty = CTree<int, TypedValue>.Empty;
+            NodeType? nt = null; // the node type of this node when we find it or construct it
+            TableColumn? iC = null; // the special columns for this node
+                                    // The label part gives us our bearings in the database. From it we will find
+                                    // how to interpret identifiers and name properties (including structural properties)
+                                    // - or maybe the database is wholly or relatively empty in which case we only
+                                    // have the standard names and syntax.
+            var md = CTree<Sqlx, TypedValue>.Empty; // some of what we will find on this search
+                                                    // Begin to think about the names of special properties for the node we are building
+                                                    // We may be using the default names, or we may inherit them from existing types
+            if (tl == BList<long?>.Empty)
+                return (dt, md);
+            var sd = "ID";
+            // the first part of the label is the least specific type (it may exist already).
+            // it may be that all node/edge types for all parts of the label exist already
+            // certainly the predecessor of an existing node must exist.
+            // if the last one is undefined we will build it using the given property list
+            // (if it is defined we may add properties to it)
+            // if types earlier in the label are unbdefined we will create them here
+            // This loop traverses the given type label: watch for the position of the last component
+            ABookmark<int, long?>? bn = null;
+            for (var b = tl.First(); b != null; b = bn)  // tl is the iterative type label
+                if (b.value() is long tp && cx.obs[tp] is SqlValue gl && gl.Eval(cx) is TypedValue gv)
+                {
+                    bn = b.Next();
+                    ty += (b.key(), gv);
+                    if (gv is not TChar gc)
+                        gc = new TChar(gl.name ?? "?");
+                    NodeType? gt = (gv is TTypeSpec tt)?tt._dataType as NodeType:
+                        cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as NodeType;
+                    if (gt is not null && iC is null)
+                    {
+                        iC = cx.db.objects[gt.idCol] as TableColumn ?? throw new DBException("42105");
+                        sd = iC.infos[cx.role.defpos]?.name ?? throw new DBException("42105");
+                        dt = gt;
+                    }
+                    if (gt is null)
+                    {
+                        gt = new NodeType(cx.GetUid(), gc.value, (UDType)gl.domain, nt, cx);
+                        md += (Sqlx.NODE, new TChar(sd));
+                        if (bn != null) // Immediately build a type if not the last
+                        {
+                            (gt, _) = gt.Build(cx, dt, ls, md);
+                            ls = CTree<string, SqlValue>.Empty;
+                        }
+                    }
+                    ty += (b.key(), new TTypeSpec(gt));
+                    nt = gt;
+                    nd += (_Domain, nt);
+                    cx.obs += (defpos, nd);
+                }
+            if (nt is null)
+                throw new DBException("42000");
+            return (nt,md);
+        }
+        internal virtual SqlNode Create(Context cx, NodeType dt)
+        {
+            var nd = this;
+            var ls = CTree<string, SqlValue>.Empty;
+            for (var b = docValue?.First(); b != null; b = b.Next())
+                if (cx.obs[b.value() ?? -1L] is SqlValue sv)
+                {
+                    if (cx.obs[b.key()] is not SqlValue sk) throw new DBException("42000");
+                    var k = (sk.name != null && sk.name != "COLON" && sk.GetType().Name == "SqlValue") ? sk.name
+                        : sk.Eval(cx).ToString();
+                    ls += (k, sv);
+                }
+            var (nt, md) = _NodeType(cx, ls, dt);
+            // we now have our NodeType nt and the names sd, il and ia of special columns
+            // if nt is not built in the database yet we have the metadata we need to build it.
+            // At this point, non-special properties matching those from dt
+            // or new ones, may be provided in a Document. We prepare a list
+            for (var lb = dt.pathDomain.First(); lb != null; lb = lb.Next())
+                if (lb.value() is long pl && cx.obs[pl] is TableColumn tc
+                        && tc.infos[cx.role.defpos] is ObInfo ti && ti.name is string cn)
+                    ls += (cn, new SqlLiteral(pl, cn, tc.domain.defaultValue, tc.domain));
+            for (var b = nd.docValue?.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is SqlValue sf && cx.obs[b.value() ?? -1L] is SqlValue sv)
+                {
+                    var fn = (sf.Eval(cx) as TChar)?.value ?? sf.name ?? "?";
+                    ls += (fn, sv);
+                }
+            // We are now ready to check or build the node type nt
+            if (nt.defpos >= 0 && nt.defpos < Transaction.Analysing)
+                nt = nt.Check(cx, ls);
+            else
+                (nt, ls) = nt.Build(cx, dt, ls, md); // dt is supertype
+            nd += (_Domain, nt);
+            nd = (SqlNode)cx.Add(nd);
+            ls = nd._AddEnds(cx, ls);
+            var sd = ((md[Sqlx.NODE] ?? md[Sqlx.EDGE]) as TChar)?.value ?? "ID";
+            TNode? tn = null;
+            if (nt.FindPrimaryIndex(cx) is Index px && ls[sd]?.Eval(cx) is TInt kk &&
+                px.rows?.impl?[kk] is TInt t5 && nt.tableRows[t5.value] is TableRow tr)
+            {
+                tn = new TNode(nt, tr);
+                nd += (SqlLiteral._Val, tn);
+                cx.values += (nd.defpos, tn);
+            }
+            else if (nt.defpos>0)
+            {
+                var vp = cx.GetUid();
+                var ts = new TableRowSet(cx.GetUid(), cx, nt.defpos);
+                var ll = BList<DBObject>.Empty;
+                var iC = BList<long?>.Empty;
+                var tb = ts.First();
+                for (var bb = ts.rowType.First(); bb != null && tb != null; bb = bb.Next(), tb = tb.Next())
+                    if (bb.value() is long bq && cx.NameFor(bq) is string n9
+                        && ls[n9] is SqlValue sv && sv is not SqlNull)
+                    {
+                        ll += sv;
+                        iC += tb.value();
+                    }
+                // ll generally has fewer columns than nt
+                // carefully construct what would happen with ordinary SQL INSERT VALUES
+                // we want dm to be constructed as having a subset of fm's columns using fm's iSMap
+                var dr = BList<long?>.Empty;
+                var ds = CTree<long, Domain>.Empty;
+                for (var b = ll.First(); b != null; b = b.Next())
+                    if (b.value() is SqlValue sv && sv.defpos > 0)
+                    {
+                        dr += sv.defpos;
+                        ds += (sv.defpos, sv.domain);
+                    }
+                var fm = (TableRowSet)ts.New(cx.GetUid(), ts.mem + (Domain.RowType, dr) + (Domain.Display, dr.Length));
+                var dm = new Domain(-1L, cx, Sqlx.ROW, ds, dr);
+                cx.Add(fm);
+                var rn = new SqlRow(cx.GetUid(), cx, dm, dm.rowType) + (cx, Table._NodeType, nt.defpos);
+                cx.Add(rn);
+                SqlValue n = rn;
+                n = new SqlRowArray(vp, cx, dm, new BList<long?>(n.defpos));
+                var sce = n.RowSetFor(vp, cx, fm.rowType, fm.representation)
+                    + (cx, RowSet.RSTargets, fm.rsTargets)
+                    + (RowSet.Asserts, RowSet.Assertions.AssignTarget);
+                var s = new SqlInsert(cx.GetUid(), fm, sce.defpos, ts + (Domain.RowType, iC));
+                cx.Add(s);
+                var np = cx.db.nextPos;
+                // NB: The TargetCursor/trigger machinery will place values in cx.values in the !0.. range
+                // From the point of view of graph operations these are spurious, and should not be accessed
+                // The only exception is to retrieve the value of tn
+                s.Obey(cx);
+                if (nd.name != null)
+                    cx.defs += (nd.name, new Iix(nd.defpos), Ident.Idents.Empty);
+                tn = cx.values[np] as TNode;
+            }
+            if (tn is not null)
+            {
+                nd += (SqlLiteral._Val, tn);
+                cx.values += (nd.defpos, tn);
+            }
+            cx.Add(nd);
+            return nd;
+        }
+        protected virtual CTree<string,SqlValue> _AddEnds(Context cx,CTree<string,SqlValue> ls)
+        {
+            if (domain is NodeType nt && cx.obs[idValue] is SqlNode il
+                    && cx.NameFor(nt.idCol) is string iC && !ls.Contains(iC))
+            {
+                if (il.Eval(cx) is TNode tn)
+                    ls += (iC, (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), new TInt(tn.id))));
+                else
+                    ls += (iC, SqlNull.Value);
+            }
+            return ls;
+        } 
+        /// <summary>
+        /// This method is called during Match, so this.domain is not helpful.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="n"></param>
+        /// <returns></returns>
+        internal bool CheckProps(Context cx, TNode n)
+        {
+            if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
+                for (var b = docValue?.First(); b != null; b = b.Next())
+                    if (cx.GName(b.key()) is string k)
+                    {
+                        if (!oi.names.Contains(k))
+                            return false;
+                        if (cx.GConstrain(b.value()) is TypedValue xv)
+                        {
+                            if (xv is TGParam tg)
+                            {
+                                if (state.Contains(tg.uid) || cx.binding[tg.uid] is not TypedValue vv)
+                                    continue;
+                                xv = vv;
+                            }
+                            switch (k)
+                            {
+                                case "ID":
+                                case "LEAVING":
+                                case "ARRIVING":  // no need
+                                    break;
+                                case "SPECIFICTYPE":
+                                    if (!n.dataType.Match(xv.ToString()))
+                                        return false;
+                                    break;
+                                default:
+                                    if (oi.names[k].Item2 is long d && xv.CompareTo(n.tableRow.vals[d]) != 0)
+                                        return false;
+                                    break;
+                            }
+                        }
+                    }
+            return true;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (idValue > 0)
+            { sb.Append(" Id="); sb.Append(Uid(idValue)); }
+            var cm = " [";
+            for (var b = label.First(); b != null; b = b.Next())
+                if (b.value() is long p)
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(p));
+                }
+            if (cm==",") sb.Append(']');
+            cm = " {";
+            for (var b = docValue?.First(); b != null; b = b.Next())
+                if (b.value() is long p)
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.key())); sb.Append('='); sb.Append(Uid(p));
+                }
+            if (cm == ",") sb.Append('}');
+            cm = " ";
+            for (var b = state.First(); b != null; b = b.Next())
+                if (b.key() < 0 && b.value() is TGParam ts)
+                {
+                    sb.Append(cm); cm = ",";
+                    var k = (Sqlx)(int)(-b.key());
+                    sb.Append(k);
+                    if (ts.value != null)
+                    {
+                        sb.Append(' '); sb.Append(ts.value);
+                    }
+                }
+            for (var b = state.PositionAt(0); b != null; b = b.Next())
+                if (b.value() is TGParam tg)
+                {
+                    sb.Append(cm); cm = ","; sb.Append(Uid(b.key()));
+                    if (tg.value != null)
+                    {
+                        sb.Append(' '); sb.Append(tg.value);
+                    }
+                }
+            return sb.ToString();
+        }
+    }
+    internal class SqlEdge : SqlNode
+    {
+        internal const long
+            ArrivingValue = -479,  // long     SqlValue
+            LeavingValue = -478;   // long SqlValue
+        public long arrivingValue => (long)(mem[ArrivingValue]??-1L);
+        public long leavingValue => (long)(mem[LeavingValue]??-1L);
+        public SqlEdge(Ident nm, Context cx, Sqlx t, long i, long l, long a, BList<long?> la, 
+            BTree<long, long?>? d, CTree<long, TGParam> tgs, NodeType? dm=null)
+            : base(nm, cx, i, la,d, tgs,dm??Domain.EdgeType, BTree<long,object>.Empty
+                  +(LeavingValue,l)+(ArrivingValue,a)+(SqlValueExpr.Op,t))
+        { }
+        protected SqlEdge(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        public static SqlEdge operator+(SqlEdge e,(long,object)x)
+        {
+            return (SqlEdge)e.New(e.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return (SqlEdge)New(defpos,m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new SqlEdge(dp, m);
+        }
+        protected override (NodeType,CTree<Sqlx,TypedValue>) 
+            _NodeType(Context cx, CTree<string,SqlValue> ls, NodeType dt)
+        {
+            var nd = this;
+            //  nd for an edge will have a specific leavingnode and a specific arrivingnode 
+            // the special columns for this node
+            var lS = cx.obs[nd.leavingValue] as SqlNode;
+            var lI = lS?.idValue ?? -1L;
+            var lg = cx.nodes[lI] ?? cx.binding[lI];
+            var lT = lg?.dataType??lS?.domain;
+            var lN = lT?.name;
+            var aS = cx.obs[nd.arrivingValue] as SqlNode;
+            var aI = aS?.idValue ?? -1L;
+            var ag = cx.nodes[aI] ?? cx.binding[aI];
+            var aT = ag?.dataType??aS?.domain;
+            var aN = aT?.name;
+            // a label with at least one char SqlValue must be here
+            // evaluate them all as TTypeSpec or TChar
+            var tl = nd.label;
+            var ty = CTree<int, TypedValue>.Empty;
+            EdgeType? nt = null; // the node type of this node when we find it or construct it
+            var md = CTree<Sqlx, TypedValue>.Empty; // some of what we will find on this search
+                                                    // Begin to think about the names of special properties for the node we are building
+                                                    // We may be using the default names, or we may inherit them from existing types
+            var sd = "ID";
+            var il = "LEAVING"; 
+            var ia = "ARRIVING";
+            // the first part of the label is the least specific type (it may exist already).
+            // it may be that all node/edge types for all parts of the label exist already
+            // certainly the predecessor of an existing node must exist.
+            // if the last one is undefined we will build it using the given property list
+            // (if it is defined we may add properties to it)
+            // if types earlier in the label are unbdefined we will create them here
+            // This loop traverses the given type label: watch for the position of the last component
+            bool? retrying;
+            do
+            {
+                retrying = false;
+                ABookmark<int, long?>? bn = null;
+                NodeType? gt = null;
+                for (var b = tl.First(); b != null; b = bn)  // tl is the iterative type label
+                    if (b.value() is long tp && cx.obs[tp] is SqlValue gl && gl.Eval(cx) is TypedValue gv)
+                        try
+                        {
+                            bn = b.Next();
+                            ty += (b.key(), gv);
+                            if (gv is not TChar gc)
+                                gc = new TChar(gl.name ?? "?");
+                            // Take account of any prepared edge-renaming rules
+                            if (lN != null && aN != null && cx.conn.edgeTypes[gc.value]?[lN]?[aN] is string nN)
+                                gc = new TChar(nN);
+                            gt = (gv is TTypeSpec tt)?tt._dataType as EdgeType:
+                                cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as EdgeType;
+                            if (gt is not null)
+                            {
+                                if (lN is not null && lN!="" && lT is not null)
+                                    CheckType(cx, lN, lT.defpos, gt, gt.leavingType);
+                                if (aN is not null && aN!="" && aT is not null)
+                                    CheckType(cx, aN, aT.defpos, gt, gt.arrivingType);  
+                            }
+                            if (gt is null)
+                            {
+                                gt = new EdgeType(cx.GetUid(), gc.value, (UDType)gl.domain, nt, cx);
+                                md = md + (Sqlx.EDGE, new TChar(sd))
+                                    + (Sqlx.LPAREN, new TChar(il))
+                                    + (Sqlx.RPAREN, new TChar(ia));
+                                if (lN is not null)
+                                    md += (Sqlx.RARROW, new TChar(lN));
+                                if (aN is not null)
+                                    md += (Sqlx.ARROW, new TChar(aN));
+                                if (bn != null) // Immediately build a type if not the last
+                                {
+                                    (gt, _) = gt.Build(cx, dt, ls, md);
+                                    ls = CTree<string, SqlValue>.Empty;
+                                }
+                            }
+                            ty += (b.key(), new TTypeSpec(gt));
+                            nt = (EdgeType)gt;
+                        }
+                        catch (DBException ex)
+                        {
+                            if (ex.signal == "22G0K" 
+                                && gt is not null && lN is not null && aN is not null
+                                && cx.conn._tcp is TCPStream tcp && cx.conn.props.Contains("AllowAsk")) // we can maybe do something
+                            {
+                                tcp.Write(Responses.AskClient);
+                                tcp.PutString("Suggest type for "+gt.name+"("+lN+","+aN+")");
+                                var p = tcp.ReadByte();
+                                if ((Protocol)p == Protocol.ClientAnswer)
+                                    Console.WriteLine(tcp.GetString());
+                                retrying = true;
+                            }
+                        }
+            } while (retrying == true);
+            if (nt is null)
+                throw new DBException("42000");
+            return (nt,md);
+        }
+        void CheckType(Context cx, string? n, long? t,NodeType gt, long nt)
+        {
+            if (t == null)
+                throw new DBException("42133", n??"??");
+            if (t == nt)
+                return;
+            var at = (cx.values[t ?? -1L] as TNode)?.dataType ?? cx.db.objects[t??-1L] as NodeType
+                ?? throw new DBException("42105");
+            var bt = (cx.db.objects[nt] as NodeType) ?? throw new DBException("42105");
+            if (!at.EqualOrStrongSubtypeOf(bt)) throw new DBException("22G0K", gt.infos[cx.role.defpos]?.name??"??");
+        }
+        protected override CTree<string, SqlValue> _AddEnds(Context cx, CTree<string, SqlValue> ls)
+        {
+            ls = base._AddEnds(cx, ls);
+            if (domain is not EdgeType et)
+                return ls;
+            if (cx.db.objects[et.leaveCol] is TableColumn lc
+                && cx.obs[leavingValue] is SqlNode sl
+                && sl.Eval(cx) is TNode ln)
+            {
+                var lv = new TInt(ln.id);
+                var li = (lc.domain.kind == Sqlx.SET) ?
+                    new SqlLiteral(cx.GetUid(), new TSet(Domain.Int, CTree<TypedValue, bool>.Empty + (lv, true))) :
+                    new SqlLiteral(cx.GetUid(), lv);
+                ls += (cx.NameFor(et.leaveCol), (SqlValue)cx.Add(li));
+            }
+            if (cx.db.objects[et.arriveCol] is TableColumn ac
+                && cx.obs[arrivingValue] is SqlNode sa
+                && sa.Eval(cx) is TNode an)
+            {
+                var av = new TInt(an.id);
+                var ai = (ac.domain.kind == Sqlx.SET) ?
+                    new SqlLiteral(cx.GetUid(), new TSet(Domain.Int, CTree<TypedValue, bool>.Empty + (av, true))) :
+                    new SqlLiteral(cx.GetUid(), av);
+                ls += (cx.NameFor(et.arriveCol), (SqlValue)cx.Add(ai));
+            }
+            return ls;
+        }
+        internal override SqlNode Create(Context cx, NodeType dt)
+        {
+            return base.Create(cx, dt);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (leavingValue >= 0)
+            {
+                sb.Append(" leaving "); sb.Append(Uid(leavingValue));
+            }
+            if (arrivingValue >= 0)
+            {
+                sb.Append(" arriving "); sb.Append(Uid(arrivingValue));
+            }
+            if (tok!=Sqlx.NULL)
+            {
+                sb.Append(' ');sb.Append(tok);
+            }
+            return sb.ToString();
         }
     }
 }

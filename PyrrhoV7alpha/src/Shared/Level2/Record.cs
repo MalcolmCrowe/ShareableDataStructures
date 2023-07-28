@@ -282,9 +282,9 @@ namespace Pyrrho.Level2
         {
             if (cx.db==null)
                 throw new PEException("PE6900");
-            if (tt.defpos == tabledefpos && tt is NodeType nt)
+ /*           if (tt.defpos == tabledefpos && tt is NodeType nt)
                 cx.db += (nt is EdgeType et) ? new TEdge(defpos, et, fields)
-                    : new TNode(defpos, nt, fields);
+                    : new TNode(defpos, nt, fields); */
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x 
@@ -328,11 +328,11 @@ namespace Pyrrho.Level2
                     tt += (Table.LastData, ppos);
                     cx.Install(tt, p);
                 }
-                if (tb is NodeType nd
+        /*        if (tb is NodeType nd
                     && tb.FindPrimaryIndex(cx) is Level3.Index x
                     && x.keys[0] is long ip && fields[ip]?.ToString() is string n)
                     cx.db += (nd is EdgeType et) ? new TEdge(defpos, et, fields)
-                            : new TNode(defpos, nd, fields);
+                            : new TNode(defpos, nd, fields); */
             }
             catch (DBException e)
             {
@@ -341,8 +341,8 @@ namespace Pyrrho.Level2
                         + e.objects[1].ToString());
                 throw;
             }
-            if (tb is NodeType nt)
-                cx.db += new TNode(defpos, nt, fields);
+   /*         if (tb is NodeType nt)
+                cx.db += new TNode(defpos, nt, fields); */
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             subType = ost;

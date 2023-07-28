@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("28 June 2023 Repeatable tests");
+                Console.WriteLine("26 July 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -1231,26 +1231,27 @@ namespace Test
                 return;
             testing = 25;
             Begin();
-            Act(346, "create type student as (matric char) nodetype");
-            Act(347, "insert into student values ('Fred','22/456')");
-            Act(348, "create type person nodetype");
+            Act(346, "create type student as (name char,matric char) nodetype");
+            Act(347, "insert into student(name,matric) values ('Fred','22/456')");
+            Act(348, "create type person as (name char) nodetype");
             Act(349, "alter type student set under person");
             Act(350, "create type staff under person as (title char)");
-            Act(351, "insert into staff values ('Anne','Prof')");
+            Act(351, "insert into staff (name,title) values ('Anne','Prof')");
             CheckResults(25,1, "select *,specifictype() from person",
-                "[{ID:'Anne',SPECIFICTYPE:'STAFF'},{ID:'Fred',SPECIFICTYPE:'STUDENT'}]");
+                "[{ID:1,NAME:'Fred',SPECIFICTYPE:'STUDENT'},{ID:2,NAME:'Anne',SPECIFICTYPE:'STAFF'}]");
             Act(354, "create type married edgetype(bride=person,groom=person)");
-            Act(356, "insert into person values('Joe'),('Mary')");
-            Act(357, "insert into married(bride,groom) values ('Mary','Fred')");
+            Act(356, "insert into person values(3,'Joe'),(4,'Mary')");
+            Act(357, "insert into married(bride,groom) values (4,3)");
             CheckResults(25, 2, "select count(*) from married", "[{COUNT:1}]");
-            CheckResults(25, 3, "match (\"Fred\")<-[:married]-(_x)","[{X:'Mary'}]");
-            Act(358, "create type product nodetype");
-            Act(359, "CREATE (Joe: Customer { \"Name\":'Joe Edwards', Address: '10 Station Rd.'})," +
-"(Joe) -[:Ordered { \"Date\":date'2002-11-22'} ]-> (Ord201: \"Order\") -[:Item { Qty: 5}]->(\"16/8x100\" : WoodScrew : Product)," +
-"(Ord201) -[:Item { Qty: 5}]->(\"Fibre 12cm\": WallPlug : Product)," +
-"(Ord201) -[:Item { Qty: 1}]->(\"500ml\" : RubberGlue : Product)");
-            CheckResults(25, 4, "match (_)-[:Item {Qty:_A}]->(_X:_T) where A>4",
-                "[{A:5,T:'WOODSCREW',X:'16/8x100'},{A:5,T:'WALLPLUG',X:'Fibre 12cm'}]");
+            CheckResults(25, 3, "match ({name:'Joe'})<-[:married]-(x)", "[{X:'PERSON(ID=4,NAME=Mary)'}]");
+            Act(358, "CREATE\r\n(:Product:WoodScrew {spec:'16/8x4'}),(:Product: WallPlug{spec:'18cm'}),"+
+                "(Joe:Customer {Name:'Joe Edwards', Address:'10 Station Rd.'}),"+
+                "(Joe)-[:Ordered {\"Date\":date'2002-11-22'} ]->(:\"Order\"{id:201})");
+            Act(359, "MATCH (O:\"Order\"{id:201})"+
+                "begin MATCH(X: Product{ spec: '16/8x4'}) CREATE(O)-[:Item{Qty:5}]->(X);"+
+                "MATCH(X: Product{ spec: '18cm'}) CREATE(O)-[:Item{Qty:3}]->(X)end");
+            CheckResults(25, 4, "match ()-[{Qty:A}]->(:T{spec:S}) where A>4",
+                "[{A:5,T:'WOODSCREW',S:'16/8x4'}]");
             Rollback();
         }
         void CheckExceptionCommit(int t, int q,string m)

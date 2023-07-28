@@ -1,13 +1,9 @@
 ﻿using Pyrrho.Level3;
 using Pyrrho.Common;
 using Pyrrho.Level4;
-using static Pyrrho.Level4.SystemRowSet;
 using System.Text;
-using System.Xml.XPath;
-using System.Runtime.CompilerServices;
-using System.Data.Common;
 using Pyrrho.Level2;
-using System.Xml;
+using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -59,7 +55,7 @@ using System.Xml;
 // Alternatively, a JSON object can define an explicit graph fragment value
 // with the help of some auxiliary items. As a minimum such an object should contain
 // an item of form "$Type":id to indicate the Node type (a similar item can be used to indicate
-// an edge type), with a further optional subtype imdication "$Under":id if the type is new.
+// an edge type), with a further optional subtype indication "$Under":id if the type is new.
 // Edges can be specified using subdocuments similarly specifying an edge type
 // and a target node together with a direction item "$LeavingNode" or "ArrivingNode" as appropriate.
 
@@ -76,6 +72,724 @@ using System.Xml;
 // In a batch session, such changes can be allowed (like CASCADE) or disallowed (like RESTRICT).
 // Extra fields will be added to the connection string to enable this behaviour,
 // so that the default behaviour for the PyrrhoCmd client will be interactive.
+
+// structural information about ID is copied to subtypes
+internal class NodeType : UDType
+{
+    internal const long
+        IdCol = -472,  // long TableColumn
+        IdIx = -436;   // long Index
+    internal NodeType(Sqlx t) : base(t)
+    { }
+    public NodeType(long dp, BTree<long, object> m) : base(dp, m)
+    { }
+    internal NodeType(long dp, string nm, UDType dt, Table? ut, Context cx)
+        : base(dp, _Mem(nm, dt, ut, cx))
+    { }
+    static BTree<long, object> _Mem(string nm, UDType dt, Table? ut, Context cx)
+    {
+        var r = dt.mem + (Kind, Sqlx.NODETYPE);
+        r += (ObInfo.Name, nm);
+        var oi = dt.infos[cx.role.defpos] ?? new ObInfo(nm, Grant.AllPrivileges);
+        oi += (ObInfo.Name, nm);
+        r += (Infos, dt.infos + (cx.role.defpos, oi));
+        r += (Definer, cx.role.defpos);
+        if (ut != null)
+            r += (Under, ut);
+        return r;
+    }
+    internal TableRow? Get(Context cx,TInt? id)
+    {
+        if (id is null)
+            return null;
+        var px = FindPrimaryIndex(cx);
+        return tableRows[px?.rows?.impl?[id]?.ToLong() ?? -1L];
+    }
+    internal override Basis New(BTree<long, object> m)
+    {
+        return new NodeType(defpos, m);
+    }
+    internal override DBObject New(long dp, BTree<long, object> m)
+    {
+        return new NodeType(dp, m + (Kind, Sqlx.NODETYPE));
+    }
+    internal override UDType New(Ident pn, Domain? un, long dp, Context cx)
+    {
+        return (UDType)(cx.Add(new PNodeType(pn.ident, (NodeType)NodeType.Relocate(dp), un, -1L, dp, cx))
+            ?? throw new DBException("42105"));
+    }
+    internal override Table _PathDomain(Context cx)
+    {
+        if (super is not UDType su)
+            return this;
+        var rt = BList<long?>.Empty;
+        var rs = CTree<long,Domain>.Empty;
+        rt += idCol;
+        rs += (idCol, Char);
+        for (var b = su.pathDomain.rowType.First(); b != null; b = b.Next())
+            if (b.value() is long p && su.pathDomain.representation[p] is Domain cd && !rs.Contains(p))
+            {
+                rt += p;
+                rs += (p, cd);
+            }
+        for (var b = rowType.First(); b != null; b = b.Next())
+            if (b.value() is long p && representation[p] is Domain cd )
+            {
+                rt += p;
+                rs += (p, cd);
+            }
+        return new Table(-1L, cx, rs, rt, rt.Length);
+    }
+    internal override UDType Inherit(UDType to)
+    {
+        if (idCol >= 0)
+            to += (IdCol, idCol);
+        return to;
+    }
+    internal override BList<long?> Add(BList<long?> a, int k, long v, long p)
+    {
+        if (p == idCol)
+            k = 0;
+        return base.Add(a, k, v, p);
+    }
+    protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
+    {
+        var r = base._Fix(cx, m);
+        var ic = cx.Fix(idCol);
+        if (ic != idCol)
+            r += (IdCol, ic);
+        var ix = cx.Fix(idIx);
+        if (ix != idIx)
+            r += (IdIx, ix);
+        return r;
+    }
+    internal override Basis Fix(Context cx)
+    {
+        var np = cx.Fix(defpos);
+        var nm = _Fix(cx, mem);
+        if (np == defpos && nm == mem)
+            return this;
+        var r = New(np, nm);
+        if (defpos != -1L && cx.obs[defpos]?.dbg != r.dbg)
+            cx.Add(r);
+        return r;
+    }
+    public static NodeType operator +(NodeType et, (long, object) x)
+    {
+        var d = et.depth;
+        var m = et.mem;
+        var (dp, ob) = x;
+        if (et.mem[dp] == ob)
+            return et;
+        if (ob is DBObject bb && dp != _Depth)
+        {
+            d = Math.Max(bb.depth + 1, d);
+            if (d > et.depth)
+                m += (_Depth, d);
+        }
+        return (NodeType)et.New(m + x);
+    }
+    public static NodeType operator +(NodeType et, (Context, long, object) x)
+    {
+        var d = et.depth;
+        var m = et.mem;
+        var (cx, dp, ob) = x;
+        if (et.mem[dp] == ob)
+            return et;
+        if (ob is long p && cx.obs[p] is DBObject bb)
+        {
+            d = Math.Max(bb.depth + 1, d);
+            if (d > et.depth)
+                m += (_Depth, d);
+        }
+        return (NodeType)et.New(m + (dp, ob));
+    }
+    internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? r)
+    {
+        if (infos[cx.role.defpos] is ObInfo oi && oi.names[nm].Item2 is long p && cx._Ob(p) is DBObject ob)
+        {
+            if (n is Ident ni)
+                switch (ni.ident)
+                {
+                    case "ID":
+                        break;
+                    default:
+                        return ob._Lookup(n.iix.dp, cx, n.ident, n.sub, null);
+                }
+            return (new SqlCopy(cx.GetUid(), cx, nm, lp, ob), null);
+        }
+        return base._Lookup(lp, cx, nm, n, r);
+    }
+    public override Domain For()
+    {
+        return NodeType;
+    }
+    internal override int Typecode()
+    {
+        return 3;
+    }
+    public override int Compare(TypedValue a, TypedValue b)
+    {
+        if (a == b) return 0;
+        if (a is TNull) return -1;
+        if (b is TNull) return 1;
+        var c = b.dataType.dbg.CompareTo(b.dataType.dbg);
+        if (c != 0)
+            return c;
+        return a.CompareTo(b);
+    }
+    internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
+Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
+    {
+        cx.Add(this);
+        var m = BTree<long, object>.Empty + (_From, fm) + (_Ident, id);
+        if (a != null)
+            m += (_Alias, a);
+        var rowSet = (RowSet)cx._Add(new TableRowSet(id.iix.dp, cx, defpos, m));
+        //#if MANDATORYACCESSCONTROL
+        Audit(cx, rowSet);
+        //#endif
+        return rowSet;
+    }
+    /// <summary>
+    /// We have a new node type cs and have been given columns ls
+    /// New columns specified are added or inserted.
+    /// We will construct Physicals for new columns required,
+    /// </summary>
+    /// <param name="ut">The NodeType being built: must be NodeType or EdgeType already but may be empty so far</param>
+    /// <param name="ls">The properties from an inline document, or default values</param>
+    /// <param name="md">A metadata-like set of assoiactions (a la ParseMetadata)</param>
+    /// <returns>The new node type: we promise a new PNodeType for this</returns>
+    /// <exception cref="DBException"></exception>
+    internal (NodeType,CTree<string,SqlValue>) Build(Context cx, NodeType ut, CTree<string, SqlValue> ls, CTree<Sqlx, TypedValue> md)
+    {
+        if (defpos < 0)
+            return (this, ls);
+        if (name is not string tn)
+            throw new DBException("42000");
+        long? lt = (ut as EdgeType)?.leavingType, at = (ut as EdgeType)?.arrivingType;
+        // The new Type may not yet have a Physical record, so fix that
+        if (defpos < -1L || defpos>=Transaction.Analysing)
+        {
+            PNodeType pt;
+            var st = super as NodeType;
+            if (ut.infos[cx.role.defpos] is ObInfo u0 && u0.name != tn)
+            {
+                st = ut;
+                ut = (NodeType)ut.New(ut.mem - RowType - Representation + (ObInfo.Name,tn)
+                    + (Infos, ut.infos+(cx.role.defpos,u0 + (ObInfo.Name, tn))));
+            }
+            if (ut is EdgeType et)
+            {
+                var pe = new PEdgeType(tn, et, st, -1L, cx.db.nextPos, cx);
+                if (md[Sqlx.RARROW] is TChar lv && cx.role.dbobjects[lv.value] is long lp)
+                    lt = pe.leavingType = lp;
+                else
+                    throw new DBException("42107", md[Sqlx.RARROW]?.ToString() ?? "LEAVING");
+                if (md[Sqlx.ARROW] is TChar av && cx.role.dbobjects[av.value] is long ap)
+                    at = pe.arrivingType = ap;
+        //        else
+        //            throw new DBException("42107", md[Sqlx.ARROW]?.ToString() ?? "ARRIVING");
+                pt = pe;
+            }
+            else
+                pt = new PNodeType(tn, ut, st, -1L, cx.db.nextPos, cx);
+            ut = (NodeType)(cx.Add(pt) ?? throw new DBException("42105"));
+        }
+        // for the metadata tokens used for these identifiers, see the ParseMetadata routine
+        var id = (md[Sqlx.NODE] as TChar)?.value ?? (md[Sqlx.EDGE] as TChar)?.value ?? "ID";
+        var sl = (md[Sqlx.LPAREN] as TChar)?.value ?? "LEAVING";
+        var sa = (md[Sqlx.RPAREN] as TChar)?.value ?? "ARRIVING";
+        var le = (md[Sqlx.ARROWBASE] as TBool)?.value ?? false;
+        var ae = (md[Sqlx.RARROWBASE] as TBool)?.value ?? false; 
+        var rt = ut.rowType;
+        var rs = ut.representation;
+        var sn = BTree<string, long?>.Empty; // properties we are adding
+                                             // check contents of ls
+                                             // ls comes from inline properties in graph create or from ParseRowTypeSpec default values
+        var si = ut.super?.infos[cx.role.defpos];
+        var ii = new SqlLiteral(cx.GetUid(), id, TChar.Empty, Char);
+        (id, rt, rs, sn, ut) = GetColAndIx(cx, ut, ut.FindPrimaryIndex(cx), ii.defpos, id,
+            IdIx, IdCol, -1L, false, rt, rs, sn);
+        if (ut is EdgeType)
+        {
+            if (cx.role.dbobjects[(md[Sqlx.RARROW] as TChar)?.value??""] is long pL 
+                && (cx.db.objects[lt ?? -1L] as Table)?.FindPrimaryIndex(cx) is Pyrrho.Level3.Index rl)
+            (sl, rt, rs, sn, ut) = GetColAndIx(cx, ut, rl, pL, sl, EdgeType.LeaveIx,
+                EdgeType.LeaveCol, EdgeType.LeavingType, le, rt, rs, sn);
+            if (cx.role.dbobjects[(md[Sqlx.ARROW] as TChar)?.value ?? ""] is long pA
+                && (cx.db.objects[at ?? -1L] as Table)?.FindPrimaryIndex(cx) is Pyrrho.Level3.Index ra)
+            (sa, rt, rs, sn, ut) = GetColAndIx(cx, ut, ra, pA, sa, EdgeType.ArriveIx,
+                EdgeType.ArriveCol, EdgeType.ArrivingType, ae, rt, rs, sn);
+        }
+        var ui = ut.infos[cx.role.defpos] ?? throw new DBException("42105");
+        for (var b = ls.First(); b != null; b = b.Next())
+        {
+            var n = b.key();
+            if (n != id && n != sl && n != sa && ui?.names.Contains(n) != true)
+            {
+                var d = cx._Dom(b.value().defpos) ?? Content;
+                var pc = new PColumn3(ut, n, -1, d, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
+                true, GenerationRule.None, cx.db.nextPos, cx);
+                ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105"));
+                rt += pc.ppos;
+                rs += (pc.ppos, d);
+                cx.defs += (new Ident(n, new Iix(pc.ppos)), cx.sD);
+                sn += (n, pc.ppos);
+            }
+        }
+        cx.Add(ut);
+        cx.db += ut;
+        var ids = cx.defs[ut.name]?[cx.sD].Item2 ?? Ident.Idents.Empty;
+        var i1 = new Ident(id, new Iix(ut.idCol));
+        ids += (i1, cx.sD);
+        // update defs for inherited properties
+        for (var b = ut.rowType.First(); b != null; b = b.Next())
+            if (b.value() is long p && cx.db.objects[p] is TableColumn uc
+                && uc.infos[uc.definer] is ObInfo ci
+                    && ci.name is string sc && p != ut.idCol
+                    && !rs.Contains(p))
+            {
+                rt += p;
+                rs += (p, ut.representation[p] ?? Domain.Char);
+                var i3 = new Ident(sc, new Iix(p));
+                ids += (i3, cx.sD);
+            }
+        cx.defs += (tn, new Iix(defpos), ids);
+        ut += (RowType, rt);
+        ut += (Representation, rs);
+        var cns = ut.infos[cx.role.defpos]?.names ?? BTree<string, (int, long?)>.Empty;
+        var ri = BTree<long, int?>.Empty;
+        for (var b = rt.First(); b != null; b = b.Next())
+            if (b.value() is long p)
+                ri += (p, b.key());
+        for (var b = sn.First(); b != null; b = b.Next())
+            if (b.value() is long q && ri[q] is int i)
+                cns += (b.key(), (i, q));
+        ut += (Infos, new BTree<long, ObInfo>(cx.role.defpos,
+            new ObInfo(ut.name, Grant.AllPrivileges)
+            + (ObInfo.Names, cns)));
+        cx.Add(ut);
+        if (ut is EdgeType ee && cx.db.objects[lt ?? -1L] is NodeType ln
+            && cx.db.objects[at ?? -1L] is NodeType an)
+        {
+            ee = ee + (EdgeType.LeavingType, LeastSpecific(ln))
+                + (EdgeType.ArrivingType, LeastSpecific(an));
+            ut = (EdgeType)cx.Add(ee);
+        }
+        var dl = cx.db.loadpos;
+        var ro = cx.role + (Role.DBObjects, cx.role.dbobjects + (ut.name, ut.defpos));
+        cx.db = cx.db + (ut, dl) + (ro, dl);
+        return (ut,ls);
+    }
+    internal virtual NodeType Check(Context cx,CTree<string, SqlValue> ls)
+    {
+        if (infos[definer] is not ObInfo ni)
+            throw new DBException("PE42133", name);
+        for (var b = ls?.First(); b != null; b = b.Next())
+            if (b.key() is string n && !ni.names.Contains(n))
+                throw new DBException("42112", n);
+        return this;
+    }
+    static long LeastSpecific(NodeType nt)
+    {
+        while (nt.super is NodeType st)
+            nt = st;
+        return nt.defpos;
+    }
+    internal NodeType FixNodeType(Context cx, Ident typename)
+    {
+        if (((Transaction)cx.db).physicals[typename.iix.dp] is not PType pt)
+            throw new PEException("PE50501");
+        if (pt is not PNodeType)
+        {
+            pt = new PNodeType(typename.ident, pt, this, cx);
+            cx.Add(pt);
+        }
+        FixColumns(cx,1);
+        pt.under = super;
+        pt.dataType = this;
+        return (NodeType)(cx.Add(pt) ?? throw new DBException("42105"));
+    }
+    internal void FixColumns(Context cx,int off)
+    {
+        for (var b = ((Transaction)cx.db).physicals.First(); b != null; b = b.Next())
+            if (b.value() is PColumn pc && pc.table?.defpos == defpos)
+            {
+                pc.seq += off;
+                pc.table = this;
+            }
+    }
+    /// <summary>
+    /// This is where we sort out the special columns for a new NodeType or EdgeType
+    /// The semantics for the IdCol case are different from the others: if cp==IdCol then
+    ///   rx if not null is the primary key for ut and provides the identity column
+    ///   (and the given identity name must match it)
+    /// For the leaveCol and ArriveCol cases rx is the primary key of the leaveType/arriveType
+    ///   and must not be null
+    /// </summary>
+    /// <param name="ut">The node type/edge type</param>
+    /// <param name="rx">The primary index or referenced index if already defined</param>
+    /// <param name="kc">The key column</param>
+    /// <param name="id">The key column name</param>
+    /// <param name="xp">IdIx/LeaveIx/ArriveIx</param>
+    /// <param name="cp">IdCol/LeaveCol/ArriveCol</param>
+    /// <param name="se">Whether the index Domain is to be a Set</param>
+    /// <param name="rt">The node type rowType so far</param>
+    /// <param name="rs">The representation of the node type so far</param>
+    /// <param name="sn">The names of the columns in the node type so far</param>
+    /// <returns>The name of the special column (which may have changed),
+    /// the modified domain bits and names for ut, and ut with poissible changes to indexes</returns>
+    /// <exception cref="DBException"></exception>
+    (string, BList<long?>, CTree<long, Domain>, BTree<string, long?>, NodeType)
+        GetColAndIx(Context cx, NodeType ut, Pyrrho.Level3.Index? rx, long kc, string id, long xp, long cp, long tp,
+            bool se, BList<long?> rt, CTree<long, Domain> rs, BTree<string, long?> sn)
+    {
+        TableColumn? tc;
+        // the PColumn needs to record in the transaction log what is going on here
+        // using its fields for flags, toType and index information
+        PColumn.GraphFlags gf = cp switch
+        {
+            IdCol => PColumn.GraphFlags.IdCol,
+            EdgeType.LeaveCol => PColumn.GraphFlags.LeaveCol,
+            EdgeType.ArriveCol => PColumn.GraphFlags.ArriveCol,
+            _ => PColumn.GraphFlags.None
+        };
+        PColumn3? pc = null;
+        var ui = infos[cx.role.defpos]??throw new DBException("42105");
+        var si = super?.infos[cx.role.defpos];
+        var cd = se ? new TSet(Int).dataType : Int;
+        long? pp = null;
+        if (si?.names.Contains(id) == true)
+            pp = si.names[id].Item2;
+        if (pp == null && ui.names.Contains(id))
+            pp = ui.names[id].Item2;
+        if (pp == null)
+        {
+            pc = new PColumn3(ut, id, ut.Seq(gf), cd, cx.db.nextPos, cx)
+            {
+                flags = gf
+            };
+            // see note above
+            ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105"));
+            ut += (cp, pc.ppos);
+            sn += (id, pc.ppos);
+            rt = Remove(rt, kc);
+            rs -= kc;
+            var ot = rt;
+            rt = new BList<long?>(pc.ppos);
+            for (var b = ot.First(); b != null; b = b.Next())
+                if (b.value() is long op)
+                    rt += op;
+            rs += (pc.ppos, cd);
+            tc = (TableColumn)(cx._Ob(pc.ppos) ?? throw new DBException("42105"));
+        }
+        else if (cx.db.objects[pp ?? -1L] is TableColumn sc)// coming from supertype
+            tc = sc;
+        else
+        {
+            pc = (PColumn3)(((Transaction)cx.db).physicals[pp ?? -1L] ?? throw new DBException("42105"));
+            tc = (TableColumn)(cx._Ob(ui.names[id].Item2 ?? -1L) ?? throw new DBException("42105"));
+        }
+        // add a new index in all cases
+        var di = new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(tc), 1);
+        var px = new PIndex(id, ut, di, (cp == NodeType.IdCol) ? PIndex.ConstraintType.PrimaryKey
+            : (PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate),
+            (cp == IdCol) ? -1L : rx?.defpos ?? -1L, cx.db.nextPos);
+        tc += (Pyrrho.Level3.Index.RefIndex, px.ppos);
+        if (pc != null)
+        {
+            pc.flags = gf;
+            pc.toType = rx?.reftabledefpos ?? -1L; // -1L for idCol case
+            pc.index = rx?.refindexdefpos ?? -1L; // ditto
+        }
+        tc += (TableColumn.GraphFlag, gf);
+        if (rx != null)
+            tc = tc + (Pyrrho.Level3.Index.RefTable, rx.tabledefpos) + (Pyrrho.Level3.Index.RefIndex, rx.defpos);
+        cx.Add(tc);
+        cx.db += (tc.defpos, tc);
+        ut = (NodeType)(cx.Add(px) ?? throw new DBException("42105"));
+        ut = ut + (cp, tc.defpos) + (xp, px.ppos);
+        if (rx != null)
+            ut += (tp, px.tabledefpos);
+        if (ut is EdgeType)
+            ut += (tp, tc.toType);
+        return (id, rt, rs, sn, ut);
+    }
+    static BList<long?> Remove(BList<long?> rt, long v)
+    {
+        var r = BList<long?>.Empty;
+        for (var b = rt.First(); b != null; b = b.Next())
+            if (b.value() is long p && p != v)
+                r += p;
+        return r;
+    }
+    public override string ToString()
+    {
+        var sb = new StringBuilder(base.ToString());
+        if (idIx != -1L) sb.Append(" IdIx=" + Uid(idIx));
+        if (idCol != -1L) sb.Append(" IdCol=" + Uid(idCol));
+        return sb.ToString();
+    }
+}
+/// <summary>
+/// structural information about leaving and arriving is copied to subtypes
+/// </summary>
+internal class EdgeType : NodeType
+{
+    internal const long
+        ArriveCol = -474, // long TableColumn  NameFor is md[RPAREN]
+        ArriveIx = -435, // long Index
+        ArrivingEnds = -371, // bool
+        ArrivingType = -467, // long NodeType  NameFor is md[ARROW]
+        LeaveCol = -473, // long TableColumn   NameFor is md[LPAREN]
+        LeaveIx = -470, // long Index
+        LeavingEnds = -377, // bool
+        LeavingType = -464; // long NodeType   NameFor is md[RARROW]
+    public bool leavingEnds => (bool)(mem[LeavingEnds] ?? false);
+    public bool arrivingEnds => (bool)(mem[ArrivingEnds] ?? false);
+    internal EdgeType(long dp,string nm, UDType dt, Table? ut, Context cx, CTree<Sqlx, TypedValue>? md = null)
+        : base(dp, _Mem(nm, dt, ut, md, cx))
+    { }
+    internal EdgeType(Sqlx t) : base(t)
+    { }
+    public EdgeType(long dp, BTree<long, object> m) : base(dp, m)
+    { }
+    internal EdgeType(long dp, BTree<long, object> m, PType pt)
+        : this(dp,m+(LeavingType,((PEdgeType)pt).leavingType)+(ArrivingType,((PEdgeType)pt).arrivingType))
+    { }
+    static BTree<long, object> _Mem(string nm, UDType dt, Table? ut, CTree<Sqlx, TypedValue>? md, Context cx)
+    {
+        var r = dt.mem + (Kind, Sqlx.EDGETYPE);
+        r += (ObInfo.Name, nm);
+        var oi = dt.infos[cx.role.defpos] ?? new ObInfo(nm, Grant.AllPrivileges);
+        oi += (ObInfo.Name, nm);
+        r += (Infos, dt.infos + (cx.role.defpos, oi)); 
+        r += (Definer, cx.role.defpos);
+        if (ut != null)
+            r += (Under, ut);
+        var sl = false;
+        var sa = false;
+        if (md != null)
+        {
+            TChar? ln = null, an = null;
+            if (md[Sqlx.RARROWBASE] is TChar aa) { an = aa; sa = true; }
+            if (md[Sqlx.ARROW] is TChar ab) an = ab;
+            if (md[Sqlx.ARROWBASE] is TChar la) { ln = la; sl = true; }
+            if (md[Sqlx.RARROW] is TChar lb) ln = lb;
+            if (ln == null || an == null)
+                throw new DBException("42000");
+            r += (LeavingType, cx.role.dbobjects[ln.value] ?? throw new DBException("42107", ln));
+            r += (ArrivingType, cx.role.dbobjects[an.value] ?? throw new DBException("42107", an));
+            if (sl) r += (LeavingEnds, true);
+            if (sa) r += (ArrivingEnds, true);
+        }
+        return r;
+    }
+    internal override Basis New(BTree<long, object> m)
+    {
+        return new EdgeType(defpos, m);
+    }
+    internal override DBObject New(long dp, BTree<long, object> m)
+    {
+        return new EdgeType(dp, m + (Kind, Sqlx.EDGETYPE));
+    }
+    internal override UDType New(Ident pn, Domain? un, long dp, Context cx)
+    {
+        return (UDType)(cx.Add(new PEdgeType(pn.ident, (EdgeType)EdgeType.Relocate(dp), un, -1L, dp, cx))
+            ?? throw new DBException("42105"));
+    }
+    internal override NodeType Check(Context cx, CTree<string, SqlValue> ls)
+    {
+        var et = base.Check(cx,ls);
+        if (cx._Ob(et.leavingType) is UDType el && el.infos[cx.role.defpos] is ObInfo li
+            && li.name is string en && ls[en] is SqlValue sl && sl.Eval(cx) is TChar lv
+            && cx.db.objects[NodeTypeFor(cx, lv)] is NodeType lt
+            && !lt.EqualOrStrongSubtypeOf(el))
+        {
+            var pp = cx.db.nextPos;
+            var pi = new Ident(pp.ToString(), new Iix(pp));
+            var xt = (Domain)cx.Add(et + (LeavingType,
+                new NodeType(cx.GetUid(), pi.ident, TypeSpec, el, cx).defpos));
+            cx.Add(xt);
+        }
+        if (cx._Ob(et.arrivingType) is UDType ea && ea.infos[cx.role.defpos] is ObInfo ai
+            && ai.name is string an && ls[an] is SqlValue sa && sa.Eval(cx) is TChar av
+            && cx.db.objects[NodeTypeFor(cx, av)] is NodeType at
+            && !at.EqualOrStrongSubtypeOf(ea))
+        {
+            var pp = cx.db.nextPos;
+            var pi = new Ident(pp.ToString(), new Iix(pp));
+            var xt = (Domain)cx.Add(et + (ArrivingType,
+                new NodeType(cx.GetUid(),pi.ident, TypeSpec, ea, cx).defpos));
+            cx.Add(xt);
+        }
+        return et;
+    }
+    long NodeTypeFor(Context cx, TypedValue? v)
+    {
+        if (v is TTypeSpec ts && ts._dataType is NodeType nt)
+            return nt.defpos;
+        if (v is TChar s)
+            return cx.role.dbobjects[s.value] ?? -1L;
+        return -1L;
+    }
+    internal EdgeType FixEdgeType(Context cx, Ident typename)
+    {
+        if(((Transaction)cx.db).physicals[typename.iix.dp] is not PType pt)
+            throw new PEException("PE50502");
+        if (pt is not PEdgeType)
+            pt = new PEdgeType(typename.ident, pt, this, cx);
+        pt.dataType = this;
+        FixColumns(cx,3);
+        pt.under = super;
+        return (EdgeType)(cx.Add(pt)??throw new DBException("42105"));
+    }
+    internal override Table _PathDomain(Context cx)
+    {
+        if (super is not UDType su)
+            return this;
+        var rt = BList<long?>.Empty;
+        var rs = CTree<long,Domain>.Empty;
+        rt += idCol;
+        rs += (idCol, Char);
+        rt += leaveCol;
+        rs += (leaveCol, leavingEnds ? new TSet(Char).dataType : Char);
+        rt += arriveCol;
+        rs += (arriveCol, arrivingEnds ? new TSet(Char).dataType : Char);
+        for (var b = su.pathDomain.rowType.First(); b != null; b = b.Next())
+            if (b.value() is long p
+                && su.pathDomain.representation[p] is Domain cd && !rs.Contains(p))
+            {
+                rt += p;
+                rs += (p, cd);
+            }
+        for (var b = rowType.First(); b != null; b = b.Next())
+            if (b.value() is long p
+                && representation[p] is Domain cd && !rs.Contains(p))
+            {
+                rt += p;
+                rs += (p, cd);
+            }
+        return new Table(-1L, cx, rs, rt, rt.Length);
+    }
+    internal override UDType Inherit(UDType to)
+    {
+        if (leaveCol >= 0)
+            to += (LeaveCol, leaveCol);
+        if (arriveCol >= 0)
+            to += (ArriveCol, arriveCol);
+        if (leavingType >= 0)
+            to += (LeavingType, leavingType);
+        if (arrivingType >= 0)
+            to += (ArrivingType, arrivingType);
+        return base.Inherit(to);
+    }
+    internal override BList<long?> Add(BList<long?> a, int k, long v, long p)
+    {
+        if (p == leaveCol)
+            k = 1;
+        if (p == arriveCol)
+            k = 2;
+        return base.Add(a, k, v, p);
+    }
+    internal override Basis Fix(Context cx)
+    {
+        var r = New(cx.Fix(defpos), _Fix(cx, mem));
+        if (defpos != -1L)
+            cx.Add(r);
+        return r;
+    }
+    protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
+    {
+        var r = base._Fix(cx, m);
+        var lt = cx.Fix(leavingType);
+        if (lt != leavingType)
+            r += (LeavingType, lt);
+        var at = cx.Fix(arrivingType);
+        if (at != arrivingType)
+            r += (ArrivingType, at);
+        var lc = cx.Fix(leaveCol);
+        if (lc != leaveCol)
+            r += (LeaveCol, lc);
+        var lx = cx.Fix(leaveIx);
+        if (lx != leaveIx)
+            r += (LeaveIx, lx);
+        var ac = cx.Fix(arriveCol);
+        if (ac != arriveCol)
+            r += (ArriveCol, ac);
+        var ax = cx.Fix(arriveIx);
+        if (ax != arriveIx)
+            r += (ArriveIx, ax);
+        return r;
+    }
+    public static EdgeType operator +(EdgeType et, (long, object) x)
+    {
+        var d = et.depth;
+        var m = et.mem;
+        var (dp, ob) = x;
+        if (et.mem[dp] == ob)
+            return et;
+        if (ob is DBObject bb && dp != _Depth)
+        {
+            d = Math.Max(bb.depth + 1, d);
+            if (d > et.depth)
+                m += (_Depth, d);
+        }
+        return (EdgeType)et.New(m + x);
+    }
+    public static EdgeType operator +(EdgeType et, (Context, long, object) x)
+    {
+        var d = et.depth;
+        var m = et.mem;
+        var (cx, dp, ob) = x;
+        if (et.mem[dp] == ob)
+            return et;
+        if (ob is long p && et.representation[p] is DBObject bb)
+        {
+            d = Math.Max(bb.depth + 1, d);
+            if (d > et.depth)
+                m += (_Depth, d);
+        }
+        return (EdgeType)et.New(m + (dp, ob));
+    }
+    public override Domain For()
+    {
+        return EdgeType;
+    }
+    public override int Compare(TypedValue a, TypedValue b)
+    {
+        if (a == b) return 0;
+        var c = a.dataType.defpos.CompareTo(b.dataType.defpos);
+        if (c != 0) return c;
+        // if we get to here they both have this as dataType
+        return ((TEdge)a).CompareTo((TEdge)b);
+    }
+    internal override DBObject Relocate(long dp, Context cx)
+    {
+        var r = (EdgeType)base.Relocate(dp, cx)
+            + (LeavingType, cx.Fix(leavingType))
+            + (ArrivingType, cx.Fix(arrivingType));
+        return (EdgeType)cx.Add(r);
+    }
+    public override string ToString()
+    {
+        var sb = new StringBuilder(base.ToString());
+        if (leavingType != -1L)
+        {
+            sb.Append(" Leaving "); sb.Append(Uid(leavingType));
+            sb.Append("[" + Uid(leaveIx) + "]");
+            sb.Append(" LeaveCol="); sb.Append(Uid(leaveCol));
+        }
+        if (arrivingType != -1L)
+        {
+            sb.Append(" Arriving "); sb.Append(Uid(arrivingType));
+            sb.Append("[" + Uid(arriveIx) + "]");
+            sb.Append(" ArriveCol="); sb.Append(Uid(arriveCol));
+        }
+        return sb.ToString();
+    }
+}
 
 // The Graph view of graph data
 
@@ -108,27 +822,23 @@ using System.Xml;
 namespace Pyrrho.Level5
 {
     /// <summary>
-    /// A TGraph is a TypedValue whose dataType is a Node type.
-    /// It always begins with the Node with the lowest uid, 
-    /// is assembled from the rows of NodeTypes and EdgeTypes.
+    /// A TGraph is a TypedValue containing a list of TNodes.
+    /// It always begins with the Node with the lowest uid (its representative), 
     /// </summary>
     internal class TGraph : TypedValue
     {
-        internal readonly CTree<long, TNode> nodes; // and edges
-        internal readonly CTree<string, TNode> nids; // and edges
-        internal TGraph (CTree<long, TNode> ns, CTree<string, TNode> nids) : base(Domain.Graph)
+        internal readonly BTree<long,TNode> nodes; // and edges
+        internal TGraph(BTree<long, TNode> ns) : base(Domain.Graph)
         {
             nodes = ns;
-            this.nids = nids;
         }
-        internal TGraph(TNode n) : base(Domain.Graph)
+        internal TGraph(TNode n) : base(Domain.Graph) 
         {
-            nodes = new CTree<long,TNode>(n.uid,n);
-            nids = new CTree<string, TNode>(n.id, n);
+            nodes = new BTree<long,TNode>(n.tableRow.defpos,n);
         }
-        public static TGraph operator+(TGraph g,TNode n)
+        public static TGraph operator+(TGraph g,TNode r)
         {
-            return new TGraph(g.nodes + (n.uid, n),g.nids + (n.id,n));
+            return new TGraph(g.nodes + (r.tableRow.defpos,r));
         }
         internal override TypedValue New(Domain t)
         {
@@ -153,25 +863,34 @@ namespace Pyrrho.Level5
             if (tb is not null) return -1;
             return 0;
         }
-        internal static CTree<TGraph, bool> Add(CTree<TGraph, bool> t, TNode n)
+        internal static CTree<TGraph, bool> Add(Context cx,CTree<TGraph, bool> t, TNode r)
         {
-            if (Find(t, n.id) is not null)
+            if (Find(t, r) is not null)
                 return t;
-            if (n is not TEdge e)
-                return t + (new TGraph(n), true);
+            if (r is not TEdge e || e.dataType is not EdgeType et)
+                return t + (new TGraph(r), true);
             // Edge: end nodes already must be in t, but may be in different TGraphs
-            if (Find(t, e.leaving.value) is not TGraph lg || Find(t, e.arriving.value) is not TGraph ag
-                || ag.Rep() is not TNode lr || ag.Rep() is not TNode ar)
+            if (cx.db.objects[et.leavingType] is not NodeType lt || r[et.leaveCol] is not TInt li 
+                || et.tableRows[li.value] is not TableRow ln
+                || Find(t, new TNode(lt,ln)) is not TGraph lg)
                 return t;
-            if (lr.uid == ar.uid) // already connected: add n to one of them
-                return t - lg + (lg + n, true);
+            if (cx.db.objects[et.arrivingType] is not NodeType at || r[at.arriveCol] is not TInt ai
+                || et.tableRows[ai.value] is not TableRow an
+                || Find(t, new TNode(at, an)) is not TGraph ag)
+                return t;
+            if (lg.Rep() is not TNode lr|| ag.Rep() is not TNode ar)
+                return t;
+            if (lr.tableRow.defpos == ar.tableRow.defpos) // already connected: add n to one of them
+                return t - lg + (lg + r, true);
             else // merge the graphs and add n
-                return t - ag -lg + (new TGraph(lg.nodes + ag.nodes + (n.uid, n), lg.nids + ag.nids + (n.id, n)), true);
+                return t - ag -lg + (new TGraph(lg.nodes + ag.nodes + (r.tableRow.defpos, r)), true);
         }
-        static TGraph? Find(CTree<TGraph, bool> t, string n)
+        static TGraph? Find(CTree<TGraph, bool> t, TNode? n)
         {
+            if (n is null)
+                return null;
             for (var b = t.First(); b != null; b = b.Next())
-                if (b.key().nids.Contains(n))
+                if (b.key().nodes.Contains(n.tableRow.defpos))
                     return b.key();
             return null;
         }
@@ -188,57 +907,96 @@ namespace Pyrrho.Level5
             return sb.ToString();
         }
     }
-    /// <summary>
-    /// A class for an unbound node or edge. As in the CREATE graph syntax, the properties of a
-    /// new unbound identifier must be specified on its first occurrence.
-    /// The identifier _ is special: we do not care about any of its properties.
-    /// </summary>
-    internal class TGParam : TypedValue
+    internal class TNode : TypedValue
     {
-        internal readonly long uid; 
-        internal readonly string id;
-        internal readonly Sqlx kind; // LPAREN node, RPAREN edge, COLON specifictype, EQL property
-        internal readonly CTree<TypedValue, TypedValue> constraints;
-        public TGParam(long dp, string i, Sqlx k,Domain dt, CTree<TypedValue, TypedValue> constraints) : base(dt)
+        public readonly TableRow tableRow;
+        public long defpos => tableRow.defpos;
+        public long id => (tableRow.vals[(dataType as NodeType)?.idCol??-1L]?.ToLong())??-1L;
+        internal TNode(NodeType nt, TableRow tr) :base(nt)
         {
-            uid = dp;
-            id = i;
-            kind = k;
-            this.constraints = constraints;
+            tableRow = tr;
         }
+        internal override TypedValue this[long p] => tableRow.vals[p]??TNull.Value;
         internal override TypedValue New(Domain t)
         {
-            return new TGParam(uid, id, kind, t, constraints);
+            throw new NotImplementedException();
         }
-        public override int CompareTo(object? obj)
+        internal virtual bool CheckProps(Context cx,TNode n)
         {
-            if (obj is TGParam tp)
-            {
-                if (id != "_")
-                {
-                    var c = id.CompareTo(tp.id);
-                    if (c != 0)
-                        return c;
-                }
+            return dataType.defpos == n.dataType.defpos && id == n.id;
+        }
+        internal string ToString(Context cx)
+        {
+            if (cx.db.objects[dataType.defpos] is not NodeType nt ||
+                nt.infos[cx.role.defpos] is not ObInfo ni)
+                return "??";
+            var sb = new StringBuilder();
+            sb.Append(ni.name);
+            var cm = '(';
+            for (var b=nt.pathDomain.First();b!=null;b=b.Next())
+            if (b.value() is long cp){
+                sb.Append(cm); cm = ',';
+                sb.Append((cx.db.objects[cp] as TableColumn)?
+                           .infos[cx.role.defpos]?.name??"??");
+                    sb.Append("=");
+                    sb.Append(tableRow.vals[cp]);
             }
-            return -1;
+            sb.Append(')');
+            return sb.ToString();
         }
         public override string ToString()
         {
-            var sb = new StringBuilder(id);
-            sb.Append(':'); sb.Append(kind); sb.Append(':');sb.Append(DBObject.Uid(uid));
-            if (constraints!=CTree<TypedValue,TypedValue>.Empty)
-            {
-                var cm = "(";
-                for (var b=constraints.First();b!=null;b=b.Next())
-                {
-                    sb.Append(cm); cm = ",";
-                    sb.Append(b.key()); sb.Append('='); sb.Append(b.value());
-                }
-                if (cm != "(")
-                    sb.Append(')');
-            } 
+            return "TNode "+DBObject.Uid(defpos)+"["+ DBObject.Uid(dataType.defpos)+"]";
+        }
+    }
+    internal class TEdge : TNode
+    {
+        public long leaving => (tableRow.vals[(dataType as EdgeType)?.leaveCol ?? -1L]?.ToLong()) ?? -1L;
+        public long arriving => (tableRow.vals[(dataType as EdgeType)?.arriveCol ?? -1L]?.ToLong()) ?? -1L;
+        public long leavingType => (dataType as EdgeType)?.leavingType??-1L;
+        public long arrivingType => (dataType as EdgeType)?.arrivingType ?? -1L;
+        internal TEdge(EdgeType et, TableRow tr) : base(et, tr)
+        { }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException();
+        }
+        public override string ToString()
+        {
+            return "TEdge["+ DBObject.Uid(dataType.defpos)+"]" + tableRow.vals.ToString();
+        }
+    }
+    /// <summary>
+    /// A class for an unbound identifier
+    /// </summary>
+    internal class TGParam :TypedValue
+    {
+        internal readonly long uid;
+        internal readonly string value;
+        public TGParam(long dp,string i,Domain d) : base(d)
+        {
+            uid = dp;
+            value = i;
+        }
+        public override int CompareTo(object? obj)
+        {
+            return (obj is TGParam tp && tp.uid == uid) ? 0 : -1;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            if (uid > 0)
+                sb.Append(DBObject.Uid(uid));
+            else
+                sb.Append((Sqlx)(int)-uid);
+            sb.Append(' ');
+            sb.Append(value);
             return sb.ToString();
+        }
+
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException();
         }
     }
 }

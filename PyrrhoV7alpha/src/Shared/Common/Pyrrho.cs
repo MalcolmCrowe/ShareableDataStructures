@@ -25,7 +25,8 @@
         Mongo = 41, Check = 42, CommitAndReport = 43, RemoteCommitAndReport = 44, Post = 45, Put = 46,
         Get1 = 47, Delete = 48, Update = 49, Rest = 50, Subscribe = 51, Synchronise = 52, SetMaster = 53,
         GetInfo = 54, Execute = 55, Get2 = 56, ExecuteNonQueryTrace = 73, CommitTrace = 74,
-        CommitAndReportTrace = 75, ExecuteTrace = 76, CommitAndReport1 = 77, CommitAndReportTrace1 = 78
+        CommitAndReportTrace = 75, ExecuteTrace = 76, CommitAndReport1 = 77, CommitAndReportTrace1 = 78,
+        ClientAnswer = 81
     }
     /// <summary>
     /// Show details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.8,
@@ -41,7 +42,7 @@
         Primary = 60, Secondary = 61, Begin = 62, Valid = 63, Invalid = 64, TransactionReport = 65,
         RemoteTransactionReport = 66, PostReport = 67, Warning = 68, TransactionReason = 69,
         DataLength = 70, Columns = 71, Schema1 = 72, DoneTrace = 76, TransactionReportTrace = 77,
-        Entity = 79
+        Entity = 79, AskClient = 80
     }
     /// <summary>
     /// Connection strings are sent using a binary encrypted format. 
@@ -51,6 +52,6 @@
     {
         Password = 20, User = 21, Files = 22, Role = 23, Done = 24, Stop = 25, Host = 26, Key = 27,
         Details = 28, Base = 29, Coordinator = 30, BaseServer = 31, Modify = 32, Length = 33,
-        Culture = 34
+        Culture = 34, AllowAsk = 35
     }
 }

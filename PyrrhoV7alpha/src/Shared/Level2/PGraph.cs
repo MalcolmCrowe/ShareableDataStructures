@@ -7,10 +7,8 @@
 // and authorship is suitably acknowledged.
 // All other use or distribution or the construction of any product incorporating 
 // this technology requires a license from the University of the West of Scotland.
-using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
-using System.Security.Cryptography;
 
 namespace Pyrrho.Level2
 {
@@ -19,15 +17,15 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class PNodeType : PType1
     {
-        internal PNodeType(Ident nm,PType pt,NodeType dm,Context cx)
+        internal PNodeType(string nm,PType pt,NodeType dm,Context cx)
             :base (Type.PNodeType,nm,dm,dm.super,-1L,pt.ppos,cx)
         {  }
-        internal PNodeType(Type t,Ident nm, PType pt, NodeType dm, Context cx)
+        internal PNodeType(Type t,string nm, PType pt, NodeType dm, Context cx)
             : base(t, nm, dm, dm.super, -1L, pt.ppos, cx)
         { }
-        protected PNodeType(Type t, Ident nm, NodeType nt, Domain? un, long ns, long pp, Context cx)
+        protected PNodeType(Type t, string nm, NodeType nt, Domain? un, long ns, long pp, Context cx)
             : base(t,nm,nt,un,ns, pp,cx) { }
-        public PNodeType(Ident nm, NodeType nt, Domain? un, long ns, long pp, Context cx)
+        public PNodeType(string nm, NodeType nt, Domain? un, long ns, long pp, Context cx)
             : base(Type.PNodeType, nm, nt, un, ns, pp, cx) 
         { }
         public PNodeType(Reader rdr) : base(Type.PNodeType, rdr) 
@@ -50,10 +48,13 @@ namespace Pyrrho.Level2
     {
         public long leavingType;
         public long arrivingType;
-        internal PEdgeType(Ident nm, PType pt, EdgeType dm, Context cx)
+        internal PEdgeType(string nm, PType pt, EdgeType dm, Context cx)
             :base (Type.PEdgeType,nm,pt,dm,cx)
-        { }
-        public PEdgeType(Ident nm, EdgeType nt, Domain? un, long ns, long pp, Context cx) 
+        {
+            leavingType = dm.leavingType;
+            arrivingType = dm.arrivingType;
+        }
+        public PEdgeType(string nm, EdgeType nt, Domain? un, long ns, long pp, Context cx) 
             : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) { }
         public PEdgeType(Reader rdr) : base(Type.PEdgeType, rdr) 
         { }
@@ -61,8 +62,8 @@ namespace Pyrrho.Level2
         protected PEdgeType(PEdgeType x, Writer wr) : base(x, wr) 
         {
             var et = (EdgeType)dataType;
-            leavingType = et.leavingType;
-            arrivingType = et.arrivingType;
+            leavingType = wr.cx.Fix(x.leavingType);
+            arrivingType = wr.cx.Fix(x.arrivingType);
             dataType = (EdgeType)et.Fix(wr.cx);
         }
         protected override Physical Relocate(Writer wr)
@@ -92,7 +93,7 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            return base.ToString() + "(" + leavingType + "," + arrivingType+")";
+            return base.ToString() + "(" + DBObject.Uid(leavingType) + "," + DBObject.Uid(arrivingType)+")";
         }
     }
 }

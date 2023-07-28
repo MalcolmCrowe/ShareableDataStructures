@@ -149,13 +149,13 @@ namespace Pyrrho.Level2
         /// <param name="sd">The (new) structure definition</param>
         /// <param name="un">The UNDER domain if any</param>
         /// <param name="pp">The ppos for this log record</param>
-        public EditType(Ident nm, UDType old, Domain sd, Domain? un, long pp, Context cx)
+        public EditType(string nm, UDType old, Domain sd, Domain? un, long pp, Context cx)
             : base(Type.EditType, nm, 
                   (UDType)old.New(old.defpos,sd.mem), 
                   un, cx.db.nextStmt, pp, cx)
         {
             if (cx.db != null)
-                _defpos = cx.db.Find(old)?.defpos ?? throw new DBException("42000",nm.iix.dp);
+                _defpos = cx.db.Find(old)?.defpos ?? throw new DBException("42000");
             prev = old;
             hierCols = old.HierarchyCols(cx);
             _prev = prev.defpos;
@@ -323,7 +323,7 @@ namespace Pyrrho.Level2
             // record our new dataType
             cx.db += (dataType.defpos, dataType);
             // and fix up the nodeIds list
-            var ni = cx.db.nodeIds;
+ /*           var ni = cx.db.nodeIds;
             for (var b = fix.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is NodeType nd)
                 {
@@ -336,7 +336,7 @@ namespace Pyrrho.Level2
                                 ni += (k.value, new TNode(kp, td, t.vals));
                 }
             if (ni != cx.db.nodeIds)
-                cx.db += (Database.NodeIds, ni);
+                cx.db += (Database.NodeIds, ni); */
             return dataType;
         }
         public override string ToString()

@@ -530,12 +530,13 @@ namespace Pyrrho
                 var sig = GetString();
                 if (proto==Responses.Warning)
                     warnings.Add(new DatabaseError(sig, GetStrings()));
-                if (proto==Responses.AskClient)
+                while (proto == Responses.AskClient)
                 {
-                    Console.Write(sig);
-                    var s = Console.ReadLine();
-                    if (s != null)
-                        Send(Protocol.ClientAnswer, s);
+                    var s = GetString();
+                    Console.Write(s);
+                    var r = Console.ReadLine();
+                    Send(Protocol.ClientAnswer, r??"No response");
+                    proto = Receive();
                 }
                 proto = (Responses)stream.ReadByte();
             }
@@ -693,6 +694,12 @@ namespace Pyrrho
             PutString(nm);
             PutString(sql);
             Receive();
+        }
+        // This is for handling edge conflicts: rename edge e to n
+        // if source node type is s and destination nmode type is d
+        public void Prepare(string e,string s, string d, string n)
+        {
+            Prepare(e + "(" + s + "," + d + ")", n);
         }
         public void ChangeDatabase(string databaseName)
         {

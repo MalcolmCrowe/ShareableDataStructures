@@ -7,6 +7,7 @@ using Pyrrho.Level4; // for Select
 using Pyrrho.Level1; // for DataFile option
 using Pyrrho.Common;
 using System.Globalization;
+using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -66,7 +67,7 @@ namespace Pyrrho
         {
             client = c;
             tcp = new() { client = client };
-            conn = new() { props = GetConnectionString(tcp) };
+            conn = new Connection(tcp,GetConnectionString(tcp));
         }
         /// <summary>
         /// The main routine started in the thread for this client. This contains a protcol loop
@@ -161,8 +162,8 @@ namespace Pyrrho
                     p = tcp.ReadByte();
                     if ((Protocol)p != Protocol.ReaderData)
                         recovering = false;
-                    //              lock (PyrrhoStart.path)
-                    //                  Console.WriteLine("Connection " + cid + " " + (Protocol)p);
+             //       lock (PyrrhoStart.path)
+             //             Console.WriteLine("Connection " + cid + " " + (Protocol)p);
                 }
                 catch (Exception)
                 {
@@ -319,6 +320,12 @@ namespace Pyrrho
                                 cx = new(db, conn) {
                                     parse = ExecuteStatus.Prepare
                                 };
+                                if (nm.Contains('('))
+                                {
+                                    // install an edge rename intervention
+                                    cx.conn.Add(nm, sql);
+                                    break;
+                                }
                                 var nst = cx.db.nextStmt;
                                 db = new Parser(cx).ParseSql(sql, Domain.Content);
                                 cx.db = db;
@@ -397,7 +404,6 @@ namespace Pyrrho
                                 }
                                 else
                                     tcp.PutSchema(cx);
-                                Console.WriteLine(nm + " " + (DateTime.Now.Ticks - st.Ticks));
                                 break;
                             }
                         case Protocol.ExecuteReader: // ExecuteReader
@@ -960,10 +966,11 @@ namespace Pyrrho
                 {
                     string? str = null;
                     int b = tcp.crypt.ReadByte();
-                    if (b < (int)Connecting.Password || b > (int)Connecting.Culture)
+                    if (b < (int)Connecting.Password || b > (int)Connecting.AllowAsk)
                         throw new DBException("42105");
                     switch ((Connecting)b)
                     {
+                        case Connecting.AllowAsk: str = "AllowAsk"; break;
                         case Connecting.Done: return dets;
                         case Connecting.Password: str = "Password"; break;
                         case Connecting.User: str = "User"; break;
@@ -1088,7 +1095,6 @@ namespace Pyrrho
         }
         int DataLength(Context cx, TypedValue tv, string? rv = null, string? rc = null)
         {
-
             var lc = 0;
             if (rv != null)
                 lc += 1 + StringLength(rv);
@@ -1142,6 +1148,15 @@ namespace Pyrrho
                         }
                         var tn = tv.dataType.name;
                         return lc + 1 + tn.Length + ((TRow)o).Length;
+                    }
+                case Sqlx.NODETYPE:
+                case Sqlx.EDGETYPE:
+                    {
+                        var s = 
+                        (tv is TNode tn && tn.dataType is NodeType nt
+                            && tn.tableRow.vals[nt.idCol] is TInt ni)?
+                            ni.ToString(): tv.ToString();
+                        return lc + 1 + StringLength(s);
                     }
                 case Sqlx.XML: break;
             }
@@ -1434,7 +1449,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.04alpha","(5 July 2023)", "http://www.pyrrhodb.com"
+            "7.05alpha","(28 July 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

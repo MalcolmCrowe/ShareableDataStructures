@@ -77,7 +77,9 @@ namespace Pyrrho.Common
         }
         internal virtual TypedValue[]? ToArray()
         {
-            return null;
+            var r = new TypedValue[1];
+            r[0] = this;
+            return r;
         }
         internal virtual int Cardinality()
         {
@@ -129,120 +131,6 @@ namespace Pyrrho.Common
         {
             var dm = dataType.ShallowReplace1(cx,was,now);
             return (dm.dbg != dataType.dbg) ? New(dm) : this;
-        }
-    }
-    
-    internal class TNode : TRow
-    {
-        public readonly NodeType nodeType;
-        public readonly long uid;
-        public readonly string id;
-        internal TNode(long dp, NodeType nt, CTree<long, TypedValue> vals)
-            : base(nt.pathDomain, vals)
-        {
-            nodeType = nt;
-            id = vals[nt.idCol]?.ToString()??"_";
-            uid = dp; 
-        }
-        protected TNode(long dp, NodeType nt, string i, CTree<long, TypedValue> vals)
-    : base(nt.pathDomain, vals)
-        {
-            nodeType = nt;
-            id = i;
-            uid = dp;
-        }
-        public override int CompareTo(object? obj)
-        {
-            if (obj is not TNode n)
-                return 1;
-            return uid.CompareTo(n.uid);
-        }
-        internal TGraph? Graph(Database db)
-        {
-            for (var b = db.graphs.First(); b != null; b = b.Next())
-                if (b.value().nodes.Contains(uid))
-                    return b.value();
-            return null;
-        }
-        public override string ToString()
-        {
-            return "(" + id + " " + base.ToString()+")";
-        }
-    }
-    internal class TEdge : TNode
-    {
-        internal const int LEAVING = 1, ARRIVING = 2; // default positions
-        public readonly TChar leaving;
-        public readonly TChar arriving;
-        internal TEdge(long dp, EdgeType dt, CTree<long, TypedValue> v) : base(dp, dt, v)
-        {
-            leaving = v[dt.leaveCol] as TChar??new TChar("_");
-            arriving = v[dt.arriveCol] as TChar??new TChar("_");
-        }
-        internal override TypedValue New(Domain t)
-        {
-            throw new NotImplementedException();
-        }
-    }
-    internal class TMatch : TNode 
-    {
-        public readonly Sqlx tok;
-        public readonly CTree<string,TGParam> tgs; 
-        public readonly CTree<TypedValue, TypedValue> props;
-        internal TMatch(long dp, string i, NodeType nt, Sqlx tk, CTree<TypedValue,TypedValue> ns, Lexer lxr) 
-            : base(dp, nt, i, CTree<long,TypedValue>.Empty)
-        {
-            tok = tk;
-            tgs = lxr.tgs;
-            props = ns;
-        }
-        internal bool CheckProps(Context cx, TNode n)
-        {
-            if (n.nodeType.infos[cx.role.defpos] is ObInfo oi)
-                for (var b = props.First(); b != null; b = b.Next())
-                    if (b.value() is TypedValue xv && b.key().ToString() is string k)
-                    {
-                        if (xv is TGParam tg)
-                        {
-                            if (tgs.Contains(tg.id) || cx.binding[tg.id] is not TypedValue vv)
-                                continue;
-                            xv = vv;
-                        }
-                        switch (k)
-                        {
-                            case "ID":
-                            case "LEAVING":
-                            case "ARRIVING":  // no need
-                                break;
-                            case "SPECIFICTYPE":
-                                if (!n.dataType.Match(xv.ToString()))
-                                    return false;
-                                break; 
-                            default:
-                                if (!oi.names.Contains(k))
-                                    return false;
-                                if (oi.names[k].Item2 is long d && xv != n.values[d])
-                                    return false;
-                                break;
-                        }
-                    }
-            return true;
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(id.ToString());
-            sb.Append(':'); sb.Append(DBObject.Uid(uid));
-            if (nodeType.defpos>=0)
-            { sb.Append('['); sb.Append(DBObject.Uid(nodeType.defpos)); sb.Append(']'); }
-            var cm = '{';
-            for (var b=props.First();b is not null;b=b.Next())
-            {
-                sb.Append(cm);cm = ',';
-                sb.Append(b.key()); sb.Append('=');sb.Append(b.value());
-            }
-            if (cm != '{')
-                sb.Append('}');
-            return sb.ToString();
         }
     }
     internal class TNull : TypedValue
@@ -898,7 +786,7 @@ namespace Pyrrho.Common
     
     internal class TTypeSpec : TypedValue
     {
-        readonly Domain _dataType;
+        internal readonly Domain _dataType;
         internal TTypeSpec(Domain t) : base(Domain.TypeSpec)
         {
             _dataType = t;
@@ -910,6 +798,10 @@ namespace Pyrrho.Common
         internal override TypedValue Fix(Context cx)
         {
             return new TTypeSpec((Domain)_dataType.Fix(cx));
+        }
+        public override string ToString()
+        {
+            return DBObject.Uid(_dataType.defpos)+" "+_dataType.name;
         }
     }
     internal class TLevel : TypedValue

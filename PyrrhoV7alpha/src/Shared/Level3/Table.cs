@@ -2,8 +2,8 @@ using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
-using System.Xml;
-using System.Security.AccessControl;
+using System.ComponentModel.DataAnnotations;
+using System.Runtime.Intrinsics.Arm;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -158,34 +158,36 @@ namespace Pyrrho.Level3
             // recompute tb.rowType and the pathDomain
             var rt = BList<long?>.Empty;
             var pt = BList<long?>.Empty;
+            var ss = BTree<long, bool>.Empty;
             if (st?.idCol is long sd && sd > 0 && !cx.uids.Contains(sd))
                 pt += sd;
             else if (tb.idCol > 0 && !cx.uids.Contains(tb.idCol))
             {
-                rt += tb.idCol; pt += tb.idCol;
+                rt += tb.idCol; pt += tb.idCol; ss += (tb.idCol, true);
             }
             if (st?.leaveCol is long sl && sl > 0 && !cx.uids.Contains(sl))
                 pt += sl;
             else if (tb.leaveCol > 0 && !cx.uids.Contains(tb.leaveCol))
             {
-                rt += tb.leaveCol; pt += tb.leaveCol;
+                rt += tb.leaveCol; pt += tb.leaveCol; ss += (tb.leaveCol, true);
             }
             if (st?.arriveCol is long sa && sa > 0 && !cx.uids.Contains(sa))
                 pt += sa;
             else if (tb.arriveCol > 0 && !cx.uids.Contains(tb.arriveCol))
             {
-                rt += tb.arriveCol; pt += tb.arriveCol;
+                rt += tb.arriveCol; pt += tb.arriveCol; ss += (tb.arriveCol, true);
             }
             for (var b = su?.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && p != tb.idCol && p != tb.leaveCol && p != tb.arriveCol)
                     pt += p;
             for (var b = tb.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && p != tb.idCol && p != tb.leaveCol && p != tb.arriveCol)
+                if (b.value() is long p && !ss.Contains(p))
                 {
                     rt += p;
                     pt += p;
+                    ss += (p, true);
                 }
-            if (tc.flags==PColumn.GraphFlags.None)
+            if (tc.flags==PColumn.GraphFlags.None && !ss.Contains(tc.defpos))
             {
                 rt += tc.defpos;
                 pt += tc.defpos;
@@ -195,8 +197,14 @@ namespace Pyrrho.Level3
             if (tb is NodeType)
                 tb += (PathDomain, new Domain(-1L, cx, Sqlx.TABLE, ps + rs, pt, pt.Length));
             oi += (ObInfo.Names, rn);
+            if (tb.super?.infos[cx.role.defpos] is ObInfo ui)
+            {
+                rn += ui.names;
+                oi += (ObInfo.Names, rn);
+            }
             tb += (Infos, tb.infos + (cx.role.defpos, oi));
             cx.Add(tb);
+            cx.db += (tb.defpos, tb);
             tb += (Dependents, tb.dependents + (tc.defpos, true));
             if (tc.sensitive)
                 tb += (Sensitive, true);
@@ -220,7 +228,16 @@ namespace Pyrrho.Level3
         }
         public static Table operator+(Table tb,(long,object)v)
         {
-            return (Table)tb.New(tb.mem + v);
+            var d = tb.depth;
+            var m = tb.mem;
+            var (dp, ob) = v;
+            if (tb.mem[dp] != ob && ob is DBObject bb && dp != _Depth)
+            {
+                d = Math.Max(bb.depth + 1, d);
+                if (d > tb.depth)
+                    m += (_Depth, d);
+            }
+            return (Table)tb.New(m + v);
         }
         internal virtual Table _PathDomain(Context cx)
         {
@@ -369,14 +386,13 @@ BTree<string, (int, long?)> ns)
                 {
                     var nc = new SqlCopy(cx.GetUid(), cx, tc.NameFor(cx), dp, tc,
                         BTree<long, object>.Empty + (SqlValue.SelectDepth, cx.sD));
-                    var cd = representation[tc.defpos]??Domain.Content;
+                    var cd = representation[tc.defpos]??Content;
                     if (cd != Content)
                         cd = (Domain)cd.Instance(dp, cx, null);
                     nc = (SqlCopy)cx.Add(nc+(_Domain,cd));
-                    // this really should be a bit cleverer
-                    var i = (nc.name != "ID" && nc.name != "LEAVING" && nc.name != "ARRIVING") ? -1 : tc.seq;
-                    rt = Add(rt, i, nc.defpos);
-                    sr = Add(sr, i, tc.defpos);
+                    var sq = (tc.flags == PColumn.GraphFlags.None)?-1: tc.seq; 
+                    rt = Add(rt, sq, nc.defpos, tc.defpos);
+                    sr = Add(sr, sq, tc.defpos, tc.defpos);
                     rs += (nc.defpos, cd);
                     tr += (tc.defpos, nc.defpos);
                     ns += (nc.alias ?? nc.name ?? "", (j++, nc.defpos));
@@ -415,6 +431,9 @@ BTree<string, (int, long?)> ns)
             var nt = cx.FixTTElb(triggers);
             if (nt!=triggers)
                 r += (Triggers, nt);
+            var pd = pathDomain.Fix(cx);
+            if (pd != pathDomain)
+                r += (PathDomain, pd);
             return r;
         }
         internal override void Cascade(Context cx,
@@ -822,7 +841,7 @@ BTree<string, (int, long?)> ns)
                 sb.Append("\r\n");
             }
             sb.Append("  self._schemakey = "); sb.Append(from.lastChange); sb.Append("\r\n");
-            if (keys!=Domain.Null)
+            if (keys!=Null)
             {
                 var comma = "";
                 sb.Append("  self._key = ["); 
@@ -838,7 +857,7 @@ BTree<string, (int, long?)> ns)
         }
         internal virtual string BuildKey(Context cx,out Domain keys)
         {
-            keys = Domain.Row;
+            keys = Row;
             for (var xk = indexes.First(); xk != null; xk = xk.Next())
                 for (var c = xk.value().First();c is not null;c=c.Next())
             if (cx.db.objects[c.key()] is Index x && x.tabledefpos == defpos &&
@@ -846,7 +865,7 @@ BTree<string, (int, long?)> ns)
                     keys = x.keys;
             var comma = "";
             var sk = new StringBuilder();
-            if (keys != Domain.Row)
+            if (keys != Row)
                 for (var i = 0; i < keys.Length; i++)
                     if ( cx.db.objects[keys[i]??-1L] is TableColumn cd)
                     {
@@ -854,6 +873,28 @@ BTree<string, (int, long?)> ns)
                         sk.Append(cd.NameFor(cx));
                     }
             return sk.ToString();
+        }
+        internal override TRow RoleSQLValue(Context cx, RowSet from, ABookmark<long, object> _enu)
+        {
+            if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
+                || kind == Sqlx.Null || from.kind == Sqlx.Null)
+                throw new DBException("42105");
+            var sb = new StringBuilder();
+            sb.Append("--"); sb.Append(name); sb.Append(" Created on ");
+            sb.Append(DateTime.Now);
+            sb.Append("\r\n-- from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
+            var key = BuildKey(cx, out Domain _);
+            sb.Append("create view ");sb.Append(name); sb.Append(" of (");
+            var cm = "";
+            for (var b = rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.NameFor(p) is string cs && representation[p] is Domain cd) {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(cs); sb.Append(' '); sb.Append(cd.name);
+                }
+            sb.Append(")\r\n as get 'https://yourhost:8180/");
+            sb.Append(cx.db.name);sb.Append('/');sb.Append(ro.name);sb.Append('/');sb.Append(name);sb.Append("'\r\n");
+            return new TRow(from, new TChar(name), new TChar(key),
+                new TChar(sb.ToString()));
         }
     }
 } 

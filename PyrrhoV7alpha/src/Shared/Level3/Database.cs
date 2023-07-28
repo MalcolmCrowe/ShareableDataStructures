@@ -163,7 +163,6 @@ namespace Pyrrho.Level3
             NextId = -58, // long:  will be used for next transaction
             NextPos = -395, // long: next proposed Physical record
             NextStmt = -393, // long: next space in compiled range
-            NodeIds = -471, // BTree<TChar,TNode> 
             Owner = -59, // long: the defpos of the owner user for the database
             Prefixes = -375, // BTree<string,long?> UDT
             Procedures = -95, // CTree<long,string> Procedure
@@ -192,10 +191,6 @@ namespace Pyrrho.Level3
         internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
         internal Role role => (Role)(mem[Role] ?? guest);
         internal User? user => (User?)mem[User];
-        internal CTree<long, CTree<long, bool>> leaving =>
-            (CTree<long, CTree<long, bool>>)(mem[Leaving] ?? CTree<long, CTree<long, bool>>.Empty);
-        internal CTree<long, CTree<long, bool>> arriving =>
-            (CTree<long, CTree<long, bool>>)(mem[Arriving] ?? CTree<long, CTree<long, bool>>.Empty); 
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
         internal int format => (int)(mem[Format] ?? 0);
@@ -212,8 +207,6 @@ namespace Pyrrho.Level3
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
-        public BTree<string, TNode> nodeIds =>
-            (BTree<string, TNode>)(mem[NodeIds] ?? BTree<string, TNode>.Empty); // ->uid
         public CTree<long,TGraph> graphs =>
             (CTree<long,TGraph>)(mem[Graphs]??CTree<long,TGraph>.Empty);
         internal static Role schemaRole;
@@ -335,53 +328,7 @@ namespace Pyrrho.Level3
                 m += (dm.defpos, dm);
             return (Database)d.New(m);
         }
-        /// <summary>
-        /// This algorithm tolerates missing nodes
-        /// </summary>
-        /// <param name="d"></param>
-        /// <param name="n"></param>
-        /// <returns></returns>
-        /// <exception cref="PEException"></exception>
-        public static Database operator +(Database d, TNode n) //or TEdge
-        {
-            if (n.id.ToString() == "_")
-                return d;
-            if (n.uid>Transaction.TransPos || n.Graph(d) is not null)
-            {
-                if (n.uid>Transaction.TransPos || !d.nodeIds.Contains(n.id))
-                    d += (NodeIds, d.nodeIds + (n.id, n));
-                return d;
-            }
-            var gs = d.graphs;
-            var ni = d.nodeIds + (n.id, n);
-            d += (NodeIds, ni);
-            if (n is not TEdge e || e.dataType is not EdgeType et)
-                return d + (Graphs, d.graphs + (n.uid, new TGraph(n)));
-            if (d.Graph(e.leaving.value) is TGraph lg && lg.Rep() is TNode lr
-            && d.Graph(e.arriving.value) is TGraph ag && ag.Rep() is TNode ar)
-            {
-                if (lr.uid == ar.uid)
-                { // already connected
-                    gs += (lr.uid, lg + e);
-                }
-                else
-                // connect the two TGraphs and discard the higher one
-                if (lr.uid < ar.uid)
-                {
-                    gs -= ar.uid;
-                    gs += (lr.uid, new TGraph(lg.nodes + ag.nodes + (e.uid, e),
-                        lg.nids + ag.nids + (e.id, e)));
-                }
-                else
-                {
-                    gs -= lr.uid;
-                    gs += (ar.uid, new TGraph(lg.nodes + ag.nodes + (e.uid, e),
-                        lg.nids + ag.nids + (e.id, e)));
-                }
-            }
-            return d + (Graphs, gs);
-        }
-        /// <summary>
+ /*       /// <summary>
         /// Actual removal of a node from the database cascades to edges leaving it or arriving at it.
         /// Removal of an edge may split a TGraph.So the only safe thing to do is to rebuild
         /// the whole thing
@@ -389,11 +336,8 @@ namespace Pyrrho.Level3
         /// <param name="d"></param>
         /// <param name="n"></param>
         /// <returns></returns>
-        public static Database operator-(Database d,TNode n) // or edge
+        public static Database operator-(Database d,TNode n) // n a node or edge
         {
-            var ni = d.nodeIds - n.id;
-            if (ni == d.nodeIds)
-                return d;
             var nn = BTree<TChar, TNode>.Empty;
             var ng = CTree<long,TGraph>.Empty;
             var nd = d.New(d.loadpos, d.mem + (Graphs, ng) + (NodeIds, nn));
@@ -403,12 +347,14 @@ namespace Pyrrho.Level3
             else
                     nd += b.value();
             return nd;
-        }
-        internal TGraph? Graph(string s)
+        } */
+        internal TGraph? Graph(TNode r) // r a node or edge
         {
-            if (nodeIds[s] is TNode n)
+            if (r.dataType is not NodeType nt) // or edgetype
+                return null;
+            if (r[nt.idCol] is TInt id)
                 for (var b = graphs.First(); b != null; b = b.Next())
-                    if (b.value().nodes.Contains(n.uid))
+                    if (b.value().nodes.Contains(id.value))
                         return b.value();
             return null;
         }

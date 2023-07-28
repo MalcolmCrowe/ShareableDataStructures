@@ -1,6 +1,7 @@
 using System.Net;
 using System.Text;
 using Pyrrho.Common;
+using Pyrrho.Level1;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
@@ -76,6 +77,7 @@ namespace Pyrrho.Level4
         internal BTree<long, BTree<TRow, BTree<long, Register>>> funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         internal BTree<Domain, long?> newTypes = BTree<Domain, long?>.Empty; // uncommitted types
+        internal CTree<long, TGParam> nodes = CTree<long, TGParam>.Empty;
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by RowSet
         /// </summary>
@@ -120,7 +122,7 @@ namespace Pyrrho.Level4
         internal CTree<long, bool> rdC = CTree<long, bool>.Empty; // read TableColumns defpos
         internal CTree<long, CTree<long, bool>> rdS = CTree<long, CTree<long, bool>>.Empty; // specific read TableRow defpos
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
-        internal CTree<string, TypedValue> binding = CTree<string, TypedValue>.Empty;
+        internal CTree<long, TypedValue> binding = CTree<long, TypedValue>.Empty; // bound TGParams
         internal BTree<long, long?> newnodes = BTree<long, long?>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
@@ -683,6 +685,8 @@ namespace Pyrrho.Level4
                 _Add(ob);
             if (ob.defpos >= Transaction.HeapStart)
                 done += (ob.defpos, ob);
+            if (ob is Executable e)
+                exec = e;
             return ob;
         }
         internal void AddObs(Table tb)
@@ -886,6 +890,7 @@ namespace Pyrrho.Level4
             else
                 d = p switch
                 {
+                    HandlerStatement.Action => Math.Max(((HandlerStatement)o).depth,d),
                     Domain.Aggs => _DepthTVX((CTree<long, bool>)o, d),
                     SqlValueArray._Array => _DepthBV((BList<long?>)o, d),
                     RowSet.Assig => _DepthTUb((CTree<UpdateAssignment, bool>)o, d),
@@ -925,7 +930,7 @@ namespace Pyrrho.Level4
                     Level3.Index.References => _DepthTVBt((BTree<long, BList<TypedValue>>)o, d),
                     Domain.Representation => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.RestRowSetSources => _DepthTVX((CTree<long, bool>)o, d),
-                    SqlCall.Result => Math.Max(((Domain)o).depth,d),
+                    SqlCall.Result => Math.Max(((Domain)o).depth, d),
                     Domain.RowType => _DepthBV((BList<long?>)o, d),
                     SignalStatement.SetList => _DepthTXV((BTree<Sqlx, long?>)o, d),
                     GroupSpecification.Sets => _DepthBV((BList<long?>)o, d),
@@ -941,6 +946,8 @@ namespace Pyrrho.Level4
                     Domain.UnionOf => _DepthTDb((CTree<Domain, bool>)o, d),
                     RestRowSetUsing.UsingCols => _DepthBV((BList<long?>)o, d),
                     RowSet.UsingOperands => _DepthTVV((BTree<long, long?>)o, d),
+                    AssignmentStatement.Val => Math.Max(((AssignmentStatement)o).depth, d),
+                    AssignmentStatement.Vbl => Math.Max(((AssignmentStatement)o).depth, d),
                     WhileStatement.What => _DepthBV((BList<long?>)o, d),
                     SimpleCaseStatement.Whens => _DepthBV((BList<long?>)o, d),
                     RowSet._Where => _DepthTVX((CTree<long, bool>)o, d),
@@ -1647,20 +1654,20 @@ namespace Pyrrho.Level4
                         case RestRowSetUsing.UrlCol: v = Replaced((long)v); break;
                         case RestRowSetUsing.UsingCols: v = ReplacedLl((BList<long?>)v); break;
                         case RowSet.UsingOperands: v = ReplacedTll((BTree<long, long?>)v); break;
+                        case AssignmentStatement.Val: v = Replaced((long)v); break;
+                        case AssignmentStatement.Vbl: v = Replaced((long)v); break;
                         case WhileStatement.What: v = ReplacedLl((BList<long?>)v); break;
                         case SimpleCaseStatement.Whens: v = ReplacedLl((BList<long?>)v); break;
                         case FetchStatement.Where: v = Replaced((long)v); break;
                         case RowSet._Where: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RowSet.Windows: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case WindowSpecification.WQuery: v = Replaced((long)v); break;
-                        case AssignmentStatement.Val: v = Replaced((long)v); break;
                         case SqlFunction._Val: v = Replaced((long)v); break;
                         case UpdateAssignment.Val: v = Replaced((long)v); break;
                         case QuantifiedPredicate.Vals: v = ReplacedLl((BList<long?>)v); break;
                         case SqlInsert.Value: v = Replaced((long)v); break;
                         case SelectRowSet.ValueSelect: v = Replaced((long)v); break;
                         case SqlCall.Var: v = Replaced((long)v); break;
-                        case AssignmentStatement.Vbl: v = Replaced((long)v); break;
                         case QuantifiedPredicate.What: v = Replaced((long)v); break;
                         case QuantifiedPredicate.Where: v = Replaced((long)v); break;
                         case SqlFunction.Window: v = Replaced((long)v); break;
@@ -1939,6 +1946,34 @@ namespace Pyrrho.Level4
             return ob.infos[role.defpos]?.name ??
                 (string?)ob.mem[DBObject._Alias] ??
                 (string?)ob.mem[ObInfo.Name] ?? "?";
+        }
+        internal string? GName(long? p)
+        {
+            if (_Ob(p??-1L) is not SqlValue sv)
+                return null;
+            if (sv.GetType().Name=="SqlValue" && sv.name is string s)
+                return s;
+            var tv = sv.Eval(this);
+            if (tv is TGParam tp && binding[tp.uid] is TChar tb)
+                return tb.value;
+            if (tv is TChar tc)
+                return tc.value;
+            return null;
+        }
+        internal TypedValue? GConstrain(long? p)
+        {
+            if (_Ob(p ?? -1L) is not SqlValue sv)
+                return null;
+            var tv = sv.Eval(this);
+            if (tv is TGParam tp)
+                tv = binding[tp.uid];
+            if (tv is TNull)
+                return null;
+            return tv;
+        }
+        internal NodeType? GType(long? p)
+        {
+            return (GName(p) is string s && role.dbobjects[s] is long sp) ? _Ob(sp) as NodeType : null;
         }
         internal Grant.Privilege Priv(long p)
         {
@@ -2531,11 +2566,18 @@ namespace Pyrrho.Level4
         // uid range for prepared statements is HeapStart=0x7000000000000000-0x7fffffffffffffff
         long _nextPrep = Transaction.HeapStart;
         internal long nextPrep => _nextPrep;
+        internal readonly Level1.TCPStream? _tcp = null;
         /// <summary>
         /// A list of prepared statements, whose object persist
         /// in the base context for the connection.
         /// </summary>
         BTree<string, PreparedStatement> _prepared = BTree<string, PreparedStatement>.Empty;
+        /// <summary>
+        ///  A list of prepared edge-interventions, to replace edge e with source type s
+        ///  and destination type d with edge type n
+        /// </summary>
+        internal CTree<string, CTree<string, CTree<string, string>>> edgeTypes =
+             CTree<string, CTree<string, CTree<string, string>>>.Empty;
         internal BTree<string, PreparedStatement> prepared => _prepared;
         /// <summary>
         /// Connection string details
@@ -2546,11 +2588,29 @@ namespace Pyrrho.Level4
             if (cs != null)
                 props = cs;
         }
+        internal Connection(TCPStream tcp,BTree<string,string> cs)
+        {
+            _tcp = tcp;
+            props = cs;
+        }
         public void Add(string nm,PreparedStatement ps)
         {
             _prepared += (nm, ps);
             if (ps.framing.obs.Last() is ABookmark<long,DBObject> b)
                 _nextPrep = b.key();
+        }
+        public void Add(string nm, string n)
+        {
+            var i = nm.IndexOf('(');
+            var e = nm.Substring(0,i); // a (conflicting) edge type nmame
+            var j = nm.IndexOf(',');
+            var s = nm.Substring(i + 1, j - i - 1); // its source node type
+            var d = nm.Substring(j + 1, s.Length - j - 2); // its dest node type
+            var t = edgeTypes[e] ?? CTree<string, CTree<string, string>>.Empty;
+            var u = t[s] ?? CTree<string, string>.Empty;
+            u += (d, n);  // rename it to n
+            t +=  (s, u);
+            edgeTypes += (e, t);
         }
     }
     /// <summary>

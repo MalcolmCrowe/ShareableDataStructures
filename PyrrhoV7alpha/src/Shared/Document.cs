@@ -1,11 +1,5 @@
-﻿using System;
-using System.Collections;
-using Pyrrho.Common;
+﻿using System.Collections;
 using System.Reflection;
-using System.Diagnostics.CodeAnalysis;
-#if !MONO1
-using System.Collections.Generic;
-#endif
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland

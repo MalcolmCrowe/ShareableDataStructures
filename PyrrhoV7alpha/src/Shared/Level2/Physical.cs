@@ -481,25 +481,6 @@ namespace Pyrrho.Level2
         {
             return (p == pp) ? ppos : (wr.cx.uids[p] is long np) ? np : p;
         }
-        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
-        {
-            if (dataType.defpos >= 0 && tr?.objects[dataType.defpos] is Domain nd && nd.dbg != dataType.dbg)
-            {
-                if (nd is Table tb)
-                {
-                    var rs = tb.tableRows;
-                    for (var b = rs.PositionAt(Transaction.TransPos); b != null; b = b.Next())
-                        rs -= b.key();
-                    tb = tb + (Table.TableRows, rs);
-                    var ri = tb.rindexes;
-                    for (var b = ri.PositionAt(Transaction.TransPos); b != null; b = b.Next())
-                        ri -= b.key();
-                    nd = tb + (Table.RefIndexes, ri);
-                }
-                dataType = nd;
-            }
-            return base.Commit(wr, tr);
-        }
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr, definer)) return definer;

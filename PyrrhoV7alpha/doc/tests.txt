@@ -376,7 +376,7 @@ select * from ad
 ->[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]
 alter table ad drop b
 select * from ad
-->[{A:20},{A:2,C:'XX'}]
+->[{A:20,C:'XX'},{A:2,C:'XX'}]
 alter table ad add primary key(a)
 insert into ad values(21,'AB')
 create table de (d int references ad)
@@ -776,23 +776,22 @@ select * from ww
 ->[{E:3,D:'B',K:4,F:'Tri'},{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'},
 {E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Eight'}]
 25:
-create type student as (matric char) nodetype
-insert into student values ('Fred','22/456')
-create type person nodetype
+create type student as (name char,matric char) nodetype
+insert into student(name,matric) values ('Fred','22/456')
+create type person as(name char) nodetype
 alter type student set under person
 create type staff under person as (title char)
-insert into staff values ('Anne','Prof')
+insert into staff(name,title) values ('Anne','Prof')
 select *,specifictype() from person
 create type married edgetype(bride=person,groom=person)
-insert into person values('Joe'),('Mary')
-insert into married(bride,groom) values('Mary','Fred')
-select id from married where groom='Fred'
-select count(*) from married where 'Fred'=groom
-match ("Fred")<-[:married]-(_x)
-create type product nodetype
+insert into person values(3,'Joe'),(4,'Mary')
+insert into married(bride,groom) values(4,3)
+match ({name:'Joe'})<-[:married]-(x)
 [CREATE
-(Joe:Customer {"Name":'Joe Edwards', Address:'10 Station Rd.'}),
-(Joe)-[:Ordered {"Date":date'22/11/2002'} ]-> (Ord201:"Order")-[:Item {Qty: 5}]->("16/8x100" : WoodScrew : Product),
-(Ord201)-[:Item {Qty: 5}]->("Fibre 12cm": WallPlug : Product),
-(Ord201)-[:Item {Qty: 1}]->("500ml" : RubberGlue : Product)]
-match (_)-[:Item {Qty:_A}]->(_X:_T) where A>4
+(:Product:WoodScrew {spec:'16/8x4'}),(:Product: WallPlug{spec:'18cm'}),
+(Joe:Customer {Name:'Joe Edwards', Address:'10 Station Rd.'}),
+(Joe)-[:Ordered {"Date":date'2002-11-22'} ]->(:"Order"{id:201})]
+[MATCH (O:"Order"{id:201})
+begin MATCH(X:Product{spec:'16/8x4'}) CREATE (O)-[:Item {Qty: 5}]->(X);
+     MATCH(X:Product{spec:'18cm'}) CREATE (O)-[:Item {Qty: 3}]->(X) end]
+match ()-[{Qty:A}]->(:T{spec:X}) where A>4

@@ -9,6 +9,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Security;
 using System.ComponentModel.DataAnnotations;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -723,7 +724,7 @@ namespace Pyrrho.Level1
                             throw new PEException("PE24602");
                         var i = b.key();
                         PutString(result.NameFor(cx, i));
-                        if (dn.kind != Sqlx.TYPE)
+                        if (dn.kind != Sqlx.TYPE && dn.kind!=Sqlx.NODETYPE && dn.kind!=Sqlx.EDGETYPE)
                             PutString(dn.kind.ToString());
                         else
                             PutString(dn.name);
@@ -874,7 +875,7 @@ namespace Pyrrho.Level1
                 WriteByte(0);
                 return;
             }
-            if (dt.CompareTo(p.dataType)==0)
+            if (dt.CompareTo(p.dataType)==0 || p.dataType is NodeType)
                 WriteByte(1);
             else if (dt is UDType ut && ut.prefix is string pf)
             {
@@ -955,12 +956,15 @@ namespace Pyrrho.Level1
                     }
                     break;
                 case Sqlx.NCHAR:
-                    goto case Sqlx.CHAR;
-                case Sqlx.CLOB: goto case Sqlx.CHAR;
-                case Sqlx.NCLOB: goto case Sqlx.CHAR;
+                case Sqlx.CLOB: 
+                case Sqlx.NCLOB: 
                 case Sqlx.LEVEL:
                 case Sqlx.CHAR:
                     PutString(tv.ToString());
+                    break;
+                case Sqlx.NODETYPE:
+                case Sqlx.EDGETYPE:
+                    PutString(((TNode)tv).ToString(_cx));
                     break;
                 case Sqlx.PASSWORD: PutString("********"); break;
                 case Sqlx.POSITION:
