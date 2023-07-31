@@ -4178,11 +4178,14 @@ namespace Pyrrho.Level3
         {
             var rt = BList<long?>.Empty;
             var re = CTree<long, Domain>.Empty;
+            var ns = BTree<string, (int, long?)>.Empty;
+            var j = 0;
             for (var b = gDefs.First(); b != null; b = b.Next())
                 if (b.value() is TGParam g && g.value!="" && !re.Contains(g.uid))
                 { 
                     rt += g.uid;
                     re += (g.uid, g.dataType);
+                    ns += (g.value, (j++, g.uid));
                 }
             if (rt.Count==0)
             {
@@ -4190,10 +4193,12 @@ namespace Pyrrho.Level3
                 rt += rc.defpos;
                 re += (rc.defpos, Domain.Bool);
             }
-            var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length);
+            var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length) + (ObInfo.Names,ns);
             cx.Add(dt);
-            var ers = new ExplicitRowSet(cx.GetUid(), cx, dt, BList<(long,TRow)>.Empty)
-                +(cx,RowSet._Where,where);
+            var ers = new ExplicitRowSet(cx.GetUid(), cx, dt, BList<(long, TRow)>.Empty);
+            if (where!=CTree<long,bool>.Empty)
+                ers += (cx, RowSet._Where, where);
+            ers += (ObInfo.Names,ns);
             cx.Add(ers);
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
@@ -4228,9 +4233,15 @@ namespace Pyrrho.Level3
             // everything has been checked
             if (cx.obs[cx.result] is ExplicitRowSet ers)
             {
-                if (ers.rowType.Count == 1 && ers.rowType[0] is long p && ers.representation[p] == Domain.Bool
-                    && ers.explRows.Count == 0)
-                    ers += (cx, ExplicitRowSet.ExplRows, new BList<(long, TRow)>((p, new TRow(ers, TBool.True))));
+                if (ers.rowType.Count == 1 && ers.rowType[0] is long p && ers.representation[p] is Domain d)
+                {
+                    if (d == Domain.Bool && ers.explRows.Count == 0L)
+                        ers += (cx, ExplicitRowSet.ExplRows, new BList<(long, TRow)>((p, new TRow(ers, TBool.True))));
+                    else if (d is NodeType && d.defpos < 0 && cx.binding[p] is TNode tn)
+                        ers += (cx, ExplicitRowSet.ExplRows,
+                           ers.explRows + (cx.GetUid(), new TRow(ers,new CTree<long,TypedValue>(p,tn))));
+                    else ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), new TRow(ers, cx.binding)));
+                }
                 else
                     ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), new TRow(ers, cx.binding)));
                 cx.Add(ers);

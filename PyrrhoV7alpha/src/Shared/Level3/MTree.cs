@@ -805,7 +805,7 @@ namespace Pyrrho.Level3
         internal MTreeBookmark ResetToTiesStart(int depth)
         {
             var m = (depth>1)?_inner?.ResetToTiesStart(depth - 1):null;
-            var ov = (depth==1)?((TPartial)_outer.value()).value :null;
+            var ov = (depth==1)?(_outer.value()as TPartial)?.value :null;
             return new MTreeBookmark(_mt, _outer, _info, false,
                     m, ov?.First(), _inner?._pos??0);
         }

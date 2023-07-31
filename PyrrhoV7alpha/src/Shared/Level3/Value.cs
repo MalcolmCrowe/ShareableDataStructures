@@ -314,7 +314,7 @@ namespace Pyrrho.Level3
         /// <returns>Top level selectors, and updated From properties</returns>
         internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
         {
-            if (/*(*/GetType().Name != "SqlValue" /* || cx.obs[from] is VirtualTable)*/ && domain.kind != Sqlx.CONTENT)
+            if (GetType().Name != "SqlValue" && domain.kind != Sqlx.CONTENT)
                 return (new BList<DBObject>(this), m);
             var ns = (BTree<string, (int,long?)>)(m[ObInfo.Names] ?? BTree<string, (int,long?)>.Empty);
             if (name != null && ns.Contains(name) && cx.obs[ns[name].Item2 ?? -1L] is DBObject ob
@@ -11148,6 +11148,10 @@ cx.obs[high] is not SqlValue hi)
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlNode(defpos,m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new SqlNode(dp, m);
         }
         internal override TypedValue _Eval(Context cx)
         {

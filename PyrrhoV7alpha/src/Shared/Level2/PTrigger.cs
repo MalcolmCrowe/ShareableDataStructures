@@ -118,8 +118,6 @@ namespace Pyrrho.Level2
             oldTable = ot;
 			newTable = nt;
             src = sce;
-            if (cx.db is Transaction tr && tr.format < 51)
-                digested = cx.digest;
         }     
         /// <summary>
         /// Constructor: a Trigger definition from the buffer
@@ -176,8 +174,7 @@ namespace Pyrrho.Level2
             wr.PutIdent(oldTable);
             wr.PutIdent(newTable);
             if (src != null)
-                src = new Ident((wr.cx.db.format < 51) ? DigestSql(wr, src.ident) : src.ident,
-                    wr.cx.Ix(wr.Length));
+                src = new Ident(src.ident, wr.cx.Ix(wr.Length));
             src = wr.PutIdent(src);
             base.Serialise(wr);
         }

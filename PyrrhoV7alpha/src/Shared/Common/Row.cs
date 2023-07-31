@@ -1075,12 +1075,14 @@ namespace Pyrrho.Common
         internal override TypedValue Replace(Context cx, DBObject ov, DBObject nv)
         {
             var dt = (Domain)dataType.Replace(cx, ov, nv);
-            if (dt == dataType)
-                return this;
-            var vs = new TypedValue[dt.Length];
+            var vs = CTree<long,TypedValue>.Empty;
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && values[p] is TypedValue v)
-                    vs[b.key()] = v;
+                {
+                    if (p == ov.defpos)
+                        p = nv.defpos;
+                    vs += (p, v);
+                }
             return new TRow(dt, vs);
         }
         /// <summary>

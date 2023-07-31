@@ -1542,6 +1542,20 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         break;
                     }
 #endif
+                case Sqlx.NODETYPE:
+                case Sqlx.EDGETYPE:
+                    {
+                        if (a is TNode na && b is TNode nb
+                            && a.dataType is NodeType ta && b.dataType is NodeType tb
+                            && na.tableRow.vals[ta.idCol] is TInt ia
+                            && nb.tableRow.vals[tb.idCol] is TInt ib)
+                        {
+                            c = ia.CompareTo(ib);
+                            break;
+                        }
+                        else
+                            throw new DBException("22004").ISO();
+                    }
                 case Sqlx.ROW:
                     {
                         if (a is TRow ra && b is TRow rb)

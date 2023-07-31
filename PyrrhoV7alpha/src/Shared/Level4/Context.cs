@@ -47,7 +47,6 @@ namespace Pyrrho.Level4
         internal long nid = 0L; // for creating new identifiers for export
         internal static Context _system => new(Database._system);
         internal readonly long cxid = ++_cxid;
-        public readonly int dbformat = 51;
         public User? user => db.user;
         public Role role => db.role;
         internal Context? next, parent = null; // contexts form a stack (by nesting or calling)
@@ -87,10 +86,6 @@ namespace Pyrrho.Level4
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal long lexical = 0L; // current select block, set in incSD()
         internal CTree<long, int> undefined = CTree<long, int>.Empty;
-        /// <summary>
-        /// Lexical positions to DBObjects (if dbformat<51)
-        /// </summary>
-        public BTree<long, (string, long)> digest = BTree<long, (string, long)>.Empty;
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long?> uids = BTree<long, long?>.Empty;
         internal long result = -1L;
@@ -140,7 +135,6 @@ namespace Pyrrho.Level4
             conn = con ?? new Connection();
             obs = ObTree.Empty;
             nextHeap = conn.nextPrep;
-            dbformat = db.format;
             parseStart = 0L;
             this.db = db;
         }
@@ -150,7 +144,6 @@ namespace Pyrrho.Level4
             cxid = db.lexeroffset;
             conn = cx.conn;
             nextHeap = conn.nextPrep;
-            dbformat = db.format;
             parseStart = 0L;
             this.db = db;
             if (db is Transaction)
@@ -173,7 +166,6 @@ namespace Pyrrho.Level4
             cursors = cx.cursors;
             val = cx.val;
             parent = cx.parent; // for triggers
-            dbformat = cx.dbformat;
             rdC = cx.rdC;
             nid = cx.nid;
             restRowSets = cx.restRowSets;
@@ -487,10 +479,10 @@ namespace Pyrrho.Level4
                     d = Math.Max(v.dataType.depth + 1, d);
             return d;
         }
-        internal int _DepthLPlT<T>(BList<(long,T)> s, int d) where T : TypedValue
+        internal int _DepthLPlT<T>(Domain dm, BList<(long,T)> s, int d) where T : TypedValue
         {
             for (var b = s.First(); b != null; b = b.Next())
-                if (b.value().Item2 is TypedValue v)
+                if (b.value().Item2 is TypedValue v && v.dataType.defpos!=dm.defpos)
                     d = Math.Max(v.dataType.depth + 1, d);
             return d;
         }
@@ -666,18 +658,8 @@ namespace Pyrrho.Level4
         }
         internal DBObject Add(DBObject ob)
         {
-            long rp;
             if (obs[ob.defpos] is DBObject nb && nb.dbg>=ob.dbg)
                 return nb;
-            if (dbformat < 51)
-            {
-                if (ob is SqlValue sv && (rp = sv.target) > 0 && sv.defpos > Transaction.TransPos
-                    && sv.name != null && rp < Transaction.TransPos)
-                    digest += (sv.defpos, (sv.name, rp));
-                else if (ob is RowSet fm && (rp = fm.target) > 0 && fm.defpos > Transaction.TransPos
-                    && fm.name != null && fm.name != "" && rp < Transaction.TransPos)
-                    digest += (fm.defpos, (fm.name, rp));
-            }
             if (obs[ob.defpos] is DBObject oo && oo.depth != ob.depth)
                 if (depths[oo.depth] is ObTree de)
                     depths += (oo.depth, de - ob.defpos);
@@ -859,7 +841,7 @@ namespace Pyrrho.Level4
             return ob;
         }
         /// <summary>
-        /// Show the _Replace algorithm we need to ensure that the depths information is kept consistent.
+        /// In the _Replace algorithm we need to ensure that the depths information is kept consistent.
         /// </summary>
         /// <param name="m"></param>
         /// <param name="p"></param>
@@ -1030,8 +1012,12 @@ namespace Pyrrho.Level4
                             continue;
                         if (c.value() is DBObject op)
                         {
-                            if (done[op.defpos] is DBObject oq && op.dbg!=oq.dbg)
+                            if (done[op.defpos] is DBObject oq && op.dbg != oq.dbg)
+                            {
+                                if (oq.depth != k)
+                                    bv -= op.defpos;
                                 op = oq;
+                            }
                             var cv = op.Replace(this, was, now); // may update done
                             if (cv != op)
                                 bv += (k, cv);
@@ -1066,8 +1052,8 @@ namespace Pyrrho.Level4
                     ls += Replaced(c.value());
                 forApply += (b.key(), ls);
             }
-            if (was.defpos != now.defpos && (parse == ExecuteStatus.Compile ||
-                was.defpos < Transaction.Executables || was.defpos >= Transaction.HeapStart))
+            if (was.defpos != now.defpos && ((was.defpos>=Transaction.TransPos  && was.defpos < Transaction.Executables)
+                || was.defpos >= Transaction.HeapStart))
                 _Remove(was.defpos);
         }
         internal long ObReplace(long dp, DBObject was, DBObject now)

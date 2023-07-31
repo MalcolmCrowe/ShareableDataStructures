@@ -506,7 +506,7 @@ namespace Pyrrho.Level4
         Sqlx MaybePrefix(string s)
         {
             var vo = (val is TChar tc) ? tc.value : s;
-            if (cx.defs.Contains(vo))
+            if (cx.defs[vo]?[cx.sD].Item1 is Iix vx && !cx.undefined.Contains(vx.dp))
                 return tok;
             if (cx.role.dbobjects.Contains(vo))
                 return tok;

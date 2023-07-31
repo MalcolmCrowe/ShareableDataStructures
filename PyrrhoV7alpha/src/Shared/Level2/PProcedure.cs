@@ -90,8 +90,6 @@ namespace Pyrrho.Level2
             wr.PutString(nameAndArity.ToString());
             wr.PutInt(arity);
             var s = source??throw new PEException("PE3000");
-            if (wr.cx.db.format < 51)
-                s = new Ident(DigestSql(wr,s.ident),s.iix);
             wr.PutString(s.ident);
             proc = wr.cx.Fix(proc);
 			base.Serialise(wr);

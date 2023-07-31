@@ -2796,8 +2796,6 @@ namespace Pyrrho.Level4
                     pr = (Procedure)(cx.Add(pp)??pr);
                     pp.dataType = pr.domain;
                     cx.db += (pr,cx.db.loadpos);
-                    if (cx.dbformat<51)
-                        cx.digest += (n.iix.dp, (n.ident, n.iix.dp));
                 }
                 else
                     throw new DBException("42108", n.ToString()).Mix();
@@ -2837,8 +2835,6 @@ namespace Pyrrho.Level4
                         pp.source = s;
                         pp.proc = bd?.defpos??throw new DBException("42000");
                         pp.framing = fm;
-                        if (cx.db.format < 51)
-                            pp.digested = cx.digest;
                     }
                     pr += (DBObject._Framing, fm);
                     pr += (Procedure.Clause, s.ident);
@@ -6235,9 +6231,11 @@ namespace Pyrrho.Level4
             RowSet a;
             a = ParseTableReferenceItem(st,dm);
             cx.Add(a);
-            var lp = LexPos();
-            while (Match(Sqlx.COMMA,Sqlx.CROSS, Sqlx.NATURAL, Sqlx.JOIN, Sqlx.INNER, Sqlx.LEFT, Sqlx.RIGHT, Sqlx.FULL))
-                a = ParseJoinPart(lp.dp, a.Apply(new BTree<long,object>(DBObject._From,lp.dp),cx),dm);
+            while (Match(Sqlx.COMMA, Sqlx.CROSS, Sqlx.NATURAL, Sqlx.JOIN, Sqlx.INNER, Sqlx.LEFT, Sqlx.RIGHT, Sqlx.FULL))
+            {
+                var lp = LexPos();
+                a = ParseJoinPart(lp.dp, a.Apply(new BTree<long, object>(DBObject._From, lp.dp), cx), dm);
+            }
             return a;
         }
         /// <summary>
@@ -6401,8 +6399,6 @@ namespace Pyrrho.Level4
                     rf += (cx,RowSet.Periods, rf.periods + (tb.defpos, ps));
                 }
                 var rx = cx.Ix(rf.defpos);
-                if (cx.dbformat < 51)
-                    cx.defs += (new Ident(rf.defpos.ToString(), rx), rx);
             }
             return rf; 
         }

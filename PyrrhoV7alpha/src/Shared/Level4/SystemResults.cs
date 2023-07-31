@@ -65,24 +65,6 @@ namespace Pyrrho.Level4
          ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr, BTree<string, (int, long?)> ns)
         {
             return (rowType, representation, rowType, tr, ns);
-            /*           var j = 0;
-                       for (var b = rowType.First(); b != null; b = b.Next())
-                           if (cx.db.objects[b.value() ?? -1L] is TableColumn tc && !tr.Contains(tc.defpos))
-                           {
-                               var nc = new SqlCopy(cx.GetUid(), cx, tc.NameFor(cx), dp, tc,
-                                   BTree<long, object>.Empty + (SqlValue.SelectDepth, cx.sD));
-                               var cd = representation[tc.defpos] ?? Content;
-                               if (cd != Content)
-                                   cd = (Domain)cd.Instance(dp, cx, null);
-                               nc = (SqlCopy)cx.Add(nc + (_Domain, cd));
-                               var sq = (tc.flags == PColumn.GraphFlags.None) ? -1 : tc.seq;
-                               rt = Add(rt, sq, nc.defpos, tc.defpos);
-                               sr = Add(sr, sq, tc.defpos, tc.defpos);
-                               rs += (nc.defpos, cd);
-                               tr += (tc.defpos, nc.defpos);
-                               ns += (nc.alias ?? nc.name ?? "", (j++, nc.defpos));
-                           }
-                       return (rt, rs, sr, tr, ns);*/
         }
         /// <summary>
         /// Accessor: Check object permissions

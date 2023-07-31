@@ -279,7 +279,7 @@ namespace Pyrrho.Level4
                 case TransitionRowSet.TransTarget:
                 case UsingOperands: m += (_Depth, cx._DepthTVV((BTree<long, long?>)o, d)); break;
                 case Matching: m += (_Depth, cx._DepthTVTVb((CTree<long, CTree<long, bool>>)o, d)); break;
-                case ExplicitRowSet.ExplRows: m += (_Depth, cx._DepthLPlT((BList<(long,TRow)>)o, d)); break;
+                case ExplicitRowSet.ExplRows: m += (_Depth, cx._DepthLPlT(this, (BList<(long,TRow)>)o, d)); break;
                 case _Rows: m += (_Depth, cx._DepthLT((CList<TRow>)o, d)); break;
                 default:
                     {
@@ -952,8 +952,8 @@ namespace Pyrrho.Level4
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (RowSet)base._Replace(cx, so, sv);
-            if (defpos >= 0 && cx.obs[defpos] is RowSet od && od.dbg > dbg)
-                r = od;
+    //        if (defpos >= 0 && cx.obs[defpos] is RowSet od && od.dbg > dbg)
+    //            r = od;
             var fl = cx.ReplaceTlT(r.filter, so, sv);
             if (fl != r.filter)
                 r += (cx, Filter, fl);
@@ -2014,12 +2014,17 @@ namespace Pyrrho.Level4
             if (r.keys != Row)
                 m += (Level3.Index.Keys, r.keys);
             var a = r.asserts;
+            var ns = BTree<string, (int, long?)>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue v && !(v is SqlCopy || v is SqlLiteral))
+                if (b.value() is long p && cx.obs[p] is SqlValue v)    
+                {
+                    if (v is not SqlCopy && v is not SqlLiteral)
                         a &= ~(Assertions.MatchesTarget | Assertions.ProvidesTarget
-                            | Assertions.SimpleCols);
+                        | Assertions.SimpleCols);
+                    ns += (v.NameFor(cx), (b.key(), v.defpos));
+                }
             return cx.DoDepth(m + dm.mem + (_Source,r.defpos) + (RSTargets,r.rsTargets) + (Asserts,a)
-                + (SqlValue.SelectDepth, cx.sD));
+                + (SqlValue.SelectDepth, cx.sD) + (ObInfo.Names,ns));
         }
         internal override Basis New(BTree<long, object> m)
         {

@@ -711,7 +711,7 @@ namespace Pyrrho.Level3
             {
                 var k = b.key();
                 var v = b.value();
-                if (k>=0 && (k < Transaction.Analysing) || v.GetType() != typeof(Domain))
+                if (k>=0 )//&& (k < Transaction.Analysing) || v.GetType() != typeof(Domain))
                 {
                     sb.Append(cm); cm = ",\n  ";
                     sb.Append(DBObject.Uid(k)); sb.Append('=');

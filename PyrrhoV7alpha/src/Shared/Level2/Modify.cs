@@ -99,8 +99,6 @@ namespace Pyrrho.Level2
 			modifydefpos = wr.cx.Fix(modifydefpos);
             wr.PutLong(modifydefpos);
             wr.PutString(name);
-            if (wr.cx.db.format < 51)
-                source = new Ident(DigestSql(wr, source.ident??""), source.iix);
             wr.PutString(source.ident??"");
             proc = wr.cx.Fix(proc);
 			base.Serialise(wr);

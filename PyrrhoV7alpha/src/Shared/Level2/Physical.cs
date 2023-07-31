@@ -57,8 +57,6 @@ namespace Pyrrho.Level2
         /// </summary>
         public readonly long ppos;
         public long trans;
-        // for format<51 compatibility
-        public BTree<long, (string, long)> digested = BTree<long, (string, long)>.Empty;
         public long time;
         protected Physical(Type tp, long pp)
         {
@@ -81,7 +79,6 @@ namespace Pyrrho.Level2
         protected Physical(Physical ph,Writer wr)
         {
             type = ph.type;
-            digested = ph.digested;
             ppos = wr.Length;
             wr.cx.uids += (ph.ppos, ppos);
             time = ph.time;
@@ -178,27 +175,6 @@ namespace Pyrrho.Level2
         public virtual DBException? Conflicts(CTree<long,bool> t,PTransaction ct)
         {
             return null;
-        }
-        protected string DigestSql(Writer wr,string s)
-        {
-            if (digested.Count == 0)
-                return s;
-            var sb = new StringBuilder();
-            var cp = 0;
-            for (var b=digested.First();b is not null;b=b.Next())
-            {
-                var sp = wr.cx.Fix(b.key())-ppos;
-                if (sp <= 0)
-                    continue;
-                while(cp<sp)
-                    sb.Append(s[cp++]);
-                var (os, dp) = b.value();
-                cp += os.Length;
-                sb.Append('"'); sb.Append(wr.cx.Fix(dp)); sb.Append('"');
-            }
-            while (cp < s.Length)
-                sb.Append(s[cp++]);
-            return sb.ToString();
         }
         internal virtual void Affected(ref BTree<long,BTree<long,long?>> aff)
         { }
