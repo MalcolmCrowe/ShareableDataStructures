@@ -121,7 +121,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
-            return GetType().Name + " " + name;
+            return GetType().Name + " " + name + (source?.ident??"");
 		}
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -201,7 +201,6 @@ namespace Pyrrho.Level2
             cx.Install(pr, p);
             if (framing.obs.Count==0)
                 cx.AddParams(pr);
-            cx.db += (pr.domain.defpos, pr.domain);
             cx.db += (pr.defpos, pr);
             return pr;
         }

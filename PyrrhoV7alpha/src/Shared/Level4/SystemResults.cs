@@ -31,8 +31,7 @@ namespace Pyrrho.Level4
         protected SystemTable(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(string n)
         {
-            var p = (n.StartsWith("Log$") ? Database.schemaRole?.defpos
-                      : Database.guestRole?.defpos) ?? throw new PEException("PE1104");
+            var p = Database.schemaRole?.defpos?? throw new PEException("PE1104");
             return new BTree<long, object>(ObInfo.Name, n)
                   + (Database.Role, p)
                   + (Infos, new BTree<long, ObInfo>(p, new ObInfo(n, Grant.AllPrivileges)));

@@ -794,4 +794,4 @@ match ({name:'Joe'})<-[:married]-(x)
 [MATCH (O:"Order"{id:201})
 begin MATCH(X:Product{spec:'16/8x4'}) CREATE (O)-[:Item {Qty: 5}]->(X);
      MATCH(X:Product{spec:'18cm'}) CREATE (O)-[:Item {Qty: 3}]->(X) end]
-match ()-[{Qty:A}]->(:T{spec:X}) where A>4
+match ()-[{Qty:QT}]->(:ST{spec:SA}) where QA>4

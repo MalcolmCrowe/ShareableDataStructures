@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("26 July 2023 Repeatable tests");
+                Console.WriteLine("1 Aug 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -1250,8 +1250,8 @@ namespace Test
             Act(359, "MATCH (O:\"Order\"{id:201})"+
                 "begin MATCH(X: Product{ spec: '16/8x4'}) CREATE(O)-[:Item{Qty:5}]->(X);"+
                 "MATCH(X: Product{ spec: '18cm'}) CREATE(O)-[:Item{Qty:3}]->(X)end");
-            CheckResults(25, 4, "match ()-[{Qty:A}]->(:T{spec:S}) where A>4",
-                "[{A:5,T:'WOODSCREW',S:'16/8x4'}]");
+            CheckResults(25, 4, "match ()-[{Qty:QT}]->(:ST{spec:S}) where QT>4",
+                "[{QT:5,ST:'WOODSCREW',S:'16/8x4'}]");
             Rollback();
         }
         void CheckExceptionCommit(int t, int q,string m)

@@ -5398,10 +5398,7 @@ namespace Pyrrho.Level4
             if (k == Sqlx.VIEW)
                 dt = (Domain)cx.Add(new Domain(st, cx, Sqlx.VIEW, BList<DBObject>.Empty));
             else if (k == Sqlx.TABLE)
-            {
-                var pt = new PTable(tn, (Domain)(dt.New(lp.dp, m)), st, cx);
-                dt = (Table)(cx.Add(pt)?? throw new DBException("42105"));
-            }
+                dt = (Domain)cx.Add(new Table(lp.dp, m));
             else if (pn is not null)
             {
                 dt = k switch
