@@ -1080,6 +1080,8 @@ namespace Pyrrho.Level4
                     && cx.db.objects[ip] is DBObject tc && tc.infos[cx.role.defpos] is ObInfo ci
                     && ci.name is string im && im != "")
                     return im;
+                if (cx.obs[p] is SystemTableColumn ss && ss.name is string ns && ns != "")
+                    return ns;
             }
             return "Col" + i;
         }

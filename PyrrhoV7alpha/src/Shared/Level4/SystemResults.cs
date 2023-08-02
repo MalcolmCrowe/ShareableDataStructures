@@ -321,9 +321,9 @@ namespace Pyrrho.Level4
                         }
                     }
             // NB: rowType stuff is done by TableRowSet
-            var oi = f.infos[cx.role.defpos]??throw new DBException("42105");
-            var r = new BTree<long,object>(ObInfo.Names,oi.names) 
-                +(SRowType,f.rowType)+(SysTable, f) + (SysFilt, sf);
+            if (f.name?.StartsWith("Log$")==true &&cx.user?.defpos!=cx.db.owner)
+                throw new DBException("42105");
+            var r = new BTree<long,object>(SRowType,f.rowType)+(SysTable, f) + (SysFilt, sf);
             if (sx != null)
                 r += (SysIx, sx);
             return r;
@@ -2691,7 +2691,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(p.ppos),
                     new TChar(p.name),
-                    new TChar(p.dataType.ToString()),
+                    Pos(p.dataType.defpos),
                     Display(p.source?.ident??""));
             }
         }
