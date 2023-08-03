@@ -4040,7 +4040,9 @@ namespace Pyrrho.Level3
                         }
                         else if (ed is not null && ln is not null && et is not null)
                         {
-                            ed = (SqlEdge)cx.Add(ed + (SqlEdge.LeavingValue, ln.defpos) + (SqlEdge.ArrivingValue, n.defpos));
+                            ed += (SqlEdge.LeavingValue, (ed.tok == Sqlx.ARROWBASE) ? ln.defpos : n.defpos);
+                            ed += (SqlEdge.ArrivingValue, (ed.tok == Sqlx.ARROWBASE) ? n.defpos : ln.defpos);
+                            ed = (SqlEdge)cx.Add(ed);
                             ed.Create(cx, et);
                             ed = null;
                             ln = n;
