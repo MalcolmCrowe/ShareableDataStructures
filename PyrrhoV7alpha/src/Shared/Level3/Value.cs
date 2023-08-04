@@ -1829,6 +1829,7 @@ namespace Pyrrho.Level3
                           right != null && right.Constrain(cx, dl) is SqlValue nr && right.defpos != nr.defpos)
                           cx.Replace(right, nr);*/
             mm ??= BTree<long, object>.Empty;
+            mm += (_From, left?.from ?? right?.from ?? -1L);
             if (ag != CTree<long, bool>.Empty && dm != Domain.Content)
             {
                 dm = (Domain)dm.New(dm.mem + (Domain.Aggs, ag));
@@ -2382,6 +2383,8 @@ namespace Pyrrho.Level3
                                 return ra.values[dp] ??
                                     ((sc.copyFrom is long cp) ? (ra.values[cp] ?? v) : v);
                         }
+                        if (a is TNode tn && cx.obs[right] is SqlCopy sn)
+                            return tn.tableRow.vals[sn.copyFrom] ?? TNull.Value;
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)
                             return v;

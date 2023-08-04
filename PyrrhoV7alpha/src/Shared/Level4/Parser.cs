@@ -3319,6 +3319,19 @@ namespace Pyrrho.Level4
             Next();
             var re = ParseSqlValue(xp);
             cx.Add(re);
+            if (tok==Sqlx.COMMA)
+            {
+                var ls = new BList<DBObject>(re);
+                while (tok==Sqlx.COMMA)
+                {
+                    Next();
+                    re = ParseSqlValue(Domain.Content);
+                    cx.Add(re);
+                    ls += re;
+                }
+                re = new SqlRow(cx.GetUid(), cx, ls);
+                cx.Add(re);
+            }
             var rs = new ReturnStatement(cx.GetUid(),re);
             return (Executable)cx.Add(rs);
         }
@@ -3642,6 +3655,14 @@ namespace Pyrrho.Level4
                 var sb = Identify(sub, xp);
                 sb += (DBObject._From, pa.defpos);
                 return sb;
+            }
+            if (pa is SqlValue sv && sv.domain.infos[cx.role.defpos] is ObInfo si && sub is not null
+                && si.names[sub.ident].Item2 is long sp && cx.db.objects[sp] is TableColumn tc1)
+            {
+                var co = new SqlCopy(sub.iix.dp, cx, sub.ident, sv.defpos, tc1);
+                var nc = new SqlValueExpr(ic.iix.dp, cx, Sqlx.DOT, sv, co, Sqlx.NO);
+                cx.Add(co);
+                return cx.Add(nc);
             }
             // if sub is non-zero there is a new chain to construct
             var nm = len - m;

@@ -490,6 +490,8 @@ namespace Pyrrho.Level3
             if (cx.obs[from] is RowSet r && r.ambient.Contains(defpos) &&
                 cx.values[defpos] is TypedValue tv && tv != TNull.Value)
                 return tv;
+            if (cx.binding[defpos] is TypedValue tb)
+                return tb;
             return _Eval(cx);
         }
         internal virtual TypedValue _Eval(Context cx)
@@ -760,6 +762,32 @@ namespace Pyrrho.Level3
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new ForwardReference(dp,m);
+        }
+        internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
+        {
+            var rs = cx.obs[f] as RowSet;
+            for (var b = rs?.rowType.First(); b != null; b = b.Next())
+                if (cx.obs[b.value() ?? -1L] is SqlValue sv && sv.name == name
+                    && sv.domain.infos[cx.role.defpos] is ObInfo si
+                    && cx.defs[name] is BTree<int, (Iix, Ident.Idents)> t)
+                {
+                    var (ix, ds) = t[cx.sD - 1];
+                    cx.undefined -= defpos;
+                    cx.defs += (name, new Iix(ix, sv.defpos), ds);
+                    for (var c = ds.First(); c != null; c = c.Next())
+                        if (cx.obs[c.value()[cx.sD - 1].Item1.dp] is SqlValue sc && sc.name==c.key())
+                        {
+                            cx.undefined -= sc.defpos;
+                            sc = new SqlCopy(sc.defpos, cx, sc.name, defpos, 
+                                cx.db.objects[si.names[c.key()].Item2??-1L] as DBObject);
+                            sv = new SqlValueExpr(defpos, cx, Sqlx.DOT, sv, sc, Sqlx.NO);
+                            cx.Add(sv);
+                            cx.Replace(sc,sv);
+                            cx.Add(sc);
+                            break;
+                        }
+                }
+            return (BList<DBObject>.Empty, m);
         }
         public override string ToString()
         {

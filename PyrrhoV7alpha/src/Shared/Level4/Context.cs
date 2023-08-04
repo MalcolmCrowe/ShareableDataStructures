@@ -526,8 +526,8 @@ namespace Pyrrho.Level4
             var sd = sD;
             var (oldlx, ldefs) = defsStore[sd - 1];
             for (var b = undefined.First(); b != null; b = b.Next())
-                if (obs[b.key()] is SqlValue sv)
-                    sv.Resolve(this, te?.defpos ?? result, BTree<long, object>.Empty);
+                if (obs[b.key()] is DBObject ob)
+                    ob.Resolve(this, te?.defpos ?? result, BTree<long, object>.Empty);
             for (var b = sm?.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && obs[p] is SqlValue uv && uv.name is string n)
                 {

@@ -1408,6 +1408,8 @@ namespace Pyrrho.Level3
             a.exec = this;
 			a.val = cx.obs[ret]?.Eval(cx)??TNull.Value;
             cx = a.SlideDown();
+            if (cx.obs[cx.result] is ExplicitRowSet es && es.CanTakeValueOf(a.val.dataType))
+                cx.obs += (cx.result,es+(cx.GetUid(), a.val));
             return cx;
 		}
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -4182,12 +4184,15 @@ namespace Pyrrho.Level3
             var re = CTree<long, Domain>.Empty;
             var ns = BTree<string, (int, long?)>.Empty;
             var j = 0;
+            var ep = cx.GetUid(); // for the ers
             for (var b = gDefs.First(); b != null; b = b.Next())
-                if (b.value() is TGParam g && g.value!="" && !re.Contains(g.uid))
-                { 
+                if (b.value() is TGParam g && g.value != "" && !re.Contains(g.uid))
+                {
                     rt += g.uid;
                     re += (g.uid, g.dataType);
                     ns += (g.value, (j++, g.uid));
+                    if (cx.obs[g.uid] is SqlValue sx)
+                        sx.AddFrom(cx, ep);
                 }
             if (rt.Count==0)
             {
@@ -4197,15 +4202,24 @@ namespace Pyrrho.Level3
             }
             var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length) + (ObInfo.Names,ns);
             cx.Add(dt);
-            var ers = new ExplicitRowSet(cx.GetUid(), cx, dt, BList<(long, TRow)>.Empty);
+            var ers = new ExplicitRowSet(ep, cx, dt, BList<(long, TRow)>.Empty);
             if (where!=CTree<long,bool>.Empty)
                 ers += (cx, RowSet._Where, where);
             ers += (ObInfo.Names,ns);
             cx.Add(ers);
+            cx.result = ers.defpos;
+            RowSet? rrs = null;
+            // The presence of a return statement creates a new result rowset
+            if (cx.obs[body] is ReturnStatement rs && cx.obs[rs.ret]?.domain is Domain d && d != Domain.Null)
+            {
+                if (d.kind != Sqlx.ROW)
+                    d = (Domain)cx.Add(new Domain(cx.GetUid(), cx, Sqlx.ROW, 
+                        new CTree<long, Domain>(rs.ret,d),new BList<long?>(rs.ret),1));
+                rrs = (RowSet)cx.Add(new ExplicitRowSet(cx.GetUid(), cx, d, BList<(long, TRow)>.Empty));
+            }
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
             var ob = cx.binding;
-            cx.result = ers.defpos;
             var gf = graphExps.First();
             if (gf?.value() is CList<SqlNode> tg)
             {
@@ -4223,8 +4237,13 @@ namespace Pyrrho.Level3
                         if (c.value() is long p)
                             cx.binding += (p, b[p]);
                     e.Obey(cx);
-                    cx.result = -1L;
+                    if (rrs is ExplicitRowSet er && cx.val!=TNull.Value)
+                    {
+                        var tr = cx.val as TRow??new TRow(er, cx.val);
+                        rrs += (ExplicitRowSet.ExplRows, er.explRows + (cx.GetUid(), tr));
+                    }
                 }
+                cx.result = (rrs is null)?ers.defpos:cx.Add(rrs).defpos;
             }
             else cx.result = ers.defpos;
             cx.binding = ob;
