@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.ComponentModel;
 using System.Globalization;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -898,8 +899,8 @@ namespace Pyrrho.Level4
             return new Executable(lp, new string(lxr.input, lp, lxr.start - lp));
         }
         /// <summary>
-        /// A graph fragment can be supplied in a CREATE statement using syntax
-        /// adopted from neo4j. It results in the addition of at least one Record
+        /// Create: CREATE Graph {',' Graph } [THEN Statements END].
+        /// A graph fragment results in the addition of at least one Record
         /// in a node type: the node type definition comprising a table and UDT may 
         /// be created and/or altered on the fly, and may extend to further edge and edge types.
         /// The given input is a sequence of clauses that contain graph expressions
@@ -921,7 +922,7 @@ namespace Pyrrho.Level4
         {
             // New nodes without ID keys should be assigned cx.db.nextPos.ToString(), and this is fixed
             // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
-            var (_,ge) = ParseSqlGraphList();
+            var ge = ParseSqlGraphList();
             var st = BList<long?>.Empty;
             var lp = cx.GetPos();
             var cs = (CreateStatement)cx.Add(new CreateStatement(lp, ge, st));
@@ -947,19 +948,56 @@ namespace Pyrrho.Level4
             }
             return cs;
         }
-        (CTree<long,TGParam>?,CList<CList<SqlNode>>) ParseSqlGraphList()
+        (CTree<long,TGParam>?,CList<SqlMatch>) ParseSqlMatchList()
         {
-            var svgs = CList<CList<SqlNode>>.Empty;
-            var tgs = (lxr.tgs is not null)?CTree<long, TGParam>.Empty:null;
+            var svgs = CList<SqlMatch>.Empty;
+            var tgs = CTree<long, TGParam>.Empty;
             // the current token is LPAREN
-            while (tok==Sqlx.LPAREN)
+            while (Match(Sqlx.LPAREN,Sqlx.USING,Sqlx.TRAIL,Sqlx.ACYCLIC,Sqlx.SIMPLE,Sqlx.SHORTEST,Sqlx.ALL,Sqlx.ANY))
             {
+                var ul = BList<long?>.Empty;
+                var mo = Sqlx.NONE;
+                if (tok != Sqlx.LPAREN)
+                {
+                    if (lxr.tgs is null)
+                        throw new DBException("42161", Sqlx.LPAREN, tok);
+
+                    if (tok == Sqlx.USING)
+                    {
+                        Next();
+                        var a = new Ident(this);
+                        Mustbe(Sqlx.ID);
+                        var gu = (cx.obs[cx.defs[a]?.dp ?? -1L] is SqlValue od && od.domain is UDType) ? od :
+                            (cx.role.dbobjects[a.ident] is long ap && cx.db.objects[ap] is NodeType nt) ?
+                            new SqlLiteral(a.iix.dp, new TTypeSpec(nt))
+                            : new SqlValue(a, cx, Domain.TypeSpec);
+                        cx.Add(gu);
+                        ul += gu.defpos;
+                    }
+                    if (Match(Sqlx.TRAIL, Sqlx.ACYCLIC, Sqlx.SIMPLE, Sqlx.SHORTEST, Sqlx.ALL, Sqlx.ANY))
+                    {
+                        mo = tok;
+                        Next();
+                    }
+                }
                 (tgs,var s) = ParseSqlGraph(tgs);
-                svgs += s;
+                svgs += new SqlMatch(cx,mo,s,ul);
                 if (tok==Sqlx.COMMA)
                     Next();
             };
             return (tgs,svgs);
+        }
+        CList<CList<SqlNode>> ParseSqlGraphList()
+        {
+            var svgs = CList<CList<SqlNode>>.Empty;
+            // the current token is LPAREN
+            while (tok==Sqlx.LPAREN)
+            {
+                svgs += ParseSqlGraph(null).Item2;
+                if (tok == Sqlx.COMMA)
+                    Next();
+            };
+            return svgs;
         }
         (CTree<long,TGParam>?,CList<SqlNode>) ParseSqlGraph(CTree<long,TGParam>? tgs)
         {
@@ -983,10 +1021,15 @@ namespace Pyrrho.Level4
             return (tgs,svg);
         }
         /// <summary>
-        /// Create: CREATE Node {Edge Node} {',' Node { Edge Node }}.
-        ///        Node: '(' [Value][Label][doc] ')'.
-        ///        Edge: '-[' [Value][Label][doc] ']->' | '<-[' [Int_Value][Label][doc] ']-' .
-        ///        Label: ':' id[Label].
+        /// Graph: Node { Path }  
+        /// Path: { Edge Node } [GraphQuanitifier] | '(' { Edge Node }+ ')' GraphQuantifier .
+        /// GraphQuanitifier : '?' | '*' | '+' | '{'int','[int]'}' .
+        /// Node: '(' GraphItem ')'.
+        /// Edge: '-[' GraphItem ']->' | '<-[' GraphItem ']-'.
+        /// GraphItem: [Value][Label][doc | WhereClause ].
+        /// Label: ':' (id|Value)[Label].
+        /// MatchMode: [USING id{','id}][TRAIL|ACYCLIC|SIMPLE|SHORTEST|ALL|ANY].
+        /// With GraphQuantifier 
         /// </summary>
         /// <param name="svg">The graph fragments so far</param>
         /// <param name="dt">The standard NODETYPE or EDGETYPE</param>
@@ -996,6 +1039,7 @@ namespace Pyrrho.Level4
         {
             var st = CTree<long, TGParam>.Empty; // for match
             var ab = tok; // LPAREN, ARROWBASE or RARROW
+            bool ma = lxr.tgs is not null; // Parser is for MatchStatement
             Mustbe(Sqlx.LPAREN, Sqlx.ARROWBASE, Sqlx.RARROW);
             var b = new Ident(this);
             long id = -1L;
@@ -1045,6 +1089,7 @@ namespace Pyrrho.Level4
                 }
             }
             var dc = BTree<long, long?>.Empty;
+            CTree<long, bool>? wh = null;
             if (tok == Sqlx.LBRACE)
             {
                 Next();
@@ -1056,6 +1101,9 @@ namespace Pyrrho.Level4
                         Next();
                 }
                 Mustbe(Sqlx.RBRACE);
+            } else if (tok==Sqlx.WHERE)
+            {
+                wh = ParseWhereClause();
             }
             SqlNode? an = null;
             if (lxr.tgs!=null)
@@ -1087,6 +1135,8 @@ namespace Pyrrho.Level4
                     Sqlx.RARROW => new SqlEdge(b, cx, ab, id, an?.defpos ?? -1L, ln?.defpos ?? -1L, lb, dc, st,dm),
                     _ => throw new DBException("42000")
                 };
+                if (wh is not null)
+                    r += (RowSet._Where, wh);
                 cx.Add(r);
                 cx.defs += (b, new Iix(id));
             }
@@ -1095,13 +1145,19 @@ namespace Pyrrho.Level4
                 svg += ahead;
             return (r,svg);
         }
+        /// <summary>
+        /// MatchStatement: MATCH Match {',' Match} [WhereClause] [[THEN] Statement].
+        /// Match: MatchMode Graph
+        /// </summary>
+        /// <returns></returns>
+        /// <exception cref="DBException"></exception>
         internal Executable ParseSqlMatchStatement()
         {
             var olddefs = cx.defs; // we will remove any defs introduced by the Match below
                                    // while allowing existing defs to be updated by the Match parser
             Next();
             lxr.tgs = CTree<long, TGParam>.Empty; 
-            var (tgs,svgs) = ParseSqlGraphList();
+            var (tgs,svgs) = ParseSqlMatchList();
             var wh = ParseWhereClause() ?? CTree<long, bool>.Empty;
             long e = -1L;
             if (tok != Sqlx.EOF && tok != Sqlx.END && tok != Sqlx.RPAREN)
@@ -1113,7 +1169,8 @@ namespace Pyrrho.Level4
             }
             if (tgs is null)
                 throw new DBException("PE60201");
-            var ms = (MatchStatement)cx.Add(new MatchStatement(cx, tgs, svgs, wh, e));
+            var ms = new MatchStatement(cx, tgs, svgs, wh, e);
+            ms = (MatchStatement)cx.Add(ms);
             if (cx.parse == ExecuteStatus.Obey)
                 ms.Obey(cx);
             for (var b = cx.defs.First(); b != null; b = b.Next())
@@ -1121,7 +1178,33 @@ namespace Pyrrho.Level4
                     cx.defs -= b.key();
             return ms;
         }
-         /// <summary>
+        SqlPath ParseMatchQuantifier(SqlPath mq)
+        {
+            if (!Match(Sqlx.QMARK, Sqlx.TIMES, Sqlx.PLUS, Sqlx.LBRACE))
+                return mq;
+            var mm = tok;
+            Next(); 
+            int l = 0, h = -1; // -1 indicates unbounded
+            switch (mm)
+            {
+                case Sqlx.QMARK: h = 1; break;
+                case Sqlx.TIMES: break;
+                case Sqlx.PLUS: l = 1; break;
+                case Sqlx.LBRACE:
+                    if (lxr.val is TInt tl)
+                        l = (int)tl.value;
+                    Mustbe(Sqlx.INTEGERLITERAL);
+                    Mustbe(Sqlx.COMMA);
+                    if (lxr.val is TInt th)
+                        h = (int)th.value;
+                    if (tok == Sqlx.INTEGERLITERAL)
+                        Next();
+                    Mustbe(Sqlx.RBRACE);
+                    break;
+            }
+            return mq + (SqlPath.MatchQuantifier, (l, h));
+        }
+        /// <summary>
         /// GET option here is Pyrrho shortcut, needs third syntax for ViewDefinition
         /// ViewDefinition = id [ViewSpecification] AS (QueryExpression|GET) {TableMetadata} .
         /// ViewSpecification = Cols 
@@ -3664,6 +3747,11 @@ namespace Pyrrho.Level4
                 cx.Add(co);
                 return cx.Add(nc);
             }
+            if (pa is SqlValue sv1 && sv1.domain is NodeType && sub is not null)
+            {
+                var co = new SqlField(sub.iix.dp, sub.ident, -1, sv1.defpos, Domain.Content, sv1.defpos);
+                return cx.Add(co);
+            }
             // if sub is non-zero there is a new chain to construct
             var nm = len - m;
             DBObject ob;
@@ -3679,7 +3767,8 @@ namespace Pyrrho.Level4
                         // cx.defs enables us to find these objects again
                         cx.defs += (c, 1);
                         cx.defs += (ic, ic.Length);
-                        cx.undefined += (ob.defpos, cx.sD);
+                        if (lxr.tgs is null) // flag as undefined unless we are parsing a MATCH
+                            cx.undefined += (ob.defpos, cx.sD);
                         pa = ob;
                     }
                     else
@@ -7377,7 +7466,7 @@ namespace Pyrrho.Level4
         /// |   NOT TypedValue
         /// |	Value BinaryOp TypedValue 
         /// |   PeriodPredicate
-		/// BinaryOp =	'+' | '-' | '*' | '/' | '||' | MultisetOp | AND | OR | LT | GT | LEQ | GEQ | EQL | NEQ. 
+		/// BinaryOp =	'+' | '-' | '*' | '/' | '||' | MultisetOp | AND | OR | LT | GT | LEQ | GEQ | EQL | NEQ |':'. 
 		/// MultisetOp = MULTISET ( UNION | INTERSECT | EXCEPT ) ( ALL | DISTINCT ) .
         /// </summary>
         /// <param name="t">the expected obs type</param>
@@ -7464,7 +7553,7 @@ namespace Pyrrho.Level4
 		SqlValue ParseSqlValueFactor(Domain xp,bool wfok)
 		{
 			var left = ParseSqlValueEntry(xp,wfok);
-			while (Match(Sqlx.CONCATENATE))
+			while (Match(Sqlx.CONCATENATE,Sqlx.COLON))
 			{
 				Sqlx op = tok;
 				Next();
@@ -7498,13 +7587,6 @@ namespace Pyrrho.Level4
             var left = ParseSqlValueItem(xp,wfok);
             bool invert = false;
             var lp = LexPos();
-            if (tok == Sqlx.COLON)
-            {
-                var fl = left?? throw new DBException("42000").ISO();
-                Next();
-                left = ParseSqlValueItem(xp,wfok);
-                // ??
-            }
             while (tok==Sqlx.DOT || tok==Sqlx.LBRACK)
                 if (tok==Sqlx.DOT)
                 {

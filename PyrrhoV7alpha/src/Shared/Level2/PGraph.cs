@@ -7,6 +7,7 @@
 // and authorship is suitably acknowledged.
 // All other use or distribution or the construction of any product incorporating 
 // this technology requires a license from the University of the West of Scotland.
+using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 
@@ -29,7 +30,7 @@ namespace Pyrrho.Level2
             : base(Type.PNodeType, nm, nt, un, ns, pp, cx) 
         { }
         public PNodeType(Reader rdr) : base(Type.PNodeType, rdr) 
-        {  }
+        { }
         protected PNodeType(Type t, Reader rdr):base(t, rdr) { }
         protected PNodeType(PNodeType x,Writer wr) :base(x,wr) 
         {
@@ -53,6 +54,7 @@ namespace Pyrrho.Level2
         {
             leavingType = dm.leavingType;
             arrivingType = dm.arrivingType;
+            GraphUse(cx, defpos, leavingType, arrivingType);
         }
         public PEdgeType(string nm, EdgeType nt, Domain? un, long ns, long pp, Context cx) 
             : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) { }
@@ -65,6 +67,7 @@ namespace Pyrrho.Level2
             leavingType = wr.cx.Fix(x.leavingType);
             arrivingType = wr.cx.Fix(x.arrivingType);
             dataType = (EdgeType)et.Fix(wr.cx);
+            GraphUse(wr.cx, defpos, leavingType, arrivingType);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -90,6 +93,17 @@ namespace Pyrrho.Level2
             var et = (EdgeType)dataType;
             et = et + (EdgeType.LeavingType,leavingType) + (EdgeType.ArrivingType,arrivingType);
             dataType = et;
+            GraphUse(rdr.context, defpos, leavingType, arrivingType);
+        }
+        void GraphUse(Context cx, long et,long lt, long at)
+        {
+            var gu = cx.db.graphUsage;
+            var gt = gu[et] ?? new CTree<long,bool>(et,true);
+            var gl = (lt<0)? CTree<long,bool>.Empty : gu[lt] ?? new CTree<long, bool>(lt, true);
+            var ga = (at<0)? CTree<long,bool>.Empty : gu[at] ?? new CTree<long, bool>(at, true);
+            var g = gt + gl + ga;
+            gu = gu + (et, g) + (lt, g) + (at, g);
+            cx.db += (Database.GraphUsage,gu);
         }
         public override string ToString()
         {

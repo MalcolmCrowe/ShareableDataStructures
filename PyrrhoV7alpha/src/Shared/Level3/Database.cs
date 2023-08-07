@@ -153,6 +153,7 @@ namespace Pyrrho.Level3
             Curated = -53, // long
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Graphs = -461, // CTree<long,TGraph> the set of disjoint graphs for 7.03
+            GraphUsage = -482, // CTree<long,CTree<long,bool>> NodeType NodeType
             Guest = -55, // long: a role holding all grants to PUBLIC
             Public = -311, // long: always -1L, a dummy user ID
             LastModified = -279, // DateTime
@@ -209,6 +210,8 @@ namespace Pyrrho.Level3
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
         public CTree<long,TGraph> graphs =>
             (CTree<long,TGraph>)(mem[Graphs]??CTree<long,TGraph>.Empty);
+        public CTree<long,CTree<long,bool>> graphUsage =>
+            (CTree<long, CTree<long, bool>>)(mem[GraphUsage]??CTree<long,CTree<long,bool>>.Empty);
         internal static Role schemaRole;
         internal static Role guestRole;
         /// <summary>
@@ -328,26 +331,6 @@ namespace Pyrrho.Level3
                 m += (dm.defpos, dm);
             return (Database)d.New(m);
         }
- /*       /// <summary>
-        /// Actual removal of a node from the database cascades to edges leaving it or arriving at it.
-        /// Removal of an edge may split a TGraph.So the only safe thing to do is to rebuild
-        /// the whole thing
-        /// </summary>
-        /// <param name="d"></param>
-        /// <param name="n"></param>
-        /// <returns></returns>
-        public static Database operator-(Database d,TNode n) // n a node or edge
-        {
-            var nn = BTree<TChar, TNode>.Empty;
-            var ng = CTree<long,TGraph>.Empty;
-            var nd = d.New(d.loadpos, d.mem + (Graphs, ng) + (NodeIds, nn));
-            for (var b = ni.First(); b != null; b = b.Next())
-                if (b.value() is TEdge e)
-                    nd += e;
-            else
-                    nd += b.value();
-            return nd;
-        } */
         internal TGraph? Graph(TNode r) // r a node or edge
         {
             if (r.dataType is not NodeType nt) // or edgetype

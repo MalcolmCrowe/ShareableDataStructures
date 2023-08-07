@@ -3964,7 +3964,8 @@ namespace Pyrrho.Level3
     internal class CreateStatement : Executable
     {
         internal const long
-            GraphExps = -307; // CList<CList<SqlNode>> SqlNode
+            GraphExps = -307; // CList<CList<SqlNode>> SqlNode (alternately with SqlEdges)
+        // In MatchStatement we can also have SqlNodes that are SqlPaths 
         internal CList<CList<SqlNode>> graphExps =>
             (CList<CList<SqlNode>>)(mem[GraphExps] ?? CList<CList<SqlNode>>.Empty);
         internal BList<long?> stms => 
@@ -4033,7 +4034,7 @@ namespace Pyrrho.Level3
                     SqlNode? ln = null;
                     SqlEdge? ed = null;
                     NodeType? et = null;
-                    for (var gb = ge.First(); gb?.value() is SqlNode n; gb = gb.Next())
+                    for (var gb = ge.First(); gb!=null && gb.value() is SqlNode n; gb = gb.Next())
                     {
                         if (n is SqlEdge && n.domain is NodeType e)
                         {
@@ -4067,7 +4068,6 @@ namespace Pyrrho.Level3
                     sb.Append(gm); gm = ";";
                     for (var c = ge.First(); c != null; c = c.Next())
                     {
-                        sb.Append(cm); cm = ",";
                         sb.Append(Uid(c.key())); sb.Append('='); sb.Append(c.value());
                     }
                 }
@@ -4110,17 +4110,18 @@ namespace Pyrrho.Level3
     internal class MatchStatement : Executable
     {
         internal const long
-             GDefs = -210;   // CTree<long,TGParam>
+            GDefs = -210,   // CTree<long,TGParam>
+            MatchExps = -487; // CList<SqlMatch>
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
-        internal CList<CList<SqlNode>> graphExps =>
-            (CList<CList<SqlNode>>)(mem[CreateStatement.GraphExps] ?? CList<CList<SqlNode>>.Empty);
+        internal CList<SqlMatch> matchExps => // allows SqlNode alternating with SqlEdge,SqlPath
+            (CList<SqlMatch>)(mem[MatchExps] ?? CList<SqlMatch>.Empty);
         internal CTree<long,bool> where =>
             (CTree<long, bool>)(mem[RowSet._Where]??CTree<long,bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
-        public MatchStatement(Context cx, CTree<long,TGParam> gs, CList<CList<SqlNode>> ge, 
+        public MatchStatement(Context cx, CTree<long,TGParam> gs, CList<SqlMatch> ge, 
             CTree<long,bool> wh, long st)
-            : base(cx.GetUid(), _Mem(cx,gs) + (CreateStatement.GraphExps,ge) +(RowSet._Where,wh)
+            : base(cx.GetUid(), _Mem(cx,gs) + (MatchExps,ge) +(RowSet._Where,wh)
                   +(Procedure.Body,st))
         { }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
@@ -4220,10 +4221,10 @@ namespace Pyrrho.Level3
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
             var ob = cx.binding;
-            var gf = graphExps.First();
-            if (gf?.value() is CList<SqlNode> tg)
+            var gf = matchExps.First();
+            if (gf?.value() is SqlMatch sm)
             {
-                var xf = tg.First();
+                var xf = sm.graphMatch.First();
                 if (gf is not null && xf is not null)
                     ExpNode(cx, gf, xf, Sqlx.Null, null);
             }
@@ -4279,7 +4280,7 @@ namespace Pyrrho.Level3
         /// <param name="gp">The bookmark in the TGraphs</param>
         /// <param name="xb">The position in the current graph</param>
         /// <param name="pd">The previous database node if any</param>
-        void ExpNode(Context cx, ABookmark<int, CList<SqlNode>> gp, ABookmark<int, SqlNode> xb, Sqlx tok, TNode? pd)
+        void ExpNode(Context cx, ABookmark<int,SqlMatch> gp, ABookmark<int, SqlNode> xb, Sqlx tok, TNode? pd)
         {
             if (xb.value() is not SqlNode xn)
                 return;
@@ -4292,8 +4293,8 @@ namespace Pyrrho.Level3
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             if (pd is not null && pd.dataType is EdgeType pe
                 && ((tok == Sqlx.ARROWBASE) ?
-                (cx.db.objects[pe.arrivingType] as NodeType)?.Get(cx,pd.tableRow.vals[pe.arriveCol] as TInt)
-                : (cx.db.objects[pe.leavingType] as NodeType)?.Get(cx,pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
+                (cx.db.objects[pe.arrivingType] as NodeType)?.Get(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
+                : (cx.db.objects[pe.leavingType] as NodeType)?.Get(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
                is TableRow tn)
                 ds += (tn.defpos, tn);
             else if (pd is not null && pd.dataType is NodeType pn)
@@ -4316,9 +4317,24 @@ namespace Pyrrho.Level3
                                         ds += (tr.defpos, tr);
                     }
             }
-            else if (xn.domain is NodeType nt0 && nt0.defpos>0)
+            else if (xn.domain is NodeType nt0 && nt0.defpos > 0)
                 ds += nt0.tableRows;
-            else for (var b = cx.db.role.dbobjects.First(); b != null; b = b.Next())
+            else if (gp.value()?.nodeTypes is BList<long?> use && use!=BList<long?>.Empty)
+            {
+                var gu = CTree<long, bool>.Empty;
+                for (var a = use.First(); a != null; a = a.Next())
+                    if (cx.obs[a.value() ?? -1L] is SqlValue su && su.Eval(cx) is TInt tu
+                        && cx.db.graphUsage[tu.value] is CTree<long, bool> cu)
+                        gu += cu;
+                for (var b = gu.First(); b != null; b = b.Next())
+                {
+                    if (cx.db.objects[b.key()] is NodeType nt2)
+                        for (var c = nt2.tableRows.First(); c != null; c = c.Next())
+                            ds += (c.value().defpos, c.value());
+                }
+            }
+            else
+                for (var b = cx.db.role.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
                         for (var c = nt1.tableRows.First(); c != null; c = c.Next())
                             ds += (c.value().defpos, c.value());
@@ -4338,7 +4354,7 @@ namespace Pyrrho.Level3
         /// <param name="df">The bookmark for the current TNode</param>
         /// <param name="pd">If not null, the TNode for the TMatch</param> 
         /// <returns>the next value of df if any</returns>
-        ABookmark<long, TableRow>? DbNode(Context cx, ABookmark<int, CList<SqlNode>> gp,
+        ABookmark<long, TableRow>? DbNode(Context cx, ABookmark<int, SqlMatch> gp,
             ABookmark<int, SqlNode> xb, SqlNode xn, ABookmark<long, TableRow> df, TNode? pd)
         {
             var ob = cx.binding;
@@ -4392,15 +4408,15 @@ namespace Pyrrho.Level3
                 }
                 cx.binding = bi;
             }
-            ABookmark<int, CList<SqlNode>>? gf = gp;
+            ABookmark<int, SqlMatch>? gf = gp;
             var xf = xb.Next();
             TNode? dx = dn;// we don't pass in dn if we are starting a new graph
             if (xf == null)  // we have reached the end of a graph in the match
             {
                 dx = null;
                 gf = gp.Next(); // start the next graph
-                if (gf?.value() is CList<SqlNode> g)
-                    xf = g.First();
+                if (gf?.value() is SqlMatch g)
+                    xf = g.graphMatch.First();
             }
             if (gf is null || xf is null) // we have finished the expression and may be able to add a row
                 AddRow(cx);
@@ -4417,7 +4433,7 @@ namespace Pyrrho.Level3
             sb.Append(gDefs);
             sb.Append(')');
             sb.Append(" Graphs (");
-            sb.Append(graphExps);
+            sb.Append(matchExps);
             sb.Append(')');
             if (where != CTree<long, bool>.Empty)
             {

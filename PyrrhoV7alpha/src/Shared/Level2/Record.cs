@@ -328,11 +328,6 @@ namespace Pyrrho.Level2
                     tt += (Table.LastData, ppos);
                     cx.Install(tt, p);
                 }
-        /*        if (tb is NodeType nd
-                    && tb.FindPrimaryIndex(cx) is Level3.Index x
-                    && x.keys[0] is long ip && fields[ip]?.ToString() is string n)
-                    cx.db += (nd is EdgeType et) ? new TEdge(defpos, et, fields)
-                            : new TNode(defpos, nd, fields); */
             }
             catch (DBException e)
             {
@@ -341,8 +336,6 @@ namespace Pyrrho.Level2
                         + e.objects[1].ToString());
                 throw;
             }
-   /*         if (tb is NodeType nt)
-                cx.db += new TNode(defpos, nt, fields); */
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             subType = ost;

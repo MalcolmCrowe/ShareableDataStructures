@@ -768,21 +768,24 @@ namespace Pyrrho.Level3
             var rs = cx.obs[f] as RowSet;
             for (var b = rs?.rowType.First(); b != null; b = b.Next())
                 if (cx.obs[b.value() ?? -1L] is SqlValue sv && sv.name == name
-                    && sv.domain.infos[cx.role.defpos] is ObInfo si
                     && cx.defs[name] is BTree<int, (Iix, Ident.Idents)> t)
                 {
+                    var si = sv.domain.infos[cx.role.defpos];
                     var (ix, ds) = t[cx.sD - 1];
                     cx.undefined -= defpos;
                     cx.defs += (name, new Iix(ix, sv.defpos), ds);
                     for (var c = ds.First(); c != null; c = c.Next())
-                        if (cx.obs[c.value()[cx.sD - 1].Item1.dp] is SqlValue sc && sc.name==c.key())
+                        if (cx.obs[c.value()[cx.sD - 1].Item1.dp] is SqlValue sc && sc.name == c.key())
                         {
                             cx.undefined -= sc.defpos;
-                            sc = new SqlCopy(sc.defpos, cx, sc.name, defpos, 
-                                cx.db.objects[si.names[c.key()].Item2??-1L] as DBObject);
+                            if (si is not null)
+                                sc = new SqlCopy(sc.defpos, cx, sc.name, defpos,
+                                    cx.db.objects[si.names[c.key()].Item2 ?? -1L] as DBObject);
+                            else
+                                sc = new SqlField(sc.defpos, sc.name, -1, defpos, Content, defpos);
                             sv = new SqlValueExpr(defpos, cx, Sqlx.DOT, sv, sc, Sqlx.NO);
                             cx.Add(sv);
-                            cx.Replace(sc,sv);
+                            cx.Replace(sc, sv);
                             cx.Add(sc);
                             break;
                         }

@@ -988,7 +988,7 @@ namespace Pyrrho.Level3
             if (domain.kind==Sqlx.CONTENT && defpos>=0 &&
                 cx._Dom(val) is Domain dv && dv.kind!=Sqlx.CONTENT)
             {
-                var nd = (Domain)New(dv.mem + (domain.mem - Domain.Kind));
+                var nd = (Domain)domain.New(dv.mem + (domain.mem - Domain.Kind));
                 cx.Add(nd);
                 if (nd != domain)
                 {
@@ -1572,7 +1572,12 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue _Eval(Context cx)
         {
-            return (cx.values[from] as TRow)?.values[target]??TNull.Value;
+            var tv = cx.values[from];
+            if (tv is TRow tr) return tr.values[target]??TNull.Value;
+            if (tv is TNode tn && tn.dataType.infos[cx.role.defpos] is ObInfo ni
+                && ni.names[name??"?"].Item2 is long dp)
+                return tn.tableRow.vals[dp] ?? TNull.Value;
+            return TNull.Value;
         }
         public override string ToString()
         {
@@ -1723,9 +1728,7 @@ namespace Pyrrho.Level3
                     dm = dr;
                     nm = left?.name ?? ""; break;
                 case Sqlx.COLLATE: dm = Domain.Char; break;
-                case Sqlx.COLON:
-                    dm = dl;
-                    nm = left?.name ?? ""; break;// JavaScript
+                case Sqlx.COLON:   dm = Domain.Bool; break;  // SPECIFICTYPE
                 case Sqlx.CONCATENATE: dm = Domain.Char; break;
                 case Sqlx.DESC: goto case Sqlx.PLUS; // JavaScript
                 case Sqlx.DIVIDE:
@@ -1920,14 +1923,22 @@ namespace Pyrrho.Level3
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SqlValueExpr)base._Replace(cx, so, sv);
+            var ch = false;
             var lf = cx.ObReplace(left, so, sv);
             if (lf != left)
+            {
+                ch = true;
                 r += (cx, Left, lf);
+            }
             var rg = cx.ObReplace(right, so, sv);
             if (rg != right)
+            {
+                ch = true;
                 r += (cx, Right, rg);
-            if ((domain.kind == Sqlx.UNION || domain.kind == Sqlx.CONTENT) && so.domain != sv.domain &&
-                cx.obs[lf] is SqlValue lv && cx.obs[rg] is SqlValue rv)
+            }
+            if (ch && (domain.kind == Sqlx.UNION || domain.kind == Sqlx.CONTENT)
+                && cx.obs[lf] is SqlValue lv && cx.obs[rg] is SqlValue rv
+                && so.domain != sv.domain)
             {
                 if (_Mem(cx, domain.kind, mod, lv, rv)[_Domain] is not Domain nd)
                     throw new PEException("PE29001");
@@ -2319,6 +2330,14 @@ namespace Pyrrho.Level3
                         }
                         throw new DBException("2H000", "Collate on non-string?").ISO();
                     }
+                case Sqlx.COLON: // SPECIFICTYPE
+                    {
+                        var a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
+                        var b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
+                        if (b is TTypeSpec tt && a.dataType.EqualOrStrongSubtypeOf(tt._dataType))
+                            return TBool.True;
+                        return TBool.False;
+                    }
                 case Sqlx.COMMA: // JavaScript
                     {
                         TypedValue a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
@@ -2383,8 +2402,14 @@ namespace Pyrrho.Level3
                                 return ra.values[dp] ??
                                     ((sc.copyFrom is long cp) ? (ra.values[cp] ?? v) : v);
                         }
-                        if (a is TNode tn && cx.obs[right] is SqlCopy sn)
-                            return tn.tableRow.vals[sn.copyFrom] ?? TNull.Value;
+                        if (a is TNode tn)
+                        {
+                            if (cx.obs[right] is SqlCopy sn)
+                                return tn.tableRow.vals[sn.copyFrom] ?? TNull.Value;
+                            if (cx.obs[right] is SqlField sf && tn.dataType.infos[cx.role.defpos] is ObInfo ni
+                                && ni.names[sf.name ?? "?"].Item2 is long dp)
+                                return tn.tableRow.vals[dp] ?? TNull.Value;
+                        }
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)
                             return v;
@@ -11122,6 +11147,8 @@ cx.obs[high] is not SqlValue hi)
         public long idValue => (long)(mem[IdValue] ?? -1L);
         public BList<long?> label => 
             (BList<long?>)(mem[LabelValue]??BList<long?>.Empty);
+        public CTree<long, bool> search => // can occur in Match GraphExp
+            (CTree<long, bool>)(mem[RowSet._Where] ?? CTree<long, bool>.Empty);
         public CTree<long, TGParam> state =>
             (CTree<long, TGParam>)(mem[State] ?? CTree<long, TGParam>.Empty);
         public Sqlx tok => (Sqlx)(mem[SqlValueExpr.Op] ?? Sqlx.Null);
@@ -11375,6 +11402,10 @@ cx.obs[high] is not SqlValue hi)
                             }
                         }
                     }
+            for (var b = search.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is SqlValue se)
+                    if (se.Eval(cx) != TBool.True)
+                        return false;
             return true;
         }
         public override string ToString()
@@ -11602,6 +11633,91 @@ cx.obs[high] is not SqlValue hi)
             if (tok!=Sqlx.NULL)
             {
                 sb.Append(' ');sb.Append(tok);
+            }
+            return sb.ToString();
+        }
+    }
+    class SqlPath : SqlNode
+    {
+        internal const long
+            MatchQuantifier = -484, // (int,int)
+            Pattern = -485; // CList<SqlNode>
+        internal CList<SqlNode> pattern => (CList<SqlNode>)(mem[Pattern]??CList<SqlNode>.Empty);
+        internal (int, int) quantifier => ((int, int))(mem[MatchQuantifier]??(1, 1));
+        public SqlPath(Context cx, Sqlx m, CList<SqlNode> p, int l, int h)
+            : base(cx.GetUid(), new BTree<long, object>(Pattern,p)+(MatchQuantifier, (l, h)))
+        { }
+        protected SqlPath(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        public static SqlPath operator +(SqlPath e, (long, object) x)
+        {
+            return (SqlPath)e.New(e.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return (SqlPath)New(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new SqlPath(dp, m);
+        }
+        public override string ToString()
+        {
+            var sb= new StringBuilder(base.ToString());
+            var cm = "";
+            sb.Append('[');
+            for (var b=pattern.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ","; sb.Append(b.value());
+            }
+            sb.Append(']');
+            var (l, h) = quantifier;
+            sb.Append('{');sb.Append(l);sb.Append(',');sb.Append(h); sb.Append('}');
+            return sb.ToString();
+        }
+    }
+    class SqlMatch : SqlValue
+    {
+        internal const long
+            GraphMatch = -486, // CList<SqlNode>
+            MatchMode = -483, // Sqlx
+            NodeTypes = -487; // BList<long?> NodeType
+        internal Sqlx mode => (Sqlx)(mem[MatchMode] ?? Sqlx.NONE);
+        internal CList<SqlNode> graphMatch => (CList<SqlNode>)(mem[GraphMatch] ?? CList<SqlNode>.Empty);
+        internal BList<long?> nodeTypes => (BList<long?>)(mem[NodeTypes] ?? BList<long?>.Empty);
+        public SqlMatch(Context cx, Sqlx m, CList<SqlNode> p, BList<long?> u)
+            : base(cx.GetUid(), new BTree<long, object>(MatchMode, m) + (GraphMatch, p) + (NodeTypes, u))
+        { }
+        protected SqlMatch(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        public static SqlMatch operator +(SqlMatch e, (long, object) x)
+        {
+            return (SqlMatch)e.New(e.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return (SqlMatch)New(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new SqlMatch(dp, m);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (nodeTypes != BList<long?>.Empty)
+            {
+                sb.Append(" Using "); sb.Append(nodeTypes);
+            }
+            if (mode != Sqlx.NONE)
+            {
+                sb.Append(' '); sb.Append(mode);
+            }
+            var cm = "";
+            for (var b=graphMatch.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(b.value());
             }
             return sb.ToString();
         }
