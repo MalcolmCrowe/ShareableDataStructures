@@ -7,6 +7,7 @@ using Pyrrho.Level2;
 using System.Configuration;
 using System.Net.NetworkInformation;
 using Pyrrho.Level5;
+using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -206,13 +207,14 @@ namespace Pyrrho.Level4
                 var (id, n) = x;
                 if (id.ident == null || id.ident == "")
                     return t;
-                var ts = Empty;
+                var ts = (id.iix,Empty);
                 var s = t[id.ident]??BTree<int,(Iix,Idents)>.Empty;
-                if (s.Contains(id.iix.sd))
-                    ts = s[id.iix.sd].Item2;
+                if (s[id.iix.sd] is (Iix, Idents) tu)
+                    ts = tu;
+                var ti = ts.Item2;
                 if (id.sub != null && n > 0)
-                    ts += (id.sub, n - 1);
-                return new Idents(t + (id.ident, s+(id.iix.sd,(id.iix, ts))));
+                    ti += (id.sub, n - 1);
+                return new Idents(t + (id.ident, s + (id.iix.sd,(ts.Item1, ti))));
             }
             public static Idents operator-(Idents t,string s)
             {

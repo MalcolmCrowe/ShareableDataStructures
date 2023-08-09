@@ -260,8 +260,8 @@ namespace Pyrrho.Level2
                     }
                 dataType += (Domain.Under, tu);
             }
-            if (dataType is NodeType && !cx.db.graphUsage.Contains(defpos))
-                cx.db += (Database.GraphUsage, cx.db.graphUsage + (defpos, new CTree<long, bool>(defpos, true)));
+   //         if (dataType is NodeType && !cx.db.graphUsage.Contains(defpos))
+   //             cx.db += (Database.GraphUsage, cx.db.graphUsage + (defpos, new CTree<long, bool>(defpos, true)));
             dataType = dataType + (DBObject.Infos, os) + (DBObject.Definer, cx.role.defpos);
             cx.Add(dataType);
             if (cx.db.format < 51)

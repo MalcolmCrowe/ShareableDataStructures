@@ -4349,17 +4349,32 @@ namespace Pyrrho.Level4
             ExplRows = -414; // BList<(long,TRow>)> SqlValue
         internal BList<(long, TRow)> explRows =>
             (BList<(long, TRow)>?)mem[ExplRows] ?? BList<(long, TRow)>.Empty;
+        internal long index => (long)(mem[TableRowSet._Index] ?? -1L);
         /// <summary>
         /// constructor: a set of explicit rows
         /// </summary>
         /// <param name="rt">a row type</param>
         /// <param name="r">a a set of TRows from q</param>
         internal ExplicitRowSet(long dp,Context cx,Domain dt,BList<(long,TRow)>r)
-            : base(dp, dt.mem+(ExplRows,r))
+            : base(dp, _Mem(cx,dt,r))
         {
             cx.Add(this);
         }
         protected ExplicitRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,Domain dt,BList<(long,TRow)>r)
+        {
+            var m = dt.mem + (ExplRows, r);
+            if (r.Length == 0)
+            {
+                var t = new MTree(dt, TreeBehaviour.Ignore, 0);
+                var x = new Level3.Index(cx.GetUid(), 
+                    new BTree<long, object>(Level3.Index.IndexConstraint, PIndex.ConstraintType.Unique)
+                        + (Level3.Index.Keys, dt) + (Level3.Index.Tree,t));
+                cx.Add(x);
+                m += (TableRowSet._Index, x.defpos);
+            }
+            return m;
+        }
         public static ExplicitRowSet operator +(ExplicitRowSet et, (long, object) x)
         {
             var d = et.depth;

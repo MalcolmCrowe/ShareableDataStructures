@@ -54,7 +54,7 @@ namespace Pyrrho.Level2
         {
             leavingType = dm.leavingType;
             arrivingType = dm.arrivingType;
-            GraphUse(cx, defpos, leavingType, arrivingType);
+   //         GraphUse(cx, defpos, leavingType, arrivingType);
         }
         public PEdgeType(string nm, EdgeType nt, Domain? un, long ns, long pp, Context cx) 
             : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) { }
@@ -67,7 +67,7 @@ namespace Pyrrho.Level2
             leavingType = wr.cx.Fix(x.leavingType);
             arrivingType = wr.cx.Fix(x.arrivingType);
             dataType = (EdgeType)et.Fix(wr.cx);
-            GraphUse(wr.cx, defpos, leavingType, arrivingType);
+   //         GraphUse(wr.cx, defpos, leavingType, arrivingType);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -93,9 +93,9 @@ namespace Pyrrho.Level2
             var et = (EdgeType)dataType;
             et = et + (EdgeType.LeavingType,leavingType) + (EdgeType.ArrivingType,arrivingType);
             dataType = et;
-            GraphUse(rdr.context, defpos, leavingType, arrivingType);
+   //         GraphUse(rdr.context, defpos, leavingType, arrivingType);
         }
-        void GraphUse(Context cx, long et,long lt, long at)
+ /*       void GraphUse(Context cx, long et,long lt, long at)
         {
             var gu = cx.db.graphUsage;
             var gt = gu[et] ?? new CTree<long,bool>(et,true);
@@ -104,7 +104,7 @@ namespace Pyrrho.Level2
             var g = gt + gl + ga;
             gu = gu + (et, g) + (lt, g) + (at, g);
             cx.db += (Database.GraphUsage,gu);
-        }
+        } */
         public override string ToString()
         {
             return base.ToString() + "(" + DBObject.Uid(leavingType) + "," + DBObject.Uid(arrivingType)+")";

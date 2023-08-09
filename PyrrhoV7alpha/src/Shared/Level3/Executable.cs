@@ -1,5 +1,6 @@
 using System.Text;
 using Pyrrho.Common;
+using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -4119,6 +4120,8 @@ namespace Pyrrho.Level3
         internal CTree<long,bool> where =>
             (CTree<long, bool>)(mem[RowSet._Where]??CTree<long,bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
+        internal long result => (long)(mem[SqlCall.Result] ??-1L);
+        internal long then => (long)(mem[IfThenElse.Then] ?? -1L);
         public MatchStatement(Context cx, CTree<long,TGParam> gs, CList<SqlMatch> ge, 
             CTree<long,bool> wh, long st)
             : base(cx.GetUid(), _Mem(cx,gs) + (MatchExps,ge) +(RowSet._Where,wh)
@@ -4206,17 +4209,20 @@ namespace Pyrrho.Level3
             var ers = new ExplicitRowSet(ep, cx, dt, BList<(long, TRow)>.Empty);
             if (where!=CTree<long,bool>.Empty)
                 ers += (cx, RowSet._Where, where);
+            cx.obs += (defpos, this + (SqlCall.Result, ep)+(RowSet._Where,where));
             ers += (ObInfo.Names,ns);
             cx.Add(ers);
             cx.result = ers.defpos;
-            RowSet? rrs = null;
+            ExplicitRowSet? rrs = null;
+            Index? ex = null;
             // The presence of a return statement creates a new result rowset
             if (cx.obs[body] is ReturnStatement rs && cx.obs[rs.ret]?.domain is Domain d && d != Domain.Null)
             {
                 if (d.kind != Sqlx.ROW)
                     d = (Domain)cx.Add(new Domain(cx.GetUid(), cx, Sqlx.ROW, 
                         new CTree<long, Domain>(rs.ret,d),new BList<long?>(rs.ret),1));
-                rrs = (RowSet)cx.Add(new ExplicitRowSet(cx.GetUid(), cx, d, BList<(long, TRow)>.Empty));
+                rrs = new ExplicitRowSet(cx.GetUid(), cx, d, BList<(long, TRow)>.Empty);
+                ex = cx.obs[rrs.index] as Index;
             }
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
@@ -4238,13 +4244,22 @@ namespace Pyrrho.Level3
                         if (c.value() is long p)
                             cx.binding += (p, b[p]);
                     e.Obey(cx);
-                    if (rrs is ExplicitRowSet er && cx.val!=TNull.Value)
+                    if (rrs is not null && ex is not null && cx.val!=TNull.Value)
                     {
-                        var tr = cx.val as TRow??new TRow(er, cx.val);
-                        rrs += (ExplicitRowSet.ExplRows, er.explRows + (cx.GetUid(), tr));
+                        var tr = cx.val as TRow??new TRow(rrs, cx.val);
+                        if (ex.MakeKey(tr.values) is CList<TypedValue> k && ex.rows?.Contains(k) != true)
+                        {
+                            var uid = cx.GetUid();
+                            ex += (k, uid);
+                            rrs += (ExplicitRowSet.ExplRows, rrs.explRows + (uid, tr));
+                        }
                     }
                 }
-                cx.result = (rrs is null)?ers.defpos:cx.Add(rrs).defpos;
+                if (rrs is not null && ex is not null)
+                {
+                    cx.obs = cx.obs + (ex.defpos, ex) + (rrs.defpos, rrs);
+                    cx.result = rrs.defpos;
+                }
             }
             else cx.result = ers.defpos;
             cx.binding = ob;
@@ -4253,20 +4268,26 @@ namespace Pyrrho.Level3
         void AddRow(Context cx)
         {
             // everything has been checked
-            if (cx.obs[cx.result] is ExplicitRowSet ers)
+            if (cx.obs[cx.result] is ExplicitRowSet ers && cx.obs[ers.index] is Index ex)
             {
                 if (ers.rowType.Count == 1 && ers.rowType[0] is long p && ers.representation[p] is Domain d)
                 {
                     if (d == Domain.Bool && ers.explRows.Count == 0L)
                         ers += (cx, ExplicitRowSet.ExplRows, new BList<(long, TRow)>((p, new TRow(ers, TBool.True))));
                     else if (d is NodeType && d.defpos < 0 && cx.binding[p] is TNode tn)
-                        ers += (cx, ExplicitRowSet.ExplRows,
-                           ers.explRows + (cx.GetUid(), new TRow(ers,new CTree<long,TypedValue>(p,tn))));
+                    {
+                        var rw = new TRow(ers, new CTree<long, TypedValue>(p, tn));
+                        ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), rw));
+                    }
                     else ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), new TRow(ers, cx.binding)));
                 }
-                else
-                    ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), new TRow(ers, cx.binding)));
-                cx.Add(ers);
+                else if (ex.MakeKey(cx.binding) is CList<TypedValue> k && ex.rows?.Contains(k) != true)
+                {
+                    var uid = cx.GetUid();
+                    ex += (k, uid);
+                    ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (uid, new TRow(ers, cx.binding)));
+                }
+                cx.Add(ex); cx.Add(ers);
             }
         }
         /// <summary>
@@ -4319,7 +4340,7 @@ namespace Pyrrho.Level3
             }
             else if (xn.domain is NodeType nt0 && nt0.defpos > 0)
                 ds += nt0.tableRows;
-            else if (gp.value()?.nodeTypes is BList<long?> use && use!=BList<long?>.Empty)
+      /*      else if (gp.value()?.nodeTypes is BList<long?> use && use!=BList<long?>.Empty)
             {
                 var gu = CTree<long, bool>.Empty;
                 for (var a = use.First(); a != null; a = a.Next())
@@ -4332,7 +4353,7 @@ namespace Pyrrho.Level3
                         for (var c = nt2.tableRows.First(); c != null; c = c.Next())
                             ds += (c.value().defpos, c.value());
                 }
-            }
+            } */
             else
                 for (var b = cx.db.role.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
@@ -4442,6 +4463,10 @@ namespace Pyrrho.Level3
             if (body>=0)
             {
                 sb.Append(" Body "); sb.Append(Uid(body));
+            }
+            if (then>=0)
+            {
+                sb.Append(" THEN "); sb.Append(Uid(then));
             }
             return sb.ToString();
         } 

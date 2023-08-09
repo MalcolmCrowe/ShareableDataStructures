@@ -3344,6 +3344,16 @@ namespace Pyrrho.Level3
             : base(dp, _Inf(cx, m, xp, vs) + (_Depth,cx._DepthBV(vs,xp.depth+1)))
         {
             cx.Add(this);
+        } 
+        internal SqlRow(long dp,Context cx,Domain dm) :base(dp,_Mem(cx,dm))
+        { }
+        static BTree<long, object> _Mem(Context cx, Domain dm)
+        {
+            var m = new BTree<long, object>(_Domain,dm) + (_Depth, dm.depth) + (Domain.Aggs, dm.aggs);
+            for (var b = dm.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is SqlValue sv)
+                    m += (p, sv);
+            return m;
         }
         static BTree<long, object> _Mem(Context cx, BList<DBObject> vs, BTree<long, object>? m)
         {
@@ -3371,6 +3381,7 @@ namespace Pyrrho.Level3
             var dm = (Domain)cx.Add(new Domain(cx.GetUid(),cx,Sqlx.ROW,bs,bs.Length));
             return r + (_Domain,dm);
         }
+
         public static SqlRow operator +(SqlRow et, (long, object) x)
         {
             var d = et.depth;
@@ -11404,8 +11415,17 @@ cx.obs[high] is not SqlValue hi)
                     }
             for (var b = search.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlValue se)
-                    if (se.Eval(cx) != TBool.True)
+                {
+                    var ov = cx.values[defpos];
+                    cx.values += (defpos, n);
+                    var r = se.Eval(cx);
+                    if (ov is null)
+                        cx.values -= defpos;
+                    else
+                        cx.values += (defpos,ov);
+                    if (r != TBool.True)
                         return false;
+                }
             return true;
         }
         public override string ToString()
@@ -11644,8 +11664,8 @@ cx.obs[high] is not SqlValue hi)
             Pattern = -485; // CList<SqlNode>
         internal CList<SqlNode> pattern => (CList<SqlNode>)(mem[Pattern]??CList<SqlNode>.Empty);
         internal (int, int) quantifier => ((int, int))(mem[MatchQuantifier]??(1, 1));
-        public SqlPath(Context cx, Sqlx m, CList<SqlNode> p, int l, int h)
-            : base(cx.GetUid(), new BTree<long, object>(Pattern,p)+(MatchQuantifier, (l, h)))
+        public SqlPath(Context cx, CList<SqlNode> p, (int,int) lh)
+            : base(cx.GetUid(), new BTree<long, object>(Pattern,p)+(MatchQuantifier, lh))
         { }
         protected SqlPath(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -11680,13 +11700,13 @@ cx.obs[high] is not SqlValue hi)
     {
         internal const long
             GraphMatch = -486, // CList<SqlNode>
-            MatchMode = -483, // Sqlx
-            NodeTypes = -487; // BList<long?> NodeType
+            MatchMode = -483; // Sqlx
+    //        NodeTypes = -487; // BList<long?> NodeType
         internal Sqlx mode => (Sqlx)(mem[MatchMode] ?? Sqlx.NONE);
         internal CList<SqlNode> graphMatch => (CList<SqlNode>)(mem[GraphMatch] ?? CList<SqlNode>.Empty);
-        internal BList<long?> nodeTypes => (BList<long?>)(mem[NodeTypes] ?? BList<long?>.Empty);
-        public SqlMatch(Context cx, Sqlx m, CList<SqlNode> p, BList<long?> u)
-            : base(cx.GetUid(), new BTree<long, object>(MatchMode, m) + (GraphMatch, p) + (NodeTypes, u))
+    //    internal BList<long?> nodeTypes => (BList<long?>)(mem[NodeTypes] ?? BList<long?>.Empty);
+        public SqlMatch(Context cx, Sqlx m, CList<SqlNode> p)//, BList<long?> u)
+            : base(cx.GetUid(), new BTree<long, object>(MatchMode, m) + (GraphMatch, p))// + (NodeTypes, u))
         { }
         protected SqlMatch(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -11705,10 +11725,10 @@ cx.obs[high] is not SqlValue hi)
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            if (nodeTypes != BList<long?>.Empty)
+   /*         if (nodeTypes != BList<long?>.Empty)
             {
                 sb.Append(" Using "); sb.Append(nodeTypes);
-            }
+            } */
             if (mode != Sqlx.NONE)
             {
                 sb.Append(' '); sb.Append(mode);

@@ -153,7 +153,7 @@ namespace Pyrrho.Level3
             Curated = -53, // long
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Graphs = -461, // CTree<long,TGraph> the set of disjoint graphs for 7.03
-            GraphUsage = -482, // CTree<long,CTree<long,bool>> NodeType NodeType
+   //         GraphUsage = -482, // CTree<long,CTree<long,bool>> NodeType NodeType
             Guest = -55, // long: a role holding all grants to PUBLIC
             Public = -311, // long: always -1L, a dummy user ID
             LastModified = -279, // DateTime
@@ -210,8 +210,8 @@ namespace Pyrrho.Level3
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
         public CTree<long,TGraph> graphs =>
             (CTree<long,TGraph>)(mem[Graphs]??CTree<long,TGraph>.Empty);
-        public CTree<long,CTree<long,bool>> graphUsage =>
-            (CTree<long, CTree<long, bool>>)(mem[GraphUsage]??CTree<long,CTree<long,bool>>.Empty);
+  /*      public CTree<long,CTree<long,bool>> graphUsage =>
+            (CTree<long, CTree<long, bool>>)(mem[GraphUsage]??CTree<long,CTree<long,bool>>.Empty); */
         internal static Role schemaRole;
         internal static Role guestRole;
         /// <summary>
