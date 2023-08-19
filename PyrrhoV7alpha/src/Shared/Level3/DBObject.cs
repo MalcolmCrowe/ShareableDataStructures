@@ -71,7 +71,7 @@ namespace Pyrrho.Level3
         internal string name => (string)(mem[ObInfo.Name] ?? "");
         public virtual Domain domain => (Domain)(mem[_Domain] ?? Domain.Null);
         /// <summary>
-        /// This list does not include indexes/columns/rows for tables
+        /// This tree does not include indexes/columns/rows for tables
         /// or other obvious structural dependencies
         /// </summary>
         internal CTree<long, bool> dependents =>

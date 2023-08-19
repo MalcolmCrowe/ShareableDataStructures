@@ -42,7 +42,7 @@ namespace Pyrrho.Level4
         /// </summary>
         public Sqlx naturaljoin => (Sqlx)(mem[Natural] ?? Sqlx.NO);
         /// <summary>
-        /// The list of common TableColumns for natural join
+        /// The tree of common TableColumns for natural join
         /// </summary>
         internal BTree<long, long?> joinUsing =>
             (BTree<long, long?>?)mem[JoinUsing] ?? BTree<long, long?>.Empty;
@@ -67,7 +67,7 @@ namespace Pyrrho.Level4
         internal long second => (long)(mem[JSecond]??-1L);
         /// <summary>
         /// Constructor: build the rowset for the Join.
-        /// Important: we have already identified the references and aliases in the select list.
+        /// Important: we have already identified the references and aliases in the select tree.
         /// </summary>
         /// <param name="j">The Join part</param>
 		public JoinRowSet(long dp,Context cx, RowSet lr, Sqlx k,RowSet rr,

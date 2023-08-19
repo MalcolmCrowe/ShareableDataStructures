@@ -62,7 +62,7 @@ namespace Pyrrho.Level3
         /// Constructor: copy with changes
         /// </summary>
         /// <param name="c">The check</param>
-        /// <param name="us">The new list of grantees (including ownership)</param>
+        /// <param name="us">The new tree of grantees (including ownership)</param>
         /// <param name="ow">the owner</param>
         protected Check(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Database db)

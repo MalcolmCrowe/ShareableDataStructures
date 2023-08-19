@@ -179,7 +179,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Return the tree defined by the off-th key columns, or an empty one
         /// </summary>
-        /// <param name="k">A list of key column values</param>
+        /// <param name="k">A tree of key column values</param>
         /// <param name="off">An index into k</param>
         MTree Ensure(CList<TypedValue> k, int off)
         {
@@ -476,7 +476,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Get a ABookmark at the start of partial lookup. 
         /// </summary>
-        /// <param name="m">A list of keys, guaranteed in the right order!</param>
+        /// <param name="m">A tree of keys, guaranteed in the right order!</param>
         /// <returns> T:ATree(long,bool), M:MTree or else TInt</returns>
         public MTreeBookmark? PositionAt(CList<TypedValue> m,int ff)
         {

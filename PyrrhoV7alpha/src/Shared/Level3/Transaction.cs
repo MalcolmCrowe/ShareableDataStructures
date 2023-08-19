@@ -16,7 +16,7 @@ using System.Transactions;
 namespace Pyrrho.Level3
 {
     /// <summary>
-    /// DBObjects with transaction uids are add to the transaction's list of objects.
+    /// DBObjects with transaction uids are add to the transaction's tree of objects.
     /// Transaction itself is not shareable because Physicals are mutable.
     /// 
     /// WARNING: Each new Physical for a transaction must be added to the Context
@@ -830,7 +830,7 @@ namespace Pyrrho.Level3
         /// <param name="grant">true=grant,false=revoke</param>
         /// <param name="pr">the privilege</param>
         /// <param name="obj">the database object</param>
-        /// <param name="grantees">a list of grantees</param>
+        /// <param name="grantees">a tree of grantees</param>
         static ExecuteList DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
             BList<DBObject> grantees)
         {
@@ -849,14 +849,14 @@ namespace Pyrrho.Level3
             return es;
         }
         /// <summary>
-        /// Implement Grant/Revoke on a list of TableColumns
+        /// Implement Grant/Revoke on a tree of TableColumns
         /// </summary>
         /// <param name="grant">true=grant, false=revoke</param>
         /// <param name="tb">the database</param>
         /// <param name="pr">the privileges</param>
         /// <param name="tb">the table</param>
         /// <param name="list">(Privilege,columnnames[])</param>
-        /// <param name="grantees">a list of grantees</param>
+        /// <param name="grantees">a tree of grantees</param>
         static ExecuteList AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, BList<DBObject> grantees)
         {
             var es = ExecuteList.Empty;
@@ -876,8 +876,8 @@ namespace Pyrrho.Level3
         /// Implement grant/revoke on a Role
         /// </summary>
         /// <param name="grant">true=grant, false=revoke</param>
-        /// <param name="roles">a list of Roles (ids)</param>
-        /// <param name="grantees">a list of Grantees</param>
+        /// <param name="roles">a tree of Roles (ids)</param>
+        /// <param name="grantees">a tree of Grantees</param>
         /// <param name="opt">whether with ADMIN option</param>
 		internal ExecuteList AccessRole(Context cx, bool grant, CList<string> rols, BList<DBObject> grantees, bool opt)
         {
@@ -900,7 +900,7 @@ namespace Pyrrho.Level3
         /// <param name="grant">true=grant, false=revoke</param>
         /// <param name="privs">the privileges</param>
         /// <param name="dp">the database object defining position</param>
-        /// <param name="grantees">a list of grantees</param>
+        /// <param name="grantees">a tree of grantees</param>
         /// <param name="opt">whether with GRANT option (grant) or GRANT for (revoke)</param>
         internal ExecuteList AccessObject(Context cx, bool grant, BList<PrivNames> privs, long dp, BList<DBObject> grantees, bool opt)
         {

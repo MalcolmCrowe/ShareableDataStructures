@@ -305,8 +305,8 @@ namespace Pyrrho.Level3
             return false;
         }
         /// <summary>
-        /// We are building a rowset, and resolving entries in the select list.
-        /// We return a BList only to help with SqlStar: otherwise the list always has just one entry.
+        /// We are building a rowset, and resolving entries in the select tree.
+        /// We return a BList only to help with SqlStar: otherwise the tree always has just one entry.
         /// </summary>
         /// <param name="cx">the Context</param>
         /// <param name="f">the new From's defining position</param>
@@ -2354,7 +2354,7 @@ namespace Pyrrho.Level3
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)
                             return v;
-                        if (a is TArray aa && b is TArray bb)
+                        if (a is TList aa && b is TList bb)
                             return b.dataType.Concatenate(aa, bb);
                         return new TChar(b.dataType, a.ToString() + b.ToString());
                     }
@@ -2490,7 +2490,7 @@ namespace Pyrrho.Level3
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)
                             return v;
-                        if (a is TArray aa && b is TInt bb)
+                        if (a is TList aa && b is TInt bb)
                             return aa[bb.value] ?? v;
                         break;
                     }
@@ -2655,7 +2655,7 @@ namespace Pyrrho.Level3
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)
                             return v;
-                        if (a is TArray aa && b is TInt bb)
+                        if (a is TList aa && b is TInt bb)
                             return aa[bb.value] ?? v;
                         break;
                     }
@@ -3947,7 +3947,7 @@ namespace Pyrrho.Level3
             for (var b=rows.First(); b is not null; b=b.Next())
                 if (b.value() is long p && cx.obs[p] is SqlValue v)
                 vs += v.Eval(cx);
-            return new TArray(domain, vs);
+            return new TList(domain, vs);
         }
         internal override RowSet RowSetFor(long dp, Context cx, BList<long?> us,
             CTree<long, Domain> re)
@@ -4435,7 +4435,7 @@ namespace Pyrrho.Level3
                     va += new TRow(q, vs);
                 }
             }
-            return new TArray(domain,va);
+            return new TList(domain,va);
         }
         internal override BTree<long, Register> StartCounter(Context cx,RowSet rs, BTree<long, Register> tg)
         {
@@ -4653,17 +4653,17 @@ namespace Pyrrho.Level3
             if (svs != -1L)
             {
                 var ar = CList<TypedValue>.Empty;
-                if (cx.obs[svs]?.Eval(cx) is TArray ers)
+                if (cx.obs[svs]?.Eval(cx) is TList ers)
                     for (var b = ers.list?.First(); b != null; b = b.Next())
                         if (b.value()[0] is TypedValue v)
                             ar += v;
-                return new TArray(domain, ar);
+                return new TList(domain, ar);
             }
             var vs = BList<TypedValue>.Empty;
             for (var b = array?.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                     vs += cx.obs[p]?.Eval(cx) ?? domain.defaultValue;
-            return new TArray(domain, vs);
+            return new TList(domain, vs);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -5358,7 +5358,7 @@ namespace Pyrrho.Level3
             var rs = BList<TypedValue>.Empty;
             for (var b = ers.First(cx); b != null; b = b.Next(cx))
                 rs += b;
-            return new TArray(domain, rs);
+            return new TList(domain, rs);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -5613,7 +5613,7 @@ namespace Pyrrho.Level3
         /// </summary>
 		public long procdefpos => (long)(mem[ProcDefPos] ?? -1L);
         /// <summary>
-        /// The list of actual parameters
+        /// The tree of actual parameters
         /// </summary>
 		public BList<long?> parms => (BList<long?>)(mem[Parms] ?? BList<long?>.Empty);
         public Domain result => (Domain)(mem[Result] ?? Domain.Null);
@@ -6983,7 +6983,7 @@ namespace Pyrrho.Level3
                             return fc.acc ?? dv;
                         if (fc.mset.tree?.First()?.key().dataType is not Domain de)
                             throw new PEException("PE48183");
-                        var ar = new TArray((Domain)cx.Add(new Domain(cx.GetUid(), Sqlx.ARRAY, de)));
+                        var ar = new TList((Domain)cx.Add(new Domain(cx.GetUid(), Sqlx.ARRAY, de)));
                         for (var d = fc.mset.tree.First(); d != null; d = d.Next())
                             ar += d.key();
                         fc.acc = ar;
@@ -7275,7 +7275,7 @@ namespace Pyrrho.Level3
                                     for (var c = rt.rindexes.First(); c != null; c = c.Next())
                                         if (c.value().First()?.key() is Domain dm
                                             && cx.obs[val] is SqlLiteral sv
-                                            && sv.val is TArray vl)
+                                            && sv.val is TList vl)
                                         {
                                             var i = 0;
                                             for (var db = dm.First(); db != null && i < vl.Length; db = db.Next(), i++)
@@ -7655,7 +7655,7 @@ namespace Pyrrho.Level3
                     fc.bval = false;
                     break;
                 case Sqlx.ARRAY:
-                    fc.acc = new TArray((Domain)cx.Add(
+                    fc.acc = new TList((Domain)cx.Add(
                         new Domain(cx.GetUid(), Sqlx.ARRAY, Domain.Content)));
                     break;
                 case Sqlx.COUNT:
@@ -9580,7 +9580,7 @@ cx.obs[high] is not SqlValue hi)
     {
         public long what => (long)(mem[QuantifiedPredicate.What]??-1L);
         /// <summary>
-        /// In, or not in, a list of values, a rowset or a collection-valued scalar expression
+        /// In, or not in, a tree of values, a rowset or a collection-valued scalar expression
         /// </summary>
         public bool found => (bool)(mem[QuantifiedPredicate.Found]??false);
         /// <summary>
@@ -9588,7 +9588,7 @@ cx.obs[high] is not SqlValue hi)
         /// </summary>
         public long select => (long)(mem[QuantifiedPredicate._Select]??-1L); // or
         /// <summary>
-        /// The list of values option
+        /// The tree of values option
         /// </summary>
         public BList<long?> vals => (BList<long?>)(mem[QuantifiedPredicate.Vals]??BList<long?>.Empty);
         public long val => (long)(mem[SqlFunction._Val] ?? -1L);
@@ -10280,7 +10280,7 @@ cx.obs[high] is not SqlValue hi)
         /// </summary>
         public bool found => (bool)(mem[MemberPredicate.Found]??false);
         /// <summary>
-        /// the right operand: a list of Domain
+        /// the right operand: a tree of Domain
         /// </summary>
         public BList<Domain> rhs => 
             (BList<Domain>)(mem[MemberPredicate.Rhs] ?? BList<Domain>.Empty); // naughty: MemberPreciate Rhs is SqlValue
@@ -11202,6 +11202,14 @@ cx.obs[high] is not SqlValue hi)
         {
             return cx.GType(label.Last()?.value());
         }
+        internal virtual int MinLength(Context cx)
+        {
+            return 0;
+        }
+        internal virtual SqlNode Add(Context cx, SqlNode? an,CTree<long,TGParam> tgs)
+        {
+            return (SqlNode)cx.Add(this + (State,tgs + state));
+        }
         protected virtual (NodeType,CTree<Sqlx,TypedValue>) 
             _NodeType(Context cx, CTree<string,SqlValue> ls, NodeType dt)
         {
@@ -11225,7 +11233,7 @@ cx.obs[high] is not SqlValue hi)
             // the first part of the label is the least specific type (it may exist already).
             // it may be that all node/edge types for all parts of the label exist already
             // certainly the predecessor of an existing node must exist.
-            // if the last one is undefined we will build it using the given property list
+            // if the last one is undefined we will build it using the given property tree
             // (if it is defined we may add properties to it)
             // if types earlier in the label are unbdefined we will create them here
             // This loop traverses the given type label: watch for the position of the last component
@@ -11251,6 +11259,10 @@ cx.obs[high] is not SqlValue hi)
                         md += (Sqlx.NODE, new TChar(sd));
                         if (bn != null) // Immediately build a type if not the last
                         {
+                            if (cx.db.objects[cx.role.defpos] is Role rr
+                                && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
+                                gt = ht;
+                            else
                             (gt, _) = gt.Build(cx, dt, ls, md);
                             ls = CTree<string, SqlValue>.Empty;
                         }
@@ -11280,7 +11292,7 @@ cx.obs[high] is not SqlValue hi)
             // we now have our NodeType nt and the names sd, il and ia of special columns
             // if nt is not built in the database yet we have the metadata we need to build it.
             // At this point, non-special properties matching those from dt
-            // or new ones, may be provided in a Document. We prepare a list
+            // or new ones, may be provided in a Document. We prepare a tree
             for (var lb = dt.pathDomain.First(); lb != null; lb = lb.Next())
                 if (lb.value() is long pl && cx.obs[pl] is TableColumn tc
                         && tc.infos[cx.role.defpos] is ObInfo ti && ti.name is string cn)
@@ -11294,6 +11306,9 @@ cx.obs[high] is not SqlValue hi)
             // We are now ready to check or build the node type nt
             if (nt.defpos >= 0 && nt.defpos < Transaction.Analysing)
                 nt = nt.Check(cx, ls);
+            else if (cx.db.objects[cx.role.defpos] is Role rr
+                                && cx.db.objects[rr.dbobjects[nt.name ?? "_"] ?? -1L] is NodeType ot)
+                nt = ot;
             else
                 (nt, ls) = nt.Build(cx, dt, ls, md); // dt is supertype
             nd += (_Domain, nt);
@@ -11374,6 +11389,12 @@ cx.obs[high] is not SqlValue hi)
             }
             return ls;
         } 
+        internal bool CheckProps1(Context cx,TNode n)
+        {
+            if (cx.binding[idValue] is TNode tn && tn.tableRow.defpos!=n.tableRow.defpos)
+                return false;
+            return CheckProps(cx, n);
+        }
         /// <summary>
         /// This method is called during Match, so this.domain is not helpful.
         /// </summary>
@@ -11449,6 +11470,15 @@ cx.obs[high] is not SqlValue hi)
                     sb.Append(Uid(b.key())); sb.Append('='); sb.Append(Uid(p));
                 }
             if (cm == ",") sb.Append('}');
+            if (search!=CTree<long,bool>.Empty)
+            {   sb.Append(" where ["); cm = ""; 
+                for (var b=search.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm);cm = ",";
+                    sb.Append(DBObject.Uid(b.key()));
+                }
+                sb.Append(']');
+            }
             cm = " ";
             for (var b = state.First(); b != null; b = b.Next())
                 if (b.key() < 0 && b.value() is TGParam ts)
@@ -11480,6 +11510,7 @@ cx.obs[high] is not SqlValue hi)
             LeavingValue = -478;   // long SqlValue
         public long arrivingValue => (long)(mem[ArrivingValue]??-1L);
         public long leavingValue => (long)(mem[LeavingValue]??-1L);
+        public Sqlx direction => (Sqlx)(mem[SqlValueExpr.Op] ?? Sqlx.NO); // ARROWBASE or ARROW
         public SqlEdge(Ident nm, Context cx, Sqlx t, long i, long l, long a, BList<long?> la, 
             BTree<long, long?>? d, CTree<long, TGParam> tgs, NodeType? dm=null)
             : base(nm, cx, i, la,d, tgs,dm??Domain.EdgeType, BTree<long,object>.Empty
@@ -11499,8 +11530,12 @@ cx.obs[high] is not SqlValue hi)
         {
             return new SqlEdge(dp, m);
         }
+        internal override int MinLength(Context cx)
+        {
+            return 1;
+        }
         protected override (NodeType,CTree<Sqlx,TypedValue>) 
-            _NodeType(Context cx, CTree<string,SqlValue> ls, NodeType dt)
+          _NodeType(Context cx, CTree<string,SqlValue> ls, NodeType dt)
         {
             var nd = this;
             //  nd for an edge will have a specific leavingnode and a specific arrivingnode 
@@ -11508,12 +11543,12 @@ cx.obs[high] is not SqlValue hi)
             var lS = cx.obs[nd.leavingValue] as SqlNode;
             var lI = lS?.idValue ?? -1L;
             var lg = cx.nodes[lI] ?? cx.binding[lI];
-            var lT = lg?.dataType??lS?.domain;
+            var lT = cx.obs[lI]?.domain??lg?.dataType??lS?.domain;
             var lN = lT?.name;
             var aS = cx.obs[nd.arrivingValue] as SqlNode;
             var aI = aS?.idValue ?? -1L;
             var ag = cx.nodes[aI] ?? cx.binding[aI];
-            var aT = ag?.dataType??aS?.domain;
+            var aT = cx.obs[aI]?.domain??ag?.dataType??aS?.domain;
             var aN = aT?.name;
             // a label with at least one char SqlValue must be here
             // evaluate them all as TTypeSpec or TChar
@@ -11529,7 +11564,7 @@ cx.obs[high] is not SqlValue hi)
             // the first part of the label is the least specific type (it may exist already).
             // it may be that all node/edge types for all parts of the label exist already
             // certainly the predecessor of an existing node must exist.
-            // if the last one is undefined we will build it using the given property list
+            // if the last one is undefined we will build it using the given property tree
             // (if it is defined we may add properties to it)
             // if types earlier in the label are unbdefined we will create them here
             // This loop traverses the given type label: watch for the position of the last component
@@ -11571,6 +11606,10 @@ cx.obs[high] is not SqlValue hi)
                                     md += (Sqlx.ARROW, new TChar(aN));
                                 if (bn != null) // Immediately build a type if not the last
                                 {
+                                    if (cx.db.objects[cx.role.defpos] is Role rr
+                                        && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
+                                        gt = ht;
+                                    else
                                     (gt, _) = gt.Build(cx, dt, ls, md);
                                     ls = CTree<string, SqlValue>.Empty;
                                 }
@@ -11607,6 +11646,26 @@ cx.obs[high] is not SqlValue hi)
                 ?? throw new DBException("42105");
             var bt = (cx.db.objects[nt] as NodeType) ?? throw new DBException("42105");
             if (!at.EqualOrStrongSubtypeOf(bt)) throw new DBException("22G0K", gt.infos[cx.role.defpos]?.name??"??");
+        }
+        internal override SqlNode Add(Context cx, SqlNode? an, CTree<long, TGParam> tgs)
+        {
+            if (an is null)
+                throw new DBException("22G0L");
+            tgs += state;
+            var r = this;
+            if (an.state[an.defpos] is TGParam lg)
+                if (direction == Sqlx.ARROWBASE)
+                {
+                    tgs += (-(int)Sqlx.ARROW, lg);
+                    r += (ArrivingValue, an.defpos);
+                }
+                else
+                {
+                    tgs += (-(int)Sqlx.RARROWBASE, lg);
+                    r += (LeavingValue, an.defpos);
+                }
+            r += (State, tgs);
+            return (SqlEdge)cx.Add(r);
         }
         protected override CTree<string, SqlValue> _AddEnds(Context cx, CTree<string, SqlValue> ls)
         {
@@ -11657,15 +11716,16 @@ cx.obs[high] is not SqlValue hi)
             return sb.ToString();
         }
     }
-    class SqlPath : SqlNode
+    class SqlPath : SqlEdge
     {
         internal const long
             MatchQuantifier = -484, // (int,int)
-            Pattern = -485; // CList<SqlNode>
-        internal CList<SqlNode> pattern => (CList<SqlNode>)(mem[Pattern]??CList<SqlNode>.Empty);
+            Pattern = -485; // BList<long?>
+        internal BList<long?> pattern => (BList<long?>)(mem[Pattern]??BList<long?>.Empty);
         internal (int, int) quantifier => ((int, int))(mem[MatchQuantifier]??(1, 1));
-        public SqlPath(Context cx, CList<SqlNode> p, (int,int) lh)
-            : base(cx.GetUid(), new BTree<long, object>(Pattern,p)+(MatchQuantifier, lh))
+        public SqlPath(Context cx, BList<long?> p, (int, int) lh, long i, long a)
+            : base(cx.GetUid(),new BTree<long, object>(Pattern,p)+(MatchQuantifier, lh)
+                  +(LeavingValue,i)+(ArrivingValue,a))
         { }
         protected SqlPath(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -11681,6 +11741,37 @@ cx.obs[high] is not SqlValue hi)
         {
             return new SqlPath(dp, m);
         }
+        internal override int MinLength(Context cx)
+        {
+            var m = 0;
+            for (var b = pattern.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()??-1L] is SqlNode p)
+                    m += p.MinLength(cx);
+            return quantifier.Item1 * m;
+        }
+        internal override SqlNode Add(Context cx, SqlNode? an, CTree<long, TGParam> tgs)
+        {
+            var r = this;
+            tgs += state;
+            SqlEdge? last = null;
+            for (var b = pattern.Last(); b != null && last is null; b = b.Next())
+                last = cx.obs[b.value() ?? -1L] as SqlEdge;
+            if (an?.state[an.defpos] is TGParam lg)
+                if (direction == Sqlx.ARROWBASE)
+                {
+                    tgs += (-(int)Sqlx.ARROW, lg);
+                    if (last is not null)
+                        cx.Add(last+(ArrivingValue, an.defpos));
+                }
+                else
+                {
+                    tgs += (-(int)Sqlx.RARROWBASE, lg);
+                    if (last is not null)
+                        cx.Add(last+(LeavingValue, an.defpos));
+                }
+            r += (State, tgs);
+            return (SqlNode)cx.Add(r);
+        }
         public override string ToString()
         {
             var sb= new StringBuilder(base.ToString());
@@ -11688,7 +11779,7 @@ cx.obs[high] is not SqlValue hi)
             sb.Append('[');
             for (var b=pattern.First();b!=null;b=b.Next())
             {
-                sb.Append(cm); cm = ","; sb.Append(b.value());
+                sb.Append(cm); cm = ","; sb.Append(Uid(b.value()??-1L));
             }
             sb.Append(']');
             var (l, h) = quantifier;
@@ -11699,15 +11790,33 @@ cx.obs[high] is not SqlValue hi)
     class SqlMatch : SqlValue
     {
         internal const long
-            GraphMatch = -486, // CList<SqlNode>
-            MatchMode = -483; // Sqlx
-    //        NodeTypes = -487; // BList<long?> NodeType
+            MatchExps = -487, // BList<long?> SqlNode
+            MatchMode = -483, // Sqlx
+            PathId = -488;  // long
         internal Sqlx mode => (Sqlx)(mem[MatchMode] ?? Sqlx.NONE);
-        internal CList<SqlNode> graphMatch => (CList<SqlNode>)(mem[GraphMatch] ?? CList<SqlNode>.Empty);
-    //    internal BList<long?> nodeTypes => (BList<long?>)(mem[NodeTypes] ?? BList<long?>.Empty);
-        public SqlMatch(Context cx, Sqlx m, CList<SqlNode> p)//, BList<long?> u)
-            : base(cx.GetUid(), new BTree<long, object>(MatchMode, m) + (GraphMatch, p))// + (NodeTypes, u))
-        { }
+        internal long pathId => (long)(mem[PathId] ?? -1L);
+        internal BList<long?> matchExps => (BList<long?>)(mem[MatchExps] ?? BList<long?>.Empty);
+        public SqlMatch(Context cx, Sqlx m, BList<long?> p, long pp)
+            : base(cx.GetUid(), new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp))
+        {
+            var min = 0; // minimum path length
+            var hasPath = false;
+            for (var b = p.First(); b != null; b = b.Next())
+            {
+                if (cx.obs[b.value() ?? -1L] is SqlNode sn)
+                {
+                    min += sn.MinLength(cx);
+                    if (sn is SqlPath sp)
+                    {
+                        hasPath = true;
+                        if (m == Sqlx.ALL && sp.quantifier.Item2 < 0)
+                            throw new DBException("22G0M");
+                    }
+                }
+            }
+            if (hasPath && min <= 0)
+                throw new DBException("22G0N");
+        }
         protected SqlMatch(long dp, BTree<long, object> m) : base(dp, m)
         { }
         public static SqlMatch operator +(SqlMatch e, (long, object) x)
@@ -11725,20 +11834,21 @@ cx.obs[high] is not SqlValue hi)
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-   /*         if (nodeTypes != BList<long?>.Empty)
-            {
-                sb.Append(" Using "); sb.Append(nodeTypes);
-            } */
             if (mode != Sqlx.NONE)
             {
                 sb.Append(' '); sb.Append(mode);
             }
-            var cm = "";
-            for (var b=graphMatch.First();b!=null;b=b.Next())
+            if (pathId>=0)
+            {
+                sb.Append(' ');sb.Append(DBObject.Uid(pathId));
+            }
+            var cm = " [";
+            for (var b=matchExps.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(b.value());
+                sb.Append(Uid(b.value()??-1L));
             }
+            if (cm == ",") sb.Append(']');
             return sb.ToString();
         }
     }

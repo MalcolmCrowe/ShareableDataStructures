@@ -569,7 +569,7 @@ namespace Pyrrho.Level1
                 {
                     PutString(Domain.NameFor(_cx, p, b.key()));
                     var c = r[p];
-                    if (c is TArray ta && ta.Length >= 1)
+                    if (c is TList ta && ta.Length >= 1)
                         c = ta[0];
                     c = d.Coerce(_cx, c);
                     PutString(d.name);
@@ -581,17 +581,28 @@ namespace Pyrrho.Level1
         /// Send an Array value to the client
         /// </summary>
         /// <param name="a">the Array</param>
-        internal void PutArray(Context _cx, TArray a)
+        internal void PutArray(Context _cx, TypedValue a)
         {
             PutString("ARRAY");
-            int n = a.Length;
-            var et = a.dataType.elType ??
-                ((a.Length > 0) ? a[0].dataType : Domain.Content);
-            PutString(et.ToString());
-            PutInt(et.Typecode());
-            PutInt(n);
-            for (int j = 0; j < n; j++)
-                PutCell(_cx,et, a[j]);
+            if (a is TArray ta)
+            {
+                int n = ta.Length;
+                var et = a.dataType.elType ?? throw new DBException("22005");
+                PutString(et.ToString());
+                PutInt(et.Typecode());
+                PutInt(n);
+                for (var b = ta.array.First(); b != null; b = b.Next())
+                    PutCell(_cx, et, b.value());
+            } else if (a is TList tl)
+            {
+                int n = tl.Length;
+                var et = tl.dataType.elType ?? throw new DBException("22005");
+                PutString(et.ToString());
+                PutInt(et.Typecode());
+                PutInt(n);
+                for (var b = tl.list.First(); b != null; b = b.Next())
+                    PutCell(_cx, et, b.value());
+            }
         }
         /// <summary>
         /// send a Multiset to the client
@@ -648,7 +659,7 @@ namespace Pyrrho.Level1
             Write(b, 0, b.Length);
         }
         /// <summary>
-        /// Send the list of filename to the client
+        /// Send the tree of filename to the client
         /// </summary>
         internal void PutFileNames()
         {
@@ -1019,7 +1030,7 @@ namespace Pyrrho.Level1
                     }
                 case Sqlx.REF:
                 case Sqlx.ROW: PutRow(_cx, (TRow)tv); break; // different!
-                case Sqlx.ARRAY: PutArray(_cx, (TArray)tv); break;
+                case Sqlx.ARRAY: PutArray(_cx, tv); break;
                 case Sqlx.SET:
                     {
                         if (tv is TSet d)
@@ -1070,7 +1081,7 @@ namespace Pyrrho.Level1
         /// <summary>
         /// obs transfer API
         /// </summary>
-        /// <returns>a list of strings from the stream</returns>
+        /// <returns>a tree of strings from the stream</returns>
         internal string[] GetStrings()
         {
             int n = GetInt();

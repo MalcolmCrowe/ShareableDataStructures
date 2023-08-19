@@ -511,7 +511,7 @@ namespace Pyrrho.Level2
         /// restart from the last Physical boundary.This time if the record is incomplete
         /// we throw an exception.
         /// </summary>
-        /// <returns>The list of concurrent physicals</returns>
+        /// <returns>The tree of concurrent physicals</returns>
         internal BList<Physical> GetAll()
         {
             var r = BList<Physical>.Empty;

@@ -370,14 +370,16 @@ namespace Pyrrho.Level4
 		public Sqlx tok, prevtok = Sqlx.Null;
         public Sqlx pushBack = Sqlx.Null;
         public long offset;
+        public TGParam.Type tgg = TGParam.Type.None;
         public long Position => offset + start;
         /// <summary>
         /// The current token's value
         /// </summary>
 		public TypedValue val = TNull.Value, prevval = TNull.Value;
         public TypedValue pushVal = TNull.Value;
+        public bool ParsingMatch = false;
         private readonly Context cx; // only used for type prefix/suffix things
-        public CTree<long,TGParam>? tgs = null; // TGParam wizardry
+        public CTree<long,TGParam> tgs = CTree<long,TGParam>.Empty; // TGParam wizardry
         /// <summary>
         /// Entries in the reserved word table
         /// If there are more than 2048 reserved words, the server will hang
@@ -505,9 +507,13 @@ namespace Pyrrho.Level4
             tok = old;
             return tok;
         }
+        static Domain NodeArray = new Domain(-999, Sqlx.ARRAY, Domain.NodeType);
+        static Domain CharArray = new Domain(-998, Sqlx.ARRAY, Domain.Char);
         Sqlx MaybePrefix(string s)
         {
             var vo = (val is TChar tc) ? tc.value : s;
+            var gd = (tgg == TGParam.Type.None) ? Domain.NodeType : NodeArray;
+            var gc = (tgg == TGParam.Type.None) ? Domain.Char : CharArray;
             if (cx.defs[vo]?[cx.sD].Item1 is not null || cx.role.dbobjects.Contains(s))
                 return tok;
             if (cx.parse == ExecuteStatus.Obey && cx.db is not null 
@@ -532,14 +538,14 @@ namespace Pyrrho.Level4
             switch (prevtok){
                     case Sqlx.LPAREN:
                         {
-                            var tg = new TGParam(Position, vo, Domain.NodeType);
+                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Node|tgg);
                             tgs += (tg.uid, tg);
                             break;
                         }
                     case Sqlx.ARROWBASE:
                     case Sqlx.RARROW:
                         {
-                            var tg = new TGParam(Position, vo, Domain.NodeType);
+                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Edge|tgg);
                             tgs += (tg.uid, tg);
                             break;
                         }
@@ -548,7 +554,7 @@ namespace Pyrrho.Level4
                         break;
                     default:
                         {
-                            var tg = new TGParam(Position, vo, Domain.Char);
+                            var tg = new TGParam(Position, vo, gc, TGParam.Type.None|tgg);
                             tgs += (tg.uid, tg);
                             break;
                         }

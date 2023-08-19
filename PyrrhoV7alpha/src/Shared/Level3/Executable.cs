@@ -1,4 +1,6 @@
+using System.Diagnostics.Metrics;
 using System.Text;
+using System.Xml.XPath;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -21,7 +23,7 @@ namespace Pyrrho.Level3
     /// This class provides machinery to support control statements in stored procedures.
     /// Control statements (blocks) generally ovveride this basic infrastructure.
     /// The behaviour of condition handlers and loops requires some infrastructure here.
-    /// By default a compound statement executes its list of statements in sequence. But this ordering can be disturbed,
+    /// By default a compound statement executes its tree of statements in sequence. But this ordering can be disturbed,
     /// and the transaction.breakto if not null will pop blocks off the stack until we catch the break.
     /// Show example RETURN will set breakto to the previous stack (dynLink), as will the execution of an EXIT handler.
     /// CONTINUE will set breakto to the end of the enlcosing looping construct.
@@ -43,7 +45,7 @@ namespace Pyrrho.Level3
             : base(dp, m??BTree<long, object>.Empty) { }
         internal Executable(long dp, string s) : base(dp,new BTree<long,object>(Stmt,s)) { }
         /// <summary>
-        /// Support execution of a list of Executables, in an Activation.
+        /// Support execution of a tree of Executables, in an Activation.
         /// With break behaviour
         /// </summary>
         /// <param name="e">The Executables</param>
@@ -271,7 +273,7 @@ namespace Pyrrho.Level3
         internal const long
              Stms = -96; // BList<long?> Executable
         /// <summary>
-        /// The contained list of Executables
+        /// The contained tree of Executables
         /// </summary>
 		public BList<long?> stms =>
             (BList<long?>?)mem[Stms] ?? BList<long?>.Empty;
@@ -346,6 +348,7 @@ namespace Pyrrho.Level3
             var act = new Activation(cx, label ?? "") { binding=cx.binding};
             act = (Activation)ObeyList(stms, act);
             act.signal?.Throw(cx);
+            cx.db = act.db;
             return act.SlideDown();
         }
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -792,7 +795,7 @@ namespace Pyrrho.Level3
         /// </summary>
 		public Sqlx htype => (Sqlx)(mem[HType]??Sqlx.EXIT);
         /// <summary>
-        /// A list of condition names, SQLSTATE codes, "SQLEXCEPTION", "SQLWARNING", or "NOT_FOUND"
+        /// A tree of condition names, SQLSTATE codes, "SQLEXCEPTION", "SQLWARNING", or "NOT_FOUND"
         /// </summary>
 		public BList<string> conds => 
             (BList<string>?)mem[Conds]?? BList<string>.Empty;
@@ -1182,7 +1185,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// A multiple assignment statement for a stored procedure.
     /// The right hand side must be row valued, and the left hand side is a
-    /// list of variable identifiers.
+    /// tree of variable identifiers.
     /// 
     /// </summary>
     internal class MultipleAssignment : Executable
@@ -1192,7 +1195,7 @@ namespace Pyrrho.Level3
             List = -108, // BList<long?> SqlValue
             Rhs = -109; // long SqlValue
         /// <summary>
-        /// The list of identifiers
+        /// The tree of identifiers
         /// </summary>
         internal BList<long?> list => (BList<long?>?)mem[List]??BList<long?>.Empty;
         /// <summary>
@@ -1443,7 +1446,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public long operand => (long)(mem[_Operand]??-1L);
         /// <summary>
-        /// A list of when parts
+        /// A tree of when parts
         /// </summary>
         public BList<long?> whens => (BList<long?>?)mem[Whens]?? BList<long?>.Empty;
         /// <summary>
@@ -1587,7 +1590,7 @@ namespace Pyrrho.Level3
 	internal class SearchedCaseStatement : Executable
 	{
         /// <summary>
-        /// A list of when parts
+        /// A tree of when parts
         /// </summary>
 		public BList<long?> whens => (BList<long?>?)mem[SimpleCaseStatement.Whens]??BList<long?>.Empty;
         /// <summary>
@@ -1729,14 +1732,14 @@ namespace Pyrrho.Level3
         /// </summary>
 		public long cond => (long)(mem[Cond]??-1L);
         /// <summary>
-        /// a list of statements
+        /// a tree of statements
         /// </summary>
 		public BList<long?> stms =>(BList<long?>?)mem[Stms]?? BList<long?>.Empty;
         /// <summary>
         /// Constructor: A searched when part from the parser
         /// </summary>
         /// <param name="v">A search condition</param>
-        /// <param name="s">A list of statements for this when</param>
+        /// <param name="s">A tree of statements for this when</param>
         public WhenPart(long dp,SqlValue v, BList<long?> s) 
             : base(dp, BTree<long, object>.Empty+(Cond,v.defpos)+(Stms,s))
         { }
@@ -1999,7 +2002,7 @@ namespace Pyrrho.Level3
         internal const long
             Nsps = -120; // CTree<string,string>
         /// <summary>
-        /// A list of namespaces to be added
+        /// A tree of namespaces to be added
         /// </summary>
         public CTree<string, string> nsps => (CTree<string,string>?)mem[Nsps]
             ??CTree<string,string>.Empty;
@@ -2207,7 +2210,7 @@ namespace Pyrrho.Level3
         /// </summary>
 		public long search => (long)(mem[WhileStatement.Search]??-1L);
         /// <summary>
-        /// The list of statements to execute at least once
+        /// The tree of statements to execute at least once
         /// </summary>
 		public BList<long?> what => (BList<long?>?)mem[WhileStatement.What]??BList<long?>.Empty;
          /// <summary>
@@ -2839,7 +2842,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public long where => (long)(mem[Where]??-1L);
         /// <summary>
-        /// The list of assignable expressions to receive values
+        /// The tree of assignable expressions to receive values
         /// </summary>
 		public BList<long?> outs => (BList<long?>?)mem[Outs]?? BList<long?>.Empty; 
         /// <summary>
@@ -3509,14 +3512,14 @@ namespace Pyrrho.Level3
         /// </summary>
 		public long sel => (long)(mem[ForSelectStatement.Sel] ?? -1L);
         /// <summary>
-        /// The output list
+        /// The output tree
         /// </summary>
 		public BList<long?> outs => (BList<long?>?)mem[Outs] ?? BList<long?>.Empty;
         /// <summary>
         /// Constructor: a select statement: single row from the parser
         /// </summary>
         /// <param name="s">The select statement</param>
-        /// <param name="sv">The list of variables to receive the values</param>
+        /// <param name="sv">The tree of variables to receive the values</param>
 		public SelectSingle(long dp) : base(dp, BTree<long, object>.Empty)
         { }
         protected SelectSingle(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -3620,7 +3623,7 @@ namespace Pyrrho.Level3
 
     }
     /// <summary>
-    /// The Insert columns list if provided is an ordered list of some or all of the from's columns.
+    /// The Insert columns tree if provided is an ordered tree of some or all of the from's columns.
     /// This will match the row type of the data rowset. 
     /// If present the data rowset needs to have its columns reordered and expanded by nulls to
     /// match the from row set.
@@ -4091,14 +4094,14 @@ namespace Pyrrho.Level3
     /// The Match syntax consists of a graph expression, an optional where condition and an optional action part.
     /// Parsing of the grap expression results in a collection of unbound identifiers and a collection
     /// of constraints.
-    /// Like the CREATE syntax, a graph expression consists of a list of node-edge-node chains.
+    /// Like the CREATE syntax, a graph expression consists of a tree of node-edge-node chains.
     /// The graph expression cannot contain subtype references or SqlExpressions and does not construct any nodes:
     /// all identifiers are either unbound starting with _ (_ on its own means don't care)
     /// or constant identfiers or values that are used for matching subgraphs.
     /// Unbound identiers (other than _ itself) are progressively bound to particular values, and their
     /// bindings are added to the constraints. 
     /// Evaluation of the match expression traverses all of the nodes/edges in the database 
-    /// building a binding list. This maximal graph object is maintained for the Database
+    /// building a binding tree. This maximal graph object is maintained for the Database
     /// Traversal occurs for each possible set of bindings, in lexicographic order of the identifiers
     /// and constraints in the graph expression. Each line of the graph expression must begin with a node
     /// so at the start of a line there may be a new unbound (or don't care) node for which there are a 
@@ -4112,17 +4115,17 @@ namespace Pyrrho.Level3
     {
         internal const long
             GDefs = -210,   // CTree<long,TGParam>
-            MatchExps = -487; // CList<SqlMatch>
+            MatchExps = -487; // BList<long?>
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
-        internal CList<SqlMatch> matchExps => // allows SqlNode alternating with SqlEdge,SqlPath
-            (CList<SqlMatch>)(mem[MatchExps] ?? CList<SqlMatch>.Empty);
+        internal BList<long?> matchExps => // allows SqlNode alternating with SqlEdge,SqlPath
+            (BList<long?>)(mem[MatchExps] ?? BList<long?>.Empty);
         internal CTree<long,bool> where =>
             (CTree<long, bool>)(mem[RowSet._Where]??CTree<long,bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
         internal long result => (long)(mem[SqlCall.Result] ??-1L);
         internal long then => (long)(mem[IfThenElse.Then] ?? -1L);
-        public MatchStatement(Context cx, CTree<long,TGParam> gs, CList<SqlMatch> ge, 
+        public MatchStatement(Context cx, CTree<long,TGParam> gs, BList<long?> ge, 
             CTree<long,bool> wh, long st)
             : base(cx.GetUid(), _Mem(cx,gs) + (MatchExps,ge) +(RowSet._Where,wh)
                   +(Procedure.Body,st))
@@ -4169,6 +4172,16 @@ namespace Pyrrho.Level3
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new MatchStatement(dp,m);
+        }
+        internal class PathStack
+        {
+            internal int count;
+            internal SqlPath match;
+            internal ABookmark<int, long?>? xb;
+            internal PathStack? next = null;
+            internal BTree<TList,bool> history = BTree<TList,bool>.Empty;
+            internal PathStack(int c, SqlPath m, ABookmark<int,long?>? x, PathStack? n)
+            { count = c; match = m; xb = x; next = n; }
         }
         /// <summary>
         /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.
@@ -4227,23 +4240,36 @@ namespace Pyrrho.Level3
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
             var ob = cx.binding;
+            cx.paths = CTree<long, TList>.Empty;
+            cx.trail = new TList(Domain.NodeType);
             var gf = matchExps.First();
-            if (gf?.value() is SqlMatch sm)
+            if (cx.obs[gf?.value()??-1L] is SqlMatch sm)
             {
-                var xf = sm.graphMatch.First();
+                var tl = cx.trail.Length;
+                var xf = sm.matchExps.First();
                 if (gf is not null && xf is not null)
-                    ExpNode(cx, gf, xf, Sqlx.Null, null);
+                    ExpNode(cx, gf, sm.mode, xf, Sqlx.Null, null);
             }
+            var sn = ((Transaction)cx.db).physicals.Count;
             if (cx._Ob(body) is Executable e)
             {
                 cx.nodes += gDefs;
                 for (var b = (cx.obs[ers.defpos] as RowSet)?.First(cx); b != null; b = b.Next(cx))
                 {
                     cx.binding = ob;
+                    var ac = new Activation(cx, "" + defpos);
                     for (var c = ers.First(); c != null; c = c.Next())
-                        if (c.value() is long p)
-                            cx.binding += (p, b[p]);
-                    e.Obey(cx);
+                        if (c.value() is long p && gDefs[p] is TGParam g)
+                        {
+                            var v = b[p]??TNull.Value;
+                            if (v is TList vl && g.type!=TGParam.Type.Path)
+                                v = vl.list[b._pos]??TNull.Value;
+                            ac.binding += (p, v);
+                        }
+                    e.Obey(ac);
+                    ac.SlideDown();
+                    cx.values += ac.values;
+                    cx.db = ac.db;
                     if (rrs is not null && ex is not null && cx.val!=TNull.Value)
                     {
                         var tr = cx.val as TRow??new TRow(rrs, cx.val);
@@ -4262,6 +4288,8 @@ namespace Pyrrho.Level3
                 }
             }
             else cx.result = ers.defpos;
+            if (sn != ((Transaction)cx.db).physicals.Count)
+                cx.result = -1L;
             cx.binding = ob;
             return cx;
         }
@@ -4270,6 +4298,9 @@ namespace Pyrrho.Level3
             // everything has been checked
             if (cx.obs[cx.result] is ExplicitRowSet ers && cx.obs[ers.index] is Index ex)
             {
+                var pp = ex.keys.rowType.Last()?.value() ?? -1L;
+                if (gDefs[pp] is TGParam gp && gp.type == TGParam.Type.Path)
+                    cx.binding += (pp, cx.trail);
                 if (ers.rowType.Count == 1 && ers.rowType[0] is long p && ers.representation[p] is Domain d)
                 {
                     if (d == Domain.Bool && ers.explRows.Count == 0L)
@@ -4290,29 +4321,35 @@ namespace Pyrrho.Level3
                 cx.Add(ex); cx.Add(ers);
             }
         }
+        static int _step = 0;
         /// <summary>
         /// We work through the given graph expression in the order given. 
-        /// Show each expression node xn, there is at most one next node nx to move to. 
-        /// We will remember our previous node px.
-        /// There is a set gDefs(xn) of TGParams defined at xn. (The TGParam can be referenced later.)
+        /// For each expression node xn, there is at most one next node nx to move to. 
         /// In ExpNode we will compute a set ds of database nodes that can correspond with xn.
+        /// If xn is not a Path, then we calculate ds and call DbNode for the first of ds.
+        /// If xn is a Path, we push it on the path stack with a count of 0, and use the previous ds.
+        /// There is a set gDefs(xn) of TGParams defined at xn, which can be referenced later.
         /// </summary>
         /// <param name="cx">The Context</param>
-        /// <param name="gp">The bookmark in the TGraphs</param>
+        /// <param name="gp">The bookmark in the Match tree</param>
+        /// <param name="mode">The match mode of the SqlMatch</param>
         /// <param name="xb">The position in the current graph</param>
+        /// <param name="tok">A direction token if an edge</param>
         /// <param name="pd">The previous database node if any</param>
-        void ExpNode(Context cx, ABookmark<int,SqlMatch> gp, ABookmark<int, SqlNode> xb, Sqlx tok, TNode? pd)
+        ABookmark<long,TableRow>? ExpNode(Context cx, ABookmark<int,long?> gp, Sqlx mode, 
+            ABookmark<int, long?> xb, Sqlx tok, TNode? pd)
         {
-            if (xb.value() is not SqlNode xn)
-                return;
+            var step = ++_step;
+            // If we have been called from Obey, gp is a list of SqlMatch graphs.
+            if (cx.obs[xb.value()??-1L] is not SqlNode xn)
+                return null;
             if (xn.MostSpecificType(cx) is NodeType nt)
                 xn += (_Domain, nt);
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
+            // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             if (xn.Eval(cx) is TNode nn)
                 ds += (xn.defpos, nn.tableRow);
-            else
-            // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
-            if (pd is not null && pd.dataType is EdgeType pe
+            else if (pd is not null && pd.dataType is EdgeType pe
                 && ((tok == Sqlx.ARROWBASE) ?
                 (cx.db.objects[pe.arrivingType] as NodeType)?.Get(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
                 : (cx.db.objects[pe.leavingType] as NodeType)?.Get(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
@@ -4320,8 +4357,8 @@ namespace Pyrrho.Level3
                 ds += (tn.defpos, tn);
             else if (pd is not null && pd.dataType is NodeType pn)
             {
-                while (pn.super is NodeType ps)
-                    pn = (NodeType)(cx.db.objects[ps.defpos] ?? throw new DBException("42105"));
+                while (pn.super is NodeType ns)
+                    pn = (NodeType)(cx.db.objects[ns.defpos] ?? throw new DBException("42105"));
                 for (var b = pn.rindexes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is EdgeType rt)
                     {
@@ -4340,57 +4377,167 @@ namespace Pyrrho.Level3
             }
             else if (xn.domain is NodeType nt0 && nt0.defpos > 0)
                 ds += nt0.tableRows;
-      /*      else if (gp.value()?.nodeTypes is BList<long?> use && use!=BList<long?>.Empty)
-            {
-                var gu = CTree<long, bool>.Empty;
-                for (var a = use.First(); a != null; a = a.Next())
-                    if (cx.obs[a.value() ?? -1L] is SqlValue su && su.Eval(cx) is TInt tu
-                        && cx.db.graphUsage[tu.value] is CTree<long, bool> cu)
-                        gu += cu;
-                for (var b = gu.First(); b != null; b = b.Next())
-                {
-                    if (cx.db.objects[b.key()] is NodeType nt2)
-                        for (var c = nt2.tableRows.First(); c != null; c = c.Next())
-                            ds += (c.value().defpos, c.value());
-                }
-            } */
             else
                 for (var b = cx.db.role.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
                         for (var c = nt1.tableRows.First(); c != null; c = c.Next())
                             ds += (c.value().defpos, c.value());
             var df = ds.First();
+            var fm = cx.obs[gp.value() ?? -1L];
             while (df is not null)
-                df = DbNode(cx, gp, xb, xn, df, pd);
+            {
+                df = DbNode(cx, gp, mode, xb, xn, df, (xn is SqlEdge) ? xn.tok : tok, pd);
+            // At this point, if fm was a SqlMatch, we were called from Obey:
+            // If it wasn't an SqlMatch, we were called one of the two places in PathNode
+            // and we will return to PathNode
+                if (fm is SqlPath)
+                    return df;
+            }
+            // we have finished all of the graphs, and ers has all the bindings that give matches
+            if (tok == Sqlx.WITH && pd is not null) // the last match from a repeating pattern
+            {
+                df = new BTree<long, TableRow>(xn.defpos, pd.tableRow).First();
+                if (df is not null)
+                    DbNode(cx, gp, mode, xb, xn, df, tok, pd);
+            }
+            return null;
         }
         /// <summary>
-        /// Show each dn in ds:
+        /// For each dn in ds:
         /// If xn's specific properties do not match dx's then backtrack.
-        /// We bind each t in t(xn), using the char values in dn.
+        /// We bind each t in t(xn), using the values in dn.
+        /// If DbNode matches, it calls ExpNode for the next expression, 
+        /// or the next expression from the Pop(), or AddRow if there is none.
+        /// After AddRow if there is a Path in progress, try a further repeat of the paterrn.
         /// </summary>
         /// <param name="cx">The context<The /param>
         /// <param name="gp">The bookmark for the match TGraph</paramr>
-        /// <param name="xb">The bookmark for the current TMatch</param>
-        /// <param name="xn">The current TMatch</param>
+        /// <param name="mode">The Match mode for the SqlMatch</param>
+        /// <param name="xb">The bookmark for the current MatchExp</param>
+        /// <param name="ps">The path stack</param>
+        /// <param name="xn">The current MatchExp</param>
         /// <param name="df">The bookmark for the current TNode</param>
-        /// <param name="pd">If not null, the TNode for the TMatch</param> 
+        /// <param name="pd">If not null, the TNode for the MatchExp</param> 
         /// <returns>the next value of df if any</returns>
-        ABookmark<long, TableRow>? DbNode(Context cx, ABookmark<int, SqlMatch> gp,
-            ABookmark<int, SqlNode> xb, SqlNode xn, ABookmark<long, TableRow> df, TNode? pd)
+        ABookmark<long, TableRow>? DbNode(Context cx, ABookmark<int, long?> gp, Sqlx mode,
+            ABookmark<int, long?> xb, SqlNode xn, ABookmark<long, TableRow> df,
+            Sqlx tok, TNode? pd)
         {
+            var step = ++_step;
             var ob = cx.binding;
+            var ot = cx.trail;
             if (df.value() is not TableRow tr || cx.db.objects[tr.tabledefpos] is not NodeType dt)
                 goto backtrack;
-            var dn = (dt is EdgeType et)?new TEdge(et,tr):new TNode(dt, tr);
             if (xn.domain.defpos > 0 && !dt.EqualOrStrongSubtypeOf(xn.domain))
                 goto backtrack;
+            var dn = (dt is EdgeType et) ? new TEdge(et, tr) : new TNode(dt, tr);
+            if (mode == Sqlx.TRAIL && dn is TEdge && cx.trail.Contains(dn))
+                goto backtrack;
+            if (mode == Sqlx.ACYCLIC && cx.trail.Contains(dn))
+                goto backtrack;
+            if (dn != pd && tok!=Sqlx.WITH)
+                cx.trail += dn;
             if (!xn.CheckProps(cx, dn))
                 goto backtrack;
+            if (dn is TEdge de && pd is not null
+                && ((xn.tok == Sqlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
+                goto backtrack;
+            DoBindings(cx, xn, dn);
+            var xf = xb.Next();
+            ABookmark<int, long?>? gf = gp;
+            TNode? dx = dn;// we don't pass in dn if we are starting a new graph
+            if (xf == null || tok==Sqlx.WITH)  // we have reached the end of a graph in the match
+            {
+                dx = null;
+                gf = gp.Next();
+                var eb = cx.obs[gf?.value() ?? -1L];
+                if (eb is SqlMatch g)
+                {
+                    // normal traversal, start the next graph
+                    xf = g.matchExps.First();
+                    if (gf is not null && xf is not null)
+                        ExpNode(cx, gf, g.mode, xf, xn.tok, dx);
+                }
+                else if (gf is not null) // finishing a repeating pattern
+                    return df;
+                else // we have finished the expression and may be able to add a row
+                    AddRow(cx);
+            } else if (cx.obs[xf.value() ?? -1L] is SqlPath sp
+                && sp.pattern.First() is ABookmark<int, long?> fb
+                && cx.obs[xf.Next()?.value()??-1L] is SqlNode ff)
+                PathNode(cx, gp, xf, mode, fb, sp, dn, sp.pattern.Length, ff, 0);
+            else
+                ExpNode(cx, gp, mode, xf, tok, dx);
+            backtrack:
+            cx.trail = ot;
+            cx.binding = ob; // unbind all the bindings from this recursion step
+            return df.Next(); // try another node
+        }
+        /// <summary>
+        /// Remember that ExpNode continues to the end of the graph when called, with 
+        /// successful rows added in by AddRow.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="xb"></param>
+        /// <param name="mode"></param>
+        /// <param name="fb"></param>
+        /// <param name="sp"></param>
+        /// <param name="dn">The most recent TNode</param>
+        /// <param name="lb">The last expression in the repeating pattern</param>
+        /// <param name="i">The current iteration</param>
+        void PathNode(Context cx, ABookmark<int, long?> gb, ABookmark<int, long?> xb, Sqlx mode,
+            ABookmark<int, long?> fb, SqlPath sp, TNode dn, int pl, SqlNode ff, int i)
+        {
+            var step = ++_step;
+            var ob = cx.binding;
+            var ot = cx.trail;
+            if (cx.obs[fb.value() ?? -1] is not SqlNode xi || !xi.CheckProps(cx, dn))
+                goto backtrack;
+            DoBindings(cx, xi, dn);
+            if (fb.Next() is not ABookmark<int, long?> fn) goto backtrack;
+            if (cx.obs[fn.value() ?? -1L] is SqlNode xn && (i < sp.quantifier.Item2||sp.quantifier.Item2<0))
+            {
+                var df = ExpNode(cx, xb, mode, fn, xn.tok, dn); // use ordinary ExpNode for the internal pattern
+                                                                // dn must be an edge
+                                                                // and xn must be an SqlEdge
+                if (df?.value() is not TableRow te || cx.db.objects[te.tabledefpos] is not EdgeType ed)
+                    goto backtrack;
+                var de = new TEdge(ed, te); // final edge of the match
+                if (xb.Next() is not ABookmark<int, long?> xf
+                    || cx.obs[xb.value() ?? -1L] is not SqlNode xl) goto backtrack;
+                // xl likely has no properties, so get them from xn
+                if (xn is not SqlEdge xe || xe.domain is not EdgeType et) goto backtrack;
+                long tp = (xn.tok == Sqlx.ARROWBASE) ? et.arrivingType : et.leavingType;
+                long di = (xn.tok == Sqlx.ARROWBASE) ? de.arriving : de.leaving;
+                if (cx.db.objects[tp] is not NodeType tl
+                    || tl.Get(cx, new TInt(di)) is not TableRow tr)
+                    goto backtrack;
+                var dl = new TNode(tl, tr);
+                if (mode == Sqlx.ACYCLIC && cx.trail.Contains(dl))
+                    goto backtrack;
+                if (!xl.CheckProps(cx, dl))
+                    goto backtrack;
+                DoBindings(cx, xl, dl);
+                cx.trail += dl;
+                // Can we go on to the rest of the parent expression?
+                if (i >= sp.quantifier.Item1 && (sp.quantifier.Item2<0 || i<sp.quantifier.Item2)
+                    && xf.key() == pl && ff.CheckProps1(cx, dl))
+                {
+                    ExpNode(cx, gb, mode, xb, Sqlx.WITH, dl);
+                    goto backtrack; // because we have already moved to the next node after the repeat
+                }
+                /// Next iteration starting with the first repeating node and last match (?)
+                if (i < sp.quantifier.Item2||sp.quantifier.Item2<0)
+                    PathNode(cx, gb, xb, mode, fb, sp, dl, pl, ff, i + 1);
+            }
+        backtrack:
+            cx.trail = ot;
+            cx.binding = ob; // unbind all the bindings from this recursion step
+        }
+        void DoBindings(Context cx,SqlNode xn,TNode dn)
+        {
             if (xn.state != CTree<long, TGParam>.Empty && dn.dataType is NodeType nt)
             {
-                if (dn is TEdge de && pd is not null
-                && ((xn.tok == Sqlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
-                    goto backtrack;
                 var bi = cx.binding;
                 if (nt.infos[cx.role.defpos]?.names is BTree<string, (int, long?)> ns)
                     for (var b = xn.docValue?.First(); b != null; b = b.Next())
@@ -4411,7 +4558,7 @@ namespace Pyrrho.Level3
                                 {
                                     var te = cx.GType(nt.leavingType);
                                     var er = te?.Get(cx, dn.tableRow.vals[nt.leaveCol] as TInt);
-                                    tv = (te is null || er is null)?TNull.Value:new TNode(te,er); 
+                                    tv = (te is null || er is null) ? TNull.Value : new TNode(te, er);
                                     break;
                                 }
                             case -(int)Sqlx.ARROW:
@@ -4424,28 +4571,19 @@ namespace Pyrrho.Level3
                             case -(int)Sqlx.TYPE: tv = new TChar(nt.name); break;
                         }
                         if (tv != TNull.Value)
-                            bi += (tg.uid, tv);
+                        {
+                            if (tg.type.HasFlag(TGParam.Type.Group))
+                            {
+                                var ta = bi[tg.uid] as TArray ?? new TArray(tv.dataType);
+                                bi += (tg.uid, ta + (ta.Length,tv));
+                            }
+                            else
+                                bi += (tg.uid, tv);
+                        }
                     }
                 }
                 cx.binding = bi;
             }
-            ABookmark<int, SqlMatch>? gf = gp;
-            var xf = xb.Next();
-            TNode? dx = dn;// we don't pass in dn if we are starting a new graph
-            if (xf == null)  // we have reached the end of a graph in the match
-            {
-                dx = null;
-                gf = gp.Next(); // start the next graph
-                if (gf?.value() is SqlMatch g)
-                    xf = g.graphMatch.First();
-            }
-            if (gf is null || xf is null) // we have finished the expression and may be able to add a row
-                AddRow(cx);
-            else // go on to the next node in the expression graph
-                ExpNode(cx, gf, xf, xn.tok, dx);
-            backtrack:
-            cx.binding = ob; // unbind all the bindings from this recursion step
-            return df.Next(); // try another node
         }
         public override string ToString()
         {
@@ -4454,7 +4592,12 @@ namespace Pyrrho.Level3
             sb.Append(gDefs);
             sb.Append(')');
             sb.Append(" Graphs (");
-            sb.Append(matchExps);
+            var cm = "";
+            for (var b=matchExps.First();b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value() ?? -1L));
+            }
             sb.Append(')');
             if (where != CTree<long, bool>.Empty)
             {

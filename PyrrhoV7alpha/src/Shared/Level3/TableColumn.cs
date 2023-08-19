@@ -395,7 +395,7 @@ namespace Pyrrho.Level3
         /// Poke a value into a given document according to this ColumnPath
         /// </summary>
         /// <param name="d">The document</param>
-        /// <param name="ss">The list of path components</param>
+        /// <param name="ss">The tree of path components</param>
         /// <param name="i">An index into this path</param>
         /// <param name="v">the new value</param>
         /// <returns>the updated Document</returns>

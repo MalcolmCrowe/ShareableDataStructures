@@ -76,7 +76,7 @@ namespace Pyrrho.Level2
         /// <param name="tc">The trigger name</param>
         /// <param name="tb">The defining position for the table</param>
         /// <param name="ty">The trigger type</param>
-        /// <param name="cs">A list of the defining positions of update TableColumns</param>
+        /// <param name="cs">A tree of the defining positions of update TableColumns</param>
         /// <param name="or">The alias for the old row</param>
         /// <param name="nr">The alias for the new row</param>
         /// <param name="ot">The alias for the old table</param>
@@ -96,7 +96,7 @@ namespace Pyrrho.Level2
         /// <param name="tc">The trigger name</param>
         /// <param name="tb">The defining position for the table</param>
         /// <param name="ty">The trigger type</param>
-        /// <param name="cs">A TypedValue[] list of the defining positions of update TableColumns</param>
+        /// <param name="cs">A TypedValue[] tree of the defining positions of update TableColumns</param>
         /// <param name="or">The alias for the old row</param>
         /// <param name="nr">The alias for the new row</param>
         /// <param name="ot">The alias for the old table</param>

@@ -34,7 +34,7 @@ namespace Pyrrho.Level3
     /// The schema role has access to system tables, and is the initial role for a new database.
     /// The database owner is always allowed to use the schema role, but it is otherwise
     /// subject to normal SQL statements. The schema role has the same uid as _system.role,
-    /// and maintains a list of all users and roles known to the database.
+    /// and maintains a tree of all users and roles known to the database.
     /// The guest role has access to all such that have been granted to PUBLIC: there is no Role object for this.
     /// In Pyrrho users are granted roles, and roles can be granted objects.  
     /// There is one exception: a single user can be granted ownership of the database:

@@ -23,6 +23,9 @@ This is version 7.05(alpha) of the DBMS, compiled for .NET 6.0.
 It passes tests 1 to 25 of the PyrrhoTest program, and should run on Windows,
 Linux, and MacOS with Mono.
 
+In includes an initial implementation of Fritz Laux's Typed Graph Model. 
+See also Nadime Francis: "A Researcher's Digest of GQL".
+
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-9 Aug 2023
+19 Aug 2023

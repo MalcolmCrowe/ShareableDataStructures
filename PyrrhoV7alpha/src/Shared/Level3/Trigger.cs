@@ -35,7 +35,7 @@ namespace Pyrrho.Level3
         /// </summary>
 		public PTrigger.TrigType tgType => (PTrigger.TrigType)(mem[TrigType] ?? PTrigger.TrigType.Deferred);
         /// <summary>
-        /// The list of update TableColumns
+        /// The tree of update TableColumns
         /// </summary>
 		public BList<long?> cols => (BList<long?>?)mem[UpdateCols]??BList<long?>.Empty;
         /// <summary>
