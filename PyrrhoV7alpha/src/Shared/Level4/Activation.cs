@@ -715,9 +715,9 @@ namespace Pyrrho.Level4
                 if (_Ob(ru.urlCol) is SqlValue uv)
                    Add(uv);
                 var u = obs[ru.urlCol]?.Eval(this);
-                if (u == null || u == TNull.Value) // can happen for Insert with a named column list, and for Delete
+                if (u == null || u == TNull.Value) // can happen for Insert with a named column tree, and for Delete
                 {
-                    // the values list supplied must identify the url
+                    // the values tree supplied must identify the url
                     for (var b = ut.indexes.First(); b != null; b = b.Next())
                         for (var c = b.value()?.First(); c != null; c = c.Next())
                             if (db.objects[c.key()] is Level3.Index nx && cu != null

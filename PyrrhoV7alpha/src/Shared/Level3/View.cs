@@ -403,7 +403,7 @@ namespace Pyrrho.Level3
         /// <param name="pv">The PRestView</param>
         /// <param name="ro">the current (definer's) role</param>
         /// <param name="ow">the owner</param>
-        /// <param name="rs">the list of grantees</param>
+        /// <param name="rs">the tree of grantees</param>
         public RestView(PRestView pv, Context cx) : base(pv, cx,
             pv.dataType.mem + (UsingTable, pv.usingTable) 
             + (ViewDef, pv.viewdef) + (_Depth,pv.dataType.depth+1)

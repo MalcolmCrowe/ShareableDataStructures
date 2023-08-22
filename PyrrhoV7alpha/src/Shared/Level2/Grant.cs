@@ -180,12 +180,12 @@ namespace Pyrrho.Level2
             var pr = cp | priv;
             if (cx.db.objects[grantee] is not Role rg)
                 throw new DBException("42000");
-            // if its a procedure, add it to the role's list of procedures
+            // if its a procedure, add it to the role's tree of procedures
             if (cx.db.objects[obj] is Procedure proc && proc is not Method)
             {
                 var nm = proc.infos[proc.definer]?.name??"";
                 var ps = rg.procedures[nm]??BTree<CList<Domain>,long?>.Empty;
-                ps += (cx.Signature(proc.ins), obj);
+                ps += (cx.Signature(proc), obj);
                 rg += (Role.Procedures, rg.procedures+(nm,ps));
                 cx.db += (grantee, rg);
             }

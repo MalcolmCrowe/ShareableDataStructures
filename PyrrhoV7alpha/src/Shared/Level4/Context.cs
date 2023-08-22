@@ -76,7 +76,9 @@ namespace Pyrrho.Level4
         internal BTree<long, BTree<TRow, BTree<long, Register>>> funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         internal BTree<Domain, long?> newTypes = BTree<Domain, long?>.Empty; // uncommitted types
-        internal CTree<long, TGParam> nodes = CTree<long, TGParam>.Empty;
+        internal CTree<long, TGParam> nodes = CTree<long, TGParam>.Empty; 
+        internal CTree<long, TList> paths = CTree<long, TList>.Empty; // of trails by SqlPath
+        internal TList trail = new TList(Domain.NodeType); // of nodes in current trail
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by RowSet
         /// </summary>
@@ -515,7 +517,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Deal with end-of-Scope things 
         /// </summary>
-        /// <param name="sm">The select list at this level</param>
+        /// <param name="sm">The select tree at this level</param>
         /// <param name="tm">The source table expression</param>
         internal void DecSD(Domain? sm = null, RowSet? te = null)
         {
@@ -709,7 +711,7 @@ namespace Pyrrho.Level4
                 var t = ob.framing.obs.Last()?.key() ?? -1L;
                 if (t > db.nextStmt)
                     db += (Database.NextStmt, t + 1);
-                // (We don't care if this process leaves gaps in the uid list)
+                // (We don't care if this process leaves gaps in the uid tree)
             }
         }
         internal Context ForConstraintParse()
@@ -1506,13 +1508,13 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// Support for cx.Replace(was,now,m) during Parsing.
-        /// Update a separate list of properties accordingly.
+        /// Update a separate tree of properties accordingly.
         /// We don't worry about _Depth because that will be fixed in 
         /// the main Replace implementation, Apply, constructors etc.
         /// </summary>
-        /// <param name="m">A list of properties</param>
+        /// <param name="m">A tree of properties</param>
         /// <param name="w">special case for MergeColumn/TableRow</param>
-        /// <returns>The updated list</returns>
+        /// <returns>The updated tree</returns>
         internal BTree<long, object> Replaced(BTree<long, object> m,long w = -1L)
         {
             var r = BTree<long, object>.Empty;
@@ -1924,6 +1926,7 @@ namespace Pyrrho.Level4
                     r += ins.representation[p] ?? throw new PEException("PE0098");
             return r;
         }
+
         internal string NameFor(long p)
         {
             var ob = _Ob(p);
@@ -2351,6 +2354,20 @@ namespace Pyrrho.Level4
                 }
             return ch?r:a;
         }
+        internal CTree<int, TypedValue> FixTiV(CTree<int, TypedValue> a)
+        {
+            var r = CTree<int, TypedValue>.Empty;
+            var ch = false;
+            for (var b = a.First(); b != null; b = b.Next())
+                if (b.value() is TypedValue ov)
+                {
+                    var p = b.key();
+                    var v = ov.Fix(this);
+                    ch = ch || v != b.value();
+                    r += (p, v);
+                }
+            return ch ? r : a;
+        }
         internal CList<TXml> FixLX(CList<TXml> cl)
         {
             var r = CList<TXml>.Empty;
@@ -2554,12 +2571,12 @@ namespace Pyrrho.Level4
         internal long nextPrep => _nextPrep;
         internal readonly Level1.TCPStream? _tcp = null;
         /// <summary>
-        /// A list of prepared statements, whose object persist
+        /// A tree of prepared statements, whose object persist
         /// in the base context for the connection.
         /// </summary>
         BTree<string, PreparedStatement> _prepared = BTree<string, PreparedStatement>.Empty;
         /// <summary>
-        ///  A list of prepared edge-interventions, to replace edge e with source type s
+        ///  A tree of prepared edge-interventions, to replace edge e with source type s
         ///  and destination type d with edge type n
         /// </summary>
         internal CTree<string, CTree<string, CTree<string, string>>> edgeTypes =

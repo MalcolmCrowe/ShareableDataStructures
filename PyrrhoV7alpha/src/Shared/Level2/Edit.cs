@@ -322,7 +322,7 @@ namespace Pyrrho.Level2
             }
             // record our new dataType
             cx.db += (dataType.defpos, dataType);
-            // and fix up the nodeIds list
+            // and fix up the nodeIds tree
  /*           var ni = cx.db.nodeIds;
             for (var b = fix.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is NodeType nd)

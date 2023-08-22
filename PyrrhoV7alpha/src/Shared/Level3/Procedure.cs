@@ -104,7 +104,7 @@ namespace Pyrrho.Level3
                     act.values += (p, acts[b.key()]);
             cx = bd.Obey(act);
             var r = act.Ret();
-            if (r is TArray ts)
+            if (r is TList ts)
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());

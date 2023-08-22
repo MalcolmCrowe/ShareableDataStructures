@@ -468,6 +468,10 @@ BTree<string, (int, long?)> ns)
         {
             return nd + (this + (TableChecks, tableChecks - ck),p);
         }
+        internal virtual Table Base(Context cx)
+        {
+            return this;
+        }
         internal virtual Index? FindPrimaryIndex(Context cx)
         {
             for (var b = indexes.First(); b != null; b = b.Next())

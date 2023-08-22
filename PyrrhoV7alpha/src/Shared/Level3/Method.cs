@@ -81,7 +81,7 @@ namespace Pyrrho.Level3
         /// <param name="ut">The owning object type</param>
         /// <param name="sce">The source object instance (null for constructor)</param>
         /// <param name="n">The method name</param>
-        /// <param name="actIns">The actual parameter list</param>
+        /// <param name="actIns">The actual parameter tree</param>
         /// <returns>The return value</returns>
         public Context Exec(Context cx, long var, BList<long?> actIns)
         {
@@ -120,7 +120,7 @@ namespace Pyrrho.Level3
                 act.values += (pi.val, acts[i]);
             cx = bd.Obey(act);
             var r = act.Ret();
-            if (r is TArray)
+            if (r is TList)
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());

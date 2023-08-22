@@ -83,6 +83,8 @@ namespace Pyrrho
             dict.Add("22300", "Bad document format: {0}");
             dict.Add("22G0K", "Multi-sourced or multi-destined edge {0}");
             dict.Add("22G0L", "Incomplete edge {0}");
+            dict.Add("22G0M", "Potentially infinite output");
+            dict.Add("22G0N", "Repeating zeo-length output");
             dict.Add("23000", "Integrity constraint: {0}");
             dict.Add("23001", "RESTRICT: {0} referenced in {1} {2}");
             dict.Add("23101", "Integrity constraint on referencing table {0} (delete)");
