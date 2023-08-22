@@ -465,7 +465,7 @@ namespace Pyrrho.Level2
     {
         public PColumn3(UDType ut,string nm,int sq,Domain dm,long pp,Context cx)
             :this (ut,nm,sq,dm, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
-                    true, GenerationRule.None, pp, cx)
+                    dm.notNull, GenerationRule.None, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser

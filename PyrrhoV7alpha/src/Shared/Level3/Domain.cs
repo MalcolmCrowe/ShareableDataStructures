@@ -448,6 +448,27 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     return true;
             return false;
         }
+        internal Domain Source(Context cx,long dp)
+        {
+            var rs = CTree<long, Domain>.Empty;
+            for (var b = rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is SqlValue sv)
+                {
+                    if (sv is SqlFunction sf && sf.IsAggregation(cx)!=CTree<long,bool>.Empty)
+                    {
+                        if (cx.obs[sf.val] is SqlValue v) rs += (v.defpos, v.domain);
+                        if (cx.obs[sf.op1] is SqlValue w) rs += (w.defpos, w.domain);
+                        if (cx.obs[sf.op2] is SqlValue x) rs += (x.defpos, x.domain);
+                        cx.Add(sf + (_From, dp));
+                    }
+                    else
+                        rs += (sv.defpos, sv.domain);
+                }
+            var rt = BList<long?>.Empty;
+            for (var b = rs.First(); b != null; b = b.Next())
+                rt += b.key();
+            return new Domain(-1L, cx, Sqlx.ROW, rs, rt);
+        }
         internal virtual void Show(StringBuilder sb)
         {
             if (defpos >= 0)
@@ -770,7 +791,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         for (int j = 0; j < n; j++)
                             if (GetDataType(rdr) is Domain dt)
                                 vs += el.Coerce(rdr.context,dt.Get(log, rdr, pp));
-                        return new TArray(this, vs);
+                        return new TList(this, vs);
                     }
                 case Sqlx.MULTISET:
                     {
@@ -1142,7 +1163,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     }
                 case Sqlx.ROW:
                     {
-                        if (tv is TArray ta)
+                        if (tv is TList ta)
                         {
                             if (ta.Length >= 1)
                                 tv = ta[0];
@@ -1203,7 +1224,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Sqlx.REF: goto case Sqlx.ROW;
                 case Sqlx.ARRAY:
                     {
-                        var a = (TArray)tv;
+                        var a = (TList)tv;
                         var et = a.dataType.elType ?? throw new PEException("PE50708");
                         wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48814"));
                         wr.PutInt(a.Length);
@@ -1454,27 +1475,46 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     }
                 case Sqlx.ARRAY:
                     {
-                        if (a is TArray x && b is TArray y)
+                        if (a is TList x && b is TList y)
                         {
                             var xe = x.dataType.elType
                                 ?? throw new DBException("22202").Mix().AddValue(y.dataType);
                             if (x.dataType.elType != y.dataType.elType)
                                 throw new DBException("22202").Mix()
                                     .AddType(xe).AddValue(y.dataType); 
-                            int n = x.Length;
-                            int m = y.Length;
-                            if (n != m)
-                            {
-                                c = (n < m) ? -1 : 1;
-                                break;
-                            }
                             c = 0;
-                            for (int j = 0; j < n; j++)
+                            for (int j = 0; ; j++)
                             {
-                                c = xe.Compare(x[j], y[j]);
+                                if (j == x.Length && j == y.Length) break;
+                                else if (j == x.Length) c = -1;
+                                else if (j == y.Length) c = 1;
+                                else c = xe.Compare(x[j], y[j]);
                                 if (c != 0)
                                     break;
                             }
+                            break;
+                        }
+                        if (a is TArray tx && b is TArray ty)
+                        {
+                            var xe = tx.dataType.elType
+                                ?? throw new DBException("22202").Mix().AddValue(ty.dataType);
+                            if (tx.dataType.elType != ty.dataType.elType)
+                                throw new DBException("22202").Mix()
+                                    .AddType(xe).AddValue(ty.dataType);
+                            c = 0;
+                            var xb = tx.array.First();
+                            var yb = ty.array.First();
+                            for (; xb!=null && yb!=null;xb=xb.Next(),yb=yb.Next())
+                            {
+                                c = xb.key().CompareTo(yb.key());
+                                if (c != 0)
+                                    break;
+                                c = xe.Compare(xb.value(), yb.value());
+                            }
+                            if (xb != null)
+                                c = 1;
+                            if (yb != null)
+                                c = -1;
                             break;
                         }
                         else
@@ -1546,15 +1586,19 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Sqlx.EDGETYPE:
                     {
                         if (a is TNode na && b is TNode nb
-                            && a.dataType is NodeType ta && b.dataType is NodeType tb
-                            && na.tableRow.vals[ta.idCol] is TInt ia
-                            && nb.tableRow.vals[tb.idCol] is TInt ib)
+                            && a.dataType is NodeType ta && b.dataType is NodeType tb)
                         {
-                            c = ia.CompareTo(ib);
-                            break;
+                            c = ta.defpos.CompareTo(tb.defpos);
+                            if (c != 0)
+                                break;
+                            if (na.tableRow.vals[ta.idCol] is TInt ia
+                            && nb.tableRow.vals[tb.idCol] is TInt ib)
+                            {
+                                c = ia.CompareTo(ib);
+                                break;
+                            }
                         }
-                        else
-                            throw new DBException("22004").ISO();
+                        throw new DBException("22004").ISO();
                     }
                 case Sqlx.ROW:
                     {
@@ -1620,9 +1664,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         /// </summary>
         /// <param name="a"></param>
         /// <returns></returns>
-        public TArray Concatenate(TArray a, TArray b)
+        public TList Concatenate(TList a, TList b)
         {
-            var r = new TArray(this);
+            var r = new TList(this);
             var et = elType;
             var ae = a.dataType.elType;
             var be = b.dataType.elType;
@@ -1650,6 +1694,10 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 return true;
             if (dt.kind == Sqlx.CONTENT || dt.kind == Sqlx.VALUE)
                 return kind != Sqlx.REAL && kind != Sqlx.INTEGER && kind != Sqlx.NUMERIC;
+            if (defpos==NodeType.defpos && dt is NodeType)
+                return true;
+            if (defpos==EdgeType.defpos && dt is EdgeType)
+                return true;
             if (kind == Sqlx.ANY)
                 return true;
             if ((dt.kind == Sqlx.TABLE || dt.kind == Sqlx.ROW) && dt.rowType.Length == 1
@@ -2353,7 +2401,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (lx.ch == end)
                 lx.Advance();
             lx.Advance();
-            return new TArray(this, vs);
+            return new TList(this, vs);
         }
         /// <summary>
         /// Helper for parsing Interval values
@@ -2707,7 +2755,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             if (v == TNull.Value)
                 return v;
-            if (v is TArray ta && ta.Length == 1 && CanTakeValueOf(ta.dataType))
+            if (v is TList ta && ta.Length == 1 && CanTakeValueOf(ta.dataType))
                 return Coerce(cx, ta[0]);
             for (var b = constraints?.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()]?.Eval(cx.ForConstraintParse()) != TBool.True)
@@ -2733,11 +2781,15 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 return di.Coerce(cx, va);
             if (v.dataType is UDType ut && CanTakeValueOf(ut) && v is TSubType ts)
                 return ts.value;
-            if ((v.dataType.kind == Sqlx.SET || v.dataType.kind==Sqlx.MULTISET)
-                && ((TSet)v).Cardinality() == 1)
+            if (v.dataType.kind == Sqlx.SET  && ((TSet)v).Cardinality() == 1)
                     return ((TSet)v).First()?.Value() ?? TNull.Value;
-  //          if (v.dataType.name == name)
-                switch (Equivalent(kind))
+            if (v.dataType.kind == Sqlx.MULTISET && ((TMultiset)v).Cardinality() == 1)
+                return ((TMultiset)v).First()?.Value() ?? TNull.Value;
+            //          if (v.dataType.name == name)
+            var kn = Equivalent(kind);
+            if (kn == Sqlx.UNION)
+                return v;
+            switch (kn)
                 {
                     case Sqlx.INTEGER:
                         {
@@ -2922,7 +2974,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 Sqlx.CHAR => ((TChar)v).ToString(),
                                 Sqlx.CHECK => ((TRvv)v).rvv.ToString(),
                                 Sqlx.NODETYPE or Sqlx.EDGETYPE => ((TNode)v).ToString(cx),
-                                _ => v.ToString(),
+                                _ => v.ToString(cx),
                             };
                             if (prec != 0 && str.Length > prec)
                                 throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
@@ -2980,10 +3032,13 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     case Sqlx.NULL:
                         return v;
                     case Sqlx.ARRAY:
-                        if (v is TArray && elType is not null && v.dataType.elType is not null 
+                        if (v is TList && elType is not null && v.dataType.elType is not null 
                             && elType.CanTakeValueOf(v.dataType.elType))
                             return v;
-                        break;
+                        if (v is TArray && elType is not null && v.dataType.elType is not null
+                            && elType.CanTakeValueOf(v.dataType.elType))
+                        return v;
+                    break;
                     case Sqlx.SET:
                         if (v.dataType.elType is not null)
                         {
@@ -3003,7 +3058,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             return new TMultiset(v.dataType, new BTree<TypedValue,long?>(v, 1L),1);
                         break;
                     default:
-                        return v;
+                    return v;
                 }
             bad: throw new DBException("22005", this, v.ToString()).ISO();
         }
@@ -3263,7 +3318,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         var va = BList<TypedValue>.Empty;
                         foreach (var o in da.items)
                             va += dr.Coerce(cx, o);
-                        return new TArray(dr, va);
+                        return new TList(dr, va);
                     }
                     break;
                 case Sqlx.ARRAY:
@@ -3272,7 +3327,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         var va = BList<TypedValue>.Empty;
                         foreach (var o in db.items)
                             va += elType.Coerce(cx, o);
-                        return new TArray(elType, va);
+                        return new TList(elType, va);
                     }
                     break;
                 case Sqlx.SET:
@@ -4305,7 +4360,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     break;
                 case Sqlx.ARRAY:
                     {
-                        var a = (TArray)ob;
+                        var a = (TList)ob;
                         //           sb.Append("type=\"array\">");
                         if (elType is not null && (cx.db.Find(elType)?.defpos ?? cx.newTypes[elType]) is long ep)
                             for (int j = 0; j < a.Length; j++)
@@ -5020,7 +5075,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         ///  whenever necessary to ensure this.
         /// </summary>
         /// <param name="cx"></param>
-        /// <returns>a list of all columns in subtypes with their defining type</returns>
+        /// <returns>a tree of all columns in subtypes with their defining type</returns>
         internal BTree<string,(int,long?)> AllSubTypeCols(Context cx)
         {
             var oi = infos[cx.role.defpos] ?? throw new DBException("42105");

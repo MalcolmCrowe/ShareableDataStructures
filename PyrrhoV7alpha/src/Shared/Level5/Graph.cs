@@ -228,16 +228,6 @@ internal class NodeType : UDType
     {
         return 3;
     }
-    public override int Compare(TypedValue a, TypedValue b)
-    {
-        if (a == b) return 0;
-        if (a is TNull) return -1;
-        if (b is TNull) return 1;
-        var c = b.dataType.dbg.CompareTo(b.dataType.dbg);
-        if (c != 0)
-            return c;
-        return a.CompareTo(b);
-    }
     internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
 Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
     {
@@ -250,6 +240,10 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
         Audit(cx, rowSet);
         //#endif
         return rowSet;
+    }
+    internal override Table Base(Context cx)
+    {
+        return (Table)(cx.db.objects[super?.defpos??-1L]??base.Base(cx));
     }
     /// <summary>
     /// We have a new node type cs and have been given columns ls
@@ -386,9 +380,9 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
     {
         if (infos[definer] is not ObInfo ni)
             throw new DBException("PE42133", name);
-        for (var b = ls?.First(); b != null; b = b.Next())
-            if (b.key() is string n && !ni.names.Contains(n))
-                throw new DBException("42112", n);
+        for (var b = ls.First(); b != null; b = b.Next())
+            if (b.key() is string n && !ni.names.Contains(n) && ls[n] is SqlValue v)
+                cx.Add(new PColumn3(this, n, -1, v.domain,cx.db.nextPos,cx));
         return this;
     }
     static long LeastSpecific(NodeType nt)
@@ -822,7 +816,7 @@ internal class EdgeType : NodeType
 namespace Pyrrho.Level5
 {
     /// <summary>
-    /// A TGraph is a TypedValue containing a list of TNodes.
+    /// A TGraph is a TypedValue containing a tree of TNodes.
     /// It always begins with the Node with the lowest uid (its representative), 
     /// </summary>
     internal class TGraph : TypedValue
@@ -925,7 +919,7 @@ namespace Pyrrho.Level5
         {
             return dataType.defpos == n.dataType.defpos && id == n.id;
         }
-        internal string ToString(Context cx)
+        internal override string ToString(Context cx)
         {
             if (cx.db.objects[dataType.defpos] is not NodeType nt ||
                 nt.infos[cx.role.defpos] is not ObInfo ni)
@@ -943,6 +937,12 @@ namespace Pyrrho.Level5
             }
             sb.Append(')');
             return sb.ToString();
+        }
+        public override int CompareTo(object? obj)
+        {
+            var that = obj as TNode;
+            if (that == null) return 1;
+            return tableRow.defpos.CompareTo(that.tableRow.defpos);
         }
         public override string ToString()
         {
@@ -963,19 +963,23 @@ namespace Pyrrho.Level5
         }
         public override string ToString()
         {
-            return "TEdge["+ DBObject.Uid(dataType.defpos)+"]" + tableRow.vals.ToString();
+            return "TEdge " + DBObject.Uid(defpos) + "[" + DBObject.Uid(dataType.defpos) + "]";
         }
     }
     /// <summary>
-    /// A class for an unbound identifier
+    /// A class for an unbound identifier (A variable in Francis's paper)
     /// </summary>
-    internal class TGParam :TypedValue
+    internal class TGParam : TypedValue
     {
+        [Flags]
+        internal enum Type { None=0,Node=1,Edge=2,Path=4,Group=8,Maybe=16 };
         internal readonly long uid;
+        internal readonly Type type; // in reverse Polish order
         internal readonly string value;
-        public TGParam(long dp,string i,Domain d) : base(d)
+        public TGParam(long dp,string i,Domain d,Type t) : base(d)
         {
             uid = dp;
+            type = t;
             value = i;
         }
         public override int CompareTo(object? obj)

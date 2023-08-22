@@ -165,7 +165,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="dp">The uid for the RowSet</param>
         /// <param name="cx">The processing environment</param>
-        /// <param name="m">The properties list</param>
+        /// <param name="m">The properties tree</param>
         protected RowSet(long dp, Context cx, BTree<long, object> m)
             : base(dp, _Mem(dp,cx,m))
         {
@@ -344,7 +344,7 @@ namespace Pyrrho.Level4
         /// applied to this rowset. 
         /// 
         /// Passing expressions down to source rowsets:
-        /// A non-aggregating expression R (in the select list or a where condition) can be passed down to 
+        /// A non-aggregating expression R (in the select tree or a where condition) can be passed down to 
         /// a source S if all its operands are known to S (it can then be added to R's finder)
         /// An aggregating expression E in R can be passed down to a SelectRowSet or RestRowSet source S if 
         /// all its operands are all known to S (for rowsets T between R and S in the pipeline see P1)
@@ -614,7 +614,7 @@ namespace Pyrrho.Level4
         /// If aggs got pushed down further there may be intermediate rowsets T
         /// If we construct a new source rowset S', rowsets T between R and S' in the pipeline must get new Domains
         /// These are built bottom-up.
-        /// Selectlist expressions in T should be the subexpressions of R's select list that it knows.
+        /// Selectlist expressions in T should be the subexpressions of R's select tree that it knows.
         /// Matching subexpressions in S (this) are flagged as ambient.
         /// </summary>
         /// <param name="cx"></param>
@@ -1935,7 +1935,7 @@ namespace Pyrrho.Level4
     {
         internal const long
             Building = -401, // bool
-            RdCols = -124, // CTree<long,bool> TableColumn (needed cols for select list and where)
+            RdCols = -124, // CTree<long,bool> TableColumn (needed cols for select tree and where)
             ValueSelect = -385; // long SqlValue
         internal bool building => mem.Contains(Building);
         internal CTree<long, bool> rdCols =>
@@ -1943,8 +1943,8 @@ namespace Pyrrho.Level4
         internal long valueSelect => (long)(mem[ValueSelect] ?? -1L);
         internal TRow? row => rows[0];
         /// <summary>
-        /// This constructor builds a rowset for the given QuerySpec (select list defines dm)
-        /// Query environment can supply values for the select list but source columns
+        /// This constructor builds a rowset for the given QuerySpec (select tree defines dm)
+        /// Query environment can supply values for the select tree but source columns
         /// should bind more closely.
         /// </summary>
         internal SelectRowSet(Iix lp, Context cx, Domain dm, RowSet r,BTree<long,object>? m=null)
@@ -2159,7 +2159,7 @@ namespace Pyrrho.Level4
         /// This may result in some subexpressions becoming meaningless in R, because its value has been calculated
         /// earlier in the pipeline (and is now available in cx.values). We want to replace these subexpressions
         /// with the special SqlValue Ambient so that cx.values gives the value instead of the subexpression.
-        /// Selectlist expressions in T should be the subexpressions of R's select list that it knows.
+        /// Selectlist expressions in T should be the subexpressions of R's select tree that it knows.
         /// </summary>
         /// <param name="mm">Aggs,Group,Having properties for S</param>
         /// <param name="cx">The context</param>
@@ -2203,7 +2203,7 @@ namespace Pyrrho.Level4
                             c != null; c = c.Next())
                         {
                             var k = c.key();
-                            if (ns.Contains(k) || cx._Dom(k) is not Domain ob)
+                            if (ns.Contains(k) || cx._Dom(k) is not Domain ob || ob is Table)
                                 continue;
                             nc += k;
                             ns += (k, ob);
@@ -2216,14 +2216,17 @@ namespace Pyrrho.Level4
                 }
             var d = nc.Length;
             for (var b = dn?.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && !ns.Contains(p) && cx._Dom(p) is Domain dv)
+                if (b.value() is long p && !ns.Contains(p) && cx._Dom(p) is Domain dv && dv is not Table)
                 {
                     nc += p;
                     ns += (p, dv);
                 }
             var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc, d) + (Domain.Aggs, ag);
-            cx.Add(nd);
-            m = m + nd.mem;
+            if (nd.Length > 0)
+            {
+                cx.Add(nd);
+                m = m + nd.mem;
+            }
             m = m + (Aggs, ag);
             var r = (SelectRowSet)New(m);
             cx.Add(r);
@@ -2276,7 +2279,7 @@ namespace Pyrrho.Level4
         /// 
         /// At the level of the given rowset R, we have some aggregation expressions, 
         /// containing a possibly larger nunber of aggregates and a number of groups.
-        /// Show each source restrowset or selectrowset S (e.g. va or vb) we want to traverse the given select list, 
+        /// Show each source restrowset or selectrowset S (e.g. va or vb) we want to traverse the given select tree, 
         /// identifying aggregation functions and group ids that are known to S. 
         /// Show any such we construct a subquery S' containing just these.
         /// With our uid machinery there is no need to form new aliases, and R is not changed in the process
@@ -3184,7 +3187,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="cx">The context</param>
         /// <param name="ts">The source rowset</param>
-        /// <param name="iC">A list of columns matching some of ts.rowType</param>
+        /// <param name="iC">A tree of columns matching some of ts.rowType</param>
         /// <returns>The activations for the changes made</returns>
         internal override BTree<long, TargetActivation> Insert(Context cx, RowSet ts, Domain iC)
         {
@@ -3937,13 +3940,13 @@ namespace Pyrrho.Level4
         }
         protected override Cursor? _First(Context cx)
         {
-            var a = (TArray?)mem[SqlLiteral._Val];
+            var a = (TList?)mem[SqlLiteral._Val];
             if (a == null) return null;
             return ArrayCursor.New(cx, this, a, 0);
         }
         protected override Cursor? _Last(Context cx)
         {
-            var a = (TArray?)mem[SqlLiteral._Val];
+            var a = (TList?)mem[SqlLiteral._Val];
             if (a==null) return null;
             return ArrayCursor.New(cx,this,a,a.Length-1);
         }
@@ -3958,14 +3961,14 @@ namespace Pyrrho.Level4
          internal class ArrayCursor : Cursor
         {
             internal readonly ArrayRowSet _ars;
-            internal readonly TArray _ar;
+            internal readonly TList _ar;
             internal readonly int _ix;
-            ArrayCursor(Context cx,ArrayRowSet ars,TArray ar, int ix)
+            ArrayCursor(Context cx,ArrayRowSet ars,TList ar, int ix)
                 : base(cx,ars,ix,E,(TRow)ar[ix])
             {
                 _ars = ars; _ix = ix;  _ar = ar;
             }
-            internal static ArrayCursor? New(Context cx, ArrayRowSet ars, TArray ar, int ix)
+            internal static ArrayCursor? New(Context cx, ArrayRowSet ars, TList ar, int ix)
             {
                 if (ix<0 || ar.Length <= ix)
                     return null;
@@ -4274,18 +4277,18 @@ namespace Pyrrho.Level4
                 _srs = cu._srs;
                 _bmk = cu._bmk;
             }
-            static TRow _Row(Context cx,SqlRowSet rs,int p)
+            static TRow _Row(Context cx, SqlRowSet rs, int p)
             {
                 var vs = CTree<long, TypedValue>.Empty;
-                var rv = (SqlRow?)cx.obs[rs.sqlRows[p]??-1L];
+                var rv = (SqlRow?)cx.obs[rs.sqlRows[p] ?? -1L];
                 var n = rv?.domain.Length;
                 if (n < rs.Length)
                     throw new DBException("22109");
                 int j = 0;
                 for (var b = rs.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long tp && rs.representation[tp] is Domain td && rv is not null
-                        && rv.domain.rowType[j++] is long dp && cx.obs[dp] is SqlValue dd)
-                    vs += (tp, td.Coerce(cx,dd.Eval(cx)));
+                    if (b.value() is long tp && rs.representation[tp] is Domain td && rv is not null
+                            && rv.domain.rowType[j++] is long dp && cx.obs[dp] is SqlValue dd)
+                        vs += (tp, td.Coerce(cx, dd.Eval(cx)));
                 return new TRow(rs,vs);
             }
             protected override Cursor New(Context cx,long p, TypedValue v)
@@ -4368,7 +4371,7 @@ namespace Pyrrho.Level4
             {
                 var t = new MTree(dt, TreeBehaviour.Ignore, 0);
                 var x = new Level3.Index(cx.GetUid(), 
-                    new BTree<long, object>(Level3.Index.IndexConstraint, PIndex.ConstraintType.Unique)
+                    new BTree<long, object>(Level3.Index.IndexConstraint, PIndex.ConstraintType.NoType)
                         + (Level3.Index.Keys, dt) + (Level3.Index.Tree,t));
                 cx.Add(x);
                 m += (TableRowSet._Index, x.defpos);
@@ -4592,12 +4595,12 @@ namespace Pyrrho.Level4
         protected override Cursor? _First(Context cx)
         {
             var v = cx.values[defpos];
-            return (v==null || v==TNull.Value)?null:ProcRowSetCursor.New(cx, this, (TArray)v);
+            return (v==null || v==TNull.Value)?null:ProcRowSetCursor.New(cx, this, (TList)v);
         }
         protected override Cursor? _Last(Context cx)
         {
             var v = cx.values[defpos];
-            return (v==null || v == TNull.Value) ? null : ProcRowSetCursor.New(this, cx, (TArray)v);
+            return (v==null || v == TNull.Value) ? null : ProcRowSetCursor.New(this, cx, (TList)v);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4634,7 +4637,7 @@ namespace Pyrrho.Level4
                 _prs = prs; _bmk = bmk;
                 cx.values += values;
             }
-            internal static ProcRowSetCursor? New(Context cx,ProcRowSet prs,TArray ta)
+            internal static ProcRowSetCursor? New(Context cx,ProcRowSet prs,TList ta)
             {
                 for (var b = ta.list.First();b is not null;b=b.Next())
                 {
@@ -4644,7 +4647,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            internal static ProcRowSetCursor? New(ProcRowSet prs, Context cx, TArray ta)
+            internal static ProcRowSetCursor? New(ProcRowSet prs, Context cx, TList ta)
             {
                 for (var b = ta.list.Last(); b != null; b = b.Previous())
                 {
@@ -5060,9 +5063,12 @@ namespace Pyrrho.Level4
                 var r = new TargetCursor(cx, trc, fb, t, vs);
                 if (r._rec != null)
                     for (var b = trc._trs.foreignKeys.First(); b != null; b = b.Next())
-                        if (cx.db.objects[b.key()] is Level3.Index ix &&
-                               cx.db.objects[ix.refindexdefpos] is Level3.Index rx
-                               && rx.rows != null && ix.MakeKey(r._rec.vals) is CList<TypedValue> k &&
+                        if (cx.db.objects[b.key()] is Level3.Index ix
+                            && cx.db.objects[ix.refindexdefpos] is Level3.Index rx
+                            // && rx.rows != null
+                            && cx.db.objects[ix.reftabledefpos] is Table tb
+                            && tb.Base(cx).FindPrimaryIndex(cx) is Level3.Index px && px.rows!=null
+                               && rx.MakeKey(r._rec.vals) is CList<TypedValue> k &&
                                k[0] is not TNull)
                         {
                             if (cx.db.objects[ix.adapter] is Procedure ad)
@@ -5070,7 +5076,7 @@ namespace Pyrrho.Level4
                                 cx = (TableActivation)ad.Exec(cx, ix.keys.rowType);
                                 k = ((TRow)cx.val).ToKey();
                             }
-                            else if (!rx.rows.Contains(k))
+                            else if (!px.rows.Contains(k))
                             {
                                 for (var bp = cx.pending.First(); bp != null; bp = bp.Next())
                                     if (bp.value() is CTree<long, TypedValue> vk && rx.MakeKey(vk) is CList<TypedValue> pk
@@ -5796,10 +5802,10 @@ namespace Pyrrho.Level4
             DefaultUrl = -370,  // string 
             _RestView = -459,    // long RestView
             RemoteCols = -373, // BList<long?> SqlValue
-            RestValue = -457,   // TArray
+            RestValue = -457,   // TList
             SqlAgent = -256; // string
 
-        internal TArray aVal => mem[RestValue] as TArray??throw new DBException("42105");
+        internal TList aVal => mem[RestValue] as TList??throw new DBException("42105");
         internal long restView => (long)(mem[_RestView] ?? -1L);
         internal string? defaultUrl => (string?)mem[DefaultUrl];
         internal string sqlAgent => (string?)mem[SqlAgent] ?? "Pyrrho";
@@ -5817,7 +5823,7 @@ namespace Pyrrho.Level4
         { }
         static BTree<long, object> _Mem(Context cx, Iix lp, RestView vw, Domain q)
         {
-            var vs = BList<DBObject>.Empty; // the resolved select list in query rowType order
+            var vs = BList<DBObject>.Empty; // the resolved select tree in query rowType order
             var vd = BList<long?>.Empty;
             var qn = q?.Needs(cx, -1L, CTree<long, bool>.Empty);
             cx.defs += (vw.NameFor(cx), lp, Ident.Idents.Empty);
@@ -6336,12 +6342,12 @@ namespace Pyrrho.Level4
                 cx.result = or;
                 if (PyrrhoStart.HTTPFeedbackMode)
                 {
-                    if (a is TArray aa)
+                    if (a is TList aa)
                         Console.WriteLine("--> " + aa.list.Count + " rows");
                     else
                         Console.WriteLine("--> " + (a?.ToString() ?? "null"));
                 }
-                var len = (a is TArray ta) ? ta.Length : 1;
+                var len = (a is TList ta) ? ta.Length : 1;
                 var r = this + (_Built, true) 
                     + (Level3.Index.Tree,new MTree(Domain.Null,TreeBehaviour.Disallow,len));
                 if (a != null)
@@ -6687,9 +6693,9 @@ namespace Pyrrho.Level4
         {
             if (Built(cx))
                 return this;
-            cx.values += (defpos, new TArray(this));
+            cx.values += (defpos, new TList(this));
             var pos = 0;
-            var a = (TArray?)cx.values[defpos] ?? new TArray(this);
+            var a = (TList?)cx.values[defpos] ?? new TList(this);
             if (cx.obs[template] is RestRowSet rr && 
                 cx.obs[usingTableRowSet] is TableRowSet ru)
             for (var uc = (TableRowSet.TableCursor?)ru.First(cx); uc != null;
@@ -6830,7 +6836,7 @@ namespace Pyrrho.Level4
             }
             static RestUsingCursor? Get(Context cx, RestRowSetUsing ru, int pos)
             {
-                var ls = ((TArray?)cx.values[ru.defpos])?.list;
+                var ls = ((TList?)cx.values[ru.defpos])?.list;
                 if (ls==null || pos < 0 || pos >= ls.Length)
                     return null;
                 var cu = (RestUsingCursor?)ls[pos];
@@ -6853,7 +6859,7 @@ namespace Pyrrho.Level4
             }
             internal static Cursor? New(RestRowSetUsing ru, Context cx)
             {
-                var ls = ((TArray?)cx.values[ru.defpos])?.list;
+                var ls = ((TList?)cx.values[ru.defpos])?.list;
                 if (ls == null || ls.Length==0)
                     return null;
                 var n = ls.Length - 1;

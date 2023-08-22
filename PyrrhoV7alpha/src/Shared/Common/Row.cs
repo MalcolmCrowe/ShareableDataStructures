@@ -1,4 +1,6 @@
 using System.Collections.Specialized;
+using System.ComponentModel;
+using System.Data.Common;
 using System.Security.Cryptography.X509Certificates;
 using System.Text;
 using System.Xml;
@@ -115,6 +117,10 @@ namespace Pyrrho.Common
                         return d;
             return dt;
         }
+        internal virtual string ToString(Context cx)
+        {
+            return ToString();
+        }
         public override string ToString()
         {
             return "TypedValue";
@@ -125,7 +131,7 @@ namespace Pyrrho.Common
         }
         public virtual int CompareTo(object? obj)
         {
-            return dataType.Compare(this,(obj as TypedValue)??TNull.Value);
+            return dataType.Compare(this,obj as TypedValue??TNull.Value);
         }
         internal virtual TypedValue ShallowReplace(Context cx,long was, long now)
         {
@@ -718,10 +724,10 @@ namespace Pyrrho.Common
         }
     }
     
-    internal class TArray : TypedValue
+    internal class TList : TypedValue
     {
         internal readonly BList<TypedValue> list; 
-        internal TArray(Domain dt, params TypedValue[] a) 
+        internal TList(Domain dt, params TypedValue[] a) 
             : base(new Domain(-1L,Sqlx.ARRAY,dt)) 
         { 
             var ts = BList<TypedValue>.Empty;
@@ -729,21 +735,25 @@ namespace Pyrrho.Common
                 ts += x;
             list = ts;
         }
-        internal TArray(Domain dt, BList<TypedValue> a) : base(dt) { list = a; }
+        internal TList(Domain dt, BList<TypedValue> a) : base(dt) { list = a; }
         internal override TypedValue New(Domain t)
         {
             throw new NotImplementedException(); // use Relocate
         }
         internal override TypedValue Fix(Context cx)
         {
-            return new TArray((Domain)dataType.Fix(cx),
+            return new TList((Domain)dataType.Fix(cx),
                 cx.FixBV(list));
         }
-        public static TArray operator+(TArray ar,TypedValue v)
+        public static TList operator+(TList ar,TypedValue v)
         {
             if (ar.dataType.elType is null || !ar.dataType.elType.CanTakeValueOf(v.dataType))
                 throw new DBException("22005", ar.dataType.elType??Domain.Null, v.dataType);
-            return new TArray(ar.dataType, ar.list + v);
+            return new TList(ar.dataType, ar.list + v);
+        }
+        public static TList operator-(TList ls,int k)
+        {
+            return new TList(ls.dataType, ls.list - k);
         }
         internal override int Cardinality()
         {
@@ -753,6 +763,8 @@ namespace Pyrrho.Common
         {
             if (dataType.elType is null || !dataType.elType.CanTakeValueOf(e.dataType))
                 throw new DBException("22005", dataType.elType??Domain.Null, e.dataType);
+            var c = dataType.defpos.CompareTo(e.dataType.defpos);
+            if (c != 0) return false;
             for (var b = list.First(); b != null; b = b.Next())
                 if (b.value().CompareTo(e) == 0)
                     return true;
@@ -769,6 +781,33 @@ namespace Pyrrho.Common
             }
         }
         internal TypedValue this[int i] => list.PositionAt(i)?.value()??TNull.Value;
+        public override int CompareTo(object? obj)
+        {
+            var that = obj as TList;
+            if (that is null)
+                return 1;
+            var tb = that.list.First();
+            var b = list.First();
+            for (;  b is not null && tb is not null; b = b.Next(), tb = tb.Next())
+            {
+                var c = b.value().CompareTo(tb.value());
+                if (c!=0) return c;
+            }
+            if (b is null) return -1;
+            if (tb is null) return 1;
+            return 0;
+        }
+        internal override string ToString(Context cx)
+        {
+            var sb = new StringBuilder("[");
+            var cm = "";
+            for (var b = list.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(b.value().ToString(cx));
+            }
+            return sb.ToString();
+        }
         public override string ToString()
         {
             var sb = new StringBuilder("[");
@@ -783,7 +822,60 @@ namespace Pyrrho.Common
             return sb.ToString();
         }
     }
-    
+    internal class TArray : TypedValue
+    {
+        internal readonly CTree<int,TypedValue> array;
+        internal TArray(Domain dt)
+            : base(new Domain(-1L, Sqlx.ARRAY, dt))
+        {
+            array = CTree<int, TypedValue>.Empty;
+        }
+        internal TArray(Domain dt, CTree<int, TypedValue> a) : base(dt) { array = a; }
+        internal override TypedValue New(Domain t)
+        {
+            throw new NotImplementedException(); // use Relocate
+        }
+        internal override TypedValue Fix(Context cx)
+        {
+            return new TArray((Domain)dataType.Fix(cx),
+                cx.FixTiV(array));
+        }
+        public static TArray operator +(TArray ar, (int,TypedValue) x)
+        {
+            var (i, v) = x;
+            if (ar.dataType.elType is null || !ar.dataType.elType.CanTakeValueOf(v.dataType))
+                throw new DBException("22005", ar.dataType.elType ?? Domain.Null, v.dataType);
+            return new TArray(ar.dataType, ar.array + (i,v));
+        }
+        internal override int Cardinality()
+        {
+            return Length;
+        }
+        internal override bool Contains(TypedValue e)
+        {
+            for (var b = array.First(); b != null; b = b.Next())
+                if (b.value() is TypedValue f && e.dataType.CompareTo(f)==0)
+                    return true;
+            return false;
+        }
+        /// <summary>
+        /// Hmm...
+        /// </summary>
+        internal int Length { get { return (int)array.Count; } }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("(");
+            var cm = "";
+            if (array != null)
+                for (var b = array.First(); b is not null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(b.key()); sb.Append('='); sb.Append(b.value().ToString());
+                }
+            sb.Append(')');
+            return sb.ToString();
+        }
+    }
     internal class TTypeSpec : TypedValue
     {
         internal readonly Domain _dataType;
@@ -1132,15 +1224,19 @@ namespace Pyrrho.Common
         /// </summary>
         internal readonly CTree<TypedValue, bool> tree;
         /// <summary>
-        /// Constructor: a new Multiset
+        /// Constructor: a new Set
         /// </summary>
-        internal TSet(Domain dt) : base(dt)
+        internal TSet(Domain dt) : base(new Domain(-1L, Sqlx.SET, dt))
         {
             tree = CTree<TypedValue, bool>.Empty;
         }
         internal TSet(Domain dt, CTree<TypedValue, bool> t) : base(dt)
         {
             tree = t;
+        }
+        public static TSet operator+(TSet a,TypedValue v)
+        {
+            return a.Add(v);
         }
         internal override int Cardinality()
         {
@@ -1330,7 +1426,7 @@ namespace Pyrrho.Common
         /// Constructor: a new Multiset
         /// </summary>
         /// <param name="tr">The transaction</param>
-        internal TMultiset(Domain dt) : base (dt)
+        internal TMultiset(Domain dt) : base (new Domain(-1L,Sqlx.MULTISET,dt))
         {
             tree = BTree<TypedValue,long?>.Empty;
             count = 0;
@@ -1426,6 +1522,7 @@ namespace Pyrrho.Common
                     bmk = ABookmark<TypedValue, long?>.Next(bmk, _set.tree);
                     if (bmk == null)
                         return null;
+                    rep = bmk.value();
                 }
             }
             public MultisetBookmark? Previous()
@@ -1439,6 +1536,7 @@ namespace Pyrrho.Common
                     bmk = ABookmark<TypedValue, long?>.Previous(bmk, _set.tree);
                     if (bmk == null)
                         return null;
+                    rep = bmk.value();
                 }
             }
             public long Position()

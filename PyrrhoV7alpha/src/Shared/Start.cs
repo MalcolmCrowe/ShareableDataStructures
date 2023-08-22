@@ -1124,7 +1124,7 @@ namespace Pyrrho
                 case Sqlx.ROW:
                     return lc + 1 + RowLength(cx, (TRow)tv);
                 case Sqlx.ARRAY:
-                    return lc + 1 + ArrayLength(cx, (TArray)tv);
+                    return lc + 1 + ArrayLength(cx, tv);
                 case Sqlx.SET:
                     return lc + 1 + SetLength(cx, (TSet)o);
                 case Sqlx.MULTISET:
@@ -1197,11 +1197,15 @@ namespace Pyrrho
             return len;
 
         }
-        int ArrayLength(Context cx, TArray a)
+        int ArrayLength(Context cx, TypedValue a)
         {
             int len = 4 + StringLength("ARRAY") + TypeLength(a.dataType.elType ??Domain.Content);
-            for (var b = a.list.First(); b != null; b = b.Next())
+            if (a is TArray ta)
+            for (var b = ta.array.First(); b != null; b = b.Next())
                 len += 1 + DataLength(cx, b.value());
+            else if (a is TList tl)
+                for (var b = tl.list.First(); b != null; b = b.Next())
+                    len += 1 + DataLength(cx, b.value());
             return len;
         }
         int MultisetLength(Context cx, TMultiset m)
@@ -1449,7 +1453,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.05alpha","(9 Aug 2023)", "http://www.pyrrhodb.com"
+            "7.05alpha","(22 Aug 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }
