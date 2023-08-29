@@ -155,7 +155,7 @@ namespace Pyrrho.Level3
             Graphs = -461, // CTree<long,TGraph> the set of disjoint graphs for 7.03
    //         GraphUsage = -482, // CTree<long,CTree<long,bool>> NodeType NodeType
             Guest = -55, // long: a role holding all grants to PUBLIC
-            Public = -311, // long: always -1L, a dummy user ID
+            Public = -311, // long: always -1L, a dummy user Id
             LastModified = -279, // DateTime
             Leaving = -466, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Levels = -56, // BTree<Level,long?>

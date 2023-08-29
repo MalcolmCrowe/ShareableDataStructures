@@ -269,29 +269,6 @@ namespace Pyrrho.Level3
         {
             return alias ?? name ?? "";
         }
-        internal virtual bool AggedOrGrouped(Context cx, RowSet r)
-        {
-            for (var b = r.aggs.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlFunction v)
-                {
-                    if (v.op == Sqlx.COUNT && v.mod == Sqlx.TIMES)
-                        return true;
-                    if (v.Operands(cx).Contains(defpos))
-                        return true;
-                }
-            if (r.groupCols is Domain gc)
-                for (var b = gc.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p && cx.obs[p] is SqlValue v)
-                    {
-                        var os = v.Operands(cx);
-                        if (os.Contains(defpos))
-                            return true;
-                        for (var c = r.matching[defpos]?.First(); c != null; c = c.Next())
-                            if (os.Contains(c.key()))
-                                return true;
-                    }
-            return false; 
-        }
         internal virtual bool Grouped(Context cx, RowSet r)
         {
             if (r.groupCols is Domain gc)
@@ -338,7 +315,7 @@ namespace Pyrrho.Level3
                         xs += (b.key().Replaced(cx), cx.ReplacedTlb(b.value()));
                     m += (Table.Indexes, xs);
                 }
-                if (m[Index.Keys] is Domain d)
+                if (m[Index.Keys] is Domain d && d.Length!=0)
                     m += (Index.Keys, d.Replaced(cx));
             }
             return (new BList<DBObject>(r), m);
@@ -407,7 +384,7 @@ namespace Pyrrho.Level3
             var r = (SqlValue)base._Replace(cx, so, sv);
             var ag = CTree<long,bool>.Empty;
             var ch = false;
-            for (var b = IsAggregation(cx).First(); b != null; b = b.Next())
+            for (var b = IsAggregation(cx,CTree<long,bool>.Empty).First(); b != null; b = b.Next())
             {
                 var p = b.key();
                 var np = p;
@@ -447,8 +424,12 @@ namespace Pyrrho.Level3
         {
             return s == this;
         }
-        internal virtual CTree<long,bool> IsAggregation(Context cx)
+        internal virtual CTree<long,bool> IsAggregation(Context cx,CTree<long,bool> ags)
         {
+            for (var b = ags.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is SqlFunction fr && fr.op == Sqlx.RESTRICT
+                    && fr.val == defpos)
+                    return new CTree<long, bool>(defpos, true);
             return CTree<long,bool>.Empty;
         }
         internal virtual SqlValue Invert(Context cx)
@@ -795,16 +776,6 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    internal class SqlRestValue : SqlValue
-    {
-        public SqlRestValue(Ident nm, Context cx, Domain dt) 
-            : base(nm, cx, dt)
-        {
-            cx.Add(this);
-        }
-        protected SqlRestValue(long dp, BTree<long, object> m) : base(dp, m)
-        {  }
-    }
     /// <summary>
     /// A TYPE value for use in CAST and in graphs
     ///     
@@ -998,9 +969,9 @@ namespace Pyrrho.Level3
             }
             return (new BList<DBObject>(r), m);
         }
-        internal override CTree<long,bool> IsAggregation(Context cx)
+        internal override CTree<long,bool> IsAggregation(Context cx,CTree<long,bool>ags)
         {
-            return ((SqlValue?)cx.obs[val])?.IsAggregation(cx)??CTree<long,bool>.Empty;
+            return ((SqlValue?)cx.obs[val])?.IsAggregation(cx,ags)??CTree<long,bool>.Empty;
         }
         internal override SqlValue Having(Context c, Domain dm)
         {
@@ -1705,13 +1676,13 @@ namespace Pyrrho.Level3
             if (left != null)
             {
                 mm += (Left, left.defpos);
-                ag += left.IsAggregation(cx);
+                ag += left.IsAggregation(cx,CTree<long,bool>.Empty);
                 d = Math.Max(left.depth + 1, d);
             }
             if (right != null)
             {
                 mm += (Right, right.defpos);
-                ag += right.IsAggregation(cx);
+                ag += right.IsAggregation(cx,CTree<long,bool>.Empty);
                 d = Math.Max(right.depth + 1, d);
             }
             var dl = left?.domain??Domain.Content;
@@ -1749,9 +1720,11 @@ namespace Pyrrho.Level3
                     if (left?.name != null && left.name != "" && right?.name != null && right.name != "")
                         nm = left.name + "." + right.name;
                     break;
+                case Sqlx.ELEMENTID: dm = Domain.Int; break;
                 case Sqlx.EQL: dm = Domain.Bool; break;
                 case Sqlx.EXCEPT: dm = dl; break;
                 case Sqlx.GTR: dm = Domain.Bool; break;
+                case Sqlx.ID: dm = Domain.Int; break;
                 case Sqlx.INTERSECT: dm = dl; break;
                 case Sqlx.LOWER: dm = Domain.Int; break; // JavaScript >> and >>>
                 case Sqlx.LSS: dm = Domain.Bool; break;
@@ -1819,6 +1792,7 @@ namespace Pyrrho.Level3
                             dm = left.FindType(cx, Domain.UnionNumeric);
                         break;
                     }
+                case Sqlx.TYPE: dm = Domain.TypeSpec; break;
                 case Sqlx.UNION: dm = dl; nm = left?.name ?? ""; break;
                 case Sqlx.UPPER: dm = Domain.Int; break; // JavaScript <<
                 case Sqlx.XMLATTRIBUTES: dm = Domain.Char; break;
@@ -2046,6 +2020,17 @@ namespace Pyrrho.Level3
                 r += sr.Operands(cx);
             return r;
         }
+        internal override CTree<long, bool> ExposedOperands(Context cx,CTree<long,bool> ag,Domain? gc)
+        {
+            var r = CTree<long, bool>.Empty;
+            if (gc?.representation.Contains(defpos)==true)
+                return r;
+            if (cx.obs[left] is SqlValue sl)
+                r += sl.ExposedOperands(cx,ag,gc);
+            if (cx.obs[right] is SqlValue sr)
+                r += sr.ExposedOperands(cx,ag,gc);
+            return r;
+        }
         /// <summary>
         /// Examine a binary expression and work out the resulting type.
         /// The main complication here is handling things like x+1
@@ -2091,10 +2076,13 @@ namespace Pyrrho.Level3
                 case Sqlx.DOT:
                     dm = dr;
                     break;
+                case Sqlx.ELEMENTID: dm = Domain.Int; break; // tableRow.defpos
                 case Sqlx.EQL: dm = Domain.Bool; break;
                 case Sqlx.EXCEPT: dm = dl; break;
                 case Sqlx.GTR: dm = Domain.Bool; break;
+                case Sqlx.ID: dm = Domain.Int; break;
                 case Sqlx.INTERSECT: dm = dl; break;
+                case Sqlx.LABELS: dm = Domain.SetType; break;
                 case Sqlx.LOWER: dm = Domain.Int; break; // JavaScript >> and >>>
                 case Sqlx.LSS: dm = Domain.Bool; break;
                 case Sqlx.MINUS:
@@ -2150,6 +2138,7 @@ namespace Pyrrho.Level3
                         dm = (Domain)cx.Add(new Domain(cx.GetUid(), Sqlx.ARRAY, tl.elType??Domain.Content)); break;
                     }
                 case Sqlx.SET: dm = dl ?? Domain.Content; break; // JavaScript
+                case Sqlx.SHORTESTPATH: dm = Domain.Array; break; // Neo4j
                 case Sqlx.TIMES:
                     {
                         if (dl.kind == Sqlx.NUMERIC || dr.kind == Sqlx.NUMERIC)
@@ -2162,6 +2151,7 @@ namespace Pyrrho.Level3
                             dm = tl.FindType(cx, Domain.UnionNumeric);
                         break;
                     }
+                case Sqlx.TYPE: dm = Domain.Char; break;
                 case Sqlx.UNION: dm = dl; break;
                 case Sqlx.UPPER: dm = Domain.Int; break; // JavaScript <<
                 case Sqlx.XMLATTRIBUTES: dm = Domain.Char; break;
@@ -2180,15 +2170,15 @@ namespace Pyrrho.Level3
             return (cx.obs[left] as SqlValue)?.HasAnd(cx, s) == true
             || (cx.obs[right] as SqlValue)?.HasAnd(cx, s) == true;
         }
-        internal override CTree<long, bool> IsAggregation(Context cx)
+        internal override CTree<long, bool> IsAggregation(Context cx,CTree<long,bool> ags)
         {
             var r = CTree<long, bool>.Empty;
             if (cx.obs[left] is SqlValue lf)
-                r += lf.IsAggregation(cx);
+                r += lf.IsAggregation(cx,ags);
             if (cx.obs[right] is SqlValue rg)
-                r += rg.IsAggregation(cx);
+                r += rg.IsAggregation(cx,ags);
             if (cx.obs[sub] is SqlValue su)
-                r += su.IsAggregation(cx);
+                r += su.IsAggregation(cx,ags);
             return r;
         }
         internal override int Ands(Context cx)
@@ -3552,12 +3542,12 @@ namespace Pyrrho.Level3
                 return new CTree<long, Domain>(defpos, domain);
             return r;
         }
-        internal override CTree<long,bool> IsAggregation(Context cx)
+        internal override CTree<long,bool> IsAggregation(Context cx,CTree<long,bool>ags)
         {
             var r = CTree<long,bool>.Empty;
             for (var b = domain.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is SqlValue sv)
-                    r += sv.IsAggregation(cx);
+                    r += sv.IsAggregation(cx,ags);
             return r;
         }
         /// <summary>
@@ -3895,7 +3885,7 @@ namespace Pyrrho.Level3
                     if (a.defpos != b.value())
                         ch = true;
                     rws += a.defpos;
-                    ag += a.IsAggregation(cx);
+                    ag += a.IsAggregation(cx,ag);
                 }
             if (ch)
                 r += (cx, _Rows, rws);
@@ -4588,7 +4578,7 @@ namespace Pyrrho.Level3
                     if (a.defpos != b.value())
                         ch = true;
                     ar += a.defpos;
-                    ag += a.IsAggregation(cx);
+                    ag += a.IsAggregation(cx,ag);
                 }
             if (ch)
                 r += (cx,_Array, ar);
@@ -4597,7 +4587,7 @@ namespace Pyrrho.Level3
                 s = (SqlValue)s.AddFrom(cx, q);
                 if (s.defpos != svs)
                     r += (cx,Svs, s.defpos);
-                ag += s.IsAggregation(cx);
+                ag += s.IsAggregation(cx,ag);
             }
             var dm = domain;
             if (ag != dm.aggs)
@@ -4870,7 +4860,7 @@ namespace Pyrrho.Level3
                     if (a.defpos != b.key())
                         ch = true;
                     mu += (a.defpos,true);
-                    ag += a.IsAggregation(cx);
+                    ag += a.IsAggregation(cx,ag);
                 }
             if (ch)
                 r += (cx, MultiSqlValues, mu);
@@ -5115,7 +5105,7 @@ namespace Pyrrho.Level3
                     if (a.defpos != b.value())
                         ch = true;
                     mu += a.defpos;
-                    ag += a.IsAggregation(cx);
+                    ag += a.IsAggregation(cx,ag);
                 }
             if (ch)
                 r += (cx,Elements, mu);
@@ -6483,7 +6473,7 @@ namespace Pyrrho.Level3
             ((SqlValue?)cx.obs[op1])?.Validate(cx); 
             ((SqlValue?)cx.obs[op2])?.Validate(cx);
         }
-        internal override CTree<long, bool> IsAggregation(Context cx)
+        internal override CTree<long, bool> IsAggregation(Context cx,CTree<long,bool>ags)
         {
 
             var r = CTree<long, bool>.Empty;
@@ -6492,11 +6482,11 @@ namespace Pyrrho.Level3
             if (aggregates(op))
                 r += (defpos, true);
             if (cx.obs[val] is SqlValue vl)
-                r += vl.IsAggregation(cx);
+                r += vl.IsAggregation(cx,ags);
             if (cx.obs[op1] is SqlValue o1)
-                r += o1.IsAggregation(cx);
+                r += o1.IsAggregation(cx,ags);
             if (cx.obs[op2] is SqlValue o2)
-                r += o2.IsAggregation(cx);
+                r += o2.IsAggregation(cx,ags);
             return r;
         }
         internal override SqlValue Having(Context c, Domain dm)
@@ -6696,10 +6686,6 @@ namespace Pyrrho.Level3
             if (cx.obs[op2] is SqlValue o2 && !o2.Grouped(cx, gs)) return false;
             return true;
         }
-        internal override bool AggedOrGrouped(Context cx, RowSet r)
-        {
-            return base.AggedOrGrouped(cx, r);
-        }
         internal override CTree<long, bool> Operands(Context cx)
         {
             var r = CTree<long, bool>.Empty;
@@ -6710,6 +6696,17 @@ namespace Pyrrho.Level3
             if (cx.obs[op2] is SqlValue s2)
                 r += s2.Operands(cx);
             return r;
+        }
+        internal override CTree<long, bool> ExposedOperands(Context cx,CTree<long,bool> ag,Domain? gc)
+        {
+            if (aggregates(op) || gc?.representation.Contains(defpos)==true)
+                return CTree<long, bool>.Empty;
+            var os = Operands(cx) -ag;
+            if (gc is not null)
+                for (var b = os.First(); b != null; b = b.Next())
+                    if (gc.representation.Contains(b.key()))
+                        os -= b.key();
+            return os;
         }
         internal override bool KnownBy(Context cx, RowSet q, bool ambient = false)
         {
@@ -6778,7 +6775,7 @@ namespace Pyrrho.Level3
                 case Sqlx.CHECK: return Domain._Rvv;
                 case Sqlx.COLLECT: return Domain.Collection;
                 case Sqlx.COUNT: return Domain.Int;
-                case Sqlx.CURRENT: return Domain.Bool; // for syntax check: CURRENT OF
+                case Sqlx.CURRENT: return Domain.Bool; 
                 case Sqlx.CURRENT_DATE: return Domain.Date;
                 case Sqlx.CURRENT_ROLE: return Domain.Char;
                 case Sqlx.CURRENT_TIME: return Domain.Timespan;
@@ -6809,6 +6806,7 @@ namespace Pyrrho.Level3
                 case Sqlx.POSITION: return Domain.Int;
                 case Sqlx.POWER: return Domain.Real;
                 case Sqlx.RANK: return Domain.Int;
+                case Sqlx.RESTRICT: return val?.domain ?? Domain.Content;
                 case Sqlx.ROW_NUMBER: return Domain.Int;
                 case Sqlx.SET: return Domain.Collection;
                 case Sqlx.SPECIFICTYPE: return Domain.Char;
@@ -7107,6 +7105,13 @@ namespace Pyrrho.Level3
                             throw new DBException("21000").Mix();
                         return m.tree.First()?.key() ?? TNull.Value;
                     }
+                case Sqlx.ELEMENTID:
+                    {
+                        TypedValue? a = cx.obs[val]?.Eval(cx);
+                        if (a is not TNode n)
+                            return TNull.Value;
+                        return new TInt(n.tableRow.defpos);
+                    }
                 case Sqlx.EXP:
                     {
                         var vl = (SqlValue?)cx.obs[val] ?? throw new PEException("PE1967");
@@ -7184,9 +7189,24 @@ namespace Pyrrho.Level3
                 case Sqlx.FUSION:
                     if (fc == null || fc.mset == null) break;
                     return domain.Coerce(cx, fc.mset);
+                case Sqlx.ID:
+                    {
+                        TypedValue? a = cx.obs[val]?.Eval(cx);
+                        return (a is TNode n) ? new TInt(n.id) : a ?? TNull.Value;
+                    }
                 case Sqlx.INTERSECTION:
                     if (fc == null || fc.mset == null) break;
                     return domain.Coerce(cx, fc.mset);
+                case Sqlx.LABELS:
+                    {
+                        TypedValue? a = cx.obs[val]?.Eval(cx);
+                        if (a is not TNode n)
+                            return TNull.Value;
+                        var s = new TSet(Domain.Char);
+                        for (var b = n.dataType; b is not null; b = b.super)
+                            s += new TChar(b.name);
+                        return s;
+                    }
                 case Sqlx.LAST: return fc?.mset?.tree?.Last()?.key() ?? throw new DBException("42135");
                 case Sqlx.LAST_DATA:
                     {
@@ -7320,7 +7340,13 @@ namespace Pyrrho.Level3
                             return dv;
                         return new TReal(Math.Pow(v.ToDouble(), w.ToDouble()));
                     }
-                case Sqlx.RANK:
+                case Sqlx.RANK: goto case Sqlx.ROW_NUMBER;
+                case Sqlx.RESTRICT:
+                    if (fc == null)
+                        break;
+                    if (fc.acc is null && cx.conn._tcp is not null)
+                        throw new DBException("42170");
+                    return fc.acc ?? TNull.Value;
                 case Sqlx.ROW_NUMBER:
                     if (fc == null)
                         break;
@@ -7358,17 +7384,15 @@ namespace Pyrrho.Level3
                     {
                         if (fc == null || fc.count == 0)
                             throw new DBException("22004").ISO().Add(Sqlx.ROUTINE_NAME, new TChar("StDev Pop"));
-                        double m = fc.sum1 / fc.count;
-                        return new TReal(Math.Sqrt((fc.acc1 - 2 * fc.count * m + fc.count * m * m)
-                            / fc.count));
+                        return new TReal(Math.Sqrt(fc.acc1 * fc.count - fc.sum1 * fc.sum1)
+                            / fc.count);
                     }
                 case Sqlx.STDDEV_SAMP:
                     {
                         if (fc == null || fc.count <= 1)
                             throw new DBException("22004").ISO().Add(Sqlx.ROUTINE_NAME, new TChar("StDev Samp"));
-                        double m = fc.sum1 / fc.count;
-                        return new TReal(Math.Sqrt((fc.acc1 - 2 * fc.count * m + fc.count * m * m)
-                            / (fc.count - 1)));
+                        return new TReal(Math.Sqrt((fc.acc1 * fc.count - fc.sum1 * fc.sum1)
+                            / (fc.count*(fc.count-1))));
                     }
                 case Sqlx.SUBSTRING:
                     {
@@ -7448,6 +7472,13 @@ namespace Pyrrho.Level3
                                 Sqlx.BOTH => new TChar(sv.Trim()),
                                 _ => new TChar(sv.Trim()),
                             };
+                    }
+                case Sqlx.TYPE:
+                    {
+                        TypedValue? a = cx.obs[val]?.Eval(cx);
+                        if (a is not TNode n)
+                            return TNull.Value;
+                        return new TTypeSpec(n.dataType);
                     }
                 case Sqlx.UPPER:
                     {
@@ -7669,6 +7700,7 @@ namespace Pyrrho.Level3
                     break;
                 case Sqlx.MAX:
                 case Sqlx.MIN:
+                case Sqlx.RESTRICT:
                     if (window >= 0L)
                         goto case Sqlx.COLLECT;
                     fc.sumType = Domain.Content;
@@ -7825,15 +7857,26 @@ namespace Pyrrho.Level3
                             fc.acc = v;
                         break;
                     }
+                case Sqlx.RESTRICT:
+                    {
+                        if (cx.obs[val] is not SqlValue vl)
+                            throw new PEException("PE48198");
+                        TypedValue v = vl.Eval(cx);
+                        if (v != TNull.Value && (fc.acc == null || fc.acc.CompareTo(v) == 0))
+                            fc.acc = v;
+                        else 
+                        if (cx.conn._tcp is not null) throw new DBException("42170", vl.name??"");
+                        break;
+                    }
                 case Sqlx.STDDEV_POP:
                     {
                         if (cx.obs[val] is not SqlValue vl)
                             throw new PEException("PE48199");
                         var o = vl.Eval(cx);
                         var v = o.ToDouble();
-                        fc.sum1 -= v;
-                        fc.acc1 -= v * v;
-                        fc.count--;
+                        fc.sum1 += v;
+                        fc.acc1 += v * v;
+                        fc.count++;
                         break;
                     }
                 case Sqlx.STDDEV_SAMP: goto case Sqlx.STDDEV_POP;
@@ -8281,7 +8324,10 @@ namespace Pyrrho.Level3
         {
             return op switch
             {
-                Sqlx.ANY or Sqlx.ARRAY or Sqlx.AVG or Sqlx.COLLECT or Sqlx.COUNT or Sqlx.EVERY or Sqlx.FIRST or Sqlx.FUSION or Sqlx.INTERSECTION or Sqlx.LAST or Sqlx.MAX or Sqlx.MIN or Sqlx.STDDEV_POP or Sqlx.STDDEV_SAMP or Sqlx.SOME or Sqlx.SUM or Sqlx.XMLAGG => true,
+                Sqlx.ANY or Sqlx.ARRAY or Sqlx.AVG or Sqlx.COLLECT or Sqlx.COUNT 
+                or Sqlx.EVERY or Sqlx.FIRST or Sqlx.FUSION or Sqlx.INTERSECTION 
+                or Sqlx.LAST or Sqlx.MAX or Sqlx.MIN or Sqlx.RESTRICT or Sqlx.STDDEV_POP 
+                or Sqlx.STDDEV_SAMP or Sqlx.SOME or Sqlx.SUM or Sqlx.XMLAGG => true,
                 _ => false,
             };
         }
@@ -8578,7 +8624,7 @@ namespace Pyrrho.Level3
         static BTree<long,object> _Mem(Context cx,SqlValue w,RowSet s)
         {
             var m = BTree<long, object>.Empty;
-            var ag = w.IsAggregation(cx) +s.aggs;
+            var ag = w.IsAggregation(cx,s.aggs) +s.aggs;
             var dm = Domain.Bool;
             if (ag!=CTree<long,bool>.Empty)
                 m += (Domain.Aggs, ag);
@@ -8850,11 +8896,11 @@ namespace Pyrrho.Level3
         {
             var m = BTree<long, object>.Empty;
             var dm = Domain.Bool;
-            var ag = w.IsAggregation(cx);
+            var ag = w.IsAggregation(cx,CTree<long,bool>.Empty);
             if (a != null)
-                ag += a.IsAggregation(cx);
+                ag += a.IsAggregation(cx, CTree<long, bool>.Empty);
             if (b != null)
-                ag += b.IsAggregation(cx);
+                ag += b.IsAggregation(cx, CTree<long, bool>.Empty);
             if (ag != CTree<long, bool>.Empty)
             {
                 dm = (Domain)dm.New(dm.mem + (Domain.Aggs, ag));
@@ -8898,15 +8944,15 @@ namespace Pyrrho.Level3
         {
             return new BetweenPredicate(defpos,m);
         }
-        internal override CTree<long,bool> IsAggregation(Context cx)
+        internal override CTree<long,bool> IsAggregation(Context cx,CTree<long,bool> ags)
         {
             var r = CTree<long, bool>.Empty;
             if (cx.obs[what] is SqlValue wh)
-                r += wh.IsAggregation(cx);
+                r += wh.IsAggregation(cx,ags);
             if (cx.obs[low] is SqlValue lw)
-                r += lw.IsAggregation(cx); 
+                r += lw.IsAggregation(cx,ags); 
             if (cx.obs[high] is SqlValue hi)
-                r += hi.IsAggregation(cx);
+                r += hi.IsAggregation(cx,ags);
             return r;
         }
         internal override SqlValue Having(Context cx, Domain dm)
@@ -9229,11 +9275,11 @@ cx.obs[high] is not SqlValue hi)
         {
             var m = BTree<long, object>.Empty;
             var dm = Domain.Bool;
-            var ag = a.IsAggregation(cx) + b.IsAggregation(cx);
+            var ag = a.IsAggregation(cx, CTree<long, bool>.Empty) + b.IsAggregation(cx, CTree<long, bool>.Empty);
             if (e != null)
             {
                 m = m + (Escape, e.defpos) + (e.defpos, true);
-                ag += e.IsAggregation(cx);
+                ag += e.IsAggregation(cx, ag);
             }
             if (ag != CTree<long, bool>.Empty)
             {
@@ -9607,7 +9653,7 @@ cx.obs[high] is not SqlValue hi)
             var m = BTree<long, object>.Empty;
             var dm = Domain.Bool;
             var cs = BList<long?>.Empty;
-            var ag = w.IsAggregation(cx);
+            var ag = w.IsAggregation(cx,CTree<long,bool>.Empty);
             m += (QuantifiedPredicate.What, w.defpos);
             if (ag!=CTree<long,bool>.Empty)
                 m += (Domain.Aggs, ag);
@@ -9622,7 +9668,7 @@ cx.obs[high] is not SqlValue hi)
                 {
                     var s = b.value();
                     cs += s.defpos;
-                    ag += s.IsAggregation(cx);
+                    ag += s.IsAggregation(cx,ag);
                 }
                 m += (QuantifiedPredicate.Vals, cs);
                 m += (_Depth,_Depths(vs));
@@ -9630,11 +9676,11 @@ cx.obs[high] is not SqlValue hi)
             m += (_Domain, dm);
             return cx.DoDepth(m);
         }
-        internal override CTree<long,bool> IsAggregation(Context cx)
+        internal override CTree<long,bool> IsAggregation(Context cx,CTree<long,bool>ags)
         {
             if (cx.obs[what] is not SqlValue w)
                 throw new PEException("PE43350");
-            return w.IsAggregation(cx);
+            return w.IsAggregation(cx,ags);
         }
         internal override SqlValue Having(Context cx, Domain dm)
         {
@@ -10003,7 +10049,7 @@ cx.obs[high] is not SqlValue hi)
         {
             var m = BTree<long, object>.Empty;
             var dm = Domain.Bool;
-            var ag = a.IsAggregation(cx) + b.IsAggregation(cx);
+            var ag = a.IsAggregation(cx, CTree<long, bool>.Empty) + b.IsAggregation(cx, CTree<long, bool>.Empty);
             if (ag != CTree<long, bool>.Empty)
             {
                 dm = (Domain)dm.New(dm.mem + (Domain.Aggs, ag));
@@ -10050,11 +10096,11 @@ cx.obs[high] is not SqlValue hi)
         {
             return new MemberPredicate(dp,m);
         }
-        internal override CTree<long,bool> IsAggregation(Context cx)
+        internal override CTree<long,bool> IsAggregation(Context cx,CTree<long,bool>ags)
         {
             if (cx.obs[lhs] is not SqlValue lh || cx.obs[rhs] is not SqlValue rh)
                 throw new PEException("PE49504");
-            return lh.IsAggregation(cx) + rh.IsAggregation(cx);
+            return lh.IsAggregation(cx,ags) + rh.IsAggregation(cx,ags);
         }
         internal override SqlValue Having(Context cx, Domain dm)
         {
@@ -10464,12 +10510,12 @@ cx.obs[high] is not SqlValue hi)
             if (a != null)
             {
                 m += (Left, a.defpos);
-                ag += a.IsAggregation(cx);
+                ag += a.IsAggregation(cx, CTree<long, bool>.Empty);
             }
             if (b != null)
             {
                 m += (Right, b.defpos);
-                ag += b.IsAggregation(cx);
+                ag += b.IsAggregation(cx, CTree<long, bool>.Empty);
             }
             if (ag != CTree<long, bool>.Empty)
             {
@@ -11001,11 +11047,11 @@ cx.obs[high] is not SqlValue hi)
         {
             return new NullPredicate(defpos,m);
         }
-        internal override CTree<long,bool> IsAggregation(Context cx)
+        internal override CTree<long,bool> IsAggregation(Context cx,CTree<long,bool>ags)
         {
             if (cx.obs[val] is not SqlValue v)
                 throw new PEException("PE49550");
-            return v.IsAggregation(cx);
+            return v.IsAggregation(cx,ags);
         }
         internal override DBObject New(long dp, BTree<long, object>m)
         {

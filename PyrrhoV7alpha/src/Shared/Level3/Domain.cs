@@ -227,7 +227,7 @@ namespace Pyrrho.Level3
                 rs += (v.defpos, v.domain);
                 cs += v.defpos;
                 if (v is SqlValue sv)
-                    ag += sv.IsAggregation(cx);
+                    ag += sv.IsAggregation(cx,CTree<long,bool>.Empty);
             }
             var m = BTree<long,object>.Empty + (Representation, rs) + (RowType, cs)
                 + (Aggs, ag) + (Kind, t)
@@ -377,7 +377,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             return (new Table(-1L,cx,rs,rt,rt.Length), rt, rs);
         }
         /// <summary>
-        /// We take a lot of trouble to ensure ID, LEAVING and ARRIVING are in positions 0,1,2
+        /// We take a lot of trouble to ensure Id, LEAVING and ARRIVING are in positions 0,1,2
         /// </summary>
         /// <param name="a">Current rowType</param>
         /// <param name="k">A suggested seq position</param>
@@ -448,13 +448,13 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     return true;
             return false;
         }
-        internal Domain Source(Context cx,long dp)
+        internal Domain SourceRow(Context cx,long dp)
         {
             var rs = CTree<long, Domain>.Empty;
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is SqlValue sv)
                 {
-                    if (sv is SqlFunction sf && sf.IsAggregation(cx)!=CTree<long,bool>.Empty)
+                    if (sv is SqlFunction sf && sf.IsAggregation(cx,CTree<long,bool>.Empty)!=CTree<long,bool>.Empty)
                     {
                         if (cx.obs[sf.val] is SqlValue v) rs += (v.defpos, v.domain);
                         if (cx.obs[sf.op1] is SqlValue w) rs += (w.defpos, w.domain);
@@ -2767,8 +2767,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     if (du.HasValue(cx, v))
                         return v;
                 }
-            if (kind==Sqlx.COLLECT && elType is not null && v.dataType.EqualOrStrongSubtypeOf(elType))
-                    return v;
+            if (kind == Sqlx.COLLECT && elType is not null && v.dataType.EqualOrStrongSubtypeOf(elType))
+                return v;
             if (abbrev != "" && v.dataType.kind == Sqlx.CHAR && kind != Sqlx.CHAR)
                 v = Parse(new Scanner(-1, v.ToString().ToCharArray(), 0, cx));
             for (var dd = v.dataType; dd != null; dd = (dd as UDType)?.super)
@@ -2781,8 +2781,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 return di.Coerce(cx, va);
             if (v.dataType is UDType ut && CanTakeValueOf(ut) && v is TSubType ts)
                 return ts.value;
-            if (v.dataType.kind == Sqlx.SET  && ((TSet)v).Cardinality() == 1)
-                    return ((TSet)v).First()?.Value() ?? TNull.Value;
+            if (v.dataType.kind == Sqlx.SET && ((TSet)v).Cardinality() == 1)
+                return ((TSet)v).First()?.Value() ?? TNull.Value;
             if (v.dataType.kind == Sqlx.MULTISET && ((TMultiset)v).Cardinality() == 1)
                 return ((TMultiset)v).First()?.Value() ?? TNull.Value;
             //          if (v.dataType.name == name)
@@ -2790,75 +2790,77 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (kn == Sqlx.UNION)
                 return v;
             switch (kn)
-                {
-                    case Sqlx.INTEGER:
+            {
+                case Sqlx.INTEGER:
+                    {
+                        if (vk == Sqlx.INTEGER)
                         {
-                            if (vk == Sqlx.INTEGER)
+                            if (prec != 0)
                             {
-                                if (prec != 0)
-                                {
-                                    Integer iv;
-                                    if (v is TInteger vi)
-                                        iv = vi.ivalue;
-                                    else if (v is TInt vv)
-                                        iv = new Integer(vv.value);
-                                    else break;
-                                    var limit = Integer.Pow10(prec);
-                                    if (iv >= limit || iv <= -limit)
-                                        throw new DBException("22003").ISO()
-                                            .AddType(this).AddValue(v);
-                                    return new TInteger(this, iv);
-                                }
-                                if (v.ToLong() is long vl)
-                                    return new TInt(this, vl);
-                                if (v.ToInteger() is Integer xv)
-                                    return new TInteger(this, xv);
-                                break;
+                                Integer iv;
+                                if (v is TInteger vi)
+                                    iv = vi.ivalue;
+                                else if (v is TInt vv)
+                                    iv = new Integer(vv.value);
+                                else break;
+                                var limit = Integer.Pow10(prec);
+                                if (iv >= limit || iv <= -limit)
+                                    throw new DBException("22003").ISO()
+                                        .AddType(this).AddValue(v);
+                                return new TInteger(this, iv);
                             }
-                            if (vk == Sqlx.NUMERIC && v is TNumeric a)
-                            {
-                                var m = a.value.mantissa;
-                                var s = a.value.scale;
-                                int r = 0;
-                                while (s > 0)
-                                {
-                                    m = m.Quotient(10, ref r);
-                                    s--;
-                                }
-                                while (s < 0)
-                                {
-                                    m = a.value.mantissa.Times(10);
-                                    s++;
-                                }
-                                var na = new Numeric(m, s);
-                                if (prec != 0)
-                                {
-                                    var limit = Integer.Pow10(prec);
-                                    if (na.mantissa >= limit || na.mantissa <= -limit)
-                                        throw new DBException("22003").ISO()
-                                            .AddType(this).Add(Sqlx.VALUE, v);
-                                }
-                                return new TInteger(this, na.mantissa);
-                            }
-                            if (vk == Sqlx.REAL && v.ToLong() is long ii)
-                            {
-                                if (prec != 0)
-                                {
-                                    var iv = new Integer(ii);
-                                    var limit = Integer.Pow10(prec);
-                                    if (iv > limit || iv < -limit)
-                                        throw new DBException("22003").ISO()
-                                             .AddType(this).AddValue(v);
-                                }
-                                return new TInt(this, ii);
-                            }
-                            if (vk == Sqlx.CHAR)
-                                return new TInt(Integer.Parse(v.ToString()));
+                            if (v.ToLong() is long vl)
+                                return new TInt(this, vl);
+                            if (v.ToInteger() is Integer xv)
+                                return new TInteger(this, xv);
+                            break;
                         }
-                        break;
-                    case Sqlx.NUMERIC:
+                        if (vk == Sqlx.NUMERIC && v is TNumeric a)
                         {
-                            Numeric a;
+                            var m = a.value.mantissa;
+                            var s = a.value.scale;
+                            int r = 0;
+                            while (s > 0)
+                            {
+                                m = m.Quotient(10, ref r);
+                                s--;
+                            }
+                            while (s < 0)
+                            {
+                                m = a.value.mantissa.Times(10);
+                                s++;
+                            }
+                            var na = new Numeric(m, s);
+                            if (prec != 0)
+                            {
+                                var limit = Integer.Pow10(prec);
+                                if (na.mantissa >= limit || na.mantissa <= -limit)
+                                    throw new DBException("22003").ISO()
+                                        .AddType(this).Add(Sqlx.VALUE, v);
+                            }
+                            return new TInteger(this, na.mantissa);
+                        }
+                        if (vk == Sqlx.REAL && v.ToLong() is long ii)
+                        {
+                            if (prec != 0)
+                            {
+                                var iv = new Integer(ii);
+                                var limit = Integer.Pow10(prec);
+                                if (iv > limit || iv < -limit)
+                                    throw new DBException("22003").ISO()
+                                         .AddType(this).AddValue(v);
+                            }
+                            return new TInt(this, ii);
+                        }
+                        if (vk == Sqlx.CHAR)
+                            return new TInt(Integer.Parse(v.ToString()));
+                        if (vk == Sqlx.NODETYPE || vk == Sqlx.EDGETYPE)
+                            return new TInt(((TNode)v).id);
+                    }
+                    break;
+                case Sqlx.NUMERIC:
+                    {
+                        Numeric a;
                         if (vk == Sqlx.NUMERIC)
                         {
                             if (v is TNumeric na)
@@ -2872,195 +2874,195 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             a = new Numeric(iv.ivalue);
                         else
                             a = new Numeric(v.ToDouble());
-                            if (scale != 0)
-                            {
-                                if ((!a.mantissa.IsZero()) && a.scale > scale)
-                                    a = a.Round(scale);
-                                int r = 0;
-                                var m = a.mantissa;
-                                var s = a.scale;
-                                while (s > scale)
-                                {
-                                    m = m.Quotient(10, ref r);
-                                    s--;
-                                }
-                                while (s < scale)
-                                {
-                                    m = m.Times(10);
-                                    s++;
-                                }
-                                a = new Numeric(m, s);
-                            }
-                            if (prec != 0)
-                            {
-                                var limit = Integer.Pow10(prec);
-                                if (a.mantissa > limit || a.mantissa < -limit)
-                                    throw new DBException("22003").ISO()
-                                         .AddType(this).AddValue(v);
-                            }
-                            return new TNumeric(this, a);
-                        }
-                    case Sqlx.REAL:
+                        if (scale != 0)
                         {
-                            var r = v.ToDouble();
-                            if (prec == 0)
-                                return new TReal(this, r);
-                            decimal d = new (r);
-                            d = Math.Round(d, scale);
-                            bool sg = d < 0;
-                            if (sg)
-                                d = -d;
-                            decimal m = 1.0M;
-                            for (int j = 0; j < prec - scale; j++)
-                                m *= 10.0M;
-                            if (d > m)
-                                break;
-                            if (sg)
-                                d = -d;
-                            return new TReal(this, (double)d);
-                        }
-                    case Sqlx.DATE:
-                        {
-                            switch (vk)
+                            if ((!a.mantissa.IsZero()) && a.scale > scale)
+                                a = a.Round(scale);
+                            int r = 0;
+                            var m = a.mantissa;
+                            var s = a.scale;
+                            while (s > scale)
                             {
-                                case Sqlx.DATE:
-                                    return v;
-                                case Sqlx.CHAR:
-                                    return new TDateTime(this, DateTime.Parse(v.ToString(),
-                                        (cx.conn.props["Locale"] is string lc)?new CultureInfo(lc)
-                                        :v.dataType.culture));
+                                m = m.Quotient(10, ref r);
+                                s--;
                             }
-                            if (v is TDateTime dt)
-                                return new TDateTime(this, dt.value);
-                            if (v.ToLong() is long lv)
-                                return new TDateTime(this, new DateTime(lv));
+                            while (s < scale)
+                            {
+                                m = m.Times(10);
+                                s++;
+                            }
+                            a = new Numeric(m, s);
+                        }
+                        if (prec != 0)
+                        {
+                            var limit = Integer.Pow10(prec);
+                            if (a.mantissa > limit || a.mantissa < -limit)
+                                throw new DBException("22003").ISO()
+                                     .AddType(this).AddValue(v);
+                        }
+                        return new TNumeric(this, a);
+                    }
+                case Sqlx.REAL:
+                    {
+                        var r = v.ToDouble();
+                        if (prec == 0)
+                            return new TReal(this, r);
+                        decimal d = new(r);
+                        d = Math.Round(d, scale);
+                        bool sg = d < 0;
+                        if (sg)
+                            d = -d;
+                        decimal m = 1.0M;
+                        for (int j = 0; j < prec - scale; j++)
+                            m *= 10.0M;
+                        if (d > m)
                             break;
-                        }
-                    case Sqlx.TIME:
+                        if (sg)
+                            d = -d;
+                        return new TReal(this, (double)d);
+                    }
+                case Sqlx.DATE:
+                    {
                         switch (vk)
                         {
-                            case Sqlx.TIME:
-                                return v;
-                            case Sqlx.CHAR:
-                                return new TTimeSpan(this, TimeSpan.Parse(v.ToString(),
-                                    (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
-                                    : v.dataType.culture));
-                        }
-                        break;
-                    case Sqlx.TIMESTAMP:
-                        switch (vk)
-                        {
-                            case Sqlx.TIMESTAMP: return v;
                             case Sqlx.DATE:
-                                return new TDateTime(this, ((TDateTime)v).value);
+                                return v;
                             case Sqlx.CHAR:
                                 return new TDateTime(this, DateTime.Parse(v.ToString(),
                                     (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
                                     : v.dataType.culture));
                         }
-                        if (v.ToLong() is long vm)
-                            return new TDateTime(this, new DateTime(vm));
+                        if (v is TDateTime dt)
+                            return new TDateTime(this, dt.value);
+                        if (v.ToLong() is long lv)
+                            return new TDateTime(this, new DateTime(lv));
                         break;
-                    case Sqlx.INTERVAL:
-                        if (v is TInterval zv)
-                            return new TInterval(this, zv.value);
-                        break;
-                    case Sqlx.CHAR:
-                        {
-                            var vt = v.dataType;
-                            string str = vt.kind switch
-                            {
-                                Sqlx.DATE or Sqlx.TIMESTAMP => ((TDateTime)v).value.ToString(culture),
-                                Sqlx.CHAR => ((TChar)v).ToString(),
-                                Sqlx.CHECK => ((TRvv)v).rvv.ToString(),
-                                Sqlx.NODETYPE or Sqlx.EDGETYPE => ((TNode)v).ToString(cx),
-                                _ => v.ToString(cx),
-                            };
-                            if (prec != 0 && str.Length > prec)
-                                throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
-                                                    .AddType(this).AddValue(vt);
-                            return new TChar(this, str);
-                        }
-                    case Sqlx.PERIOD:
-                        {
-                            if (v is not TPeriod pd || elType is null)
-                                return TNull.Value;
-                            return new TPeriod(this, new Period(elType.Coerce(cx, pd.value.start),
-                                elType.Coerce(cx, pd.value.end)));
-                        }
-                    case Sqlx.DOCUMENT:
-                        {
-                            switch (vk)
-                            {
-                                case Sqlx.CHAR:
-                                    {
-                                        var vs = v.ToString();
-                                        if (vs[0] == '{')
-                                            return new TDocument(vs);
-                                        break;
-                                    }
-                                case Sqlx.BLOB:
-                                    {
-                                        var i = 0;
-                                        return new TDocument(((TBlob)v).value, ref i);
-                                    }
-                            }
+                    }
+                case Sqlx.TIME:
+                    switch (vk)
+                    {
+                        case Sqlx.TIME:
                             return v;
-                        }
-                    case Sqlx.CONTENT: return v;
-                    case Sqlx.PASSWORD: return v;
-                    case Sqlx.DOCARRAY: goto case Sqlx.DOCUMENT;
-                    case Sqlx.ROW:
+                        case Sqlx.CHAR:
+                            return new TTimeSpan(this, TimeSpan.Parse(v.ToString(),
+                                (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
+                                : v.dataType.culture));
+                    }
+                    break;
+                case Sqlx.TIMESTAMP:
+                    switch (vk)
+                    {
+                        case Sqlx.TIMESTAMP: return v;
+                        case Sqlx.DATE:
+                            return new TDateTime(this, ((TDateTime)v).value);
+                        case Sqlx.CHAR:
+                            return new TDateTime(this, DateTime.Parse(v.ToString(),
+                                (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
+                                : v.dataType.culture));
+                    }
+                    if (v.ToLong() is long vm)
+                        return new TDateTime(this, new DateTime(vm));
+                    break;
+                case Sqlx.INTERVAL:
+                    if (v is TInterval zv)
+                        return new TInterval(this, zv.value);
+                    break;
+                case Sqlx.CHAR:
+                    {
+                        var vt = v.dataType;
+                        string str = vt.kind switch
                         {
-                            var vs = CTree<long, TypedValue>.Empty;
-                            var vb = v.dataType.rowType.First();
-                            var d = v.dataType.display;
-                            if (d == 0)
-                                d = int.MaxValue;
-                            var r = (TRow)v;
-                            for (var b = rowType.First(); b != null && vb != null && b.key() < d;
-                                b = b.Next(), vb = vb.Next())
-                                if (b.value() is long pp && vb.value() is long vp &&
-                                    representation[pp] is Domain dt &&
-                                    r[vp] is TypedValue tv)
-                                    vs += (pp, dt.Coerce(cx, tv));
-                            if (vb != null)
-                                goto bad;
-                            return new TRow(this, vs);
+                            Sqlx.DATE or Sqlx.TIMESTAMP => ((TDateTime)v).value.ToString(culture),
+                            Sqlx.CHAR => ((TChar)v).ToString(),
+                            Sqlx.CHECK => ((TRvv)v).rvv.ToString(),
+                            Sqlx.NODETYPE or Sqlx.EDGETYPE => ((TNode)v).ToString(cx),
+                            _ => v.ToString(cx),
+                        };
+                        if (prec != 0 && str.Length > prec)
+                            throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
+                                                .AddType(this).AddValue(vt);
+                        return new TChar(this, str);
+                    }
+                case Sqlx.PERIOD:
+                    {
+                        if (v is not TPeriod pd || elType is null)
+                            return TNull.Value;
+                        return new TPeriod(this, new Period(elType.Coerce(cx, pd.value.start),
+                            elType.Coerce(cx, pd.value.end)));
+                    }
+                case Sqlx.DOCUMENT:
+                    {
+                        switch (vk)
+                        {
+                            case Sqlx.CHAR:
+                                {
+                                    var vs = v.ToString();
+                                    if (vs[0] == '{')
+                                        return new TDocument(vs);
+                                    break;
+                                }
+                            case Sqlx.BLOB:
+                                {
+                                    var i = 0;
+                                    return new TDocument(((TBlob)v).value, ref i);
+                                }
                         }
-                    case Sqlx.VALUE:
-                    case Sqlx.NULL:
                         return v;
-                    case Sqlx.ARRAY:
-                        if (v is TList && elType is not null && v.dataType.elType is not null 
-                            && elType.CanTakeValueOf(v.dataType.elType))
-                            return v;
-                        if (v is TArray && elType is not null && v.dataType.elType is not null
-                            && elType.CanTakeValueOf(v.dataType.elType))
+                    }
+                case Sqlx.CONTENT: return v;
+                case Sqlx.PASSWORD: return v;
+                case Sqlx.DOCARRAY: goto case Sqlx.DOCUMENT;
+                case Sqlx.ROW:
+                    {
+                        var vs = CTree<long, TypedValue>.Empty;
+                        var vb = v.dataType.rowType.First();
+                        var d = v.dataType.display;
+                        if (d == 0)
+                            d = int.MaxValue;
+                        var r = (TRow)v;
+                        for (var b = rowType.First(); b != null && vb != null && b.key() < d;
+                            b = b.Next(), vb = vb.Next())
+                            if (b.value() is long pp && vb.value() is long vp &&
+                                representation[pp] is Domain dt &&
+                                r[vp] is TypedValue tv)
+                                vs += (pp, dt.Coerce(cx, tv));
+                        if (vb != null)
+                            goto bad;
+                        return new TRow(this, vs);
+                    }
+                case Sqlx.VALUE:
+                case Sqlx.NULL:
+                    return v;
+                case Sqlx.ARRAY:
+                    if (v is TList && elType is not null && v.dataType.elType is not null
+                        && elType.CanTakeValueOf(v.dataType.elType))
+                        return v;
+                    if (v is TArray && elType is not null && v.dataType.elType is not null
+                        && elType.CanTakeValueOf(v.dataType.elType))
                         return v;
                     break;
-                    case Sqlx.SET:
-                        if (v.dataType.elType is not null)
-                        {
-                            if (v is TSet && elType is not null && elType.CanTakeValueOf(v.dataType.elType))
-                                return v;
-                            else if (v.dataType.EqualOrStrongSubtypeOf(v.dataType.elType))
-                                return new TSet(v.dataType, new CTree<TypedValue, bool>(v, true));
-                        }
-                        if (elType?.CanTakeValueOf(v.dataType) == true)
-                            return new TSet(this, new CTree<TypedValue,bool>(v,true));
-                        break;
-                    case Sqlx.MULTISET:
-                        if (v is TMultiset && elType is not null && v.dataType.elType is not null
-                            && elType.CanTakeValueOf(v.dataType.elType))
+                case Sqlx.SET:
+                    if (v.dataType.elType is not null)
+                    {
+                        if (v is TSet && elType is not null && elType.CanTakeValueOf(v.dataType.elType))
                             return v;
-                        if (elType?.CanTakeValueOf(v.dataType) == true)
-                            return new TMultiset(v.dataType, new BTree<TypedValue,long?>(v, 1L),1);
-                        break;
-                    default:
+                        else if (v.dataType.EqualOrStrongSubtypeOf(v.dataType.elType))
+                            return new TSet(v.dataType, new CTree<TypedValue, bool>(v, true));
+                    }
+                    if (elType?.CanTakeValueOf(v.dataType) == true)
+                        return new TSet(this, new CTree<TypedValue, bool>(v, true));
+                    break;
+                case Sqlx.MULTISET:
+                    if (v is TMultiset && elType is not null && v.dataType.elType is not null
+                        && elType.CanTakeValueOf(v.dataType.elType))
+                        return v;
+                    if (elType?.CanTakeValueOf(v.dataType) == true)
+                        return new TMultiset(v.dataType, new BTree<TypedValue, long?>(v, 1L), 1);
+                    break;
+                default:
                     return v;
-                }
-            bad: throw new DBException("22005", this, v.ToString()).ISO();
+            }
+        bad: throw new DBException("22005", this, v.ToString()).ISO();
         }
         /// <summary>
         ///  for accepting Json values

@@ -1,5 +1,6 @@
 using System.Diagnostics.Metrics;
 using System.Text;
+using System.Xml;
 using System.Xml.XPath;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -1153,10 +1154,21 @@ namespace Pyrrho.Level3
             cx.exec = this;
             var vb = cx._Ob(vbl);
             var dm = vb?.domain??Domain.Content;
-            if (dm != null && cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
+            if (cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
             {
-                var v = dm.Coerce(cx,tv);
-                cx.values += (vb?.defpos??-1L, v);
+                if (vb is SqlValueExpr se && se.op == Sqlx.DOT && cx._Ob(se.left)?.Eval(cx) is TNode tl
+                    && cx._Ob(se.right) is SqlCopy sc && tl.dataType.representation[sc.copyFrom] is Domain cd
+                    && cd.Coerce(cx, tv) is TypedValue v1)
+                    cx.Add(new Update(tl.tableRow, (Table)tl.dataType, new CTree<long, TypedValue>(sc.copyFrom, v1),
+                        cx.db.nextPos, cx));
+                else if (vb is SqlField sf && cx._Ob(sf.from)?.Eval(cx) is TNode tf
+                    && tf.dataType.infos[cx.role.defpos] is ObInfo fi
+                    && cx._Ob(fi.names[sf.name ?? "?"].Item2 ?? -1L) is TableColumn tc
+                    && tc.domain.Coerce(cx, tv) is TypedValue v3)
+                    cx.Add(new Update(tf.tableRow, (Table)tf.dataType, new CTree<long, TypedValue>(tc.defpos, v3),
+                        cx.db.nextPos, cx));
+                else if (dm != Domain.Content && dm != Domain.Null && dm.Coerce(cx, tv) is TypedValue v2)
+                    cx.values += (vb?.defpos ?? -1L, v2);
             }
             return cx;
         }
@@ -3773,6 +3785,25 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    internal class DeleteNode : Executable
+    {
+        internal long what => (long)(mem[QuantifiedPredicate.What] ?? -1L);
+        internal DeleteNode(long dp,SqlValue v)
+            : base(dp,new BTree<long,object>(QuantifiedPredicate.What,v.defpos)) 
+        { }
+        protected DeleteNode(long dp, BTree<long, object>? m = null) : base(dp, m)
+        {
+        }
+        protected DeleteNode(long dp, string s) : base(dp, s)
+        {
+        }
+        public override Context Obey(Context cx)
+        {
+            var n = cx.obs[what]?.Eval(cx) as TNode??throw new DBException("22004");
+            cx.Add(new Delete(n.tableRow, cx.db.nextPos));
+            return cx;
+        }
+    }
     /// <summary>
     /// QuerySearch is for DELETE and UPDATE 
     /// 
@@ -3885,7 +3916,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Implement a searched UPDATE statement as a kind of QuerySearch
-    /// 
+    /// (QuerySearch itself is for Delete)
     /// </summary>
     internal class UpdateSearch : QuerySearch
     {
@@ -4178,16 +4209,6 @@ namespace Pyrrho.Level3
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new MatchStatement(dp,m);
-        }
-        internal class PathStack
-        {
-            internal int count;
-            internal SqlPath match;
-            internal ABookmark<int, long?>? xb;
-            internal PathStack? next = null;
-            internal BTree<TList,bool> history = BTree<TList,bool>.Empty;
-            internal PathStack(int c, SqlPath m, ABookmark<int,long?>? x, PathStack? n)
-            { count = c; match = m; xb = x; next = n; }
         }
         /// <summary>
         /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.
@@ -4539,6 +4560,8 @@ namespace Pyrrho.Level3
                     goto backtrack;
                 if (!xl.CheckProps(cx, dl))
                     goto backtrack;
+                if ((mode == Sqlx.SHORTEST || mode == Sqlx.SHORTESTPATH) && !Shortest(gb,cx))
+                    goto backtrack;
                 DoBindings(cx, xl, dl);
                 cx.trail += dl;
                 // Can we go on to the rest of the parent expression?
@@ -4575,7 +4598,7 @@ namespace Pyrrho.Level3
                     {
                         switch (b.key())
                         {
-                            case -(int)Sqlx.ID: tv = dn; break;
+                            case -(int)Sqlx.Id: tv = dn; break;
                             case -(int)Sqlx.RARROW:
                                 {
                                     var te = cx.GType(nt.leavingType);
@@ -4606,6 +4629,31 @@ namespace Pyrrho.Level3
                 }
                 cx.binding = bi;
             }
+        }
+        // implement an algorithn for SHORTEST
+        bool Shortest(ABookmark<int,long?> gb,Context cx)
+        {
+            if (cx.obs[gb.value() ?? -1L] is SqlMatch sm
+                   && (sm.mode == Sqlx.SHORTEST || sm.mode == Sqlx.SHORTESTPATH)
+                   && sm.pathId >= 0
+                   && cx.obs[cx.result] is ExplicitRowSet ers)
+            {
+                var rws = ers.explRows;
+                if (rws.Length == 0) return true;
+                var (ol,ov) = rws[ers.Length - 1];
+                var op = ov[sm.pathId] as TList;
+                var cp = cx.trail;
+                if (op is null)
+                    return true; // ??
+                if (op.Length > cp.Length)
+                {
+                    ers += (ExplicitRowSet.ExplRows, rws - (ers.Length-1));
+                    cx.Add(ers);
+                    return true;
+                }
+                return false;
+            }
+            return true;
         }
         public override string ToString()
         {

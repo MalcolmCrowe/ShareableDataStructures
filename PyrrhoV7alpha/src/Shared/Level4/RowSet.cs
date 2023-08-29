@@ -147,7 +147,7 @@ namespace Pyrrho.Level4
         internal long group => (long)(mem[Group] ?? -1L);
         internal BList<long?> groupings =>
             (BList<long?>?)mem[Groupings] ?? BList<long?>.Empty;
-        internal Domain groupCols => (Domain)(mem[GroupCols]??Domain.Null);
+        internal Domain groupCols => (Domain)(mem[GroupCols]??Null);
         /// <summary>
         /// The having clause
         /// </summary>
@@ -441,7 +441,7 @@ namespace Pyrrho.Level4
                                             }
                                         if (sv.KnownBy(cx, this, true)==true) // allow ambient values
                                         {
-                                            if (sv.IsAggregation(cx) != CTree<long, bool>.Empty)
+                                            if (sv.IsAggregation(cx,CTree<long,bool>.Empty) != CTree<long, bool>.Empty)
                                                 mh += (k, true);
                                             else if (!matched)
                                                 mw += (k, true);
@@ -2007,7 +2007,8 @@ namespace Pyrrho.Level4
                                 if (((BTree<long,long?>?)m[ISMap])?.Contains(c.value()??-1L)==true)
                                     goto next;
                             var t = tt.indexes[k] ?? CTree<long, bool>.Empty;
-                            xs += (k, t+x.value());
+                            if (k.Length!=0)
+                                xs += (k, t+x.value());
                             next:;
                         }
                         m += (Table.Indexes, xs);
@@ -2086,7 +2087,7 @@ namespace Pyrrho.Level4
                 r += (_Ident, r.id.Fix(cx));
             return r;
         }
-        protected static BList<long?> _Info(Context cx, Grouping g, BList<long?> gs)
+        internal static BList<long?> _Info(Context cx, Grouping g, BList<long?> gs)
         {
             gs += g.defpos;
             var cs = BList<DBObject>.Empty;
@@ -2174,7 +2175,7 @@ namespace Pyrrho.Level4
             }
             if (mm == BTree<long, object>.Empty)
                 return this;
-            var ag = (CTree<long, bool>?)mm[Domain.Aggs] ?? throw new DBException("42105");
+            var ag = (CTree<long, bool>?)mm[Aggs] ?? throw new DBException("42105");
             var od = cx.done;
             cx.done = ObTree.Empty;
             var m = mem;
@@ -2188,8 +2189,8 @@ namespace Pyrrho.Level4
             }
             else
                 // if we get here we have a non-grouped aggregation to add
-                m += (Domain.Aggs, ag);
-            var nc = BList<long?>.Empty; // start again with the aggregating rowType, follow any ordering given
+                m += (Aggs, ag);
+/*            var nc = BList<long?>.Empty; // start again with the aggregating rowType, follow any ordering given
             var dm = (Domain)(mm[AggDomain] ?? Null);
             var ns = CTree<long, Domain>.Empty;
             var gb = ((Domain?)m[GroupCols])?.representation ?? CTree<long, Domain>.Empty;
@@ -2221,13 +2222,13 @@ namespace Pyrrho.Level4
                     nc += p;
                     ns += (p, dv);
                 }
-            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc, d) + (Domain.Aggs, ag);
+            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc, d) + (Aggs, ag);
             if (nd.Length > 0)
             {
                 cx.Add(nd);
                 m = m + nd.mem;
-            }
-            m = m + (Aggs, ag);
+            } */
+            m = m + (Aggs, ag); 
             var r = (SelectRowSet)New(m);
             cx.Add(r);
             if (mm[Having] is CTree<long, bool> h)
@@ -2427,7 +2428,8 @@ namespace Pyrrho.Level4
                 cx.obs += (defpos, r); // doesn't change depth
                 cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
                 sce = sce.Build(cx);
-                if (sce is not RestRowSet && sce is not RestRowSetUsing)
+                var nrest = sce is not RestRowSet && sce is not RestRowSetUsing;
+                if (nrest)
                     for (var rb = sce.First(cx); rb != null; rb = rb.Next(cx))
                         if (r.groupings.Count == 0)
                             for (var b0 = ags.First(); b0 != null; b0 = b0.Next())
@@ -2464,12 +2466,21 @@ namespace Pyrrho.Level4
                         // and the aggregate function accumulated values
                         for (var c = aggs.First(); c != null; c = c.Next())
                             if (cx.obs[c.key()] is SqlValue v)
-                                cx.values += (v.defpos, v.Eval(cx));
+                            {
+                                if (v is SqlFunction fr && fr.op == Sqlx.RESTRICT && nrest)
+                                    cx.values += (fr.val, fr.Eval(cx));
+                                else
+                                    cx.values += (v.defpos, v.Eval(cx));
+                            }
                         // compute the aggregation expressions from these seeds
                         for (var c = rowType.First(); c != null; c = c.Next())
                             if (c.value() is long p && cx.obs[p] is SqlValue sv 
-                                && sv.IsAggregation(cx) != CTree<long, bool>.Empty)
+                                && sv.IsAggregation(cx,aggs) != CTree<long, bool>.Empty)
                                 vs += (sv.defpos, sv.Eval(cx));
+                        // add in any exposed RESTRICT values
+                        for (var c = aggs.First(); c != null; c = c.Next())
+                            if (cx.obs[c.key()] is SqlFunction fr && fr.op == Sqlx.RESTRICT && nrest)
+                                  vs += (fr.val, fr.Eval(cx));
                         // for the having calculation to work we must ensure that
                         // having uses the uids that are in aggs
                         for (var h = r.having.First(); h != null; h = h.Next())
@@ -2915,9 +2926,11 @@ namespace Pyrrho.Level4
                     for (var c = b.value().First(); c != null; c = c.Next())
                         if (cx._Ob(c.key()) is Level3.Index x && x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey))
                             pk = nk;
-                    pk = (Domain)cx.Add(pk);
+                    if (pk.Length!=0)
+                        pk = (Domain)cx.Add(pk);
                 }
-                xs += (nk, b.value());
+                if (nk.Length!=0)
+                    xs += (nk, b.value());
             }
             if (pk != null)
                 m += (Level3.Index.Keys,pk);
@@ -6037,7 +6050,7 @@ namespace Pyrrho.Level4
         /// <param name="cx"></param>
         /// <param name="im"></param>
         /// <returns></returns>
-        internal override RowSet Apply(BTree<long,object> mm, Context cx, BTree<long,object>? m=null)
+        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long, object>? m = null)
         {
             if (cx.undefined != CTree<long, int>.Empty)
             {
@@ -6045,19 +6058,19 @@ namespace Pyrrho.Level4
                 return this;
             }
             // what might we need?
-            var xs = ((CTree<long,bool>?)mm[_Where]??CTree<long,bool>.Empty)
-                +  ((CTree<long, bool>?)mm[Having] ?? CTree<long, bool>.Empty); 
+            var xs = ((CTree<long, bool>?)mm[_Where] ?? CTree<long, bool>.Empty)
+                + ((CTree<long, bool>?)mm[Having] ?? CTree<long, bool>.Empty);
             // deal with group cols
             var gr = (long)(mm[Group] ?? -1L);
             var groups = (GroupSpecification?)cx.obs[gr];
             var gs = groupings;
             for (var b = groups?.sets.First(); b != null; b = b.Next())
-            if (b.value() is long p && cx.obs[p] is Grouping g)
-                gs = _Info(cx, g, gs);
+                if (b.value() is long p && cx.obs[p] is Grouping g)
+                    gs = _Info(cx, g, gs);
             if (gs != groupings)
             {
                 mm += (Groupings, gs);
-                var gc = cx.GroupCols(gs,this);
+                var gc = cx.GroupCols(gs, this);
                 mm += (GroupCols, gc);
                 for (var c = gc.rowType.First(); c != null; c = c.Next())
                     if (c.value() is long p)
@@ -6065,11 +6078,11 @@ namespace Pyrrho.Level4
             }
             // Collect all operands that we don't have yet
             var ou = CTree<long, bool>.Empty;
-            for (var b = xs.First();b is not null;b=b.Next())
-            if (cx.obs[b.key()] is SqlValue e)
-                for (var c = e.Operands(cx).First(); c != null; c = c.Next())
-                    if (!representation.Contains(c.key()))
-                        ou += (c.key(), true);
+            for (var b = xs.First(); b is not null; b = b.Next())
+                if (cx.obs[b.key()] is SqlValue e)
+                    for (var c = e.Operands(cx).First(); c != null; c = c.Next())
+                        if (!representation.Contains(c.key()))
+                            ou += (c.key(), true);
             // Add them to the Domain if necessary
             var rc = rowType;
             var rs = representation;
@@ -6097,13 +6110,13 @@ namespace Pyrrho.Level4
                         // See if we can economise on top-level aggregations
                         for (var c = es.First(); c != null; c = c.Next())
                             if (v._MatchExpr(cx, c.value(), this))
-                                cx.Replace(c.value(), new SqlCopy(cx.GetUid(), cx, v.name??"", defpos, v));
+                                cx.Replace(c.value(), new SqlCopy(cx.GetUid(), cx, v.name ?? "", defpos, v));
                         if (v is SqlFunction ct && ct.op == Sqlx.COUNT && ct.mod == Sqlx.TIMES)
                         {
                             nc += p;
                             ns += (p, Int);
                         }
-                        else if (v.IsAggregation(cx) != CTree<long, bool>.Empty)
+                        else if (v.IsAggregation(cx, CTree<long, bool>.Empty) != CTree<long, bool>.Empty)
                             for (var c = ((SqlValue?)cx.obs[p])?.KnownFragments(cx, kb).First();
                                 c != null; c = c.Next())
                                 if (ns[c.key()] is Domain cd)
@@ -6112,7 +6125,7 @@ namespace Pyrrho.Level4
                                     nc += k;
                                     ns += (k, cd);
                                 }
-                                else if (gb.Contains(p) && Knows(cx,p))
+                                else if (gb.Contains(p) && Knows(cx, p))
                                 {
                                     nc += p;
                                     ns += (p, v.domain);
@@ -6120,11 +6133,13 @@ namespace Pyrrho.Level4
                         if (v is SqlValueExpr || v is SqlFunction)
                             es += v;
                     }
-                im = im + (RowType,nc) + (Representation,ns) + (Aggs, ag);
+                im = im + (RowType, nc) + (Representation, ns) + (Aggs, ag);
                 if (nm != namesMap)
                     im += (RestView.NamesMap, nm);
             }
-            return base.Apply(mm,cx,im); 
+            if (nm != namesMap)
+                im += (RestView.NamesMap, nm);
+            return base.Apply(mm, cx, im);
         }
         /// <summary>
         /// 
@@ -6259,6 +6274,7 @@ namespace Pyrrho.Level4
                 if (distinct)
                     sql.Append("distinct ");
                 var co = "";
+                var rs = representation;
                 cx.groupCols += (defpos, groupCols);
                 var hasAggs = aggs!=CTree<long,bool>.Empty;
                 for (var b = rowType.First(); b != null; b = b.Next())

@@ -125,7 +125,6 @@ namespace Pyrrho.Level4
     internal class CalledActivation : Activation
     {
         internal Procedure? proc = null;
-        internal UDType? udt = null;
         internal Method? cmt = null;
         internal Domain? rdt = null;
         public CalledActivation(Context cx, Procedure p)

@@ -259,7 +259,7 @@ namespace Pyrrho.Level3
                     {
                         if (b.value().Count == 1L)
                             xs -= b.key();
-                        else
+                        else if (b.key().Length!=0)
                             xs += (b.key(), b.value() - defpos);
                     }
                 tb += (Table.Indexes, xs);

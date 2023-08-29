@@ -143,7 +143,7 @@ namespace Pyrrho.Level2
                 var ot = tb;
                 var xs = tb.indexes;
                 for (var b = xs.First(); b != null; b = b.Next())
-                    if (b.key() is Domain d && d.Fix(wr.cx) is Domain nd && nd != d)
+                    if (b.key() is Domain d && d.Fix(wr.cx) is Domain nd && nd != d && nd.Length!=0)
                     {
                         xs -= d;
                         xs += (nd, b.value());

@@ -1,12 +1,7 @@
-using System;
 using System.Text;
 using System.Net;
-using System.IO;
 using System.Collections;
-using System.Threading;
 using System.Globalization;
-using System.Reflection;
-using System.Resources;
 using Pyrrho;
 
 namespace PyrrhoCmd
@@ -380,6 +375,7 @@ namespace PyrrhoCmd
         {
             var quote = '\0';
             var dash = false; // we have a saved dash
+            var slash = false; // we have a saved slash
             var sb = new StringBuilder();
             foreach (var ch in line)
                 switch (ch)
@@ -405,10 +401,23 @@ namespace PyrrhoCmd
                         }
                         dash = true;
                         break;
+                    case '/':
+                        if (quote != '\0') // quoted - is not special
+                            goto default;
+                        if (slash) // unquoted //
+                        {
+                            line = sb.ToString(); // truncate the line
+                            return;
+                        }
+                        slash = true;
+                        break;
                     default:
-                        if (dash) // copy the saved dash if any
+                        if (dash) // copy the saved dash or slash if any
                             sb.Append('-');
+                        if (slash)
+                            sb.Append('/');
                         dash = false;
+                        slash = false;
                         sb.Append(ch);
                         break;
                 }

@@ -453,8 +453,8 @@ namespace Pyrrho.Level4
             var mg = matching;
          //   mm += (Matching, mg);
             m ??= mem;
-            var lo = Domain.Row;
-            var ro = Domain.Row;
+            var lo = Row;
+            var ro = Row;
             var oj = (CTree<long, bool>)(m[JoinCond] ?? CTree<long, bool>.Empty);
             if (mm[_Where] is CTree<long, bool> wh)
             {
@@ -560,10 +560,10 @@ namespace Pyrrho.Level4
                 if (joinKind == Sqlx.CROSS)
                     m += (JoinKind, Sqlx.INNER);
                 m += (OnCond, v);
-                fi = fi.Sort(cx, (Domain)lo.New(lo.mem + (Domain.RowType, lo.rowType + fi.ordSpec.rowType)
-                    + (Domain.Representation, lo.representation + fi.ordSpec.representation)), fi.distinct);
-                se = se.Sort(cx, (Domain)ro.New(ro.mem + (Domain.RowType, ro.rowType + se.ordSpec.rowType)
-                    + (Domain.Representation, ro.representation + se.ordSpec.representation)), se.distinct);
+                fi = fi.Sort(cx, (Domain)lo.New(lo.mem + (RowType, lo.rowType + fi.ordSpec.rowType)
+                    + (Representation, lo.representation + fi.ordSpec.representation)), fi.distinct);
+                se = se.Sort(cx, (Domain)ro.New(ro.mem + (RowType, ro.rowType + se.ordSpec.rowType)
+                    + (Representation, ro.representation + se.ordSpec.representation)), se.distinct);
             }
             m += (JFirst, fi.defpos);
             m += (JSecond, se.defpos);

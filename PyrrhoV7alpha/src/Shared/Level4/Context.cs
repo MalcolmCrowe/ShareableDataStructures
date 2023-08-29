@@ -78,7 +78,7 @@ namespace Pyrrho.Level4
         internal BTree<Domain, long?> newTypes = BTree<Domain, long?>.Empty; // uncommitted types
         internal CTree<long, TGParam> nodes = CTree<long, TGParam>.Empty; 
         internal CTree<long, TList> paths = CTree<long, TList>.Empty; // of trails by SqlPath
-        internal TList trail = new TList(Domain.NodeType); // of nodes in current trail
+        internal TList trail = new (Domain.NodeType); // of nodes in current trail
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by RowSet
         /// </summary>
@@ -1498,10 +1498,6 @@ namespace Pyrrho.Level4
         {
             return done[dp] ?? obs[dp] ?? (DBObject?)db.objects[dp];
         }
-        internal Domain? _Dm(long dp)
-        {
-            return (done[dp] ?? obs[dp] ?? (DBObject?)db.objects[dp]) as Domain;
-        }
         internal Iix Fix(Iix iix)
         {
             return new Iix(iix, Fix(iix.dp));
@@ -1709,7 +1705,7 @@ namespace Pyrrho.Level4
         /// As a result of Alter Type we need to merge two TableColumns. We can't use the Replace machinery
         /// above since everyting will have depth 1. So we need a new set of transformers.
         /// These are called ShallowReplace because that is what they do on DBObjects.
-        /// We do rely on Domains with columns all having positive uids, an no forward column references
+        /// We do rely on Domains with columns all having positive uids, and no forward column references
         /// However, DBObjects frequently have embedded Domains with later defpos so we do all Domains first.
         /// The algorithm traverses all database objects with defpos>=0 in sequence. 
         /// All transformed objects are guaranteed to have unchanged defpos.
@@ -2751,7 +2747,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal long row = -1L;
         /// <summary>
-        /// the results of MAX, MIN, FIRST, LAST, ARRAY
+        /// the results of MAX, MIN, FIRST, LAST, ARRAY, RESTRICT
         /// </summary>
         internal TypedValue? acc;
         /// <summary>
@@ -2848,6 +2844,7 @@ namespace Pyrrho.Level4
                     s.Append(bval); break;
                 case Sqlx.MAX:
                 case Sqlx.MIN:
+                case Sqlx.RESTRICT:
                     s.Append(acc); break;
                 case Sqlx.STDDEV_POP:
                 case Sqlx.STDDEV_SAMP:

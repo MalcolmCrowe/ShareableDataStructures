@@ -344,6 +344,15 @@ namespace Pyrrho.Level3
         {
             return CTree<long, bool>.Empty;
         }
+        internal virtual CTree<long, bool> ExposedOperands(Context cx,CTree<long,bool> ag,Domain? gc)
+        {
+            var os = Operands(cx) - ag;
+            if (gc is not null)
+                for (var b = os.First(); b != null; b = b.Next())
+                    if (gc.representation.Contains(b.key()))
+                        os -= b.key();
+            return os;
+        }
         internal virtual DBObject AddTrigger(Trigger tg)
         {
             return this;

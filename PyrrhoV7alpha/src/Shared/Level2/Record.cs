@@ -282,9 +282,6 @@ namespace Pyrrho.Level2
         {
             if (cx.db==null)
                 throw new PEException("PE6900");
- /*           if (tt.defpos == tabledefpos && tt is NodeType nt)
-                cx.db += (nt is EdgeType et) ? new TEdge(defpos, et, fields)
-                    : new TNode(defpos, nt, fields); */
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x 
@@ -293,8 +290,7 @@ namespace Pyrrho.Level2
                         if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
                                 x.flags.HasFlag(PIndex.ConstraintType.Unique))
                             && (x.rows?.Contains(k) == true) && cx.db is Transaction
-                            && k[0] is TypedValue tk
-                            && x.rows?.impl?[tk]?.ToLong() is long q && q!=now.defpos)
+                            && x.rows?.Get(k,0) is long q && q!=now.defpos)
                             throw new DBException("23000", "duplicate key ", k);
                         if (cx.db.objects[x.refindexdefpos] is Level3.Index rx &&
                         //    rx.rows?.Contains(k)!=true

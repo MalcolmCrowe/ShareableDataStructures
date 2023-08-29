@@ -500,7 +500,7 @@ namespace Pyrrho.Level3
                     nm += (nk, n);
                     ns += (n, (b.key(),nk));
                     var id = new Ident(n, new Iix(nk,cx.sD,nk));
-                    var sv = new SqlRestValue(id,cx, dm);
+                    var sv = new SqlValue(id,cx, dm);
                     cx.Add(sv);
                     cx.defs += (new Ident(vn, id), vn.iix);
                 }

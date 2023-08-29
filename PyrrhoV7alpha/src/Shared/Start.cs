@@ -1145,6 +1145,8 @@ namespace Pyrrho
                                 return lc + 1 + StringLength(ut.prefix) + StringLength(o);
                             if (ut.suffix != null)
                                 return lc + 1 + StringLength(o) + StringLength(ut.suffix);
+                            if (tv is TTypeSpec tt)
+                                return lc + 1 + StringLength(tt._dataType.name);
                         }
                         var tn = tv.dataType.name;
                         return lc + 1 + tn.Length + ((TRow)o).Length;
@@ -1453,7 +1455,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.05alpha","(22 Aug 2023)", "http://www.pyrrhodb.com"
+            "7.05alpha","(29 Aug 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

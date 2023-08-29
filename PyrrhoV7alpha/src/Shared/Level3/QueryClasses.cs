@@ -1,6 +1,8 @@
 using System;
+using System.Linq;
 using System.Security.Authentication.ExtendedProtection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -512,6 +514,14 @@ namespace Pyrrho.Level3
             return (ss == sets) ? this :
                 (GroupSpecification)cx.Add(new GroupSpecification(cx.GetUid(), mem + (Sets, ss)));
         }
+        internal Domain Cols(Context cx,Domain dm)
+        {
+            var gs = BList<long?>.Empty;
+            for (var b = sets.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is Grouping g)
+                    gs = SelectRowSet._Info(cx, g, gs);
+            return cx.GroupCols(gs,dm);
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -529,7 +539,6 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    
     internal class UpdateAssignment : Basis,IComparable
     {
         internal const long

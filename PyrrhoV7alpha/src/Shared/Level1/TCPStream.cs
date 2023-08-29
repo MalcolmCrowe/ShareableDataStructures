@@ -860,22 +860,22 @@ namespace Pyrrho.Level1
             return (rb._Rvv(cx).ToString(),rc);
         }
         /// <summary>
-        /// Send a obs cell.
+        /// Send a data cell.
         /// Normal result of SELECT in client-server comms.
         /// Used in server-server comms to collect traversal conditions,
-        /// and thus reduce the amount of obs transferred
+        /// and thus reduce the amount of data transferred
         /// </summary>
         /// <param name="nt"></param>
         /// <param name="tv"></param>
         internal void PutCell(Context _cx, Domain dt, TypedValue p, string? rv=null, string? rc=null)
         {
             p = dt.Coerce(_cx, p);
-            if (rv is not null && rv is not null)
+            if (rv is not null)
             {
                 WriteByte(3);
                 PutString(rv);
             } 
-            if (rc is not null && rc is not null)
+            if (rc is not null)
             {
                 WriteByte(4);
                 PutString(rc);
@@ -901,6 +901,12 @@ namespace Pyrrho.Level1
                 PutString(sf);
                 PutString(p.dataType.name);
                 PutInt(p.dataType.Typecode());
+            }
+            else if (p is TTypeSpec)
+            {
+                WriteByte(2);
+                PutString("CHAR");
+                PutInt(Domain.Char.Typecode());
             }
             else
             {
@@ -1068,6 +1074,11 @@ namespace Pyrrho.Level1
                             if (tf != null && tv is TRow tr && tr.values[tf.value()??-1L] is TypedValue nv)
                                 tv = nv;
                             PutString(tv.ToString()+ut.suffix);
+                            break;
+                        }
+                        if (tv is TTypeSpec tt)
+                        {
+                            PutString(tt._dataType.name);
                             break;
                         }
                     }

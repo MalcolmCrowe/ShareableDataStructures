@@ -69,7 +69,7 @@ namespace Pyrrho.Level4
         {
             var lx = psr.lxr;
             iix = psr.LexPos();
-            ident = ((lx.tok == Sqlx.ID) ? lx.val?.ToString() : lx.tok.ToString()) ?? (DBObject.Uid(iix.dp));
+            ident = ((lx.tok == Sqlx.Id) ? lx.val?.ToString() : lx.tok.ToString()) ?? (DBObject.Uid(iix.dp));
             sub = null;
         }
         internal Ident(Ident lf, Ident sb)
@@ -572,7 +572,7 @@ namespace Pyrrho.Level4
                 var oldch = ch;
                 var t = Next();
                 var vs = val?.ToString();
-                if (t == Sqlx.ID && vs != null && cx.db is not null && cx.role is not null
+                if (t == Sqlx.Id && vs != null && cx.db is not null && cx.role is not null
                     && cx.db.objects[cx.db.suffixes[vs]??-1L] is UDType dt
                     && dt.name != null && prevval is not null)
                 {
@@ -668,7 +668,7 @@ namespace Pyrrho.Level4
                     return tok;
                 }
                 val = new TChar(s);
-                tok = Sqlx.ID;
+                tok = Sqlx.Id;
                 MaybePrefix(s);
                 return tok;
             }
@@ -832,7 +832,7 @@ namespace Pyrrho.Level4
                             val = new TChar(val.ToString() + new string(input, fq, pos - fq));
                             Advance();
                         }
-                        tok = Sqlx.ID;
+                        tok = Sqlx.Id;
                         MaybePrefix(val.ToString());
                         return tok;
                     }

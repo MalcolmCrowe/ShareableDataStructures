@@ -23,7 +23,7 @@ using Pyrrho.Level5;
 // The UDType is managed by the database engine by default
 // but the usual ALTER operations are available for both Table and UDT.
 // It has at least one INTEGER column (a database uid) which is a key managed by the system.
-// If no other primary key is specified, the uid column will be used as a default node identity and called ID.
+// If no other primary key is specified, the uid column will be used as a default node identity and called Id.
 // Other columns are provided for any properties that are defined.
 // The UDT for a Node type also a set of possible LeavingTypes and ArrivingTypes
 // for edges, and the UDT for an Edge type specifies the LeavingType and ArrivingType for nodes.
@@ -73,7 +73,7 @@ using Pyrrho.Level5;
 // Extra fields will be added to the connection string to enable this behaviour,
 // so that the default behaviour for the PyrrhoCmd client will be interactive.
 
-// structural information about ID is copied to subtypes
+// structural information about Id is copied to subtypes
 internal class NodeType : UDType
 {
     internal const long
