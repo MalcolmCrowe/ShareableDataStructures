@@ -763,8 +763,6 @@ namespace Pyrrho.Common
         {
             if (dataType.elType is null || !dataType.elType.CanTakeValueOf(e.dataType))
                 throw new DBException("22005", dataType.elType??Domain.Null, e.dataType);
-            var c = dataType.defpos.CompareTo(e.dataType.defpos);
-            if (c != 0) return false;
             for (var b = list.First(); b != null; b = b.Next())
                 if (b.value().CompareTo(e) == 0)
                     return true;

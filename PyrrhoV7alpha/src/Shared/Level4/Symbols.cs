@@ -507,8 +507,8 @@ namespace Pyrrho.Level4
             tok = old;
             return tok;
         }
-        static Domain NodeArray = new Domain(-999, Sqlx.ARRAY, Domain.NodeType);
-        static Domain CharArray = new Domain(-998, Sqlx.ARRAY, Domain.Char);
+        readonly static Domain NodeArray = new (-999, Sqlx.ARRAY, Domain.NodeType);
+        readonly static Domain CharArray = new (-998, Sqlx.ARRAY, Domain.Char);
         Sqlx MaybePrefix(string s)
         {
             var vo = (val is TChar tc) ? tc.value : s;

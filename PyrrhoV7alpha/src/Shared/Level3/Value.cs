@@ -11455,6 +11455,8 @@ cx.obs[high] is not SqlValue hi)
         {
             if (this is not SqlEdge && n is TEdge)
                 return false;
+            if (cx.binding[idValue] is TNode ni && ni.id != n.id)
+                return false;
             if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
                 for (var b = docValue?.First(); b != null; b = b.Next())
                     if (cx.GName(b.key()) is string k)

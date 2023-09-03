@@ -1171,8 +1171,13 @@ namespace Pyrrho.Level4
                     {
                         var nd = (so.domain.defpos < 0) ? g.dataType :
                             cx.Add(new Domain(-1L, Sqlx.ARRAY, so.domain));
-                        var no = cx.Add(so.Relocate(cx.GetUid())+(DBObject._Domain, nd));
-                        cx.done += (so.defpos,no);
+                        if (so.domain.dbg != nd.dbg)
+                        {
+                            if (so.defpos < 0)
+                                so = (SqlValue)so.Relocate(cx.GetUid());
+                            var no = cx.Add(so + (DBObject._Domain, nd));
+                            cx.done += (so.defpos, no);
+                        }
                     }
                 cx.defs = cx.defs.ApplyDone(cx);
                 cx.done = od;
@@ -1182,7 +1187,6 @@ namespace Pyrrho.Level4
                     qu = ParseMatchQuantifier();
                 tgs += tgp;
                 (var sa, ahead, tgs) = ParseMatchExp(ahead, tgs, ln);
-                svp -= (svp.Length - 1); // drop the empty node at the end of the pattern
                 r = new SqlPath(cx, svp, qu, ln?.iix.dp ?? -1L, sa.defpos);
             }
             else
@@ -1338,20 +1342,28 @@ namespace Pyrrho.Level4
             if (tgs is null)
                 throw new DBException("PE60201");
             var ms = new MatchStatement(cx, tgs, svgs, wh, e);
-            ms = (MatchStatement)cx.Add(ms);
-            if (cx.parse == ExecuteStatus.Obey)
-                ms.Obey(cx);
+
             if (tok == Sqlx.THEN)
             {
                 Next();
-                if (ParseProcedureStatement(Domain.Content) is Executable te)
+                var es = BList<long?>.Empty;
+                for (; ; )
                 {
-                    cx.Add(te + (DBObject._From,ms.defpos));
-                    ms += (IfThenElse.Then, te.defpos);
-                    cx.Add(ms);
+                    if (ParseProcedureStatement(Domain.Content) is Executable x)
+                    {
+                        cx.Add(x);
+                        es += x.defpos;
+                    }
+                    if (tok != Sqlx.SEMICOLON)
+                        break;
+                    Next();
                 }
                 Mustbe(Sqlx.END);
+                ms += (IfThenElse.Then, es);
             }
+            ms = (MatchStatement)cx.Add(ms);
+            if (cx.parse == ExecuteStatus.Obey)
+                ms.Obey(cx);
             for (var b = cx.defs.First(); b != null; b = b.Next())
                 if (!olddefs.Contains(b.key()))
                     cx.defs -= b.key();

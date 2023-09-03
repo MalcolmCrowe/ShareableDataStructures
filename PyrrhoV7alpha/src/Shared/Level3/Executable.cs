@@ -1,5 +1,8 @@
 using System.Diagnostics.Metrics;
+using System.Runtime.InteropServices;
+using System.Security.Authentication.ExtendedProtection;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Xml;
 using System.Xml.XPath;
 using Pyrrho.Common;
@@ -4161,7 +4164,7 @@ namespace Pyrrho.Level3
             (CTree<long, bool>)(mem[RowSet._Where]??CTree<long,bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
         internal long result => (long)(mem[SqlCall.Result] ??-1L);
-        internal long then => (long)(mem[IfThenElse.Then] ?? -1L);
+        internal BList<long?> then => (BList<long?>)(mem[IfThenElse.Then] ?? BList<long?>.Empty);
         public MatchStatement(Context cx, CTree<long,TGParam> gs, BList<long?> ge, 
             CTree<long,bool> wh, long st)
             : base(cx.GetUid(), _Mem(cx,gs) + (MatchExps,ge) +(RowSet._Where,wh)
@@ -4277,7 +4280,7 @@ namespace Pyrrho.Level3
             {
                 var xf = sm.matchExps.First();
                 if (gf is not null && xf is not null)
-                    ExpNode(cx, gf, sm.mode, xf, Sqlx.Null, null);
+                    ExpNode(cx,new ExpStep(sm.mode,xf,new GraphStep(gf.Next(),new EndStep(this))), Sqlx.Null, null);
             }
             var sn = ((Transaction)cx.db).physicals.Count;
             if (cx._Ob(body) is Executable e)
@@ -4333,9 +4336,218 @@ namespace Pyrrho.Level3
             else cx.result = ers.defpos;
             if (sn != ((Transaction)cx.db).physicals.Count)
                 cx.result = -1L;
+            if (then != BList<long?>.Empty)
+            {
+                var ac = new Activation(cx, "" + defpos);
+                ObeyList(then, ac);
+                ac.SlideDown();
+                cx.values += ac.values;
+                cx.db = ac.db;
+            }
             cx.binding = ob;
             return cx;
         }
+        /// <summary>
+        /// The Match implementation uses continuations as in Scheme or Haskell.
+        /// Step is a linked list of things to do.
+        /// At any step in the match, one of the matching methods
+        /// ExpNode, DbNode or PathNode
+        /// is called, with a continuation parameter (a Step) specifying what to do if the match succeeds.
+        /// Step.Next says what to do in that case: and may call the next matching method if any,
+        /// AddRow, or if neither of these is appropriate, will do nothing.
+        /// Of course, when calling the next matching method, we set up its Step.
+        /// As a result, on each success the stack grows, and corresponds to the trail.
+        /// </summary>
+        internal abstract class Step
+        {
+            public MatchStatement ms; // all continuations know the MatchStatement
+            protected Step(MatchStatement m)
+            { ms = m; }
+            /// <summary>
+            /// The parameters are (maybe) a Step, and the current end state of the match 
+            /// </summary>
+            /// <param name="cx">The context</param>
+            /// <param name="cn">A continuation if provided</param>
+            /// <param name="tok">A token indicating the match state</param>
+            /// <param name="pd">The current last matched node if any</param>
+            public abstract void Next(Context cx, Step? cn, Sqlx tok, TNode? pd);
+            public virtual Step? Cont => null;
+            protected string Show(ABookmark<int,long?>? b)
+            {
+                var sb = new StringBuilder();
+                var cm = '[';
+                for (; b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ',';
+                    sb.Append(Uid(b.value() ?? -1L));
+                }
+                if (cm == '[') sb.Append(cm); sb.Append(']');
+                return sb.ToString();
+            }
+        }
+        /// <summary>
+        /// EndStep is the final entry in any continuation. 
+        /// </summary>
+        internal class EndStep : Step
+        {
+            public EndStep(MatchStatement m) : base(m)
+            { }
+            /// <summary>
+            /// On success we simply call AddRow
+            /// </summary>
+            public override void Next(Context cx, Step? cn, Sqlx tok,TNode? pd)
+            {
+                ms.AddRow(cx);
+            }
+            public override string ToString()
+            {
+                return "End[" + Uid(ms.defpos) + "]";
+            }
+        }
+        /// <summary>
+        /// GraphStep contains the remaining alternative matchexpressions in the MatchStatement.
+        /// A GraphStep precedes the final EndStep, but there may be others?
+        /// </summary>
+        internal class GraphStep : Step
+        {
+            internal readonly ABookmark<int, long?>? matchExps; // the current place in the MatchStatement
+            readonly Step next; // the continuation
+            public GraphStep(ABookmark<int, long?>? graphs, Step n) : base(n.ms)
+            { matchExps = graphs; next = n; }
+            /// <summary>
+            /// On Success we go on to the next matchexpression if any.
+            /// Otherwise we have succeeded and call next.Next.
+            /// </summary>
+            public override void Next(Context cx, Step? cn, Sqlx tok, TNode? pd)
+            {
+                if (cx.obs[matchExps?.value() ?? -1L] is SqlMatch sm)
+                    ms.ExpNode(cx, new ExpStep(sm.mode, sm.matchExps.First(), this), Sqlx.Null, null);
+                else
+                    next.Next(cx, cn, tok, pd);
+            }
+            public override Step? Cont => next;
+            public override string ToString()
+            {
+                var sb = new StringBuilder("Graph");
+                sb.Append(Show(matchExps));
+                sb.Append(',');sb.Append(next.ToString());
+                return sb.ToString();
+            }
+        }
+        /// <summary>
+        /// This is the most common matching method, matches.value() if not null should be a
+        /// SqlNode, SqlEdge, or SqlPath 
+        /// (if ExpNode finds it is a SqlPath it sets up PathNode to follow it).
+        /// </summary>
+        internal class ExpStep : Step
+        {
+            public ABookmark<int, long?>? matches; // the current place in the matchExp
+            public Sqlx mode; // the current matching mode
+            public Step next; // the continuation
+            public ExpStep(Sqlx mo, ABookmark<int, long?>? m,Step n)
+                : base(n.ms)
+            { mode = mo; matches = m; next = n; }
+            /// <summary>
+            /// On Success we go on to the next element in the match expression if any.
+            /// Otherwise the expression has succeeded and we call next.Next.
+            /// </summary>
+            public override void Next(Context cx, Step? cn, Sqlx tok, TNode? pd)
+            {
+                if (matches != null)
+                    ms.ExpNode(cx, new ExpStep(mode, matches, cn ?? next), tok, pd);
+                else
+                    next.Next(cx, null, Sqlx.WITH, pd);
+            }
+            public override Step? Cont => next;
+            public override string ToString()
+            {
+                var sb = new StringBuilder("Exp");
+                sb.Append(Show(matches)); 
+                sb.Append(',');sb.Append(next.ToString());
+                return sb.ToString();
+            }
+        }
+        /// <summary>
+        /// PathStep contains details of a path pattern, and may insert a new copy
+        /// of itself in the continuation if a further repeat is possible.
+        /// </summary>
+        internal class PathStep : Step
+        {
+            public Sqlx mode; // the current matching mode
+            public SqlPath sp; // the repeating pattern spec
+            public int im; // the iteration count
+            public Step next; // the continuation
+            public PathStep(Sqlx mo,SqlPath s, int i, Step n) :base(n.ms)
+            { mode = mo; sp = s; im = i; next = n; }
+            /// <summary>
+            /// The quantifier specifies minimum and maximum for the iteration count.
+            /// Depending on this value we may recommence the pattern.
+            /// When this is done (backtracking) we announce success of the repeating pattern
+            /// and call next.Next()
+            /// </summary>
+            public override void Next(Context cx, Step? cn, Sqlx tok, TNode? pd)
+            {
+                var i = im + 1;
+                if ((i < sp.quantifier.Item2 || sp.quantifier.Item2 < 0) && pd is not null)
+                    ms.PathNode(cx,new PathStep(mode, sp, i, next), pd);
+                if (i >= sp.quantifier.Item1 && pd is not null)
+                    next.Next(cx, cn, tok, pd);
+            }
+            public override Step? Cont => next;
+            public override string ToString()
+            {
+                var sb = new StringBuilder((mode == Sqlx.NONE)?"Path":mode.ToString());
+                sb.Append(im);
+                sb.Append(Show(sp?.pattern.First()));
+                sb.Append(',');sb.Append(next.ToString());
+                return sb.ToString();
+            }
+        }
+        /// <summary>
+        /// NodeStep receives a list of possible database nodes from ExpNode, and
+        /// checks these one by one.
+        /// </summary>
+        internal class NodeStep : Step
+        {
+            public Sqlx mode;
+            public ABookmark<long, TableRow>? nodes;
+            public SqlNode xn;
+            public Step next;
+            public NodeStep(Sqlx mo, SqlNode x, ABookmark<long, TableRow>? no, 
+                Step n) : base(n.ms)
+            { mode = mo; xn = x; nodes = no; next = n; }
+            public NodeStep(NodeStep s, ABookmark<long, TableRow>? ns) : base(s.ms)
+            {
+               mode = s.mode; nodes = ns; xn = s.xn; next = s.next;
+            }
+            /// <summary>
+            /// On each success we call the continuation
+            /// </summary>
+            public override void Next(Context cx, Step? cn, Sqlx tok, TNode? pd)
+            {
+                ms.ExpNode(cx, (ExpStep)next, tok, pd);
+            }
+            public override Step? Cont => next;
+            public override string ToString()
+            {
+                var sb = new StringBuilder("Node");
+                sb.Append(Uid(xn.defpos)); sb.Append(':');
+                var cm = '[';
+                for (var b=nodes; b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ',';
+                    sb.Append(Uid(b.value().defpos));
+                }
+                if (cm == '[') sb.Append(cm); sb.Append(']');
+                sb.Append(','); sb.Append(next.ToString());
+                return sb.ToString();
+            }
+        }
+        /// <summary>
+        /// A the end of the matchstatement, all bindings have been achieved, and we
+        /// add a row to the MatchStatement's rowSet.
+        /// </summary>
+        /// <param name="cx">The context</param>
         void AddRow(Context cx)
         {
             // everything has been checked
@@ -4355,7 +4567,7 @@ namespace Pyrrho.Level3
                     }
                     else ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), new TRow(ers, cx.binding)));
                 }
-                else if (ex.MakeKey(cx.binding) is CList<TypedValue> k && ex.rows?.Contains(k) != true)
+                else if (ex.MakeKey(cx.binding) is CList<TypedValue> k)// && ex.rows?.Contains(k) != true)
                 {
                     var uid = cx.GetUid();
                     ex += (k, uid);
@@ -4364,7 +4576,7 @@ namespace Pyrrho.Level3
                 cx.Add(ex); cx.Add(ers);
             }
         }
-        static int _step = 0;
+        static int _step = 0; // debugging assistant
         /// <summary>
         /// We work through the given graph expression in the order given. 
         /// For each expression node xn, there is at most one next node nx to move to. 
@@ -4374,23 +4586,31 @@ namespace Pyrrho.Level3
         /// There is a set gDefs(xn) of TGParams defined at xn, which can be referenced later.
         /// </summary>
         /// <param name="cx">The Context</param>
-        /// <param name="gp">The bookmark in the Match tree</param>
-        /// <param name="mode">The match mode of the SqlMatch</param>
-        /// <param name="xb">The position in the current graph</param>
+        /// <param name="be">The Step: current state</param>
         /// <param name="tok">A direction token if an edge</param>
         /// <param name="pd">The previous database node if any</param>
-        ABookmark<long,TableRow>? ExpNode(Context cx, ABookmark<int,long?> gp, Sqlx mode, 
-            ABookmark<int, long?> xb, Sqlx tok, TNode? pd)
+        void ExpNode(Context cx, ExpStep be, Sqlx tok, TNode? pd)
         {
-            var step = ++_step;
             // If we have been called from Obey, gp is a list of SqlMatch graphs.
-            if (cx.obs[xb.value()??-1L] is not SqlNode xn)
-                return null;
+            if (cx.obs[be.matches?.value() ?? -1L] is not SqlNode xn)
+            {
+                be.next.Next(cx, null, tok, pd);
+                return;
+            }
+            if (xn is SqlPath sp && sp.pattern.First() is ABookmark<int,long?> ma && pd is not null)
+            {
+                PathNode(cx, new PathStep(be.mode, sp, 0, 
+                    new ExpStep(be.mode, be.matches?.Next(), be.next)), pd);
+                return;
+            }
+            var step = ++_step;
             if (xn.MostSpecificType(cx) is NodeType nt)
                 xn += (_Domain, nt);
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
-            if (xn.Eval(cx) is TNode nn)
+            if (tok==Sqlx.WITH && pd is not null)
+                ds += (xn.defpos, pd.tableRow);
+            else if (xn.Eval(cx) is TNode nn)
                 ds += (xn.defpos, nn.tableRow);
             else if (pd is not null && pd.dataType is EdgeType pe
                 && ((tok == Sqlx.ARROWBASE) ?
@@ -4426,24 +4646,9 @@ namespace Pyrrho.Level3
                         for (var c = nt1.tableRows.First(); c != null; c = c.Next())
                             ds += (c.value().defpos, c.value());
             var df = ds.First();
-            var fm = cx.obs[gp.value() ?? -1L];
-            while (df is not null)
-            {
-                df = DbNode(cx, gp, mode, xb, xn, df, (xn is SqlEdge) ? xn.tok : tok, pd);
-            // At this point, if fm was a SqlMatch, we were called from Obey:
-            // If it wasn't an SqlMatch, we were called one of the two places in PathNode
-            // and we will return to PathNode
-                if (fm is SqlPath)
-                    return df;
-            }
-            // we have finished all of the graphs, and ers has all the bindings that give matches
-            if (tok == Sqlx.WITH && pd is not null) // the last match from a repeating pattern
-            {
-                df = new BTree<long, TableRow>(xn.defpos, pd.tableRow).First();
-                if (df is not null)
-                    DbNode(cx, gp, mode, xb, xn, df, tok, pd);
-            }
-            return null;
+            if (df != null)
+                DbNode(cx, new NodeStep(be.mode,xn,df,new ExpStep(be.mode,be.matches?.Next(),be.next)),
+                    (xn is SqlEdge && xn is not SqlPath) ? xn.tok : tok, pd);
         }
         /// <summary>
         /// For each dn in ds:
@@ -4453,137 +4658,85 @@ namespace Pyrrho.Level3
         /// or the next expression from the Pop(), or AddRow if there is none.
         /// After AddRow if there is a Path in progress, try a further repeat of the paterrn.
         /// </summary>
-        /// <param name="cx">The context<The /param>
-        /// <param name="gp">The bookmark for the match TGraph</paramr>
-        /// <param name="mode">The Match mode for the SqlMatch</param>
-        /// <param name="xb">The bookmark for the current MatchExp</param>
-        /// <param name="ps">The path stack</param>
-        /// <param name="xn">The current MatchExp</param>
-        /// <param name="df">The bookmark for the current TNode</param>
-        /// <param name="pd">If not null, the TNode for the MatchExp</param> 
-        /// <returns>the next value of df if any</returns>
-        ABookmark<long, TableRow>? DbNode(Context cx, ABookmark<int, long?> gp, Sqlx mode,
-            ABookmark<int, long?> xb, SqlNode xn, ABookmark<long, TableRow> df,
-            Sqlx tok, TNode? pd)
+        /// <param name="cx">The context</param>
+        /// <param name="bn">Step gives current state of the match</param>
+        /// <param name="pd">If not null, the previous matching node</param> 
+        void DbNode(Context cx,NodeStep bn, Sqlx tok, TNode? pd)
         {
-            var step = ++_step;
+            int step;
             var ob = cx.binding;
             var ot = cx.trail;
-            if (df.value() is not TableRow tr || cx.db.objects[tr.tabledefpos] is not NodeType dt)
-                goto backtrack;
-            if (xn.domain.defpos > 0 && !dt.EqualOrStrongSubtypeOf(xn.domain))
-                goto backtrack;
-            var dn = (dt is EdgeType et) ? new TEdge(et, tr) : new TNode(dt, tr);
-            if (mode == Sqlx.TRAIL && dn is TEdge && cx.trail.Contains(dn))
-                goto backtrack;
-            if (mode == Sqlx.ACYCLIC && cx.trail.Contains(dn))
-                goto backtrack;
-            if (dn != pd && tok!=Sqlx.WITH)
-                cx.trail += dn;
-            if (!xn.CheckProps(cx, dn))
-                goto backtrack;
-            if (dn is TEdge de && pd is not null
-                && ((xn.tok == Sqlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
-                goto backtrack;
-            DoBindings(cx, xn, dn);
-            var xf = xb.Next();
-            ABookmark<int, long?>? gf = gp;
-            TNode? dx = dn;// we don't pass in dn if we are starting a new graph
-            if (xf == null || tok==Sqlx.WITH)  // we have reached the end of a graph in the match
+            TNode? dn = null;
+            var ns = bn.nodes;
+            while(ns is not null)
             {
-                dx = null;
-                gf = gp.Next();
-                var eb = cx.obs[gf?.value() ?? -1L];
-                if (eb is SqlMatch g)
-                {
-                    // normal traversal, start the next graph
-                    xf = g.matchExps.First();
-                    if (gf is not null && xf is not null)
-                        ExpNode(cx, gf, g.mode, xf, xn.tok, dx);
-                }
-                else if (gf is not null) // finishing a repeating pattern
-                    return df;
-                else // we have finished the expression and may be able to add a row
-                    AddRow(cx);
-            } else if (cx.obs[xf.value() ?? -1L] is SqlPath sp
-                && sp.pattern.First() is ABookmark<int, long?> fb
-                && cx.obs[xf.Next()?.value()??-1L] is SqlNode ff)
-                PathNode(cx, gp, xf, mode, fb, sp, dn, sp.pattern.Length, ff, 0);
-            else
-                ExpNode(cx, gp, mode, xf, tok, dx);
+                step = ++_step;
+                if (ns?.value() is not TableRow tr || cx.db.objects[tr.tabledefpos] is not NodeType dt)
+                    goto backtrack;
+                if (bn.xn.domain.defpos > 0 && !dt.EqualOrStrongSubtypeOf(bn.xn.domain))
+                    goto backtrack;
+                dn = (dt is EdgeType et) ? new TEdge(et, tr) : new TNode(dt, tr);
+                if (bn.mode == Sqlx.TRAIL && dn is TEdge && cx.trail.Contains(dn))
+                    goto backtrack;
+                if (bn.mode == Sqlx.ACYCLIC && cx.trail.Contains(dn))
+                    goto backtrack;
+                if ((bn.mode == Sqlx.SHORTEST || bn.mode == Sqlx.SHORTESTPATH)
+                        && !Shortest(bn, cx))
+                    goto backtrack;
+                if (dn != pd)
+                    cx.trail += dn;
+                if (!bn.xn.CheckProps(cx, dn))
+                    goto backtrack;
+                if (dn is TEdge de && pd is not null
+                    && ((bn.xn.tok == Sqlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
+                    goto backtrack;
+                DoBindings(cx, bn.xn, dn);
+                bn.next.Next(cx, null, tok, dn);
             backtrack:
+                cx.trail = ot;
+                cx.binding = ob; // unbind all the bindings from this recursion step
+                ns = ns?.Next();
+            }
             cx.trail = ot;
-            cx.binding = ob; // unbind all the bindings from this recursion step
-            return df.Next(); // try another node
+            cx.binding = ob;
         }
         /// <summary>
         /// Remember that ExpNode continues to the end of the graph when called, with 
         /// successful rows added in by AddRow.
         /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="xb"></param>
-        /// <param name="mode"></param>
-        /// <param name="fb"></param>
-        /// <param name="sp"></param>
+        /// <param name="cx">The context</param>
+        /// <param name="bp">The Step current state and continuation</param>
         /// <param name="dn">The most recent TNode</param>
-        /// <param name="lb">The last expression in the repeating pattern</param>
-        /// <param name="i">The current iteration</param>
-        void PathNode(Context cx, ABookmark<int, long?> gb, ABookmark<int, long?> xb, Sqlx mode,
-            ABookmark<int, long?> fb, SqlPath sp, TNode dn, int pl, SqlNode ff, int i)
+        void PathNode(Context cx, PathStep bp, TNode dn)
         {
             var step = ++_step;
             var ob = cx.binding;
             var ot = cx.trail;
-            if (cx.obs[fb.value() ?? -1] is not SqlNode xi || !xi.CheckProps(cx, dn))
+            if (cx.obs[bp.sp.pattern.First()?.value() ?? -1] is not SqlNode xi || !xi.CheckProps(cx, dn))
                 goto backtrack;
             DoBindings(cx, xi, dn);
-            if (fb.Next() is not ABookmark<int, long?> fn) goto backtrack;
-            if (cx.obs[fn.value() ?? -1L] is SqlNode xn && (i < sp.quantifier.Item2||sp.quantifier.Item2<0))
-            {
-                var df = ExpNode(cx, xb, mode, fn, xn.tok, dn); // use ordinary ExpNode for the internal pattern
+            if (bp.sp.pattern.First() is not ABookmark<int, long?> fn) goto backtrack;
+            if (cx.obs[fn.value() ?? -1L] is SqlNode xn && bp.sp is SqlPath sp
+                && (bp.im < sp.quantifier.Item2 || sp.quantifier.Item2<0))
+                ExpNode(cx, new ExpStep(bp.mode,fn.Next(),bp), xn.tok, dn); // use ordinary ExpNode for the internal pattern
                                                                 // dn must be an edge
                                                                 // and xn must be an SqlEdge
-                if (df?.value() is not TableRow te || cx.db.objects[te.tabledefpos] is not EdgeType ed)
-                    goto backtrack;
-                var de = new TEdge(ed, te); // final edge of the match
-                if (xb.Next() is not ABookmark<int, long?> xf
-                    || cx.obs[xb.value() ?? -1L] is not SqlNode xl) goto backtrack;
-                // xl likely has no properties, so get them from xn
-                if (xn is not SqlEdge xe || xe.domain is not EdgeType et) goto backtrack;
-                long tp = (xn.tok == Sqlx.ARROWBASE) ? et.arrivingType : et.leavingType;
-                long di = (xn.tok == Sqlx.ARROWBASE) ? de.arriving : de.leaving;
-                if (cx.db.objects[tp] is not NodeType tl
-                    || tl.Get(cx, new TInt(di)) is not TableRow tr)
-                    goto backtrack;
-                var dl = new TNode(tl, tr);
-                if (mode == Sqlx.ACYCLIC && cx.trail.Contains(dl))
-                    goto backtrack;
-                if (!xl.CheckProps(cx, dl))
-                    goto backtrack;
-                if ((mode == Sqlx.SHORTEST || mode == Sqlx.SHORTESTPATH) && !Shortest(gb,cx))
-                    goto backtrack;
-                DoBindings(cx, xl, dl);
-                cx.trail += dl;
-                // Can we go on to the rest of the parent expression?
-                if (i >= sp.quantifier.Item1 && (sp.quantifier.Item2<0 || i<sp.quantifier.Item2)
-                    && xf.key() == pl && ff.CheckProps1(cx, dl))
-                {
-                    ExpNode(cx, gb, mode, xb, Sqlx.WITH, dl);
-                    goto backtrack; // because we have already moved to the next node after the repeat
-                }
-                /// Next iteration starting with the first repeating node and last match (?)
-                if (i < sp.quantifier.Item2||sp.quantifier.Item2<0)
-                    PathNode(cx, gb, xb, mode, fb, sp, dl, pl, ff, i + 1);
-            }
         backtrack:
             cx.trail = ot;
             cx.binding = ob; // unbind all the bindings from this recursion step
         }
-        void DoBindings(Context cx,SqlNode xn,TNode dn)
+        /// <summary>
+        /// When we match a database node we process the binding information in the SqlNode
+        /// </summary>
+        /// <param name="cx">The context</param>
+        /// <param name="xn">The SqlNode or SqlEdge or SqlPath</param>
+        /// <param name="dn">The current database node (TNode or TEdge)</param>
+        void DoBindings(Context cx, SqlNode xn, TNode dn)
         {
             if (xn.state != CTree<long, TGParam>.Empty && dn.dataType is NodeType nt)
             {
                 var bi = cx.binding;
+                ;
                 if (nt.infos[cx.role.defpos]?.names is BTree<string, (int, long?)> ns)
                     for (var b = xn.docValue?.First(); b != null; b = b.Next())
                         if (gDefs[b.value() ?? -1L] is TGParam tg
@@ -4620,7 +4773,7 @@ namespace Pyrrho.Level3
                             if (tg.type.HasFlag(TGParam.Type.Group))
                             {
                                 var ta = bi[tg.uid] as TArray ?? new TArray(tv.dataType);
-                                bi += (tg.uid, ta + (ta.Length,tv));
+                                bi += (tg.uid, ta + (ta.Length, tv));
                             }
                             else
                                 bi += (tg.uid, tv);
@@ -4631,9 +4784,16 @@ namespace Pyrrho.Level3
             }
         }
         // implement an algorithn for SHORTEST
-        bool Shortest(ABookmark<int,long?> gb,Context cx)
+        bool Shortest(Step st,Context cx)
         {
-            if (cx.obs[gb.value() ?? -1L] is SqlMatch sm
+            ABookmark<int, long?>? gb = null;
+            for (var s = st;s!=null;s=s.Cont)
+                if (s is GraphStep gs)
+                {
+                    gb = gs.matchExps?.Previous();
+                    break;
+                }
+            if (cx.obs[gb?.value() ?? -1L] is SqlMatch sm
                    && (sm.mode == Sqlx.SHORTEST || sm.mode == Sqlx.SHORTESTPATH)
                    && sm.pathId >= 0
                    && cx.obs[cx.result] is ExplicitRowSet ers)
@@ -4677,9 +4837,16 @@ namespace Pyrrho.Level3
             {
                 sb.Append(" Body "); sb.Append(Uid(body));
             }
-            if (then>=0)
+            
+            if (then!=BList<long?>.Empty)
             {
-                sb.Append(" THEN "); sb.Append(Uid(then));
+                sb.Append(" THEN ["); cm = "";
+                for (var b = then.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(Uid(b.value() ?? -1L));
+                }
+                sb.Append(']');
             }
             return sb.ToString();
         } 

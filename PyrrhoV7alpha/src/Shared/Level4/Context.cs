@@ -1943,6 +1943,8 @@ namespace Pyrrho.Level4
                 return tb.value;
             if (tv is TChar tc)
                 return tc.value;
+            if (tv is TTypeSpec tt)
+                return tt._dataType.name;
             return null;
         }
         internal TypedValue? GConstrain(long? p)
