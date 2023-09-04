@@ -4790,7 +4790,7 @@ namespace Pyrrho.Level3
             for (var s = st;s!=null;s=s.Cont)
                 if (s is GraphStep gs)
                 {
-                    gb = gs.matchExps?.Previous();
+                    gb = gs.matchExps?.Previous()??gs.ms.matchExps.Last();
                     break;
                 }
             if (cx.obs[gb?.value() ?? -1L] is SqlMatch sm
