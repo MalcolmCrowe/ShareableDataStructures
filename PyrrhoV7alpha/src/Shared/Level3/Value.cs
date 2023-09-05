@@ -676,6 +676,8 @@ namespace Pyrrho.Level3
         }
         internal override bool KnownBy(Context cx, RowSet r, bool ambient = false)
         {
+            if (r is SystemRowSet && r.representation.Contains(copyFrom))
+                return true;
             return r.Knows(cx, defpos, ambient);
         }
         internal override CTree<long, Domain> KnownFragments(Context cx, CTree<long, Domain> kb, bool ambient=false)

@@ -452,9 +452,9 @@ namespace Pyrrho.Level4
                                             cx.forReview += (k, (cx.forReview[k] ?? CTree<long, bool>.Empty) + (defpos, true));
                                         }
                                     }
+                                var ow = (CTree<long, bool>?)m[_Where] ?? CTree<long, bool>.Empty;
                                 if (ma != oa)
                                     mm += (_Matches, ma);
-                                var ow = (CTree<long, bool>?)m[_Where] ?? CTree<long, bool>.Empty;
                                 if (mw.CompareTo(ow) != 0)
                                     m += (_Where, ow + mw);
                                 var oh = (CTree<long, bool>?)m[Having] ?? CTree<long, bool>.Empty;

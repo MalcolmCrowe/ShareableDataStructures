@@ -129,10 +129,14 @@ namespace Pyrrho.Level4
         internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
             Grant.Privilege pr = Grant.Privilege.Select, string? a=null)
         {
-            var r = new SystemRowSet(cx, q, this, null)+(_From,fm)+(_Ident,id);
+            var r = new SystemRowSet(cx, this, null)+(_From,fm)+(_Ident,id);
             if (a != null)
                 r += (_Alias, a);
             return r;
+        }
+        internal RowSet RowSets(long dp,Context cx, RowSet r, CTree<long,bool>?w)
+        {
+            return new SystemRowSet(dp,cx, this, w, r.mem);
         }
     }
     
@@ -287,11 +291,16 @@ namespace Pyrrho.Level4
         /// Context is provided to be informed about the rowset.
         /// </summary>
         /// <param name="f">the from part</param>
-        internal SystemRowSet(Context cx, Domain dm,SystemTable f, CTree<long, bool>? w = null)
-            : base(cx.GetUid(), cx, f.defpos, _Mem(cx, f, w))
+        internal SystemRowSet(Context cx, SystemTable f, CTree<long, bool>? w = null)
+            : base(cx.GetUid(), cx, f.defpos, _Mem(cx, f, w, null))
         { }
+        internal SystemRowSet(long dp,Context cx, SystemTable f, CTree<long, bool>? w, BTree<long, object>? m)
+            : base(dp,_Mem(cx, f, w, m))
+        {
+            cx.Add(this);
+        }
         protected SystemRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx, SystemTable f, CTree<long, bool>? w)
+        static BTree<long,object> _Mem(Context cx, SystemTable f, CTree<long, bool>? w, BTree<long, object>? m)
         {
             var mf = BTree<long,SystemFilter>.Empty;
             for (var b = w?.First(); b != null; b = b.Next())
@@ -323,7 +332,9 @@ namespace Pyrrho.Level4
             // NB: rowType stuff is done by TableRowSet
             if (f.name?.StartsWith("Log$")==true &&cx.user?.defpos!=cx.db.owner)
                 throw new DBException("42105");
-            var r = new BTree<long,object>(SRowType,f.rowType)+(SysTable, f) + (SysFilt, sf);
+            var r = (m??BTree<long,object>.Empty)+(SRowType,f.rowType)+(SysTable, f) + (SysFilt, sf);
+            if (f.infos[cx.role.defpos]?.names is BTree<string, (int, long?)> ns)
+                r += (ObInfo.Names, ns);
             if (sx != null)
                 r += (SysIx, sx);
             return r;
@@ -585,6 +596,12 @@ namespace Pyrrho.Level4
         {
             return (sysFilt is BList<SystemFilter> sf && sf.Length>i)?
                 (sf[i]?.Start(cx, this, s, i, desc)??TNull.Value):TNull.Value;
+        }
+        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long, object>? m = null)
+        {
+            if (sysFrom is SystemTable f)
+                return f.RowSets(defpos, cx, this, mm[_Where] as CTree<long, bool>);
+            return this;
         }
         /// <summary>
         /// A bookmark for a system table

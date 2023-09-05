@@ -7663,6 +7663,8 @@ namespace Pyrrho.Level4
             {
                 var op = tok;
                 var lp = LexPos();
+                if (lp.dp == left.defpos)
+                    lp = cx.GetIid();
                 Next();
                 return (SqlValue)cx.Add(new SqlValueExpr(lp.dp, cx,
                     op, left, ParseSqlValueExpression(left.domain,wfok), Sqlx.NO));
