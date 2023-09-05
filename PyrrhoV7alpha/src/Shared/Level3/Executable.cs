@@ -4421,7 +4421,8 @@ namespace Pyrrho.Level3
             public override void Next(Context cx, Step? cn, Sqlx tok, TNode? pd)
             {
                 if (cx.obs[matchExps?.value() ?? -1L] is SqlMatch sm)
-                    ms.ExpNode(cx, new ExpStep(sm.mode, sm.matchExps.First(), this), Sqlx.Null, null);
+                    ms.ExpNode(cx, new ExpStep(sm.mode, sm.matchExps.First(), 
+                        new GraphStep(matchExps?.Next(),next)), Sqlx.Null, null);
                 else
                     next.Next(cx, cn, tok, pd);
             }
@@ -4591,7 +4592,6 @@ namespace Pyrrho.Level3
         /// <param name="pd">The previous database node if any</param>
         void ExpNode(Context cx, ExpStep be, Sqlx tok, TNode? pd)
         {
-            // If we have been called from Obey, gp is a list of SqlMatch graphs.
             if (cx.obs[be.matches?.value() ?? -1L] is not SqlNode xn)
             {
                 be.next.Next(cx, null, tok, pd);

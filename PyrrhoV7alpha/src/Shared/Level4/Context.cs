@@ -1691,6 +1691,7 @@ namespace Pyrrho.Level4
                     } else
                         r = done[dp]?.defpos ?? dp;
                     break;
+                case ExecuteStatus.Graph:
                 case ExecuteStatus.Obey:
                     if (instDFirst > 0 && dp > instSFirst
                         && dp <= instSLast)

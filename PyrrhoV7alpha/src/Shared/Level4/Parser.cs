@@ -100,6 +100,7 @@ namespace Pyrrho.Level4
             var lp = lxr.Position;
             return cx.parse switch
             {
+                ExecuteStatus.Graph or
                 ExecuteStatus.Obey => cx.Ix(lp, lp),
                 ExecuteStatus.Prepare => new Iix(lp, cx, cx.nextHeap++),
                 _ => new Iix(lp, cx, cx.GetUid()),
@@ -109,6 +110,7 @@ namespace Pyrrho.Level4
         {
             return cx.parse switch
             {
+                ExecuteStatus.Graph or
                 ExecuteStatus.Obey => lxr.Position,
                 ExecuteStatus.Prepare => cx.nextHeap++,
                 _ => cx.GetUid(),
@@ -1335,7 +1337,7 @@ namespace Pyrrho.Level4
             if (tok != Sqlx.EOF && tok != Sqlx.END && tok != Sqlx.RPAREN)
             {
                 var op = cx.parse;
-                cx.parse = ExecuteStatus.Parse;
+                cx.parse = ExecuteStatus.Graph;
                 e = (ParseProcedureStatement(Domain.Content) is Executable ex) ? ex.defpos : -1L;
                 cx.parse = op;
             }

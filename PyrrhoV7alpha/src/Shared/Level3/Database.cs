@@ -103,7 +103,7 @@ namespace Pyrrho.Level3
             return ToString();
         }
     }
-    public enum ExecuteStatus { Parse, Obey, Prepare, Compile, Commit }
+    public enum ExecuteStatus { Parse, Obey, Graph, Prepare, Compile, Commit }
 
     /// <summary>
     /// Counter-intuitively, a logical database (embodied by the durable contents of the transaction log)
