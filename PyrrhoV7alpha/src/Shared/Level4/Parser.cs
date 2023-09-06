@@ -929,8 +929,7 @@ namespace Pyrrho.Level4
             // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
             var ge = ParseSqlGraphList();
             var st = BList<long?>.Empty;
-            var lp = cx.GetPos();
-            var cs = (CreateStatement)cx.Add(new CreateStatement(lp, ge, st));
+            var cs = (CreateStatement)cx.Add(new CreateStatement(cx.GetUid(), ge, st));
             if (cx.parse == ExecuteStatus.Obey)
                 cs.Obey(cx);
             if (tok == Sqlx.THEN)
@@ -1344,7 +1343,6 @@ namespace Pyrrho.Level4
             if (tgs is null)
                 throw new DBException("PE60201");
             var ms = new MatchStatement(cx, tgs, svgs, wh, e);
-
             if (tok == Sqlx.THEN)
             {
                 Next();
