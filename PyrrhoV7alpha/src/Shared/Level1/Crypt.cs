@@ -1,5 +1,4 @@
 using System.Text;
-using System.IO;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland

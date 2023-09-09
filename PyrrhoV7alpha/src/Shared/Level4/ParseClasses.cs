@@ -69,16 +69,5 @@ namespace Pyrrho.Level4
         public BTree<string,bool> cols;
         internal PrivNames(Sqlx p) { priv = p; cols = BTree<string, bool>.Empty; }
     }
-    /// <summary>
-    /// when handling triggers etc we need different owner permissions
-    /// </summary>
-    internal class OwnedSqlValue
-    {
-        public SqlValue what;
-        public long role;
-        public long owner;
-        internal OwnedSqlValue(SqlValue w, long r, long o) { what = w; role = r; owner = o; }
-    }
-    /// <summary>
 }
 

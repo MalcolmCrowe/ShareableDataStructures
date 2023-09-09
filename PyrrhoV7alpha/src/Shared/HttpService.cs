@@ -274,7 +274,7 @@ namespace Pyrrho
                     sbuild.Append(mi.description);
             }
             var oi = fm?.rowType;
-            if (chartType != CTree<Sqlx, TypedValue>.Empty)
+            if (chartType != CTree<Sqlx, TypedValue>.Empty && !chartType.Contains(Sqlx.NODE))
             {
                 for (var co = oi?.First(); co != null; co = co.Next())
                     if (co.value() is long p)
@@ -299,16 +299,19 @@ namespace Pyrrho
                 if ((xcol == 0) && (ycol == 0))
                     chartType = CTree<Sqlx, TypedValue>.Empty;
             }
-            if (chartType!=CTree<Sqlx,TypedValue>.Empty)
+            if (chartType != CTree<Sqlx, TypedValue>.Empty)
             {
                 var wd = 210;
                 if (chartType.Contains(Sqlx.LEGEND))
                     wd = 310;
-                sbuild.Append("<canvas id=\"myCanvas\" width=\""+wd+"\" height=\"210\" style=\"border:1px solid #c3c3c3;\">\r\n");
-                sbuild.Append("Your browser does not support the canvas element.</canvas>\r\n"); 
+                var hd = 210;
+                if (chartType.Contains(Sqlx.NODE))
+                { wd = 1010; hd = 810; }
+                sbuild.Append("<canvas id=\"myCanvas\" width=\"" + wd + "\" height=\"" + hd + " \"style=\"border:1px solid #c3c3c3;\">\r\n");
+                sbuild.Append("Your browser does not support the canvas element.</canvas>\r\n");
                 sbuild.Append("<script type=\"text/javascript\">\r\n");
                 sbuild.Append("var canvas = document.getElementById(\"myCanvas\");\r\n");
-                sbuild.Append("var ctx = canvas.getContext('2d');\r\n"); 
+                sbuild.Append("var ctx = canvas.getContext('2d');\r\n");
                 sbuild.Append("var chartType = \"" + Level2.PMetadata.Flags(chartType) + "\";\r\n");
                 sbuild.Append("var xdesc = \"" + xdesc + "\";\r\n");
                 sbuild.Append("var ydesc = \"" + ydesc + "\";\r\n");
@@ -318,7 +321,7 @@ namespace Pyrrho
             {
                 sbuild.Append("<table border><tr>");
                 for (var b = rs.rowType.First(); b != null; b = b.Next())
-                    if (fm is not null && b.value() is long p &&  cx._Ob(fm.sIMap[p]??-1L) is DBObject c &&
+                    if (fm is not null && b.value() is long p && cx._Ob(fm.sIMap[p] ?? -1L) is DBObject c &&
                         c.infos[cx.role.defpos] is ObInfo ci && ci.name != null)
                         sbuild.Append("<th>" + ci?.name ?? "" + "</th>");
                 sbuild.Append("</tr>");
@@ -331,6 +334,42 @@ namespace Pyrrho
         public override void PutRow(Context _cx, Cursor e)
         {
             var dt = e.dataType;
+            if (chartType.Contains(Sqlx.NODE) 
+                && e is TableRowSet.TableCursor tc && tc._rec is TableRow tr
+                && tc._table is NodeType nt)
+            {
+                var (li,ts) = nt.NodeTable(_cx, new Level5.TNode(nt, tr));
+                var bl = CTree<int,NodeType>.Empty;
+                for (var b = ts.First(); b != null; b = b.Next())
+                    bl += (b.value(),b.key());
+                for (var b=bl.First();b!=null;b=b.Next())
+                { 
+                    sbuild.Append(comma);
+                    sbuild.Append('"');
+                    sbuild.Append(b.value().name);
+                    sbuild.Append('"');
+                    comma = ",";
+                }
+                sbuild.Append("];\r\n var nodes=["); comma = "";
+                for (var b=li.First();b!=null;b=b.Next())
+                    if (b.value() is NodeType.NodeInfo ni)
+                    {
+                        sbuild.Append(comma + "[");
+                        sbuild.Append(ni.type);
+                        sbuild.Append(',');
+                        sbuild.Append(ni.id);
+                        sbuild.Append(',');
+                        sbuild.Append(ni.x);
+                        sbuild.Append(',');
+                        sbuild.Append(ni.y);
+                        sbuild.Append(",");
+                        sbuild.Append(ni.lv);
+                        sbuild.Append(",");
+                        sbuild.Append(ni.ar);
+                        sbuild.Append(']');
+                        comma = ",\r\n";
+                    }
+            } else
             if (chartType!=CTree<Sqlx,TypedValue>.Empty)
             {
                 sbuild.Append(comma+"[");
@@ -364,6 +403,11 @@ namespace Pyrrho
         }
         public override void Footer()
         {
+            if (chartType.Contains(Sqlx.NODE))
+            {
+                GraphModelSupport();
+                return;
+            }
             if (chartType!=CTree<Sqlx,TypedValue>.Empty)
             {
                 sbuild.Append("     ];           var pt = obs[0];\r\n");
@@ -568,6 +612,69 @@ namespace Pyrrho
             else
                 sbuild.Append("</table>");
             sbuild.Append("</body></html>\r\n");
+        }
+        void GraphModelSupport()
+        {
+            sbuild.Append("];");
+            sbuild.Append("    maxX=0.0;maxY=0.0;minX=0.0;minY=0.0;\r\n");
+            sbuild.Append("    for(i=0;i<nodes.length;i++){\r\n");
+            sbuild.Append("      nd = nodes[i];\r\n");
+            sbuild.Append("      if (nd[2]<minX) minX=nd[2];\r\n");
+            sbuild.Append("      if (nd[2]>maxX) maxX=nd[2];\r\n");
+            sbuild.Append("      if (nd[3]<minY) minY=nd[3];\r\n");
+            sbuild.Append("      if (nd[3]>maxY) maxY=nd[3];\r\n"); 
+            sbuild.Append("    }\r\n");
+            sbuild.Append("    minX-=50;minY-=50;\r\n");
+            sbuild.Append("    var colours = new Array();\r\n");
+            sbuild.Append("    function abs(x) { return (x>0)?x:-x; }\r\n");
+            sbuild.Append("    function pos(x) { return (x>0)?x:0; }\r\n");
+            sbuild.Append("    function blend(x,a) { return Math.round(255*(pos(1-abs(x+3-a))+\r\n");
+            sbuild.Append("           pos(1-abs(x-a))+pos(1-abs(x-3-a)))); } \r\n");
+            sbuild.Append("    function colour(x) { return \"rgb(\"+blend(x,0.5)+\",\"+\r\n");
+            sbuild.Append("        blend(x,1.5)+\",\"+blend(x,2.5)+\")\"; }\r\n");
+            sbuild.Append("    function pickColours(n) {\r\n");
+            sbuild.Append("        for(i=0;i<n;i++) colours[i]=colour(i*3.0/(n+1));\r\n");
+            sbuild.Append("     }\r\n");
+            sbuild.Append("    pickColours(obs.length);ctx.fillStyle=\"black\";\r\n");
+            sbuild.Append("");
+            sbuild.Append("    for(i=0;i<nodes.length;i++){\r\n");
+            sbuild.Append("      nd = nodes[i];\r\n");
+            sbuild.Append("      if (nd[4]>=0) {\r\n");
+            sbuild.Append("        lv = nodes[nd[4]]; ar = nodes[nd[5]];\r\n");
+            sbuild.Append("        ctx.beginPath();\r\n");
+            sbuild.Append("        ctx.moveTo(lv[2]-minX,lv[3]-minY); ctx.lineTo(nd[2]-minX,nd[3]-minY);\r\n");
+            sbuild.Append("        ctx.lineTo(ar[2]-minX,ar[3]-minY); ctx.stroke();\r\n");
+            sbuild.Append("        dx = ar[2]-nd[2]; dy=ar[3]-nd[3];\r\n");
+            sbuild.Append("        d = Math.sqrt(dx*dx+dy*dy); // draw arrow head\r\n");
+            sbuild.Append("        ctx.beginPath(); ctx.moveTo(ar[2]-20*dx/d-minX,ar[3]-20*dy/d-minY);\r\n");
+            sbuild.Append("        ctx.lineTo(ar[2]-(25*dx-5*dy)/d-minX,ar[3]-(25*dy+5*dx)/d-minY);\r\n");
+            sbuild.Append("        ctx.lineTo(ar[2]-(25*dx+5*dy)/d-minX,ar[3]-(25*dy-5*dx)/d-minY);\r\n");
+            sbuild.Append("        ctx.closePath();ctx.fill();\r\n");
+            sbuild.Append("      }\r\n");
+            sbuild.Append("    }\r\n");
+            sbuild.Append("    for(i=0;i<nodes.length;i++){\r\n");
+            sbuild.Append("      nd = nodes[i];\r\n");
+            sbuild.Append("      ctx.beginPath(); \r\n");
+            sbuild.Append("      ctx.arc(nd[2]-minX,nd[3]-minY,20,0,2*Math.PI,false);\r\n");
+            sbuild.Append("      ctx.closePath();\r\n");
+            sbuild.Append("      ctx.fillStyle=colours[nd[0]]; ctx.fill();\r\n");
+            sbuild.Append("      ctx.font=\"14px sans-serif\";\r\n");
+            sbuild.Append("      m = ctx.measureText(nd[1].toString());\r\n");
+            sbuild.Append("      ctx.fillStyle=\"black\";\r\n");
+            sbuild.Append("      ctx.fillText(nd[1].toString(),nd[2]-minX-m.width/2,nd[3]-minY);\r\n");
+            sbuild.Append("    }\r\n");
+            sbuild.Append("    drawLegend();\r\n");
+            sbuild.Append("    function drawLegend() {\r\n");
+            sbuild.Append("      for(i=0;i<obs.length;i++) {\r\n");
+            sbuild.Append("         pt = obs[i];\r\n");
+            sbuild.Append("         ctx.fillStyle=colours[i];\r\n");
+            sbuild.Append("         ctx.fillRect(20,15+13*i,5,5);\r\n");
+            sbuild.Append("         ctx.fillStyle=\"black\";\r\n");
+            sbuild.Append("         ctx.fillText(pt,30,20+13*i);\r\n");
+            sbuild.Append("        }\r\n");
+            sbuild.Append("    }\r\n");
+            sbuild.Append(" </script>");
+            sbuild.Append("</body></html>\r\n"); 
         }
     }
     internal class JsonWebOutput : PyrrhoWebOutput

@@ -4,6 +4,13 @@ using Pyrrho.Level4;
 using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Level5;
+using System.Net.NetworkInformation;
+using System.Collections.Generic;
+using System.Numerics;
+using System.Xml.Linq;
+using System;
+using System.Runtime.CompilerServices;
+using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -98,7 +105,7 @@ internal class NodeType : UDType
             r += (Under, ut);
         return r;
     }
-    internal TableRow? Get(Context cx,TInt? id)
+    internal TableRow? Get(Context cx,TypedValue? id)
     {
         if (id is null)
             return null;
@@ -517,6 +524,213 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
             if (b.value() is long p && p != v)
                 r += p;
         return r;
+    }
+    internal class NodeInfo
+    {
+        internal readonly int type;
+        internal readonly long id;
+        internal float x, y;
+        internal readonly long lv, ar;
+        internal NodeInfo(int t,long i,double u,double v,long l, long a)
+        {
+            type = t; id = i; x = (float)u; y = (float)v; lv = l; ar = a;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            sb.Append('{');
+            sb.Append(type);
+            sb.Append(',');
+            sb.Append(id);
+            sb.Append(',');
+            sb.Append(x);
+            sb.Append(',');
+            sb.Append(y);
+            sb.Append(',');
+            sb.Append(lv);
+            sb.Append(',');
+            sb.Append(ar);
+            sb.Append('}');
+            return sb.ToString();
+        }
+    }
+    /// <summary>
+    /// My current idea is that given a  single node n, Pyrrho should be able to compute a list of nearby nodes 
+    /// with x,y coordinates relative to n, in the following format
+    /// (nodetype, id, x, y, lv, ar)
+    /// Line 0 of this list should be the given node n, 
+    /// lv and ar are the line numbers of the leaving and arriving nodes for edges.
+    /// Nearby means that -500<x<500 and -500<y<500.
+    /// </summary>
+    /// <param name="cx"></param>
+    /// <param name="start"></param>
+    /// <returns></returns>
+    internal (BList<NodeInfo>,CTree<NodeType,int>) NodeTable(Context cx,TNode start)
+    {
+        var types = new CTree<NodeType, int>((NodeType)start.dataType,0);
+        var ntable = new BList<NodeInfo>(new NodeInfo(0, start.id, 0F, 0F, -1L, -1L ));
+        var nodes = new CTree<TNode,int>(start,0);  // nodes only, no edges
+        var edges = CTree<TEdge, int>.Empty;
+        var todo = new BList<TNode>(start); // nodes only, no edges
+        ran = new Random(0);
+        while (todo.Count > 0)
+        {
+            var tn = todo[0]; todo -= 0;
+            if (tn is not null && tn.dataType is NodeType nt && ntable[nodes[tn]] is NodeInfo ti)
+                for (var b = nt.rindexes.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is EdgeType rt
+                        && cx.db.objects[rt.leavingType] is NodeType lt
+                        && cx.db.objects[rt.arrivingType] is NodeType at
+                    && nt.defpos >= 0)
+                        for (var g = b.value().First(); g != null; g = g.Next())
+                        {
+                            if (g.key()[0] == rt.leaveCol && cx.db.objects[rt.leaveIx] is Pyrrho.Level3.Index rx
+                            && rx.rows?.impl?[new TInt(tn.id)] is TPartial tp)
+                                for (var c = tp.value.First(); c != null; c = c.Next())
+                                    if (rt.tableRows[c.key()] is TableRow tr
+                                        && (!Have(edges, tr))
+                                        && at.Get(cx,tr.vals[rt.arriveCol]) is TableRow ar)
+                                    {
+                                        if (Have(nodes, ar) is int i && ntable[i] is NodeInfo ai)
+                                        {
+                                            var te = new TEdge(rt, tr);
+                                            edges += (te, (int)ntable.Count);
+                                            AddType(ref types,rt);
+                                            var ei = new NodeInfo(types[rt], te.id, (ti.x + ai.x) / 2, (ti.y + ai.y) / 2, 
+                                                nodes[tn], i);
+                                            if (HasSpace(ntable, ei)!=null)
+                                                ei = TryAdjust(ntable, ei, ti, ai);
+                                            ntable += ei;
+                                        }
+                                        else
+                                        {
+                                            var (x, y) = GetSpace(ntable, ti);
+                                            if (Math.Abs(x) > 1000 || Math.Abs(y) > 1000)
+                                                continue;
+                                            var te = new TEdge(rt, tr);
+                                            AddType(ref types, rt);
+                                            edges += (te, (int)ntable.Count);
+                                            AddType(ref types, at);
+                                            ntable += new NodeInfo(types[rt], te.id, x, y, nodes[tn], (int)ntable.Count+1);
+                                            var ta = new TNode(at, ar);
+                                            nodes += (ta, (int)ntable.Count);
+                                            ntable += new NodeInfo(types[at], ta.id, 2 * x - ti.x, 2 * y - ti.y, -1L, -1L);
+                                            todo += ta;
+                                        }
+                                    }
+                            if (g.key()[0] == rt.arriveCol && cx.db.objects[rt.arriveIx] is Pyrrho.Level3.Index ax
+                                    && ax.rows?.impl?[new TInt(tn.id)] is TPartial ap)
+                                for (var c = ap.value.First(); c != null; c = c.Next())
+                                    if (rt.tableRows[c.key()] is TableRow tr
+                                        && (!Have(edges, tr))
+                                        && lt.Get(cx,tr.vals[rt.leaveCol]) is TableRow lr)
+                                    {
+                                        if (Have(nodes, lr) is int i && ntable[i] is NodeInfo li)
+                                        {
+                                            var te = new TEdge(rt, tr);
+                                            edges += (te, (int)ntable.Count);
+                                            AddType(ref types, rt);
+                                            var ei = new NodeInfo(types[rt], te.id, (ti.x + li.x) / 2, (ti.y + li.y) / 2, 
+                                                i,nodes[tn]);
+                                            if (HasSpace(ntable, ei)!=null)
+                                                ei = TryAdjust(ntable, ei, li, ti);
+                                            ntable += ei;
+                                        }
+                                        else
+                                        {
+                                            var (x, y) = GetSpace(ntable, ti);
+                                            if (Math.Abs(x) > 1000 || Math.Abs(y) > 1000)
+                                                continue;
+                                            var te = new TEdge(rt, tr);
+                                            edges += (te, (int)ntable.Count);
+                                            AddType(ref types, rt);
+                                            ntable += new NodeInfo(types[rt], te.id, x, y, (int)ntable.Count+1, nodes[tn]);
+                                            var tl = new TNode(lt, lr);
+                                            nodes += (tl, (int)ntable.Count);
+                                            AddType(ref types, lt);
+                                            ntable += new NodeInfo(types[lt], tl.id, 2 * x - ti.x, 2 * y - ti.y, -1L, -1L);
+                                            todo += tl;
+                                        }
+                                    }
+                        }
+        }
+        return (ntable,types);
+    }
+    void AddType(ref CTree<NodeType,int> ts,NodeType t)
+    {
+        if (!ts.Contains(t))
+            ts += (t, (int)ts.Count);
+    }
+    int? Have(CTree<TNode,int>no, TableRow tr)
+    {
+        for (var b = no.First(); b != null; b = b.Next())
+            if (tr.Equals(b.key().tableRow))
+                return b.value();
+        return null;
+    }
+    bool Have(CTree<TEdge, int> ed, TableRow tr)
+    {
+        for (var b = ed.First(); b != null; b = b.Next())
+            if (tr.Equals(b.key().tableRow))
+                return true;
+        return false;
+    }
+    static Random ran = new Random(0);
+    /// <summary>
+    /// Return coordinates for an adjacent edge icon
+    /// </summary>
+    /// <param name="nt"></param>
+    /// <param name="n"></param>
+    /// <returns></returns>
+    /// <exception cref="PEException"></exception>
+    (double,double) GetSpace(BList<NodeInfo> nt, NodeInfo n)
+    {
+        var np = 6;
+        var df = Math.PI / 3;
+        // search for a space on circle of radious size d centered at n
+        for (var d = 80.0; d < 500.0; d += 40.0, np*=2, df /= 2)
+        {
+            var ang = ran.Next(1, 7)*df;
+            for (var j= 0; j<np; j++,ang+=df)
+            {
+                var (x, y) = (n.x + d * 0.75 * Math.Cos(ang), n.y + d * 0.75 * Math.Sin(ang));
+                for (var b = nt.First(); b != null; b = b.Next())
+                    if (b.value() is NodeInfo ni
+                        && (dist(ni.x, ni.y, x, y) < 40.0 // the edge icon
+                        || dist(ni.x, ni.y, 2 * x - n.x, 2 * y - n.y) < 40.0)) // the new node icon
+                        goto skip;
+                return (x, y);
+            skip:;
+            }
+        }
+        throw new PEException("PE31800");
+    }
+    NodeInfo? HasSpace(BList<NodeInfo> nt,NodeInfo e,double d=40.0, NodeInfo? f=null)
+    {
+        for (var b = nt.First(); b != null; b = b.Next())
+            if (b.value() is NodeInfo ni && ni!=f
+                && dist(ni.x, ni.y, e.x, e.y) < d)
+                return ni;
+        return null;
+    }
+    NodeInfo TryAdjust(BList<NodeInfo> nt, NodeInfo e,NodeInfo a,NodeInfo b)
+    {
+        var d = dist(a.x,a.y,b.x,b.y);
+        var dx = b.x - a.x;
+        var dy = b.y - a.y;
+        var cx = 20 * dx / d;
+        var cy = 20 * dy / d;
+        var e1 = new NodeInfo(e.type,e.id,e.x+cx,e.y+cy,e.lv,e.ar);
+        if (HasSpace(nt, e1, 10.0, e)==null)
+            return e1;
+        e1 = new NodeInfo(e.type, e.id, e.x - cx, e.y - cy, e.lv, e.ar);
+        if (HasSpace(nt, e1) == null)
+            return e1;
+        return e;
+    }
+    double dist(double x,double y,double p,double q)
+    {
+        return Math.Sqrt((x-p)*(x-p)+(y-q)*(y-q));
     }
     public override string ToString()
     {

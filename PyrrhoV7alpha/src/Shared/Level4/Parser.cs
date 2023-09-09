@@ -2399,8 +2399,8 @@ namespace Pyrrho.Level4
             switch (kind)
             {
                 case Sqlx.TABLE: return Match(Sqlx.ENTITY, Sqlx.PIE, Sqlx.HISTOGRAM, Sqlx.LEGEND, Sqlx.LINE, 
-                    Sqlx.POINTS, Sqlx.DROP,Sqlx.JSON, Sqlx.CSV, Sqlx.CHARLITERAL, Sqlx.RDFLITERAL, Sqlx.REFERRED, 
-                    Sqlx.ETAG, Sqlx.SECURITY);
+                    Sqlx.NODE, Sqlx.POINTS, Sqlx.DROP,Sqlx.JSON, Sqlx.CSV, Sqlx.CHARLITERAL, Sqlx.RDFLITERAL, 
+                    Sqlx.REFERRED, Sqlx.ETAG, Sqlx.SECURITY);
                 case Sqlx.COLUMN: return Match(Sqlx.ATTRIBUTE, Sqlx.X, Sqlx.Y, Sqlx.CAPTION, Sqlx.DROP, 
                     Sqlx.CHARLITERAL, Sqlx.RDFLITERAL,Sqlx.REFERS, Sqlx.SECURITY,Sqlx.MULTIPLICITY);
                 case Sqlx.FUNCTION: return Match(Sqlx.ENTITY, Sqlx.PIE, Sqlx.HISTOGRAM, Sqlx.LEGEND,
@@ -2494,6 +2494,12 @@ namespace Pyrrho.Level4
                                 Mustbe(Sqlx.Id);
                              } else
                                 continue;
+                            break;
+                        }
+                    case Sqlx.NODE:
+                        {
+                            m += (tok, o);
+                            Next();
                             break;
                         }
                     case Sqlx.PREFIX:

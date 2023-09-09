@@ -1,11 +1,7 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
-using System.Globalization;
-using System.Runtime.Intrinsics.Arm;
 using System.Text;
-using System.Xml;
-using System.Xml.Linq;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
