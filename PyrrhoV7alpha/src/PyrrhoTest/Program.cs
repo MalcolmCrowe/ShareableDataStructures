@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("1 Aug 2023 Repeatable tests");
+                Console.WriteLine("11 Sept 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -1250,8 +1250,33 @@ namespace Test
             Act(359, "MATCH (O:\"Order\"{id:201})"+
                 "begin MATCH(X: Product{ spec: '16/8x4'}) CREATE(O)-[:Item{Qty:5}]->(X);"+
                 "MATCH(X: Product{ spec: '18cm'}) CREATE(O)-[:Item{Qty:3}]->(X)end");
-            CheckResults(25, 4, "match ()-[{Qty:QT}]->(:ST{spec:S}) where QT>4",
-                "[{QT:5,ST:'WOODSCREW',S:'16/8x4'}]");
+            CheckResults(25, 4, "match ()-[{Qty:QT}]->(:ST{spec:SA}) where QT>4",
+                "[{QT:5,ST:'WOODSCREW',SA:'16/8x4'}]");
+            Act(360, "CREATE (a:Person {name:'Fred Smith'})<-[:Child]-(b:Person {name:'Pete Smith'})," +
+                "(b)-[:Child]->(:Person {name:'Mary Smith'})");
+            CheckResults(25, 5, "MATCH (p)-[:Child]->(c) RETURN p.name,c.name AS child;",
+                "[{NAME:'Pete Smith',CHILD:'Fred Smith'},{NAME:'Pete Smith',CHILD:'Mary Smith'}}]");
+            Act(361, "MATCH (p {name:'Pete Smith'}) SET p.name='Peter Smith' ");
+            CheckResults(25, 6, "MATCH ({name:'Peter Smith'}) [()-[:Child]->()]+(x) RETURN x.name",
+                "[{NAME:'Fred Smith'},{NAME:'Mary Smith'}]");
+            Act(362, "CREATE (e:Person {name:'Emil', born:1975 }), (k:Person {name:'Karin', born:1977 }),"
+                +"(e)-[:married {since:2000}]->(k)");
+            Act(363, "CREATE (Sue:Person {name:'Sue Hill', born:1975}),"
+                +"(Joe:Person {name:'Joe Hill', born:1952}),(Joe)-[:married {since:1995}]->(Sue);");
+            CheckResults(25, 7, "MATCH (n:Person) RETURN collect(n.born)",
+                "[{COLLECT:'MULTISET(1952,1975,1977)'}]");
+            CheckResults(25, 8, "MATCH (n:Person) RETURN avg(n.born)","[{AVG:1968}]");
+            Act(364, "MATCH (n:Person {name:'Joe Hill'})-[r { since:1995}]->() "
+                +"BEGIN n.born = 1962; r.since = 1996 END");
+            CheckResults(25, 9, "MATCH (n:Person)-[:married{since:d}]->() RETURN n.name,d", 
+                "[{N.NAME:'Emil',D:2000},{N.NAME:'Joe Hill',D:1996}]");
+            Act(365, "MATCH (e:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),"
+                +"(e)-[r:owns ]->(d),(d)-[r2:owned_by]->(e)]");
+            Act(366, "MATCH (d:Dog {name: 'Rex'})-[r:owned_by]->() DELETE r;");
+            Act(367, "MATCH (k{name:'Karin'}),()-[e:owns ]->({name:'Rex'}) SET e.leaving=k");
+            CheckResults(25, 10, "select count(*) from owned_by", "[{COUNT:0}]");
+            CheckResults(25, 11, "MATCH (p)-[:owns]->(d) RETURN p.name,d.name as dog", 
+                "[{P.NAME:'Karin',DOG:'Rex'}]");
             Rollback();
         }
         void CheckExceptionCommit(int t, int q,string m)
