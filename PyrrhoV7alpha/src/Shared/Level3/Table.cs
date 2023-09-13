@@ -537,6 +537,28 @@ BTree<string, (int, long?)> ns)
             }
             return xs;
         }
+        internal Table DoDel(Context cx,Delete del,long p)
+        {
+            if (tableRows[del.delpos] is TableRow delRow)
+                for (var b = indexes.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.key()] is Index ix &&
+                        ix.rows is MTree mt && ix.rows.info is Domain inf &&
+                        delRow.MakeKey(ix) is CList<TypedValue> key)
+                    {
+                        ix -= (key, delRow.defpos);
+                        if (ix.rows == null)
+                            ix += (Index.Tree, new MTree(inf, mt.nullsAndDuplicates, 0));
+                        cx.Install(ix, p);
+                    }
+            var tb = this;
+            tb -= del.delpos;
+            tb += (LastData, p);
+            cx.Install(tb, p);
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (p, del.type));
+            return tb;
+        }
         /// <summary>
         /// A readable version of the Table
         /// </summary>

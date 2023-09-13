@@ -253,29 +253,10 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            if (cx.db.objects[tabledefpos] is Table tb &&
-                tb.tableRows[delpos] is TableRow delRow)
-            {
-                //        delRow.Cascade(cx.db, cx, cx.role, p); moved to TransitionRowSet
-                for (var b = tb.indexes.First(); b != null; b = b.Next())
-                    for (var c = b.value().First(); c != null; c = c.Next())
-                        if (cx.db.objects[c.key()] is Level3.Index ix && 
-                            ix.rows is MTree mt && ix.rows.info is Domain inf &&
-                            delRow.MakeKey(ix) is CList<TypedValue> key)
-                        {
-                            ix -= (key, delpos);
-                            if (ix.rows == null)
-                                ix += (Level3.Index.Tree, new MTree(inf,mt.nullsAndDuplicates,0));
-                            cx.Install(ix, p);
-                        }
-                tb -= delpos;
-                tb += (Table.LastData, ppos);
-                cx.Install(tb, p);
-                if (cx.db.mem.Contains(Database.Log))
-                    cx.db += (Database.Log, cx.db.log + (ppos, type));
-                return tb;
-            }
-            return null;
+            var tb = (cx.db.objects[tabledefpos] as Table)?.DoDel(cx, this, p);
+            for (var t = tb?.super as Table;t!=null;t=t.super as Table)
+                t.DoDel(cx, this, p);   
+            return tb;
         }
         public override string ToString()
         {
