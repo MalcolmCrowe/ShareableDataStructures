@@ -9,6 +9,7 @@ using System.Runtime.Intrinsics.Arm;
 using System.Runtime.CompilerServices;
 using System.Data.Common;
 using System.Xml;
+using System.Security.Claims;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -34,6 +35,7 @@ namespace Pyrrho.Level3
         public readonly long defpos;
         internal const long
             _Alias = -62, // string        
+            Chain = -489, // BList<Ident>
             Classification = -63, // Level
             Definer = -64, // long Role
             Defpos = -257, // long for Rest service
@@ -42,7 +44,7 @@ namespace Pyrrho.Level3
             _Domain = -192, // Domain 
             _Framing = -167, // Framing
             _From = -306, // long From
-            _Ident = -409, // Ident (used in ForwardReference and RowSet)
+            _Ident = -409, // Ident (used in ForwardReference, SqlReview, and RowSet)
             Infos = -126, // BTree<long,ObInfo> Role
             LastChange = -68, // long (formerly called Ppos)
             Owner = -59, // long
@@ -69,6 +71,7 @@ namespace Pyrrho.Level3
     (BTree<long, ObInfo>?)mem[Infos] ?? BTree<long, ObInfo>.Empty;
         internal long from => (long)(mem[_From] ?? -1L);
         internal string name => (string)(mem[ObInfo.Name] ?? "");
+        internal BList<Ident>? chain => (BList<Ident>?)mem[Chain];
         public virtual Domain domain => (Domain)(mem[_Domain] ?? Domain.Null);
         /// <summary>
         /// This tree does not include indexes/columns/rows for tables
@@ -646,6 +649,25 @@ namespace Pyrrho.Level3
         }
         internal virtual void Note(Context cx,StringBuilder sb)
         {  }
+        internal int? IdPos(BList<Ident> ids)
+        {
+            for (var b = ids.First(); b != null; b = b.Next())
+                if (b.value().iix.lp == defpos)
+                    return b.key();
+            return null;
+        }
+        internal virtual bool Verify(Context cx)
+        {
+            if (defpos < Transaction.Analysing || defpos>= Transaction.HeapStart)
+                return true;
+            if (GetType().Name!="SqlValue" && from < 0)
+                return false;
+            if (chain is null || chain==BList<Ident>.Empty)
+                return true;
+            if (chain.Count == 1L && chain[0]?.iix.dp == defpos)
+                return true;
+            return false;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -657,7 +679,11 @@ namespace Pyrrho.Level3
             if (mem.Contains(Definer)) { sb.Append(" Definer="); sb.Append(Uid(definer)); }
             if (mem.Contains(Classification)) { sb.Append(" Classification="); sb.Append(classification); }
             if (mem.Contains(LastChange)) { sb.Append(" LastChange="); sb.Append(Uid(lastChange)); }
-            if (sensitive) sb.Append(" Sensitive"); 
+            if (sensitive) sb.Append(" Sensitive");
+            var cm = "[";
+            for (var b=chain?.First();b!=null;b=b.Next())
+            { sb.Append(cm); cm = ","; sb.Append(b.value().ident); }
+            if (cm == ",") sb.Append(']');
             return sb.ToString();
         }
     }
@@ -734,7 +760,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    internal class ForwardReference : Domain
+    internal class ForwardReference : DBObject
     {
         internal const long
             Subs = -382; // CTree<long,bool>
@@ -748,8 +774,8 @@ namespace Pyrrho.Level3
         /// <param name="lp">Lexical position: stored in LastChange</param>
         /// <param name="dr">Definer</param>
         /// <param name="m">Other properties, e.g. domain, depth</param>
-        public ForwardReference(Ident n, Context cx) 
-            : base(n.iix.lp, n.iix.dp, cx.Name(n))
+        public ForwardReference(Ident n, BList<Ident> ch, Context cx)
+            : base(n.iix.lp, n.iix.dp, cx.Name(n,ch))
         {
             cx.Add(this);
             cx.undefined += (defpos,cx.sD);
@@ -776,7 +802,7 @@ namespace Pyrrho.Level3
         {
             var rs = cx.obs[f] as RowSet;
             for (var b = rs?.rowType.First(); b != null; b = b.Next())
-                if (cx.obs[b.value() ?? -1L] is SqlValue sv && sv.name == name
+                if (cx.obs[b.value() ?? -1L] is SqlValue sv && sv.name == name && name is not null
                     && cx.defs[name] is BTree<int, (Iix, Ident.Idents)> t)
                 {
                     var si = sv.domain.infos[cx.role.defpos];
@@ -791,7 +817,7 @@ namespace Pyrrho.Level3
                                 sc = new SqlCopy(sc.defpos, cx, sc.name, defpos,
                                     cx.db.objects[si.names[c.key()].Item2 ?? -1L] as DBObject);
                             else
-                                sc = new SqlField(sc.defpos, sc.name, -1, defpos, Content, defpos);
+                                sc = new SqlField(sc.defpos, sc.name, -1, defpos, Domain.Content, defpos);
                             sv = new SqlValueExpr(defpos, cx, Sqlx.DOT, sv, sc, Sqlx.NO);
                             cx.Add(sv);
                             cx.Replace(sc, sv);
@@ -800,6 +826,13 @@ namespace Pyrrho.Level3
                         }
                 }
             return (BList<DBObject>.Empty, m);
+        }
+        internal override bool Verify(Context cx)
+        {
+            for (var b = subs.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()]?.Verify(cx) != true)
+                    return false;
+            return base.Verify(cx);
         }
         public override string ToString()
         {

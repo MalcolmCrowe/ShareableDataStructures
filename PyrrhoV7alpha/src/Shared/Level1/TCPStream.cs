@@ -611,7 +611,7 @@ namespace Pyrrho.Level1
             PutInt(et.Typecode());
             PutInt((int)m.Count);
             for (var e = m.First(); e != null; e = e.Next())
-                PutCell(cx,et, e.Value());
+                PutCell(cx, et, e.Value());
         }
         /// <summary>
         /// send a Set to the client

@@ -686,7 +686,7 @@ namespace Pyrrho.Level4
                         throw new DBException("42105", NameFor(ts.target));
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
                     if (cx.obs[ass.key().vbl] is SqlValue c){
-                        if (c.GetType().Name != "SqlCopy" && c.GetType().Name != "SqlValue")
+                        if (c is not SqlCopy && c.GetType().Name!="SqlValue")
                             throw new DBException("0U000");
                         DBObject oc = c;
                         while (oc is SqlCopy sc && cx.obs[sc.copyFrom] is DBObject co) // Views have indirection here
@@ -854,7 +854,7 @@ namespace Pyrrho.Level4
                         throw new DBException("42105", _rr.NameFor(cx));
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
                     if (cx.obs[ass.key().vbl] is SqlValue c){
-                        if (c.GetType().Name!="SqlCopy" && c.GetType().Name!="SqlValue")
+                        if (c is not SqlCopy && c.GetType().Name!="SqlValue")
                             throw new DBException("0U000");
                         DBObject oc = c;
                         while (oc is SqlCopy sc && cx.obs[sc.copyFrom] is DBObject oo) // Views have indirection here

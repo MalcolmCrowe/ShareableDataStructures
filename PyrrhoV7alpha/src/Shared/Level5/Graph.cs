@@ -385,7 +385,7 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
     }
     internal virtual NodeType Check(Context cx,CTree<string, SqlValue> ls)
     {
-        if (infos[definer] is not ObInfo ni)
+        if (cx.db.objects[defpos] is not NodeType nt || nt.infos[definer] is not ObInfo ni)
             throw new DBException("PE42133", name);
         for (var b = ls.First(); b != null; b = b.Next())
             if (b.key() is string n && !ni.names.Contains(n) && ls[n] is SqlValue v)

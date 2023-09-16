@@ -200,8 +200,15 @@ namespace Pyrrho.Level4
                 var ix = b.value();
                 if (_Ob(ix.dp) is DBObject ob)
                 {
-                    if (ix.sd < sD && ob.GetType().Name == "SqlValue") // an undefined identifier from a lower level
+                    if (ix.sd < sD && (ob is SqlReview||ob.GetType().Name=="SqlValue")) // an undefined identifier from a lower level
                         return (null, n);
+                    (r, s) = ob._Lookup(lp, this, n.ident, n.sub, rr);
+                    if (r!=ob && r is SqlField)
+                    {
+                        undefined -= n.iix.dp;
+                        undefined -= lp;
+                        return (r, s);
+                    }
                     (r,s) = ob._Lookup(lp, this, n.ident, sub, rr);
                     lp = GetUid();
                     if (sub!=null)
@@ -533,7 +540,7 @@ namespace Pyrrho.Level4
             for (var b = sm?.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && obs[p] is SqlValue uv && uv.name is string n)
                 {
-                    if (uv.GetType().Name == "SqlValue" &&  // there is an unfdefined entry for n at the current level
+                    if (uv is SqlReview &&  // there is an unfdefined entry for n at the current level
                         te?.names.Contains(n) != true)      // which is not in tm
                     {
                         Iix dv = Iix.None;
@@ -546,7 +553,7 @@ namespace Pyrrho.Level4
                         }
                         if (dv.dp >= 0 && obs[dv.dp] is SqlValue lv) // what is the current entry for n
                         {
-                            if (lv.domain.kind == Sqlx.CONTENT || lv.GetType().Name == "SqlValue") // it has unknown type
+                            if (lv.domain.kind == Sqlx.CONTENT || lv is SqlReview) // it has unknown type
                             {
                                 var nv = (Domain)uv.Relocate(lv.defpos);
                                 Replace(lv, nv);
@@ -825,15 +832,18 @@ namespace Pyrrho.Level4
             Add(r);
             return r;
         }
-        internal BTree<long, object> Name(Ident n, BTree<long,object>? m=null)
+        internal BTree<long, object> Name(Ident n, BList<Ident> ch, BTree<long,object>? m=null)
         {
             var mm = (m ?? BTree<long, object>.Empty);
             mm += (DBObject.Infos, new BTree<long, ObInfo>(role.defpos, new ObInfo(n.ident)));
             mm += (DBObject.Definer, role.defpos);
+            mm += (SqlValue.Chain, ch);
             return mm + (ObInfo.Name, n.ident) + (DBObject._Ident, n);
         }
         internal DBObject _Add(DBObject ob)
         {
+            if (ob.from>=0 && !ob.Verify(this))
+                throw new DBException("42112", ob);
             if (ob.defpos != -1 && obs[ob.defpos]?.dbg!=ob.dbg)
             {
                 ob._Add(this);
@@ -950,6 +960,8 @@ namespace Pyrrho.Level4
         }
         internal void Replace(DBObject was, DBObject now)
         {
+            if (!now.Verify(this))
+                throw new DBException("42112", now);
             _Add(now);
             ATree<int, (DBObject, DBObject)> a = todo;
             ATree<int, (DBObject, DBObject)>.Add(ref a, 0, (was, now));
@@ -1812,18 +1824,52 @@ namespace Pyrrho.Level4
                     var ob = obs[p] ?? (DBObject?)db.objects[p];
                     if (ob == null || role == null)
                         return;
-                    var n = (ob is SqlValue v) ? (v.alias ?? v.name)
-                        : ob.infos[role.defpos]?.name;
+                    var n = (ob is SqlValue v)?v.alias ?? v.name
+                        :ob.infos[role.defpos]?.name;
                     if (n == null)
                         continue;
                     var ic = new Ident(n, px);
                     var iq = new Ident(id, ic);
-                    //        if (defs[iq].dp < 0)
                     defs += (iq, ic.iix);
                     defs += (ic, ic.iix);
                     if (ia != null)
                         defs += (new Ident(ia, ic), ic.iix);
                 }
+        }
+        internal void DefineForward(string? n)
+        {
+            if (n == null)
+                return;
+            if (defs[n]?.Contains(sD) ==true && obs[defs[n]?[sD].Item1.dp??-1L] is ForwardReference fr)
+            {
+                for (var b = fr.subs.First(); b != null; b = b.Next())
+                    if (obs[b.key()] is DBObject ob && ob.chain is BList<Ident> ch)
+                    {
+                        var nc = BList<Ident>.Empty;
+                        for (var c = ch.First(); c != null; c = c.Next())
+                            if (c.value().ident != n)
+                                nc += c.value();
+                        obs += (ob.defpos, ob + (DBObject.Chain, nc));
+                    }
+                obs -= fr.defpos;
+            }
+        }
+        internal void DefineStructures(Table? ob,RowSet rs)
+        {
+            if (ob == null)
+                return;
+            if (ob.infos[role.defpos] is ObInfo ti)
+                for (var b = ti.names.First(); b != null; b = b.Next())
+                    if (defs[b.key()]?.Contains(sD) == true
+                            && obs[defs[b.key()]?[sD].Item1.dp ?? -1L] is ForwardReference fr
+                            && b.value().Item2 is long dp
+                            && ob.representation[dp] is UDType)
+                    {
+                        for (var c = fr.subs.First(); c != null; c = c.Next())
+                            if (obs[c.key()] is SqlValue sv && sv.name is string nm)
+                                Replace(sv, new SqlField(sv.defpos, nm, -1, dp, sv.domain, ob.defpos));
+                        obs -= fr.defpos;
+                    }
         }
         internal void UpdateDefs(Ident ic, RowSet rs, string? a)
         {
@@ -1937,7 +1983,7 @@ namespace Pyrrho.Level4
         {
             if (_Ob(p??-1L) is not SqlValue sv)
                 return null;
-            if (sv.GetType().Name=="SqlValue" && sv.name is string s)
+            if (sv is SqlValue && sv.name is string s)
                 return s;
             var tv = sv.Eval(this);
             if (tv is TGParam tp && binding[tp.uid] is TChar tb)

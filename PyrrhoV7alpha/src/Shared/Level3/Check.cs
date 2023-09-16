@@ -1,6 +1,4 @@
-using System.Runtime.CompilerServices;
 using System.Text;
-using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;

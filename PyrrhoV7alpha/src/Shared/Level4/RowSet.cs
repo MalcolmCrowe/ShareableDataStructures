@@ -322,13 +322,25 @@ namespace Pyrrho.Level4
             if (cx._Dom(defpos) is not Domain dm)
                 throw new DBException("42105");
             for (var b = dm.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && dm.representation[p] is DBObject co 
-                    && co.NameFor(cx) == nm && n is not null)
+                if (b.value() is long p && dm.representation[p] is DBObject co && n is not null)
                 {
-                    var ob = new SqlValue(n, cx, dm.representation[co.defpos]??Content,
-                        new BTree<long, object>(_From, defpos));
-                    cx.Add(ob);
-                    return (ob, n.sub);
+                    if (co.NameFor(cx) == nm && n is not null)
+                    {
+                        var ob = new SqlValue(n, BList<Ident>.Empty, cx, dm.representation[co.defpos] ?? Content,
+                            new BTree<long, object>(_From, defpos));
+                        cx.Add(ob);
+                        return (ob, n.sub);
+                    }
+                    if (co is UDType ut && ut.infos[cx.role.defpos] is ObInfo ui
+                        && cx.db.objects[ui.names[n.ident].Item2 ?? -1L] is DBObject so)
+                    {
+                        var ob = new SqlField(lp, nm + "." + n.ToString(), -1, p, 
+                            ut.representation[so.defpos]??Content, so.defpos);
+                        cx.DefineForward(n.ident);
+                        cx.undefined -= lp;
+                        cx.Add(ob);
+                        return (ob, n.sub);
+                    }
                 }
             return base._Lookup(lp, cx, nm, n, r);
         }
@@ -6280,7 +6292,7 @@ namespace Pyrrho.Level4
                 for (var b = rowType.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.obs[p] is SqlValue s)
                     {
-                        if (hasAggs && (s is SqlCopy || s.GetType().Name=="SqlValue") 
+                        if (hasAggs && (s is SqlCopy || s is SqlReview) 
                             && !s.Grouped(cx, this))
                             continue;
                         var sn = s.ToString(sqlAgent, Remotes.Selects, remoteCols,
