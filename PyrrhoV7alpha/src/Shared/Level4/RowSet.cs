@@ -5136,6 +5136,7 @@ namespace Pyrrho.Level4
             /// The works cleverly for multi-column indexes. 
             /// The transition rowset adds to a private copy of the index as there may
             /// be several rows to add, and the null column(s!) might not be the first key column.
+            /// But first remember we should us the super*type of ta if any
             /// </summary>
             /// <param name="fl"></param>
             /// <param name="ix"></param>
@@ -5143,32 +5144,39 @@ namespace Pyrrho.Level4
             static CTree<long,TypedValue> CheckPrimaryKey(Context cx, TransitionCursor trc,
                 CTree<long,TypedValue>vs)
             {
-                if (cx is TableActivation ta && cx.db.objects[ta.index?.defpos??-1L] is Level3.Index ix)
+                if (cx is TableActivation ta)
                 {
-                    var k = CList<TypedValue>.Empty;
-                    for (var b = ix.keys.First(); b != null; b = b.Next())
-                        if (b.value() is long p && (cx.obs[p] ?? cx.db.objects[p]) is TableColumn tc
-                            && vs[tc.defpos] is TypedValue v)
-                        {
-                            if (v == TNull.Value)
+                    Table tb = ta.table;
+                    for (var t = tb.super as Table; t != null; t = t.super as Table)
+                        tb = t;
+                    if (tb.FindPrimaryIndex(ta) is Level3.Index ix)
+                    {
+                        var k = CList<TypedValue>.Empty;
+                        for (var b = ix.keys.First(); b != null; b = b.Next())
+                            if (b.value() is long p && (cx.obs[p] ?? cx.db.objects[p]) is TableColumn tc
+                                && vs[tc.defpos] is TypedValue v)
                             {
-                                if (ix.rows is null)
-                                    v = tc.domain.kind == Sqlx.CHAR ? new TChar("1") : tc.domain.defaultValue;
-                                else {
-                                    v = ix.rows.NextKey(tc.domain.kind, k, 0, b.key());
-                                    var tr = (Transaction)cx.db;
-                                    for (var c = tr.physicals.PositionAt(tr.step); c != null; c = c.Next())
-                                        if (c.value() is Record r && r.fields.Contains(tc.defpos)
-                                            && r.fields[tc.defpos]?.CompareTo(v) == 0)
-                                            v = Inc(v);
-                                    vs += (tc.defpos, v);
-                                    cx.values += (trc._trs.targetTrans[tc.defpos] ?? -1L, v);
-                                    if (ix.MakeKey(vs) is CList<TypedValue> pk)
-                                        ta.index = ix + (Level3.Index.Tree, ix.rows + (pk, 0, -1L));
+                                if (v == TNull.Value)
+                                {
+                                    if (ix.rows is null)
+                                        v = tc.domain.kind == Sqlx.CHAR ? new TChar("1") : tc.domain.defaultValue;
+                                    else
+                                    {
+                                        v = ix.rows.NextKey(tc.domain.kind, k, 0, b.key());
+                                        var tr = (Transaction)cx.db;
+                                        for (var c = tr.physicals.PositionAt(tr.step); c != null; c = c.Next())
+                                            if (c.value() is Record r && r.fields.Contains(tc.defpos)
+                                                && r.fields[tc.defpos]?.CompareTo(v) == 0)
+                                                v = Inc(v);
+                                        vs += (tc.defpos, v);
+                                        cx.values += (trc._trs.targetTrans[tc.defpos] ?? -1L, v);
+                                        if (ix.MakeKey(vs) is CList<TypedValue> pk)
+                                            ta.index = ix + (Level3.Index.Tree, ix.rows + (pk, 0, -1L));
+                                    }
                                 }
+                                k += v;
                             }
-                            k += v;
-                        }
+                    }
                 }
                 return vs;
             }
