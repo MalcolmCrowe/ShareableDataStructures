@@ -1,12 +1,9 @@
-using System;
 using System.Text;
-using System.IO;
 using System.Net;
-using System.Threading;
-using System.Collections.Generic;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -306,8 +303,14 @@ namespace Pyrrho
                     wd = 310;
                 var hd = 210;
                 if (chartType.Contains(Sqlx.NODE))
-                { wd = 1010; hd = 810; }
-                sbuild.Append("<canvas id=\"myCanvas\" width=\"" + wd + "\" height=\"" + hd + " \"style=\"border:1px solid #c3c3c3;\">\r\n");
+                {
+                    wd = 1010; hd = 810;
+                    sbuild.Append("<canvas id=\"myCanvas\" width=\"" + wd + "\" height=\"" + hd +"\""
+                        + " onclick=show(event)"
+                        + " style=\"border:1px solid #c3c3c3;\">\r\n");
+                } else
+                    sbuild.Append("<canvas id=\"myCanvas\" width=\"" + wd + "\" height=\"" + hd
+    + " \"style=\"border:1px solid #c3c3c3;\">\r\n");
                 sbuild.Append("Your browser does not support the canvas element.</canvas>\r\n");
                 sbuild.Append("<script type=\"text/javascript\">\r\n");
                 sbuild.Append("var canvas = document.getElementById(\"myCanvas\");\r\n");
@@ -355,18 +358,8 @@ namespace Pyrrho
                     if (b.value() is NodeType.NodeInfo ni)
                     {
                         sbuild.Append(comma + "[");
-                        sbuild.Append(ni.type);
-                        sbuild.Append(',');
-                        sbuild.Append(ni.id);
-                        sbuild.Append(',');
-                        sbuild.Append(ni.x);
-                        sbuild.Append(',');
-                        sbuild.Append(ni.y);
-                        sbuild.Append(",");
-                        sbuild.Append(ni.lv);
-                        sbuild.Append(",");
-                        sbuild.Append(ni.ar);
-                        sbuild.Append(']');
+                        sbuild.Append(ni.ToString());
+                        sbuild.Append("]");
                         comma = ",\r\n";
                     }
             } else
@@ -615,7 +608,12 @@ namespace Pyrrho
         }
         void GraphModelSupport()
         {
-            sbuild.Append("];");
+            sbuild.Append("];\r\n");
+            sbuild.Append("    function show(event){\r\n");
+            sbuild.Append("        ex = event.clientX+minX; ey=event.clientY+minY;\r\n");
+            sbuild.Append("      for(i=0;i<nodes.length;i++){\r\n");
+            sbuild.Append("        nd = nodes[i]; dx=ex-nd[2]; dy=ey-nd[3];\r\n");
+            sbuild.Append("        if (dx*dx+dy*dy<400) { window.alert(nd[6]);break;}}};\r\n");
             sbuild.Append("    maxX=0.0;maxY=0.0;minX=0.0;minY=0.0;\r\n");
             sbuild.Append("    for(i=0;i<nodes.length;i++){\r\n");
             sbuild.Append("      nd = nodes[i];\r\n");
@@ -636,7 +634,7 @@ namespace Pyrrho
             sbuild.Append("        for(i=0;i<n;i++) colours[i]=colour(i*3.0/(n+1));\r\n");
             sbuild.Append("     }\r\n");
             sbuild.Append("    pickColours(obs.length);ctx.fillStyle=\"black\";\r\n");
-            sbuild.Append("");
+            sbuild.Append("    const edges = [];");
             sbuild.Append("    for(i=0;i<nodes.length;i++){\r\n");
             sbuild.Append("      nd = nodes[i];\r\n");
             sbuild.Append("      if (nd[4]>=0) {\r\n");
@@ -650,7 +648,8 @@ namespace Pyrrho
             sbuild.Append("        ctx.lineTo(ar[2]-(25*dx-5*dy)/d-minX,ar[3]-(25*dy+5*dx)/d-minY);\r\n");
             sbuild.Append("        ctx.lineTo(ar[2]-(25*dx+5*dy)/d-minX,ar[3]-(25*dy-5*dx)/d-minY);\r\n");
             sbuild.Append("        ctx.closePath();ctx.fill();\r\n");
-            sbuild.Append("      }\r\n");
+            sbuild.Append("        edges[i]=[lv[2]-minX,lv[3]-minY,ar[2]-minX,ar[3]-minY];\r\n");
+            sbuild.Append("      } else edges[i]=0;\r\n");
             sbuild.Append("    }\r\n");
             sbuild.Append("    for(i=0;i<nodes.length;i++){\r\n");
             sbuild.Append("      nd = nodes[i];\r\n");

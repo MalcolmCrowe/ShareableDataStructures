@@ -3,85 +3,78 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using System.Text;
 using Pyrrho.Level2;
-using Pyrrho.Level5;
-using System.Net.NetworkInformation;
-using System.Collections.Generic;
-using System.Numerics;
-using System.Xml.Linq;
-using System;
-using System.Runtime.CompilerServices;
-using System.Xml;
+namespace Pyrrho.Level5
+{
+    // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
+    // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+    //
+    // This software is without support and no liability for damage consequential to use.
+    // You can view and test this code, and use it subject for any purpose.
+    // You may incorporate any part of this code in other software if its origin 
+    // and authorship is suitably acknowledged.
+    // All other use or distribution or the construction of any product incorporating 
+    // this technology requires a license from the University of the West of Scotland.
 
-// Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
-//
-// This software is without support and no liability for damage consequential to use.
-// You can view and test this code, and use it subject for any purpose.
-// You may incorporate any part of this code in other software if its origin 
-// and authorship is suitably acknowledged.
-// All other use or distribution or the construction of any product incorporating 
-// this technology requires a license from the University of the West of Scotland.
+    //The RDBMS view of graph data
 
-//The RDBMS view of graph data
+    // A NodeType (or EdgeType) corresponds a single database object that defines
+    // both a base Table in the database and a user-defined type for its rows. 
 
-// A NodeType (or EdgeType) corresponds a single database object that defines
-// both a base Table in the database and a user-defined type for its rows. 
+    // The UDType is managed by the database engine by default
+    // but the usual ALTER operations are available for both Table and UDT.
+    // It has at least one INTEGER column (a database uid) which is a key managed by the system.
+    // If no other primary key is specified, the uid column will be used as a default node identity and called Id.
+    // Other columns are provided for any properties that are defined.
+    // The UDT for a Node type also a set of possible LeavingTypes and ArrivingTypes
+    // for edges, and the UDT for an Edge type specifies the LeavingType and ArrivingType for nodes.
+    //
+    // Each row of the NodeType (resp EdgeType) is a Node (resp Edge):
+    // with an array-valued property of a Node explicitly identifying leavingNode edges by their uid,
+    // while a generated array-valued property gives the set of arrivingNode edges, and
+    // an Edge has two uid-valued properties giving the leavingNode and arrivingNode Node uid.
+    // TNode and TEdge are uid-valued TypedValues whose dataType is NodeType (resp EdgeType).
+    // Thus a row of a NodeType is a TNode, and a row of an EdgeType is a TEdge.
 
-// The UDType is managed by the database engine by default
-// but the usual ALTER operations are available for both Table and UDT.
-// It has at least one INTEGER column (a database uid) which is a key managed by the system.
-// If no other primary key is specified, the uid column will be used as a default node identity and called Id.
-// Other columns are provided for any properties that are defined.
-// The UDT for a Node type also a set of possible LeavingTypes and ArrivingTypes
-// for edges, and the UDT for an Edge type specifies the LeavingType and ArrivingType for nodes.
-//
-// Each row of the NodeType (resp EdgeType) is a Node (resp Edge):
-// with an array-valued property of a Node explicitly identifying leavingNode edges by their uid,
-// while a generated array-valued property gives the set of arrivingNode edges, and
-// an Edge has two uid-valued properties giving the leavingNode and arrivingNode Node uid.
-// TNode and TEdge are uid-valued TypedValues whose dataType is NodeType (resp EdgeType).
-// Thus a row of a NodeType is a TNode, and a row of an EdgeType is a TEdge.
+    // Nodes and edges are Records in the tables thus defined, and these can be updated and deleted
+    // using SQL in the usual ways with the help of the Match mechanism described below.
+    // ALTER TYPE, ALTER DOMAIN and ALTER TABLE statements can be applied to node and edge types.
 
-// Nodes and edges are Records in the tables thus defined, and these can be updated and deleted
-// using SQL in the usual ways with the help of the Match mechanism described below.
-// ALTER TYPE, ALTER DOMAIN and ALTER TABLE statements can be applied to node and edge types.
+    // The set of arrivingNode edges is a generated property, so SqlInsert cannot insert a Node that
+    // contains arrivingNode edges, or an Edge that refers to heap uids for nodes or edges.
+    // A statement requiring the construction of a graph fragmenet is automatically converted into a
+    // sequence of database changes (insert and type operation) to avoids such problems.
 
-// The set of arrivingNode edges is a generated property, so SqlInsert cannot insert a Node that
-// contains arrivingNode edges, or an Edge that refers to heap uids for nodes or edges.
-// A statement requiring the construction of a graph fragmenet is automatically converted into a
-// sequence of database changes (insert and type operation) to avoids such problems.
+    // Creating graph data in the RDBMS
 
-// Creating graph data in the RDBMS
+    // A Neo4j-like syntax can be used to add one or more nodes and zero or more edges.
+    // using the CREATE Node syntax defined in section 7.2 of the manual:
+    // Create: CREATE Node {Edge Node} {',' Node { Edge Node }}.
+    // Node: '(' id[':' label [':' label]] [doc] ')'.
+    // Edge: '-['[id] ':' label [':' label] [doc] ']->' | '<-['[id] ':' label [':' label] [doc] ']-'.
 
-// A Neo4j-like syntax can be used to add one or more nodes and zero or more edges.
-// using the CREATE Node syntax defined in section 7.2 of the manual:
-// Create: CREATE Node {Edge Node} {',' Node { Edge Node }}.
-// Node: '(' id[':' label [':' label]] [doc] ')'.
-// Edge: '-['[id] ':' label [':' label] [doc] ']->' | '<-['[id] ':' label [':' label] [doc] ']-'.
+    // Alternatively, a JSON object can define an explicit graph fragment value
+    // with the help of some auxiliary items. As a minimum such an object should contain
+    // an item of form "$Type":id to indicate the Node type (a similar item can be used to indicate
+    // an edge type), with a further optional subtype indication "$Under":id if the type is new.
+    // Edges can be specified using subdocuments similarly specifying an edge type
+    // and a target node together with a direction item "$LeavingNode" or "ArrivingNode" as appropriate.
 
-// Alternatively, a JSON object can define an explicit graph fragment value
-// with the help of some auxiliary items. As a minimum such an object should contain
-// an item of form "$Type":id to indicate the Node type (a similar item can be used to indicate
-// an edge type), with a further optional subtype indication "$Under":id if the type is new.
-// Edges can be specified using subdocuments similarly specifying an edge type
-// and a target node together with a direction item "$LeavingNode" or "ArrivingNode" as appropriate.
+    // Both of these methods allow the values of additional properties of nodes and edges using
+    // JSON object syntax. In all cases, the occurrence of unexpected items will result in 
+    // the inline creation or modification of nodes, edges, node types and/or edge types,
+    // using new DBObject uids as required, and on commit will alter the set of graphs defined
+    // in the database, which will contain a Record for each node and edge that includes a
+    // uid-valued array for the set of leavingNode edges of a node and uid-values properties for 
+    // the leavingNode uid and arrivingNode uid of an edge.
 
-// Both of these methods allow the values of additional properties of nodes and edges using
-// JSON object syntax. In all cases, the occurrence of unexpected items will result in 
-// the inline creation or modification of nodes, edges, node types and/or edge types,
-// using new DBObject uids as required, and on commit will alter the set of graphs defined
-// in the database, which will contain a Record for each node and edge that includes a
-// uid-valued array for the set of leavingNode edges of a node and uid-values properties for 
-// the leavingNode uid and arrivingNode uid of an edge.
+    // As suggested in the DBKDA paper, an interactive SQL session can provide feedback on any changes
+    // to the database schema as node values are added, in case these are surprising.
+    // In a batch session, such changes can be allowed (like CASCADE) or disallowed (like RESTRICT).
+    // Extra fields will be added to the connection string to enable this behaviour,
+    // so that the default behaviour for the PyrrhoCmd client will be interactive.
 
-// As suggested in the DBKDA paper, an interactive SQL session can provide feedback on any changes
-// to the database schema as node values are added, in case these are surprising.
-// In a batch session, such changes can be allowed (like CASCADE) or disallowed (like RESTRICT).
-// Extra fields will be added to the connection string to enable this behaviour,
-// so that the default behaviour for the PyrrhoCmd client will be interactive.
-
-// structural information about Id is copied to subtypes
-internal class NodeType : UDType
+    // structural information about Id is copied to subtypes
+    internal class NodeType : UDType
 {
     internal const long
         IdCol = -472,  // long TableColumn
@@ -525,35 +518,42 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
                 r += p;
         return r;
     }
-    internal class NodeInfo
-    {
-        internal readonly int type;
-        internal readonly long id;
-        internal float x, y;
-        internal readonly long lv, ar;
-        internal NodeInfo(int t,long i,double u,double v,long l, long a)
+        internal class NodeInfo
         {
-            type = t; id = i; x = (float)u; y = (float)v; lv = l; ar = a;
+            internal readonly int type;
+            internal readonly long id;
+            internal float x, y;
+            internal readonly long lv, ar;
+            internal string[] props;
+            internal NodeInfo(int t, long i, double u, double v, long l, long a, string[] ps)
+            {
+                type = t; id = i; x = (float)u; y = (float)v; lv = l; ar = a;
+                props = ps;
+            }
+            public override string ToString()
+            {
+                var sb = new StringBuilder();
+                sb.Append(type);
+                sb.Append(',');
+                sb.Append(id);
+                sb.Append(',');
+                sb.Append(x);
+                sb.Append(',');
+                sb.Append(y);
+                sb.Append(',');
+                sb.Append(lv);
+                sb.Append(',');
+                sb.Append(ar);
+                sb.Append(",\"");
+                var cm = "";
+                for (var i = 0; i < props.Length; i++)
+                {
+                    sb.Append(cm); cm = "\\n"; sb.Append(props[i]); 
+                }
+                sb.Append('"');
+                return sb.ToString();
+            }
         }
-        public override string ToString()
-        {
-            var sb = new StringBuilder();
-            sb.Append('{');
-            sb.Append(type);
-            sb.Append(',');
-            sb.Append(id);
-            sb.Append(',');
-            sb.Append(x);
-            sb.Append(',');
-            sb.Append(y);
-            sb.Append(',');
-            sb.Append(lv);
-            sb.Append(',');
-            sb.Append(ar);
-            sb.Append('}');
-            return sb.ToString();
-        }
-    }
     /// <summary>
     /// My current idea is that given a  single node n, Pyrrho should be able to compute a list of nearby nodes 
     /// with x,y coordinates relative to n, in the following format
@@ -568,7 +568,7 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
     internal (BList<NodeInfo>,CTree<NodeType,int>) NodeTable(Context cx,TNode start)
     {
         var types = new CTree<NodeType, int>((NodeType)start.dataType,0);
-        var ntable = new BList<NodeInfo>(new NodeInfo(0, start.id, 0F, 0F, -1L, -1L ));
+        var ntable = new BList<NodeInfo>(new NodeInfo(0, start.id, 0F, 0F, -1L, -1L,start.Summary(cx)));
         var nodes = new CTree<TNode,int>(start,0);  // nodes only, no edges
         var edges = CTree<TEdge, int>.Empty;
         var todo = new BList<TNode>(start); // nodes only, no edges
@@ -597,7 +597,7 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
                                             edges += (te, (int)ntable.Count);
                                             AddType(ref types,rt);
                                             var ei = new NodeInfo(types[rt], te.id, (ti.x + ai.x) / 2, (ti.y + ai.y) / 2, 
-                                                nodes[tn], i);
+                                                nodes[tn], i, te.Summary(cx));
                                             if (HasSpace(ntable, ei)!=null)
                                                 ei = TryAdjust(ntable, ei, ti, ai);
                                             ntable += ei;
@@ -611,10 +611,12 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
                                             AddType(ref types, rt);
                                             edges += (te, (int)ntable.Count);
                                             AddType(ref types, at);
-                                            ntable += new NodeInfo(types[rt], te.id, x, y, nodes[tn], (int)ntable.Count+1);
+                                            ntable += new NodeInfo(types[rt], te.id, x, y, nodes[tn], 
+                                                (int)ntable.Count+1, te.Summary(cx));
                                             var ta = new TNode(at, ar);
                                             nodes += (ta, (int)ntable.Count);
-                                            ntable += new NodeInfo(types[at], ta.id, 2 * x - ti.x, 2 * y - ti.y, -1L, -1L);
+                                            ntable += new NodeInfo(types[at], ta.id, 2 * x - ti.x, 2 * y - ti.y, -1L, -1L,
+                                                ta.Summary(cx));
                                             todo += ta;
                                         }
                                     }
@@ -631,7 +633,7 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
                                             edges += (te, (int)ntable.Count);
                                             AddType(ref types, rt);
                                             var ei = new NodeInfo(types[rt], te.id, (ti.x + li.x) / 2, (ti.y + li.y) / 2, 
-                                                i,nodes[tn]);
+                                                i,nodes[tn],te.Summary(cx));
                                             if (HasSpace(ntable, ei)!=null)
                                                 ei = TryAdjust(ntable, ei, li, ti);
                                             ntable += ei;
@@ -644,11 +646,13 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
                                             var te = new TEdge(rt, tr);
                                             edges += (te, (int)ntable.Count);
                                             AddType(ref types, rt);
-                                            ntable += new NodeInfo(types[rt], te.id, x, y, (int)ntable.Count+1, nodes[tn]);
+                                            ntable += new NodeInfo(types[rt], te.id, x, y, (int)ntable.Count+1, nodes[tn],
+                                                te.Summary(cx));
                                             var tl = new TNode(lt, lr);
                                             nodes += (tl, (int)ntable.Count);
                                             AddType(ref types, lt);
-                                            ntable += new NodeInfo(types[lt], tl.id, 2 * x - ti.x, 2 * y - ti.y, -1L, -1L);
+                                            ntable += new NodeInfo(types[lt], tl.id, 2 * x - ti.x, 2 * y - ti.y, -1L, -1L,
+                                                tl.Summary(cx));
                                             todo += tl;
                                         }
                                     }
@@ -720,10 +724,10 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
         var dy = b.y - a.y;
         var cx = 20 * dx / d;
         var cy = 20 * dy / d;
-        var e1 = new NodeInfo(e.type,e.id,e.x+cx,e.y+cy,e.lv,e.ar);
+        var e1 = new NodeInfo(e.type,e.id,e.x+cx,e.y+cy,e.lv,e.ar,e.props);
         if (HasSpace(nt, e1, 10.0, e)==null)
             return e1;
-        e1 = new NodeInfo(e.type, e.id, e.x - cx, e.y - cy, e.lv, e.ar);
+        e1 = new NodeInfo(e.type, e.id, e.x - cx, e.y - cy, e.lv, e.ar,e.props);
         if (HasSpace(nt, e1) == null)
             return e1;
         return e;
@@ -1027,8 +1031,6 @@ internal class EdgeType : NodeType
 // and whose values are TypedValues, such that by assigning these values to the parameters,
 // the SqlMatchExpr evaluates to a TGraph that is found in the database.
 
-namespace Pyrrho.Level5
-{
     /// <summary>
     /// A TGraph is a TypedValue containing a tree of TNodes.
     /// It always begins with the Node with the lowest uid (its representative), 
@@ -1151,6 +1153,25 @@ namespace Pyrrho.Level5
             }
             sb.Append(')');
             return sb.ToString();
+        }
+        internal string[] Summary(Context cx)
+        {
+            if (cx.db.objects[dataType.defpos] is not NodeType nt ||
+                nt.infos[cx.role.defpos] is not ObInfo ni)
+                return new string[0];
+            var ss = new string[Math.Max(nt.pathDomain.Length,5)+1];
+            ss[0] = ni.name??"";
+            for (var b = nt.pathDomain.First(); b != null && b.key() < 5; b = b.Next())
+                if (b.value() is long cp)
+                {
+                    var u = (cx.db.objects[cp] as TableColumn)?
+                               .infos[cx.role.defpos]?.name ??"??";
+                    var v = tableRow.vals[cp]?.ToString() ?? "??";
+                    if (v.Length > 50)
+                        v = v.Substring(0, 50);
+                    ss[b.key() + 1] = u+" = "+v;
+                }
+            return ss;
         }
         public override int CompareTo(object? obj)
         {
