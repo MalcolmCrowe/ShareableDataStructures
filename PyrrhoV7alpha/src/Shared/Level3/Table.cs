@@ -2,8 +2,7 @@ using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
-using System.ComponentModel.DataAnnotations;
-using System.Runtime.Intrinsics.Arm;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -537,20 +536,20 @@ BTree<string, (int, long?)> ns)
             }
             return xs;
         }
-        internal Table DoDel(Context cx,Delete del,long p)
+        internal Table DoDel(Context cx, Delete del, long p)
         {
             if (tableRows[del.delpos] is TableRow delRow)
                 for (var b = indexes.First(); b != null; b = b.Next())
-                for (var c = b.value().First(); c != null; c = c.Next())
-                    if (cx.db.objects[c.key()] is Index ix &&
-                        ix.rows is MTree mt && ix.rows.info is Domain inf &&
-                        delRow.MakeKey(ix) is CList<TypedValue> key)
-                    {
-                        ix -= (key, delRow.defpos);
-                        if (ix.rows == null)
-                            ix += (Index.Tree, new MTree(inf, mt.nullsAndDuplicates, 0));
-                        cx.Install(ix, p);
-                    }
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                        if (cx.db.objects[c.key()] is Index ix &&
+                            ix.rows is MTree mt && ix.rows.info is Domain inf &&
+                            delRow.MakeKey(ix) is CList<TypedValue> key)
+                        {
+                            ix -= (key, delRow.defpos);
+                            if (ix.rows == null)
+                                ix += (Index.Tree, new MTree(inf, mt.nullsAndDuplicates, 0));
+                            cx.Install(ix, p);
+                        }
             var tb = this;
             tb -= del.delpos;
             tb += (LastData, p);
