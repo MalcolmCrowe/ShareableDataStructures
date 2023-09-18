@@ -544,13 +544,13 @@ Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
                 sb.Append(lv);
                 sb.Append(',');
                 sb.Append(ar);
-                sb.Append(",\"");
+                sb.Append(",\"<p>");
                 var cm = "";
                 for (var i = 0; i < props.Length; i++)
                 {
-                    sb.Append(cm); cm = "\\n"; sb.Append(props[i]); 
+                    sb.Append(cm); cm = "<br/>"; sb.Append(props[i]); 
                 }
-                sb.Append('"');
+                sb.Append("</p>\"");
                 return sb.ToString();
             }
         }
