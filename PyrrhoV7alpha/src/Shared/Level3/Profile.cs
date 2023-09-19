@@ -653,7 +653,7 @@ namespace Pyrrho.Level3
         {
             XmlWriter w = XmlWriter.Create(dbname + ".xml");
             w.WriteStartElement("Profile");
-            w.WriteAttributeString("Date", DateTime.Now.ToString());
+            w.WriteAttributeString("Date", DateTime.Now.ToString(Thread.CurrentThread.CurrentUICulture));
             foreach (var t in transactions)
                 t.Save(db,w);
             w.WriteEndElement();

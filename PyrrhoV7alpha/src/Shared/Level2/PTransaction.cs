@@ -139,8 +139,9 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString()
 		{
+            var cu = Thread.CurrentThread.CurrentUICulture;
 			return "PTransaction for "+nrecs+" Role="+Pos(ptrole.defpos)
-                +" User="+Pos(ptuser?.defpos ?? -1L)+" Time="+new DateTime(pttime);
+                +" User="+Pos(ptuser?.defpos ?? -1L)+" Time="+new DateTime(pttime).ToString(cu);
 		}
         internal override DBObject? Install(Context cx, long p)
         {
@@ -273,7 +274,7 @@ namespace Pyrrho.Level2
             if (user is not null && user.defpos>=0)
             { sb.Append("Audit: "); sb.Append(user.name); }
             sb.Append(" ["); sb.Append(table); sb.Append("] ");
-            sb.Append(new DateTime(timestamp));
+            sb.Append(new DateTime(timestamp).ToString(Thread.CurrentThread.CurrentUICulture));
             if (match.Count > 0)
             {
                 sb.Append(" {");

@@ -1062,7 +1062,7 @@ namespace Pyrrho.Common
         }
         public override string ToString()
         {
-            return date.ToString("dd/MM/yyyy");
+            return date.ToString("d",Thread.CurrentThread.CurrentUICulture);
         }
         #region IComparable Members
 

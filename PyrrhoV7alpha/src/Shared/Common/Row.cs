@@ -497,7 +497,7 @@ namespace Pyrrho.Common
         }
         public override string ToString()
         {
-            return value.ToString();
+            return value.ToString(Thread.CurrentThread.CurrentUICulture);
         }
         internal override long? ToLong()
         {
