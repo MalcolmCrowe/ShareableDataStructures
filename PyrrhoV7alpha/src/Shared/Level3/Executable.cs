@@ -1342,6 +1342,53 @@ namespace Pyrrho.Level3
         }
     }
     /// <summary>
+    /// A treament statement. Changing the domain of the current row (from _From)
+    /// will move the row into a subtype table. nd must be a subtype of _From.
+    /// </summary>
+    internal class TreatAssignment : Executable
+    {
+        /// <summary>
+        /// Constructor: A new treat assignment statement from the parser
+        /// </summary>
+        public TreatAssignment(long dp, UDType nd) :
+            base(dp, new BTree<long,object>(_Domain,nd))
+        { }
+        protected TreatAssignment(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static TreatAssignment operator +(TreatAssignment et, (long, object) x)
+        {
+            var d = et.depth;
+            var m = et.mem;
+            var (dp, ob) = x;
+            if (et.mem[dp] == ob)
+                return et;
+            if (ob is DBObject bb && dp != _Depth)
+            {
+                d = Math.Max(bb.depth + 1, d);
+                if (d > et.depth)
+                    m += (_Depth, d);
+            }
+            return (TreatAssignment)et.New(m + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new TreatAssignment(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new TreatAssignment(dp, m);
+        }
+        /// <summary>
+        /// Execute the treatment: reparse the values of this row and add it to the new domain table.
+        /// </summary>
+        /// <param name="tr">The transaction</param>
+        public override Context Obey(Context cx)
+        {
+            var a = cx; 
+            a.exec = this;
+            return cx;
+        }
+    }
+    /// <summary>
     /// A return statement for a stored procedure or function
     /// 
     /// </summary>

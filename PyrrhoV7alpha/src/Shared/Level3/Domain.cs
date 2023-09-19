@@ -1936,7 +1936,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         {
                             lx.pos = lx.len;
                             lx.ch = '\0';
-                        }
+                        } 
                         if (prec != 0 && prec < str.Length)
                             str = str[..prec];
                         if (charSet == CharSet.UCS || Check(str))
@@ -2281,6 +2281,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                         unnamedOk = false;
                                         if (names[n] is long np && np != p)
                                             p = np;
+                                        if (names[n.ToUpper()] is long mp && mp != p)
+                                            p = mp;
                                     }
                                     lx.White();
                                     var cv = (representation[p] ?? Content).Parse(lx);
@@ -2290,7 +2292,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 }
                                 lx.White();
                             }
-                            if (lx.ch != end)
+                            if (lx.ch != end && lx.ch!='\0')
                                 break;
                             lx.Advance();
                             v = new TRow(this, cols);
@@ -3012,6 +3014,16 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Sqlx.CONTENT: return v;
                 case Sqlx.PASSWORD: return v;
                 case Sqlx.DOCARRAY: goto case Sqlx.DOCUMENT;
+                case Sqlx.TYPE:
+                    {
+                        if (v is TChar tc)
+                        {
+                            var s = tc.ToString();
+                            if ((this+(Kind,Sqlx.ROW)).TryParse(new Scanner(0, ("("+s+")").ToCharArray(), 0, cx), out v) is DBException e)
+                                throw e;
+                        }
+                        return v;
+                    }
                 case Sqlx.ROW:
                     {
                         var vs = CTree<long, TypedValue>.Empty;
@@ -4873,12 +4885,12 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 Advance();
                 return new string(input, st, pos - st - 1);
             }
-            if (Char.IsLetter(ch))
+            if (char.IsLetter(ch))
             {
-                while (Char.IsLetterOrDigit(ch))
+                while (char.IsLetterOrDigit(ch))
                     Advance();
             }
-            return new string(input, st, pos - st + 1);
+            return new string(input, st, pos - st);
         }
     }
     /// <summary>
