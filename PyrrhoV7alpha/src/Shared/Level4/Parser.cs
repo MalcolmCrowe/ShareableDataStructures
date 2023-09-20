@@ -9673,11 +9673,22 @@ namespace Pyrrho.Level4
         /// <returns>the SqlDocArray</returns>
         public SqlValue ParseSqlDocArray()
         {
-            var v = new SqlRowArray(LexPos().dp,BTree<long, object>.Empty);
-            cx.Add(v);
+            var dp = LexPos().dp;
+            var v = new SqlRowArray(dp,BTree<long, object>.Empty);
             Next();
             if (tok != Sqlx.RBRACK)
+            {
+                if (tok != Sqlx.LPAREN)
+                {
+                    var ls = ParseSqlValueList(Domain.Content);
+                    Mustbe(Sqlx.RBRACK);
+                    var xp = Domain.Content;
+                    if (ls != BList<long?>.Empty && cx.obs[ls[0] ?? -1L] is SqlValue vl)
+                        xp = new Domain(-1L, Sqlx.ARRAY, vl.domain);
+                    return (SqlValue)cx.Add(new SqlValueArray(dp, cx, xp, ls));
+                }
                 v += ParseSqlRow(Domain.Content);
+            }
             while (tok == Sqlx.COMMA)
             {
                 Next();

@@ -1,23 +1,21 @@
-This folder contains the Open Source Pyrrho DBMS server, libraries, 
-and client programs. This software is intellectual property of the 
-University of the West of Scotland and myself and is protected by copyright.
+This folder contains the Pyrrho DBMS server, libraries, and client
+programs. This software is intellectual property of the University of 
+the West of Scotland and myself and is protected by copyright.
 
-This software may be used by you for any legitimate purpose but
-you may not incorporate the server PyrrhoSvr.exe in any product 
-or use this code to create any competing product without a license from the 
-University of the West of Scotland.
+This project includes a web service (in file HttpService.cs) that contains
+some W3Schools code that is (c) 1999-2023 Refsnes Data and included here
+on a fair use basis, since this is a research project. There are options
+in the code to avoid using this copyright code with only slight loss of
+functionality. 
+
+Apart from the above restriction, you may use and redistribute any source code 
+and documentation from this project on a royalty-free basis, provided its origin 
+in this project is suitably acknowledged. 
 
 Under no circumstances will the University of the West of Scotland 
 or Malcolm Crowe be held liable for any loss or damage consequential on the 
 use of this software. This does not affect your statutory rights under 
 applicable law.
-
-You may redistribute and copy the dlls and jar files without restriction,
-and the Zip file and the Word document Pyrrho.docx in their entirety.
-
-You may incorporate the DLLs, including any of PyrrhoLink.dll, PyrrhoJC.jar
-and AWebSvr.dll in any product on a royalty-free basis, provided the use 
-of this code is suitably acknowledged.
 
 This is version 7.05(alpha) of the DBMS, compiled for .NET 6.0.
 It passes tests 1 to 25 of the PyrrhoTest program, and should run on Windows,
@@ -25,4 +23,4 @@ Linux, and MacOS with Mono.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-19 September 2023
+20 September 2023

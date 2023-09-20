@@ -4576,7 +4576,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="a">the array</param>
         public SqlValueArray(long dp,Context cx,Domain xp,BList<long?> v)
-            : base(dp,xp.mem+(_Array,v)+(_Depth,cx._DepthBV(v,xp.depth+1)))
+            : base(dp,xp.mem+(_Array,v)+(_Domain,xp)+(_Depth,cx._DepthBV(v,xp.depth+1)))
         {
             cx.Add(this);
         }
@@ -4828,7 +4828,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder("ARRAY[");
-            sb.Append(Uid(defpos)); sb.Append(']');
+            sb.Append(domain.ToString()); sb.Append(']');
             if (array.Count > 0)
             {
                 var cm = "(";
