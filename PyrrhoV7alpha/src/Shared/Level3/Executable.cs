@@ -1154,15 +1154,16 @@ namespace Pyrrho.Level3
             if (cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
             {
                 if (vb is SqlValueExpr se && se.op == Sqlx.DOT && cx._Ob(se.left)?.Eval(cx) is TNode tl
-                    && cx._Ob(se.right) is SqlCopy sc && tl.dataType.representation[sc.copyFrom] is Domain cd
+                    && cx._Ob(se.right) is SqlCopy sc && tl.dataType is Table st 
+                    && st.pathDomain.representation[sc.copyFrom] is Domain cd
                     && cd.Coerce(cx, tv) is TypedValue v1)
-                    cx.Add(new Update(tl.tableRow, (Table)tl.dataType, new CTree<long, TypedValue>(sc.copyFrom, v1),
+                    cx.Add(new Update(tl.tableRow, st, new CTree<long, TypedValue>(sc.copyFrom, v1),
                         cx.db.nextPos, cx));
-                else if (vb is SqlField sf && cx._Ob(sf.from)?.Eval(cx) is TNode tf
-                    && tf.dataType.infos[cx.role.defpos] is ObInfo fi
+                else if (vb is SqlField sf && cx._Ob(sf.from)?.Eval(cx) is TNode nf
+                    && nf.dataType is Table tf && tf._PathDomain(cx).infos[cx.role.defpos] is ObInfo fi
                     && cx._Ob(fi.names[sf.name ?? "?"].Item2 ?? -1L) is TableColumn tc
                     && tc.domain.Coerce(cx, tv) is TypedValue v3)
-                    cx.Add(new Update(tf.tableRow, (Table)tf.dataType, new CTree<long, TypedValue>(tc.defpos, v3),
+                    cx.Add(new Update(nf.tableRow, tf, new CTree<long, TypedValue>(tc.defpos, v3),
                         cx.db.nextPos, cx));
                 else if (dm != Domain.Content && dm != Domain.Null && dm.Coerce(cx, tv) is TypedValue v2)
                     cx.values += (vb?.defpos ?? -1L, v2);

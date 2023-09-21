@@ -5235,6 +5235,8 @@ namespace Pyrrho.Level4
                     if (cx.role.dbobjects.Contains(ui.ident)
                         && cx.db.objects[cx.role.dbobjects[ui.ident] ?? -1L] is UDType tu)
                         cx.Add(new EditType(id.ident, tp, tp, tu, cx.db.nextPos, cx));
+                    else
+                        throw new DBException("42107", ui.ident);
                 }
                 else
                 {

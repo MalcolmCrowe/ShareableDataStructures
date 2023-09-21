@@ -2,8 +2,6 @@ using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
-using System;
-using System.Net;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -198,6 +196,10 @@ namespace Pyrrho.Level3
             if (pm.refpos > 0)
                 d += (Inverts, pm.refpos);
             return d;
+        }
+        public static ObInfo operator +(ObInfo d, ObInfo s)
+        {
+            return d + (Names, d.names + s.names);
         }
         internal override Basis New(BTree<long, object> m)
         {

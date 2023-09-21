@@ -105,6 +105,8 @@ namespace Pyrrho.Level3
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
         { }
         protected Table(Sqlx t) : base(--_uid,t, BTree<long,object>.Empty) { }
+        internal Table(Context cx,CTree<long,Domain>rs, BList<long?> rt, BTree<long,ObInfo> ii)
+            : base(cx,rs,rt,ii) { }
         internal Table(long dp, Context cx, CTree<long, Domain> rs, BList<long?> rt, int ds)
             : base(dp, cx, Sqlx.TABLE, rs, rt, ds) { }
         internal Table(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -192,6 +194,7 @@ namespace Pyrrho.Level3
                 pt += tc.defpos;
             }
             tb = tb + (RowType, rt) + (Representation, rs) + (Infos, tb.infos + (cx.role.defpos, oi));
+            tb += (PathDomain, tb._PathDomain(cx));
             var ps = su?.representation ?? CTree<long, Domain>.Empty;
             if (tb is NodeType)
                 tb += (PathDomain, new Domain(-1L, cx, Sqlx.TABLE, ps + rs, pt, pt.Length));
@@ -238,6 +241,11 @@ namespace Pyrrho.Level3
             }
             return (Table)tb.New(m + v);
         }
+        /// <summary>
+        /// PathDomain is always a Table even for NodeType, EdgeType etc
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
         internal virtual Table _PathDomain(Context cx)
         {
             return this;

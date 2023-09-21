@@ -1402,6 +1402,9 @@ namespace Pyrrho.Level4
                 if (k == was)
                 {
                     rs -= k;
+                    if (db.objects[now] is not TableColumn tc)
+                        throw new PEException("PE106101");
+                    rs += (k, tc.domain);
                     continue;
                 }
                 var v = b.value().ShallowReplace1(this,was,now);
@@ -1436,18 +1439,7 @@ namespace Pyrrho.Level4
                 }
             return ag;
         }
-        internal BList<long?> ShallowReplace(BList<long?> rt,long was,long now)
-        {
-            var r = BList<long?>.Empty;
-            var ch = false;
-            for (var b = rt.First(); b != null; b = b.Next())
-                if (b.value() == was)
-                    ch = true; // don't add now
-                else
-                    r += b.value();
-            return ch ? r : rt;
-        }
-        internal BList<long?> ShallowReplace1(BList<long?> rt, long was, long now)
+        internal BList<long?> ShallowReplace(BList<long?> rt, long was, long now)
         {
             var r = BList<long?>.Empty;
             var ch = false;

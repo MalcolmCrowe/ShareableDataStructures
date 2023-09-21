@@ -173,6 +173,8 @@ namespace Pyrrho.Level3
         public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory]??OrderCategory.None);
         public CTree<Domain,bool> unionOf => 
             (CTree<Domain,bool>?)mem[UnionOf] ?? CTree<Domain,bool>.Empty;
+        internal Domain(Context cx,CTree<long,Domain>rs,BList<long?> rt,BTree<long,ObInfo> ii)
+            : this(-1L,_Mem(cx,Sqlx.TABLE,rs,rt,rt.Length)+(Infos,ii)) { }
         internal Domain(long dp,Context cx,Sqlx t, CTree<long, Domain> rs, BList<long?> rt, int ds=0)
             : this(dp,_Mem(cx,t,rs,rt,ds))
         {
@@ -4268,7 +4270,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 var rs = cx.ShallowReplace1(representation, was, now);
                 if (rs != representation)
                     r += (Representation, rs);
-                var rt = cx.ShallowReplace1(rowType, was, now);
+                var rt = cx.ShallowReplace(rowType, was, now);
                 if (rt != rowType)
                     r += (RowType, rt);
                 return r;
@@ -5053,17 +5055,32 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal override Table _PathDomain(Context cx)
         {
-            if (super is not UDType su)
-                return this;
-            var rt = su.pathDomain.rowType;
-            var rs = su.pathDomain.representation;
-            for (var b = rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && representation[p] is Domain cd)
+            var pd = (super as Table)?._PathDomain(cx);
+            var rt = pd?.rowType ??BList<long?>.Empty;
+            var rs = pd?.representation??CTree<long,Domain>.Empty;
+            var ii = infos;
+            if (pd is not null)
+                for (var b = infos.First(); b != null; b = b.Next())
+                    if (b.value() is ObInfo ti)
+                    {
+                        if (pd.infos[cx.role.defpos] is ObInfo si)
+                            ti += si;
+                        else throw new DBException("42105");
+                        ii += (b.key(), ti);
+                    }
+            for (var b = pd?.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && pd?.representation[p] is Domain cd && !rs.Contains(p))
                 {
                     rt += p;
                     rs += (p, cd);
                 }
-            return new Table(-1L,cx,rs,rt,rt.Length);
+            for (var b = rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && representation[p] is Domain cd && !rs.Contains(p))
+                {
+                    rt += p;
+                    rs += (p, cd);
+                }
+            return new Table(cx,rs,rt,ii);
         }
         internal virtual UDType Inherit(UDType to)
         {
