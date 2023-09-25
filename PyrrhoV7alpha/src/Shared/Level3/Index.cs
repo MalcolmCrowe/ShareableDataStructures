@@ -2,6 +2,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4; // for rename/drop
 using Pyrrho.Common;
 using System.Text;
+using System.Runtime.ExceptionServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -330,15 +331,30 @@ namespace Pyrrho.Level3
             r -= Tree;  // Commit will enter the committed rows
             return r;
         }
+        // ShallowReplace doen't seem very shallow here!
         internal override Basis ShallowReplace(Context cx, long was, long now)
         {
             var r = (Index)base.ShallowReplace(cx, was, now);
-            var ks = keys.ShallowReplace1(cx,was,now);
+            var ks = (Domain)keys.ShallowReplace(cx,was,now);
             if (ks != keys)
             {
                 r += (Keys, ks);
-                if (rows != null)
-                    r += (Tree, new MTree(rows, ks));
+                if (rows is not null)
+                {
+                    var rs = new MTree(ks, rows.nullsAndDuplicates, 0);
+                    for (var b = rows.First(); b != null; b = b.Next())
+                    {
+                        var nk = CList<TypedValue>.Empty;
+                        var cb = ks.rowType.First();
+                        for (var c = b.key().First(); c != null && cb != null; c = c.Next(), cb = cb.Next())
+                            if (cb.value() is long cp && ks.representation[cp] is Domain cd
+                                && c.value() is TypedValue cv)
+                                nk += cd.Coerce(cx, cv);
+                        if (b.Value() is long p)
+                            rs += (nk, 0, p);
+                        r += (Tree, rs);
+                    }
+                }
             }
             return r;
         }

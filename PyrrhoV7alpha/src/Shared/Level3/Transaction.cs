@@ -559,8 +559,14 @@ namespace Pyrrho.Level3
                         var n = sk.Length;
                         var psr = new Parser(cx);
                         var wt = CTree<long, bool>.Empty;
-                        for (var si = 0; si<n; si++)
-                          wt += psr.ParseSqlValue(new Ident(sk[si],cx.GetIid()), Domain.Bool).Disjoin(cx);
+                        for (var si = 0; si < n; si++)
+                        {
+                            var v = psr.ParseSqlValue(new Ident(sk[si], cx.GetIid()), Domain.Bool);
+                            var ls = v.Resolve(cx, f.defpos, BTree<long, object>.Empty).Item1;
+                            for (var c = ls.First(); c != null; c = c.Next())
+                                if (c.value() is SqlValue cv)
+                                    wt += cv.Disjoin(cx);
+                        }
                         cx.Add(f + (cx,RowSet._Where,wt));
                         break;
                     }

@@ -77,10 +77,6 @@ namespace Pyrrho.Common
             content = c;
             names = ns;
         }
-        internal override TypedValue New(Domain t)
-        {
-            throw new NotImplementedException();
-        }
         internal ABookmark<int,(string,TypedValue)>? First()
         {
             return content?.First();
@@ -879,7 +875,7 @@ namespace Pyrrho.Common
     /// <summary>
     /// We can calculate a Delta between two documents W,N if
     /// a) they have the same _Id
-    /// b) the list of fields can be merged, that is for names A and B
+    /// b) the tree of fields can be merged, that is for names A and B
     /// if W.colNames[A] lt W.colNames[B] then N.colNames[A] lt colNames[B]
     ///     
     /// </summary>
@@ -941,7 +937,7 @@ namespace Pyrrho.Common
                     details+=new Action(m, Verb.Add, ne.value().Item1, ne.value().Item2);
                     ne = ne.Next();
                 }
-                else // we can't merge the list of names
+                else // we can't merge the tree of names
                     goto all;
             }
             while (we is not null)
@@ -959,10 +955,6 @@ namespace Pyrrho.Common
             }
             return;
         all: details = new BList<Action>(new Action(0, Verb.All, "", now));
-        }
-        internal override TypedValue New(Domain t)
-        {
-            throw new NotImplementedException();
         }
         public override string ToString()
         {
@@ -1034,10 +1026,6 @@ namespace Pyrrho.Common
                 content+=TDocument.GetValue(e);
         }
 #endif
-        internal override TypedValue New(Domain t)
-        {
-            throw new NotImplementedException();
-        }
         /// <summary>
         /// Parser from BSON to DocArray
         /// </summary>

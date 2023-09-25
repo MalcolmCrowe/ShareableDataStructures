@@ -4,11 +4,8 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using System.Xml;
-using System.Runtime.Intrinsics.Arm;
-using System.ComponentModel;
 using Pyrrho.Level5;
 using Pyrrho.Level1;
-using System.Reflection.PortableExecutable;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023

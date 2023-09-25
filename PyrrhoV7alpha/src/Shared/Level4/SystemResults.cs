@@ -4667,11 +4667,6 @@ namespace Pyrrho.Level4
             {
                 throw new NotImplementedException();
             }
-
-            internal override TypedValue New(Domain t)
-            {
-                return base.New(t);
-            }
         }
         /// <summary>
         /// set up the Role$View table

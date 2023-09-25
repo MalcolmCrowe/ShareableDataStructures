@@ -1068,10 +1068,6 @@ namespace Pyrrho.Level5
         {
             return new TGraph(g.nodes + (r.tableRow.defpos,r));
         }
-        internal override TypedValue New(Domain t)
-        {
-            throw new NotImplementedException();
-        }
         internal TNode? Rep()
         {
             return nodes.First()?.value();
@@ -1145,10 +1141,6 @@ namespace Pyrrho.Level5
             tableRow = tr;
         }
         internal override TypedValue this[long p] => tableRow.vals[p]??TNull.Value;
-        internal override TypedValue New(Domain t)
-        {
-            throw new NotImplementedException();
-        }
         internal virtual bool CheckProps(Context cx,TNode n)
         {
             return dataType.defpos == n.dataType.defpos && id == n.id;
@@ -1210,10 +1202,6 @@ namespace Pyrrho.Level5
         public long arrivingType => (dataType as EdgeType)?.arrivingType ?? -1L;
         internal TEdge(EdgeType et, TableRow tr) : base(et, tr)
         { }
-        internal override TypedValue New(Domain t)
-        {
-            throw new NotImplementedException();
-        }
         public override string ToString()
         {
             return "TEdge " + DBObject.Uid(defpos) + "[" + DBObject.Uid(dataType.defpos) + "]";
@@ -1249,11 +1237,6 @@ namespace Pyrrho.Level5
             sb.Append(' ');
             sb.Append(value);
             return sb.ToString();
-        }
-
-        internal override TypedValue New(Domain t)
-        {
-            throw new NotImplementedException();
         }
     }
 }

@@ -338,7 +338,7 @@ namespace Pyrrho.Level3
         {
             for (var b=xs.First();b!=null;b=b.Next())
             {
-                var k = b.key().ShallowReplace1(cx,was,now);
+                var k = (Domain)b.key().ShallowReplace(cx,was,now);
                 if (k != b.key())
                     xs -= b.key();
                 var v = cx.ShallowReplace(b.value(),was,now);
@@ -361,10 +361,10 @@ namespace Pyrrho.Level3
         {
             for (var b=rx.First();b!=null;b=b.Next())
             {
-                var k = b.key().ShallowReplace1(cx,was,now);
+                var k = (Domain)b.key().ShallowReplace(cx, was, now);
                 if (k != b.key())
                     rx -= b.key();
-                var v = b.value().ShallowReplace1(cx,was,now);
+                var v = (Domain)b.value().ShallowReplace(cx, was, now);
                 if (k != b.key() || v != b.value())
                     rx += (k, v);
             }
@@ -620,8 +620,7 @@ BTree<string, (int, long?)> ns)
         internal override TRow RoleClassValue(Context cx, RowSet from,
             ABookmark<long, object> _enu)
         {
-            if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
-                || kind!=Sqlx.Null || from.kind!=Sqlx.Null)
+            if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi)
                 throw new DBException("42105");
             var nm = NameFor(cx);
             var versioned = mi.metadata.Contains(Sqlx.ENTITY);
@@ -641,7 +640,7 @@ BTree<string, (int, long?)> ns)
                 if (cx._Ob(b.key()) is Check ck)
                     ck.Note(cx, sb);
             sb.Append("/// </summary>\r\n");
-            sb.Append("[Table("); sb.Append(defpos); sb.Append(')'); sb.Append(lastChange); sb.Append(")]\r\n");
+            sb.Append("[Table("); sb.Append(defpos); sb.Append(','); sb.Append(lastChange); sb.Append(")]\r\n");
             sb.Append("public class " + nm + (versioned ? " : Versioned" : "") + " {\r\n");
             for (var b = representation.First(); b != null; b = b.Next())
             {
@@ -704,9 +703,10 @@ BTree<string, (int, long?)> ns)
                         var rn = ToCamel(rt.name);
                         for (var i = 0; fields.Contains(rn); i++)
                             rn = ToCamel(rt.name) + i;
+                        var fn = cx.NameFor(rx.keys[0]??-1L);
                         fields += (rn, true);
-                        sb.Append("  public " + rt.name + " " + rn
-                            + "=> conn.FindOne<" + rt.name + ">(" + sa.ToString() + ");\r\n");
+                        sb.Append("  public " + rt.name + "? " + rn
+                            + "=> conn?.FindOne<" + rt.name + ">((\""+fn.ToString()+"\"," + sa.ToString() + "));\r\n");
                     }
             for (var b = rindexes.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is Table tb && tb.infos[ro.defpos] is ObInfo rt && rt.name != null)
@@ -731,8 +731,8 @@ BTree<string, (int, long?)> ns)
                                     sa.Append(cm); cm = ",";
                                     sa.Append(vi.name);
                                 }
-                                sb.Append("  public " + rt.name + " " + rn
-                                    + "s => conn.FindOne<" + rt.name + ">(" + sa.ToString() + ");\r\n");
+                                sb.Append("  public " + rt.name + "? " + rn
+                                    + "s => conn?.FindOne<" + rt.name + ">((\"" +sa.ToString()+"\","+ sa.ToString() + "));\r\n");
                                 continue;
                             }
                             // one-many relationship
@@ -745,8 +745,8 @@ BTree<string, (int, long?)> ns)
                                     sa.Append(cx.NameFor(rp));
                                 }
                             sa.Append(')');
-                            sb.Append("  public " + rt.name + "[] " + rn
-                                + "s => conn.FindWith<" + rt.name + ">(" + sa.ToString() + ");\r\n");
+                            sb.Append("  public " + rt.name + "[]? " + rn
+                                + "s => conn?.FindWith<" + rt.name + ">("+ sa.ToString() + ");\r\n");
                         }
                     else //  e.g. this is Brand
                     {
@@ -786,8 +786,8 @@ BTree<string, (int, long?)> ns)
                                     for (var i = 0; fields.Contains(rn); i++)
                                         rn = ToCamel(rt.name) + i;
                                     fields += (rn, true);
-                                    sb.Append("  public " + ti.name + "[] " + rn
-                                        + "s => conn.FindIn<" + ti.name + ">(\"select "
+                                    sb.Append("  public " + ti.name + "[]? " + rn
+                                        + "s => conn?.FindIn<" + ti.name + ">(\"select "
                                         + sk.ToString() + " from \\\"" + rt.name + "\\\" where "
                                         + sa.ToString() + "\");\r\n");
                                 }

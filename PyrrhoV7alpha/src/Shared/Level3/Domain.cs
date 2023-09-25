@@ -4238,7 +4238,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal override Basis ShallowReplace(Context cx, long was, long now)
         {
-            if (defpos < -1L)
+            if (defpos < -1L || kind==Sqlx.Null)
                 return this;
             var r = this;
             var ag = cx.ShallowReplace(aggs, was, now);
@@ -4259,25 +4259,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (rt != rowType)
                 r += (RowType, rt);
             return r;
-        }
-        internal Domain ShallowReplace1(Context cx,long was,long now)
-        {
-            if (defpos == -1L)
-            {
-                var r = this;
-                if (orderFunc != null && cx.db.objects[orderFunc.defpos] is Procedure pr && pr != orderFunc)
-                    r += (OrderFunc, pr);
-                var rs = cx.ShallowReplace1(representation, was, now);
-                if (rs != representation)
-                    r += (Representation, rs);
-                var rt = cx.ShallowReplace(rowType, was, now);
-                if (rt != rowType)
-                    r += (RowType, rt);
-                return r;
-            }
-            if (defpos >= Transaction.Executables)
-                return this;
-            return (Domain)(cx.db.objects[defpos]??throw new PEException("PE40901"));
         }
         internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
         {

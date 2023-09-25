@@ -651,11 +651,10 @@ namespace Pyrrho
                                     tcp.PutInt(en);
                                     for (var b = tb.rowType.First(); b != null; b = b.Next())
                                         if (b.value() is long a && tb.representation[a] is Domain dt &&
-                                                vs?.Contains(a) == true 
-                                                && dt.infos[cx.role.defpos] is ObInfo ci &&
+                                                vs?.Contains(a) == true &&
                                                 dt.Compare(old?[a] ?? TNull.Value, vs?[a] ?? TNull.Value) != 0)
                                         {
-                                            tcp.PutString(ci.name ?? "");
+                                            tcp.PutString(cx.NameFor(a));
                                             tcp.PutInt(dt.Typecode());
                                             tcp.PutData(cx, vs?[a] ?? TNull.Value);
                                         }
@@ -1455,7 +1454,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.05alpha","(21 September 2023)", "http://www.pyrrhodb.com"
+            "7.05alpha","(25 September 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

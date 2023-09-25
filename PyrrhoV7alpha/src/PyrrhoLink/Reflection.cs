@@ -139,15 +139,14 @@ namespace Pyrrho
                         fa = an as FieldAttribute;
                 }
                 var v = f.GetValue(ob);
-                if (v != null)
-                {
-                    if (f.FieldType.Name == "String")
-                        v = "'" + v.ToString().Replace("'", "''") + "'";
-                    else if (f.FieldType.Name == "Byte[]")
-                        v = Hexits((byte[])v);
-                    else if (fa != null)
-                        v = Sql(fa, v);
-                }
+                if (v is null)
+                    v = "NULL";
+                else if (f.FieldType.Name == "String")
+                    v = "'" + v.ToString().Replace("'", "''") + "'";
+                else if (f.FieldType.Name == "Byte[]")
+                    v = Hexits((byte[])v);
+                else if (fa != null)
+                    v = Sql(fa, v);
                 sb.Append(comma); comma = ",";
                 sb.Append(v);
             skip: ;

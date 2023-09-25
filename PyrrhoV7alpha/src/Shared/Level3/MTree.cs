@@ -91,18 +91,9 @@ namespace Pyrrho.Level3
             }
             count = 1;
         }
-        internal MTree(MTree x,Domain ks)
-        {
-            impl = x.impl;
-            info = ks;
-            nullsAndDuplicates = x.nullsAndDuplicates;
-            off = x.off;
-            count = x.count;
-        }
         /// <summary>
         /// Constructor: implementation of add, update etc
         /// </summary>
-        /// <param name="cx">The context for user-defined types</param>
         /// <param name="i">Updated implementation tree</param>
         /// <param name="c">The new count</param>
         private MTree(MTree mt,SqlTree i, long c) 
@@ -183,15 +174,8 @@ namespace Pyrrho.Level3
         /// <param name="off">An index into k</param>
         MTree Ensure(CList<TypedValue> k, int off)
         {
-            if (k[off] is not TypedValue v || v is TNull)
-                throw new PEException("PE6003");
-            if (impl != null)
-            {
-                if (impl[v] is TMTree tm)
-                    return tm.value;
-                throw new PEException("PE6004");
-            }
-            return new MTree(info,nullsAndDuplicates,off);
+            return (k[off] is TypedValue v && v is not TNull && impl?[v] is TMTree tm)?
+                    tm.value : new MTree(info,nullsAndDuplicates,off);
         }
         /// <summary>
         /// Accessor: Look for given multi-column key

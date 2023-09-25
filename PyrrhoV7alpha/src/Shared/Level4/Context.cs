@@ -1402,29 +1402,13 @@ namespace Pyrrho.Level4
                 if (k == was)
                 {
                     rs -= k;
-                    if (db.objects[now] is not TableColumn tc)
+                    if (_Ob(now) is not TableColumn tc)
                         throw new PEException("PE106101");
-                    rs += (k, tc.domain);
+                    rs += (now, tc.domain);
                     continue;
                 }
-                var v = b.value().ShallowReplace1(this,was,now);
+                var v = (Domain)b.value().ShallowReplace(this, was, now);
                 if (v != b.value())
-                    rs += (k, v);
-            }
-            return rs;
-        }
-        internal CTree<long, Domain> ShallowReplace1(CTree<long, Domain> rs, long was, long now)
-        {
-            for (var b = rs.First(); b != null; b = b.Next())
-            {
-                var k = b.key();
-                if (k == was)
-                {
-                    rs -= k;
-                    k = now;
-                }
-                var v = b.value().ShallowReplace1(this, was, now);
-                if (k!=b.key() || v != b.value())
                     rs += (k, v);
             }
             return rs;
@@ -1721,7 +1705,7 @@ namespace Pyrrho.Level4
         internal void MergeColumn(long was, long now)
         {
             for (var b = db.objects.PositionAt(0L); b != null; b = b.Next())
-                if (b.value() is Domain d)
+                if (b.value() is Domain d && d.kind!=Sqlx.Null)
                 {
                     var nb = (DBObject)d.ShallowReplace(this, was, now);
                     if (nb != d)

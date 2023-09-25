@@ -164,7 +164,7 @@ namespace Pyrrho.Level3
         internal override Basis ShallowReplace(Context cx, long was, long now)
         {
             var r = (Procedure)base.ShallowReplace(cx, was, now);
-            var ps = ins.ShallowReplace1(cx,was,now);
+            var ps = (Domain)ins.ShallowReplace(cx, was, now);
             if (ps != ins)
                 r += (Params, ps);
             return r;
@@ -195,6 +195,7 @@ namespace Pyrrho.Level3
             {
                 sb.Append(cm); cm = ','; sb.Append(Uid(ins[i]??-1L));
             }
+            if (cm == '(') sb.Append('(');
             sb.Append(") Body:"); sb.Append(Uid(body));
             sb.Append(" Clause{"); sb.Append(clause); sb.Append('}');
             if (mem.Contains(Inverse)) { sb.Append(" Inverse="); sb.Append(Uid(inverse)); }
