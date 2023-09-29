@@ -419,7 +419,8 @@ namespace Pyrrho.Level5
             for (var b = ((Transaction)cx.db).physicals.First(); b != null; b = b.Next())
                 if (b.value() is PColumn pc && pc.table?.defpos == defpos)
                 {
-                    pc.seq += off;
+                    if (pc.seq>=0)
+                        pc.seq += off;
                     pc.table = this;
                 }
         }
@@ -469,7 +470,7 @@ namespace Pyrrho.Level5
                 pp = ui.names[id].Item2;
             if (pp == null)
             {
-                pc = new PColumn3(ut, id, ut.Seq(gf), cd, cx.db.nextPos, cx)
+                pc = new PColumn3(ut, id, ut.Seq(cx,gf), cd, cx.db.nextPos, cx)
                 {
                     flags = gf
                 };
@@ -669,6 +670,16 @@ namespace Pyrrho.Level5
             }
             return (ntable, types);
         }
+        internal override int Seq(Context cx, PColumn.GraphFlags gf)
+        {
+            if (gf.HasFlag(PColumn.GraphFlags.IdCol))
+                return 0;
+            int m = 1;
+            for (var b = rowType.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value() ?? -1L] is TableColumn tc && tc.flags == PColumn.GraphFlags.None)
+                    m++;
+            return m;
+        }
         void AddType(ref CTree<NodeType, int> ts, NodeType t)
         {
             if (!ts.Contains(t))
@@ -745,6 +756,167 @@ namespace Pyrrho.Level5
         {
             return Math.Sqrt((x - p) * (x - p) + (y - q) * (y - q));
         }
+        /// <summary>
+        /// Generate a row for the Role$Class table: includes a C# class definition,
+        /// and computes navigation properties
+        /// </summary>
+        /// <param name="from">The query</param>
+        /// <param name="_enu">The object enumerator</param>
+        /// <returns></returns>
+        internal override TRow RoleClassValue(Context cx, RowSet from,
+            ABookmark<long, object> _enu)
+        {
+            if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi)
+                throw new DBException("42105");
+            var nm = NameFor(cx);
+            var ne = (this is EdgeType) ? "EdgeType" : "NodeType";
+            var key = BuildKey(cx, out Domain keys);
+            var fields = CTree<string, bool>.Empty;
+            var sb = new StringBuilder("\r\nusing System;\r\nusing Pyrrho;\r\n");
+            sb.Append("\r\n/// <summary>\r\n");
+            sb.Append("/// " + ne + " " + nm + " from Database " + cx.db.name
+                + ", Role " + ro.name + "\r\n");
+            if (mi.description != "")
+                sb.Append("/// " + mi.description + "\r\n");
+            for (var b = indexes.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (cx._Ob(c.key()) is Level3.Index x)
+                        x.Note(cx, sb);
+            for (var b = tableChecks.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is Check ck)
+                    ck.Note(cx, sb);
+            sb.Append("/// </summary>\r\n");
+            sb.Append("["+ne+"("); sb.Append(defpos); sb.Append(','); sb.Append(lastChange); sb.Append(")]\r\n");
+            sb.Append("public class " + nm + " : Versioned {\r\n");
+            for (var b = representation.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is TableColumn tc && tc.infos[cx.role.defpos] is ObInfo fi && fi.name != null)
+                {
+                    fields += (fi.name, true);
+                    var dt = b.value();
+                    var tn = ((dt is Table) ? dt.name : dt.SystemType.Name) + "?"; // all fields nullable
+                    tc.Note(cx, sb);
+                    if ((keys.rowType.Last()?.value() ?? -1L) == tc.defpos && dt.kind == Sqlx.INTEGER)
+                        sb.Append("  [AutoKey]\r\n");
+                    sb.Append("  public " + tn + " " + tc.NameFor(cx) + ";\r\n");
+                }
+            for (var b = indexes.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (cx._Ob(c.key()) is Level3.Index x &&
+                            x.flags.HasFlag(PIndex.ConstraintType.ForeignKey) &&
+                            cx.db.objects[x.refindexdefpos] is Level3.Index rx &&
+                            cx._Ob(rx.tabledefpos) is Table tb && tb.infos[ro.defpos] is ObInfo rt &&
+                            rt.name != null)
+                    {
+                        // many-one relationship
+                        var sa = new StringBuilder();
+                        var cm = "";
+                        for (var d = b.key().First(); d != null; d = d.Next())
+                            if (d.value() is long p)
+                            {
+                                sa.Append(cm); cm = ",";
+                                sa.Append(cx.NameFor(p));
+                            }
+                        if (tb is not UDType && !rt.metadata.Contains(Sqlx.ENTITY))
+                            continue;
+                        var rn = ToCamel(rt.name);
+                        for (var i = 0; fields.Contains(rn); i++)
+                            rn = ToCamel(rt.name) + i;
+                        var fn = cx.NameFor(rx.keys[0] ?? -1L);
+                        fields += (rn, true);
+                        sb.Append("  public " + rt.name + "? " + rn
+                            + "=> conn?.FindOne<" + rt.name + ">((\"" + fn.ToString() + "\"," + sa.ToString() + "));\r\n");
+                    }
+            for (var b = rindexes.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Table tb && tb.infos[ro.defpos] is ObInfo rt && rt.name != null)
+                {
+                    if (tb is UDType || rt.metadata.Contains(Sqlx.ENTITY))
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                        {
+                            var sa = new StringBuilder();
+                            var cm = "(\"";
+                            var rn = ToCamel(rt.name);
+                            for (var i = 0; fields.Contains(rn); i++)
+                                rn = ToCamel(rt.name) + i;
+                            fields += (rn, true);
+                            var x = tb.FindIndex(cx.db, c.key())?[0];
+                            if (x != null)
+                            // one-one relationship
+                            {
+                                cm = "";
+                                for (var bb = c.value().First(); bb != null; bb = bb.Next())
+                                    if (bb.value() is long p && c.value().representation[p] is DBObject ob &&
+                                            ob.infos[ro.defpos] is ObInfo vi && vi.name is not null)
+                                    {
+                                        sa.Append(cm); cm = ",";
+                                        sa.Append(vi.name);
+                                    }
+                                sb.Append("  public " + rt.name + "? " + rn
+                                    + "s => conn?.FindOne<" + rt.name + ">((\"" + sa.ToString() + "\"," + sa.ToString() + "));\r\n");
+                                continue;
+                            }
+                            // one-many relationship
+                            var rb = c.value().First();
+                            for (var xb = c.key().First(); xb != null && rb != null; xb = xb.Next(), rb = rb.Next())
+                                if (xb.value() is long xp && rb.value() is long rp)
+                                {
+                                    sa.Append(cm); cm = "),(\"";
+                                    sa.Append(cx.NameFor(xp)); sa.Append("\",");
+                                    sa.Append(cx.NameFor(rp));
+                                }
+                            sa.Append(')');
+                            sb.Append("  public " + rt.name + "[]? " + rn
+                                + "s => conn?.FindWith<" + rt.name + ">(" + sa.ToString() + ");\r\n");
+                        }
+                    else //  e.g. this is Brand
+                    {
+                        // tb is auxiliary table e.g. BrandSupplier
+                        for (var d = tb.indexes.First(); d != null; d = d.Next())
+                            for (var e = d.value().First(); e != null; e = e.Next())
+                                if (cx.db.objects[e.key()] is Level3.Index px && px.reftabledefpos != defpos
+                                            && cx.db.objects[px.reftabledefpos] is Table ts// e.g. Supplier
+                                            && ts.infos[ro.definer] is ObInfo ti &&
+                                            (ts is UDType || ti.metadata.Contains(Sqlx.ENTITY)) &&
+                                            ts.FindPrimaryIndex(cx) is Level3.Index tx)
+                                {
+                                    var sk = new StringBuilder(); // e.g. Supplier primary key
+                                    var cm = "\\\"";
+                                    for (var c = tx.keys.First(); c != null; c = c.Next())
+                                        if (c.value() is long p && representation[p] is DBObject ob
+                                            && ob.infos[ro.defpos] is ObInfo ci &&
+                                                        ci.name != null)
+                                        {
+                                            sk.Append(cm); cm = "\\\",\\\"";
+                                            sk.Append(ci.name);
+                                        }
+                                    sk.Append("\\\"");
+                                    var sa = new StringBuilder(); // e.g. BrandSupplier.Brand = Brand
+                                    cm = "\\\"";
+                                    var rb = px.keys.First();
+                                    for (var xb = keys?.First(); xb != null && rb != null;
+                                        xb = xb.Next(), rb = rb.Next())
+                                        if (xb.value() is long xp && rb.value() is long rp)
+                                        {
+                                            sa.Append(cm); cm = "\\\" and \\\"";
+                                            sa.Append(cx.NameFor(xp)); sa.Append("\\\"=\\\"");
+                                            sa.Append(cx.NameFor(rp));
+                                        }
+                                    sa.Append("\\\"");
+                                    var rn = ToCamel(rt.name);
+                                    for (var i = 0; fields.Contains(rn); i++)
+                                        rn = ToCamel(rt.name) + i;
+                                    fields += (rn, true);
+                                    sb.Append("  public " + ti.name + "[]? " + rn
+                                        + "s => conn?.FindIn<" + ti.name + ">(\"select "
+                                        + sk.ToString() + " from \\\"" + rt.name + "\\\" where "
+                                        + sa.ToString() + "\");\r\n");
+                                }
+                    }
+                }
+            sb.Append("}\r\n");
+            return new TRow(from, new TChar(name), new TChar(key),
+                new TChar(sb.ToString()));
+        }
+
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1001,6 +1173,14 @@ namespace Pyrrho.Level5
                 + (LeavingType, cx.Fix(leavingType))
                 + (ArrivingType, cx.Fix(arrivingType));
             return (EdgeType)cx.Add(r);
+        }
+        internal override int Seq(Context cx, PColumn.GraphFlags gf)
+        {
+            if (gf.HasFlag(PColumn.GraphFlags.LeaveCol))
+                return 1;
+            if (gf.HasFlag(PColumn.GraphFlags.ArriveCol))
+                return 2;
+            return base.Seq(cx, gf);
         }
         public override string ToString()
         {

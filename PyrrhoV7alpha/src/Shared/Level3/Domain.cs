@@ -3476,6 +3476,26 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             { sb.Append(','); elType.FieldType(cx, sb); }
             sb.Append(")]\r\n"); 
         }
+        internal string Java(Sqlx kind)
+        {
+            switch (kind)
+            {
+                case Sqlx.ARRAY: return "Array";
+                case Sqlx.MULTISET: return "Multiset";
+                case Sqlx.INTEGER: return "Integer";
+                case Sqlx.NUMERIC: return "Decimal";
+                case Sqlx.NCHAR:
+                case Sqlx.CHAR: return "String";
+                case Sqlx.REAL: return "Real";
+                case Sqlx.DATE:  return "Date";
+                case Sqlx.TIME: return "Time";
+                case Sqlx.INTERVAL: return "Interval";
+                case Sqlx.BOOLEAN: return "Bool";
+                case Sqlx.TIMESTAMP: return "Timestamp";
+                case Sqlx.ROW: return "Row";
+            }
+            return "Object";
+        }
         /// <summary>
         /// Implementation of the Role$Java table: Produce a type annotation for a field
         /// </summary>

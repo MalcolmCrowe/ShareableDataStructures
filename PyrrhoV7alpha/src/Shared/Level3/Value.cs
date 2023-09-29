@@ -851,7 +851,7 @@ namespace Pyrrho.Level3
                 if (tv is TInt ti && sc.domain is NodeType nt && nt.tableRows[ti.value] is TableRow tr)
                     return tr.vals[copyFrom] ?? dv;
             }
-            return cx.values[defpos] ?? dv;
+            return cx.values[defpos] ?? cx.values[copyFrom] ?? dv;
         }
         internal override void Set(Context cx, TypedValue v)
         {
@@ -11279,7 +11279,7 @@ cx.obs[high] is not SqlValue hi)
     internal class SqlNode : SqlValue
     {
         internal const long
-            DocValue = -477,    // BTree<long,long?> SqlValue -> TChar SqlValue
+            DocValue = -477,    // BTree<long,long?> SqlValue -> SqlValue
             IdValue = -480,     // long             SqlValue of Int
             LabelValue = -476,  // BList<long?>     SqlValue of TypeSpec (most-specific is last) -> TTypeSpec
             State = -245;       // CTree<long,TGParam> tgs in this SqlNode  (always empty for CreateStatement)
@@ -11572,6 +11572,7 @@ cx.obs[high] is not SqlValue hi)
                 {
                     var ov = cx.values[defpos];
                     cx.values += (defpos, n);
+                    cx.values += n.tableRow.vals;
                     var r = se.Eval(cx);
                     if (ov is null)
                         cx.values -= defpos;

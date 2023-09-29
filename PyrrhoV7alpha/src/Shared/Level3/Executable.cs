@@ -4197,7 +4197,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             GDefs = -210,   // CTree<long,TGParam>
-            MatchExps = -487; // BList<long?>
+            MatchExps = -487; // BList<long?> SqlNode, SqlEdge, or SqlPath
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
         internal BList<long?> matchExps => // allows SqlNode alternating with SqlEdge,SqlPath

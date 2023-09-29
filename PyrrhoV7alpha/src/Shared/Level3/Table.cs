@@ -121,7 +121,7 @@ namespace Pyrrho.Level3
         public static Table operator +(Table tb, (Context, int, TableColumn) x)
         {
             var (cx, i0, tc) = x;
-            var i = tb.Seq(tc.flags);
+            var i = tb.Seq(cx,tc.flags);
             if (i != i0)
             {
                 // update the column seq number (this will be transmitted to the Physical pc)
@@ -260,18 +260,9 @@ namespace Pyrrho.Level3
                     return p;
             return -1L;
         }
-        internal int Seq(PColumn.GraphFlags gf)
+        internal virtual int Seq(Context cx,PColumn.GraphFlags gf)
         {
-            int i;
-            if (gf.HasFlag(PColumn.GraphFlags.IdCol))
-                i = 0;
-            else if (gf.HasFlag(PColumn.GraphFlags.LeaveCol))
-                i = 1;
-            else if (gf.HasFlag(PColumn.GraphFlags.ArriveCol))
-                i = 2;
-            else
-                i = Math.Max(this is EdgeType ? 3 : this is NodeType ? 1 : 0, Length);
-            return i;
+            return Length;
         }
         internal virtual ObInfo _ObInfo(long ppos, string name, Grant.Privilege priv)
         {
@@ -642,45 +633,18 @@ BTree<string, (int, long?)> ns)
             sb.Append("/// </summary>\r\n");
             sb.Append("[Table("); sb.Append(defpos); sb.Append(','); sb.Append(lastChange); sb.Append(")]\r\n");
             sb.Append("public class " + nm + (versioned ? " : Versioned" : "") + " {\r\n");
+            Note(cx, sb);
             for (var b = representation.First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                var dt = b.value();
-                var tn = ((dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name) + "?"; // all fields nullable
-                dt.FieldType(cx, sb);
-                var ci = infos[cx.role.defpos];
-                if (ci != null && ci.name != null)
+                if (cx._Ob(b.key()) is TableColumn tc && tc.infos[cx.role.defpos] is ObInfo fi && fi.name != null)
                 {
-                    fields += (ci.name, true);
-                    for (var d = ci.metadata.First(); d != null; d = d.Next())
-                        switch (d.key())
-                        {
-                            case Sqlx.X:
-                            case Sqlx.Y:
-                                sb.Append(" [" + d.key().ToString() + "]\r\n");
-                                break;
-                        }
-                    if (ci.description?.Length > 1)
-                        sb.Append("  // " + ci.description + "\r\n");
-                    if (cx._Ob(p) is TableColumn tc)
-                    {
-                        for (var c = tc.checks.First(); c != null; c = c.Next())
-                            if (cx._Ob(c.key()) is Check ck)
-                                ck.Note(cx, sb);
-                        if (tc.generated is GenerationRule gr)
-                            gr.Note(sb);
-                    }
-                    for (var c = dt.constraints.First(); c != null; c = c.Next())
-                        if (cx._Ob(c.key()) is DBObject ck)
-                            ck.Note(cx, sb);
-                }
-                else if (cx.obs[p]?.infos[ro.defpos] is ObInfo fi && fi.name != null)
                     fields += (fi.name, true);
-                if ((keys.rowType.Last()?.value() ?? -1L) == p && dt.kind == Sqlx.INTEGER)
-                    sb.Append("  [AutoKey]\r\n");
-                var cn = cx.NameFor(p);
-                sb.Append("  public " + tn + " " + cn + ";\r\n");
-            }
+                    var dt = b.value();
+                    var tn = ((dt is Table) ? dt.name : dt.SystemType.Name) + "?"; // all fields nullable
+                    tc.Note(cx, sb);
+                    if ((keys.rowType.Last()?.value() ?? -1L) == tc.defpos && dt.kind == Sqlx.INTEGER)
+                        sb.Append("  [AutoKey]\r\n");
+                    sb.Append("  public " + tn + " " + tc.NameFor(cx) + ";\r\n");
+                }
             for (var b = indexes.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx._Ob(c.key()) is Index x &&
@@ -797,6 +761,22 @@ BTree<string, (int, long?)> ns)
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
+        internal override void Note(Context cx, StringBuilder sb)
+        {
+    if (infos[cx.role.defpos] is ObInfo ci && ci.name!=null)
+    {
+            if (ci.description?.Length > 1)
+                sb.Append("  // " + ci.description + "\r\n");
+            for (var d = ci.metadata.First(); d != null; d = d.Next())
+            switch (d.key())
+            {
+                case Sqlx.X:
+                case Sqlx.Y:
+                    sb.Append(" [" + d.key().ToString() + "]\r\n");
+                    break;
+            }
+    }
+        }
         /// <summary>
         /// Generate a row for the Role$Java table: includes a Java class definition
         /// </summary>
@@ -812,33 +792,32 @@ BTree<string, (int, long?)> ns)
                 throw new DBException("42105");
             var versioned = true;
             var sb = new StringBuilder();
-            sb.Append("/*\r\n * "); sb.Append(name); sb.Append(".java\r\n *\r\n * Created on ");
+            sb.Append("/*\r\n * "); sb.Append(NameFor(cx)); sb.Append(".java\r\n *\r\n * Created on ");
             sb.Append(DateTime.Now);
             sb.Append("\r\n * from Database " + cx.db.name + ", Role " 
-                + ro.name + "r\n */");
+                + ro.name + "\r\n */\r\n");
             sb.Append("import org.pyrrhodb.*;\r\n");
             var key = BuildKey(cx,out Domain keys);
-            sb.Append("\r\n@Schema("); sb.Append(from.lastChange); sb.Append(')');
-            sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n */");
+            sb.Append("\r\n@Schema("); sb.Append(lastChange); sb.Append(')');
+            sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n */\r\n");
             if (mi.description != "")
                 sb.Append("/* " + mi.description + "*/\r\n");
-            sb.Append("public class " + name + ((versioned) ? " extends Versioned" : "") + " {\r\n");
+            sb.Append("public class " + mi.name + (versioned ? " extends Versioned" : "") + " {\r\n");
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long bp && tableCols[bp] is Domain dt)
                 {
-                    var p = b.key();
-                    var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
+                    var tn = (dt.kind == Sqlx.TYPE) ? dt.name : Java(dt.kind);
                     if (keys != null)
                     {
                         int j;
                         for (j = 0; j < keys.Length; j++)
-                            if (keys[j] == p)
+                            if (keys[j] == bp)
                                 break;
                         if (j < keys.Length)
                             sb.Append("  @Key(" + j + ")\r\n");
                     }
                     dt.FieldJava(cx, sb);
-                    sb.Append("  public " + tn + " " + cx.NameFor(p) + ";");
+                    sb.Append("  public " + tn + " " + cx.NameFor(bp) + ";");
                     sb.Append("\r\n");
                 }
             sb.Append("}\r\n");

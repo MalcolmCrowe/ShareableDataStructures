@@ -1268,6 +1268,8 @@ namespace Pyrrho.Level4
                 else if (tok == Sqlx.WHERE)
                 {
                     var cd = cx.defs;
+                    if (dm is not null)
+                        cx.AddDefs(dm);
                     var ot = lxr.tgs;
                     var od = dm ?? Domain.NodeType;
                     cx.Add(new SqlNode(b, BList<Ident>.Empty, cx, -1L, BList<long?>.Empty, BTree<long, long?>.Empty,
@@ -5760,7 +5762,7 @@ namespace Pyrrho.Level4
                 if ((k == Sqlx.TYPE || k==Sqlx.NODETYPE || k==Sqlx.EDGETYPE) && pn != null)
                 {
                     var np = cx.db.nextPos;
-                    var pc = new PColumn3((Table)dt, nm.ident, dm.Length, dm,
+                    var pc = new PColumn3((Table)dt, nm.ident, -1, dm,
                         "", dm.defaultValue, "", CTree<UpdateAssignment, bool>.Empty,
                         false, GenerationRule.None, np, cx);
                     cx.Add(pc);

@@ -331,7 +331,7 @@ namespace Pyrrho.Level4
                         cx.Add(ob);
                         return (ob, n.sub);
                     }
-                    if (co is UDType ut && ut.infos[cx.role.defpos] is ObInfo ui
+                    if (co is UDType ut && ut.infos[cx.role.defpos] is ObInfo ui && n is not null
                         && cx.db.objects[ui.names[n.ident].Item2 ?? -1L] is DBObject so)
                     {
                         var ob = new SqlField(lp, nm + "." + n.ToString(), -1, p, 
@@ -453,6 +453,8 @@ namespace Pyrrho.Level4
                                             }
                                         if (sv.KnownBy(cx, this, true)==true) // allow ambient values
                                         {
+                                            if (source>=0)
+                                                sv.AddFrom(cx, source);
                                             if (sv.IsAggregation(cx,CTree<long,bool>.Empty) != CTree<long, bool>.Empty)
                                                 mh += (k, true);
                                             else if (!matched)
@@ -1959,11 +1961,10 @@ namespace Pyrrho.Level4
         /// Query environment can supply values for the select tree but source columns
         /// should bind more closely.
         /// </summary>
-        internal SelectRowSet(Iix lp, Context cx, Domain dm, RowSet r,BTree<long,object>? m=null)
-            : base(cx, lp.dp, _Mem(cx,dm,r,m)) //  not p, cx, _Mem..
+        internal SelectRowSet(Iix lp, Context cx, Domain dm, RowSet r, BTree<long, object>? m = null)
+            : base(cx, lp.dp, _Mem(cx, dm, r, m)) //  not p, cx, _Mem..
         {
             cx.Add(this);
-            r.AddFrom(cx, lp.dp);
         }
         protected SelectRowSet(long dp, BTree<long, object> m) : base(dp, m) 
         { }
