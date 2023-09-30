@@ -53,7 +53,7 @@ namespace Pyrrho.Level2
             RestrictUpdate = 16, CascadeUpdate = 32, SetDefaultUpdate = 64, 
             SetNullUpdate = 128, RestrictDelete = 256,
             CascadeDelete = 512, SetDefaultDelete = 1024, SetNullDelete = 2048,
-            SystemTimeIndex = 4096, ApplicationTimeIndex = 8192
+            SystemTimeIndex = 4096, ApplicationTimeIndex = 8192, NoBuild = 16384
         }
         internal const ConstraintType Deletes = 
             ConstraintType.RestrictDelete | ConstraintType.CascadeDelete |
@@ -277,7 +277,9 @@ namespace Pyrrho.Level2
         {
             if (cx.db.objects[tabledefpos] is not Table tb)
                 return null;
-            var x = new Level3.Index(this, cx).Build(cx);
+            var x = new Level3.Index(this, cx);
+            if (!x.flags.HasFlag(ConstraintType.NoBuild))
+                x.Build(cx);
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
             tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
             x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));

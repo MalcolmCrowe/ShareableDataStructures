@@ -105,6 +105,15 @@ namespace Pyrrho.Level5
             var px = FindPrimaryIndex(cx);
             return tableRows[px?.rows?.impl?[id]?.ToLong() ?? -1L];
         }
+        internal TableRow? GetS(Context cx,TypedValue? id)
+        {
+            if (id is null)
+                return null;
+            for (var nt = this; nt != null; nt = cx.db.objects[nt.super?.defpos ?? -1L] as NodeType)
+                if (nt.Get(cx, id) is TableRow tr)
+                    return tr;
+            return null;
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new NodeType(defpos, m);
@@ -321,7 +330,8 @@ namespace Pyrrho.Level5
                     (sl, rt, rs, sn, ut) = GetColAndIx(cx, ut, rl, pL, sl, EdgeType.LeaveIx,
                         EdgeType.LeaveCol, EdgeType.LeavingType, le, rt, rs, sn);
                 if (cx.role.dbobjects[(md[Sqlx.ARROW] as TChar)?.value ?? ""] is long pA
-                    && (cx.db.objects[at ?? -1L] as Table)?.FindPrimaryIndex(cx) is Pyrrho.Level3.Index ra)
+                    && cx.db.objects[at ?? -1L] is Table tr
+                    && tr.FindPrimaryIndex(cx) is Pyrrho.Level3.Index ra)
                     (sa, rt, rs, sn, ut) = GetColAndIx(cx, ut, ra, pA, sa, EdgeType.ArriveIx,
                         EdgeType.ArriveCol, EdgeType.ArrivingType, ae, rt, rs, sn);
             }
@@ -445,7 +455,7 @@ namespace Pyrrho.Level5
         /// <returns>The name of the special column (which may have changed),
         /// the modified domain bits and names for ut, and ut with poissible changes to indexes</returns>
         /// <exception cref="DBException"></exception>
-        (string, BList<long?>, CTree<long, Domain>, BTree<string, long?>, NodeType)
+        internal (string, BList<long?>, CTree<long, Domain>, BTree<string, long?>, NodeType)
             GetColAndIx(Context cx, NodeType ut, Pyrrho.Level3.Index? rx, long kc, string id, long xp, long cp, long tp,
                 bool se, BList<long?> rt, CTree<long, Domain> rs, BTree<string, long?> sn)
         {
@@ -470,7 +480,7 @@ namespace Pyrrho.Level5
                 pp = ui.names[id].Item2;
             if (pp == null)
             {
-                pc = new PColumn3(ut, id, ut.Seq(cx,gf), cd, cx.db.nextPos, cx)
+                pc = new PColumn3(ut, id, ut.Seq(cx, gf), cd, cx.db.nextPos, cx)
                 {
                     flags = gf
                 };
@@ -513,7 +523,13 @@ namespace Pyrrho.Level5
             cx.Add(tc);
             cx.db += (tc.defpos, tc);
             ut = (NodeType)(cx.Add(px) ?? throw new DBException("42105"));
-            ut = ut + (cp, tc.defpos) + (xp, px.ppos);
+            if (px.flags.HasFlag(PIndex.ConstraintType.ForeignKey) && cx.db.objects[rx.tabledefpos] is Table tr)
+                for (var su = cx.db.objects[tr.super?.defpos ?? -1L] as NodeType; su != null;
+                        su = cx.db.objects[su.super?.defpos ?? -1L] as NodeType)
+                    if (su.FindPrimaryIndex(cx) is Level3.Index xs)
+                        cx.Add(new PIndex(id, ut, di, px.flags, xs?.defpos ?? -1L, cx.db.nextPos));
+            if (xp != -1L)
+                ut = ut + (cp, tc.defpos) + (xp, px.ppos);
             if (rx != null)
                 ut += (tp, px.tabledefpos);
             if (ut is EdgeType)

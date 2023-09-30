@@ -4656,8 +4656,8 @@ namespace Pyrrho.Level3
                 ds += (xn.defpos, nn.tableRow);
             else if (pd is not null && pd.dataType is EdgeType pe
                 && ((tok == Sqlx.ARROWBASE) ?
-                (cx.db.objects[pe.arrivingType] as NodeType)?.Get(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
-                : (cx.db.objects[pe.leavingType] as NodeType)?.Get(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
+                (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
+                : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
                is TableRow tn)
                 ds += (tn.defpos, tn);
             else if (pd is not null && pd.dataType is NodeType pn)

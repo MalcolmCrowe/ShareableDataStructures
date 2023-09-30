@@ -11676,13 +11676,13 @@ cx.obs[high] is not SqlValue hi)
             // the special columns for this node
             var lS = cx.obs[nd.leavingValue] as SqlNode;
             var lI = lS?.idValue ?? -1L;
-            var lg = cx.nodes[lI] ?? cx.binding[lI];
-            var lT = cx.obs[lI]?.domain??lg?.dataType??lS?.domain;
+            var lg = cx.binding[lI]??cx.nodes[lI];
+            var lT = lg?.dataType??cx.obs[lI]?.domain??lS?.domain;
             var lN = lT?.name;
             var aS = cx.obs[nd.arrivingValue] as SqlNode;
             var aI = aS?.idValue ?? -1L;
-            var ag = cx.nodes[aI] ?? cx.binding[aI];
-            var aT = cx.obs[aI]?.domain??ag?.dataType??aS?.domain;
+            var ag = cx.binding[aI]??cx.nodes[aI];
+            var aT = ag?.dataType??cx.obs[aI]?.domain??aS?.domain;
             var aN = aT?.name;
             // a label with at least one char SqlValue must be here
             // evaluate them all as TTypeSpec or TChar
@@ -11770,16 +11770,34 @@ cx.obs[high] is not SqlValue hi)
                 throw new DBException("42000");
             return (nt,md);
         }
-        void CheckType(Context cx, string? n, long? t,NodeType gt, long nt)
+        void CheckType(Context cx, string? n, long? t, NodeType gt, long nt)
         {
             if (t == null)
-                throw new DBException("42133", n??"??");
+                throw new DBException("42133", n ?? "??");
             if (t == nt)
                 return;
+            var ut = cx.db.objects[nt] as NodeType;
+            var found = false;
+            Domain? di = null;
+            for (var b = gt.indexes.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.key()] is Index rx
+                        && rx.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+                    {
+                        if (rx.reftabledefpos == nt)
+                            di = b.key();
+                        if (rx.reftabledefpos == t)
+                            found = true;
+                    }
+            if ((!found) && di is not null && cx.db.objects[t ?? -1L] is Table rt && rt.FindPrimaryIndex(cx) is Level3.Index px)
+                cx.Add(new PIndex("", gt, di, 
+                    PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate| PIndex.ConstraintType.NoBuild,
+                    px.defpos, cx.db.nextPos));
             var at = (cx.values[t ?? -1L] as TNode)?.dataType ?? cx.db.objects[t??-1L] as NodeType
                 ?? throw new DBException("42105");
             var bt = (cx.db.objects[nt] as NodeType) ?? throw new DBException("42105");
-            if (!at.EqualOrStrongSubtypeOf(bt)) throw new DBException("22G0K", gt.infos[cx.role.defpos]?.name??"??");
+        //    if (!at.EqualOrStrongSubtypeOf(bt) && !bt.EqualOrStrongSubtypeOf(at))
+        //        throw new DBException("22G0K", gt.infos[cx.role.defpos]?.name??"??");
         }
         internal override SqlNode Add(Context cx, SqlNode? an, CTree<long, TGParam> tgs)
         {
