@@ -4550,7 +4550,7 @@ namespace Pyrrho.Level4
         internal long call => (long)(mem[CallStatement.Call]??-1L);
         internal ProcRowSet(SqlCall ca, Context cx) 
             :base(cx.GetUid(),cx,
-                 _Mem(cx,cx.db.objects[ca.procdefpos] as Procedure??throw new DBException("42000"))
+                 _Mem(cx,cx.db.objects[ca.procdefpos] as Procedure??throw new DBException("42000","ProcRowSet"))
                  +(CallStatement.Call,ca.defpos))
         {
             cx.Add(this);
@@ -4565,7 +4565,7 @@ namespace Pyrrho.Level4
         {
             var dp = cx.GetPrevUid();
             if (pr.domain.Length == 0 || pr.NameFor(cx) is not string n)
-                throw new DBException("42000");
+                throw new DBException("42000","Void?");
             var tn = new Ident(n, cx.Ix(dp));
             var rt = BList<long?>.Empty;        // our total row type
             var rs = CTree<long, Domain>.Empty; // our total row type representation

@@ -382,7 +382,7 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx, long p)
         {
             if (cx.db.objects[obj] is not DBObject ob)
-                throw new DBException("42000");
+                throw new DBException("42000","Classify");
             if (cx.role.defpos != ob.definer)
                 throw new DBException("42105");
             for (var b = cx.db.roles.First(); b != null; b = b.Next())

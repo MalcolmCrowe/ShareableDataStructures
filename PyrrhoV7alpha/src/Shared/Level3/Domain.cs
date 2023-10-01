@@ -1839,7 +1839,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     if (ns[a] is long p &&
                     psr.ParseSqlValueItem(representation[p] ?? Null, false) is SqlLiteral sl)
                         vs += (p, sl.val);
-                    else throw new DBException("42000", a);
+                    else throw new DBException("42000", "Parse "+a);
                 }
                 else if (rowType[j++] is long rj 
                     && psr.ParseSqlValueItem(representation[rj] ?? Null, false) is SqlLiteral v)

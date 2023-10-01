@@ -524,7 +524,7 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            var x = (Level3.Index?)cx.db.objects[index]??throw new DBException("42000");
+            var x = (Level3.Index?)cx.db.objects[index]??throw new DBException("42000","RefAction");
             var od = x.flags & PIndex.Deletes;
             var ou = x.flags & PIndex.Updates;
             var oc = x.flags & ~PIndex.Cascade;

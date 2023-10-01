@@ -992,7 +992,7 @@ namespace Pyrrho.Level4
             for (var b = forApply.First(); b != null; b = b.Next())
             {
                 if (obs[b.key()] is not RowSet rs)
-                    throw new DBException("42000");
+                    throw new DBException("42000","NowTry");
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (c.value() is BTree<long, object> cm)
                         rs = (RowSet)Add(rs.Apply(cm, this));

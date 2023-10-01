@@ -555,7 +555,7 @@ namespace Pyrrho.Level3
                     if (!cx.obs.Contains(qx.dp))
                         cx.uids += (qx.dp, vx.dp);
                 }
-                ur = (TableRowSet)(cx.obs[ur.defpos] ?? throw new DBException("42000"));
+                ur = (TableRowSet)(cx.obs[ur.defpos] ?? throw new DBException("42000","RestView"));
                 irs = new RestRowSetUsing(cx.GetIid(), cx, this, rrs, ur);
             }
             var m = irs.mem;

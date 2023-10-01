@@ -319,7 +319,7 @@ namespace Pyrrho.Level2
         /// <param name="p"></param>
         internal override DBObject? Install(Context cx, long p)
         {
-            var ob = ((DBObject?)cx.db.objects[defpos]) ?? throw new DBException("42000");
+            var ob = ((DBObject?)cx.db.objects[defpos]) ?? throw new DBException("42000","PMetadata");
             ob = ob.Add(cx,this, p);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

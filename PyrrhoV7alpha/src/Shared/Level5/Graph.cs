@@ -278,7 +278,7 @@ namespace Pyrrho.Level5
             if (defpos < 0)
                 return (this, ls);
             if (name is not string tn)
-                throw new DBException("42000");
+                throw new DBException("42000","Node name");
             long? lt = (ut as EdgeType)?.leavingType, at = (ut as EdgeType)?.arrivingType;
             // The new Type may not yet have a Physical record, so fix that
             if (defpos < -1L || defpos >= Transaction.Analysing)
@@ -523,7 +523,7 @@ namespace Pyrrho.Level5
             cx.Add(tc);
             cx.db += (tc.defpos, tc);
             ut = (NodeType)(cx.Add(px) ?? throw new DBException("42105"));
-            if (px.flags.HasFlag(PIndex.ConstraintType.ForeignKey) && cx.db.objects[rx.tabledefpos] is Table tr)
+            if (px.flags.HasFlag(PIndex.ConstraintType.ForeignKey) && cx.db.objects[rx?.tabledefpos??-1L] is Table tr)
                 for (var su = cx.db.objects[tr.super?.defpos ?? -1L] as NodeType; su != null;
                         su = cx.db.objects[su.super?.defpos ?? -1L] as NodeType)
                     if (su.FindPrimaryIndex(cx) is Level3.Index xs)
@@ -987,7 +987,7 @@ namespace Pyrrho.Level5
                 if (md[Sqlx.ARROWBASE] is TChar la) { ln = la; sl = true; }
                 if (md[Sqlx.RARROW] is TChar lb) ln = lb;
                 if (ln == null || an == null)
-                    throw new DBException("42000");
+                    throw new DBException("42000","Edge");
                 r += (LeavingType, cx.role.dbobjects[ln.value] ?? throw new DBException("42107", ln));
                 r += (ArrivingType, cx.role.dbobjects[an.value] ?? throw new DBException("42107", an));
                 if (sl) r += (LeavingEnds, true);

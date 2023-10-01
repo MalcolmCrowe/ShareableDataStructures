@@ -170,7 +170,7 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx, long p)
         {
             if (cx.db.objects[obj] is not DBObject ob)
-                throw new DBException("42000");
+                throw new DBException("42000","Grant");
             // limit any grant to PUBLIC 
             if (grantee == Database.Guest)
                 priv = (Privilege)((int)priv & 0xfff);
@@ -179,7 +179,7 @@ namespace Pyrrho.Level2
             // limit grant to the request, then add the requested privilege (as limited)
             var pr = cp | priv;
             if (cx.db.objects[grantee] is not Role rg)
-                throw new DBException("42000");
+                throw new DBException("42000","Grant2");
             // if its a procedure, add it to the role's tree of procedures
             if (cx.db.objects[obj] is Procedure proc && proc is not Method)
             {

@@ -258,7 +258,7 @@ namespace Pyrrho.Level4
                     && (o == Sqlx.LSS || o == Sqlx.LEQ))
                     return sf + (c, new SystemFilter(c, o, v, f.op1, f.val1));
                 else
-                    throw new DBException("42000");
+                    throw new DBException("42000","Filter");
             }
             return sf + (c, new SystemFilter(c, o, v));
         }

@@ -149,7 +149,7 @@ namespace Pyrrho.Level2
                   un, cx.db.nextStmt, pp, cx)
         {
             if (cx.db != null)
-                _defpos = cx.db.Find(old)?.defpos ?? throw new DBException("42000");
+                _defpos = cx.db.Find(old)?.defpos ?? throw new DBException("42000","EditType");
             prev = old;
             hierCols = old.HierarchyCols(cx);
             _prev = prev.defpos;

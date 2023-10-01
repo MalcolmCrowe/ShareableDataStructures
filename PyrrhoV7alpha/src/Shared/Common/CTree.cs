@@ -362,7 +362,7 @@ namespace Pyrrho.Common
         }
         public CTree<TypedValue, bool> Get(TypedValue k)
         {
-            if (k.dataType != keyType.elType) throw new DBException("42000");
+            if (k.dataType != keyType.elType) throw new DBException("42000",k.dataType.kind);
             var r = CTree<TypedValue, bool>.Empty;
             for (var b = First(); b != null; b = b.Next())
                 if (b.key() is TSet ts && ts.tree.Contains(k))

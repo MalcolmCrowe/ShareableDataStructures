@@ -4058,10 +4058,10 @@ namespace Pyrrho.Level3
             for (var b = rows.First(); b != null && isConst; b = b.Next())
                 if (b.value() is long p)
                 {
-                    var v = cx.obs[p] ?? throw new DBException("42000",dp);
+                    var v = cx.obs[p] ?? throw new DBException("42000",""+dp);
                     isConst = (v as SqlValue)?.isConstant(cx) == true;
                     var x = v.Eval(cx);
-                    var y = x.ToArray() ?? throw new DBException("42000",dp);
+                    var y = x.ToArray() ?? throw new DBException("42000",""+dp);
                     rs += (v.defpos, new TRow(xp, y));
                 }
             if (isConst)
@@ -11402,7 +11402,7 @@ cx.obs[high] is not SqlValue hi)
                     cx.obs += (defpos, nd);
                 }
             if (nt is null)
-                throw new DBException("42000");
+                throw new DBException("42000","_NodeType");
             return (nt,md);
         }
         internal virtual SqlNode Create(Context cx, NodeType dt)
@@ -11412,7 +11412,7 @@ cx.obs[high] is not SqlValue hi)
             for (var b = docValue?.First(); b != null; b = b.Next())
                 if (cx.obs[b.value() ?? -1L] is SqlValue sv)
                 {
-                    if (cx.obs[b.key()] is not SqlValue sk) throw new DBException("42000");
+                    if (cx.obs[b.key()] is not SqlValue sk) throw new DBException("42000","Create");
                     var k = (sk.name != null && sk.name != "COLON" && sk is SqlValue) ? sk.name
                         : sk.Eval(cx).ToString();
                     ls += (k, sv);
@@ -11767,7 +11767,7 @@ cx.obs[high] is not SqlValue hi)
                         }
             } while (retrying == true);
             if (nt is null)
-                throw new DBException("42000");
+                throw new DBException("42000","_EdgeType");
             return (nt,md);
         }
         void CheckType(Context cx, string? n, long? t, NodeType gt, long nt)
