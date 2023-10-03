@@ -113,10 +113,10 @@ namespace Pyrrho.Level3
                 r = r + (UpdateString, c.ups) + (UpdateAssignments, c.upd);
             if (c.flags!=0)
                 r = r + (GraphFlag,c.flags) + (Index.RefIndex,c.index);
-            if (c.flags.HasFlag(PColumn.GraphFlags.LeaveCol)) 
-                r += (Index.RefTable, c.toType);
-            if (c.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
-                r += (Index.RefTable, c.toType);
+     //       if (c.flags.HasFlag(PColumn.GraphFlags.LeaveCol)) 
+    //            r += (Index.RefTable, c.toType);
+    //        if (c.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
+     //           r += (Index.RefTable, c.toType);
             return r;
         }
         internal override Basis New(BTree<long, object> m)

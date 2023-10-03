@@ -1639,7 +1639,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Update", Position,0);
             t += new SystemTableColumn(t, "Flags", Char, 0);
             t += new SystemTableColumn(t, "RefIndex", Position, 0);
-            t += new SystemTableColumn(t, "ToType", Position, 0);
+       //     t += new SystemTableColumn(t, "ToType", Position, 0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1754,20 +1754,20 @@ namespace Pyrrho.Level4
                 if (ph is not PColumn c || 
                     c.table is not Table tb)
                     throw new PEException("PE0410");
-                    return new TRow(res,
-                        Pos(c.ppos),
-                        Pos(c.defpos),
-                        Pos(tb.defpos),
-                        new TChar(c.name),
-                        new TInt(c.seq),
-                        Pos(c.domdefpos),
-                        Display(c.dfs.ToString()),
-                        TBool.For(c.notNull),
-                        new TChar(c.generated.ToString()),
-                        Display(c.upd.ToString()),
-                        new TChar(c.flags.ToString()),
-                        Pos(c.index),
-                        Pos(c.toType));
+                return new TRow(res,
+                    Pos(c.ppos),
+                    Pos(c.defpos),
+                    Pos(tb.defpos),
+                    new TChar(c.name),
+                    new TInt(c.seq),
+                    Pos(c.domdefpos),
+                    Display(c.dfs.ToString()),
+                    TBool.For(c.notNull),
+                    new TChar(c.generated.ToString()),
+                    Display(c.upd.ToString()),
+                    new TChar(c.flags.ToString()),
+                    Pos(c.index));
+                   //     Pos(c.toType));
             }
          }
         /// <summary>

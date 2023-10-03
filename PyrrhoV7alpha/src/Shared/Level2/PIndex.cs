@@ -313,9 +313,17 @@ namespace Pyrrho.Level2
             if (fl.HasFlag(PColumn.GraphFlags.IdCol))
                 tb += (NodeType.IdIx, x.defpos);
             if (fl.HasFlag(PColumn.GraphFlags.LeaveCol))
-                tb = tb + (EdgeType.LeaveIx, x.defpos) + (EdgeType.LeavingType, x.reftabledefpos);
+            {
+                if (tb.leavingType <= 0)
+                    tb += (EdgeType.LeavingType, x.reftabledefpos);
+                tb += (EdgeType.LeaveIx, x.defpos);
+            }
             if (fl.HasFlag(PColumn.GraphFlags.ArriveCol))
-                tb = tb + (EdgeType.ArriveIx, x.defpos) + (EdgeType.ArrivingType, x.reftabledefpos);
+            {
+                if (tb.arrivingType <= 0)
+                    tb += (EdgeType.ArrivingType, x.reftabledefpos);
+                tb = tb + (EdgeType.ArriveIx, x.defpos);
+            }
             tb += (Table.KeyCols, kc);
             tb += (DBObject.LastChange, defpos);
             cx.Install(tb, p);

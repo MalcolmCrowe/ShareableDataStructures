@@ -135,15 +135,19 @@ namespace Pyrrho.Level3
             // tc.index etc likely to have default values here at this point (this is okay)
             if (tc.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
             {
-                tb = tb + (EdgeType.ArriveCol, tc.defpos) + (EdgeType.ArrivingType, tc.toType)
+                tb = tb + (EdgeType.ArriveCol, tc.defpos) 
                     + (EdgeType.ArriveIx, tc.index);
+                if (tc.toType >= 0)
+                    tb += (EdgeType.ArrivingType, tc.toType);
                 if (tc.flags.HasFlag(PColumn.GraphFlags.SetValue))
                     tb += (EdgeType.ArrivingEnds, true);
             }
             else if (tc.flags.HasFlag(PColumn.GraphFlags.LeaveCol))
             {
-                tb = tb + (EdgeType.LeaveCol, tc.defpos) + (EdgeType.LeavingType, tc.toType)
+                tb = tb + (EdgeType.LeaveCol, tc.defpos)
                     + (EdgeType.LeaveIx, tc.index);
+                if (tc.toType >= 0)
+                    tb += (EdgeType.LeavingType, tc.toType);
                 if (tc.flags.HasFlag(PColumn.GraphFlags.SetValue))
                     tb += (EdgeType.LeavingEnds, true);
             }

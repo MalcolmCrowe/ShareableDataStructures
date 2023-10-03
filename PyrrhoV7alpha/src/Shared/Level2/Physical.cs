@@ -46,7 +46,7 @@ namespace Pyrrho.Level2
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
             Update1, Delete1, Drop1, RefAction, Post, // 71-75
-            PNodeType, PEdgeType, EditType // 76-78
+            PNodeType, PEdgeType, EditType, AlterIndex, AlterEdgeType // 76-80
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -203,7 +203,169 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return null;
         }
-
+    }
+    // Added for NodeTypes: make the given unique index the primary index
+    internal class AlterIndex : Physical
+    {
+        public long idindexdefpos;
+        public AlterIndex(Reader rdr) : base(Type.AlterIndex, rdr) { }
+        public AlterIndex(long ix,long pp) : base(Type.AlterIndex, pp) 
+        {
+            idindexdefpos = ix;
+        }
+        protected AlterIndex(AlterIndex x, Writer wr) : base(x, wr) { }
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            if (!Committed(wr, idindexdefpos)) return idindexdefpos;
+            return -1;
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return new AlterIndex(this, wr);
+        }
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        {
+            var ux = cx.db.objects[idindexdefpos] as Level3.Index;
+            switch (that.type)
+            {
+                case Type.AlterIndex:
+                    if (idindexdefpos == ((AlterIndex)that).idindexdefpos)
+                        return new DBException("40032", idindexdefpos, that, ct);
+                    break;
+                case Type.Drop:
+                    if (idindexdefpos == ((Drop)that).delpos)
+                        return new DBException("40032", idindexdefpos, that, ct);
+                    if (ux?.tabledefpos == ((Drop)that).delpos)
+                        return new DBException("40032", ux.tabledefpos, that, ct);
+                    break;
+            }
+            return base.Conflicts(db, cx, that, ct);
+        }
+        public override void Serialise(Writer wr)
+        {
+            idindexdefpos = wr.cx.Fix(idindexdefpos);
+            wr.PutLong(idindexdefpos);
+            base.Serialise(wr);
+        }
+        public override void Deserialise(Reader rdr)
+        {
+            idindexdefpos = rdr.GetLong();
+            base.Deserialise(rdr);
+        }
+        public override string ToString()
+        {
+            return "AlterIndex" + " new primary index " + DBObject.Uid(idindexdefpos);
+        }
+        internal override DBObject? Install(Context cx, long p)
+        {
+            if (cx.db.objects[idindexdefpos] is not Level3.Index ux
+                || cx.db.objects[ux.tabledefpos] is not Table ut
+                || !ux.flags.HasFlag(PIndex.ConstraintType.Unique)
+                || ut.FindPrimaryIndex(cx) is not Level3.Index px)
+                return null;
+            var pf = (int)px.flags - (int)PIndex.ConstraintType.PrimaryKey + (int)PIndex.ConstraintType.Unique;
+            var uf = (int)ux.flags + (int)PIndex.ConstraintType.PrimaryKey - (int)PIndex.ConstraintType.Unique;
+            px += (Level3.Index.IndexConstraint, (PIndex.ConstraintType)pf);
+            ux += (Level3.Index.IndexConstraint, (PIndex.ConstraintType)uf);
+            cx.db += (px, p);
+            cx.db += (ux, p);
+            return ut;
+        }
+    }
+    internal class AlterEdgeType : Physical
+    {
+        public bool leaving;
+        public long reftype;
+        public long edgetype;
+        public AlterEdgeType(Reader rdr) : base(Type.AlterEdgeType, rdr) { }
+        public AlterEdgeType(bool lv, long rt, long et, long pp) : base(Type.AlterEdgeType, pp)
+        {
+            leaving = lv; reftype = rt; edgetype = et;
+        }
+        protected AlterEdgeType(AlterEdgeType x, Writer wr) : base(x, wr) 
+        {
+            leaving = x.leaving;
+            edgetype = x.edgetype;
+            reftype = x.reftype;
+        }
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            if (!Committed(wr, reftype)) return reftype;
+            if (!Committed(wr, edgetype)) return edgetype;
+            return -1;
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            return new AlterEdgeType(this, wr);
+        }
+        public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
+        {
+            switch (that.type)
+            {
+                case Type.AlterEdgeType:
+                    if (reftype == ((AlterEdgeType)that).reftype)
+                        return new DBException("40032", reftype, that, ct);
+                    break;
+                case Type.Drop:
+                    if (reftype == ((Drop)that).delpos)
+                        return new DBException("40032", reftype, that, ct);
+                    if (edgetype == ((Drop)that).delpos)
+                        return new DBException("40032", edgetype, that, ct);
+                    break;
+            }
+            return base.Conflicts(db, cx, that, ct);
+        }
+        public override void Serialise(Writer wr)
+        {
+            reftype = wr.cx.Fix(reftype);
+            edgetype = wr.cx.Fix(edgetype);
+            wr.PutInt(leaving ? 1 : 0);
+            wr.PutLong(reftype);
+            wr.PutLong(edgetype);
+            base.Serialise(wr);
+        }
+        public override void Deserialise(Reader rdr)
+        {
+            leaving = rdr.GetInt() != 0;
+            reftype = rdr.GetLong();
+            edgetype = rdr.GetLong();
+            base.Deserialise(rdr);
+        }
+        public override string ToString()
+        {
+            return "AlterEdgeType " + DBObject.Uid(edgetype)+ (leaving?" LEAVING ":" ARRIVING ") 
+                + DBObject.Uid(reftype);
+        }
+        internal override DBObject? Install(Context cx, long p)
+        {
+            if (cx.db.objects[edgetype] is not Level5.EdgeType et
+                || cx.db.objects[reftype] is not Level5.NodeType nt)
+                return null;
+            var nm = leaving ? "LEAVING" : "ARRIVING";
+            long ip = -1L;
+            for (var b = nt.rindexes[et.defpos]?.First(); b != null && ip<0; b = b.Next())
+                if (nt.representation.Contains(b.value()?.First()?.value() ?? -1L))
+                    for (var c = et.indexes[b.key()]?.First(); c != null && ip<0L; c = c.Next())
+                        if (cx.db.objects[c.key()] is Level3.Index ax)
+                            if(ax.name == nm)
+                                if (ax.reftabledefpos == nt.defpos)
+                                    ip = ax.defpos;
+            if (ip < 0)
+                throw new PEException("PE40802");
+            if (leaving)
+            {
+                et += (Level5.EdgeType.LeavingType, reftype);
+                et += (Level5.EdgeType.LeaveIx, ip);
+            }
+            else
+            {
+                et += (Level5.EdgeType.ArrivingType, reftype);
+                et += (Level5.EdgeType.ArriveIx, ip);
+            }
+            cx.db += (et, p);
+            cx.Add(et);
+            return et;
+        }
     }
     internal class Versioning : Physical
     {
@@ -263,7 +425,7 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            return "Versioning for "+perioddefpos;
+            return "Versioning for "+DBObject.Uid(perioddefpos);
         }
 
         internal override DBObject? Install(Context cx, long p)

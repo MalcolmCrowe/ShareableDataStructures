@@ -49,8 +49,8 @@ namespace Pyrrho.Level2
         [Flags] // for Typed Graph Model June2023
         internal enum GraphFlags { None = 0, IdCol = 1, LeaveCol = 2, ArriveCol = 4, SetValue = 8 }
         public GraphFlags flags;
-        public long index;  // Leave or Arrive Ix
-        public long toType; // Leave or Arrive Type
+        public long index;  // IdIx // Leave or Arrive Ix
+        //public long toType; // Leave or Arrive Type
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (table != null && dataType != null)
@@ -99,10 +99,10 @@ namespace Pyrrho.Level2
                 tabledefpos = table.defpos;
                 seq = x.seq;
                 flags = x.flags;
-                if (flags.HasFlag(GraphFlags.ArriveCol))
-                    toType = wr.cx.Fix(((EdgeType)x.table).arrivingType);
-                else if (flags.HasFlag(GraphFlags.LeaveCol))
-                    toType = wr.cx.Fix(((EdgeType)x.table).leavingType);
+         //       if (flags.HasFlag(GraphFlags.ArriveCol))
+         //           toType = wr.cx.Fix(((EdgeType)x.table).arrivingType);
+        //        else if (flags.HasFlag(GraphFlags.LeaveCol))
+        //            toType = wr.cx.Fix(((EdgeType)x.table).leavingType);
                 domdefpos = x.domdefpos;
             }
         }
@@ -115,12 +115,13 @@ namespace Pyrrho.Level2
             if (tr is not null && wr.cx.uids[ppos] is long q
                 && wr.cx.db.objects[q] is Domain ndt)
                 dataType = ndt;
-            if (flags.HasFlag(GraphFlags.ArriveCol))
-                index = (dataType as EdgeType)?.arriveIx ?? -1L; 
-            else if (flags.HasFlag(GraphFlags.IdCol))
+        //    if (flags.HasFlag(GraphFlags.ArriveCol))
+        //        index = (dataType as EdgeType)?.arriveIx ?? -1L; 
+        //    else
+               if (flags.HasFlag(GraphFlags.IdCol))
                 index = (dataType as NodeType)?.idIx??-1L;
-            else if (flags.HasFlag(GraphFlags.LeaveCol))
-                index = (dataType as EdgeType)?.leaveIx ?? -1L;
+        //    else if (flags.HasFlag(GraphFlags.LeaveCol))
+        //        index = (dataType as EdgeType)?.leaveIx ?? -1L;
             if (wr.cx.uids[tabledefpos] is long tp)
                 for (var ta =wr.cx.db.objects[tp] as Table; ta != null; 
                     ta = wr.cx.db.objects[ta.super?.defpos??-1L] as Table)
@@ -260,10 +261,10 @@ namespace Pyrrho.Level2
             sb.Append(']');
             if (flags != GraphFlags.None)
                 sb.Append(" " + flags);
-            if (index > 0)
-                sb.Append(" " + DBObject.Uid(index));
-            if (toType> 0)
-                sb.Append(" "+DBObject.Uid(toType));
+        //    if (index > 0)
+        //        sb.Append(" " + DBObject.Uid(index));
+        //    if (toType> 0)
+        //        sb.Append(" "+DBObject.Uid(toType));
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx, long p)
@@ -272,7 +273,7 @@ namespace Pyrrho.Level2
             if (table == null || dataType == null || ro == null)
                 return null;
             // we allow a UDType to be converted to NodeType using metadata, so take care here
-            if (cx.db.objects[table.defpos] is Table t && t.kind == table.kind)
+            if (cx.db.objects[table.defpos] is Table t && t.dbg>table.dbg)
                 table = t;
             if (dataType.defpos > 0)
                 cx.Install(dataType, p);
@@ -316,6 +317,7 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tc, p);
             cx.obs += (table.defpos, table);
+            cx.db += table;
             return table;
         }
     }
@@ -519,7 +521,7 @@ namespace Pyrrho.Level2
             upd = x.upd;
             ups = x.ups;
             index = wr.cx.Fix(index);
-            toType = wr.cx.Fix(toType);
+        //    toType = wr.cx.Fix(toType);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -534,7 +536,7 @@ namespace Pyrrho.Level2
             wr.PutString(ups??""); 
             wr.PutLong((long)flags);
             wr.PutLong(index);
-            wr.PutLong(toType);
+            wr.PutLong(-1L);// toType); ;
             base.Serialise(wr);
         }
         /// <summary>
@@ -547,7 +549,8 @@ namespace Pyrrho.Level2
             rdr.Upd(this);
             flags = (GraphFlags)rdr.GetLong();
             index = rdr.GetLong();
-            toType = rdr.GetLong();
+            //toType = 
+                rdr.GetLong();
             base.Deserialise(rdr);
         }
         public override string ToString()

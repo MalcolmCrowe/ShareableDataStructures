@@ -329,11 +329,14 @@ namespace Pyrrho.Level5
                     && (cx.db.objects[lt ?? -1L] as Table)?.FindPrimaryIndex(cx) is Pyrrho.Level3.Index rl)
                     (sl, rt, rs, sn, ut) = GetColAndIx(cx, ut, rl, pL, sl, EdgeType.LeaveIx,
                         EdgeType.LeaveCol, EdgeType.LeavingType, le, rt, rs, sn);
+                cx.Add(ut);
                 if (cx.role.dbobjects[(md[Sqlx.ARROW] as TChar)?.value ?? ""] is long pA
                     && cx.db.objects[at ?? -1L] is Table tr
                     && tr.FindPrimaryIndex(cx) is Pyrrho.Level3.Index ra)
                     (sa, rt, rs, sn, ut) = GetColAndIx(cx, ut, ra, pA, sa, EdgeType.ArriveIx,
                         EdgeType.ArriveCol, EdgeType.ArrivingType, ae, rt, rs, sn);
+                cx.Add(ut);
+                cx.db += ut;
             }
             var ui = ut.infos[cx.role.defpos] ?? throw new DBException("42105");
             for (var b = ls.First(); b != null; b = b.Next())
@@ -514,7 +517,7 @@ namespace Pyrrho.Level5
             if (pc != null)
             {
                 pc.flags = gf;
-                pc.toType = rx?.reftabledefpos ?? -1L; // -1L for idCol case
+            //    pc.toType = rx?.reftabledefpos ?? -1L; // -1L for idCol case
                 pc.index = rx?.refindexdefpos ?? -1L; // ditto
             }
             tc += (TableColumn.GraphFlag, gf);
@@ -1147,6 +1150,10 @@ namespace Pyrrho.Level5
             var m = et.mem;
             var (dp, ob) = x;
             if (et.mem[dp] == ob)
+                return et;
+            if (dp == LeavingType && et.leavingType>=0 && ob is long && (long)ob<0 )
+                return et;
+            if (dp == ArrivingType && et.arrivingType>=0 && ob is long && (long)ob<0)
                 return et;
             if (ob is DBObject bb && dp != _Depth)
             {

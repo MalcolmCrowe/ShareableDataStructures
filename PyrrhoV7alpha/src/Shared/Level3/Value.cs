@@ -11418,6 +11418,8 @@ cx.obs[high] is not SqlValue hi)
                     ls += (k, sv);
                 }
             var (nt, md) = _NodeType(cx, ls, dt);
+            if (nt.defpos < 0 && md == CTree<Sqlx, TypedValue>.Empty && ls == CTree<string, SqlValue>.Empty)
+                throw new DBException("42161", "Specification",name??"Unbound");
             // we now have our NodeType nt and the names sd, il and ia of special columns
             // if nt is not built in the database yet we have the metadata we need to build it.
             // At this point, non-special properties matching those from dt
@@ -11721,12 +11723,14 @@ cx.obs[high] is not SqlValue hi)
                                 gc = new TChar(nN);
                             gt = (gv is TTypeSpec tt)?tt._dataType as EdgeType:
                                 cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as EdgeType;
+                            gt = cx.db.objects[gt?.defpos??-1L] as EdgeType ?? gt;
                             if (gt is not null)
                             {
                                 if (lN is not null && lN!="" && lT is not null)
-                                    CheckType(cx, lN, lT.defpos, gt, gt.leavingType);
+                                    
+                                    CheckType(cx, lN, lT.defpos, gt, gt.leaveIx, true);
                                 if (aN is not null && aN!="" && aT is not null)
-                                    CheckType(cx, aN, aT.defpos, gt, gt.arrivingType);  
+                                    CheckType(cx, aN, aT.defpos, gt, gt.arriveIx, false);  
                             }
                             if (gt is null)
                             {
@@ -11770,34 +11774,38 @@ cx.obs[high] is not SqlValue hi)
                 throw new DBException("42000","_EdgeType");
             return (nt,md);
         }
-        void CheckType(Context cx, string? n, long? t, NodeType gt, long nt)
+        void CheckType(Context cx, string? n, long? t, NodeType gt, long lx, bool lv)
         {
+            if (cx.db.objects[lx] is not Index nx
+                || cx.db.objects[nx.refindexdefpos] is not Index rx
+                || cx.db.objects[rx.tabledefpos] is not NodeType ut)
+                throw new PEException("PE408010");
             if (t == null)
                 throw new DBException("42133", n ?? "??");
-            if (t == nt)
+            if (t == ut.defpos)
                 return;
-            var ut = cx.db.objects[nt] as NodeType;
-            var found = false;
+            if (((cx.values[t ?? -1L] as TNode)?.dataType ?? cx.db.objects[t ?? -1L]) is not NodeType at
+                || at.FindPrimaryIndex(cx) is not Index ax)
+                throw new DBException("42105");
+            var ts = BTree<long,NodeType>.Empty; // a list of supertypes of ut
+            NodeType? ct = null; // a common ancestor
+            for (var st = ut; st != null; st = cx.db.objects[st.super?.defpos ?? -1L] as NodeType)
+                ts += (st.defpos, st);
+            for (var st = at; st != null && ct is null;
+                st = cx.db.objects[st.super?.defpos ?? -1L] as NodeType)
+                ct = ts[st.defpos];
+            if (ct is null)
+                throw new DBException("22G0K");
             Domain? di = null;
-            for (var b = gt.indexes.First(); b != null; b = b.Next())
-                for (var c = b.value().First(); c != null; c = c.Next())
-                    if (cx.db.objects[c.key()] is Index rx
-                        && rx.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
-                    {
-                        if (rx.reftabledefpos == nt)
-                            di = b.key();
-                        if (rx.reftabledefpos == t)
-                            found = true;
-                    }
-            if ((!found) && di is not null && cx.db.objects[t ?? -1L] is Table rt && rt.FindPrimaryIndex(cx) is Level3.Index px)
-                cx.Add(new PIndex("", gt, di, 
+            for (var b = ct.rindexes[gt.defpos]?.First(); b != null; b = b.Next())
+                if (b.key()[0] == (lv ? gt.leaveCol : gt.arriveCol))
+                    di = b.key();
+            if (di is null || ct.FindPrimaryIndex(cx) is not Level3.Index px)
+                throw new DBException("42105");
+            cx.Add(new PIndex(lv?"LEAVING":"ARRIVING", gt, di, 
                     PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate| PIndex.ConstraintType.NoBuild,
                     px.defpos, cx.db.nextPos));
-            var at = (cx.values[t ?? -1L] as TNode)?.dataType ?? cx.db.objects[t??-1L] as NodeType
-                ?? throw new DBException("42105");
-            var bt = (cx.db.objects[nt] as NodeType) ?? throw new DBException("42105");
-        //    if (!at.EqualOrStrongSubtypeOf(bt) && !bt.EqualOrStrongSubtypeOf(at))
-        //        throw new DBException("22G0K", gt.infos[cx.role.defpos]?.name??"??");
+            cx.Add(new AlterEdgeType(lv, ct.defpos, gt.defpos, cx.db.nextPos));
         }
         internal override SqlNode Add(Context cx, SqlNode? an, CTree<long, TGParam> tgs)
         {

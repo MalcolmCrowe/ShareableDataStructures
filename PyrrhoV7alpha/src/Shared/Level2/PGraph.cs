@@ -93,18 +93,7 @@ namespace Pyrrho.Level2
             var et = (EdgeType)dataType;
             et = et + (EdgeType.LeavingType,leavingType) + (EdgeType.ArrivingType,arrivingType);
             dataType = et;
-   //         GraphUse(rdr.context, defpos, leavingType, arrivingType);
         }
- /*       void GraphUse(Context cx, long et,long lt, long at)
-        {
-            var gu = cx.db.graphUsage;
-            var gt = gu[et] ?? new CTree<long,bool>(et,true);
-            var gl = (lt<0)? CTree<long,bool>.Empty : gu[lt] ?? new CTree<long, bool>(lt, true);
-            var ga = (at<0)? CTree<long,bool>.Empty : gu[at] ?? new CTree<long, bool>(at, true);
-            var g = gt + gl + ga;
-            gu = gu + (et, g) + (lt, g) + (at, g);
-            cx.db += (Database.GraphUsage,gu);
-        } */
         public override string ToString()
         {
             return base.ToString() + "(" + DBObject.Uid(leavingType) + "," + DBObject.Uid(arrivingType)+")";

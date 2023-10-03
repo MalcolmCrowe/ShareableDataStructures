@@ -280,6 +280,8 @@ namespace Pyrrho.Level2
                 Physical.Type.PNodeType=> new PNodeType(this),
                 Physical.Type.PEdgeType => new PEdgeType(this),
                 Physical.Type.EditType => new EditType(this),
+                Physical.Type.AlterIndex => new AlterIndex(this),
+                Physical.Type.AlterEdgeType => new AlterEdgeType(this),
                 _ => throw new PEException("PE35"),
             };
             p.Deserialise(this);
