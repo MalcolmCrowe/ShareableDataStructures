@@ -1187,6 +1187,8 @@ namespace Pyrrho.Level5
             if (a == b) return 0;
             var c = a.dataType.defpos.CompareTo(b.dataType.defpos);
             if (c != 0) return c;
+            if (a.dataType.kind==Sqlx.ARRAY)
+                return ((TArray)a).CompareTo((TArray)b);
             // if we get to here they both have this as dataType
             return ((TEdge)a).CompareTo((TEdge)b);
         }

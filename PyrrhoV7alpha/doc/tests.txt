@@ -786,6 +786,7 @@ select *,specifictype() from person
 create type married edgetype(bride=person,groom=person)
 insert into person values(3,'Joe'),(4,'Mary')
 insert into married(bride,groom) values(4,3)
+select count(*) from married
 match ({name:'Joe'})<-[:married]-(x)
 [CREATE
 (:Product:WoodScrew {spec:'16/8x4'}),(:Product: WallPlug{spec:'18cm'}),
@@ -794,4 +795,27 @@ match ({name:'Joe'})<-[:married]-(x)
 [MATCH (O:"Order"{id:201})
 begin MATCH(X:Product{spec:'16/8x4'}) CREATE (O)-[:Item {Qty: 5}]->(X);
      MATCH(X:Product{spec:'18cm'}) CREATE (O)-[:Item {Qty: 3}]->(X) end]
-match ()-[{Qty:QT}]->(:ST{spec:SA}) where QA>4
+match ()-[{Qty:QT}]->(:ST{spec:SA}) where QT>4
+[CREATE (a:Person {name:'Fred Smith'})<-[:Child]-(b:Person {name:'Pete Smith'}),
+(b)-[:Child]->(:Person {name:'Mary Smith'})]
+MATCH (n)-[:Child]->(c) RETURN n.name,c.name AS child
+MATCH (n {name:'Pete Smith'}) SET n.name='Peter Smith' 
+[CREATE (e:Person {name:'Emil', born:1975 }), (k:Person {name:'Karin', born:1977 }),
+(e)-[:married {since:2000}]->(k)]
+[CREATE (Sue:Person {name:'Sue Hill', born:1975}),
+(Joe:Person {name:'Joe Hill', born:1952}),(Joe)-[:married {since:1995}]->(Sue)]
+MATCH (n:Person) RETURN collect(n.born)
+MATCH (n:Person) RETURN avg(n.born)
+[MATCH (n:Person {name:'Joe Hill'})-[r { since:1995}]->()
+BEGIN n.born = 1962; r.since = 1996 END]
+MATCH (n:Person)-[:married{since:d}]->() RETURN n.name,d
+[MATCH (e:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),
+(e)-[r:owns ]->(d),(d)-[r2:owned_by]->(e)]
+MATCH (d:Dog {name: 'Rex'})-[r:owned_by]->() DELETE r
+MATCH (k{name:'Karin'}),()-[o:owns ]->({name:'Rex'}) SET o.leaving=k
+select count(*) from owned_by
+MATCH (n)-[:owns]->(d) RETURN n.name,d.name as dog
+
+
+
+

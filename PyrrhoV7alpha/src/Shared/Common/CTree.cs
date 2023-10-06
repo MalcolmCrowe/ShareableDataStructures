@@ -222,7 +222,8 @@ namespace Pyrrho.Common
                 return TreeBehaviour.Disallow;
             if (t.Contains(k))
                 return TreeBehaviour.Disallow;
-            if (k != TNull.Value && !t.keyType.CanTakeValueOf(k.dataType))
+            if (k != TNull.Value && !(t.keyType.CanTakeValueOf(k.dataType)
+                || (k.dataType.elType is Domain el && t.keyType.CanTakeValueOf(el))))
                 throw new DBException("22005M", t.keyType.kind, k.ToString()).ISO()
                     .AddType(t.keyType).AddValue(k); 
             ATree<TypedValue, TypedValue> a = t;
