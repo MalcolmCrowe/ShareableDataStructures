@@ -311,6 +311,8 @@ namespace Pyrrho.Level2
         {
             if (cx._Ob(tabledefpos) is not Table tb || tb.infos[tb.definer] is not ObInfo oi)
                 throw new PEException("PE0301");
+            if (tabledefpos >= 2615)
+                ;
             var ost = subType;
             var tp = tabledefpos;
             try

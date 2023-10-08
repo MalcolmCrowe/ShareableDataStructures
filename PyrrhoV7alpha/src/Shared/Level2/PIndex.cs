@@ -282,6 +282,7 @@ namespace Pyrrho.Level2
                 x.Build(cx);
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
             tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
+            cx.db += tb;
             x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));
             for (var st = tb.super as Table; st != null; st = st.super as Table)
                 for (var b = st.indexes[x.keys]?.First(); b != null; b = b.Next())

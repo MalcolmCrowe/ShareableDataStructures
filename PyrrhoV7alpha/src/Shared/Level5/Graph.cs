@@ -531,6 +531,7 @@ namespace Pyrrho.Level5
                         su = cx.db.objects[su.super?.defpos ?? -1L] as NodeType)
                     if (su.FindPrimaryIndex(cx) is Level3.Index xs)
                         cx.Add(new PIndex(id, ut, di, px.flags, xs?.defpos ?? -1L, cx.db.nextPos));
+            ut = (NodeType)(cx.db.objects[ut.defpos]??ut);
             if (xp != -1L)
                 ut = ut + (cp, tc.defpos) + (xp, px.ppos);
             if (rx != null)
