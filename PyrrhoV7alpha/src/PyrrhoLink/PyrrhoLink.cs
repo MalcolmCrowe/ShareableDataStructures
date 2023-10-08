@@ -5,6 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Security;
 using System.Net;
 using System.Net.Sockets;
+using System.Threading;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
@@ -187,12 +188,11 @@ namespace Pyrrho
         /// <typeparam name="C"></typeparam>
         /// <param name="w"></param>
         /// <returns></returns>
-        public C? FindOne<C>(params (string?,IComparable?)[] w) where C: class, new()
+        public C FindOne<C>(params (string,IComparable)[] w) where C : new()
         {
-            var r = FindWith<C>(w);
-            return (r.Length > 0)?r[0]:null;
+            return FindWith<C>(w)[0];
         }
-        public C[] FindWith<C>(params (string?,IComparable?)[] w) where C : new()
+        public C[] FindWith<C>(params (string,IComparable)[] w) where C : new()
         {
             var sb = new StringBuilder();
             var cm = "";
@@ -207,24 +207,20 @@ namespace Pyrrho
             }
             return Get<C>(sb.ToString());
         }
-        public C[] FindIn<C>(string? sel) where C : class, new()
+        public C[] FindIn<C>(string sel) where C : new()
         {
+            var cmd = CreateCommand();
+            cmd.CommandText = sel;
             var r = new List<C>();
-            if (sel != null)
+            var rdr = cmd.ExecuteReader();
+            while (rdr.Read())
             {
-                var cmd = CreateCommand();
-                cmd.CommandText = sel;
-                var rdr = cmd.ExecuteReader();
-                while (rdr.Read())
-                {
-                    var w = new (string?, IComparable?)[rdr.FieldCount];
-                    for (var i = 0; i < rdr.FieldCount; i++)
-                        w[i] = (rdr.GetName(i), (IComparable)rdr[i]);
-                    if (FindOne<C>(w) is C c)
-                        r.Add(c);
-                }
-                rdr.Close();
+                var w = new (string,IComparable)[rdr.FieldCount];
+                for (var i = 0; i < rdr.FieldCount; i++)
+                    w[i] = (rdr.GetName(i),(IComparable)rdr[i]);
+                r.Add(FindOne<C>(w));
             }
+            rdr.Close();
             return r.ToArray();
         }
         public C[] FindAll<C>() where C : new()
@@ -262,7 +258,7 @@ namespace Pyrrho
         /// <param name="cs">Connection string</param>
         /// <param name="field">Field to search for</param>
         /// <returns>Value of the field</returns>
-        internal static string[]? GetConnectionValues(string cs, string field)
+        internal static string[] GetConnectionValues(string cs, string field)
         {
             string[] split = cs.Split(';');
             for (int j = 0; j < split.Length; j++)
@@ -1376,22 +1372,22 @@ namespace Pyrrho
     public class Versioned // for Entities
     {
         [Exclude]
-        public PyrrhoConnect? conn; // null if committed or new instance
+        public PyrrhoConnect conn; // null if committed or new instance
         [Exclude]
         public string entity = ""; // [info{,info}] where info is /tabledefpos/defpos
         [Exclude]
-        public string? version;     // ppos or etag null if new instance 
+        public string version;     // ppos or etag null if new instance 
         public void Get()
         { 
-            conn?.Get(this); 
+            conn.Get(this); 
         }
         public void Put() 
         {
-            conn?.Put(this);
+            conn.Put(this);
         }
         public void Delete()
         {
-            conn?.Delete(this);
+            conn.Delete(this);
         }
         public static Versioned Parse(string s)
         {
@@ -1411,7 +1407,7 @@ namespace Pyrrho
         // included for completeness: useful only if conn is supplied on construction
         public void Post()
         {
-            conn?.Post(this);
+            conn.Post(this);
         }
     }
     public sealed class TableAttribute : Attribute
