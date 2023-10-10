@@ -177,7 +177,7 @@ namespace Pyrrho.Level3
                 for (var d = px.rows?.First(); d != null; d = d.Next())
                     if (d.Value() is long pp && tb.tableRows[pp] is TableRow r)
                     {
-                        var m = r.MakeKey(px);
+                        var m = r.MakeKey(this);
                         if (m != null)
                         {
                             if (rx)

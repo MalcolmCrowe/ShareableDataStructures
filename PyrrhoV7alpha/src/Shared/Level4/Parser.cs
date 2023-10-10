@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Globalization;
+using System.Runtime.ExceptionServices;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -1611,7 +1612,7 @@ namespace Pyrrho.Level4
 		/// Cols =		'('ColRef { ',' ColRef } ')'.
         /// </summary>
         /// <returns>a tree of coldefpos: returns null if input is (SELECT</returns>
-		Domain? ParseColsList(Domain ob)
+		Domain? ParseColsList(Domain ob,Sqlx s=Sqlx.TABLE)
         {
             var r = BList<DBObject>.Empty;
             bool b = tok == Sqlx.LPAREN;
@@ -1627,7 +1628,7 @@ namespace Pyrrho.Level4
             }
             if (b)
                 Mustbe(Sqlx.RPAREN);
-            return new Domain(cx.GetUid(), cx, Sqlx.TABLE, r, r.Length);
+            return new Domain(cx.GetUid(), cx, s, r, r.Length);
         }
         /// <summary>
         /// ColRef = id { '.' id } .
@@ -2536,6 +2537,8 @@ namespace Pyrrho.Level4
                                 var id = lxr.val;
                                 Mustbe(Sqlx.Id);
                                 m += (Sqlx.NODE, id);
+                                if (tok == Sqlx.Id && lxr.val.ToString().ToUpper() == "CHAR")
+                                    m += (Sqlx.CHAR, TBool.True);
                                 Mustbe(Sqlx.RPAREN);
                             }
                             break;
@@ -2871,7 +2874,7 @@ namespace Pyrrho.Level4
         Table ParseUniqueConstraint(Table tb, Ident? name)
         {
             var tr = cx.db as Transaction ?? throw new DBException("42105");
-            if (ParseColsList(tb) is not Domain ks) throw new DBException("42161", "cols");
+            if (ParseColsList(tb,Sqlx.ROW) is not Domain ks) throw new DBException("42161", "cols");
             var px = new PIndex(name?.ident ?? "", tb, ks, PIndex.ConstraintType.Unique, -1L, tr.nextPos);
             return (Table)(cx.Add(px) ?? throw new DBException("42105"));
         }
@@ -2884,11 +2887,13 @@ namespace Pyrrho.Level4
         Table ParsePrimaryConstraint(Table tb, Ident? name)
         {
             var tr = cx.db as Transaction ?? throw new DBException("42105");
-            if (tb.FindPrimaryIndex(cx) is Level3.Index x)
-                throw new DBException("42147", x.NameFor(cx)).Mix();
             Mustbe(Sqlx.KEY);
-            if (ParseColsList(tb) is not Domain ks) throw new DBException("42161", "cols");
-            var px = new PIndex(name?.ident ?? "", tb, ks, PIndex.ConstraintType.PrimaryKey, -1L, tr.nextPos);
+            if (ParseColsList(tb,Sqlx.ROW) is not Domain ks) throw new DBException("42161", "cols");
+            Physical px = new PIndex(name?.ident ?? "", tb, ks, 
+                PIndex.ConstraintType.PrimaryKey, -1L, tr.nextPos);
+            for (var b = tb.indexes[ks]?.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Level3.Index x && x.flags.HasFlag(PIndex.ConstraintType.Unique))
+                    px = new AlterIndex(x.defpos, cx.db.nextPos);
             return (Table)(cx.Add(px)?? throw new DBException("42105"));
         }
         /// <summary>

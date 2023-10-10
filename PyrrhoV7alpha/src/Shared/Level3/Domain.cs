@@ -2859,7 +2859,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         if (vk == Sqlx.CHAR)
                             return new TInt(Integer.Parse(v.ToString()));
                         if (vk == Sqlx.NODETYPE || vk == Sqlx.EDGETYPE)
-                            return new TInt(((TNode)v).id);
+                            return ((TNode)v).id;
                     }
                     break;
                 case Sqlx.NUMERIC:

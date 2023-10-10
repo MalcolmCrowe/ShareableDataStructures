@@ -496,7 +496,7 @@ namespace Pyrrho.Level4
                         newTables += (_trs.defpos, ns + (r.defpos, new TableRow(r,_cx)));
                         count++;
                         if (table is NodeType nt && rc is TableRow)
-                            values += (r.defpos, new Level5.TNode(nt,rc));
+                            values += (r.defpos, new Level5.TNode(this,nt,rc));
                         // install the record in the transaction
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
                         _cx.db = db;

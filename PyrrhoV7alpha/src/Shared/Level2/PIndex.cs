@@ -279,7 +279,7 @@ namespace Pyrrho.Level2
                 return null;
             var x = new Level3.Index(this, cx);
             if (!x.flags.HasFlag(ConstraintType.NoBuild))
-                x.Build(cx);
+                x=x.Build(cx);
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
             tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
             cx.db += tb;

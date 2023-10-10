@@ -2,6 +2,10 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using System.Text;
+using Pyrrho.Level5;
+using System.Xml;
+using System.Reflection.Metadata;
+using System.Security.Cryptography;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
@@ -213,7 +217,10 @@ namespace Pyrrho.Level2
         {
             idindexdefpos = ix;
         }
-        protected AlterIndex(AlterIndex x, Writer wr) : base(x, wr) { }
+        protected AlterIndex(AlterIndex x, Writer wr) : base(x, wr) 
+        {
+            idindexdefpos = x.idindexdefpos;
+        }
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (!Committed(wr, idindexdefpos)) return idindexdefpos;
@@ -260,6 +267,7 @@ namespace Pyrrho.Level2
         {
             if (cx.db.objects[idindexdefpos] is not Level3.Index ux
                 || cx.db.objects[ux.tabledefpos] is not Table ut
+                || (ut is NodeType && ux.keys.Length != 1)
                 || !ux.flags.HasFlag(PIndex.ConstraintType.Unique)
                 || ut.FindPrimaryIndex(cx) is not Level3.Index px)
                 return null;
@@ -267,6 +275,64 @@ namespace Pyrrho.Level2
             var uf = (int)ux.flags + (int)PIndex.ConstraintType.PrimaryKey - (int)PIndex.ConstraintType.Unique;
             px += (Level3.Index.IndexConstraint, (PIndex.ConstraintType)pf);
             ux += (Level3.Index.IndexConstraint, (PIndex.ConstraintType)uf);
+            if (ut is NodeType nt && cx.db.objects[ux.keys[0] ?? -1L] is TableColumn nk
+                && cx.db.objects[nt.idCol] is TableColumn ok)
+            {
+                cx.db += (nk + (TableColumn.GraphFlag, PColumn.GraphFlags.IdCol), p);
+                cx.db += (ok - TableColumn.GraphFlag, p);
+                nt = nt + (NodeType.IdIx, idindexdefpos) + (NodeType.IdCol, nk.defpos);
+                cx.db += (nt, p);
+                nt.Refresh(cx);
+                var cd = ok.domain.kind!=nk.domain.kind;
+                for (var b = ut.rindexes.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is EdgeType et)
+                    {
+                        var ks = CTree<long,bool>.Empty;
+                        var rs = et.tableRows;
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                            for (var d = et.indexes[c.key()]?.First(); d != null; d = d.Next())
+                                if (cx.db.objects[d.key()] is Level3.Index rx && rx.rows is not null
+                                    && rx.keys[0] is long kp)
+                                {
+                                    ks += (kp, true);
+                                    MTree? st = null;
+                                    for (var e = rx.rows.First(); e != null; e = e.Next())
+                                        if (e.key()[0] is TypedValue k && px.rows?.impl?[k] is TInt v
+                                                && ut.tableRows[v.ToLong() ?? -1L] is TableRow tr
+                                                && tr.vals[nk.defpos] is TypedValue sk
+                                                && rs[e.Value() ?? -1L] is TableRow te
+                                                && tr.vals[nk.defpos] is TypedValue tk)
+                                        {
+                                            te += (kp, tk);
+                                            rs += (te.defpos, te);
+                                            var sl = new CList<TypedValue>(sk);
+                                            if (st is null)
+                                                st = new MTree(ux.keys, rx.rows.nullsAndDuplicates,
+                                                   sl, 0, v.value);
+                                            else
+                                                st += (sl, 0, v.value);
+                                        }
+                                    if (st is not null)
+                                        rx += (Level3.Index.Tree, st);
+                                    else
+                                        throw new DBException("42105");
+                                    cx.db += (rx, p);
+                                }
+                        if (cd)
+                        {
+                            var er = et.representation;
+                            for (var c = ks.First(); c != null; c = c.Next())
+                                if (cx.db.objects[c.key()] is TableColumn ec)
+                                {
+                                    cx.db += (ec + (DBObject._Domain, nk.domain), p);
+                                    er += (c.key(), nk.domain);
+                                }
+                            et += (Domain.Representation, er);
+                        }
+                        et += (Table.TableRows, rs);
+                        cx.db += (et, p);
+                    }
+            }
             cx.db += (px, p);
             cx.db += (ux, p);
             return ut;

@@ -1626,7 +1626,7 @@ namespace Pyrrho.Level4
         internal TNode? node(Context cx)
         {
             if (cx.obs[_rowsetpos] is NodeType nt && Rec()?[0] is TableRow tr)
-                return new TNode(nt,tr);
+                return new TNode(cx,nt,tr);
             return null;
         }
         internal string NameFor(Context cx, int i)

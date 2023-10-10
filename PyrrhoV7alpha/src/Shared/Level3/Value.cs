@@ -7292,7 +7292,7 @@ namespace Pyrrho.Level3
                 case Sqlx.ID:
                     {
                         TypedValue? a = cx.obs[val]?.Eval(cx);
-                        return (a is TNode n) ? new TInt(n.id) : a ?? TNull.Value;
+                        return (a is TNode n) ? n.id : a ?? TNull.Value;
                     }
                 case Sqlx.INTERSECTION:
                     if (fc == null || fc.mset == null) break;
@@ -11450,7 +11450,7 @@ cx.obs[high] is not SqlValue hi)
             if (nt.FindPrimaryIndex(cx) is Index px && ls[sd]?.Eval(cx) is TInt kk &&
                 px.rows?.impl?[kk] is TInt t5 && nt.tableRows[t5.value] is TableRow tr)
             {
-                tn = new TNode(nt, tr);
+                tn = new TNode(cx, nt, tr);
                 nd += (SqlLiteral._Val, tn);
                 cx.values += (nd.defpos, tn);
             }
@@ -11514,7 +11514,7 @@ cx.obs[high] is not SqlValue hi)
                     && cx.NameFor(nt.idCol) is string iC && !ls.Contains(iC))
             {
                 if (il.Eval(cx) is TNode tn)
-                    ls += (iC, (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), new TInt(tn.id))));
+                    ls += (iC, (SqlValue)cx.Add(new SqlLiteral(cx.GetUid(), tn.id)));
                 else
                     ls += (iC, SqlNull.Value);
             }
@@ -11836,9 +11836,9 @@ cx.obs[high] is not SqlValue hi)
                 && cx.obs[leavingValue] is SqlNode sl
                 && sl.Eval(cx) is TNode ln)
             {
-                var lv = new TInt(ln.id);
+                var lv = ln.id;
                 var li = (lc.domain.kind == Sqlx.SET) ?
-                    new SqlLiteral(cx.GetUid(), new TSet(Domain.Int, CTree<TypedValue, bool>.Empty + (lv, true))) :
+                    new SqlLiteral(cx.GetUid(), new TSet(lc.domain, CTree<TypedValue, bool>.Empty + (lv, true))) :
                     new SqlLiteral(cx.GetUid(), lv);
                 ls += (cx.NameFor(et.leaveCol), (SqlValue)cx.Add(li));
             }
@@ -11846,9 +11846,9 @@ cx.obs[high] is not SqlValue hi)
                 && cx.obs[arrivingValue] is SqlNode sa
                 && sa.Eval(cx) is TNode an)
             {
-                var av = new TInt(an.id);
+                var av = an.id;
                 var ai = (ac.domain.kind == Sqlx.SET) ?
-                    new SqlLiteral(cx.GetUid(), new TSet(Domain.Int, CTree<TypedValue, bool>.Empty + (av, true))) :
+                    new SqlLiteral(cx.GetUid(), new TSet(ac.domain, CTree<TypedValue, bool>.Empty + (av, true))) :
                     new SqlLiteral(cx.GetUid(), av);
                 ls += (cx.NameFor(et.arriveCol), (SqlValue)cx.Add(ai));
             }

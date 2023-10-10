@@ -77,7 +77,10 @@ namespace Pyrrho.Level3
             }
             return (TableColumn)et.New(m + x);
         }
-
+        public static TableColumn operator-(TableColumn c,long k)
+        {
+            return (TableColumn)c.New(c.mem - k);
+        }
         public static TableColumn operator +(TableColumn e, (Context, long, object) x)
         {
             var d = e.depth;

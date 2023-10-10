@@ -4717,7 +4717,7 @@ namespace Pyrrho.Level3
                     goto backtrack;
                 if (bn.xn.domain.defpos > 0 && !dt.EqualOrStrongSubtypeOf(bn.xn.domain))
                     goto backtrack;
-                dn = (dt is EdgeType et) ? new TEdge(et, tr) : new TNode(dt, tr);
+                dn = (dt is EdgeType et) ? new TEdge(cx, et, tr) : new TNode(cx, dt, tr);
                 if (bn.mode == Sqlx.TRAIL && dn is TEdge && cx.trail.Contains(dn))
                     goto backtrack;
                 if (bn.mode == Sqlx.ACYCLIC && cx.trail.Contains(dn))
@@ -4798,14 +4798,14 @@ namespace Pyrrho.Level3
                                 {
                                     var te = cx.GType(nt.leavingType);
                                     var er = te?.Get(cx, dn.tableRow.vals[nt.leaveCol] as TInt);
-                                    tv = (te is null || er is null) ? TNull.Value : new TNode(te, er);
+                                    tv = (te is null || er is null) ? TNull.Value : new TNode(cx, te, er);
                                     break;
                                 }
                             case -(int)Sqlx.ARROW:
                                 {
                                     var te = cx.GType(nt.arrivingType);
                                     var er = te?.Get(cx, dn.tableRow.vals[nt.arriveCol] as TInt);
-                                    tv = (te is null || er is null) ? TNull.Value : new TNode(te, er);
+                                    tv = (te is null || er is null) ? TNull.Value : new TNode(cx, te, er);
                                     break;
                                 }
                             case -(int)Sqlx.TYPE: tv = new TChar(nt.name); break;

@@ -164,6 +164,17 @@ namespace Pyrrho.Level5
                 to += (IdCol, idCol);
             return to;
         }
+        // We have been updated. Ensure that all our subtypes are updated
+        internal void Refresh(Context cx)
+        {
+            for (var b = subtypes?.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is NodeType bd && bd.super?.defpos == defpos)
+                {
+                    bd = bd + (Under, this) + (IdIx, idIx) + (IdCol, idCol);
+                    cx.db += bd;
+                    bd.Refresh(cx);
+                }
+        }
         internal override BList<long?> Add(BList<long?> a, int k, long v, long p)
         {
             if (p == idCol)
@@ -551,11 +562,11 @@ namespace Pyrrho.Level5
         internal class NodeInfo
         {
             internal readonly int type;
-            internal readonly long id;
+            internal readonly TypedValue id;
             internal float x, y;
             internal readonly long lv, ar;
             internal string[] props;
-            internal NodeInfo(int t, long i, double u, double v, long l, long a, string[] ps)
+            internal NodeInfo(int t, TypedValue i, double u, double v, long l, long a, string[] ps)
             {
                 type = t; id = i; x = (float)u; y = (float)v; lv = l; ar = a;
                 props = ps;
@@ -615,7 +626,7 @@ namespace Pyrrho.Level5
                             for (var g = b.value().First(); g != null; g = g.Next())
                             {
                                 if (g.key()[0] == rt.leaveCol && cx.db.objects[rt.leaveIx] is Pyrrho.Level3.Index rx
-                                && rx.rows?.impl?[new TInt(tn.id)] is TPartial tp)
+                                && rx.rows?.impl?[tn.id] is TPartial tp)
                                     for (var c = tp.value.First(); c != null; c = c.Next())
                                         if (rt.tableRows[c.key()] is TableRow tr
                                             && (!Have(edges, tr))
@@ -643,7 +654,7 @@ namespace Pyrrho.Level5
                                                 AddType(ref types, at);
                                                 ntable += new NodeInfo(types[rt], te.id, x, y, nodes[tn],
                                                     (int)ntable.Count + 1, te.Summary(cx));
-                                                var ta = new TNode(at, ar);
+                                                var ta = new TNode(cx, at, ar);
                                                 nodes += (ta, (int)ntable.Count);
                                                 ntable += new NodeInfo(types[at], ta.id, 2 * x - ti.x, 2 * y - ti.y, -1L, -1L,
                                                     ta.Summary(cx));
@@ -651,7 +662,7 @@ namespace Pyrrho.Level5
                                             }
                                         }
                                 if (g.key()[0] == rt.arriveCol && cx.db.objects[rt.arriveIx] is Pyrrho.Level3.Index ax
-                                        && ax.rows?.impl?[new TInt(tn.id)] is TPartial ap)
+                                        && ax.rows?.impl?[tn.id] is TPartial ap)
                                     for (var c = ap.value.First(); c != null; c = c.Next())
                                         if (rt.tableRows[c.key()] is TableRow tr
                                             && (!Have(edges, tr))
@@ -678,7 +689,7 @@ namespace Pyrrho.Level5
                                                 AddType(ref types, rt);
                                                 ntable += new NodeInfo(types[rt], te.id, x, y, (int)ntable.Count + 1, nodes[tn],
                                                     te.Summary(cx));
-                                                var tl = new TNode(lt, lr);
+                                                var tl = new TNode(cx, lt, lr);
                                                 nodes += (tl, (int)ntable.Count);
                                                 AddType(ref types, lt);
                                                 ntable += new NodeInfo(types[lt], tl.id, 2 * x - ti.x, 2 * y - ti.y, -1L, -1L,
@@ -1302,11 +1313,11 @@ namespace Pyrrho.Level5
             // Edge: end nodes already must be in t, but may be in different TGraphs
             if (cx.db.objects[et.leavingType] is not NodeType lt || r[et.leaveCol] is not TInt li 
                 || et.tableRows[li.value] is not TableRow ln
-                || Find(t, new TNode(lt,ln)) is not TGraph lg)
+                || Find(t, new TNode(cx,lt,ln)) is not TGraph lg)
                 return t;
             if (cx.db.objects[et.arrivingType] is not NodeType at || r[at.arriveCol] is not TInt ai
                 || et.tableRows[ai.value] is not TableRow an
-                || Find(t, new TNode(at, an)) is not TGraph ag)
+                || Find(t, new TNode(cx,at, an)) is not TGraph ag)
                 return t;
             if (lg.Rep() is not TNode lr|| ag.Rep() is not TNode ar)
                 return t;
@@ -1341,7 +1352,10 @@ namespace Pyrrho.Level5
     {
         public readonly TableRow tableRow;
         public long defpos => tableRow.defpos;
-        public long id => (tableRow.vals[(dataType as NodeType)?.idCol??-1L]?.ToLong())??-1L;
+        public TypedValue id => tableRow.vals[(dataType as NodeType)?.idCol??-1L]??TNull.Value;
+        internal TNode(Context cx, NodeType nt, TableRow tr)
+            : this((NodeType)(cx.db.objects[nt.defpos] ?? Domain.NodeType), tr)
+        { }
         internal TNode(NodeType nt, TableRow tr) :base(nt)
         {
             tableRow = tr;
@@ -1402,10 +1416,13 @@ namespace Pyrrho.Level5
     }
     internal class TEdge : TNode
     {
-        public long leaving => (tableRow.vals[(dataType as EdgeType)?.leaveCol ?? -1L]?.ToLong()) ?? -1L;
-        public long arriving => (tableRow.vals[(dataType as EdgeType)?.arriveCol ?? -1L]?.ToLong()) ?? -1L;
+        public TypedValue leaving => tableRow.vals[(dataType as EdgeType)?.leaveCol ?? -1L]??TNull.Value;
+        public TypedValue arriving => tableRow.vals[(dataType as EdgeType)?.arriveCol ?? -1L]??TNull.Value;
         public long leavingType => (dataType as EdgeType)?.leavingType??-1L;
         public long arrivingType => (dataType as EdgeType)?.arrivingType ?? -1L;
+        internal TEdge(Context cx, NodeType nt, TableRow tr)
+    : this((EdgeType)(cx.db.objects[nt.defpos] ?? Domain.EdgeType), tr)
+        { }
         internal TEdge(EdgeType et, TableRow tr) : base(et, tr)
         { }
         public override string ToString()
