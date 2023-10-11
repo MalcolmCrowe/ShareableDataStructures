@@ -576,7 +576,10 @@ namespace Pyrrho.Level5
                 var sb = new StringBuilder();
                 sb.Append(type);
                 sb.Append(',');
-                sb.Append(id);
+                if (id is TChar)
+                    { sb.Append('\'');sb.Append(id); sb.Append('\''); }
+                else
+                    sb.Append(id);
                 sb.Append(',');
                 sb.Append(x);
                 sb.Append(',');

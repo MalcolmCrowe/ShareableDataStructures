@@ -301,16 +301,17 @@ namespace Pyrrho.Level2
                                                 && ut.tableRows[v.ToLong() ?? -1L] is TableRow tr
                                                 && tr.vals[nk.defpos] is TypedValue sk
                                                 && rs[e.Value() ?? -1L] is TableRow te
-                                                && tr.vals[nk.defpos] is TypedValue tk)
+                                                && tr.vals[nk.defpos] is TypedValue tk 
+                                                && e.Value() is long ev)
                                         {
                                             te += (kp, tk);
                                             rs += (te.defpos, te);
                                             var sl = new CList<TypedValue>(sk);
                                             if (st is null)
                                                 st = new MTree(ux.keys, rx.rows.nullsAndDuplicates,
-                                                   sl, 0, v.value);
+                                                   sl, 0, ev);
                                             else
-                                                st += (sl, 0, v.value);
+                                                st += (sl, 0, ev);
                                         }
                                     if (st is not null)
                                         rx += (Level3.Index.Tree, st);
