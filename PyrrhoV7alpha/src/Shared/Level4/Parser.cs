@@ -2888,13 +2888,26 @@ namespace Pyrrho.Level4
         {
             var tr = cx.db as Transaction ?? throw new DBException("42105");
             Mustbe(Sqlx.KEY);
-            if (ParseColsList(tb,Sqlx.ROW) is not Domain ks) throw new DBException("42161", "cols");
-            Physical px = new PIndex(name?.ident ?? "", tb, ks, 
+            if (ParseColsList(tb, Sqlx.ROW) is not Domain ks) throw new DBException("42161", "cols");
+            if (tb.FindPrimaryIndex(cx) is not null)
+            {
+                var up = -1L;
+                for (var b = tb.indexes[ks]?.First(); up<0L && b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is Level3.Index x && x.flags.HasFlag(PIndex.ConstraintType.Unique))
+                        up = x.defpos;
+                if (up<0L)
+                {
+                    var pp = new PIndex(name?.ident ?? "", tb, ks, PIndex.ConstraintType.Unique, -1L, tr.nextPos);
+                    if (cx.Add(pp) is null)
+                        throw new DBException("42105");
+                    up = pp.defpos;
+                }
+                var ax = new AlterIndex(up, cx.db.nextPos);
+                return (Table)(cx.Add(ax) ?? throw new DBException("42105"));
+            }
+            Physical px = new PIndex(name?.ident ?? "", tb, ks,
                 PIndex.ConstraintType.PrimaryKey, -1L, tr.nextPos);
-            for (var b = tb.indexes[ks]?.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key()] is Level3.Index x && x.flags.HasFlag(PIndex.ConstraintType.Unique))
-                    px = new AlterIndex(x.defpos, cx.db.nextPos);
-            return (Table)(cx.Add(px)?? throw new DBException("42105"));
+            return (Table)(cx.Add(px) ?? throw new DBException("42105"));
         }
         /// <summary>
         /// construct a referential constraint
