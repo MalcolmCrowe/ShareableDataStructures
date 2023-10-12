@@ -93,6 +93,8 @@ namespace PyrrhoCmd
                 k++;
             }
             var cs = "Provider=PyrrhoDBMS;Host=" + host + ";Port=" + port + ";Files=" + files;
+            if (Thread.CurrentThread.CurrentUICulture != CultureInfo.InvariantCulture)
+                cs += ";Locale=" + Thread.CurrentThread.CurrentUICulture.Name;
             if (allowask)
                 cs += ";AllowAsk=true";
             PyrrhoConnect db = new PyrrhoConnect(cs);
