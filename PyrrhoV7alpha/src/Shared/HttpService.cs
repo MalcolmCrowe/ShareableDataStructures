@@ -307,7 +307,7 @@ namespace Pyrrho
                 var hd = 210;
                 if (chartType.Contains(Sqlx.NODE))
                 {
-                    wd = 1010; hd = 810;
+                    wd = 2010; hd = 1810;
                     sbuild.Append("<canvas id=\"myCanvas\" width=\"" + wd + "\" height=\"" + hd +"\""
                         + " onclick=show(event)"
                         + " style=\"border:1px solid #c3c3c3;\">\r\n");
@@ -613,7 +613,8 @@ namespace Pyrrho
         {
             sbuild.Append("];\r\n");
             sbuild.Append("    function show(event){\r\n");
-            sbuild.Append("        ex = event.clientX+minX; ey=event.clientY+minY;\r\n");
+            sbuild.Append("        ex = event.clientX+window.pageXOffset+minX;\r\n");
+            sbuild.Append("        ey = event.clientY+window.pageYOffset+minY;\r\n");
             sbuild.Append("      for(i=0;i<nodes.length;i++){\r\n");
             sbuild.Append("        nd = nodes[i]; dx=ex-nd[2]; dy=ey-nd[3];\r\n");
             //       sbuild.Append("        if (dx*dx+dy*dy<400) { window.alert(nd[6]);break;}}};\r\n");
@@ -660,6 +661,11 @@ namespace Pyrrho
             sbuild.Append("        edges[i]=[lv[2]-minX,lv[3]-minY,ar[2]-minX,ar[3]-minY];\r\n");
             sbuild.Append("      } else edges[i]=0;\r\n");
             sbuild.Append("    }\r\n");
+            sbuild.Append("    nd = nodes[0]; nX=nd[2]-minX; nY=nd[3]-minY;\r\n");
+            sbuild.Append("    ctx.beginPath(); \r\n");
+            sbuild.Append("    ctx.moveTo(nX-22,nY-22); ctx.lineTo(nX+22,nY-22); ctx.stroke();\r\n");
+            sbuild.Append("    ctx.lineTo(nX+22,nY+22); ctx.stroke(); ctx.lineTo(nX-22,nY+22); ctx.stroke();\r\n");
+            sbuild.Append("    ctx.lineTo(nX-22,nY-22); ctx.stroke();\r\n"); 
             sbuild.Append("    for(i=0;i<nodes.length;i++){\r\n");
             sbuild.Append("      nd = nodes[i];\r\n");
             sbuild.Append("      ctx.beginPath(); \r\n");
