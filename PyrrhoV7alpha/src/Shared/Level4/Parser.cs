@@ -995,6 +995,7 @@ namespace Pyrrho.Level4
                 alts += cx.Add(new SqlMatchAlt(cx, mo, s, pi?.iix.dp??-1L)).defpos;
                 while (tok == Sqlx.VBAR)
                 {
+                    Next();
                     (var ntgs, s) = ParseSqlMatch(ots);
                     var ns = BTree<string, TGParam>.Empty;
                     for (var b = tgs.First(); b != null; b = b.Next())
