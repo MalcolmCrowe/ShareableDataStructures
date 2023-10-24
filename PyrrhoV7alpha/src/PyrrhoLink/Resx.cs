@@ -80,7 +80,11 @@ namespace Pyrrho
             dict.Add("22210", "Illegal assignment of sensitive value");
             dict.Add("22211", "Domain {0} Check constraint fails");
             dict.Add("22212", "Column {0} Check constraint fails");
-            dict.Add("22300", "Bad document format: {0}"); 
+            dict.Add("22300", "Bad document format: {0}");
+            dict.Add("22G0K", "Multi-sourced or multi-destined edge {0}");
+            dict.Add("22G0L", "Incomplete edge {0}");
+            dict.Add("22G0M", "Potentially infinite output");
+            dict.Add("22G0N", "Repeating zeo-length output");
             dict.Add("23000", "Integrity constraint: {0}");
             dict.Add("23001", "RESTRICT: {0} referenced in {1} {2}");
             dict.Add("23101", "Integrity constraint on referencing table {0} (delete)");
@@ -270,6 +274,7 @@ namespace Pyrrho
             dict.Add("42172", "Identifier {0} already declared in this block");
             dict.Add("42173", "Method {0} has not been defined");
             dict.Add("42174", "Unsupported rowset modification attempt");
+            dict.Add("42175", "Alternative match expressions must bind the same identifiers");
             dict.Add("44000", "Check condition {0} fails");
             dict.Add("44001", "Domain check {0} fails for column {1} in table {2}");
             dict.Add("44002", "Table check {0} fails for table {1}");
