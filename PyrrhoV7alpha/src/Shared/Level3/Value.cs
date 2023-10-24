@@ -11950,13 +11950,50 @@ cx.obs[high] is not SqlValue hi)
     class SqlMatch : SqlValue
     {
         internal const long
+            MatchAlts = -486; // BList<long?> SqlMatchAlt
+        internal BList<long?> matchAlts => (BList<long?>)(mem[MatchAlts] ?? BList<long?>.Empty);
+        public SqlMatch(Context cx, BList<long?>ms) 
+            : this(cx.GetUid(),new BTree<long,object>(MatchAlts,ms))
+        {
+        }
+        protected SqlMatch(long dp, BTree<long, object> m) : base(dp, m)
+        {
+        }
+        public static SqlMatch operator +(SqlMatch e, (long, object) x)
+        {
+            return (SqlMatch)e.New(e.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return (SqlMatch)New(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new SqlMatch(dp, m);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            var cm = " [";
+            for (var b = matchAlts.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ",";
+                sb.Append(Uid(b.value() ?? -1L));
+            }
+            if (cm == ",") sb.Append(']');
+            return sb.ToString();
+        }
+    }
+    class SqlMatchAlt : SqlValue
+    {
+        internal const long
             MatchExps = -487, // BList<long?> SqlNode
             MatchMode = -483, // Sqlx
             PathId = -488;  // long
         internal Sqlx mode => (Sqlx)(mem[MatchMode] ?? Sqlx.NONE);
         internal long pathId => (long)(mem[PathId] ?? -1L);
         internal BList<long?> matchExps => (BList<long?>)(mem[MatchExps] ?? BList<long?>.Empty);
-        public SqlMatch(Context cx, Sqlx m, BList<long?> p, long pp)
+        public SqlMatchAlt(Context cx, Sqlx m, BList<long?> p, long pp)
             : base(cx.GetUid(), new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp))
         {
             var min = 0; // minimum path length
@@ -11977,19 +12014,19 @@ cx.obs[high] is not SqlValue hi)
             if (hasPath && min <= 0)
                 throw new DBException("22G0N");
         }
-        protected SqlMatch(long dp, BTree<long, object> m) : base(dp, m)
+        protected SqlMatchAlt(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        public static SqlMatch operator +(SqlMatch e, (long, object) x)
+        public static SqlMatchAlt operator +(SqlMatchAlt e, (long, object) x)
         {
-            return (SqlMatch)e.New(e.mem + x);
+            return (SqlMatchAlt)e.New(e.mem + x);
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return (SqlMatch)New(defpos, m);
+            return (SqlMatchAlt)New(defpos, m);
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new SqlMatch(dp, m);
+            return new SqlMatchAlt(dp, m);
         }
         public override string ToString()
         {

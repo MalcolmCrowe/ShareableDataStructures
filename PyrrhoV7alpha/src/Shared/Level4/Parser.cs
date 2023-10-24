@@ -957,6 +957,7 @@ namespace Pyrrho.Level4
         {
             var svgs = BList<long?>.Empty;
             var tgs = CTree<long, TGParam>.Empty;
+            var alts = BList<long?>.Empty;
             Ident? pi = null;
             // the current token is LPAREN
             while (Match(Sqlx.LPAREN,Sqlx.USING,Sqlx.TRAIL,Sqlx.ACYCLIC,Sqlx.SIMPLE,
@@ -985,8 +986,32 @@ namespace Pyrrho.Level4
                         Mustbe(Sqlx.EQL);
                     }
                 }
+                var ots = tgs;
                 (tgs,var s) = ParseSqlMatch(tgs);
-                svgs += cx.Add(new SqlMatch(cx, mo, s, pi?.iix.dp??-1L)).defpos;
+                    var ts = BTree<string,TGParam>.Empty;
+                    for (var b = tgs.First(); b != null; b = b.Next())
+                        if (!ots.Contains(b.key()) && b.value() is TGParam p)
+                            ts += (p.value, p);
+                alts += cx.Add(new SqlMatchAlt(cx, mo, s, pi?.iix.dp??-1L)).defpos;
+                while (tok == Sqlx.VBAR)
+                {
+                    (var ntgs, s) = ParseSqlMatch(ots);
+                    var ns = BTree<string, TGParam>.Empty;
+                    for (var b = tgs.First(); b != null; b = b.Next())
+                        if (!ots.Contains(b.key()) && b.value() is TGParam p)
+                        {
+                            if (!ts.Contains(p.value))
+                                throw new DBException("42175");
+                            ns += (p.value, p);
+                        }
+                    if (ns.Count != ts.Count)
+                        throw new DBException("42175");
+                    var tb = ts.First();
+                    for (var nb = ns.First(); tb != null && nb != null; tb = tb.Next(), nb = nb.Next())
+                    { }
+                    alts += cx.Add(new SqlMatchAlt(cx, mo, s, pi?.iix.dp ?? -1L)).defpos;
+                }
+                svgs += cx.Add(new SqlMatch(cx, alts)).defpos;
                 if (tok==Sqlx.COMMA)
                     Next();
             };

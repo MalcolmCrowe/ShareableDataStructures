@@ -274,6 +274,7 @@ namespace Pyrrho
             dict.Add("42172", "Identifier {0} already declared in this block");
             dict.Add("42173", "Method {0} has not been defined");
             dict.Add("42174", "Unsupported rowset modification attempt");
+            dict.Add("42175", "Alternative match expressions must bind the same identifiers");
             dict.Add("44000", "Check condition {0} fails");
             dict.Add("44001", "Domain check {0} fails for column {1} in table {2}");
             dict.Add("44002", "Table check {0} fails for table {1}");

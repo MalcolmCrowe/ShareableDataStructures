@@ -1393,18 +1393,46 @@ namespace Pyrrho.Level5
                 nt.infos[cx.role.defpos] is not ObInfo ni)
                 return new string[0];
             var ss = new string[Math.Max(nt.pathDomain.Length,5)+1];
-            ss[0] = ni.name??"";
+            ss[0] = ni.name ?? "";
             for (var b = nt.pathDomain.First(); b != null && b.key() < 5; b = b.Next())
-                if (b.value() is long cp)
+                if (b.value() is long cp && cx.db.objects[cp] is TableColumn tc 
+                    && tc.infos[cx.role.defpos] is ObInfo ci)
                 {
-                    var u = (cx.db.objects[cp] as TableColumn)?
-                               .infos[cx.role.defpos]?.name ??"??";
-                    var v = tableRow.vals[cp]?.ToString() ?? "??";
+                    var u = ci.name;
+                    var tv = tableRow.vals[cp];
+                    var v = tv?.ToString() ?? "??";
                     if (v.Length > 50)
                         v = v.Substring(0, 50);
-                    ss[b.key() + 1] = u+" = "+v;
+                    ss[b.key() + 1] = u+" = "+v + Link(cx,tc,tv);
                 }
             return ss;
+        }
+        internal string Link(Context cx,TableColumn tc,TypedValue? tv)
+        {
+            if (tc.flags == PColumn.GraphFlags.None
+                || cx.db.objects[tc.tabledefpos] is not NodeType nt)
+                return "";
+            var et = nt as EdgeType;
+            var lt = tc.flags switch
+            {
+                PColumn.GraphFlags.IdCol => nt,
+                PColumn.GraphFlags.LeaveCol => cx.db.objects[et?.leavingType??-1L] as NodeType,
+                PColumn.GraphFlags.ArriveCol => cx.db.objects[et?.arrivingType??-1L] as NodeType,
+                _ => null
+            };
+            if (lt is null || lt is EdgeType || lt.infos[cx.role.defpos] is not ObInfo li
+                || cx.db.objects[lt.idCol] is not TableColumn il 
+                || il.infos[cx.role.defpos] is not ObInfo ii)
+                return "";
+            var sb = new StringBuilder(" [");
+            sb.Append(li.name); sb.Append('/');
+            sb.Append(ii?.name ?? "??"); sb.Append('='); 
+            if (tv is TChar id)
+            { sb.Append('\''); sb.Append(id); sb.Append('\''); }
+            else
+                sb.Append(tv?.ToString()??"??");
+            sb.Append(']');
+            return sb.ToString();
         }
         public override int CompareTo(object? obj)
         {

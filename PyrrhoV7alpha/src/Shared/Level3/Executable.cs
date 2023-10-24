@@ -1396,7 +1396,7 @@ namespace Pyrrho.Level3
 	internal class ReturnStatement : Executable
     {
         internal const long
-            Aggregator = -488, // long SelectRowSet
+            Aggregator = -490, // long SelectRowSet
             Ret = -110; // long SqlValue
         /// <summary>
         /// The return value
@@ -4196,12 +4196,11 @@ namespace Pyrrho.Level3
     internal class MatchStatement : Executable
     {
         internal const long
-            GDefs = -210,   // CTree<long,TGParam>
-            MatchExps = -487; // BList<long?> SqlNode, SqlEdge, or SqlPath
+            GDefs = -210;   // CTree<long,TGParam>
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
-        internal BList<long?> matchExps => // allows SqlNode alternating with SqlEdge,SqlPath
-            (BList<long?>)(mem[MatchExps] ?? BList<long?>.Empty);
+        internal BList<long?> matchAlts =>
+            (BList<long?>)(mem[SqlMatch.MatchAlts] ?? BList<long?>.Empty);
         internal CTree<long,bool> where =>
             (CTree<long, bool>)(mem[RowSet._Where]??CTree<long,bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
@@ -4209,7 +4208,7 @@ namespace Pyrrho.Level3
         internal BList<long?> then => (BList<long?>)(mem[IfThenElse.Then] ?? BList<long?>.Empty);
         public MatchStatement(Context cx, CTree<long,TGParam> gs, BList<long?> ge, 
             CTree<long,bool> wh, long st)
-            : base(cx.GetUid(), _Mem(cx,gs) + (MatchExps,ge) +(RowSet._Where,wh)
+            : base(cx.GetUid(), _Mem(cx,gs) + (SqlMatch.MatchAlts,ge) +(RowSet._Where,wh)
                   +(Procedure.Body,st))
         { }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
@@ -4283,19 +4282,19 @@ namespace Pyrrho.Level3
                     if (cx.obs[g.uid] is SqlValue sx)
                         sx.AddFrom(cx, ep);
                 }
-            if (rt.Count==0)
+            if (rt.Count == 0)
             {
                 var rc = new SqlLiteral(cx.GetUid(), "Match", TBool.True);
                 rt += rc.defpos;
                 re += (rc.defpos, Domain.Bool);
             }
-            var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length) + (ObInfo.Names,ns);
+            var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length) + (ObInfo.Names, ns);
             cx.Add(dt);
             var ers = new ExplicitRowSet(ep, cx, dt, BList<(long, TRow)>.Empty);
-            if (where!=CTree<long,bool>.Empty)
+            if (where != CTree<long, bool>.Empty)
                 ers += (cx, RowSet._Where, where);
-            cx.obs += (defpos, this + (SqlCall.Result, ep)+(RowSet._Where,where));
-            ers += (ObInfo.Names,ns);
+            cx.obs += (defpos, this + (SqlCall.Result, ep) + (RowSet._Where, where));
+            ers += (ObInfo.Names, ns);
             cx.Add(ers);
             cx.result = ers.defpos;
             RowSet? rrs = null;
@@ -4317,13 +4316,15 @@ namespace Pyrrho.Level3
             var ob = cx.binding;
             cx.paths = CTree<long, TList>.Empty;
             cx.trail = new TList(Domain.NodeType);
-            var gf = matchExps.First();
-            if (cx.obs[gf?.value()??-1L] is SqlMatch sm)
-            {
-                var xf = sm.matchExps.First();
-                if (gf is not null && xf is not null)
-                    ExpNode(cx,new ExpStep(sm.mode,xf,new GraphStep(gf.Next(),new EndStep(this))), Sqlx.Null, null);
-            }
+            var gf = matchAlts.First();
+            if (cx.obs[gf?.value() ?? -1L] is SqlMatch sm)
+                for (var b = sm.matchAlts.First(); b != null; b = b.Next())
+                    if (cx.obs[b.value() ?? -1L] is SqlMatchAlt sa)
+                    {
+                        var xf = sa.matchExps.First();
+                        if (gf is not null && xf is not null)
+                            ExpNode(cx, new ExpStep(sa.mode, xf, new GraphStep(gf.Next(), new EndStep(this))), Sqlx.Null, null);
+                    }
             var sn = ((Transaction)cx.db).physicals.Count;
             if (cx._Ob(body) is Executable e)
             {
@@ -4452,19 +4453,23 @@ namespace Pyrrho.Level3
         /// </summary>
         internal class GraphStep : Step
         {
-            internal readonly ABookmark<int, long?>? matchExps; // the current place in the MatchStatement
+            internal readonly ABookmark<int, long?>? matchAlts; // the current place in the MatchStatement
             readonly Step next; // the continuation
             public GraphStep(ABookmark<int, long?>? graphs, Step n) : base(n.ms)
-            { matchExps = graphs; next = n; }
+            { matchAlts = graphs; next = n; }
             /// <summary>
             /// On Success we go on to the next matchexpression if any.
             /// Otherwise we have succeeded and call next.Next.
             /// </summary>
             public override void Next(Context cx, Step? cn, Sqlx tok, TNode? pd)
             {
-                if (cx.obs[matchExps?.value() ?? -1L] is SqlMatch sm)
-                    ms.ExpNode(cx, new ExpStep(sm.mode, sm.matchExps.First(), 
-                        new GraphStep(matchExps?.Next(),next)), Sqlx.Null, null);
+                if (cx.obs[matchAlts?.value() ?? -1L] is SqlMatch sm)
+                    for (var b = sm.matchAlts.First(); b != null; b = b.Next())
+                    {
+                        if (cx.obs[b.value() ?? -1L] is SqlMatchAlt sa)
+                            ms.ExpNode(cx, new ExpStep(sa.mode, sa.matchExps.First(),
+                                new GraphStep(matchAlts?.Next(), next)), Sqlx.Null, null);
+                    }
                 else
                     next.Next(cx, cn, tok, pd);
             }
@@ -4472,7 +4477,7 @@ namespace Pyrrho.Level3
             public override string ToString()
             {
                 var sb = new StringBuilder("Graph");
-                sb.Append(Show(matchExps));
+                sb.Append(Show(matchAlts));
                 sb.Append(',');sb.Append(next.ToString());
                 return sb.ToString();
             }
@@ -4832,10 +4837,10 @@ namespace Pyrrho.Level3
             for (var s = st;s!=null;s=s.Cont)
                 if (s is GraphStep gs)
                 {
-                    gb = gs.matchExps?.Previous()??gs.ms.matchExps.Last();
+                    gb = gs.matchAlts?.Previous()??gs.ms.matchAlts.Last();
                     break;
                 }
-            if (cx.obs[gb?.value() ?? -1L] is SqlMatch sm
+            if (cx.obs[gb?.value() ?? -1L] is SqlMatchAlt sm
                    && (sm.mode == Sqlx.SHORTEST || sm.mode == Sqlx.SHORTESTPATH)
                    && sm.pathId >= 0
                    && cx.obs[cx.result] is ExplicitRowSet ers)
@@ -4865,7 +4870,7 @@ namespace Pyrrho.Level3
             sb.Append(')');
             sb.Append(" Graphs (");
             var cm = "";
-            for (var b=matchExps.First();b!=null;b=b.Next())
+            for (var b=matchAlts.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
                 sb.Append(Uid(b.value() ?? -1L));

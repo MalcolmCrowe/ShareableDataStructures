@@ -3,13 +3,6 @@ using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
-using System;
-using System.Configuration;
-using System.Runtime.Intrinsics.Arm;
-using System.Runtime.CompilerServices;
-using System.Data.Common;
-using System.Xml;
-using System.Security.Claims;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
