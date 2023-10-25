@@ -800,6 +800,7 @@ match ()-[{Qty:QT}]->(:ST{spec:SA}) where QT>4
 (b)-[:Child]->(:Person {name:'Mary Smith'})]
 MATCH (n)-[:Child]->(c) RETURN n.name,c.name AS child
 MATCH (n {name:'Pete Smith'}) SET n.name='Peter Smith' 
+MATCH ({name:'Peter Smith'})[()-[:Child]->()]+(x) RETURN x.name
 [CREATE (e:Person {name:'Emil', born:1975 }), (k:Person {name:'Karin', born:1977 }),
 (e)-[:married {since:2000}]->(k)]
 [CREATE (Sue:Person {name:'Sue Hill', born:1975}),
