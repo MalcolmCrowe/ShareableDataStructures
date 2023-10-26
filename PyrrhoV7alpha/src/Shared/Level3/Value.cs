@@ -11804,7 +11804,7 @@ cx.obs[high] is not SqlValue hi)
                 throw new DBException("42105");
             cx.Add(new PIndex(lv?"LEAVING":"ARRIVING", gt, di, 
                     PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate| PIndex.ConstraintType.NoBuild,
-                    px.defpos, cx.db.nextPos));
+                    ax.defpos, cx.db.nextPos));
             cx.Add(new AlterEdgeType(lv, ct.defpos, gt.defpos, cx.db.nextPos));
         }
         internal override SqlNode Add(Context cx, SqlNode? an, CTree<long, TGParam> tgs)

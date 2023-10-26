@@ -621,7 +621,7 @@ BTree<string, (int, long?)> ns)
             var versioned = mi.metadata.Contains(Sqlx.ENTITY);
             var key = BuildKey(cx, out Domain keys);
             var fields = CTree<string, bool>.Empty;
-            var sb = new StringBuilder("\r\nusing System;\r\nusing Pyrrho;\r\n");
+            var sb = new StringBuilder("\r\nusing Pyrrho;\r\nusing Pyrrho.Common;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// Class " + nm + " from Database " + cx.db.name
                 + ", Role " + ro.name + "\r\n");
@@ -806,7 +806,10 @@ BTree<string, (int, long?)> ns)
             sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n */\r\n");
             if (mi.description != "")
                 sb.Append("/* " + mi.description + "*/\r\n");
-            sb.Append("public class " + mi.name + (versioned ? " extends Versioned" : "") + " {\r\n");
+            if (this is UDType ty && ty.super is not null)
+                sb.Append("public class " + mi.name + " extends " + ty.super.name + " {\r\n");
+            else
+                sb.Append("public class " + mi.name + (versioned ? " extends Versioned" : "") + " {\r\n");
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long bp && tableCols[bp] is Domain dt)
                 {
@@ -847,7 +850,10 @@ BTree<string, (int, long?)> ns)
             var key = BuildKey(cx, out Domain keys);
             if (mi.description != "")
                 sb.Append("# " + mi.description + "\r\n");
-            sb.Append("class " + name + (versioned ? "(Versioned)" : "") + ":\r\n");
+            if (this is UDType ty && ty.super is not null)
+                sb.Append("public class " + name + "(" + ty.super.name + "):\r\n");
+            else
+                sb.Append("class " + name + (versioned ? "(Versioned)" : "") + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
             if (versioned)
                 sb.Append("  super().__init__('','')\r\n");

@@ -360,7 +360,7 @@ namespace Pyrrho.Level3
         }
         internal override void Note(Context cx, StringBuilder sb)
         {
-            sb.Append("// "); sb.Append(flags);
+            sb.Append("/// "); sb.Append(flags);
             var cm = "(";
             for (var b = keys.First(); b != null; b = b.Next())
                 if (b.value() is long p)

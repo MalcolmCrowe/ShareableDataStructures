@@ -4316,6 +4316,7 @@ namespace Pyrrho.Level3
             var ob = cx.binding;
             cx.paths = CTree<long, TList>.Empty;
             cx.trail = new TList(Domain.NodeType);
+            _step = 0;
             var gf = matchAlts.First();
             if (cx.obs[gf?.value() ?? -1L] is SqlMatch sm)
                 for (var b = sm.matchAlts.First(); b != null; b = b.Next())

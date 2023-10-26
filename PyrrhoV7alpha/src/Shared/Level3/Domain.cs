@@ -5175,7 +5175,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             var ro = cx.role;
             var md = infos[ro.defpos]??throw new DBException("42105");
-            var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
+            var sb = new StringBuilder("using Pyrrho;\r\nusing Pyrrho.Common;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// Class " + md.name + " from Database " + cx.db.name
                 + ", Role " + ro.name + "\r\n");

@@ -806,7 +806,7 @@ namespace Pyrrho.Level5
             var ne = (this is EdgeType) ? "EdgeType" : "NodeType";
             var key = BuildKey(cx, out Domain keys);
             var fields = CTree<string, bool>.Empty;
-            var sb = new StringBuilder("\r\nusing System;\r\nusing Pyrrho;\r\n");
+            var sb = new StringBuilder("\r\nusing Pyrrho;\r\nusing Pyrrho.Common;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// " + ne + " " + nm + " from Database " + cx.db.name
                 + ", Role " + ro.name + "\r\n");
@@ -821,7 +821,7 @@ namespace Pyrrho.Level5
                     ck.Note(cx, sb);
             sb.Append("/// </summary>\r\n");
             sb.Append("["+ne+"("); sb.Append(defpos); sb.Append(','); sb.Append(lastChange); sb.Append(")]\r\n");
-            sb.Append("public class " + nm + " : Versioned {\r\n");
+            sb.Append("public class " + nm + " : " + (super?.name?? "Versioned") +" {\r\n");
             for (var b = representation.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is TableColumn tc && tc.infos[cx.role.defpos] is ObInfo fi && fi.name != null)
                 {
@@ -850,7 +850,7 @@ namespace Pyrrho.Level5
                                 sa.Append(cm); cm = ",";
                                 sa.Append(cx.NameFor(p));
                             }
-                        if (tb is not UDType && !rt.metadata.Contains(Sqlx.ENTITY))
+                        if (tb is not UDType && !(rt.metadata.Contains(Sqlx.ENTITY) || tb is NodeType))
                             continue;
                         var rn = ToCamel(rt.name);
                         for (var i = 0; fields.Contains(rn); i++)
