@@ -423,6 +423,8 @@ namespace PyrrhoCmd
                         sb.Append(ch);
                         break;
                 }
+            if (dash)
+                sb.Append('-');
             line = sb.ToString();
         }
         static void ShowWarnings(PyrrhoConnect db)
