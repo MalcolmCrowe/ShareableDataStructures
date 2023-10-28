@@ -16,21 +16,18 @@ using Pyrrho.Level4;
 namespace Pyrrho.Level2
 {
 	/// <summary>
-	/// The Change record in the database is used for renaming of objects other than TableColumns
+	/// The Change record in the database is used for renaming of objects
 	/// </summary>
 	internal class Change : Defined
 	{
-        /// <summary>
-        /// The previous physical record for this object
-        /// </summary>
-        long prev;
+        public long defpos;
         /// <summary>
         /// We compute this when reading
         /// </summary>
         public long affects;
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (!Committed(wr,prev)) return prev;
+            if (!Committed(wr,affects)) return affects;
             return -1;
         }
         /// <summary>
@@ -41,10 +38,7 @@ namespace Pyrrho.Level2
         /// <param name="idType">The identifier type</param>
         public Change(long pt, string nm, long pp, Context cx)
             : this(Type.Change, pt, nm, pp, cx)
-		{
-            prev = pt;
-            name = nm;
-        }
+		{  }
         /// <summary>
         /// Constructor: a new Change object from the Parser
         /// </summary>
@@ -55,21 +49,17 @@ namespace Pyrrho.Level2
         protected Change(Type t, long pt, string nm, long pp, Context cx)
 			:base(t,pp,cx,nm,cx.Priv(pt))
 		{
-            prev = pt;
+            defpos = pt;
 		}
         /// <summary>
         /// Constructor: a new Change object from the buffer
         /// </summary>
         /// <param name="bp">the buffer</param>
         /// <param name="pos">the defining position</param>
-		public Change(Reader rdr) :base(Type.Change,rdr)
-        {
-            prev = rdr.GetLong();
-            name = rdr.GetString();
-        }
+		public Change(Reader rdr) :base(Type.Change,rdr) { }
         protected Change(Change x, Writer wr) : base(x, wr)
         {
-            prev = wr.cx.Fix(x.prev);
+            defpos = wr.cx.Fix(x.defpos);
             name = x.name;
         }
         protected override Physical Relocate(Writer wr)
@@ -83,7 +73,7 @@ namespace Pyrrho.Level2
 		{
 			get
 			{
-                return affects;
+                return defpos;
 			}
 		}
         /// <summary>
@@ -92,7 +82,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for Positions</param>
         public override void Serialise(Writer wr)
 		{
-            wr.PutLong(prev);
+            wr.PutLong(defpos);
             wr.PutString(name);
 			base.Serialise(wr);
 		}
@@ -102,8 +92,7 @@ namespace Pyrrho.Level2
         /// <param name="buf">The buffer</param>
         public override void Deserialise(Reader rdr) 
 		{ 
-			prev = rdr.GetLong();
-            affects = rdr.Prev(prev)??ppos;
+			defpos = rdr.GetLong();
 			name = rdr.GetString();
 			base.Deserialise(rdr);
 		}
@@ -113,7 +102,7 @@ namespace Pyrrho.Level2
         /// <returns>A string representation</returns>
 		public override string ToString() 
 		{ 
-			return "Change "+Pos(prev)+" ["+Pos(Affects)+"] to "+name; 
+			return "Change "+Pos(defpos)+" to "+name; 
 		}
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -138,7 +127,7 @@ namespace Pyrrho.Level2
                 case Type.PView: if (name.CompareTo(((PView)that).name) == 0)
                         return new DBException("40032", ppos, that, ct);
                     break;
-                case Type.Drop: if (prev == ((Drop)that).delpos)
+                case Type.Drop: if (defpos == ((Drop)that).delpos)
                         return new DBException("40010", ppos, that, ct);
                     break;
                 case Type.Change: 
@@ -175,7 +164,7 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx, long p)
         {
             var ro = cx.role;
-            var ob = cx._Ob(affects);
+            var ob = cx.db.objects[defpos] as DBObject;
             if (ob == null)
                 return null;
             var oi = ob.infos[ro.defpos];
@@ -184,13 +173,17 @@ namespace Pyrrho.Level2
             var m = ob.mem;
             m += (DBObject.LastChange, p);
             m += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name, oi.priv)));
+            if (oi.name != null && ro.dbobjects.Contains(oi.name))
+                ro += (Role.DBObjects, ro.dbobjects - oi.name + (name, defpos));
             ob = (DBObject)ob.New(m);
             cx.db += (ob, p);
-            ob = (DBObject)ob.New(m + (DBObject.Infos, oi + (ObInfo.Name, name)));
-            cx.obs += (affects, ob);
+            cx.db += (ro, p);
+            cx.obs += (defpos, ob);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            return ob;
+            if (ob is TableColumn tc)
+                ob = cx.db.objects[tc.tabledefpos] as Table;
+            return ob as Table;
         }
     }
 }

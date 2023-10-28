@@ -4812,6 +4812,7 @@ namespace Pyrrho.Level4
                 var o = lxr.val;
                 Mustbe(Sqlx.Id);
                 cx.Add(new Change(tb.defpos, o.ToString(), tr.nextPos, cx));
+                return;
             }
             if (tok == Sqlx.LEVEL)
                 ParseClassification(tb);
