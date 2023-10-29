@@ -17,10 +17,14 @@ namespace Pyrrho
         {
             var tp = typeof(C);
             var sa = tp.GetCustomAttribute<TableAttribute>();
+            var sn = tp.GetCustomAttribute<NodeTypeAttribute>();
+            var se = tp.GetCustomAttribute<EdgeTypeAttribute>();
+            var ls = sa?.lastschemachange ?? sn?.lastschemachange ?? se?.lastschemachange ?? -1L;
+            var td = sa?.tabledefpos ?? sn?.tabledefpos ?? se?.tabledefpos ?? -1L;
             conn.Send(Protocol.Get);
-            conn.PutLong(sa.lastschemachange);
+            conn.PutLong(ls);
             var sb=new StringBuilder();
-            sb.Append("/"); sb.Append(sa.tabledefpos); sb.Append("/");
+            sb.Append("/"); sb.Append(td); sb.Append("/");
             if (w != null)
                 sb.Append(w);
             conn.PutString(sb.ToString());
@@ -142,7 +146,7 @@ namespace Pyrrho
                 if (v is null)
                     v = "NULL";
                 else if (f.FieldType.Name == "String")
-                    v = "'" + v.ToString().Replace("'", "''") + "'";
+                    v = "'" + (v.ToString()??"").Replace("'", "''") + "'";
                 else if (f.FieldType.Name == "Byte[]")
                     v = Hexits((byte[])v);
                 else if (fa != null)

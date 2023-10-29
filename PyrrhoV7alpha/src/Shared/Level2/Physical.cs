@@ -284,15 +284,17 @@ namespace Pyrrho.Level2
                 cx.db += (nt, p);
                 nt.Refresh(cx);
                 var cd = ok.domain.kind!=nk.domain.kind;
+                var us = ut.rindexes;
                 for (var b = ut.rindexes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is EdgeType et)
                     {
                         var ks = CTree<long,bool>.Empty;
                         var rs = et.tableRows;
+                        var dd = us[et.defpos];
                         for (var c = b.value().First(); c != null; c = c.Next())
                             for (var d = et.indexes[c.key()]?.First(); d != null; d = d.Next())
-                                if (cx.db.objects[d.key()] is Level3.Index rx && rx.rows is not null
-                                    && rx.keys[0] is long kp)
+                                if (cx.db.objects[d.key()] is Level3.Index rx && rx.rows is not null && dd is not null
+                                    && rx.keys[0] is long kp && dd[rx.keys] is Domain dk)
                                 {
                                     ks += (kp, true);
                                     MTree? st = null;
@@ -301,7 +303,7 @@ namespace Pyrrho.Level2
                                                 && ut.tableRows[v.ToLong() ?? -1L] is TableRow tr
                                                 && tr.vals[nk.defpos] is TypedValue sk
                                                 && rs[e.Value() ?? -1L] is TableRow te
-                                                && tr.vals[nk.defpos] is TypedValue tk 
+                                                && tr.vals[nk.defpos] is TypedValue tk
                                                 && e.Value() is long ev)
                                         {
                                             te += (kp, tk);
@@ -313,12 +315,23 @@ namespace Pyrrho.Level2
                                             else
                                                 st += (sl, 0, ev);
                                         }
+                                    var os = rx.keys;
+                                    if (cd)
+                                    {
+                                        dd -= os;
+                                        os += (Domain.Representation, new CTree<long, Domain>(os[0] ?? -1L, nk.domain));
+                                        rx += (Level3.Index.Keys, os);
+                                    }
+                                    rx += (Level3.Index.RefIndex, ux.defpos);
+                                    dd += (os, ux.keys);
+                                    us += (et.defpos, dd);
                                     if (st is not null)
                                         rx += (Level3.Index.Tree, st);
                                     else
                                         throw new DBException("42105");
                                     cx.db += (rx, p);
                                 }
+                        ut += (Table.RefIndexes, us);
                         if (cd)
                         {
                             var er = et.representation;
@@ -336,6 +349,7 @@ namespace Pyrrho.Level2
             }
             cx.db += (px, p);
             cx.db += (ux, p);
+            cx.db += (ut, p);
             return ut;
         }
     }

@@ -4,8 +4,6 @@ using System.Globalization;
 using System.Reflection;
 using System.IO;
 using System.Text;
-using Pyrrho;
-using Pyrrho.Common;
 using Pyrrho.Security;
 using System.Net;
 using System.Net.Sockets;
@@ -1396,8 +1394,24 @@ namespace Pyrrho
         public long tabledefpos, lastschemachange; 
         public TableAttribute(long p, long c) { tabledefpos = p; lastschemachange = c; }
     }
+    public sealed class NodeTypeAttribute : Attribute
+    {
+        public long tabledefpos, lastschemachange;
+        public NodeTypeAttribute(long p, long c) { tabledefpos = p; lastschemachange = c; }
+    }
+    public sealed class EdgeTypeAttribute : Attribute
+    {
+        public long tabledefpos, lastschemachange;
+        public EdgeTypeAttribute(long p, long c) { tabledefpos = p; lastschemachange = c; }
+    }
     public sealed class AutoKeyAttribute : Attribute
     {  }
+    public sealed class IdentityAttribute : Attribute
+    { }
+    public sealed class LeavingAttribute : Attribute
+    { }
+    public sealed class ArrivingAttribute : Attribute
+    { }
     public sealed class FieldAttribute : Attribute
     {
         public PyrrhoDbType type;

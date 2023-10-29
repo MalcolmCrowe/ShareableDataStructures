@@ -3,6 +3,8 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using System.Text;
 using Pyrrho.Level2;
+using System.Net.Http.Headers;
+
 namespace Pyrrho.Level5
 {
     // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -843,12 +845,14 @@ namespace Pyrrho.Level5
                     {
                         // many-one relationship
                         var sa = new StringBuilder();
+                        var sc = new StringBuilder();
                         var cm = "";
                         for (var d = b.key().First(); d != null; d = d.Next())
                             if (d.value() is long p)
                             {
                                 sa.Append(cm); cm = ",";
                                 sa.Append(cx.NameFor(p));
+                                sc.Append(cx.NameFor(p));
                             }
                         if (tb is not UDType && !(rt.metadata.Contains(Sqlx.ENTITY) || tb is NodeType))
                             continue;
@@ -857,8 +861,8 @@ namespace Pyrrho.Level5
                             rn = ToCamel(rt.name) + i;
                         var fn = cx.NameFor(rx.keys[0] ?? -1L);
                         fields += (rn, true);
-                        sb.Append("  public " + rt.name + "? " + rn
-                            + "=> conn?.FindOne<" + rt.name + ">((\"" + fn.ToString() + "\"," + sa.ToString() + "));\r\n");
+                        sb.Append("  public " + rt.name + "? " + sc.ToString()
+                            + "is => conn?.FindOne<" + rt.name + ">((\"" + fn.ToString() + "\"," + sa.ToString() + "));\r\n");
                     }
             for (var b = rindexes.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is Table tb && tb.infos[ro.defpos] is ObInfo rt && rt.name != null)
@@ -890,15 +894,17 @@ namespace Pyrrho.Level5
                             }
                             // one-many relationship
                             var rb = c.value().First();
+                            var sc = new StringBuilder();
                             for (var xb = c.key().First(); xb != null && rb != null; xb = xb.Next(), rb = rb.Next())
                                 if (xb.value() is long xp && rb.value() is long rp)
                                 {
                                     sa.Append(cm); cm = "),(\"";
                                     sa.Append(cx.NameFor(xp)); sa.Append("\",");
                                     sa.Append(cx.NameFor(rp));
+                                    sc.Append(cx.NameFor(xp));
                                 }
                             sa.Append(')');
-                            sb.Append("  public " + rt.name + "[]? " + rn
+                            sb.Append("  public " + rt.name + "[]? " + "of" + sc.ToString()
                                 + "s => conn?.FindWith<" + rt.name + ">(" + sa.ToString() + ");\r\n");
                         }
                     else //  e.g. this is Brand
