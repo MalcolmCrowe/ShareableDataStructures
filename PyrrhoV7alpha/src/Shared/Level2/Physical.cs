@@ -346,11 +346,12 @@ namespace Pyrrho.Level2
                         et += (Table.TableRows, rs);
                         cx.db += (et, p);
                     }
+                cx.db += (px, p);
+                cx.db += (ux, p);
+                cx.db += (nt, p);
+                return nt; 
             }
-            cx.db += (px, p);
-            cx.db += (ux, p);
-            cx.db += (ut, p);
-            return ut;
+            throw new DBException("42105");
         }
     }
     internal class AlterEdgeType : Physical
