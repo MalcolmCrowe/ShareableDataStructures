@@ -7,11 +7,9 @@ using System.Runtime.ExceptionServices;
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code, and use it subject for any purpose.
+// You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
-// All other use or distribution or the construction of any product incorporating 
-// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -358,9 +356,9 @@ namespace Pyrrho.Level3
             }
             return r;
         }
-        internal override void Note(Context cx, StringBuilder sb)
+        internal override void Note(Context cx, StringBuilder sb, string pre="/// ")
         {
-            sb.Append("/// "); sb.Append(flags);
+            sb.Append(pre); sb.Append(flags);
             var cm = "(";
             for (var b = keys.First(); b != null; b = b.Next())
                 if (b.value() is long p)

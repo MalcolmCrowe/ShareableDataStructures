@@ -6,11 +6,10 @@ using Pyrrho.Common;
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code, and use it subject for any purpose.
+// You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
-// All other use or distribution or the construction of any product incorporating 
-// this technology requires a license from the University of the West of Scotland.
+
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -254,8 +253,9 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx, long p)
         {
             var tb = (cx.db.objects[tabledefpos] as Table)?.DoDel(cx, this, p);
-            for (var t = tb?.super as Table;t!=null;t=t.super as Table)
-                t.DoDel(cx, this, p);   
+            for (var t = cx.db.objects[tb?.super?.defpos ?? -1L] as Table; t != null;
+                t = cx.db.objects[t.super?.defpos ?? -1L] as Table)
+                t.DoDel(cx, this, p);
             return tb;
         }
         public override string ToString()

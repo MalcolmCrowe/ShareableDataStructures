@@ -4,11 +4,10 @@ using System.Collections.Generic;
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code, and use it subject for any purpose.
+// You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
-// All other use or distribution or the construction of any product incorporating 
-// this technology requires a license from the University of the West of Scotland.
+
 namespace Pyrrho.Common
 {
     /// <summary>
@@ -353,9 +352,9 @@ namespace Pyrrho.Common
         /// <returns>The slot with a weaker type</returns>
         public abstract KeyValuePair<K, object?> Slot(int i);
         /// <summary>
-        /// Add a list of slots: needs a surprisingly weak type
+        /// Add a tree of slots: needs a surprisingly weak type
         /// </summary>
-        /// <param name="ab">the list</param>
+        /// <param name="ab">the tree</param>
         public abstract void Add(List<object?> ab);
         /// <summary>
         /// IBucket interface requirement

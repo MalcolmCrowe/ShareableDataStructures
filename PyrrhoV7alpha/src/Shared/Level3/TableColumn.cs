@@ -13,11 +13,9 @@ using System.Xml;
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code, and use it subject for any purpose.
+// You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
-// All other use or distribution or the construction of any product incorporating 
-// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
@@ -275,21 +273,26 @@ namespace Pyrrho.Level3
         {
             cx.values += (defpos, v);
         }
-        internal override void Note(Context cx, StringBuilder sb)
+        internal override void Note(Context cx, StringBuilder sb, string pre = "  ")
         {
-            sb.Append("  ");
+            sb.Append(pre);
             switch (flags)
             {
                 case PColumn.GraphFlags.IdCol: sb.Append("[Identity]"); break;
                 case PColumn.GraphFlags.LeaveCol: sb.Append("[Leaving]"); break;
                 case PColumn.GraphFlags.ArriveCol: sb.Append("[Arriving]"); break;
             }
-            domain.FieldType(cx, sb);
-            for (var c = checks.First(); c != null; c = c.Next())
-                if (cx._Ob(c.key()) is Check ck)
-                    ck.Note(cx, sb);
-            if (generated is GenerationRule gr)
-                gr.Note(sb);
+            if (pre == "  ")
+            {
+                domain.FieldType(cx, sb);
+                for (var c = checks.First(); c != null; c = c.Next())
+                    if (cx._Ob(c.key()) is Check ck)
+                        ck.Note(cx, sb, pre);
+                if (generated is GenerationRule gr)
+                    gr.Note(sb);
+            }
+            else
+                sb.Append("\r\n");
         }
         /// <summary>
         /// a readable version of the table column

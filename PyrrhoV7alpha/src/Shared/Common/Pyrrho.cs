@@ -4,14 +4,13 @@
     // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
     //
     // This software is without support and no liability for damage consequential to use.
-    // You can view and test this code, and use it subject for any purpose.
+    // You can view and test this code
     // You may incorporate any part of this code in other software if its origin 
     // and authorship is suitably acknowledged.
-    // All other use or distribution or the construction of any product incorporating 
-    // this technology requires a license from the University of the West of Scotland.
+
     /// <summary>
     /// Show details of the Pyrrho protocol, see the manual Pyrrho.doc section 8.8, which
-    /// gives the current list of codes.
+    /// gives the current tree of codes.
     /// </summary>
     public enum Protocol
     {
@@ -30,7 +29,7 @@
     }
     /// <summary>
     /// Show details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.8,
-    /// which gives the currently supported list of codes.
+    /// which gives the currently supported tree of codes.
     /// </summary>
     public enum Responses
     {

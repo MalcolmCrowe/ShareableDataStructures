@@ -1,20 +1,14 @@
-﻿using System;
-using System.Collections.Generic;
-using System.Xml;
-using System.IO;
+﻿using System.Xml;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Common;
-using System.Configuration;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code, and use it subject for any purpose.
+// You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
-// All other use or distribution or the construction of any product incorporating 
-// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level3
 {
