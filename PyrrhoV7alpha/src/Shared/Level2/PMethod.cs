@@ -7,11 +7,9 @@ using System.Data.Common;
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code, and use it subject for any purpose.
+// You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
-// All other use or distribution or the construction of any product incorporating 
-// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Level2
 {
@@ -138,11 +136,11 @@ namespace Pyrrho.Level2
             {
                 case Type.Drop:
                     if (udt.defpos == ((Drop)that).delpos)
-                        return new DBException("40016", defpos, that, ct);
+                        return new DBException("40016", udt.defpos, that, ct);
                     break;
                 case Type.Change:
-                    if (udt.defpos == ((Change)that).affects)
-                        return new DBException("40021", defpos, that, ct);
+                    if (udt.defpos == ((Change)that).defpos)
+                        return new DBException("40021", udt.defpos, that, ct);
                     break;
                 case Type.PMethod2:
                 case Type.PMethod:

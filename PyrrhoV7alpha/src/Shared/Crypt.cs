@@ -12,10 +12,7 @@ using PyrrhoBase;
 // 
 // This software is without support and no liability for damage consequential to use
 // You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of Paisley
 
-// OPEN SOURCE EDITIONS
 namespace Pyrrho.Security
 {
     /// <summary>
