@@ -11,10 +11,12 @@ using Pyrrho.Level5;
 // TNode.Summary() in Graph.cs to use \\n instead of <br/>)
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code
+// You can view and test this code, and use it subject for any purpose.
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
- 
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
+
 namespace Pyrrho
 {
 	/// <summary>

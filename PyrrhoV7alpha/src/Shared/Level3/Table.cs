@@ -7,10 +7,11 @@ using Pyrrho.Level5;
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code
+// You can view and test this code, and use it subject for any purpose.
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
-
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 namespace Pyrrho.Level3
 {
     /// <summary>
@@ -764,22 +765,21 @@ BTree<string, (int, long?)> ns)
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
-        internal override void Note(Context cx, StringBuilder sb, string pre = "/// ")
+        internal override void Note(Context cx, StringBuilder sb)
         {
-            if (infos[cx.role.defpos] is ObInfo ci && ci.name != null)
+    if (infos[cx.role.defpos] is ObInfo ci && ci.name!=null)
+    {
+            if (ci.description?.Length > 1)
+                sb.Append("  // " + ci.description + "\r\n");
+            for (var d = ci.metadata.First(); d != null; d = d.Next())
+            switch (d.key())
             {
-                if (ci.description?.Length > 1)
-                    sb.Append(pre + ci.description + "\r\n");
-                for (var d = ci.metadata.First(); d != null; d = d.Next())
-                    if (pre == "/// ")
-                        switch (d.key())
-                        {
-                            case Sqlx.X:
-                            case Sqlx.Y:
-                                sb.Append(" [" + d.key().ToString() + "]\r\n");
-                                break;
-                        }
+                case Sqlx.X:
+                case Sqlx.Y:
+                    sb.Append(" [" + d.key().ToString() + "]\r\n");
+                    break;
             }
+    }
         }
         /// <summary>
         /// Generate a row for the Role$Java table: includes a Java class definition
@@ -844,16 +844,16 @@ BTree<string, (int, long?)> ns)
                 throw new DBException("42105");
             var versioned = true;
             var sb = new StringBuilder();
-            var nm = NameFor(cx);
-            sb.Append("# "); sb.Append(nm); 
-            sb.Append(" from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
+            sb.Append("# "); sb.Append(name); sb.Append(" Created on ");
+            sb.Append(DateTime.Now);
+            sb.Append("\r\n# from Database " + cx.db.name + ", Role " + ro.name + "\r\n");
             var key = BuildKey(cx, out Domain keys);
             if (mi.description != "")
                 sb.Append("# " + mi.description + "\r\n");
             if (this is UDType ty && ty.super is not null)
-                sb.Append("public class " + nm + "(" + ty.super.NameFor(cx) + "):\r\n");
+                sb.Append("public class " + name + "(" + ty.super.name + "):\r\n");
             else
-                sb.Append("class " + nm + (versioned ? "(Versioned)" : "") + ":\r\n");
+                sb.Append("class " + name + (versioned ? "(Versioned)" : "") + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
             if (versioned)
                 sb.Append("  super().__init__('','')\r\n");

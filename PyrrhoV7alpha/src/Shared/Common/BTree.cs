@@ -6,9 +6,11 @@ using System.Collections.Generic;
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code
+// You can view and test this code, and use it subject for any purpose.
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
+// All other use or distribution or the construction of any product incorporating 
+// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho.Common
 {
@@ -378,7 +380,7 @@ namespace Pyrrho.Common
             return new Inner<K,V>(gtr.TopHalf(), total, slots, 0, count - 1, new KeyValuePair<K,Bucket<K,V>>[] { gtr.LowHalf() }, 0, 0);
         }
         /// <summary>
-        /// Very internal: add a tree of slots using a weak type
+        /// Very internal: add a list of slots using a weak type
         /// </summary>
         /// <param name="ab">the slots to add</param>
         public override void Add(List<object?> ab)
@@ -444,7 +446,7 @@ namespace Pyrrho.Common
                 int A = s.Length / S;
                 int B = s.Length - A * S;
                 // need t.Length = A-1 if B==0, else A (size gtr can take up to Size entries)
-                KeyValuePair<K, Bucket<K,V>>[] ts = new KeyValuePair<K, Bucket<K,V>>[(B == 0) ? (A - 1) : A]; // new tree of children
+                KeyValuePair<K, Bucket<K,V>>[] ts = new KeyValuePair<K, Bucket<K,V>>[(B == 0) ? (A - 1) : A]; // new list of children
                 int sce = 0, dst = 0;
                 KeyValuePair<K, V> d;
                 // if B==0 or B>=Size>>1 we want t.Length entries constructed here
@@ -477,7 +479,7 @@ namespace Pyrrho.Common
                 int A = (s.Length + 1) / (S + 1); // not forgetting g
                 int B = s.Length + 1 - A * (S + 1);
                 // need t.Length = A-1 if B==0, else A (size gtr can take up to Size entries)
-                KeyValuePair<K, Bucket<K, V>>[] ts = new KeyValuePair<K, Bucket<K, V>>[(B == 0) ? (A - 1) : A]; // new tree of children
+                KeyValuePair<K, Bucket<K, V>>[] ts = new KeyValuePair<K, Bucket<K, V>>[(B == 0) ? (A - 1) : A]; // new list of children
                 int sce = 0, dst = 0;
                 KeyValuePair<K, Bucket<K, V>> d;
                 // if B==0 or B>=Size>>1 we want t.Length entries constructed here
@@ -671,9 +673,9 @@ namespace Pyrrho.Common
             return new Leaf<K,V>(Remove(j));
         }
         /// <summary>
-        /// Add a tree of slots
+        /// Add a list of slots
         /// </summary>
-        /// <param name="ab">weaker typed tree to add</param>
+        /// <param name="ab">weaker typed list to add</param>
         public override void Add(List<object?> ab)
         {
             for (int i = 0; i < count; i++)
@@ -790,7 +792,7 @@ namespace Pyrrho.Common
     /// Warning: the semantics of BList operations have changed.
     /// The + and - operators always add or remove and are O(N) 
     /// The following two alternatives are O(logN)
-    /// To add an entry to the end of a tree, use new BList(BList old,V v)
+    /// To add an entry to the end of a list, use new BList(BList old,V v)
     /// If you want to replace an item, use new BList(BList old,int k,V v)
     /// </summary>
     /// <typeparam name="V"></typeparam>
@@ -805,7 +807,7 @@ namespace Pyrrho.Common
         /// Use this constructor for b=b.REPLACE(k,v)
         /// We don't implement REPLACE itself because people forget the LHS
         /// </summary>
-        /// <param name="b">The old tree</param>
+        /// <param name="b">The old list</param>
         /// <param name="k">An index</param>
         /// <param name="v"></param>
         public BList(BList<V> b, int k, V v)
@@ -818,7 +820,7 @@ namespace Pyrrho.Common
         /// Use this constructor for b=b.ADDTOTAIL(v)
         /// We don't implement ADDTOTAIL itself because people forget the LHS
         /// </summary>
-        /// <param name="b">The old tree</param>
+        /// <param name="b">The old list</param>
         /// <param name="v">A value to add at the end</param>
         public BList(BList<V> b, V v)
             : base((((BTree<int, V>)b) + (b.Length, v)).root) { }
