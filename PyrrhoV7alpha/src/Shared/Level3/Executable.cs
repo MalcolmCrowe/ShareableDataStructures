@@ -4654,7 +4654,7 @@ namespace Pyrrho.Level3
                 xn += (_Domain, nt);
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
-            if (tok==Sqlx.WITH && pd is not null)
+            if (tok == Sqlx.WITH && pd is not null)
                 ds += (xn.defpos, pd.tableRow);
             else if (xn.Eval(cx) is TNode nn)
                 ds += (xn.defpos, nn.tableRow);
@@ -4685,16 +4685,34 @@ namespace Pyrrho.Level3
                     }
             }
             else if (xn.domain is NodeType nt0 && nt0.defpos > 0)
-                ds += nt0.tableRows;
+                ds = For(cx, xn, nt0, ds);
             else
                 for (var b = cx.db.role.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
-                        for (var c = nt1.tableRows.First(); c != null; c = c.Next())
-                            ds += (c.value().defpos, c.value());
+                        ds = For(cx, xn, nt1, ds);
             var df = ds.First();
             if (df != null)
                 DbNode(cx, new NodeStep(be.mode,xn,df,new ExpStep(be.mode,be.matches?.Next(),be.next)),
                     (xn is SqlEdge && xn is not SqlPath) ? xn.tok : tok, pd);
+        }
+        BTree<long, TableRow> For(Context cx, SqlNode xn, NodeType nt, BTree<long, TableRow>? ds)
+        {
+            ds ??= BTree<long, TableRow>.Empty;
+            var xp = -1L;
+            if (nt.FindPrimaryIndex(cx) is Index px
+                && px.MakeKey(xn.EvalProps(cx,nt)) is CList<TypedValue> pk
+                && nt.tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)
+                return ds + (tr0.defpos, tr0);
+            var cl = xn.EvalProps(cx,nt);
+            for (var c = nt.indexes.First(); c != null; c = c.Next())
+                for (var d = c.value().First(); d != null; d = d.Next())
+                {
+                    if (cx.db.objects[d.key()] is Index x
+                        && x.MakeKey(cl) is CList<TypedValue> xk
+                        && nt.tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)
+                        return ds + (tr.defpos, tr);
+                }
+            return ds + nt.tableRows;
         }
         /// <summary>
         /// For each dn in ds:

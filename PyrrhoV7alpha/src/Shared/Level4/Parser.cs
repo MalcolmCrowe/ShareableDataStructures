@@ -9699,16 +9699,55 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Get a document item for ParseGraphExp
         /// </summary>
-        /// <param name="v">The document being constructed</param>
+        /// <returns>(ColRef,Value)</returns>
         (SqlValue,SqlValue) GetDocItem()
         {
             Ident k = new(this);
+            if (lxr.caseSensitive && k.ident == "id")
+                k = new Ident("ID", k.iix);
             var ip = lxr.Position;
-            var vo = (lxr.val is TChar tc) ? tc.value : k.ident;
+      //      var vo = (lxr.val is TChar tc) ? tc.value : k.ident;
             Mustbe(Sqlx.Id);
+            lxr.docValue = true;
             Mustbe(Sqlx.COLON);
             Ident q = new(this);
+            lxr.docValue = false;
             var eq = (lxr.val is TChar ec) ? ec.value : q.ident;
+            if (lxr.caseSensitive && eq=="localDateTime")
+            {
+                Next();
+                Mustbe(Sqlx.LPAREN);
+                Ident tv = new(this); 
+                if (Domain.Timestamp.Parse(0,tv.ident,cx) is not TDateTime v)
+                    throw new DBException("42161", "Timestamp");
+                Next();
+                Mustbe(Sqlx.RPAREN);
+                return ((SqlValue)cx.Add(new SqlValue(k,BList<Ident>.Empty,cx,Domain.Char)),
+                    (SqlValue)cx.Add(new SqlLiteral(q.iix.dp, v)));
+            }
+            if (lxr.caseSensitive && eq == "date")
+            {
+                Next();
+                Mustbe(Sqlx.LPAREN);
+                Ident tv = new(this);
+                if (Domain.Date.Parse(0, tv.ident, cx) is not TDateTime v)
+                    throw new DBException("42161", "Date");
+                Next();
+                Mustbe(Sqlx.RPAREN);
+                return ((SqlValue)cx.Add(new SqlValue(k, BList<Ident>.Empty, cx, Domain.Char)),
+                    (SqlValue)cx.Add(new SqlLiteral(q.iix.dp, v)));
+            }
+            if (lxr.caseSensitive && eq=="toInteger")
+            {
+                Next();
+                Mustbe(Sqlx.LPAREN);
+                if (lxr.val is not TInt v)
+                    throw new DBException("42161", "Integer");
+                Next();
+                Mustbe(Sqlx.RPAREN);
+                return ((SqlValue)cx.Add(new SqlValue(k, BList<Ident>.Empty, cx, Domain.Char)),
+                    (SqlValue)cx.Add(new SqlLiteral(q.iix.dp, v)));
+            }
             if (tok == Sqlx.Id && !cx.defs.Contains(eq))
                 cx.Add(new SqlValue(q, BList<Ident>.Empty, cx, Domain.Char));
             return ((SqlValue)cx.Add(new SqlValue(k,BList<Ident>.Empty,cx,Domain.Char)),

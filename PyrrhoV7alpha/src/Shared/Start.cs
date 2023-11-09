@@ -963,7 +963,7 @@ namespace Pyrrho
                 {
                     string? str = null;
                     int b = tcp.crypt.ReadByte();
-                    if (b < (int)Connecting.Password || b > (int)Connecting.AllowAsk)
+                    if (b < (int)Connecting.Password || b > (int)Connecting.CaseSensitive)
                         throw new DBException("42105");
                     switch ((Connecting)b)
                     {
@@ -982,6 +982,7 @@ namespace Pyrrho
                         case Connecting.Modify: str = "Modify"; break;
                         case Connecting.Length: str = "Length"; break;
                         case Connecting.Culture: str = "Locale"; break;
+                        case Connecting.CaseSensitive: str = "CaseSensitive"; break;
                         default:
                             throw new DBException("42105");
                     }
@@ -1452,7 +1453,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.06alpha","(03 Nov 2023)", "http://www.pyrrhodb.com"
+            "7.06alpha","(09 Nov 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }
