@@ -2589,6 +2589,7 @@ namespace Pyrrho.Level4
         long _nextPrep = Transaction.HeapStart;
         internal long nextPrep => _nextPrep;
         internal readonly Level1.TCPStream? _tcp = null;
+        internal readonly bool caseSensitive = false;
         /// <summary>
         /// A tree of prepared statements, whose object persist
         /// in the base context for the connection.
@@ -2609,11 +2610,15 @@ namespace Pyrrho.Level4
         {
             if (cs != null)
                 props = cs;
+            if (props["CaseSensitive"] == "true")
+                caseSensitive = true;
         }
         internal Connection(TCPStream tcp,BTree<string,string> cs)
         {
             _tcp = tcp;
             props = cs;
+            if (props["CaseSensitive"] == "true")
+                caseSensitive = true;
         }
         public void Add(string nm,PreparedStatement ps)
         {

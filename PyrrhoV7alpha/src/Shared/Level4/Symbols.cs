@@ -353,6 +353,8 @@ namespace Pyrrho.Level4
         /// </summary>
 		public int start = 0, pushStart;
         public bool allowminus = false;
+        public bool caseSensitive = false;
+        public bool docValue = false; // caseSensitive matters if docValue is true
         /// <summary>
         /// the current character in the input string
         /// </summary>
@@ -439,6 +441,7 @@ namespace Pyrrho.Level4
 			Advance();
             this.cx = cx;
 			tok = Next();
+            caseSensitive = cx.conn.caseSensitive;
         }
         internal Lexer(Context cx,Ident id) : this(cx, id.ident, id.iix.lp) { }
         /// <summary>
@@ -645,7 +648,7 @@ namespace Pyrrho.Level4
                 while (char.IsLetterOrDigit(ch) || ch == '_')
                     Advance();
                 string s0 = new(input, start, pos - start);
-                string s = s0.ToUpper();
+                string s = caseSensitive?s0:s0.ToUpper();
                 if (CheckResWd(s))
                 {
                     switch (tok)
@@ -810,21 +813,25 @@ namespace Pyrrho.Level4
                         return tok = Sqlx.GEQ;
                     }
                     return tok = Sqlx.GTR;
-                case '"':   // delimited identifier
+                case '"':   // delimited identifier if caseSensitive is false
                     {
                         start = pos;
                         while (Advance() != '"')
                             ;
-                        val = new TChar(new string(input, start + 1, pos - start - 1));
+                        var v0 = new string(input, start + 1, pos - start - 1);
+                        val = new TChar(v0);
                         Advance();
                         while (ch == '"')
                         {
                             var fq = pos;
                             while (Advance() != '"')
                                 ;
-                            val = new TChar(val.ToString() + new string(input, fq, pos - fq));
+                            v0 += new string(input, fq, pos - fq);
+                            val = new TChar(v0);
                             Advance();
                         }
+                        if (caseSensitive && docValue && cx.defs[v0] is null)
+                            return tok=Sqlx.CHARLITERAL;   
                         tok = Sqlx.Id;
                         MaybePrefix(val.ToString());
                         return tok;
