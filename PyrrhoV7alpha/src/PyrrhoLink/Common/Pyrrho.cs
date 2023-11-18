@@ -4,11 +4,10 @@
     // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
     //
     // This software is without support and no liability for damage consequential to use.
-    // You can view and test this code, and use it subject for any purpose.
+    // You can view and test this code
     // You may incorporate any part of this code in other software if its origin 
     // and authorship is suitably acknowledged.
-    // All other use or distribution or the construction of any product incorporating 
-    // this technology requires a license from the University of the West of Scotland.
+
     /// <summary>
     /// For details of the Pyrrho protocol, see the manual Pyrrho.doc section 8.8, which
     /// gives the current list of codes.
@@ -52,6 +51,6 @@
     {
         Password = 20, User = 21, Files = 22, Role = 23, Done = 24, Stop = 25, Host = 26, Key = 27,
         Details = 28, Base = 29, Coordinator = 30, BaseServer = 31, Modify = 32, Length = 33,
-        Culture = 34, AllowAsk = 35
+        Culture = 34, AllowAsk = 35, CaseSensitive = 36
     }
 }

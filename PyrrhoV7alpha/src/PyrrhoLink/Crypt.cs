@@ -1,21 +1,13 @@
 ﻿using System.Text;
-using System.IO;
+
 using Pyrrho.Common;
 
 // Pyrrho Database Service by Malcolm Crowe at the Unbiversity of Paisley
 // (c) Malcolm Crowe, University of Paisley 2004-2006
 //
-// Patent Applied For:
-// This software incorporates and is a sample implementation of JournalDB technology covered by 
-// British Patent Application No 0620986.0 in the name of the University of Paisley
-// entitled "Improvements in and Relating to Database Technology"
-// 
-// This software is without support and no liability for damage consequential to use
-// You can view and test this code
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of Paisley
+// This software is without support and no liability for damage consequential to use is accepted
+// You can view and test this code and incorporate it in other software
 
-// OPEN SOURCE EDITIONS
 namespace Pyrrho.Security
 {
     /// <summary>

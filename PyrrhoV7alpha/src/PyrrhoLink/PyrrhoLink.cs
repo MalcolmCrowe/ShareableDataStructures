@@ -5,15 +5,12 @@ using Pyrrho.Common;
 using Pyrrho.Security;
 using System.Net;
 using System.Net.Sockets;
-using System.Threading;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2022
 //
 // This software is without support and no liability for damage consequential to use
-// This code may be used to connect to the Pyrrho Server or in Embedded Pyrrho
-// All other use or distribution or the construction of any product incorporating this technology 
-// requires a license from the University of the West of Scotland
+
 namespace Pyrrho
 {
     public class PyrrhoConnect
@@ -678,6 +675,7 @@ namespace Pyrrho
                     case "Modify": crypt.Send(Connecting.Modify, v); break;
                     case "AllowAsk": crypt.Send(Connecting.AllowAsk, v); break;
                     case "Locale": crypt.Send(Connecting.Culture, v); break;
+                    case "CaseSensitive": crypt.Send(Connecting.CaseSensitive, v); break;
                     default: throw new DatabaseError("2E209", n);
                 }
             }

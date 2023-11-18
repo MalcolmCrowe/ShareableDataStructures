@@ -49,12 +49,14 @@ namespace PyrrhoCmd
             string line = "";
             DatabaseError lasterr = null;
             bool interactive = true;
+            bool caseSensitive = false;
             PyrrhoTransaction transaction = null;
             Link stack = null;
             StreamReader file = null;
             Console.InputEncoding = Encoding.Unicode;
             Console.OutputEncoding = Encoding.Unicode;
             bool newfile = false;
+            int fileLines = -1;
             string files = "";
             int k = 0;
             while (args.Length > k)
@@ -72,12 +74,14 @@ namespace PyrrhoCmd
                         case 'p': port = args[k].Substring(3); break;
 #endif
                         case 's': silent = true; break;
+                        case 'U': caseSensitive = true; break;
                         case 'v': checks = true; break;
                         case 'e': line = args[k].Substring(3); interactive = false; break;
                         case 'f':
                             try
                             {
                                 file = new StreamReader(args[k].Substring(3));
+                                fileLines = 0;
                                 newfile = true;
                             }
                             catch (Exception)
@@ -97,6 +101,8 @@ namespace PyrrhoCmd
                 cs += ";Locale=" + Thread.CurrentThread.CurrentUICulture.Name;
             if (allowask)
                 cs += ";AllowAsk=true";
+            if (caseSensitive)
+                cs += ";CaseSensitive=true";
             PyrrhoConnect db = new PyrrhoConnect(cs);
             try
             {
@@ -120,6 +126,10 @@ namespace PyrrhoCmd
                             if (file.CurrentEncoding == Encoding.Default)
                                 Console.WriteLine(Format("0013"));
                             newfile = false;
+                        }
+                        if (++fileLines % 1000 == 0)
+                        {
+                            Console.Write(fileLines); Console.WriteLine(Format("0024"));
                         }
                     }
                     else
@@ -850,6 +860,7 @@ namespace PyrrhoCmd
                 dict.Add("0021", "Usage: [-s] [-e:command|-f:file] [-c:locale] database ...");
                 dict.Add("0022", "  -v  Show version and readCheck information for each row of data");
                 dict.Add("0023", " records in transaction ");
+                dict.Add("0024", " lines processed");
             }
 		}
 		public static string Format(string sig,params string[] obs)
