@@ -2374,7 +2374,7 @@ namespace Pyrrho.Level4
                 throw new DBException("42120", colname.ident);
             var tr = cx.db as Transaction?? throw new DBException("2F003");
             var pc = new PColumn3(tb, colname.ident, -1, dom,
-                dfs, dv, "", ua, false, gr, tr.nextPos, cx);
+                dfs, dv, "", ua, false, gr, PColumn.GraphFlags.None, -1L, -1L, tr.nextPos, cx);
             cx.Add(pc);
             tb = (Table?)cx.obs[tb.defpos] ?? tb;
             var tc = (TableColumn)(cx.db.objects[pc.defpos]??throw new PEException("PE50100"));
@@ -5030,7 +5030,8 @@ namespace Pyrrho.Level4
                 var pa = new Alter3(tc.defpos, nm, n, tb, tc.domain,
                     tc.generated.gfs ?? cx.obs?.ToString() ?? "",
                     tc.domain.defaultValue ?? TNull.Value,
-                    "", tc.update, tc.domain.notNull, tc.generated, tr.nextPos, cx);
+                    "", tc.update, tc.domain.notNull, tc.generated,
+                    tc.flags, tc.index, tc.toType, tr.nextPos, cx);
                 tb = (Table)(cx.Add(pa)??throw new DBException("42105"));
                 return tb;
             }
@@ -5071,7 +5072,7 @@ namespace Pyrrho.Level4
                     var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
                         tb, tc.domain, ds, dv, "",
                         CTree<UpdateAssignment, bool>.Empty, false,
-                        GenerationRule.None, tr.nextPos, cx);
+                        GenerationRule.None, tc.flags, tc.index, tc.toType, tr.nextPos, cx);
                     tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105"));
                 }
                 else if (Match(Sqlx.GENERATED))
@@ -5086,7 +5087,8 @@ namespace Pyrrho.Level4
                     tc.ColumnCheck(tr, true);
                     var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm), tb, tc.domain,
                         gr.gfs ?? type.defaultValue?.ToString() ?? "", type.defaultValue ?? TNull.Value,
-                        "", CTree<UpdateAssignment, bool>.Empty, tc.domain.notNull, gr, tr.nextPos, cx);
+                        "", CTree<UpdateAssignment, bool>.Empty, tc.domain.notNull, gr,
+                        tc.flags, tc.index, tc.toType, tr.nextPos, cx);
                     tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105"));
                 }
                 else if (Match(Sqlx.NOT))
@@ -5096,7 +5098,7 @@ namespace Pyrrho.Level4
                     tc.ColumnCheck(tr, false);
                     var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
                         tb, tc.domain, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
-                        true, tc.generated, tr.nextPos, cx);
+                        true, tc.generated, tc.flags, tc.index, tc.toType, tr.nextPos, cx);
                     tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105"));
                 }
                 return ParseColumnConstraint(tb, tc);
@@ -5120,7 +5122,7 @@ namespace Pyrrho.Level4
                         Next();
                         var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
                             tb, tc.domain, "", TNull.Value, tc.updateString ?? "", tc.update, tc.domain.notNull,
-                            GenerationRule.None, tr.nextPos, cx);
+                            GenerationRule.None, tc.flags, tc.index, tc.toType, tr.nextPos, cx);
                         tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105"));
                     }
                     else if (tok == Sqlx.NOT)
@@ -5130,7 +5132,7 @@ namespace Pyrrho.Level4
                         var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
                             tb, tc.domain, tc.domain.defaultString, tc.domain.defaultValue,
                             tc.updateString ?? "", tc.update, false,
-                            tc.generated, tr.nextPos, cx);
+                            tc.generated, tc.flags, tc.index, tc.toType, tr.nextPos, cx);
                         tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105"));
                     }
                     else if (tok == Sqlx.PRIMARY)
@@ -5229,7 +5231,7 @@ namespace Pyrrho.Level4
                     var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
                         tb, type,
                         type.defaultString, type.defaultValue, tc.updateString ?? "", tc.update,
-                        tc.domain.notNull, tc.generated, tr.nextPos, cx);
+                        tc.domain.notNull, tc.generated, tc.flags, tc.index, tc.toType, tr.nextPos, cx);
                     tc = (TableColumn)(cx.Add(pa)??throw new DBException("42105"));
                 }
             }
@@ -5299,7 +5301,7 @@ namespace Pyrrho.Level4
                         (Table?)cx.db.objects[tc.tabledefpos] ?? throw new DBException("42105"),
                         tc.domain, tc.domain.defaultString,
                         tc.domain.defaultValue, tc.updateString ?? "",
-                        tc.update, tc.domain.notNull, tc.generated, tr.nextPos, cx);
+                        tc.update, tc.domain.notNull, tc.generated, tc.flags, tc.index, tc.toType, tr.nextPos, cx);
                 }
             }
             else if (tok == Sqlx.DROP)
@@ -5443,7 +5445,8 @@ namespace Pyrrho.Level4
                     tc = (TableColumn)(cx.Add(new Alter3(tc.defpos, ci.name, td.PosFor(cx,ci.name), 
                          (Table?)cx.db.objects[tc.tabledefpos]??throw new DBException("42105"),
                          tc.domain, ds, dv, tc.updateString??"", tc.update,
-                         tc.domain.notNull, GenerationRule.None, tr.nextPos, cx))??throw new DBException("42105"));
+                         tc.domain.notNull, GenerationRule.None,
+                         tc.flags, tc.index, tc.toType, tr.nextPos, cx))??throw new DBException("42105"));
             skip:
                 if (tok != Sqlx.COMMA)
                     break;
@@ -5807,7 +5810,7 @@ namespace Pyrrho.Level4
                     var np = cx.db.nextPos;
                     var pc = new PColumn3((Table)dt, nm.ident, -1, dm,
                         "", dm.defaultValue, "", CTree<UpdateAssignment, bool>.Empty,
-                        false, GenerationRule.None, np, cx);
+                        false, GenerationRule.None, PColumn.GraphFlags.None, -1L, -1L, np, cx);
                     cx.Add(pc);
                     ms += (pc.defpos, dm);
                     sm += (nm.ident, (j, pc.defpos));
@@ -8628,14 +8631,12 @@ namespace Pyrrho.Level4
                     }
                 case Sqlx.ANY: goto case Sqlx.COUNT;
                 case Sqlx.AVG: goto case Sqlx.COUNT;
-                case Sqlx.CARDINALITY: // multiset arg functions
+                case Sqlx.CARDINALITY:
                     {
                         kind = tok;
                         Next();
                         Mustbe(Sqlx.LPAREN);
                         val = ParseSqlValue(Domain.Collection);
-                        if (kind != Sqlx.MULTISET)
-                            throw new DBException("42113", kind).Mix();
                         Mustbe(Sqlx.RPAREN);
                         break;
                     }

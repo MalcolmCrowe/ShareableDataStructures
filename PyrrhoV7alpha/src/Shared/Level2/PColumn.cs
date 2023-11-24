@@ -48,8 +48,8 @@ namespace Pyrrho.Level2
         [Flags] // for Typed Graph Model June2023
         internal enum GraphFlags { None = 0, IdCol = 1, LeaveCol = 2, ArriveCol = 4, SetValue = 8 }
         public GraphFlags flags;
-        public long index;  // IdIx // Leave or Arrive Ix
-        //public long toType; // Leave or Arrive Type
+        public long index = -1L;  // IdIx // Leave or Arrive Ix
+        public long toType = -1L; // Leave or Arrive Type
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (table != null && dataType != null)
@@ -76,7 +76,10 @@ namespace Pyrrho.Level2
             tabledefpos = pr.defpos;
             dataType = dm;
             domdefpos = dm.defpos;
-		}
+            if ((flags.HasFlag(GraphFlags.LeaveCol) || flags.HasFlag(GraphFlags.ArriveCol))
+                && (index < 0L || toType < 0L))
+                throw new PEException("PE40505");
+        }
         /// <summary>
         /// Constructor: a new Column definition from the buffer
         /// </summary>
@@ -98,15 +101,18 @@ namespace Pyrrho.Level2
                 tabledefpos = table.defpos;
                 seq = x.seq;
                 flags = x.flags;
-         //       if (flags.HasFlag(GraphFlags.ArriveCol))
-         //           toType = wr.cx.Fix(((EdgeType)x.table).arrivingType);
-        //        else if (flags.HasFlag(GraphFlags.LeaveCol))
-        //            toType = wr.cx.Fix(((EdgeType)x.table).leavingType);
+                if (flags.HasFlag(GraphFlags.ArriveCol) || flags.HasFlag(GraphFlags.LeaveCol))
+                {
+                    index = wr.cx.Fix(x.index);
+                    toType = wr.cx.Fix(x.toType);
+                }
                 domdefpos = x.domdefpos;
             }
         }
         protected override Physical Relocate(Writer wr)
         {
+            index = wr.cx.Fix(index);
+            toType = wr.cx.Fix(toType);
             return new PColumn(this, wr);
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
@@ -260,10 +266,10 @@ namespace Pyrrho.Level2
             sb.Append(']');
             if (flags != GraphFlags.None)
                 sb.Append(" " + flags);
-        //    if (index > 0)
-        //        sb.Append(" " + DBObject.Uid(index));
-        //    if (toType> 0)
-        //        sb.Append(" "+DBObject.Uid(toType));
+            if (index > 0)
+                sb.Append(" " + DBObject.Uid(index));
+            if (toType> 0)
+                sb.Append(" "+DBObject.Uid(toType));
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx, long p)
@@ -461,9 +467,10 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class PColumn3 : PColumn2
     {
-        public PColumn3(UDType ut,string nm,int sq,Domain dm,long pp,Context cx)
-            :this (ut,nm,sq,dm, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
-                    dm.notNull, GenerationRule.None, pp, cx)
+        public PColumn3(UDType ut, string nm, int sq, Domain dm,
+            GraphFlags gf, long ix, long tp, long pp, Context cx)
+            : this(ut, nm, sq, dm, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
+                    dm.notNull, GenerationRule.None, gf, ix, tp, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -478,9 +485,9 @@ namespace Pyrrho.Level2
         /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
         public PColumn3(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge, long pp,
-            Context cx)
-            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, pp, cx)
+            string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge,
+                        GraphFlags gf, long ix, long tp, long pp, Context cx)
+            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, gf, ix, tp, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -496,11 +503,14 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ds, 
             TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
-            GenerationRule ge, long pp, Context cx)
+            GenerationRule ge, GraphFlags gf, long ix, long tp, long pp, Context cx)
             : base(t, pr, nm, sq, dm, ds, dv, nn, ge, pp, cx)
         {
             upd = ua;
             ups = us;
+            flags = gf;
+            index = ix;
+            toType = tp;
         }
         /// <summary>
         /// Constructor: A new Column definition from the buffer
@@ -520,10 +530,12 @@ namespace Pyrrho.Level2
             upd = x.upd;
             ups = x.ups;
             index = wr.cx.Fix(index);
-        //    toType = wr.cx.Fix(toType);
+            toType = wr.cx.Fix(toType);
         }
         protected override Physical Relocate(Writer wr)
         {
+            index = wr.cx.Fix(index);
+            toType = wr.cx.Fix(toType);
             return new PColumn3(this, wr);
         }
         /// <summary>
@@ -535,7 +547,7 @@ namespace Pyrrho.Level2
             wr.PutString(ups??""); 
             wr.PutLong((long)flags);
             wr.PutLong(index);
-            wr.PutLong(-1L);// toType); ;
+            wr.PutLong(toType);
             base.Serialise(wr);
         }
         /// <summary>
@@ -548,8 +560,7 @@ namespace Pyrrho.Level2
             rdr.Upd(this);
             flags = (GraphFlags)rdr.GetLong();
             index = rdr.GetLong();
-            //toType = 
-                rdr.GetLong();
+            toType = rdr.GetLong();
             base.Deserialise(rdr);
         }
         public override string ToString()

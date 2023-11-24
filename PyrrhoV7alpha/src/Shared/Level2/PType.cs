@@ -238,7 +238,18 @@ namespace Pyrrho.Level2
                     if (b.value() is long bp && cx.obs[bp] is TableColumn tc)
                         ns += (tc.infos[tc.definer]?.name ?? "??", (b.key(), tc.defpos));
             oi += (ObInfo.Names, ns);
-            ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
+            if (dataType is EdgeType et && this is PEdgeType pe)
+            {
+                // the first edgetype with a given name has the alias table for any others
+                var np = defpos;
+                if (ro.dbobjects[name] is long pp && cx.db.objects[pp] is EdgeType)
+                    np = pp;
+                else
+                    ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
+                cx.db += (np, pe.leavingType, pe.arrivingType, et.defpos);
+            }
+            else
+                ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var os = new BTree<long, ObInfo>(Database._system.role.defpos, oi)
                 + (ro.defpos, oi);
             if (dataType is UDType ut && cx.db.objects[ut.super?.defpos ?? -1L] is UDType tu)

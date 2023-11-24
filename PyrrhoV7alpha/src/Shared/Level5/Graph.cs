@@ -357,7 +357,7 @@ namespace Pyrrho.Level5
                 {
                     var d = cx._Dom(b.value().defpos) ?? Content;
                     var pc = new PColumn3(ut, n, -1, d, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
-                    true, GenerationRule.None, cx.db.nextPos, cx);
+                    true, GenerationRule.None, PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx);
                     ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105"));
                     rt += pc.ppos;
                     rs += (pc.ppos, d);
@@ -415,7 +415,8 @@ namespace Pyrrho.Level5
                 throw new DBException("PE42133", name);
             for (var b = ls.First(); b != null; b = b.Next())
                 if (b.key() is string n && !ni.names.Contains(n) && ls[n] is SqlValue v)
-                    cx.Add(new PColumn3(this, n, -1, v.domain, cx.db.nextPos, cx));
+                    cx.Add(new PColumn3(this, n, -1, v.domain,
+                    PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx));
             return this;
         }
         static long LeastSpecific(NodeType nt)
@@ -494,10 +495,8 @@ namespace Pyrrho.Level5
                 pp = ui.names[id].Item2;
             if (pp == null)
             {
-                pc = new PColumn3(ut, id, ut.Seq(cx, gf), cd, cx.db.nextPos, cx)
-                {
-                    flags = gf
-                };
+                pc = new PColumn3(ut, id, ut.Seq(cx, gf), cd, gf, rx?.defpos ?? -1L, kc,
+                    cx.db.nextPos, cx);
                 // see note above
                 ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105"));
                 ut += (cp, pc.ppos);
@@ -528,7 +527,7 @@ namespace Pyrrho.Level5
             if (pc != null)
             {
                 pc.flags = gf;
-                //    pc.toType = rx?.reftabledefpos ?? -1L; // -1L for idCol case
+                pc.toType = rx?.reftabledefpos ?? -1L; // -1L for idCol case
                 pc.index = rx?.refindexdefpos ?? -1L; // ditto
             }
             tc += (TableColumn.GraphFlag, gf);

@@ -11741,6 +11741,17 @@ cx.obs[high] is not SqlValue hi)
                                 gc = new TChar(nN);
                             gt = (gv is TTypeSpec tt)?tt._dataType as EdgeType:
                                 cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as EdgeType;
+                            if (gt is not null && lT is not null && aT is not null
+                                && (gt.leavingType != lT.defpos || gt.arrivingType != aT.defpos))
+                            {
+                                var gn = gt.name;
+                                gt = cx.db.objects[cx.db.edgeTypes[gt.defpos]?[lT.defpos]?[aT.defpos] ?? -1L] as EdgeType;
+                                if (gt is null)
+                                {
+                                    gc = new TChar(gn);
+                                    dt = Domain.EdgeType;
+                                }
+                            }
                             gt = cx.db.objects[gt?.defpos??-1L] as EdgeType ?? gt;
                             if (gt is not null)
                             {

@@ -45,7 +45,6 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
- //           EdgeTypes = -471, // BTree<string,BTree<string,BTree<string,long?>>>
             Procedures = -249; // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
        internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;

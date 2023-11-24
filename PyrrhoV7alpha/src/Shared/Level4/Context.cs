@@ -175,8 +175,7 @@ namespace Pyrrho.Level4
         }
         internal Context(Context c, Role r, User u) : this(c)
         {
-            if (db != null)
-                db = db + (Database.Role, r) + (Database.User, u);
+            db = db + (Database.Role, r) + (Database.User, u);
         }
         /// <summary>
         /// This Lookup is from the ParseVarOrColumn above.
@@ -2525,6 +2524,34 @@ namespace Pyrrho.Level4
             }
             return ch ? r : rs;
         }
+        internal BTree<long, BTree<long, BTree<long, long?>>> FixTlTlTll(BTree<long, BTree<long, BTree<long, long?>>> es)
+        {
+            var r = BTree<long, BTree<long, BTree<long, long?>>>.Empty;
+            var ch = false;
+            for (var b = es.First(); b != null; b = b.Next())
+                if (b.value() is BTree<long, BTree<long, long?>> bt)
+                {
+                    var bk = Fix(b.key());
+                    var bv = FixTlTll(bt);
+                    ch = ch || bk != b.key() || bv != bt;
+                    r += (bk, bv);
+                }
+            return ch ? r : es;
+        }
+        internal BTree<long, BTree<long, long?>> FixTlTll(BTree<long, BTree<long, long?>> es)
+        {
+            var r = BTree<long, BTree<long, long?>>.Empty;
+            var ch = false;
+            for (var b = es.First(); b != null; b = b.Next())
+                if (b.value() is BTree<long, long?> bt)
+                {
+                    var bk = Fix(b.key());
+                    var bv = FixTll(bt);
+                    ch = ch || bk != b.key() || bv != bt;
+                    r += (bk, bv);
+                }
+            return ch ? r : es;
+        }
         internal BTree<long, long?> FixTll(BTree<long, long?> rs)
         {
             var r = BTree<long, long?>.Empty;
@@ -2539,7 +2566,7 @@ namespace Pyrrho.Level4
                     r += (p, d);
                 }
             return ch ? r : rs;
-        }
+        } 
         internal BTree<long, (long, long)> FixBlll(BTree<long, (long, long)> ds)
         {
             var r = BTree<long, (long, long)>.Empty;

@@ -207,17 +207,6 @@ namespace Pyrrho.Level3
                         throw e;
                     }
                 }
-                /*
-                for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
-                {
-                    var ce = cb.value()?.Check(ph,pt);
-                    if (ce != null)
-                    {
-                        cx.rconflicts++;
-                        throw ce;
-                    }
-                }
-                */
                 if (pt is not null)
                 for (var b = tb; b != null; b = b.Next())
                 {
@@ -255,17 +244,6 @@ namespace Pyrrho.Level3
                             throw e;
                         }
                     }
-                    /*
-                    for (var cb = cx.rdC.First(); cb != null; cb = cb.Next())
-                    {
-                        var ce = cb.value()?.Check(ph,pu);
-                        if (ce != null)
-                        {
-                            cx.rconflicts++;
-                            throw ce;
-                        }
-                    }
-                    */
                     if (pu is not null)
                     for (var b = tb; b != null; b = b.Next())
                     {
@@ -293,12 +271,16 @@ namespace Pyrrho.Level3
                 var (tr, _) = pt.Commit(wr, this);
                 var os = BTree<long, Physical>.Empty;
                 cx.undefined = CTree<long, int>.Empty;
+                var ne = false; // watch out for new edge types
                 for (var b = physicals.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
-                    cx.result = p.ppos; 
+                    cx.result = p.ppos;
+                    ne = ne || p is PEdgeType;
                     (tr, _) = p.Commit(wr, tr);
                 }
+                if (ne)
+                    wr.cx.db += (EdgeTypes, wr.cx.FixTlTlTll(edgeTypes));
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 cx.parse = ExecuteStatus.Obey;
                 wr.cx.db += (LastModified, File.GetLastWriteTimeUtc(name));

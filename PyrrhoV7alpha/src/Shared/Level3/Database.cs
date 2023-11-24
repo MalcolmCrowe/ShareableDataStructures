@@ -149,6 +149,7 @@ namespace Pyrrho.Level3
         internal const long
             Arriving = -469, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Curated = -53, // long
+            EdgeTypes = -471, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType,NodeType,NodeType,EdgeType
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Graphs = -461, // CTree<long,TGraph> the set of disjoint graphs for 7.03
    //         GraphUsage = -482, // CTree<long,CTree<long,bool>> NodeType NodeType
@@ -202,6 +203,9 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         public CTree<long, string> procedures =>
             (CTree<long, string>?)mem[Procedures] ?? CTree<long, string>.Empty;
+        public BTree<long, BTree<long, BTree<long, long?>>> edgeTypes
+            => (BTree<long, BTree<long, BTree<long, long?>>>?)mem[EdgeTypes] 
+            ?? BTree<long, BTree<long, BTree<long, long?>>>.Empty;
         public BTree<string, long?> prefixes =>
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
@@ -225,6 +229,7 @@ namespace Pyrrho.Level3
                     (User, su) +  (Owner, su.defpos));
             guestRole = new Role("GUEST", Guest, BTree<long, object>.Empty);
             _system = new Database("System", su, schemaRole, guestRole)+(_Schema,schemaRole.defpos);
+            Domain.Kludge();
             SystemRowSet.Kludge();
         }
         Database():base(BTree<long,object>.Empty) { }
@@ -327,7 +332,38 @@ namespace Pyrrho.Level3
             }
             if (dm.defpos!=-1L)
                 m += (dm.defpos, dm);
+            if (dm is EdgeType et && d.role.dbobjects[et.name] is long ep)
+                d += (ep, et.leavingType, et.arrivingType, et.defpos);
             return (Database)d.New(m);
+        }
+        public static Database operator +(Database d, (long, long, long, long) x)
+        {
+            var (et, lt, at, nt) = x;
+            if (et < 0 || lt < 0 || at < 0 || nt < 0)
+                return d;
+            var es = d.edgeTypes;
+            var bt = es[et] ?? BTree<long, BTree<long, long?>>.Empty;
+            var ct = bt[lt] ?? BTree<long, long?>.Empty;
+            return (Database)d.New(d.mem + (EdgeTypes, es + (et, bt + (lt, ct + (at, nt)))));
+        }
+        public Database RemoveEdgeType(EdgeType et)
+        {
+            var ro = role;
+            var db = this;
+            var es = edgeTypes;
+            if (ro.dbobjects[et.name] is long ep && es[ep] is BTree<long, BTree<long, long?>> bt)
+            {
+                es -= ep;
+                for (var b = bt.First(); b != null; b = b.Next())
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                        if (c.value() is long cp && cp != et.defpos)
+                        {
+                            ro += (Level3.Role.DBObjects, ro.dbobjects + (et.name, cp));
+                            return db + (ro, db.loadpos) + (EdgeTypes, es + (cp, bt));
+                        }
+            }
+            ro += (Level3.Role.DBObjects, ro.dbobjects - et.name);
+            return db + (ro, db.loadpos);
         }
         internal TGraph? Graph(TNode r) // r a node or edge
         {
@@ -488,6 +524,17 @@ namespace Pyrrho.Level3
             return (role.procedures[n] is BTree<CList<Domain>, long?> pt &&
                 pt.Contains(a)) ? objects[pt[a] ?? -1L] as Procedure
                 : null;
+        }
+        public EdgeType? GetEdgeType(long e, long lt, long at)
+        {
+            var et = objects[e] as EdgeType;
+            if (et is null) return null;
+            if (edgeTypes[e] is not BTree<long, BTree<long, long?>> bt) return et;
+            if (bt[lt] is not BTree<long, long?> ct) return et;
+            if (objects[ct[at] ?? -1L] is EdgeType nt) return nt;
+            if (et.leavingType != lt || et.arrivingType != at)
+                throw new DBException("42133", "Edge");
+            return et;
         }
         public Domain? Find(Domain dm)
         {
