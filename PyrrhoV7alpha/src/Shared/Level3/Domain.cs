@@ -83,7 +83,7 @@ namespace Pyrrho.Level3
     Document, DocArray, ObjectId, JavaScript, ArgList, // Pyrrho 5.1
     TableType, Row, Delta, Position,
     Metadata, HttpDate, Star, // Pyrrho v7
-    _Rvv, Graph; // Rvv is V7 validator type
+    _Rvv, Graph, PathType; // Rvv is V7 validator type
         internal static UDType TypeSpec;
         internal static NodeType NodeType;
         internal static EdgeType EdgeType;
@@ -135,6 +135,7 @@ namespace Pyrrho.Level3
             Graph = new StandardDataType(Sqlx.GRAPH);
             NodeType = new NodeType(Sqlx.NODETYPE);
             EdgeType = new EdgeType(Sqlx.EDGETYPE);
+            PathType = new StandardDataType(Sqlx.PATH,OrderCategory.Primitive,NodeType);
         }
         public override Domain domain => this;
         public Sqlx kind => (Sqlx)(mem[Kind] ?? Sqlx.NO);
@@ -149,7 +150,7 @@ namespace Pyrrho.Level3
         public CultureInfo culture => (CultureInfo)(mem[Culture] ?? CultureInfo.InvariantCulture);
         public Domain? elType => (Domain?)mem[Element];
         public TypedValue defaultValue => (TypedValue?)mem[Default] ??
-            ((defaultRowValues!=CTree<long,TypedValue>.Empty)? new TRow(this,defaultRowValues) 
+            ((defaultRowValues != CTree<long, TypedValue>.Empty) ? new TRow(this, defaultRowValues)
                         : TNull.Value);
         public string defaultString => (string?)mem[DefaultString] ?? "";
         public CTree<long, TypedValue> defaultRowValues =>
@@ -159,63 +160,63 @@ namespace Pyrrho.Level3
         public bool superShape => (bool)(mem[SuperShape] ?? false);
         public CTree<long, bool> subtypes =>
             (CTree<long, bool>)(mem[Subtypes] ?? CTree<long, bool>.Empty);
-        public string abbrev => (string?)mem[Abbreviation]??"";
-        public CTree<long, bool> constraints => (CTree<long, bool>?)mem[Constraints]??CTree<long,bool>.Empty;
-        public CTree<long,Domain> representation => 
-            (CTree<long,Domain>?)mem[Representation] ?? CTree<long,Domain>.Empty;
+        public string abbrev => (string?)mem[Abbreviation] ?? "";
+        public CTree<long, bool> constraints => (CTree<long, bool>?)mem[Constraints] ?? CTree<long, bool>.Empty;
+        public CTree<long, Domain> representation =>
+            (CTree<long, Domain>?)mem[Representation] ?? CTree<long, Domain>.Empty;
         public virtual BList<long?> rowType => (BList<long?>?)mem[RowType] ?? BList<long?>.Empty;
         public int Length => rowType.Length;
         public Procedure? orderFunc => (Procedure?)mem[OrderFunc];
-        public CTree<long,bool> aggs => 
-            (CTree<long,bool>?)mem[Aggs]??CTree<long,bool>.Empty;
-        public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory]??OrderCategory.None);
-        public CTree<Domain,bool> unionOf => 
-            (CTree<Domain,bool>?)mem[UnionOf] ?? CTree<Domain,bool>.Empty;
-        internal Domain(Context cx,CTree<long,Domain>rs,BList<long?> rt,BTree<long,ObInfo> ii)
-            : this(-1L,_Mem(cx,Sqlx.TABLE,rs,rt,rt.Length)+(Infos,ii)) { }
-        internal Domain(long dp,Context cx,Sqlx t, CTree<long, Domain> rs, BList<long?> rt, int ds=0)
-            : this(dp,_Mem(cx,t,rs,rt,ds))
+        public CTree<long, bool> aggs =>
+            (CTree<long, bool>?)mem[Aggs] ?? CTree<long, bool>.Empty;
+        public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory] ?? OrderCategory.None);
+        public CTree<Domain, bool> unionOf =>
+            (CTree<Domain, bool>?)mem[UnionOf] ?? CTree<Domain, bool>.Empty;
+        internal Domain(Context cx, CTree<long, Domain> rs, BList<long?> rt, BTree<long, ObInfo> ii)
+            : this(-1L, _Mem(cx, Sqlx.TABLE, rs, rt, rt.Length) + (Infos, ii)) { }
+        internal Domain(long dp, Context cx, Sqlx t, CTree<long, Domain> rs, BList<long?> rt, int ds = 0)
+            : this(dp, _Mem(cx, t, rs, rt, ds))
         {
             cx.Add(this);
         }
-        public Domain(Sqlx t, Context cx, BList<DBObject> vs, int ds=0)
-            : this(cx.GetUid(),_Mem(cx,t,vs,ds)) 
+        public Domain(Sqlx t, Context cx, BList<DBObject> vs, int ds = 0)
+            : this(cx.GetUid(), _Mem(cx, t, vs, ds))
         {
             cx.Add(this);
         }
-        public Domain(long dp,Context cx,Sqlx t, BList<DBObject> vs, int ds = 0)
-    : this(dp, _Mem(cx,t,vs, ds))
+        public Domain(long dp, Context cx, Sqlx t, BList<DBObject> vs, int ds = 0)
+    : this(dp, _Mem(cx, t, vs, ds))
         {
             cx.Add(this);
         }
         // A union of standard types
-        public Domain(long dp, Sqlx t, CTree<Domain,bool> u)
-            : this(dp,BTree<long, object>.Empty + (Kind,t) + (UnionOf,u))
+        public Domain(long dp, Sqlx t, CTree<Domain, bool> u)
+            : this(dp, BTree<long, object>.Empty + (Kind, t) + (UnionOf, u))
         {
             Database._system += this;
         }
         // A simple standard type
-        public Domain(long dp, Sqlx t, BTree<long,object> u)
-        : base(dp,u+(Kind,t))
+        public Domain(long dp, Sqlx t, BTree<long, object> u)
+        : base(dp, u + (Kind, t))
         {
             Database._system += this;
         }
         internal Domain(long dp, BTree<long, object> m) : base(dp, m)
-        {  }
+        { }
         /// <summary>
         /// Allow construction of ad-hoc derived types such as ARRAY, MULTISET, SET, COLLECT
         /// </summary>
         /// <param name="t"></param>
         /// <param name="d"></param>
-        public Domain(long dp,Sqlx t, Domain et)
-            : base(dp,new BTree<long, object>(Element, et)+(Kind,t))
+        public Domain(long dp, Sqlx t, Domain et)
+            : base(dp, new BTree<long, object>(Element, et) + (Kind, t))
         {
             if (kind == Sqlx.TYPE && this is not UDType)
                 throw new PEException("PE8881");
         }
         protected Domain(long pp, long dp, BTree<long, object>? m = null)
             : base(pp, dp, m)
-        {  }
+        { }
         static BTree<long, object> _Mem(Context cx, Sqlx t, BList<DBObject> vs, int ds = 0)
         {
             var rs = CTree<long, Domain>.Empty;
@@ -227,22 +228,22 @@ namespace Pyrrho.Level3
                 rs += (v.defpos, v.domain);
                 cs += v.defpos;
                 if (v is SqlValue sv)
-                    ag += sv.IsAggregation(cx,CTree<long,bool>.Empty);
+                    ag += sv.IsAggregation(cx, CTree<long, bool>.Empty);
             }
-            var m = BTree<long,object>.Empty + (Representation, rs) + (RowType, cs)
+            var m = BTree<long, object>.Empty + (Representation, rs) + (RowType, cs)
                 + (Aggs, ag) + (Kind, t)
                 + (Default, For(t).defaultValue);
             if (ds != 0)
                 m += (Display, ds);
             return cx.DoDepth(m);
         }
-        static BTree<long, object> _Mem(Context cx,Sqlx t,CTree<long,Domain> rs, BList<long?> cs, int ds = 0)
+        static BTree<long, object> _Mem(Context cx, Sqlx t, CTree<long, Domain> rs, BList<long?> cs, int ds = 0)
         {
-     //       for (var b = cs.First(); b != null; b = b.Next())
-     //           if (b.value() is long p && !rs.Contains(p))
-     //               throw new PEException("PE283");
-            var d = cx._DepthTVD(rs,1);
-            var m =  BTree<long,object>.Empty +(_Depth,d)+ (Representation, rs) + (RowType, cs) + (Kind, t)
+            //       for (var b = cs.First(); b != null; b = b.Next())
+            //           if (b.value() is long p && !rs.Contains(p))
+            //               throw new PEException("PE283");
+            var d = cx._DepthTVD(rs, 1);
+            var m = BTree<long, object>.Empty + (_Depth, d) + (Representation, rs) + (RowType, cs) + (Kind, t)
                 + (Default, For(t).defaultValue);
             if (ds != 0)
                 m += (Display, ds);
@@ -256,8 +257,8 @@ namespace Pyrrho.Level3
         }
         internal Domain Scalar(Context cx)
         {
-            if ((kind == Sqlx.TABLE || kind == Sqlx.ROW) && Length>0)
-                return (Domain)(cx.obs[rowType[0]??-1L]?.domain??Content);
+            if ((kind == Sqlx.TABLE || kind == Sqlx.ROW) && Length > 0)
+                return (Domain)(cx.obs[rowType[0] ?? -1L]?.domain ?? Content);
             return this;
         }
         internal Domain Best(Domain dt)
@@ -270,14 +271,16 @@ namespace Pyrrho.Level3
                         return this;
             return dt;
         }
-        internal override DBObject Instance(long lp,Context cx, BList<Ident>?cs=null)
+        internal override DBObject Instance(long lp, Context cx, BList<Ident>? cs = null)
         {
-            var r = base.Instance(lp,cx);
+            var r = base.Instance(lp, cx);
             for (var b = constraints.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is DBObject ob)
-                    cx.Add(ob.Instance(lp,cx));
+                    cx.Add(ob.Instance(lp, cx));
             return r;
         }
+        internal static void Kludge()
+        { }
         public static Domain operator +(Domain et, (long, object) x)
         {
             var d = et.depth;

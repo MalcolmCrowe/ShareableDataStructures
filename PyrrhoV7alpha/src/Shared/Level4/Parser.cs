@@ -976,7 +976,7 @@ namespace Pyrrho.Level4
                         Next();
                         if (lxr.tgs[pi.iix.dp] is TGParam gp)
                         {
-                            gp = new TGParam(gp.uid, gp.value, new Domain(-1L,Sqlx.ARRAY,Domain.NodeType), TGParam.Type.Path);
+                            gp = new TGParam(gp.uid, gp.value, Domain.PathType, TGParam.Type.Path);
                             lxr.tgs += (pi.iix.dp, gp);
                             cx.Add(new SqlValue(pi,BList<Ident>.Empty,cx,Domain.Char));
                             cx.defs += (pi, cx.sD);
@@ -5506,7 +5506,7 @@ namespace Pyrrho.Level4
         /// <param name="pn">Parent Id (Type, or Procedure)</param>
 		Domain ParseSqlDataType(Ident? pn=null)
         {
-            Domain r;
+            Domain? r = null;
             Sqlx tp = tok;
             if (Match(Sqlx.TABLE, Sqlx.ROW, Sqlx.TYPE, Sqlx.LPAREN))// anonymous row type
             {
@@ -5515,17 +5515,26 @@ namespace Pyrrho.Level4
                 else
                     tp = Sqlx.TYPE;
                 if (tok == Sqlx.LPAREN)
-                   return ParseRowTypeSpec(tp,pn); // pn is needed for tp==TYPE case
+                    r = ParseRowTypeSpec(tp, pn); // pn is needed for tp==TYPE case
             }
-            var cn = new Ident(this);
-            if (tok==Sqlx.Id && cx.GetObject(cn.ident) is UDType ut)
+            else
             {
-                Next();
-                ut.Defs(cx);
-                return ut;
+                var cn = new Ident(this);
+                if (tok == Sqlx.Id && cx.GetObject(cn.ident) is UDType ut)
+                {
+                    Next();
+                    ut.Defs(cx);
+                    r = ut;
+                }
+                else 
+                    r = ParseStandardDataType();
             }
-            r = ParseStandardDataType();
-            if (r == Domain.Null || r==Domain.Content)
+            if (r!=null && Match(Sqlx.ARRAY,Sqlx.SET,Sqlx.MULTISET))
+            {
+                r = new Domain(-1L, tok, r);
+                Next();
+            }
+            if (r==null || r == Domain.Null || r==Domain.Content)
             {
                 var o = new Ident(this);
                 Next();

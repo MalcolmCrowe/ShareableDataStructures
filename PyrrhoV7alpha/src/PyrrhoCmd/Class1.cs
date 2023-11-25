@@ -285,15 +285,47 @@ namespace PyrrhoCmd
                             }
                             continue;
                     }
-                    if (str.StartsWith("delete") || str.StartsWith("update") || str.StartsWith("insert"))
+                    if (str.StartsWith("delete") || str.StartsWith("update") || str.StartsWith("insert")
+                        || str.StartsWith("create"))
                     {
                         var n = cmd.ExecuteNonQuery();
                         ShowWarnings(db);
                         var tr = (transaction != null) ? "0023" : "0020";
-                        if (n < 0) // For cascade actions we don't get #affected rows
-                            Console.WriteLine(Format("0019")); // OK
-                        else
-                            Console.WriteLine("" + n + Format(tr)+files);
+                        if (file is null)
+                        {
+                            if (n < 0) // For cascade actions we don't get #affected rows
+                                Console.WriteLine(Format("0019")); // OK
+                            else
+                                Console.WriteLine("" + n + Format(tr) + files);
+                        }
+                    }
+                    else if (str.StartsWith("match"))
+                    {
+                        (var n, rdr) = cmd.ExecuteMatch();
+                        if (rdr is null)
+                        {
+                            ShowWarnings(db);
+                            var tr = (transaction != null) ? "0023" : "0020";
+                            if (file is null)
+                            {
+                                if (n < 0) // For cascade actions we don't get #affected rows
+                                    Console.WriteLine(Format("0019")); // OK
+                                else
+                                    Console.WriteLine("" + n + Format(tr) + files);
+                            }
+                            else if (n == 0)
+                                Console.WriteLine("Fault at line "+fileLines);
+                        } else
+                            try
+                            {
+                                ShowWarnings(db);
+                                Show(rdr);
+                            }
+                            catch (Exception e)
+                            {
+                                rdr.Close();
+                                throw e;
+                            }
                     }
                     else
                     {
@@ -309,6 +341,7 @@ namespace PyrrhoCmd
                                 rdr.Close();
                                 throw e;
                             }
+
                     }
                 }
                 catch (TransactionConflict e)

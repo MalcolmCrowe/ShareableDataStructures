@@ -1041,7 +1041,7 @@ namespace Pyrrho.Common
             return new TRow(rw.dataType, rw.values + x);
         }
         internal override TypedValue this[long n] => values[n]??TNull.Value;
-        internal TypedValue this[int i]
+        internal virtual TypedValue this[int i]
         {
             get {
                 if (columns != null && columns[i] is long p)
@@ -1100,6 +1100,48 @@ namespace Pyrrho.Common
                     r += values[p] ?? TNull.Value;
             return r;
         }
+    }
+    // we implement a TPath as a TRow: its row type is
+    // [0=NodeType Array, {uid=TypedValue} ]
+    // where uid identifies an unbound identifier X:T in the Match Statement
+    // and the TypedValue is T or TArray<T> if X is in a repeating path segment
+    // During evaluation of the Match, the TPatch starts off empty and is
+    // populated as the path is traversed
+    internal class TPath : TRow
+    {
+        internal TPath(long dp,Context cx) : base(new Domain(dp,cx,Sqlx.ROW,BList<DBObject>.Empty,0), 
+            new CTree<long, TypedValue>(0, new TArray(Domain.NodeType,CTree<int,TypedValue>.Empty))) { }
+        internal TPath(Domain dt,CTree<long,TypedValue> vs) : base(dt, vs) { }
+        public static TPath operator+(TPath p,TNode n)
+        {
+            var a = (TArray)p[0L];
+            return new TPath(p.dataType,p.values + (0L, a+(a.Length,n)));
+        }
+        public static TPath operator+(TPath p,(Context, long,TypedValue)x)
+        {
+            var (cx, k, v) = x;
+            var dt = p.dataType;
+            if (dt.representation.Contains(k))
+                return new TPath(dt,p.values+(k,v));
+            return new TPath(
+                (Domain)cx.Add(new Domain(dt.defpos,cx,Sqlx.ROW,dt.representation+(k,v.dataType),dt.rowType+k)),
+                p.values+(k,v));
+        }
+        public static TPath operator +(TPath p, (Context, TypedValue, long) x)
+        {
+            var (cx, v, k) = x;
+            var dt = p.dataType;
+            if (dt.representation.Contains(k))
+            {
+                var a = (TArray)p[k];
+                return new TPath(dt, p.values + (k, a+(a.Length,v)));
+            }
+            return new TPath(
+                (Domain)cx.Add(new Domain(dt.defpos, cx, Sqlx.ROW,
+                dt.representation + (k, new Domain(-1L,Sqlx.ARRAY, v.dataType)), dt.rowType + k)),
+                p.values + (k, new TArray(v.dataType,new CTree<int,TypedValue>(0,v))));
+        }
+        internal override TypedValue this[int i] => ((TArray)this[0L])?[i]??TNull.Value;
     }
     /// <summary>
     /// A set can be placed in a cell of a Table, so is treated as a value type.

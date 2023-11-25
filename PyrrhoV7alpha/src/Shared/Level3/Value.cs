@@ -11771,15 +11771,12 @@ cx.obs[high] is not SqlValue hi)
                                     md += (Sqlx.RARROW, new TChar(lN));
                                 if (aN is not null)
                                     md += (Sqlx.ARROW, new TChar(aN));
-                                if (bn != null) // Immediately build a type if not the last
-                                {
-                                    if (cx.db.objects[cx.role.defpos] is Role rr
-                                        && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
-                                        gt = ht;
-                                    else
+                                if (cx.db.objects[cx.role.defpos] is Role rr
+                                    && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
+                                    gt = ht;
+                                else
                                     (gt, _) = gt.Build(cx, dt, ls, md);
-                                    ls = CTree<string, SqlValue>.Empty;
-                                }
+                                ls = CTree<string, SqlValue>.Empty;
                             }
                             ty += (b.key(), new TTypeSpec(gt));
                             nt = (EdgeType)gt;

@@ -442,6 +442,47 @@ namespace Pyrrho
                                 }
                                 break;
                             }
+                        case Protocol.ExecuteMatch: // ExecuteReader
+                            {
+                                if (rb != null)
+                                    throw new DBException("2E202").Mix();
+                                nextCol = 0; // discard anything left over from ReaderData
+                                var cmd = tcp.GetString();
+                                db = db.Transact(db.nextId, conn);
+                                cx = new(db, cx ?? throw new PEException("PE1400"));
+                                //           Console.WriteLine(cmd);
+                                db = new Parser(cx).ParseSql(cmd, Domain.TableType);
+                                cx.db = db;
+                                cx.done = ObTree.Empty;
+                                var tn = DateTime.Now.Ticks;
+                                var c = db.AffCount(cx);
+                                tcp.PutWarnings(cx);
+                                if (cx.result <= 0L)
+                                {
+                                    tcp.Write(Responses.MatchDone);
+                                    tcp.PutInt(c);   
+                                    db = db.RdrClose(ref cx);
+                                    var r = cx.rdC;
+                                    cx = new(db, conn) { rdC = r };
+                                }
+                                else
+                                {
+                                    tcp.Write(Responses.TableData);
+                                    tcp.PutSchema(cx);
+                                    rb = null;
+                                    if (cx.obs[cx.result] is RowSet res)
+                                    {
+                                        if (PyrrhoStart.ShowPlan)
+                                            res.ShowPlan(cx);
+                                        cx.rdC += res.dependents;
+                                        rb = res.First(cx);
+                                        while (rb != null && rb.IsNull)
+                                            rb = rb.Next(cx);
+                                    }
+                                    db = cx.db;
+                                }
+                                break;
+                            }
                         case Protocol.Get: // GET rurl
                             {
                                 var k = tcp.GetLong();
@@ -851,7 +892,7 @@ namespace Pyrrho
                     try
                     {
                         db = db.Rollback();
-                        cx = new Context(db);
+                        cx = new Context(db,cx?.conn);
                         rb = null;
                         tcp.StartException();
                         tcp.Write(Responses.Exception);
@@ -1453,7 +1494,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.06alpha","(24 Nov 2023)", "http://www.pyrrhodb.com"
+            "7.07alpha","(25 Nov 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

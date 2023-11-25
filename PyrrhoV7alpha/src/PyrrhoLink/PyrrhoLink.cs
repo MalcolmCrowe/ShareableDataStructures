@@ -895,6 +895,23 @@ namespace Pyrrho
             conn.Send(Protocol.ExecuteReader, commandText);
             return PyrrhoReader.New(this);
         }
+        public (int,PyrrhoReader?) ExecuteMatch()
+        {
+            if (!conn.isOpen)
+                throw new DatabaseError("2E201");
+            if (thread != Thread.CurrentThread)
+                throw new DatabaseError("08C00");
+            conn.AcquireExecution();
+            conn.Send(Protocol.ExecuteMatch, commandText);
+            var r = 0;
+            PyrrhoReader? rdr = null;
+            var p = conn.Receive();
+            if (p == Responses.MatchDone)
+                r = conn.GetInt();
+            else
+                rdr = PyrrhoReader.New(this);
+            return (r,rdr);
+        }
         internal PyrrhoReader _ExecuteReader<T>(PyrrhoTable<T> t) where T : class
         {
             if (!conn.isOpen)
@@ -906,21 +923,6 @@ namespace Pyrrho
         public object ExecuteScalar()
         {
             var rdr = (PyrrhoReader)ExecuteReader();
-            try
-            {
-                rdr.Read();
-                object o = rdr[0];
-                rdr.Close();
-                return o;
-            }
-            finally
-            {
-                conn.ReleaseExecution();
-            }
-        }
-        public object ExecuteScalarCrypt()
-        {
-            var rdr = (PyrrhoReader)ExecuteReaderCrypt();
             try
             {
                 rdr.Read();
@@ -974,27 +976,6 @@ namespace Pyrrho
             var r = conn.GetInt();
             conn.ReleaseTransaction();
             return r;
-        }
-        public int ExecuteNonQueryCrypt()
-        {
-            if (!conn.isOpen)
-                throw new DatabaseError("2E201");
-            if (thread != Thread.CurrentThread)
-                throw new DatabaseError("08C01");
-            conn.AcquireExecution();
-            try
-            {
-                conn.Send(Protocol.ExecuteNonQueryCrypt);
-                conn.crypt.PutString(commandText);
-                var p = conn.Receive();
-                if (p != Responses.Done)
-                    throw new DatabaseError("2E203");
-                return conn.GetInt();
-            }
-            finally
-            {
-                conn.ReleaseExecution();
-            }
         }
         public int CommandTimeout
         {

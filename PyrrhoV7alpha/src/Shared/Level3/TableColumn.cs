@@ -448,7 +448,7 @@ namespace Pyrrho.Level3
         internal readonly long subType;
         internal readonly Level classification;
         internal readonly CTree<long, TypedValue> vals;
-        internal static TableRow Any = new TableRow(-1L); // creates a dummy TableRow for TMatch
+        internal static TableRow Any = new TableRow(-1L); // creates a dummy TableRow for TPath
         public TableRow(Record rc, Context cx)
         {
             defpos = rc.defpos;

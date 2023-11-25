@@ -4257,9 +4257,9 @@ namespace Pyrrho.Level3
         /// The match graphs and the set of TGParams are in this MatchStatement.
         /// The database graph is in cx.db.graphs and cx.db.nodeids.
         /// The state consists of
-        ///     The current TMatch as two bookmarks (for TGraph, and TMatch)
-        ///     The current TMatch as a bookmark in this mapping
-        ///     The current choice of TNode for the current TMatch
+        ///     The current TPath as two bookmarks (for TGraph, and TPath)
+        ///     The current TPath as a bookmark in this mapping
+        ///     The current choice of TNode for the current TPath
         ///     The saved binding state for TGParams in cx.binding
         /// </summary>
         /// <param name="cx">The context</param>
@@ -4363,7 +4363,7 @@ namespace Pyrrho.Level3
                     ag += (RowSet._Source, ers.defpos);
                     ag = (SelectRowSet)cx.Add(ag);
                     for (var b = ag.First(); b != null; b = b.Next())
-                        if (cx.obs[b.value()??-1L] is SqlFunction sf)
+                        if (cx.obs[b.value() ?? -1L] is SqlFunction sf)
                             cx.Add(sf + (_From, ag.defpos));
                     cx.Add(ers);
                     ag.Build(cx);
@@ -4374,10 +4374,10 @@ namespace Pyrrho.Level3
                     cx.obs = cx.obs + (ex.defpos, ex) + (rrs.defpos, rrs);
                     cx.result = rrs.defpos;
                 }
+                else
+                    cx.result = -1L;
             }
             else cx.result = ers.defpos;
-            if (sn != ((Transaction)cx.db).physicals.Count)
-                cx.result = -1L;
             if (then != BList<long?>.Empty)
             {
                 var ac = new Activation(cx, "" + defpos);
