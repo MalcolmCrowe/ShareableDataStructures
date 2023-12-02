@@ -92,10 +92,14 @@ namespace Pyrrho.Level5
             r += (ObInfo.Name, nm);
             var oi = dt.infos[cx.role.defpos] ?? new ObInfo(nm, Grant.AllPrivileges);
             oi += (ObInfo.Name, nm);
-            r += (Infos, dt.infos + (cx.role.defpos, oi));
             r += (Definer, cx.role.defpos);
-            if (ut != null)
+            if (ut != null && ut.infos[cx.role.defpos] is ObInfo ui)
+            {
                 r += (Under, ut);
+                r += (PathDomain, ut);
+                oi += (ObInfo.Names, ui.names);
+            }
+            r += (Infos, dt.infos + (cx.role.defpos, oi));
             return r;
         }
         internal TableRow? Get(Context cx, TypedValue? id)
@@ -142,8 +146,11 @@ namespace Pyrrho.Level5
                         else throw new DBException("42105");
                         ii += (b.key(), ti);
                     }
-            rt += idCol;
-            rs += (idCol, Char);
+            if (!rs.Contains(idCol))
+            {
+                rt += idCol;
+                rs += (idCol, Char);
+            }
             for (var b = pd?.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && pd?.representation[p] is Domain cd && !rs.Contains(p))
                 {
@@ -296,7 +303,7 @@ namespace Pyrrho.Level5
             {
                 PNodeType pt;
                 var st = super as NodeType;
-                if (ut.infos[cx.role.defpos] is ObInfo u0 && u0.name != tn)
+                if (st is null && ut.infos[cx.role.defpos] is ObInfo u0 && u0.name != tn)
                 {
                     st = ut;
                     ut = (NodeType)ut.New(ut.mem - RowType - Representation + (ObInfo.Name, tn)
@@ -411,7 +418,7 @@ namespace Pyrrho.Level5
         }
         internal virtual NodeType Check(Context cx, CTree<string, SqlValue> ls)
         {
-            if (cx.db.objects[defpos] is not NodeType nt || nt.infos[definer] is not ObInfo ni)
+            if (cx._Ob(defpos) is not NodeType nt || nt.infos[definer] is not ObInfo ni)
                 throw new DBException("PE42133", name);
             for (var b = ls.First(); b != null; b = b.Next())
                 if (b.key() is string n && !ni.names.Contains(n) && ls[n] is SqlValue v)
@@ -527,8 +534,8 @@ namespace Pyrrho.Level5
             if (pc != null)
             {
                 pc.flags = gf;
-                pc.toType = rx?.reftabledefpos ?? -1L; // -1L for idCol case
-                pc.index = rx?.refindexdefpos ?? -1L; // ditto
+                pc.toType = rx?.tabledefpos ?? -1L; // -1L for idCol case
+                pc.index = rx?.defpos ?? -1L; // ditto
             }
             tc += (TableColumn.GraphFlag, gf);
             if (rx != null)
@@ -1603,13 +1610,15 @@ namespace Pyrrho.Level5
         [Flags]
         internal enum Type { None=0,Node=1,Edge=2,Path=4,Group=8,Maybe=16 };
         internal readonly long uid;
+        internal readonly long from;
         internal readonly Type type; // in reverse Polish order
         internal readonly string value;
-        public TGParam(long dp,string i,Domain d,Type t) : base(d)
+        public TGParam(long dp,string i,Domain d,Type t,long f) : base(d)
         {
             uid = dp;
             type = t;
             value = i;
+            from = f;
         }
         public override int CompareTo(object? obj)
         {

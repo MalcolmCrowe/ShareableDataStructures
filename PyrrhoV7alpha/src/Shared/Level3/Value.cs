@@ -1850,11 +1850,13 @@ namespace Pyrrho.Level3
                         dm = right.FindType(cx, Domain.UnionDateNumeric);
                     break;
                 case Sqlx.NEQ: dm = Domain.Bool; break;
+                case Sqlx.LBRACK: dm = dl.elType ?? throw new DBException("2200G", Sqlx.ARRAY, dl, Sqlx.LBRACK); break;
                 case Sqlx.LEQ: dm = Domain.Bool; break;
                 case Sqlx.GEQ: dm = Domain.Bool; break;
                 case Sqlx.NO: dm = left?.domain ?? Domain.Content; break;
                 case Sqlx.NOT: goto case Sqlx.AND;
                 case Sqlx.OR: goto case Sqlx.AND;
+                case Sqlx.PATH: dm = new Domain(-1L, Sqlx.ARRAY, dr); break;
                 case Sqlx.PLUS:
                     {
                         if ((dl.kind == Sqlx.DATE || dl.kind == Sqlx.TIMESTAMP || dl.kind == Sqlx.TIME) && dr.kind == Sqlx.INTERVAL)
@@ -2579,8 +2581,10 @@ namespace Pyrrho.Level3
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)
                             return v;
-                        if (a is TList aa && b is TInt bb)
-                            return aa[bb.value] ?? v;
+                        if (a is TArray aa && b is TInt bb)
+                            return aa[(int)bb.value] ?? v;
+                        if (a is TList al && b is TInt bl)
+                            return al[bl.value] ?? v;
                         break;
                     }
                 case Sqlx.LEQ:
@@ -2694,6 +2698,12 @@ namespace Pyrrho.Level3
                         if (a is TPeriod pa && b is TPeriod pb)
                             return TBool.For(pa.value.end.CompareTo(pb.value.start) >= 0
                                 && pb.value.end.CompareTo(pa.value.start) >= 0);
+                        break;
+                    }
+                case Sqlx.PATH:
+                    {
+                        if (cx.paths[cx.obs[left]?.from??-1L] is TPath pa && cx.obs[right] is SqlValue pi)
+                            return pa[pi.defpos] ?? TNull.Value;
                         break;
                     }
                 case Sqlx.PERIOD:
@@ -7107,13 +7117,16 @@ namespace Pyrrho.Level3
                 case Sqlx.CARDINALITY:
                     {
                         var vl = (SqlValue?)cx.obs[val] ?? throw new PEException("PE1960");
-                        v = vl?.Eval(cx) ?? TNull.Value;
+                        v = vl.Eval(cx) ?? TNull.Value;
                         if (v == TNull.Value)
                             return dv;
-                        if (!(v.dataType.kind != Sqlx.MULTISET))
-                            throw new DBException("42113", v).Mix();
-                        var m = (TMultiset)v;
-                        return new TInt(m.Count);
+                        switch (vl.domain.kind)
+                        {
+                            case Sqlx.MULTISET: return new TInt(((TMultiset)v).Count);
+                            case Sqlx.SET: return new TInt(((TSet)v).tree.Count);
+                            case Sqlx.ARRAY: return new TInt(((TArray)v).Length);
+                            default:throw new DBException("42113", v).Mix();
+                        }
                     }
                 case Sqlx.CAST:
                     {
@@ -11385,7 +11398,7 @@ cx.obs[high] is not SqlValue hi)
                     {
                         gt = new NodeType(cx.GetUid(), gc.value, (UDType)gl.domain, nt, cx);
                         md += (Sqlx.NODE, new TChar(sd));
-                        if (bn != null) // Immediately build a type if not the last
+                //        if (bn != null) // Immediately build a type if not the last
                         {
                             if (cx.db.objects[cx.role.defpos] is Role rr
                                 && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
@@ -11556,6 +11569,7 @@ cx.obs[high] is not SqlValue hi)
                 return false;
             if (cx.binding[idValue] is TNode ni && ni.id != n.id)
                 return false;
+            cx.values += n.tableRow.vals;
             if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
                 for (var b = docValue?.First(); b != null; b = b.Next())
                     if (cx.GName(b.key()) is string k)
@@ -11590,14 +11604,7 @@ cx.obs[high] is not SqlValue hi)
             for (var b = search.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlValue se)
                 {
-                    var ov = cx.values[defpos];
-                    cx.values += (defpos, n);
-                    cx.values += n.tableRow.vals;
                     var r = se.Eval(cx);
-                    if (ov is null)
-                        cx.values -= defpos;
-                    else
-                        cx.values += (defpos,ov);
                     if (r != TBool.True)
                         return false;
                 }
@@ -11697,12 +11704,16 @@ cx.obs[high] is not SqlValue hi)
             var lS = cx.obs[nd.leavingValue] as SqlNode;
             var lI = lS?.idValue ?? -1L;
             var lg = cx.binding[lI]??cx.nodes[lI];
-            var lT = lg?.dataType??cx.obs[lI]?.domain??lS?.domain;
+            var lT = lS?.domain;
+            if (lT is null || lT.defpos<0L)
+                lT = lg?.dataType??cx.obs[lI]?.domain??lS?.domain;
             var lN = lT?.name;
             var aS = cx.obs[nd.arrivingValue] as SqlNode;
             var aI = aS?.idValue ?? -1L;
             var ag = cx.binding[aI]??cx.nodes[aI];
-            var aT = ag?.dataType??cx.obs[aI]?.domain??aS?.domain;
+            var aT = aS?.domain;
+            if (aT is null || aT.defpos<0)
+                aT = ag?.dataType??cx.obs[aI]?.domain??aS?.domain;
             var aN = aT?.name;
             // a label with at least one char SqlValue must be here
             // evaluate them all as TTypeSpec or TChar
@@ -12025,8 +12036,8 @@ cx.obs[high] is not SqlValue hi)
         internal Sqlx mode => (Sqlx)(mem[MatchMode] ?? Sqlx.NONE);
         internal long pathId => (long)(mem[PathId] ?? -1L);
         internal BList<long?> matchExps => (BList<long?>)(mem[MatchExps] ?? BList<long?>.Empty);
-        public SqlMatchAlt(Context cx, Sqlx m, BList<long?> p, long pp)
-            : base(cx.GetUid(), new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp))
+        public SqlMatchAlt(long dp,Context cx, Sqlx m, BList<long?> p, long pp)
+            : base(dp, new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp))
         {
             var min = 0; // minimum path length
             var hasPath = false;
@@ -12059,6 +12070,21 @@ cx.obs[high] is not SqlValue hi)
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new SqlMatchAlt(dp, m);
+        }
+        protected override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        {
+            var r = (SqlMatchAlt)base._Replace(cx, was, now);
+            var ch = false;
+            var ls = BList<long?>.Empty;
+            for (var b = matchExps.First(); b != null; b = b.Next())
+                if (cx.obs[b.value() ?? -1L] is SqlNode sa)
+                {
+                    var a = sa.Replace(cx, was, now);
+                    if (a != sa)
+                        ch = true;
+                    ls += a.defpos;
+                }
+            return ch ? cx.Add(r + (MatchExps, ls)) : r;
         }
         public override string ToString()
         {

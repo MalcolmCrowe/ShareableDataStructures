@@ -75,8 +75,7 @@ namespace Pyrrho.Level4
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         internal BTree<Domain, long?> newTypes = BTree<Domain, long?>.Empty; // uncommitted types
         internal CTree<long, TGParam> nodes = CTree<long, TGParam>.Empty; 
-        internal CTree<long, TList> paths = CTree<long, TList>.Empty; // of trails by SqlPath
-        internal TList trail = new (Domain.NodeType); // of nodes in current trail
+        internal CTree<long, TPath> paths = CTree<long, TPath>.Empty; // of trails by SqlMatchAlt.defpos
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by RowSet
         /// </summary>
@@ -944,6 +943,9 @@ namespace Pyrrho.Level4
                     RowSet._Where => _DepthTVX((CTree<long, bool>)o, d),
                     RowSet.Windows => _DepthTVX((CTree<long, bool>)o, d),
                     QuantifiedPredicate.Vals => _DepthBV((BList<long?>)o, d),
+                    MatchStatement.MatchList => _DepthBV(BList<long?>.Empty, d),
+                    SqlMatch.MatchAlts => _DepthBV(BList<long?>.Empty, d),
+                    SqlMatchAlt.MatchExps =>  _DepthBV(BList<long?>.Empty, d),
                     _ => Math.Max(d, 1)
                 };
             return d;

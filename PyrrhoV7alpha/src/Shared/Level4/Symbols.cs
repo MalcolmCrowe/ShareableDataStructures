@@ -366,6 +366,7 @@ namespace Pyrrho.Level4
         public Sqlx pushBack = Sqlx.Null;
         public long offset;
         public TGParam.Type tgg = TGParam.Type.None;
+        public long tga;
         public long Position => offset + start;
         /// <summary>
         /// The current token's value
@@ -534,14 +535,14 @@ namespace Pyrrho.Level4
             switch (prevtok){
                     case Sqlx.LPAREN:
                         {
-                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Node|tgg);
+                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Node|tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
                     case Sqlx.ARROWBASE:
                     case Sqlx.RARROW:
                         {
-                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Edge|tgg);
+                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Edge|tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
@@ -550,7 +551,7 @@ namespace Pyrrho.Level4
                         break;
                     default:
                         {
-                            var tg = new TGParam(Position, vo, gc, TGParam.Type.None|tgg);
+                            var tg = new TGParam(Position, vo, gc, TGParam.Type.None|tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }

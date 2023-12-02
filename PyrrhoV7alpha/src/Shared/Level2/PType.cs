@@ -135,7 +135,7 @@ namespace Pyrrho.Level2
                 var ui = under.infos[rdr.context.role.defpos];
                 var rs = dt.representation;
                 for (var b = ui?.names.First(); b != null; b = b.Next())
-                    if (ns[b.key()].Item2 is long p)
+                    if (ns[b.key()].Item2 is long p && p>dt.defpos)
                     {
                         rs -= p;
                         ns -= b.key();
@@ -225,19 +225,23 @@ namespace Pyrrho.Level2
         internal override DBObject Install(Context cx, long p)
         {
             var ro = cx.role;
-            var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
-                Grant.Privilege.Update | Grant.Privilege.Delete |
-                Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
-                Grant.Privilege.GrantInsert |
-                Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var oi = new ObInfo(name, priv);
-            oi += (ObInfo.SchemaKey, p);
-            var ns = BTree<string, (int, long?)>.Empty;
-            for (var c = dataType as UDType; c != null; c = cx.db.objects[c.super?.defpos ?? -1L] as UDType)
-                for (var b = c.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long bp && cx.obs[bp] is TableColumn tc)
-                        ns += (tc.infos[tc.definer]?.name ?? "??", (b.key(), tc.defpos));
-            oi += (ObInfo.Names, ns);
+            var oi = dataType.infos[cx.role.defpos];
+            if (oi is null || oi.name!=name || oi.names==BTree<string,(int,long?)>.Empty)
+            {
+                var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
+                    Grant.Privilege.Update | Grant.Privilege.Delete |
+                    Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
+                    Grant.Privilege.GrantInsert |
+                    Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
+                oi = new ObInfo(name, priv);
+                oi += (ObInfo.SchemaKey, p);
+                var ns = BTree<string, (int, long?)>.Empty;
+                for (var c = dataType as UDType; c != null; c = cx.db.objects[c.super?.defpos ?? -1L] as UDType)
+                    for (var b = c.rowType.First(); b != null; b = b.Next())
+                        if (b.value() is long bp && cx.obs[bp] is TableColumn tc)
+                            ns += (tc.infos[tc.definer]?.name ?? "??", (b.key(), tc.defpos));
+                oi += (ObInfo.Names, ns);
+            }
             if (dataType is EdgeType et && this is PEdgeType pe)
             {
                 // the first edgetype with a given name has the alias table for any others

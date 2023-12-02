@@ -1,3 +1,4 @@
+using System.Runtime.CompilerServices;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -352,7 +353,7 @@ namespace Pyrrho.Level4
         {
             return new SystemRowSet(dp, m);
         }
-        internal static void Kludge() 
+        internal new static void Kludge()
         { }
         /// <summary>
         /// Class initialisation: define the system tables
@@ -1637,7 +1638,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Update", Position,0);
             t += new SystemTableColumn(t, "Flags", Char, 0);
             t += new SystemTableColumn(t, "RefIndex", Position, 0);
-       //     t += new SystemTableColumn(t, "ToType", Position, 0);
+            t += new SystemTableColumn(t, "ToType", Position, 0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1764,8 +1765,8 @@ namespace Pyrrho.Level4
                     new TChar(c.generated.ToString()),
                     Display(c.upd.ToString()),
                     new TChar(c.flags.ToString()),
-                    Pos(c.index));
-                   //     Pos(c.toType));
+                    Pos(c.index),
+                    Pos(c.toType));
             }
          }
         /// <summary>

@@ -76,9 +76,6 @@ namespace Pyrrho.Level2
             tabledefpos = pr.defpos;
             dataType = dm;
             domdefpos = dm.defpos;
-            if ((flags.HasFlag(GraphFlags.LeaveCol) || flags.HasFlag(GraphFlags.ArriveCol))
-                && (index < 0L || toType < 0L))
-                throw new PEException("PE40505");
         }
         /// <summary>
         /// Constructor: a new Column definition from the buffer
@@ -100,12 +97,6 @@ namespace Pyrrho.Level2
                 table = (Table)x.table.Fix(wr.cx);
                 tabledefpos = table.defpos;
                 seq = x.seq;
-                flags = x.flags;
-                if (flags.HasFlag(GraphFlags.ArriveCol) || flags.HasFlag(GraphFlags.LeaveCol))
-                {
-                    index = wr.cx.Fix(x.index);
-                    toType = wr.cx.Fix(x.toType);
-                }
                 domdefpos = x.domdefpos;
             }
         }
@@ -120,13 +111,13 @@ namespace Pyrrho.Level2
             if (tr is not null && wr.cx.uids[ppos] is long q
                 && wr.cx.db.objects[q] is Domain ndt)
                 dataType = ndt;
-        //    if (flags.HasFlag(GraphFlags.ArriveCol))
-        //        index = (dataType as EdgeType)?.arriveIx ?? -1L; 
-        //    else
+            if (flags.HasFlag(GraphFlags.ArriveCol))
+                index = (dataType as EdgeType)?.arriveIx ?? -1L; 
+            else
                if (flags.HasFlag(GraphFlags.IdCol))
                 index = (dataType as NodeType)?.idIx??-1L;
-        //    else if (flags.HasFlag(GraphFlags.LeaveCol))
-        //        index = (dataType as EdgeType)?.leaveIx ?? -1L;
+            else if (flags.HasFlag(GraphFlags.LeaveCol))
+                index = (dataType as EdgeType)?.leaveIx ?? -1L;
             if (wr.cx.uids[tabledefpos] is long tp)
                 for (var ta =wr.cx.db.objects[tp] as Table; ta != null; 
                     ta = wr.cx.db.objects[ta.super?.defpos??-1L] as Table)
@@ -511,6 +502,8 @@ namespace Pyrrho.Level2
             flags = gf;
             index = ix;
             toType = tp;
+            if ((flags.HasFlag(GraphFlags.LeaveCol) || flags.HasFlag(GraphFlags.ArriveCol)) && toType < 0)
+                ;
         }
         /// <summary>
         /// Constructor: A new Column definition from the buffer
@@ -529,8 +522,9 @@ namespace Pyrrho.Level2
         {
             upd = x.upd;
             ups = x.ups;
-            index = wr.cx.Fix(index);
-            toType = wr.cx.Fix(toType);
+            flags = x.flags;
+            index = wr.cx.Fix(x.index);
+            toType = wr.cx.Fix(x.toType);
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -548,6 +542,8 @@ namespace Pyrrho.Level2
             wr.PutLong((long)flags);
             wr.PutLong(index);
             wr.PutLong(toType);
+            if ((flags.HasFlag(GraphFlags.LeaveCol) || flags.HasFlag(GraphFlags.ArriveCol)) && toType < 0)
+                ;
             base.Serialise(wr);
         }
         /// <summary>

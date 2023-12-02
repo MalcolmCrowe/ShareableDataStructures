@@ -773,6 +773,7 @@ namespace Pyrrho.Common
         {
             return Length;
         }
+        internal virtual TypedValue? this[int n] => array[n];
         internal override bool Contains(TypedValue e)
         {
             for (var b = array.First(); b != null; b = b.Next())
@@ -1109,21 +1110,28 @@ namespace Pyrrho.Common
     // populated as the path is traversed
     internal class TPath : TRow
     {
-        internal TPath(long dp,Context cx) : base(new Domain(dp,cx,Sqlx.ROW,BList<DBObject>.Empty,0), 
-            new CTree<long, TypedValue>(0, new TArray(Domain.NodeType,CTree<int,TypedValue>.Empty))) { }
-        internal TPath(Domain dt,CTree<long,TypedValue> vs) : base(dt, vs) { }
+        internal readonly long matchAlt; 
+        internal TPath(long dp,Context cx) : base(new Domain(-1L,cx,Sqlx.ROW,BList<DBObject>.Empty,0), 
+            new CTree<long, TypedValue>(0, new TArray(new Domain(-1L,Sqlx.ARRAY,Domain.NodeType),CTree<int,TypedValue>.Empty))) 
+        {
+            matchAlt = dp;
+        }
+        internal TPath(long dp, Domain dt,CTree<long,TypedValue> vs) : base(dt, vs) 
+        {
+            matchAlt = dp;
+        }
         public static TPath operator+(TPath p,TNode n)
         {
             var a = (TArray)p[0L];
-            return new TPath(p.dataType,p.values + (0L, a+(a.Length,n)));
+            return new TPath(p.matchAlt,p.dataType,p.values + (0L, a+(a.Length,n)));
         }
         public static TPath operator+(TPath p,(Context, long,TypedValue)x)
         {
             var (cx, k, v) = x;
             var dt = p.dataType;
             if (dt.representation.Contains(k))
-                return new TPath(dt,p.values+(k,v));
-            return new TPath(
+                return new TPath(p.matchAlt,dt,p.values+(k,v));
+            return new TPath(p.matchAlt,
                 (Domain)cx.Add(new Domain(dt.defpos,cx,Sqlx.ROW,dt.representation+(k,v.dataType),dt.rowType+k)),
                 p.values+(k,v));
         }
@@ -1134,14 +1142,21 @@ namespace Pyrrho.Common
             if (dt.representation.Contains(k))
             {
                 var a = (TArray)p[k];
-                return new TPath(dt, p.values + (k, a+(a.Length,v)));
+                return new TPath(p.matchAlt, dt, p.values + (k, a+(a.Length,v)));
             }
-            return new TPath(
+            return new TPath(p.matchAlt,
                 (Domain)cx.Add(new Domain(dt.defpos, cx, Sqlx.ROW,
                 dt.representation + (k, new Domain(-1L,Sqlx.ARRAY, v.dataType)), dt.rowType + k)),
-                p.values + (k, new TArray(v.dataType,new CTree<int,TypedValue>(0,v))));
+                p.values + (k, v));
         }
         internal override TypedValue this[int i] => ((TArray)this[0L])?[i]??TNull.Value;
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            sb.Append('('); sb.Append(DBObject.Uid(matchAlt)); sb.Append(',');
+            sb.Append(values); sb.Append(')');
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// A set can be placed in a cell of a Table, so is treated as a value type.

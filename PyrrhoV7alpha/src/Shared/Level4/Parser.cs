@@ -955,12 +955,13 @@ namespace Pyrrho.Level4
         {
             var svgs = BList<long?>.Empty;
             var tgs = CTree<long, TGParam>.Empty;
-            var alts = BList<long?>.Empty;
             Ident? pi = null;
             // the current token is LPAREN
             while (Match(Sqlx.LPAREN,Sqlx.USING,Sqlx.TRAIL,Sqlx.ACYCLIC,Sqlx.SIMPLE,
                 Sqlx.SHORTESTPATH,Sqlx.SHORTEST,Sqlx.ALL,Sqlx.ANY))
             {
+                var dp = cx.GetUid();
+                var alts = BList<long?>.Empty;
                 var mo = Sqlx.NONE;
                 if (tok != Sqlx.LPAREN)
                 {
@@ -976,25 +977,26 @@ namespace Pyrrho.Level4
                         Next();
                         if (lxr.tgs[pi.iix.dp] is TGParam gp)
                         {
-                            gp = new TGParam(gp.uid, gp.value, Domain.PathType, TGParam.Type.Path);
+                            gp = new TGParam(gp.uid, gp.value, Domain.PathType, TGParam.Type.Path, dp);
                             lxr.tgs += (pi.iix.dp, gp);
-                            cx.Add(new SqlValue(pi,BList<Ident>.Empty,cx,Domain.Char));
+                            cx.Add(new SqlValue(pi,BList<Ident>.Empty,cx,Domain.PathType));
                             cx.defs += (pi, cx.sD);
                         }
                         Mustbe(Sqlx.EQL);
                     }
                 }
                 var ots = tgs;
-                (tgs,var s) = ParseSqlMatch(tgs);
-                    var ts = BTree<string,TGParam>.Empty;
-                    for (var b = tgs.First(); b != null; b = b.Next())
-                        if (!ots.Contains(b.key()) && b.value() is TGParam p)
-                            ts += (p.value, p);
-                alts += cx.Add(new SqlMatchAlt(cx, mo, s, pi?.iix.dp??-1L)).defpos;
+                (tgs,var s) = ParseSqlMatch(dp, tgs);
+                var ts = BTree<string,TGParam>.Empty;
+                for (var b = tgs.First(); b != null; b = b.Next())
+                    if (!ots.Contains(b.key()) && b.value() is TGParam p)
+                        ts += (p.value, p);
+                alts += cx.Add(new SqlMatchAlt(dp, cx, mo, s, pi?.iix.dp??-1L)).defpos;
                 while (tok == Sqlx.VBAR)
                 {
                     Next();
-                    (var ntgs, s) = ParseSqlMatch(ots);
+                    dp = cx.GetUid();
+                    (var ntgs, s) = ParseSqlMatch(dp,ots);
                     var ns = BTree<string, TGParam>.Empty;
                     for (var b = tgs.First(); b != null; b = b.Next())
                         if (!ots.Contains(b.key()) && b.value() is TGParam p)
@@ -1008,7 +1010,7 @@ namespace Pyrrho.Level4
                     var tb = ts.First();
                     for (var nb = ns.First(); tb != null && nb != null; tb = tb.Next(), nb = nb.Next())
                     { }
-                    alts += cx.Add(new SqlMatchAlt(cx, mo, s, pi?.iix.dp ?? -1L)).defpos;
+                    alts += cx.Add(new SqlMatchAlt(dp, cx, mo, s, pi?.iix.dp ?? -1L)).defpos;
                 }
                 svgs += cx.Add(new SqlMatch(cx, alts)).defpos;
                 if (tok==Sqlx.COMMA)
@@ -1037,11 +1039,11 @@ namespace Pyrrho.Level4
                 (n, svg) = ParseGraphItem(svg, n);
             return svg;
         }
-        (CTree<long,TGParam>,BList<long?>) ParseSqlMatch(CTree<long,TGParam> tgs)
+        (CTree<long,TGParam>,BList<long?>) ParseSqlMatch(long f, CTree<long,TGParam> tgs)
         {
             // the current token is LPAREN
             var svg = BList<long?>.Empty;
-            (var n,svg,tgs) = ParseMatchExp(svg,tgs);
+            (var n,svg,tgs) = ParseMatchExp(svg,tgs, f);
             tgs += n.state;
             lxr.tgs = CTree<long, TGParam>.Empty;
             return (tgs,svg);
@@ -1171,10 +1173,12 @@ namespace Pyrrho.Level4
         /// <param name="dt">The standard NODETYPE or EDGETYPE</param>
         /// <param name="ln">The node to attach the new edge</param>
         /// <returns>An SqlNode for the new node or edge and the tree of all the graph fragments</returns>
-        (SqlNode, BList<long?>, CTree<long,TGParam>) ParseMatchExp(BList<long?> svg, CTree<long,TGParam> tgs, Ident? ln = null)
+        (SqlNode, BList<long?>, CTree<long,TGParam>) ParseMatchExp(BList<long?> svg, CTree<long,TGParam> tgs, long f,
+            Ident? ln = null)
         {
             var st = CTree<long, TGParam>.Empty; // for match
             var ab = tok; // LPAREN, ARROWBASE, RARROW, LBRACK
+            lxr.tga = f;
             var pgg = lxr.tgg;
             if (tok==Sqlx.LBRACK)
                 lxr.tgg = TGParam.Type.Group;
@@ -1186,9 +1190,9 @@ namespace Pyrrho.Level4
             var ahead = BList<long?>.Empty;
             if (ab == Sqlx.LBRACK)
             {
-                var (tgp, svp) = ParseSqlMatch(lxr.tgs);
+                var (tgp, svp) = ParseSqlMatch(f, lxr.tgs);
                 Mustbe(Sqlx.RBRACK);
-                // promote tgp references to arrays
+    /*            // promote tgp references to arrays
                 // we will update cx.defs but not the rest of cx.obs!
                 var od = cx.done;
                 cx.uids = BTree<long, long?>.Empty;
@@ -1207,13 +1211,13 @@ namespace Pyrrho.Level4
                         }
                     }
                 cx.defs = cx.defs.ApplyDone(cx);
-                cx.done = od;
+                cx.done = od; */
                 lxr.tgg = pgg;
                 var qu = (-1, 0);
                 if (Match(Sqlx.QMARK, Sqlx.TIMES, Sqlx.PLUS, Sqlx.LBRACE))
                     qu = ParseMatchQuantifier();
                 tgs += tgp;
-                (var sa, ahead, tgs) = ParseMatchExp(ahead, tgs, ln);
+                (var sa, ahead, tgs) = ParseMatchExp(ahead, tgs, f, ln);
                 r = new SqlPath(cx, svp, qu, ln?.iix.dp ?? -1L, sa.defpos);
             }
             else
@@ -1273,7 +1277,7 @@ namespace Pyrrho.Level4
                             _ => TGParam.Type.None
                         } : TGParam.Type.Maybe;
                         if (lxr.tgs[lp] is TGParam ig && dm is not null)
-                            lxr.tgs += (lp, new TGParam(lp, ig.value, dm, pg));
+                            lxr.tgs += (lp, new TGParam(lp, ig.value, dm, pg, f));
                     }
                 }
                 var dc = BTree<long, long?>.Empty;
@@ -1330,7 +1334,7 @@ namespace Pyrrho.Level4
                     r += (RowSet._Where, wh);
             }
             if (Match(Sqlx.LPAREN, Sqlx.ARROWBASE, Sqlx.RARROW, Sqlx.LBRACK))
-                (an, ahead, tgs) = ParseMatchExp(ahead, tgs, b);
+                (an, ahead, tgs) = ParseMatchExp(ahead, tgs, f, b);
             if (r is null)
                 throw new DBException("42000","MatchExp");
             if (r is SqlEdge)
@@ -3987,6 +3991,13 @@ namespace Pyrrho.Level4
                 sb += (DBObject._From, pa.defpos);
                 return sb;
             }
+            if (pa is SqlValue pp && pp.domain.kind==Sqlx.PATH && sub is not null)
+            {
+                var pf = (SqlNode)Identify(sub, BList<Ident>.Empty, Domain.Content);
+                var pc = new SqlValueExpr(sub.iix.dp, cx, Sqlx.PATH, pp, pf, Sqlx.NO);
+                cx.Add(pf);
+                return cx.Add(pc);
+            }
             if (pa is SqlValue sv && sv.domain.infos[cx.role.defpos] is ObInfo si && sub is not null
                 && si.names[sub.ident].Item2 is long sp && cx.db.objects[sp] is TableColumn tc1)
             {
@@ -6249,7 +6260,10 @@ namespace Pyrrho.Level4
                     Next();
                     Ident ic = new(this);
                     Mustbe(Sqlx.Id);
-                    var tb = cx.GetObject(ic.ident) as Table ??
+                    var tb = cx.GetObject(ic.ident) as Table;
+                    if (tb is null && long.TryParse(ic.ident, out var tp))
+                        tb = cx.db.objects[tp] as Table;
+                    if (tb is null)
                         throw new DBException("42107", ic.ident);
                     qs = tb.RowSets(ic, cx, tb, ic.iix.dp, Grant.Privilege.Select);
                     break;
@@ -6790,7 +6804,10 @@ namespace Pyrrho.Level4
                     a = lxr.val.ToString();
                     Mustbe(Sqlx.Id);
                 }
-                var ob = (cx.GetObject(ic.ident) ?? cx.obs[cx.defs[ic].dp]) ??
+                var ob = (cx.GetObject(ic.ident) ?? cx.obs[cx.defs[ic].dp]);
+                if (ob is null && long.TryParse(ic.ident, out var tp))
+                    ob = cx.db.objects[tp] as DBObject;
+                if (ob is null)
                     throw new DBException("42107", ic.ToString());
                 if (ob is SqlValue o && (ob.domain.kind != Sqlx.TABLE || o.from < 0))
                     throw new DBException("42000",ob.domain.kind);
@@ -7949,7 +7966,7 @@ namespace Pyrrho.Level4
                             oi = left.domain.infos[cx.role.defpos];
                         var cp = oi?.names[n.ident].Item2?? -1L;
                         var el = (SqlValue)cx.Add(new SqlCopy(n.iix.dp, cx,n.ident,lp.dp,cp));
-                        left = new SqlValueExpr(lp.dp, cx, Sqlx.DOT, left, el,Sqlx.NO);
+                        left = (SqlValue)cx.Add(new SqlValueExpr(cx.GetUid(), cx, Sqlx.DOT, left, el,Sqlx.NO));
                     }
                 } else // tok==Sqlx.LBRACK
                 {
