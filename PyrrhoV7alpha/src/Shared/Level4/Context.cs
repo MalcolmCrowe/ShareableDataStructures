@@ -477,6 +477,17 @@ namespace Pyrrho.Level4
                     d = _DepthV(p, d);
             return d;
         }
+        internal int _DepthTlPiD(BTree<long,(int,Domain)> tg, int d)
+        {
+            for (var b = tg?.First(); b != null; b = b.Next())
+            {
+                var (i, dm) = b.value();
+                if (db.objects[b.key()] is EdgeType et)
+                    d = Math.Max(et.depth, d);
+                d = Math.Max(dm.depth, d);
+            }
+            return d;
+        }
         internal int _DepthLT<T>(CList<T> s, int d) where T : TypedValue
         {
             for (var b = s.First(); b != null; b = b.Next())
@@ -880,7 +891,7 @@ namespace Pyrrho.Level4
             else
                 d = p switch
                 {
-                    HandlerStatement.Action => Math.Max(((HandlerStatement)o).depth,d),
+                    HandlerStatement.Action => Math.Max(((HandlerStatement)o).depth, d),
                     Domain.Aggs => _DepthTVX((CTree<long, bool>)o, d),
                     SqlValueArray._Array => _DepthBV((BList<long?>)o, d),
                     RowSet.Assig => _DepthTUb((CTree<UpdateAssignment, bool>)o, d),
@@ -943,11 +954,12 @@ namespace Pyrrho.Level4
                     RowSet._Where => _DepthTVX((CTree<long, bool>)o, d),
                     RowSet.Windows => _DepthTVX((CTree<long, bool>)o, d),
                     QuantifiedPredicate.Vals => _DepthBV((BList<long?>)o, d),
-                    MatchStatement.MatchList => _DepthBV(BList<long?>.Empty, d),
-                    SqlMatch.MatchAlts => _DepthBV(BList<long?>.Empty, d),
-                    SqlMatchAlt.MatchExps =>  _DepthBV(BList<long?>.Empty, d),
+                    MatchStatement.MatchList => _DepthBV((BList<long?>)o, d),
+                    MatchStatement.Truncating => _DepthTlPiD((BTree<long, (int, Domain)>)o, d),
+                    SqlMatch.MatchAlts => _DepthBV((BList<long?>)o, d),
+                    SqlMatchAlt.MatchExps => _DepthBV((BList<long?>)o, d),
                     _ => Math.Max(d, 1)
-                };
+                }; ;
             return d;
         }
         internal void _Remove(long dp)
@@ -2445,6 +2457,19 @@ namespace Pyrrho.Level4
             for (var b = cs.First(); b != null; b = b.Next())
             if (b.value().Item2 is long p)
                 r += (b.key(), (b.value().Item1,Fix(p)));
+            return r;
+        }
+        internal BTree<long,(int,Domain)> FixTlPiD(BTree<long,(int,Domain)> tg)
+        {
+            var r = BTree<long,(int,Domain)>.Empty;
+            for (var b=tg.First();b!=null;b=b.Next())
+            {
+                var (i, d) = b.value();
+                var k = b.key();
+                if (k != 0L)
+                    k = Fix(k);
+                r += (k, (i, (Domain)d.Fix(this)));
+            }
             return r;
         }
         internal BList<(long,long)> FixLll(BList<(long,long)> cs)

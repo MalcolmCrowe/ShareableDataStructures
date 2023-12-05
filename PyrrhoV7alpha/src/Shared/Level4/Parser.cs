@@ -1018,6 +1018,42 @@ namespace Pyrrho.Level4
             };
             return (tgs,svgs);
         }
+        // Truncation = TRUNCATING TruncationSpec{',' TruncationSpec} .
+        // TruncationSpec = [EdgeType_id][{OrderSpec {',' OrderSpec}] '=' int .
+        BTree<long,(int,Domain)> ParseTruncation()
+        {
+            var r = BTree<long, (int, Domain)>.Empty;
+            while (true)
+            {
+                var k = Domain.EdgeType.defpos;
+                if (tok == Sqlx.Id)
+                {
+                    var et = cx.db.objects[cx.role.dbobjects[lxr.val.ToString()] ?? -1L] as EdgeType
+                        ?? throw new DBException("42161", Sqlx.EDGETYPE);
+                    Next();
+                    k = et.defpos;
+                }
+                var rt = BList<DBObject>.Empty;
+                while (tok==Sqlx.Id)
+                {
+                    rt += cx._Ob(ParseOrderItem(false))??SqlNull.Value;
+                    if (tok == Sqlx.COMMA)
+                        Next();
+                    else
+                        break;
+                }
+                var od = (rt.Length==0)?Domain.Content:new Domain(cx.GetUid(), cx, Sqlx.ROW, rt, rt.Length);
+                Mustbe(Sqlx.EQL);
+                var lm = lxr.val.ToInt()??throw new DBException("42161",Sqlx.INT);
+                Next();
+                r += (k, (lm, od));
+                if (tok == Sqlx.COMMA)
+                    Next();
+                else
+                    break;
+            } 
+            return r;
+        }
         CList<CList<SqlNode>> ParseSqlGraphList()
         {
             var svgs = CList<CList<SqlNode>>.Empty;
@@ -1359,6 +1395,12 @@ namespace Pyrrho.Level4
             var olddefs = cx.defs; // we will remove any defs introduced by the Match below
                                    // while allowing existing defs to be updated by the Match parser
             Next();
+            BTree<long, (int, Domain)>? tg = null;
+            if (Match(Sqlx.TRUNCATING))
+            {
+                Next();
+                tg = ParseTruncation();
+            }
             lxr.tgs = CTree<long, TGParam>.Empty;
             lxr.ParsingMatch = true;
             var (tgs,svgs) = ParseSqlMatchList();
@@ -1374,7 +1416,7 @@ namespace Pyrrho.Level4
             }
             if (tgs is null)
                 throw new DBException("PE60201");
-            var ms = new MatchStatement(cx, tgs, svgs, wh, e);
+            var ms = new MatchStatement(cx, tg, tgs, svgs, wh, e);
             if (tok == Sqlx.THEN)
             {
                 Next();
@@ -1824,7 +1866,7 @@ namespace Pyrrho.Level4
                 // The metadata contains aliases for special columns etc
                 if (m.Contains(Sqlx.NODETYPE))
                 {
-                    var nt = new NodeType(typename.iix.dp,dt.mem);
+                    var nt = new NodeType(typename.iix.dp,dt.mem + (Domain.Kind,Sqlx.NODETYPE));
                     nt = nt.FixNodeType(cx,typename);
                     // Process ls and m 
                     (dt,ls) = nt.Build(cx,nt, ls, m);
@@ -1832,10 +1874,20 @@ namespace Pyrrho.Level4
                 }
                 else if (m.Contains(Sqlx.EDGETYPE) && dt is not NodeType) // or EdgeType
                 {
-                    if (dt is not EdgeType et)
-                        et = new EdgeType(dt.defpos, typename.ident, dt, null, cx, m);
-                    et = et.FixEdgeType(cx,typename);
-                    (dt,ls) = et.Build(cx, et, ls, m);
+                    var ll = m[Sqlx.RARROW] as TList ?? throw new PEException("PE60701");
+                    var al = m[Sqlx.ARROW] as TList ?? throw new PEException("PE60702");
+                    for (var bl = ll.list.First(); bl != null; bl = bl.Next())
+                        for (var ba = al.list.First(); ba != null; ba = ba.Next())
+                            if (bl.value() is TypedValue ln && ba.value() is TypedValue an)
+                            {
+                                m += (Sqlx.RARROW, ln);
+                                m += (Sqlx.ARROW, an);
+                                if (dt is not EdgeType et)
+                                    et = new EdgeType(dt.defpos, typename.ident, dt, null, cx, m);
+                                et = et.FixEdgeType(cx, typename);
+                                (dt, ls) = et.Build(cx, et, ls, m);
+                            }
+                            else throw new PEException("PE60703");
                 }
                 else if (m != CTree<Sqlx, TypedValue>.Empty)
                     cx.Add(new PMetadata(typename.ident, -1, dt, m, cx.db.nextPos)); 
@@ -2440,7 +2492,7 @@ namespace Pyrrho.Level4
                 case Sqlx.VIEW: return Match(Sqlx.ENTITY, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, 
                     Sqlx.PASSWORD,Sqlx.CHARLITERAL,Sqlx.RDFLITERAL,Sqlx.ETAG,Sqlx.MILLI);
                 case Sqlx.TYPE: return Match(Sqlx.PREFIX, Sqlx.SUFFIX, Sqlx.NODETYPE, Sqlx.EDGETYPE, 
-                    Sqlx.SENSITIVE, Sqlx.CARDINALITY);
+                    Sqlx.SENSITIVE, Sqlx.CARDINALITY, Sqlx.MULTIPLICITY);
                 case Sqlx.ANY:
                     Match(Sqlx.DESC, Sqlx.URL, Sqlx.MIME, Sqlx.SQLAGENT, Sqlx.USER, Sqlx.PASSWORD,
                         Sqlx.ENTITY,Sqlx.PIE,Sqlx.HISTOGRAM,Sqlx.LEGEND,Sqlx.LINE,Sqlx.POINTS,Sqlx.REFERRED,
@@ -2571,9 +2623,12 @@ namespace Pyrrho.Level4
                             }
                             break;
                         }
-                    // EDGETYPE ['(' Identity_id ')'] '('[Leaving_id '='] [SET] NodeType_id ',' [Arriving_id '='] [SET] NodeType_id ')'
-                    // + EDGETYPE   + EDGE=id             + LPAREN=id      N  + RARROW=id       +RPAREN id        N  + ARROW=id
-                    //                                                     Y  + ARROWBASE=id                      Y  + RARROWBASE=id
+                    // EDGETYPE [id]
+                    //              '('[Leaving_id '=']  NodeType_id {'|' NodeType_id} [SET]','
+                    //                 [Arriving_id '='] NodeType_id {'|' NodeType_id} [SET]')'
+                    // + EDGETYPE + EDGE=id
+                    //                + LPAREN=id       + RARROW=TList(id)        +  ?ARROWBASE
+                    //                + RPAREN id       + ARROW=TList(id)         +  ?RARROWBASE
                     case Sqlx.EDGETYPE:
                         {
                             m += (tok, o);
@@ -2585,6 +2640,7 @@ namespace Pyrrho.Level4
                                 m += (Sqlx.EDGE, ei);
                             }
                             Mustbe(Sqlx.LPAREN);
+                            var ll = new TList(Domain.Char);
                             var ln = lxr.val;
                             Mustbe(Sqlx.Id);
                             if (tok==Sqlx.EQL)
@@ -2594,15 +2650,26 @@ namespace Pyrrho.Level4
                                 ln = lxr.val;
                                 Mustbe(Sqlx.Id);
                             }
+                            while (true)
+                            {
+                                if (!cx.role.dbobjects.Contains(ln.ToString()))
+                                    throw new DBException("42161", "NodeType", ln);
+                                ll += ln;
+                                if (tok != Sqlx.VBAR)
+                                    break;
+                                Next();
+                                ln = lxr.val;
+                                Mustbe(Sqlx.Id);
+                            } 
                             if (tok == Sqlx.SET)
                             {
                                 m += (Sqlx.ARROWBASE, TChar.Empty);
                                 Next();
                             }
-                            if (!cx.role.dbobjects.Contains(ln.ToString()))
-                                throw new DBException("42161", "NodeType", ln);
-                            m += (Sqlx.RARROW, ln);
+
+                            m += (Sqlx.RARROW, ll);
                             Mustbe(Sqlx.COMMA);
+                            var al = new TList(Domain.Char);
                             var an = lxr.val;
                             Mustbe(Sqlx.Id);
                             if (tok == Sqlx.EQL)
@@ -2612,14 +2679,24 @@ namespace Pyrrho.Level4
                                 an = lxr.val;
                                 Mustbe(Sqlx.Id);
                             }
+                            while (true)
+                            {
+                                if (!cx.role.dbobjects.Contains(an.ToString()))
+                                    throw new DBException("42161", "NodeType", an);
+                                al += an;
+                                if (tok != Sqlx.VBAR)
+                                    break;
+                                Next();
+                                an = lxr.val;
+                                Mustbe(Sqlx.Id);
+                            }
                             if (tok == Sqlx.SET)
                             {
                                 m += (Sqlx.RARROWBASE, TChar.Empty);
                                 Next();
                             }
-                            if (!cx.role.dbobjects.Contains(an.ToString()))
-                                throw new DBException("42161", "NodeType", ln);
-                            m += (Sqlx.ARROW, an);
+
+                            m += (Sqlx.ARROW, al);
                             Mustbe(Sqlx.RPAREN);
                             break;
                         }

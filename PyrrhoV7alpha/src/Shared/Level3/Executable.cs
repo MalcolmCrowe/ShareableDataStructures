@@ -4195,7 +4195,8 @@ namespace Pyrrho.Level3
     {
         internal const long
             GDefs = -210,   // CTree<long,TGParam>
-            MatchList = -491; // BList<long?> SqlMatchAlt
+            MatchList = -491, // BList<long?> SqlMatchAlt
+            Truncating = -492; // BTree<long,(int,Domain)> EdgeType (or 0L)
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
         internal BList<long?> matchList =>
@@ -4205,18 +4206,23 @@ namespace Pyrrho.Level3
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
         internal long result => (long)(mem[SqlCall.Result] ??-1L);
         internal BList<long?> then => (BList<long?>)(mem[IfThenElse.Then] ?? BList<long?>.Empty);
-        public MatchStatement(Context cx, CTree<long,TGParam> gs, BList<long?> ge, 
+        internal BTree<long, (int, Domain)> truncating =>
+            (BTree<long, (int, Domain)>)(mem[Truncating] ?? BTree<long, (int, Domain)>.Empty);
+        public MatchStatement(Context cx, BTree<long,(int,Domain)>? tg, CTree<long,TGParam> gs, BList<long?> ge, 
             CTree<long,bool> wh, long st)
-            : base(cx.GetUid(), _Mem(cx,gs) + (MatchList,ge) +(RowSet._Where,wh)
+            : base(cx.GetUid(), _Mem(cx,tg,gs) + (MatchList,ge) +(RowSet._Where,wh)
                   +(Procedure.Body,st))
         { }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
-        static BTree<long,object> _Mem(Context cx,CTree<long,TGParam> gs)
+        static BTree<long,object> _Mem(Context cx,BTree<long,(int,Domain)>? tg,CTree<long,TGParam> gs)
         {
             for (var b = gs.First(); b != null; b = b.Next())
                 cx.undefined -= b.key();
-            return new BTree<long, object>(GDefs, gs);
+            var r = new BTree<long, object>(GDefs, gs);
+            if (tg is not null)
+                r += (Truncating, tg);
+            return r;
         }
         public static MatchStatement operator +(MatchStatement et, (long, object) x)
         {
@@ -4696,6 +4702,8 @@ namespace Pyrrho.Level3
                 ds += (tn.defpos, tn);
             else if (pd is not null && pd.dataType is NodeType pn)
             {
+                var ctr = CTree<Domain, int>.Empty;
+                var tg = truncating != CTree<long, (int, Domain)>.Empty;
                 while (pn.super is NodeType ns)
                     pn = (NodeType)(cx.db.objects[ns.defpos] ?? throw new DBException("42105"));
                 for (var b = pn.rindexes.First(); b != null; b = b.Next())
@@ -4703,16 +4711,38 @@ namespace Pyrrho.Level3
                     {
                         if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
                             continue;
+                        var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
                         var ic = (xn.tok == Sqlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
                         var xp = (xn.tok == Sqlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;
                         for (var g = b.value().First(); g != null; g = g.Next())
-                            if (g.key()[0] == ic && cx.db.objects[xp] is Index rx
+                            if (g.key()[0] == ic)
+                            {
+                                if (cx.db.objects[xp] is Index rx
                                 && pd.tableRow.vals[pn.idCol] is TInt ti
                                 && rx.rows?.impl?[ti] is TPartial tp)
-                                for (var c = tp.value.First(); c != null; c = c.Next())
-                                    if (rt.tableRows[c.key()] is TableRow tr)
-                                        ds += (tr.defpos, tr);
+                                {
+                                    if (lm < tp.value.Count && truncating[rt.defpos].Item2 is Domain dm
+                                        && dm.Length > 0)
+                                        ds = Trunc(ds,rt,tp.value, lm, dm);
+                                    else
+                                    for (var c = tp.value.First(); c != null; c = c.Next())
+                                        if (rt.tableRows[c.key()] is TableRow tr)
+                                        {
+                                            if (tg)
+                                            {
+                                                if (AllTrunc(ctr))
+                                                    goto alldone;
+                                                if (Trunc(ctr, rt))
+                                                    goto rtdone;
+                                                ctr = AddIn(ctr, rt);
+                                            }
+                                            ds += (tr.defpos, tr);
+                                        }
+                                }
+                            rtdone:;
+                            }
                     }
+                    alldone:;
             }
             else if (xn.domain is NodeType nt0 && nt0.defpos > 0)
                 ds = For(cx, xn, nt0, ds);
@@ -4724,6 +4754,48 @@ namespace Pyrrho.Level3
             if (df != null)
                 DbNode(cx, new NodeStep(be.alt,xn,df,new ExpStep(be.alt,be.matches?.Next(),be.next)),
                     (xn is SqlEdge && xn is not SqlPath) ? xn.tok : tok, pd);
+        }
+        CTree<Domain,int> AddIn(CTree<Domain,int> ctr,EdgeType rt)
+        {
+            for (var st = rt; st != null; st = st.super as EdgeType)
+                ctr += (st, ctr[st] + 1);
+            ctr += (Domain.EdgeType, ctr[Domain.EdgeType]+1);
+            return ctr;
+        }
+        BTree<long,TableRow> Trunc(BTree<long,TableRow> ds,EdgeType rt,CTree<long,bool> t,int lm,Domain dm)
+        {
+            var mt = new MTree(dm, TreeBehaviour.Ignore, 0);
+            for (var b = t.First(); b != null; b = b.Next())
+            if (rt.tableRows[b.key()] is TableRow tr){
+                var vs = tr.vals;
+                var k = CList<TypedValue>.Empty;
+                for (var c = dm.rowType.First(); c != null; c = c.Next())
+                    if (c.value() is long p && vs[p] is TypedValue v)
+                        k += v;
+                mt += (k, 0, 0);
+            }
+            var ct = 0;
+            for (var b = mt.First(); b != null && ct < lm; b=b.Next())
+                if (b.Value() is long p && rt.tableRows[p] is TableRow tr)
+                    ds += (p, tr);
+            return ds;
+        }
+        bool Trunc(CTree<Domain,int> ctr,EdgeType rt)
+        {
+            for (var st = rt; st != null; st = st.super as EdgeType)
+                if (truncating.Contains(st.defpos) && ctr[st] >= truncating[st.defpos].Item1)
+                        return true;
+            if (truncating.Contains(Domain.EdgeType.defpos) 
+                && (ctr[Domain.EdgeType]>= truncating[Domain.EdgeType.defpos].Item1))
+                    return true;
+            return false;
+        }
+        bool AllTrunc(CTree<Domain, int> ctr)
+        {
+            if (truncating.Contains(Domain.EdgeType.defpos)
+                && (ctr[Domain.EdgeType] >= truncating[Domain.EdgeType.defpos].Item1))
+                return true;
+            return false;
         }
         BTree<long, TableRow> For(Context cx, SqlNode xn, NodeType nt, BTree<long, TableRow>? ds)
         {
@@ -4946,6 +5018,19 @@ namespace Pyrrho.Level3
                         ch = true;
                     ls += a.defpos;
                 }
+            var tg = BTree<long, (int, Domain)>.Empty;
+            for (var b=truncating.First();b!=null;b=b.Next())
+            {
+                var (i, d) = b.value();
+                var k = b.key();
+                long nk = k;
+                if (cx.obs[k] is EdgeType et)
+                    nk = cx.done[k]?.defpos ?? k;
+                var nd = cx.done[d.defpos] as Domain?? d;
+                if (k != nk || d.defpos != nd.defpos)
+                    ch = true;
+                tg += (k, (i, d));
+            }
             return ch?cx.Add(r+(MatchList,ls)):r;
         }
         public override string ToString()

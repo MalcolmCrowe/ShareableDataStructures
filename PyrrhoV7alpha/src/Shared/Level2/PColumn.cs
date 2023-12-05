@@ -525,6 +525,7 @@ namespace Pyrrho.Level2
             flags = x.flags;
             index = wr.cx.Fix(x.index);
             toType = wr.cx.Fix(x.toType);
+            table = (Table?)wr.cx.db.objects[wr.cx.Fix(x.table?.defpos??-1L)]??table;
         }
         protected override Physical Relocate(Writer wr)
         {

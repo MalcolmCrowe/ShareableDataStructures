@@ -6886,7 +6886,7 @@ namespace Pyrrho.Level4
         }
         static void RoleEdgeTypeResults()
         {
-            var t = new SystemTable("Role$NodeType");
+            var t = new SystemTable("Role$EdgeType");
             t += new SystemTableColumn(t, "Pos", Char, 1);
             t += new SystemTableColumn(t, "Name", Char, 0);
             t += new SystemTableColumn(t, "LeavingNodeType", Char, 0);

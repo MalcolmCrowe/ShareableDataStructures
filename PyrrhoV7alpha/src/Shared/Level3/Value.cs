@@ -11586,10 +11586,10 @@ cx.obs[high] is not SqlValue hi)
                             }
                             switch (k)
                             {
-                                case "ID":
-                                case "LEAVING":
-                                case "ARRIVING":  // no need
-                                    break;
+                      //          case "ID":
+                      //          case "LEAVING":
+                      //          case "ARRIVING":  // no need
+                      //              break;
                                 case "SPECIFICTYPE":
                                     if (!n.dataType.Match(xv.ToString()))
                                         return false;

@@ -225,21 +225,6 @@ namespace Pyrrho.Level5
             }
             return (NodeType)et.New(m + x);
         }
-        public static NodeType operator +(NodeType et, (Context, long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (cx, dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is long p && cx.obs[p] is DBObject bb)
-            {
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (NodeType)et.New(m + (dp, ob));
-        }
         internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? r)
         {
             if (infos[cx.role.defpos] is ObInfo oi && oi.names[nm].Item2 is long p && cx._Ob(p) is DBObject ob)
@@ -356,6 +341,11 @@ namespace Pyrrho.Level5
                 cx.Add(ut);
                 cx.db += ut;
             }
+            else if (ut is NodeType)
+            {
+                cx.Add(ut);
+                cx.db += ut;
+            }
             var ui = ut.infos[cx.role.defpos] ?? throw new DBException("42105");
             for (var b = ls.First(); b != null; b = b.Next())
             {
@@ -414,6 +404,11 @@ namespace Pyrrho.Level5
             var dl = cx.db.loadpos;
             var ro = cx.role + (Role.DBObjects, cx.role.dbobjects + (ut.name, ut.defpos));
             cx.db = cx.db + (ut, dl) + (ro, dl);
+            if (cx.db is Transaction ta && ta.physicals[ut.defpos] is PNodeType pn)
+            {
+                pn.dataType = ut;
+                cx.db  = ta+ (Transaction.Physicals,ta.physicals+(pn.ppos,pn));
+            }
             return (ut, ls);
         }
         internal virtual NodeType Check(Context cx, CTree<string, SqlValue> ls)
@@ -519,12 +514,16 @@ namespace Pyrrho.Level5
                 tc = (TableColumn)(cx._Ob(pc.ppos) ?? throw new DBException("42105"));
             }
             else if (cx.db.objects[pp ?? -1L] is TableColumn sc)// coming from supertype
+            {
+                pc = (PColumn3?)((Transaction)cx.db).physicals[pp ?? -1L];
                 tc = sc;
+            }
             else
             {
                 pc = (PColumn3)(((Transaction)cx.db).physicals[pp ?? -1L] ?? throw new DBException("42105"));
                 tc = (TableColumn)(cx._Ob(ui.names[id].Item2 ?? -1L) ?? throw new DBException("42105"));
             }
+
             // add a new index in all cases
             var di = new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(tc), 1);
             var px = new PIndex(id, ut, di, (cp == NodeType.IdCol) ? PIndex.ConstraintType.PrimaryKey
@@ -536,19 +535,28 @@ namespace Pyrrho.Level5
                 pc.flags = gf;
                 pc.toType = rx?.tabledefpos ?? -1L; // -1L for idCol case
                 pc.index = rx?.defpos ?? -1L; // ditto
+                var ta = (Transaction)cx.db;
+                cx.db = ta + (Transaction.Physicals,ta.physicals+(pc.ppos, pc));
             }
-            tc += (TableColumn.GraphFlag, gf);
+            if (tc.flags != gf)
+            {
+                tc += (TableColumn.GraphFlag, gf);
+                cx.Add(tc);
+                cx.db += (tc.defpos, tc);
+            }  
             if (rx != null)
-                tc = tc + (Pyrrho.Level3.Index.RefTable, rx.tabledefpos) + (Pyrrho.Level3.Index.RefIndex, rx.defpos);
+                tc = tc + (Level3.Index.RefTable, rx.tabledefpos) + (Pyrrho.Level3.Index.RefIndex, rx.defpos);
             cx.Add(tc);
             cx.db += (tc.defpos, tc);
             ut = (NodeType)(cx.Add(px) ?? throw new DBException("42105"));
             if (px.flags.HasFlag(PIndex.ConstraintType.ForeignKey) && cx.db.objects[rx?.tabledefpos ?? -1L] is Table tr)
+            {
                 for (var su = cx.db.objects[tr.super?.defpos ?? -1L] as NodeType; su != null;
                         su = cx.db.objects[su.super?.defpos ?? -1L] as NodeType)
+
                     if (su.FindPrimaryIndex(cx) is Level3.Index xs)
                         cx.Add(new PIndex(id, ut, di, px.flags, xs?.defpos ?? -1L, cx.db.nextPos));
-            ut = (NodeType)(cx.db.objects[ut.defpos] ?? ut);
+            }
             if (xp != -1L)
                 ut = ut + (cp, tc.defpos) + (xp, px.ppos);
             if (rx != null)
@@ -1318,21 +1326,6 @@ namespace Pyrrho.Level5
                     m += (_Depth, d);
             }
             return (EdgeType)et.New(m + x);
-        }
-        public static EdgeType operator +(EdgeType et, (Context, long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (cx, dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is long p && et.representation[p] is DBObject bb)
-            {
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (EdgeType)et.New(m + (dp, ob));
         }
         public override Domain For()
         {
