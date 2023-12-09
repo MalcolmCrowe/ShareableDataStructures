@@ -250,7 +250,7 @@ namespace Pyrrho.Level2
                     np = pp;
                 else
                     ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
-                cx.db += (np, pe.leavingType, pe.arrivingType, et.defpos);
+                cx.db += (np, pe.leavingType, pe.arrivingType, defpos);
             }
             else
                 ro += (Role.DBObjects, ro.dbobjects + (name, defpos));

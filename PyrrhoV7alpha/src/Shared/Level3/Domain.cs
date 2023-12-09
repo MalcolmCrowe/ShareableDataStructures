@@ -2877,6 +2877,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             a = new Numeric(ol);
                         else if (v is TInteger iv)
                             a = new Numeric(iv.ivalue);
+                        else if (v is TChar cv)
+                            a = Numeric.Parse(cv.ToString());
                         else
                             a = new Numeric(v.ToDouble());
                         if (scale != 0)
@@ -2961,6 +2963,11 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         case Sqlx.DATE:
                             return new TDateTime(this, ((TDateTime)v).value);
                         case Sqlx.CHAR:
+                            if (!v.ToString().Contains('-'))
+                            {
+                                var s = long.Parse(v.ToString());
+                                return new TDateTime(new DateTime(s*10000+new DateTime(1970,1,1).Ticks));
+                            }
                             return new TDateTime(this, DateTime.Parse(v.ToString(),
                                 (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
                                 : v.dataType.culture));

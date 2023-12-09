@@ -20,8 +20,8 @@ namespace Pyrrho.Level2
         internal PNodeType(string nm,PType pt,NodeType dm,Context cx)
             :base (Type.PNodeType,nm,dm,dm.super,-1L,pt.ppos,cx)
         {  }
-        internal PNodeType(Type t,string nm, PType pt, NodeType dm, Context cx)
-            : base(t, nm, dm, dm.super, -1L, pt.ppos, cx)
+        internal PNodeType(Type t,string nm, long p, NodeType dm, Context cx)
+            : base(t, nm, dm, dm.super, -1L, p, cx)
         { }
         protected PNodeType(Type t, string nm, NodeType nt, Domain? un, long ns, long pp, Context cx)
             : base(t,nm,nt,un,ns, pp,cx) { }
@@ -48,8 +48,8 @@ namespace Pyrrho.Level2
     {
         public long leavingType;
         public long arrivingType;
-        internal PEdgeType(string nm, PType pt, EdgeType dm, Context cx)
-            :base (Type.PEdgeType,nm,pt,dm,cx)
+        internal PEdgeType(string nm, long p, EdgeType dm, Context cx)
+            :base (Type.PEdgeType,nm, p, dm,cx)
         {
             leavingType = dm.leavingType;
             arrivingType = dm.arrivingType;

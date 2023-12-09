@@ -1848,52 +1848,57 @@ namespace Pyrrho.Level4
                     dt = ParseMethodHeader(dt) ?? throw new PEException("PE42141");
                 }
             }
-            // it is a syntax error to add NODETPE/EDGETYPE metadata to something that is already
-            // a node type or edge type
-            if (dt is not NodeType && StartMetadata(Sqlx.TYPE))
-            {
-                // BuildNodeType is also used for the CREATE NODE syntax, which is
-                // part of the DML, and so any new properties added here are best prepared with
-                // SqlValues/SqlLiterals instead of Domains/TableColumns.
-                // We prepare a useful tree of all the columns we know about in case their names
-                // occur in the metadata.
-                var ls = CTree<string,SqlValue>.Empty;
-                for (var b = dt.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p && cx.obs[p] is TableColumn tc 
-                            && tc.infos[cx.role.defpos] is ObInfo ti && ti.name is string cn)
-                        ls += (cn,new SqlLiteral(p, cn, tc.domain.defaultValue, tc.domain));
-                var m = ParseMetadata(Sqlx.TYPE);
-                // The metadata contains aliases for special columns etc
-                if (m.Contains(Sqlx.NODETYPE))
-                {
-                    var nt = new NodeType(typename.iix.dp,dt.mem + (Domain.Kind,Sqlx.NODETYPE));
-                    nt = nt.FixNodeType(cx,typename);
-                    // Process ls and m 
-                    (dt,ls) = nt.Build(cx,nt, ls, m);
-                    // and fix the PType to be a PNodeType
-                }
-                else if (m.Contains(Sqlx.EDGETYPE) && dt is not NodeType) // or EdgeType
-                {
-                    var ll = m[Sqlx.RARROW] as TList ?? throw new PEException("PE60701");
-                    var al = m[Sqlx.ARROW] as TList ?? throw new PEException("PE60702");
-                    for (var bl = ll.list.First(); bl != null; bl = bl.Next())
-                        for (var ba = al.list.First(); ba != null; ba = ba.Next())
-                            if (bl.value() is TypedValue ln && ba.value() is TypedValue an)
-                            {
-                                m += (Sqlx.RARROW, ln);
-                                m += (Sqlx.ARROW, an);
-                                if (dt is not EdgeType et)
-                                    et = new EdgeType(dt.defpos, typename.ident, dt, null, cx, m);
-                                et = et.FixEdgeType(cx, typename);
-                                (dt, ls) = et.Build(cx, et, ls, m);
-                            }
-                            else throw new PEException("PE60703");
-                }
-                else if (m != CTree<Sqlx, TypedValue>.Empty)
-                    cx.Add(new PMetadata(typename.ident, -1, dt, m, cx.db.nextPos)); 
-            }
+            // it is a syntax error to add NODETPE/EDGETYPE metadata to a node type:
+            // but it is okay to add edgetype metadata to an edgetype
+            if ((dt is not NodeType || dt is EdgeType) && StartMetadata(Sqlx.TYPE))
+                ParseTypeMetadata(typename, dt);
             cx.parse = op;
         }
+        void ParseTypeMetadata(Ident typename,UDType dt)
+        {
+            // BuildNodeType is also used for the CREATE NODE syntax, which is
+            // part of the DML, and so any new properties added here are best prepared with
+            // SqlValues/SqlLiterals instead of Domains/TableColumns.
+            // We prepare a useful tree of all the columns we know about in case their names
+            // occur in the metadata.
+            var ls = CTree<string, SqlValue>.Empty;
+            for (var b = dt.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx.obs[p] is TableColumn tc
+                        && tc.infos[cx.role.defpos] is ObInfo ti && ti.name is string cn)
+                    ls += (cn, new SqlLiteral(p, cn, tc.domain.defaultValue, tc.domain));
+            var m = ParseMetadata(Sqlx.TYPE);
+            // The metadata contains aliases for special columns etc
+            if (m.Contains(Sqlx.NODETYPE))
+            {
+                var nt = new NodeType(typename.iix.dp, dt.mem + (Domain.Kind, Sqlx.NODETYPE));
+                nt = nt.FixNodeType(cx, typename);
+                // Process ls and m 
+                (dt, ls) = nt.Build(cx, nt, ls, m);
+                // and fix the PType to be a PNodeType
+            }
+            else if (m.Contains(Sqlx.EDGETYPE) && (dt is not NodeType||dt is EdgeType))
+            {
+                var ll = m[Sqlx.RARROW] as TList ?? throw new PEException("PE60701");
+                var al = m[Sqlx.ARROW] as TList ?? throw new PEException("PE60702");
+                for (var bl = ll.list.First(); bl != null; bl = bl.Next())
+                    for (var ba = al.list.First(); ba != null; ba = ba.Next())
+                        if (bl.value() is TypedValue ln && ba.value() is TypedValue an)
+                        {
+                            m += (Sqlx.RARROW, ln);
+                            m += (Sqlx.ARROW, an);
+                            if (dt is not EdgeType et
+                                || cx.NameFor(et.leavingType) != ln.ToString()
+                                || cx.NameFor(et.arrivingType) != an.ToString())
+                                et = new EdgeType(dt.defpos, typename.ident, dt, null, cx, m);
+                            et = et.FixEdgeType(cx, typename);
+                            (dt, ls) = et.Build(cx, et, ls, m);
+                        }
+                        else throw new PEException("PE60703");
+            }
+            else if (m != CTree<Sqlx, TypedValue>.Empty)
+                cx.Add(new PMetadata(typename.ident, -1, dt, m, cx.db.nextPos));
+        }
+
         /// <summary>
         /// Method =  	MethodType METHOD id '(' Parameters ')' [RETURNS Type] [FOR id].
         /// MethodType = 	[ OVERRIDING | INSTANCE | STATIC | CONSTRUCTOR ] .
@@ -5449,13 +5454,18 @@ namespace Pyrrho.Level4
                     ParseMethodHeader(tp);
                     return;
                 }
-                var (nm,dm,md) = ParseMember(id);
-                var c = new PColumn2(tp,nm.ident, -1, dm, dm.defaultString, dm.defaultValue,
-                        false, GenerationRule.None, tr.nextPos, cx);
-                cx.Add(c);
-                var tc = (TableColumn)(cx.obs[c.defpos]?? throw new DBException("42105"));
-                if (md!=CTree<Sqlx,TypedValue>.Empty)
-                    cx.Add(new PMetadata(nm.ident, 0, tc, md, tr.nextPos));
+                if ((tp is not NodeType || tp is EdgeType) && StartMetadata(Sqlx.TYPE))
+                    ParseTypeMetadata(id, tp);
+                else
+                {
+                    var (nm, dm, md) = ParseMember(id);
+                    var c = new PColumn2(tp, nm.ident, -1, dm, dm.defaultString, dm.defaultValue,
+                            false, GenerationRule.None, tr.nextPos, cx);
+                    cx.Add(c);
+                    var tc = (TableColumn)(cx.obs[c.defpos] ?? throw new DBException("42105"));
+                    if (md != CTree<Sqlx, TypedValue>.Empty)
+                        cx.Add(new PMetadata(nm.ident, 0, tc, md, tr.nextPos));
+                }
             }
             else if (tok == Sqlx.ALTER)
             {
@@ -7543,6 +7553,8 @@ namespace Pyrrho.Level4
             var ob = cx.GetObject(ic.ident);
             if (ob == null && cx.defs.Contains(ic.ident))
                 ob = cx.obs[cx.defs[(ic.ident,lp.sd)].Item1.dp];
+            if (ob is null && long.TryParse(ic.ident, out var tp))
+                ob = cx.db.objects[tp] as DBObject;
             if (ob == null)
                 throw new DBException("42107", ic.ident);
             var f = (RowSet)cx.Add(_From(ic, ob, ob as Domain??Domain.Null, Grant.Privilege.Delete));

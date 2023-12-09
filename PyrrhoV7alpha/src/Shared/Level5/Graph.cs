@@ -1212,14 +1212,84 @@ namespace Pyrrho.Level5
         }
         internal EdgeType FixEdgeType(Context cx, Ident typename)
         {
-            if (((Transaction)cx.db).physicals[typename.iix.dp] is not PType pt)
-                throw new PEException("PE50502");
-            if (pt is not PEdgeType)
-                pt = new PEdgeType(typename.ident, pt, this, cx);
-            pt.dataType = this;
+            var pt = ((Transaction)cx.db).physicals[typename.iix.dp] as PType ?? throw new DBException("42000");
+            var pe = pt as PEdgeType;
+            if (pe is null)
+                pe = new PEdgeType(typename.ident, pt.ppos, this, cx);
+            if (pe.leavingType != leavingType || pe.arrivingType != arrivingType)
+            {
+                // we need a different table with similar columns to pe
+                var st = cx.db.objects[super?.defpos ?? -1L] as UDType;
+                EdgeType ot = cx.db.objects[cx.db.edgeTypes[pe.defpos]?[pe.leavingType]?[pe.arrivingType] ?? -1L] as EdgeType
+                    ?? throw new DBException("42105");
+                pe = new PEdgeType(typename.ident, cx.db.nextPos, this, cx);
+                var nt = (EdgeType?)cx.Add(pe) ?? throw new DBException("42105");
+                var ls = CTree<string, SqlValue>.Empty;
+                var md = CTree<Sqlx, TypedValue>.Empty;
+                md = md + (Sqlx.NODE, new TChar(cx.NameFor(idCol))) + (Sqlx.LPAREN, new TChar(cx.NameFor(leaveCol)))
+                    + (Sqlx.RPAREN, new TChar(cx.NameFor(arriveCol)));
+                for (var b = ot.rowType.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.value() ?? -1L] is TableColumn oc
+                        && st?.representation.Contains(oc.defpos) != true)
+                    {
+                        var nm = cx.NameFor(oc.defpos);
+                        switch (oc.flags)
+                        {
+                            case PColumn.GraphFlags.None:
+                                {
+                                    var pc = new PColumn3(nt, nm, -1, oc.domain,
+                                    oc.flags, -1L, -1L, cx.db.nextPos, cx);
+                                    nt = (EdgeType?)cx.Add(pc) ?? throw new DBException("42105");
+                                    break;
+                                }
+                            case PColumn.GraphFlags.IdCol:
+                                {
+                                    var pc = new PColumn3(nt, nm, 0, oc.domain,
+                                        oc.flags, -1L, -1L, cx.db.nextPos, cx);
+                                    nt = (EdgeType?)cx.Add(pc) ?? throw new DBException("42105");
+                                    var nc = (TableColumn?)cx.obs[pc.ppos] ?? throw new DBException("42105");
+                                    nt = (EdgeType?)cx.Add(new PIndex(nm, nt,
+                                    new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(nc), 1),
+                                    PIndex.ConstraintType.PrimaryKey, nt.defpos, cx.db.nextPos))
+                                   ?? throw new DBException("42105");
+                                    break;
+                                }
+                            case PColumn.GraphFlags.LeaveCol:
+                                {
+                                    var px = (cx.db.objects[leavingType] as Table)?.FindPrimaryIndex(cx)
+                                        ?? throw new DBException("42000");
+                                    var pc = new PColumn3(nt, nm, 1, oc.domain,
+                                        oc.flags, px.defpos, leavingType, cx.db.nextPos, cx);
+                                    nt = (EdgeType?)cx.Add(pc) ?? throw new DBException("42105");
+                                    var nc = (TableColumn?)cx.obs[pc.ppos] ?? throw new DBException("42105");
+                                    nt = (EdgeType?)cx.Add(new PIndex(nm, nt,
+                                    new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(nc), 1),
+                                    PIndex.ConstraintType.ForeignKey, leavingType, cx.db.nextPos))
+                                    ?? throw new DBException("42105");
+                                    break;
+                                }
+                            case PColumn.GraphFlags.ArriveCol:
+                                {
+                                    var px = (cx.db.objects[leavingType] as Table)?.FindPrimaryIndex(cx)
+                                        ?? throw new DBException("42000");
+                                    var pc = new PColumn3(nt, nm, 2, oc.domain,
+                                        oc.flags, px.defpos, arrivingType, cx.db.nextPos, cx);
+                                    nt = (EdgeType?)cx.Add(pc) ?? throw new DBException("42105");
+                                    var nc = (TableColumn?)cx.obs[pc.ppos] ?? throw new DBException("42105");
+                                    nt = (EdgeType?)cx.Add(new PIndex(nm, nt,
+                                    new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(nc), 1),
+                                    PIndex.ConstraintType.ForeignKey, arrivingType, cx.db.nextPos))
+                                    ?? throw new DBException("42105");
+                                    break;
+                                }
+                        }
+                    }
+                return nt;
+            }
+            pe.dataType = this;
             FixColumns(cx, 3);
-            pt.under = super;
-            return (EdgeType)(cx.Add(pt) ?? throw new DBException("42105"));
+            pe.under = super;
+            return (EdgeType)(cx.Add(pe) ?? throw new DBException("42105"));
         }
         internal override Table _PathDomain(Context cx)
         {

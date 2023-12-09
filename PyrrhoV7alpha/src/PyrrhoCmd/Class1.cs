@@ -596,105 +596,23 @@ namespace PyrrhoCmd
                 ef++;
             var r = new StringBuilder(str.Substring(0,it-1));
             var st = new StreamReader(str.Substring(it+1,ef-it-1));
-            TextParser tp = TextParser.StartRow;
-            var rows = 0;
-            var parenthesisedRow = false;
-            // skip first row
-            var ch = Next(st,rows);
-            while (ch != '\n')
-                ch = Next(st,rows);
-            while (true)
+            st.ReadLine();
+            var cc = "";
+            while (st.ReadLine() is string rs)
             {
-                while (Char.IsWhiteSpace(ch))
-                    ch = Next(st,rows);
-                switch (tp)
+                r.Append(cc); cc = ",";
+                r.Append('(');
+                var ss = rs.Split('|');
+                var cm = "'";
+                for (var i=0; i<ss.Length; i++)
                 {
-                    case TextParser.StartRow:
-                        if (ch == '(')
-                        {
-                            parenthesisedRow = true;
-                            ch = Next(st, rows);
-                        }
-                        if (rows != 0)
-                            r.Append(',');
-                        r.Append('(');
-                        rows++;
-                        tp = TextParser.StartValue;
-                        break;
-                    case TextParser.StartValue:
-                        var sb = new StringBuilder();
-                        var si = Special(ch);
-                        if (si>=0)
-                            ch = CopyToMatch(st, si, sb, rows);
-                        else while (ch==' ' || (ch!=')' && ch != ',' && ch!='\0' &&!Char.IsWhiteSpace(ch)))
-                        {
-                            sb.Append(ch);
-                            ch = Next(st);
-                        }
-                        var s = sb.ToString();
-                        if (Char.IsDigit(s[0]) || s[0] == '-')
-                        {
-                            if (s.IndexOf("/") > 0) // assume US format date
-                            {
-                                var sa = s.Split('/');
-                                r.Append("date'");
-                                r.Append(sa[2]);
-                                r.Append('-');
-                                if (sa[0].Length == 1)
-                                    r.Append('0');
-                                r.Append(sa[0]);
-                                r.Append('-');
-                                if (sa[1].Length == 1)
-                                    r.Append('0');
-                                r.Append(sa[1]);
-                                r.Append('\'');
-                            }
-                            else
-                                r.Append(s);
-                        }
-                        else
-                        {
-                            if (s[0] == '"' && s[s.Length - 1] == '"')
-                                s = s.Substring(1, s.Length - 2);
-                            r.Append('\''); r.Append(s.Replace("'", "''")); r.Append('\'');
-                        }
-                        tp = TextParser.EndValue;
-                        if (!parenthesisedRow)
-                        {
-                            while (ch != '\0' && Char.IsWhiteSpace(ch))
-                            {
-                                if (ch == '\n' || ch == '\r')
-                                    tp = TextParser.EndRow;
-                                ch = Next(st);
-                            }
-                            if (ch=='\0')
-                                tp = TextParser.EndRow;
-                       }
-                        break;
-                    case TextParser.EndValue:
-                        if (parenthesisedRow && ch == ')')
-                        {
-                            ch = Next(st);
-                            tp = TextParser.EndRow;
-                            while (ch != '\0' && Char.IsWhiteSpace(ch))
-                                ch = Next(st);
-                        }
-                        else
-                        {
-                            r.Append(',');
-                            if (ch == ',')
-                                ch = Next(st, rows);
-                            tp = TextParser.StartValue;
-                        }
-                        break;
-                    case TextParser.EndRow:
-                        r.Append(')');
-                        if (ch == '\0')
-                            return r.ToString();
-                        tp = TextParser.StartRow;
-                        break;
+                    r.Append(cm); cm = ",'";
+                    r.Append(ss[i].Replace("'","''"));
+                    r.Append("'");
                 }
+                r.Append(')');
             }
+            return r.ToString();
         }
         static char Next(StreamReader st,int rows)
         {
