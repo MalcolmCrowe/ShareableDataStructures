@@ -137,7 +137,12 @@ namespace Pyrrho.Level3
                 tb = tb + (EdgeType.ArriveCol, tc.defpos) 
                     + (EdgeType.ArriveIx, tc.index);
                 if (tc.toType >= 0)
+                {
                     tb += (EdgeType.ArrivingType, tc.toType);
+                    var at = cx._Ob(tc.toType) as NodeType ?? throw new PEException("PE10706");
+                    if (at.idColDomain.defpos != tc.domain.defpos) throw new PEException("PE10707");
+                    tb += (EdgeType.ArriveColDomain, at.idColDomain);
+                }
                 if (tc.flags.HasFlag(PColumn.GraphFlags.SetValue))
                     tb += (EdgeType.ArrivingEnds, true);
             }
@@ -146,7 +151,12 @@ namespace Pyrrho.Level3
                 tb = tb + (EdgeType.LeaveCol, tc.defpos)
                     + (EdgeType.LeaveIx, tc.index);
                 if (tc.toType >= 0)
+                {
                     tb += (EdgeType.LeavingType, tc.toType);
+                    var lt = cx._Ob(tc.toType) as NodeType ?? throw new PEException("PE10708");
+                    if (lt.idColDomain.defpos != tc.domain.defpos) throw new PEException("PE10709");
+                    tb += (EdgeType.LeaveColDomain, lt.idColDomain);
+                }
                 if (tc.flags.HasFlag(PColumn.GraphFlags.SetValue))
                     tb += (EdgeType.LeavingEnds, true);
             }
@@ -197,6 +207,12 @@ namespace Pyrrho.Level3
                 pt += tc.defpos;
             }
             tb = tb + (RowType, rt) + (Representation, rs) + (Infos, tb.infos + (cx.role.defpos, oi));
+            if (tc.flags.HasFlag(PColumn.GraphFlags.IdCol))
+                tb += (NodeType.IdColDomain,tc.domain);
+            if (tc.flags.HasFlag(PColumn.GraphFlags.LeaveCol))
+                tb += (EdgeType.LeaveColDomain, tc.domain);
+            if (tc.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
+                tb += (EdgeType.ArriveColDomain, tc.domain);
             tb += (PathDomain, tb._PathDomain(cx));
             var ps = su?.representation ?? CTree<long, Domain>.Empty;
             if (tb is NodeType)
@@ -325,7 +341,11 @@ namespace Pyrrho.Level3
             r += (PathDomain, r._PathDomain(cx));
             var ts = ShallowReplace(cx, tableRows, was, now);
             if (ts != tableRows)
+            {
+                for (var b = ts.First(); b != null; b = b.Next()) // verify that all tablerows have the right types for all vals
+                    b.value()?.Check(r,cx);
                 r += (TableRows, ts);
+            }
             return r;
         }
         static CTree<Domain,CTree<long,bool>> ShallowReplace(Context cx,CTree<Domain,CTree<long,bool>> xs,long was,long now)
@@ -370,7 +390,7 @@ namespace Pyrrho.Level3
             {
                 var r = b.value().ShallowReplace(cx, was, now);
                 if (r != b.value())
-                    ts += (b.key(), r);
+                    ts += (b.key(), r); // to be checked by caller
             }
             return ts;
         }

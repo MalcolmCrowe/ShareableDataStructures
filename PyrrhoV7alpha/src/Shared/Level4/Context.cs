@@ -1182,13 +1182,13 @@ namespace Pyrrho.Level4
         internal BTree<long,TableRow> ReplacedTlR(BTree<long,TableRow>rs,long w)
         {
             var r = BTree<long, TableRow>.Empty;
-            var nt = uids[UDType.Under] ?? -1L;
+            var nt = uids[Domain.Under] ?? -1L;
             var n = uids[w] ?? w;
             var ch = false;
             for (var b = rs.First(); b != null; b = b.Next())
             {
                 var k = b.key();
-                var nr = new TableRow(b.value(), nt, w, n);
+                var nr = new TableRow(b.value(), nt, w, n); // alas, can't check this here
                 ch = b.value() != nr;
                 r += (k, nr);
             }

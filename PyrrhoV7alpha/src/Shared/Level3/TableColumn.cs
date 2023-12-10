@@ -448,9 +448,10 @@ namespace Pyrrho.Level3
         internal readonly long subType;
         internal readonly Level classification;
         internal readonly CTree<long, TypedValue> vals;
-        internal static TableRow Any = new TableRow(-1L); // creates a dummy TableRow for TPath
+        internal static TableRow Any = new (-1L); // creates a dummy TableRow for TPath
         public TableRow(Record rc, Context cx)
         {
+            rc.Check(cx);
             defpos = rc.defpos;
             time = rc.time;
             user = (cx.user ?? User.None).defpos;
@@ -463,6 +464,7 @@ namespace Pyrrho.Level3
         }
         public TableRow(Update up, Context cx, TableRow old, Level? lv=null)
         {
+            up.Check(cx);
             defpos = up.defpos;
             time = up.time;
             user = (cx.user ?? User.None).defpos;
@@ -535,6 +537,20 @@ namespace Pyrrho.Level3
         public static TableRow operator-(TableRow r,long p)
         {
             return new TableRow(r, r.vals -p);
+        }
+        internal TableRow Check(Domain dm,Context cx)
+        {
+            var vs = vals;
+            for (var b = dm.First(); b != null; b = b.Next())
+            {
+                if (b.value() is not long p || dm.representation[p] is not Domain dv)
+                    throw new PEException("PE10703");
+                if (vs[p] is not TypedValue v)
+                    throw new DBException("22206", cx.NameFor(p));
+                if (v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
+                    throw new PEException("PE10704");
+            }
+            return this;
         }
         internal void Cascade(TableActivation cx, CTree<long, TypedValue>? u = null)
         {
@@ -617,7 +633,7 @@ namespace Pyrrho.Level3
         internal TableRow ShallowReplace(Context cx,long was, long now)
         {
             var vs = cx.ShallowReplace(vals, was, now);
-            return (vs != vals) ? new TableRow(this,vs) : this;
+            return (vs != vals) ? new TableRow(this,vs) : this; // Check is done by caller: can't be done just now
         }
         public override string ToString()
         {

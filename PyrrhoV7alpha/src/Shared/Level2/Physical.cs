@@ -305,6 +305,7 @@ namespace Pyrrho.Level2
                                                 && tr.vals[nk.defpos] is TypedValue tk
                                                 && e.Value() is long ev)
                                         {
+                                            tk = dk.Coerce(cx, tk);
                                             te += (kp, tk);
                                             rs += (te.defpos, te);
                                             var sl = new CList<TypedValue>(sk);

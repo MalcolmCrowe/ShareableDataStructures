@@ -1022,6 +1022,7 @@ namespace Pyrrho.Level4
         // TruncationSpec = [EdgeType_id][{OrderSpec {',' OrderSpec}] '=' int .
         BTree<long,(int,Domain)> ParseTruncation()
         {
+            Mustbe(Sqlx.LPAREN);
             var r = BTree<long, (int, Domain)>.Empty;
             while (true)
             {
@@ -1031,6 +1032,7 @@ namespace Pyrrho.Level4
                     var et = cx.db.objects[cx.role.dbobjects[lxr.val.ToString()] ?? -1L] as EdgeType
                         ?? throw new DBException("42161", Sqlx.EDGETYPE);
                     Next();
+                    cx.AddDefs(et);
                     k = et.defpos;
                 }
                 var rt = BList<DBObject>.Empty;
@@ -1051,7 +1053,8 @@ namespace Pyrrho.Level4
                     Next();
                 else
                     break;
-            } 
+            }
+            Mustbe(Sqlx.RPAREN);
             return r;
         }
         CList<CList<SqlNode>> ParseSqlGraphList()
@@ -1405,18 +1408,32 @@ namespace Pyrrho.Level4
             lxr.ParsingMatch = true;
             var (tgs,svgs) = ParseSqlMatchList();
             lxr.ParsingMatch = false;
+            var m = BTree<long, object>.Empty;
+            var (dt, ns) = BindingTable(cx, tgs);
+            m += (DBObject._Domain, dt);
+            m += (ObInfo.Names, ns);
             var wh = ParseWhereClause() ?? CTree<long, bool>.Empty;
+            m += (RowSet._Where, wh);
             long e = -1L;
             if (tok != Sqlx.EOF && tok != Sqlx.END && tok != Sqlx.RPAREN)
             {
                 var op = cx.parse;
                 cx.parse = ExecuteStatus.Graph;
-                e = (ParseProcedureStatement(Domain.Content) is Executable ex) ? ex.defpos : -1L;
+                if (tok != Sqlx.ORDER && tok != Sqlx.FETCH)
+                {
+                    var ex = ParseProcedureStatement(Domain.Content);
+                    dt = ex.domain;
+                    e = ex.defpos;
+                }
+                if (tok == Sqlx.ORDER)
+                    m += (RowSet.RowOrder, ParseOrderClause(dt));
+                if (tok == Sqlx.FETCH)
+                    m += (RowSetSection.Size, FetchFirstClause());
                 cx.parse = op;
             }
             if (tgs is null)
                 throw new DBException("PE60201");
-            var ms = new MatchStatement(cx, tg, tgs, svgs, wh, e);
+            var ms = new MatchStatement(cx, tg, tgs, svgs, m, e);
             if (tok == Sqlx.THEN)
             {
                 Next();
@@ -1442,6 +1459,30 @@ namespace Pyrrho.Level4
                 if (!olddefs.Contains(b.key()))
                     cx.defs -= b.key();
             return ms;
+        }
+        internal (Domain, BTree<string, (int, long?)>) BindingTable(Context cx,CTree<long,TGParam> gs)
+        {
+            var rt = BList<long?>.Empty;
+            var re = CTree<long, Domain>.Empty;
+            var ns = BTree<string, (int, long?)>.Empty;
+            var j = 0;
+            for (var b = gs.First(); b != null; b = b.Next())
+                if (b.value() is TGParam g && g.value != "" && !re.Contains(g.uid))
+                {
+                    rt += g.uid;
+                    re += (g.uid, g.dataType);
+                    ns += (g.value, (j++, g.uid));
+                    if (cx.obs[g.uid] is SqlValue sx)
+                        sx.AddFrom(cx, g.from);
+                }
+            if (rt.Count == 0)
+            {
+                var rc = new SqlLiteral(cx.GetUid(), "Match", TBool.True);
+                rt += rc.defpos;
+                re += (rc.defpos, Domain.Bool);
+            }
+            var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length) + (ObInfo.Names, ns);
+            return ((Domain)cx.Add(dt), ns);
         }
         (int,int) ParseMatchQuantifier()
         {
@@ -3728,17 +3769,18 @@ namespace Pyrrho.Level4
             SqlValue re;
             var ag = -1L;
             var dp = cx.GetUid();
+            var dm = xp;
             if (xp == Domain.Content)
             {
-                var dm = ParseSelectList(-1L, xp) + (Domain.Kind,Sqlx.ROW);
+                dm = ParseSelectList(-1L, xp) + (Domain.Kind,Sqlx.ROW);
                 if (dm.aggs != CTree<long,bool>.Empty)
                 {
                     // we don't really know yet what rowset the enclosing syntax will provide
                     // for now we sort out the requirements
                     var ii = cx.GetIid();
                     var sd = dm.SourceRow(cx,dp); // this is what we will need
-                    var sr = new SelectRowSet(ii, cx, dm,new TrivialRowSet(cx,sd));
-                    sr = (SelectRowSet)ParseSelectRowSet(sr); // this is what we will do with it
+                    RowSet sr = new SelectRowSet(ii, cx, dm,new TrivialRowSet(cx,sd));
+                    sr = ParseSelectRowSet((SelectRowSet)sr); // this is what we will do with it
                     ag = sr.defpos;
                     dm = sd;
                 }
@@ -3748,6 +3790,8 @@ namespace Pyrrho.Level4
                 re = ParseSqlValue(xp);
             cx.Add(re);
             var rs = new ReturnStatement(cx.GetUid(), re);
+            if (dm != Domain.Content)
+                rs += (DBObject._Domain, dm);
             if (ag >= 0)
                 rs += (ReturnStatement.Aggregator, ag);
             return (Executable)cx.Add(rs);
@@ -6231,10 +6275,10 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="xp">the expected result type</param>
         /// <returns>Updated result type, and a RowSet</returns>
-		RowSet ParseQueryExpression(Domain xp,bool ambient=false)
+		RowSet ParseQueryExpression(Domain xp, bool ambient = false)
         {
-            RowSet left,right;
-            left = ParseQueryTerm(xp,ambient);
+            RowSet left, right;
+            left = ParseQueryTerm(xp, ambient);
             while (Match(Sqlx.UNION, Sqlx.EXCEPT))
             {
                 Sqlx op = tok;
@@ -6245,34 +6289,41 @@ namespace Pyrrho.Level4
                     md = tok;
                     Next();
                 }
-                right = ParseQueryTerm(xp,ambient);
-                left = new MergeRowSet(cx.GetUid(), cx, xp,left, right,md==Sqlx.DISTINCT,op);
+                right = ParseQueryTerm(xp, ambient);
+                left = new MergeRowSet(cx.GetUid(), cx, xp, left, right, md == Sqlx.DISTINCT, op);
                 if (md == Sqlx.DISTINCT)
                     left += (RowSet.Distinct, true);
             }
             var ois = left.ordSpec;
             var nis = ParseOrderClause(ois, true);
-            left = (RowSet)(cx.obs[left.defpos]??throw new PEException("PE20701"));
-            if (ois.CompareTo(nis)!=0)
+            left = (RowSet)(cx.obs[left.defpos] ?? throw new PEException("PE20701"));
+            if (ois.CompareTo(nis) != 0)
                 left = left.Sort(cx, nis, false);
+            var n = FetchFirstClause();
+            if (n>0)
+                left = new RowSetSection(cx, left, 0, n);
+            return (RowSet)cx.Add(left);
+        }
+        internal int FetchFirstClause()
+        {
+            int n = -1;
             if (Match(Sqlx.FETCH))
             {
+                n = 1;
                 Next();
                 Mustbe(Sqlx.FIRST);
                 var o = lxr.val;
-                var n = 1;
                 if (tok == Sqlx.INTEGERLITERAL)
                 {
-                    n = o.ToInt()??1;
+                    n = o.ToInt() ?? 1;
                     Next();
                     Mustbe(Sqlx.ROWS);
                 }
                 else
                     Mustbe(Sqlx.ROW);
-                left = new RowSetSection(cx, left, 0, n);
                 Mustbe(Sqlx.ONLY);
             }
-            return (RowSet)cx.Add(left);
+            return n;
         }
         /// <summary>
 		/// QueryTerm = QueryPrimary | QueryTerm INTERSECT [ ALL | DISTINCT ] QueryPrimary .

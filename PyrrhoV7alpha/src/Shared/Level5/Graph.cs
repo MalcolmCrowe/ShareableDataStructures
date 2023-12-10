@@ -78,7 +78,9 @@ namespace Pyrrho.Level5
     {
         internal const long
             IdCol = -472,  // long TableColumn
-            IdIx = -436;   // long Index
+            IdColDomain = -493, // Domain
+            IdIx = -436;    // long Index
+        internal Domain idColDomain => (Domain)(mem[IdColDomain] ?? Int);
         internal NodeType(Sqlx t) : base(t)
         { }
         public NodeType(long dp, BTree<long, object> m) : base(dp, m)
@@ -149,7 +151,7 @@ namespace Pyrrho.Level5
             if (!rs.Contains(idCol))
             {
                 rt += idCol;
-                rs += (idCol, Char);
+                rs += (idCol, idColDomain);
             }
             for (var b = pd?.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && pd?.representation[p] is Domain cd && !rs.Contains(p))
@@ -1115,15 +1117,19 @@ namespace Pyrrho.Level5
     {
         internal const long
             ArriveCol = -474, // long TableColumn  NameFor is md[RPAREN]
+            ArriveColDomain = -495, // Domain
             ArriveIx = -435, // long Index
             ArrivingEnds = -371, // bool
             ArrivingType = -467, // long NodeType  NameFor is md[ARROW]
             LeaveCol = -473, // long TableColumn   NameFor is md[LPAREN]
+            LeaveColDomain = -494, // Domain
             LeaveIx = -470, // long Index
             LeavingEnds = -377, // bool
             LeavingType = -464; // long NodeType   NameFor is md[RARROW]
         public bool leavingEnds => (bool)(mem[LeavingEnds] ?? false);
+        public Domain leaveColDomain => (Domain)(mem[LeaveColDomain] ?? Int);
         public bool arrivingEnds => (bool)(mem[ArrivingEnds] ?? false);
+        public Domain arriveColDomain => (Domain)(mem[ArriveColDomain] ?? Int);
         internal EdgeType(long dp, string nm, UDType dt, Table? ut, Context cx, CTree<Sqlx, TypedValue>? md = null)
             : base(dp, _Mem(nm, dt, ut, md, cx))
         { }
@@ -1174,7 +1180,7 @@ namespace Pyrrho.Level5
         {
             return (UDType)(cx.Add(new PEdgeType(pn.ident, (EdgeType)EdgeType.Relocate(dp), un, -1L, dp, cx))
                 ?? throw new DBException("42105"));
-        }
+        } 
         internal override NodeType Check(Context cx, CTree<string, SqlValue> ls)
         {
             var et = base.Check(cx, ls);
@@ -1307,11 +1313,11 @@ namespace Pyrrho.Level5
                         ii += (b.key(), ti);
                     }
             rt += idCol;
-            rs += (idCol, Char);
+            rs += (idCol, idColDomain);
             rt += leaveCol;
-            rs += (leaveCol, leavingEnds ? new TSet(Char).dataType : Char);
+            rs += (leaveCol, leavingEnds ? new TSet(leaveColDomain).dataType : leaveColDomain);
             rt += arriveCol;
-            rs += (arriveCol, arrivingEnds ? new TSet(Char).dataType : Char);
+            rs += (arriveCol, arrivingEnds ? new TSet(arriveColDomain).dataType : arriveColDomain);
             for (var b = pd?.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p
                     && pd?.representation[p] is Domain cd && !rs.Contains(p))

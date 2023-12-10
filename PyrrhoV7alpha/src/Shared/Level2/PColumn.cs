@@ -503,7 +503,7 @@ namespace Pyrrho.Level2
             index = ix;
             toType = tp;
             if ((flags.HasFlag(GraphFlags.LeaveCol) || flags.HasFlag(GraphFlags.ArriveCol)) && toType < 0)
-                ;
+                throw new PEException("PE20501");
         }
         /// <summary>
         /// Constructor: A new Column definition from the buffer
@@ -544,7 +544,7 @@ namespace Pyrrho.Level2
             wr.PutLong(index);
             wr.PutLong(toType);
             if ((flags.HasFlag(GraphFlags.LeaveCol) || flags.HasFlag(GraphFlags.ArriveCol)) && toType < 0)
-                ;
+                throw new PEException("PE20502");
             base.Serialise(wr);
         }
         /// <summary>

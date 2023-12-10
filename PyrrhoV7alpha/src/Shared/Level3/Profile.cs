@@ -180,7 +180,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A set of record profiles for this table profile (records affected)
         /// </summary>
-        public List<RecordProfile> recs = new List<RecordProfile>(); 
+        public List<RecordProfile> recs = new (); 
         /// <summary>
         /// Constructor: a new TableProfile for a given table
         /// </summary>
@@ -511,7 +511,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The set of transaction profiles for this database
         /// </summary>
-        public List<TransactionProfile> transactions = new List<TransactionProfile>();
+        public List<TransactionProfile> transactions = new ();
 #if MONGO
         /// <summary>
         /// The set of query profiles for this database: accumulated from transactions
@@ -537,7 +537,7 @@ namespace Pyrrho.Level3
         {
             if (cx == null)
                 return null;
-            TransactionProfile tp = new TransactionProfile();
+            TransactionProfile tp = new ();
             if (!success)
                 tp.fails = 1;
             for (var b = ((Transaction)cx.db).physicals.First(); b != null; b = b.Next())

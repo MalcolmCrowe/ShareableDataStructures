@@ -164,7 +164,24 @@ namespace Pyrrho.Level2
         {
             var tb = cx._Ob(tabledefpos) as Table ?? throw new PEException("PE40407");
             prevrec = tb.tableRows[defpos] ?? throw new DBException("42105");
+            Check(cx);
             return new TableRow(this,cx,prevrec);
+        }
+        internal override void Check(Context cx)
+        {
+            if (cx._Ob(tabledefpos) is not Table tb) throw new DBException("42105");
+            var dm = tb._PathDomain(cx);
+            for (var b = dm.First(); b != null; b = b.Next())
+            {
+                if (b.value() is not long p || dm.representation[p] is not Domain dv)
+                    throw new PEException("PE10701");
+                if (fields[p] is TypedValue v
+                    && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
+                {
+                    var nv = dm.Coerce(cx, v);
+                    fields += (p, nv);
+                }
+            }
         }
         internal override void AddRow(Table tt, TableRow now, Context cx)
         {
@@ -230,7 +247,8 @@ namespace Pyrrho.Level2
                 if (cx.db.objects[tabledefpos] is Table tb)
                 {
                     var fl = tb.tableRows[defpos] ?? throw new PEException("PE40406");
-                    cx.Install(tb + new TableRow(this, cx, fl, _classification), p);
+                    Check(cx);
+                    cx.Install(tb + new TableRow(this, cx, fl, _classification).Check(tb,cx), p);
                 }
                 if (cx.db.mem.Contains(Database.Log))
                     cx.db += (Database.Log, cx.db.log + (ppos, type));

@@ -303,7 +303,25 @@ namespace Pyrrho.Level2
         }
         protected virtual TableRow Now(Context cx)
         {
+            Check(cx);
             return new TableRow(this, cx);
+        }
+        internal virtual void Check(Context cx)
+        {
+            if (cx._Ob(tabledefpos) is not Table tb) throw new DBException("42105");
+            var dm = tb._PathDomain(cx);
+            for (var b = dm.First(); b != null; b = b.Next())
+            {
+                if (b.value() is not long p || dm.representation[p] is not Domain dv)
+                    throw new PEException("PE10701");
+                if (fields[p] is not TypedValue v)
+                    throw new DBException("22206", cx.NameFor(p));
+                if (v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
+                {
+                    var nv = dv.Coerce(cx, v);
+                    fields += (p, nv);
+                }
+            }
         }
         internal override DBObject? Install(Context cx, long p)
         {
