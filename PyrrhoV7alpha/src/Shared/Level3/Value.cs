@@ -7124,6 +7124,7 @@ namespace Pyrrho.Level3
                         {
                             case Sqlx.MULTISET: return new TInt(((TMultiset)v).Count);
                             case Sqlx.SET: return new TInt(((TSet)v).tree.Count);
+                            case Sqlx.PATH:
                             case Sqlx.ARRAY: return new TInt(((TArray)v).Length);
                             default:throw new DBException("42113", v).Mix();
                         }
