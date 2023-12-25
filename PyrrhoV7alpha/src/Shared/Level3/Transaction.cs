@@ -360,7 +360,7 @@ namespace Pyrrho.Level3
             return cx;
         }
         /// <summary>
-        /// Show REST service: do what we should according to the path, mime type and posted obs
+        /// For REST service: do what we should according to the path, mime type and posted obs
         /// </summary>
         /// <param name="method">GET/HEAD/PUT/POST/DELETE</param>
         /// <param name="path">The URL</param>

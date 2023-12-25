@@ -211,7 +211,7 @@ namespace Pyrrho.Common
         /// <param name="s2">Slots whose values are subtrees</param>
         /// <param name="low2">First entry in s2 to use</param>
         /// <param name="high2">Last entry in s2 to use</param>
-        /// PRE: Show s1 and s2: for each j, slot[j].Value holds subtree with keys .le.slots[j].Key but .gt.slots[j-1].Key
+        /// PRE: For s1 and s2: for each j, slot[j].Value holds subtree with keys .le.slots[j].Key but .gt.slots[j-1].Key
         public Inner(Bucket<K, V> v, long t, KeyValuePair<K, Bucket<K, V>>[] s1, int low1, int high1,
             KeyValuePair<K, Bucket<K, V>>[] s2, int low2, int high2)
             : base(high1+high2+2-low1-low2,t)

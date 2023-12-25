@@ -72,7 +72,7 @@ namespace Pyrrho.Level3
             (CTree<long, bool>?)mem[Dependents] ?? CTree<long, bool>.Empty;
         internal int depth => (int)(mem[_Depth] ?? 1);
         /// <summary>
-        /// Show compiled code - triggers and Procedures
+        /// For compiled code - triggers and Procedures
         /// </summary>
         internal Framing framing =>
             (Framing?)mem[_Framing] ?? Framing.Empty;

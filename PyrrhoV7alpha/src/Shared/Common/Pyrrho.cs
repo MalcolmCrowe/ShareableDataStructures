@@ -9,7 +9,7 @@
     // and authorship is suitably acknowledged.
 
     /// <summary>
-    /// Show details of the Pyrrho protocol, see the manual Pyrrho.doc section 8.8, which
+    /// For details of the Pyrrho protocol, see the manual Pyrrho.doc section 8.8, which
     /// gives the current tree of codes.
     /// </summary>
     public enum Protocol
@@ -28,7 +28,7 @@
         ClientAnswer = 81
     }
     /// <summary>
-    /// Show details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.8,
+    /// For details of the Pyrrho protocol responses, see the manual Pyrrho.doc section 8.8,
     /// which gives the currently supported tree of codes.
     /// </summary>
     public enum Responses

@@ -1078,7 +1078,6 @@ namespace Pyrrho.Level1
                     }
                     goto case Sqlx.ROW;
                 case Sqlx.TYPE_URI: PutString(tv.ToString()); break;
-                case Sqlx.XML: PutString(tv.ToString()); break;
                 default:
                     PutString(tv.ToString()); break;
             }

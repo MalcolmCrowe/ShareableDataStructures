@@ -392,7 +392,7 @@ namespace Pyrrho.Level2
         }
     }
     /// <summary>
-    /// Show Record entries where values are subtypes of the expected types we can add type info
+    /// For Record entries where values are subtypes of the expected types we can add type info
     /// </summary>
     internal class Record2 : Record
     {
@@ -444,7 +444,7 @@ namespace Pyrrho.Level2
         }
     }
     /// <summary>
-    /// Show Record3 entries we also add classification info
+    /// For Record3 entries we also add classification info
     /// </summary>
     internal class Record3 : Record2
     {

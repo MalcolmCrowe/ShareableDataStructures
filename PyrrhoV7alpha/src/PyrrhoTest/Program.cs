@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("8 Oct 2023 Repeatable tests");
+                Console.WriteLine("21 Dec 2023 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -889,22 +889,22 @@ namespace Test
             testing = 20;
             Begin();
             Act(248,"create type point as (x int, y int)");
-            Act(249,"create type size as (w int,h int)");
+            Act(249,"create type rectsize as (w int,h int)");
             Act(250,"create type line as (strt point,en point)");
-            Act(251,"create type rect as (tl point,sz size) "
+            Act(251,"create type rect as (tl point,sz rectsize) "
               +"constructor method rect(x1 int, y1 int, x2 int, y2 int),"
               +"method centre() returns point");
             Act(252,"create table figure(id int primary key,title char)");
             Act(253,"create table figureline(id int primary key,fig int references figure,what line)");
             Act(254,"create table figurerect(id int primary key,fig int references figure,what rect)");
             Act(255,"create constructor method rect(x1 int,y1 int,x2 int,y2 int) "
-              +"begin tl = point(x1, y1); sz = size(x2 - x1, y2 - y1) end");
+              +"begin tl = point(x1, y1); sz = rectsize(x2 - x1, y2 - y1) end");
             Act(256,"create method centre() returns point for rect "
               +"return point(tl.x + sz.w / 2, tl.y + sz.h / 2)");
             Act(257,"create function centrerect(a int) returns point "
               +"return (select what.centre() from figurerect where id = centrerect.a)");
             Act(258,"insert into figure values(1,'Diagram')");
-            Act(259,"insert into figurerect values(1,1,rect(point(1,2),size(3,4)))");
+            Act(259,"insert into figurerect values(1,1,rect(point(1,2),rectsize(3,4)))");
             Act(260,"insert into figurerect values(2,1,rect(4,5,6,7))");
             Act(261,"insert into figureline values(1,1,line(centrerect(1),centrerect(2)))");
             CheckResults(20, 1, "select what from figureline",

@@ -81,6 +81,8 @@ namespace Pyrrho.Level4
             }
             next.val = val;
             next.nextHeap = nextHeap;
+            if (next.next is Context nx)
+                nx.lastret = next.lastret;
             if (db != next.db)
             {
                 var nd = db;
@@ -1097,6 +1099,7 @@ namespace Pyrrho.Level4
             next.warnings += warnings;
             next.deferred += deferred;
             next.nextHeap = nextHeap;
+            next.lastret = lastret;
             if (db != next.db)
             {
                 var nd = db;

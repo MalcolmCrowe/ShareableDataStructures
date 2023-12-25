@@ -351,7 +351,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// A change to some properties requiring further actions in general.
-        /// Show most properties, we can readily check that it can be
+        /// For most properties, we can readily check that it can be
         /// applied to this rowset. 
         /// 
         /// Passing expressions down to source rowsets:
@@ -2116,7 +2116,7 @@ namespace Pyrrho.Level4
         {
             if (building)
                 throw new PEException("0017");
-            if (aggs != CTree<long, bool>.Empty)
+            if (aggs != CTree<long, bool>.Empty && !mem.Contains(MatchStatement.MatchResult))
                 return false;
             return (bool)(mem[_Built]??false);
         }
@@ -2202,45 +2202,6 @@ namespace Pyrrho.Level4
             else
                 // if we get here we have a non-grouped aggregation to add
                 m += (Aggs, ag);
-/*            var nc = BList<long?>.Empty; // start again with the aggregating rowType, follow any ordering given
-            var dm = (Domain)(mm[AggDomain] ?? Null);
-            var ns = CTree<long, Domain>.Empty;
-            var gb = ((Domain?)m[GroupCols])?.representation ?? CTree<long, Domain>.Empty;
-            var kb = KnownBase(cx);
-            var dn = cx.obs[source] as Domain;
-            for (var b = dm.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue v)
-                {
-                    if (v.IsAggregation(cx) != CTree<long, bool>.Empty || gb.Contains(v.defpos))
-                        for (var c = v.KnownFragments(cx, kb).First();
-                            c != null; c = c.Next())
-                        {
-                            var k = c.key();
-                            if (ns.Contains(k) || cx._Dom(k) is not Domain ob || ob is Table)
-                                continue;
-                            nc += k;
-                            ns += (k, ob);
-                        }
-                    else if (gb.Contains(p))
-                    {
-                        nc += p;
-                        ns += (p, v.domain);
-                    }
-                }
-            var d = nc.Length;
-            for (var b = dn?.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && !ns.Contains(p) && cx._Dom(p) is Domain dv && dv is not Table)
-                {
-                    nc += p;
-                    ns += (p, dv);
-                }
-            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, ns, nc, d) + (Aggs, ag);
-            if (nd.Length > 0)
-            {
-                cx.Add(nd);
-                m = m + nd.mem;
-            } */
-            m = m + (Aggs, ag); 
             var r = (SelectRowSet)New(m);
             cx.Add(r);
             if (mm[Having] is CTree<long, bool> h)
@@ -2263,7 +2224,6 @@ namespace Pyrrho.Level4
                 if (cx.obs[b.key()] is RowSet a && (a is RestRowSet || a is RestRowSetUsing)) // a is where they can move to
                 {
                     var na = a.ApplySR(b.value() + (AggDomain, r), cx);
-                    na = cx.obs[a.defpos] as RowSet ?? throw new PEException("PE207651");
                     if (na != a)
                     {
                         r = cx.obs[defpos] as SelectRowSet ?? throw new PEException("PE207034");
@@ -2292,9 +2252,9 @@ namespace Pyrrho.Level4
         /// 
         /// At the level of the given rowset R, we have some aggregation expressions, 
         /// containing a possibly larger nunber of aggregates and a number of groups.
-        /// Show each source restrowset or selectrowset S (e.g. va or vb) we want to traverse the given select tree, 
+        /// For each source restrowset or selectrowset S (e.g. va or vb) we want to traverse the given select tree, 
         /// identifying aggregation functions and group ids that are known to S. 
-        /// Show any such we construct a subquery S' containing just these.
+        /// For any such we construct a subquery S' containing just these.
         /// With our uid machinery there is no need to form new aliases, and R is not changed in the process
         /// (we can continue to write sum(a)+count(f) in R).
         /// </summary>
@@ -4717,7 +4677,7 @@ namespace Pyrrho.Level4
     /// <summary>
     /// Deal with CRUD operations on Tables, including triggers and cascades.
     /// 
-    /// Show triggers, the main complication is that triggers execute with 
+    /// For triggers, the main complication is that triggers execute with 
     /// their definer's role (many different roles for the same table!). 
     /// Each trigger therefore has its own context and its own (Target)Cursor 
     /// for the TRS. Its target row type is used for the OLD/NEW ROW/TABLE.

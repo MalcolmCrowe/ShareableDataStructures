@@ -319,7 +319,7 @@ namespace Pyrrho.Level2
     }
     /// <summary>
     /// PColumn2: this is an extension of PColumn to add some column constraints
-    /// Show a general description see PColumn
+    /// For a general description see PColumn
     /// </summary>
 	internal class PColumn2 : PColumn
 	{

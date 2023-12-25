@@ -23,7 +23,7 @@
         CheckSchema = 36, GetTable = 37, IndexNext = 38, ExecuteNonQueryCrypt = 39, TableNext = 40,
         Mongo = 41, Check = 42, CommitAndReport = 43, RemoteCommitAndReport = 44, Post = 45, Put = 46,
         Get1 = 47, Delete = 48, Update = 49, Rest = 50, Subscribe = 51, Synchronise = 52, SetMaster = 53,
-        GetInfo = 54, Execute = 55, Get2 = 56, ExecuteNonQueryTrace = 73, CommitTrace = 74,
+        GetInfo = 54, Execute = 55, Get2 = 56, ExecuteMatch = 59, ExecuteNonQueryTrace = 73, CommitTrace = 74,
         CommitAndReportTrace = 75, ExecuteTrace = 76, CommitAndReport1 = 77, CommitAndReportTrace1 = 78,
         ClientAnswer = 81
     }
@@ -38,7 +38,7 @@
         Fetching = 42, Written = 43, Master = 45, NoMaster = 46,
         Servers = 47, IndexCursor = 48, LastSchema = 49, TableCursor = 50, IndexData = 51, IndexDone = 52,
         TableData = 53, TableDone = 54, Prepare = 55, Request = 56, Committed = 57, Serialisable = 58,
-        Primary = 60, Secondary = 61, Begin = 62, Valid = 63, Invalid = 64, TransactionReport = 65,
+        MatchDone = 59, Primary = 60, Secondary = 61, Begin = 62, Valid = 63, Invalid = 64, TransactionReport = 65,
         RemoteTransactionReport = 66, PostReport = 67, Warning = 68, TransactionReason = 69,
         DataLength = 70, Columns = 71, Schema1 = 72, DoneTrace = 76, TransactionReportTrace = 77,
         Entity = 79, AskClient = 80

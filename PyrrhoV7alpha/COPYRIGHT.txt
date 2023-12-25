@@ -17,10 +17,10 @@ or Malcolm Crowe be held liable for any loss or damage consequential on the
 use of this software. This does not affect your statutory rights under 
 applicable law.
 
-This is version 7.07(alpha) of the DBMS, compiled for .NET 6.0.
+This is version 7.08(alpha) of the DBMS, compiled for .NET 6.0.
 It passes tests 1 to 25 of the PyrrhoTest program, and should run on Windows,
 Linux, and MacOS with Mono.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-11 December 2023
+25 December 2023

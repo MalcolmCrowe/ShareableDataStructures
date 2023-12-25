@@ -391,7 +391,7 @@ namespace Pyrrho.Level4
         static Lexer()
         {
             int h;
-            for (Sqlx t = Sqlx.ABS; t <= Sqlx.YEAR; t++)
+            for (Sqlx t = Sqlx.ABS; t <= Sqlx.ZONED_TIME; t++)
                 if (t != Sqlx.TYPE) // TYPE is not a reserved word but is in this range
                 {
                     string s = t.ToString();
@@ -400,11 +400,6 @@ namespace Pyrrho.Level4
                         h = (h + 1) & 0x7ff;
                     resWds[h] = new ResWd(t, s);
                 }
-            // while XML is a reserved word and is not in the above range
-            h = "XML".GetHashCode() & 0x7ff; 
-            while (resWds[h] != null)
-                h = (h + 1) & 0x7ff;
-            resWds[h] = new ResWd(Sqlx.XML, "XML");
         }
         /// <summary>
         /// Check if a string matches a reserved word.

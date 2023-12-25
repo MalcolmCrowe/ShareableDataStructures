@@ -25,7 +25,7 @@ namespace Pyrrho
     /// and exits when the connection is closed. 
     /// There is a private PyrrhoServer instance for each thread.
     /// Communication is by asynchronous TCP transport, from a PyrrhoLink client or another server. 
-    /// Show HTTP communication see HttpService.cs
+    /// For HTTP communication see HttpService.cs
     /// </summary>
     internal class PyrrhoServer
     {
@@ -442,7 +442,7 @@ namespace Pyrrho
                                 }
                                 break;
                             }
-                        case Protocol.ExecuteMatch: // ExecuteReader
+                        case Protocol.ExecuteMatch: // ExecuteMatch
                             {
                                 if (rb != null)
                                     throw new DBException("2E202").Mix();
@@ -478,7 +478,7 @@ namespace Pyrrho
                                         rb = res.First(cx);
                                         while (rb != null && rb.IsNull)
                                             rb = rb.Next(cx);
-                                    }
+                                    } 
                                     db = cx.db;
                                 }
                                 break;
@@ -1199,7 +1199,6 @@ namespace Pyrrho
                             ni.ToString(): tv.ToString();
                         return lc + 1 + StringLength(s);
                     }
-                case Sqlx.XML: break;
             }
             return lc + 1 + StringLength(o);
         }
@@ -1494,7 +1493,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.07alpha","(11 December 2023)", "http://www.pyrrhodb.com"
+            "7.08alpha","(25 December 2023)", "http://www.pyrrhodb.com"
         };
 	}
 }

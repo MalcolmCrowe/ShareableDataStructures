@@ -75,7 +75,7 @@ namespace Pyrrho.Level3
             Under = -90, // Domain
             UnionOf = -91; // CTree<Domain,bool>
         internal static Domain Null, Value, Content, // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
-    Bool, Blob, Char, Password, XML, Int, _Numeric, Real, Date, Timespan, Timestamp,
+    Bool, Blob, Char, Password, Int, _Numeric, Real, Date, Timespan, Timestamp,
     Interval, _Level, MTree, // pseudo type for MTree implementations
     Partial, // pseudo type for MTree implementation
     Array, SetType, Multiset, Collection, EdgeEnds, Cursor, UnionNumeric, UnionDate,
@@ -96,7 +96,6 @@ namespace Pyrrho.Level3
             Blob = new StandardDataType(Sqlx.BLOB);
             Char = new StandardDataType(Sqlx.CHAR, OrderCategory.Primitive);
             Password = new StandardDataType(Sqlx.PASSWORD, OrderCategory.Primitive);
-            XML = new StandardDataType(Sqlx.XML);
             Int = new StandardDataType(Sqlx.INTEGER, OrderCategory.Primitive);
             _Numeric = new StandardDataType(Sqlx.NUMERIC, OrderCategory.Primitive);
             Real = new StandardDataType(Sqlx.REAL, OrderCategory.Primitive);
@@ -732,7 +731,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 Sqlx.BOOLEAN => 9,
                 Sqlx.INTERVAL => 10,
                 Sqlx.TIME => 11,
-                Sqlx.XML => 3,
                 Sqlx.PERIOD => 7,
                 Sqlx.PASSWORD => 3,
                 _ => 0,
@@ -771,7 +769,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         return r;
                     }
                 case Sqlx.PASSWORD: goto case Sqlx.CHAR;
-                case Sqlx.XML: goto case Sqlx.CHAR;
                 case Sqlx.INTEGER:
                     {
                         var o = rdr.GetInteger();
@@ -1023,7 +1020,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
 #if MONGO || SIMILAR
                 case Sqlx.REGULAR_EXPRESSION: goto case Sqlx.CHAR;
 #endif
-                    case Sqlx.XML: goto case Sqlx.CHAR;
                     case Sqlx.INTEGER: wr.WriteByte((byte)DataType.Integer); break;
                     case Sqlx.SET: 
                     case Sqlx.MULTISET: wr.WriteByte((byte)DataType.Multiset); break;
@@ -1085,7 +1081,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
 #if SIMILAR
                 case Sqlx.REGULAR_EXPRESSION: goto case Sqlx.CHAR;
 #endif
-                case Sqlx.XML: goto case Sqlx.CHAR;
                 case Sqlx.INTEGER:
                     {
                         if (tv is TInteger n)
@@ -1310,7 +1305,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Sqlx.CONTENT:
                 case Sqlx.BLOB:
                 case Sqlx.BOOLEAN:
-                case Sqlx.XML:
                     return 0;
                 case Sqlx.ARRAY:
                 case Sqlx.SET:
@@ -1423,7 +1417,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     }
                 case Sqlx.CHAR:
                     goto case Sqlx.CONTENT;
-                case Sqlx.XML: goto case Sqlx.CHAR;
                 case Sqlx.INTEGER:
                     if (a is TInteger ai)
                     {
@@ -2099,43 +2092,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     {
                         if (lx._cx == null)
                             throw new PEException("PE3043");
-                        if (lx.mime == "text/xml")
-                        {
-                            // tolerate missing values and use of attributes
-                            var cols = CTree<long, TypedValue>.Empty;
-                            var xd = new XmlDocument();
-                            xd.LoadXml(new string(lx.input));
-                            var xc = xd.FirstChild;
-                            if (xc != null && xc is XmlDeclaration)
-                                xc = xc.NextSibling;
-                            if (xc == null)
-                                goto bad;
-                            bool blank = true;
-                            for (var b = rowType.First(); b != null; b = b.Next())
-                                if (b.value() is long p && representation[p] is Domain cd)
-                                {
-                                    var cn = lx._cx.NameFor(p);
-                                    TypedValue item = TNull.Value;
-                                    if (xc.Attributes != null)
-                                    {
-                                        var att = xc.Attributes[cn];
-                                        if (att != null)
-                                            item = cd.Parse(0, att.InnerXml, lx.mime, lx._cx);
-                                    }
-                                    for (int j = 0; item == null && j < xc.ChildNodes.Count; j++)
-                                        if (xc.ChildNodes[j] is XmlNode xn && xn.Name == cn)
-                                            item = cd.Parse(0, xn.InnerXml, lx.mime, lx._cx);
-                                    blank = blank && (item == null);
-                                    cols += (p, item ?? TNull.Value);
-                                }
-                            if (blank)
-                                v = TXml.Null;
-                            else
-                                v = new TRow(this, cols);
-                            return null;
-                        }
-                        else
-                            if (lx.mime == "text/csv")
+                        if (lx.mime == "text/csv")
                         {
                             // we expect all columns, separated by commas, without string quotes
                             var vs = CTree<long, TypedValue>.Empty;
@@ -4505,7 +4462,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
     /// Access rules: clearance C can access classification z if C.maxlevel>=z and 
     ///  can update if classification matches C.minlevel.
     /// Clearance allows minlevel LEQ laxlevel.
-    /// Show classification minlevel==maxlevel always.
+    /// For classification minlevel==maxlevel always.
     /// In addition clearance must have all the references of the classification 
     /// and at least one of the groups.
     /// The database uses a cache of level descriptors called levels.

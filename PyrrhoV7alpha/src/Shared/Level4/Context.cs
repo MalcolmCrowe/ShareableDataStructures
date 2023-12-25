@@ -87,7 +87,7 @@ namespace Pyrrho.Level4
         internal CTree<long, int> undefined = CTree<long, int>.Empty;
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long?> uids = BTree<long, long?>.Empty;
-        internal long result = -1L;
+        internal long result = -1L,lastret = -1L;
         /// <summary>
         /// Used in Replace cascade
         /// </summary>
@@ -895,10 +895,8 @@ namespace Pyrrho.Level4
                     Domain.Aggs => _DepthTVX((CTree<long, bool>)o, d),
                     SqlValueArray._Array => _DepthBV((BList<long?>)o, d),
                     RowSet.Assig => _DepthTUb((CTree<UpdateAssignment, bool>)o, d),
-                    SqlXmlValue.Attrs => _DepthBPXV((BList<(SqlXmlValue.XmlName, long)>)o, d),
                     SqlCall.Parms => _DepthBV((BList<long?>)o, d),
                     SqlCaseSimple.Cases => _DepthBPVV((BList<(long, long)>)o, d),
-                    SqlXmlValue.Children => _DepthBV((BList<long?>)o, d),
                     Domain.DefaultRowValues => _DepthTVX((CTree<long, TypedValue>)o, d),
                     IfThenElse.Else => _DepthBV((BList<long?>)o, d),
                     SimpleCaseStatement.Else => _DepthBV((BList<long?>)o, d),
@@ -931,7 +929,6 @@ namespace Pyrrho.Level4
                     Level3.Index.References => _DepthTVBt((BTree<long, BList<TypedValue>>)o, d),
                     Domain.Representation => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.RestRowSetSources => _DepthTVX((CTree<long, bool>)o, d),
-                    SqlCall.Result => Math.Max(((Domain)o).depth, d),
                     Domain.RowType => _DepthBV((BList<long?>)o, d),
                     SignalStatement.SetList => _DepthTXV((BTree<Sqlx, long?>)o, d),
                     GroupSpecification.Sets => _DepthBV((BList<long?>)o, d),
@@ -959,7 +956,7 @@ namespace Pyrrho.Level4
                     SqlMatch.MatchAlts => _DepthBV((BList<long?>)o, d),
                     SqlMatchAlt.MatchExps => _DepthBV((BList<long?>)o, d),
                     _ => Math.Max(d, 1)
-                }; ;
+                };
             return d;
         }
         internal void _Remove(long dp)
@@ -1266,19 +1263,6 @@ namespace Pyrrho.Level4
             }
             return ch ? r : us;
         }
-        internal BList<(SqlXmlValue.XmlName, long)> ReplacedLXl(BList<(SqlXmlValue.XmlName, long)> cs)
-        {
-            var r = BList<(SqlXmlValue.XmlName, long)>.Empty;
-            var ch = false;
-            for (var b = cs.First(); b != null; b = b.Next())
-            {
-                var (n, p) = b.value();
-                var np = Replaced(p);
-                ch = ch || p != np;
-                r += (n, np);
-            }
-            return ch ? r : cs;
-        }
         internal BList<(long, long)> ReplacedBll(BList<(long, long)> ds)
         {
             var r = BList<(long, long)>.Empty;
@@ -1526,16 +1510,13 @@ namespace Pyrrho.Level4
                         case SqlValueArray._Array: v = ReplacedLl((BList<long?>)v); break;
                         case SqlSelectArray.ArrayValuedQE: v = Replaced((long)v); break;
                         case RowSet.Assig: v = ReplacedTUb((CTree<UpdateAssignment, bool>)v); break;
-                        case SqlXmlValue.Attrs: v = ReplacedLXl((BList<(SqlXmlValue.XmlName, long)>)v); break;
                         case Procedure.Body: v = Replaced((long)v); break;
                         case SqlCall.Parms: v = ReplacedLl((BList<long?>)v); break;
                         case CallStatement.Call: v = Replaced((long)v); break;
                         case SqlCaseSimple.CaseElse: v = Replaced((long)v); break;
                         case SqlCaseSimple.Cases: v = ReplacedBll((BList<(long, long)>)v); break;
-                        case SqlXmlValue.Children: v = ReplacedLl((BList<long?>)v); break;
                         case WhenPart.Cond: v = Replaced((long)v); break;
                         case Check.Condition: v = Replaced((long)v); break;
-                        case SqlXmlValue._Content: v = Replaced((long)v); break;
                         case FetchStatement.Cursor: v = Replaced((long)v); break;
                         case RowSet._Data: v = Replaced((long)v); break;
                         case Domain.DefaultRowValues: v = ReplacedTlV((CTree<long, TypedValue>)v); break;
@@ -1597,7 +1578,6 @@ namespace Pyrrho.Level4
                         case Domain.Representation: v = ReplacedTlD((CTree<long, Domain>)v); break;
                         case RowSet.RestRowSetSources: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RestRowSetUsing.RestTemplate: v = Replaced((long)v); break;
-                        case SqlCall.Result: v = ((Domain)v).Replaced(this); break;
                         case ReturnStatement.Ret: v = Replaced((long)v); break;
                         case MemberPredicate.Rhs: v = Replaced((long)v); break;
                         case MultipleAssignment.Rhs: v = Replaced((long)v); break;
@@ -2103,6 +2083,7 @@ namespace Pyrrho.Level4
             next.deferred += deferred;
             next.val = val;
             next.nextHeap = nextHeap;
+            next.lastret = lastret;
             if (db != next.db)
             {
                 var nd = db;
@@ -2399,32 +2380,6 @@ namespace Pyrrho.Level4
                     r += (p, v);
                 }
             return ch ? r : a;
-        }
-        internal CList<TXml> FixLX(CList<TXml> cl)
-        {
-            var r = CList<TXml>.Empty;
-            var ch = false;
-            for (var b = cl.First(); b != null; b = b.Next())
-                if (b.value() is TXml tx)
-                {
-                    var v = (TXml)tx.Fix(this);
-                    ch = ch || v != b.value();
-                    r += v;
-                }
-            return ch? r:cl;
-        }
-        internal BList<(SqlXmlValue.XmlName,long)> FixLXl(BList<(SqlXmlValue.XmlName, long)> cs)
-        {
-            var r = BList<(SqlXmlValue.XmlName, long)>.Empty;
-            var ch = false;
-            for (var b = cs.First(); b != null; b = b.Next())
-            {
-                var (n, p) = b.value();
-                var np = Fix(p);
-                ch = ch || p!=np;
-                r += (n,np);
-            }
-            return ch ? r : cs;
         }
         internal BTree<TypedValue,long?> FixTVl(BTree<TypedValue,long?> mu)
         {

@@ -21,7 +21,7 @@ namespace Pyrrho.Level3
     /// The behaviour of condition handlers and loops requires some infrastructure here.
     /// By default a compound statement executes its tree of statements in sequence. But this ordering can be disturbed,
     /// and the transaction.breakto if not null will pop blocks off the stack until we catch the break.
-    /// Show example RETURN will set breakto to the previous stack (dynLink), as will the execution of an EXIT handler.
+    /// For example RETURN will set breakto to the previous stack (dynLink), as will the execution of an EXIT handler.
     /// CONTINUE will set breakto to the end of the enlcosing looping construct.
     /// BREAK will set breakto to just outside the current looping construct.
     /// BREAK nnn will set breakto just outside the named looping construct.
@@ -1394,13 +1394,12 @@ namespace Pyrrho.Level3
 	internal class ReturnStatement : Executable
     {
         internal const long
-            Aggregator = -490, // long SelectRowSet
             Ret = -110; // long SqlValue
         /// <summary>
         /// The return value
         /// </summary>
 		public long ret => (long)(mem[Ret] ?? -1L);
-        public long aggor => (long)(mem[Aggregator] ??-1L);
+        public long result => (long)(mem[SqlInsert.Value] ??-1L);
         /// <summary>
         /// Constructor: a return statement from the parser
         /// </summary>
@@ -1471,6 +1470,7 @@ namespace Pyrrho.Level3
             cx = a.SlideDown();
             if (cx.obs[cx.result] is ExplicitRowSet es && es.CanTakeValueOf(a.val.dataType))
                 cx.obs += (cx.result,es+(cx.GetUid(), a.val));
+            cx.lastret = defpos;
             return cx;
 		}
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1485,9 +1485,9 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" -> ");sb.Append(Uid(ret));
-            if (aggor>0)
+            if (result>0)
             {
-                sb.Append(" Aggregator ");sb.Append(Uid(aggor));
+                sb.Append(" Result ");sb.Append(Uid(result));
             }
             return sb.ToString();
         }
@@ -4173,7 +4173,10 @@ namespace Pyrrho.Level3
     /// <summary>
     /// The Match syntax consists of a graph expression, an optional where condition and an optional action part.
     /// Parsing of the grap expression results in a collection of unbound identifiers and a collection
-    /// of constraints.
+    /// of constraints. The action part is often a RETURN statement: if this contains aggregating expressions,
+    /// then the aggregands are computed for each row of the binding table; if there are no aggregating expressions,
+    /// the whole of the RETURN statement can be computed. Thus if RETURN statements are present we want their
+    /// return values (or aggregands) to be placed in the binding table at the EndStep of the match process.
     /// Like the CREATE syntax, a graph expression consists of a tree of node-edge-node chains.
     /// The graph expression cannot contain subtype references or SqlExpressions and does not construct any nodes:
     /// all identifiers are either unbound starting with _ (_ on its own means don't care)
@@ -4194,8 +4197,11 @@ namespace Pyrrho.Level3
     internal class MatchStatement : Executable
     {
         internal const long
+            _BindingTable = -490, // long ExplicitRowSet
             GDefs = -210,   // CTree<long,TGParam>
+            MatchFlags = -496, // Bindings=1,Body=2,Return=4
             MatchList = -491, // BList<long?> SqlMatchAlt
+            MatchResult = -437, // long ExplicitRowSet
             Truncating = -492; // BTree<long,(int,Domain)> EdgeType (or 0L)
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
@@ -4204,25 +4210,50 @@ namespace Pyrrho.Level3
         internal CTree<long,bool> where =>
             (CTree<long, bool>)(mem[RowSet._Where]??CTree<long,bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
-        internal long result => (long)(mem[SqlCall.Result] ??-1L);
         internal BList<long?> then => (BList<long?>)(mem[IfThenElse.Then] ?? BList<long?>.Empty);
         internal BTree<long, (int, Domain)> truncating =>
             (BTree<long, (int, Domain)>)(mem[Truncating] ?? BTree<long, (int, Domain)>.Empty);
+        internal Domain sort => (Domain?)mem[RowSet.RowOrder]??Domain.Null;
+        internal int size => (int?)mem[RowSetSection.Size] ?? -1;
+        internal BTree<string, (int, long?)> names =>
+            (BTree<string, (int, long?)>?)mem[ObInfo.Names] ?? BTree<string, (int, long?)>.Empty;
+        internal long result => (long)(mem[MatchResult]??-1L); // result.domain may have aggregations
+        internal long bindings => (long)(mem[_BindingTable] ?? -1L);  
+        [Flags]
+        internal enum Flags { None=0, Bindings = 1, Body = 2, Return = 4 }
+        internal Flags flags => (Flags)(mem[MatchFlags] ?? Flags.None);
         public MatchStatement(Context cx, BTree<long,(int,Domain)>? tg, CTree<long,TGParam> gs, BList<long?> ge, 
-            CTree<long,bool> wh, long st)
-            : base(cx.GetUid(), _Mem(cx,tg,gs) + (MatchList,ge) +(RowSet._Where,wh)
-                  +(Procedure.Body,st))
+            BTree<long,object> m, long st,long re)
+            : base(cx.GetUid(), _Mem(cx,m,tg,gs,st,re) + (MatchList,ge) + (Procedure.Body,st))
         { }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
-        static BTree<long,object> _Mem(Context cx,BTree<long,(int,Domain)>? tg,CTree<long,TGParam> gs)
+        static BTree<long,object> _Mem(Context cx,BTree<long,object> m, BTree<long,(int,Domain)>? tg,
+            CTree<long,TGParam> gs,long st,long re)
         {
             for (var b = gs.First(); b != null; b = b.Next())
                 cx.undefined -= b.key();
-            var r = new BTree<long, object>(GDefs, gs);
+            m += (GDefs, gs);
             if (tg is not null)
-                r += (Truncating, tg);
-            return r;
+                m += (Truncating, tg);
+            var ers = BindingTable(cx, gs);
+            cx.Add(ers);
+            var f = Flags.None;
+            for (var b = gs.First(); b != null && f == Flags.None; b = b.Next())
+                if (b.value().value != "")
+                    f |= Flags.Bindings;
+            if (cx.obs[st] is Executable e)
+            {
+                f |= Flags.Body;
+                if (e.domain.rowType != BList<long?>.Empty)
+                    f |= Flags.Return;
+                m += (Procedure.Body, st);
+            }
+            m += (MatchFlags, f);
+            if (re>=0)
+                m += (MatchResult, re);
+            m += (_BindingTable, ers.defpos);
+            return m;
         }
         public static MatchStatement operator +(MatchStatement et, (long, object) x)
         {
@@ -4259,6 +4290,26 @@ namespace Pyrrho.Level3
         {
             return new MatchStatement(dp,m);
         }
+        internal static ExplicitRowSet BindingTable(Context cx,CTree<long,TGParam>gs)
+        {
+            var rt = BList<long?>.Empty;
+            var re = CTree<long, Domain>.Empty;
+            var ns = BTree<string, (int, long?)>.Empty;
+            var j = 0;
+            for (var b = gs.First(); b != null; b = b.Next())
+                if (b.value() is TGParam g && g.value != "" && !re.Contains(g.uid))
+                {
+                    rt += g.uid;
+                    re += (g.uid, g.dataType);
+                    ns += (g.value, (j++, g.uid));
+                    if (cx.obs[g.uid] is SqlValue sx)
+                        sx.AddFrom(cx, g.from);
+                }
+            var dt = new Domain(-1L, cx, Sqlx.ROW, re, rt, rt.Length) + (ObInfo.Names, ns);
+            var ers = new ExplicitRowSet(cx.GetUid(), cx, dt, BList<(long, TRow)>.Empty);
+            ers += (ObInfo.Names, ns);
+            return ers;
+        }
         /// <summary>
         /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.
         /// The match graphs and the set of TGParams are in this MatchStatement.
@@ -4277,119 +4328,72 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">The context</param>
         /// <returns></returns>
-        public override Context Obey(Context cx)
+        public override Context Obey(Context _cx)
         {
-            var rt = BList<long?>.Empty;
-            var re = CTree<long, Domain>.Empty;
-            var ns = BTree<string, (int, long?)>.Empty;
-            var j = 0;
-            var ep = cx.GetUid(); // for the ers
-            for (var b = gDefs.First(); b != null; b = b.Next())
-                if (b.value() is TGParam g && g.value != "" && !re.Contains(g.uid))
-                {
-                    rt += g.uid;
-                    re += (g.uid, g.dataType);
-                    ns += (g.value, (j++, g.uid));
-                    if (cx.obs[g.uid] is SqlValue sx)
-                        sx.AddFrom(cx,g.from);
-                }
-            if (rt.Count == 0)
-            {
-                var rc = new SqlLiteral(cx.GetUid(), "Match", TBool.True);
-                rt += rc.defpos;
-                re += (rc.defpos, Domain.Bool);
-            }
-            var dt = new Domain(cx.GetUid(), cx, Sqlx.ROW, re, rt, rt.Length) + (ObInfo.Names, ns);
-            cx.Add(dt);
-            var ers = new ExplicitRowSet(ep, cx, dt, BList<(long, TRow)>.Empty);
-            if (where != CTree<long, bool>.Empty)
-                ers += (cx, RowSet._Where, where);
-            cx.obs += (defpos, this + (SqlCall.Result, ep) + (RowSet._Where, where));
-            ers += (ObInfo.Names, ns);
-            cx.Add(ers);
-            cx.result = ers.defpos;
-            RowSet? rrs = null;
-            SelectRowSet? ag = null;
-            Index? ex = null;
-            // The presence of a return statement creates a new result rowset
-            if (cx.obs[body] is ReturnStatement rs && cx.obs[rs.ret]?.domain is Domain d && d != Domain.Null)
-            {
-                if (d.kind != Sqlx.ROW)
-                    d = (Domain)cx.Add(new Domain(cx.GetUid(), cx, Sqlx.ROW,
-                        new CTree<long, Domain>(rs.ret, d), new BList<long?>(rs.ret), 1));
-                var es = new ExplicitRowSet(cx.GetUid(), cx, d, BList<(long, TRow)>.Empty);
-                ex = cx.obs[es.index] as Index;
-                rrs = es;
-                ag = cx.obs[rs.aggor] as SelectRowSet;
-            }
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
-            var ob = cx.binding;
+            var cx = new Context(_cx);
+            cx.binding = _cx.binding;
+            cx.result = result;
             _step = 0;
             var gf = matchList.First();
             if (cx.obs[gf?.value() ?? -1L] is SqlMatch sm)
                 for (var b = sm.matchAlts.First(); b != null; b = b.Next())
                     if (cx.obs[b.value() ?? -1L] is SqlMatchAlt sa)
                     {
-                        cx.paths += (sa.defpos, new TPath(sa.defpos,cx));
+                        cx.paths += (sa.defpos, new TPath(sa.defpos, cx));
                         var xf = sa.matchExps.First();
                         if (gf is not null && xf is not null)
                             ExpNode(cx, new ExpStep(sa, xf, new GraphStep(gf.Next(), new EndStep(this))), Sqlx.Null, null);
                     }
-            var sn = ((Transaction)cx.db).physicals.Count;
-            if (cx._Ob(body) is Executable e)
+            cx.values = CTree<long, TypedValue>.Empty;
+            cx.val = TNull.Value;
+            var aff = cx.db.AffCount(cx);
+            if (aff > 0)
             {
-                cx.nodes += gDefs;
-                for (var b = (cx.obs[ers.defpos] as RowSet)?.First(cx); b != null; b = b.Next(cx))
+                _cx.result = -1L;
+                _cx.obs -= result;
+                _cx.db = cx.db;
+            }
+            else
+            {
+                var ers = cx.obs[bindings] as RowSet;
+                RowSet? re = cx.obs[result] as RowSet;
+                if (cx.obs[cx.lastret] is ReturnStatement st && cx.obs[st.result] is SelectRowSet ag &&
+                    re is not null)
                 {
-                    cx.binding = ob;
-                    var ac = new Activation(cx, "" + defpos);
-                    for (var c = ers.First(); c != null; c = c.Next())
-                        if (c.value() is long p && gDefs[p] is TGParam g)
-                        {
-                            var v = b[p]??TNull.Value;
-                            if (v is TList vl && g.type!=TGParam.Type.Path)
-                                v = vl.list[b._pos]??TNull.Value;
-                            ac.binding += (p, v);
-                        }
-                    if (ac.result < 0)
-                        ac.result = ers.defpos;
-                    e.Obey(ac);
-                    ac.SlideDown();
-                    cx.values += ac.values;
-                    cx.db = ac.db;
-                    if (rrs is ExplicitRowSet es && ex is not null && cx.val!=TNull.Value)
-                    {
-                        var tr = cx.val as TRow??new TRow(rrs, cx.val);
-                        if (ex.MakeKey(tr.values) is CList<TypedValue> k && ex.rows?.Contains(k) != true)
-                        {
-                            var uid = cx.GetUid();
-                            ex += (k, uid);
-                            rrs += (ExplicitRowSet.ExplRows, es.explRows + (uid, tr));
-                        }
-                    }
-                }
-                if (ag is SelectRowSet && rrs is not null)
-                {
-                    cx.Add(rrs);
-                    ag += (RowSet._Source, ers.defpos);
-                    ag = (SelectRowSet)cx.Add(ag);
+                    ag += (RowSet._Source, re.defpos);
                     for (var b = ag.First(); b != null; b = b.Next())
                         if (cx.obs[b.value() ?? -1L] is SqlFunction sf)
                             cx.Add(sf + (_From, ag.defpos));
-                    cx.Add(ers);
-                    ag.Build(cx);
-                    cx.result = ag.defpos;
+                    ag = (SelectRowSet)ag.Build(cx) + (MatchResult, ag.defpos);
+                    _cx.obs += (ag.defpos, ag);
+                    _cx.result = ag.defpos;
                 }
-                else if (rrs is not null && ex is not null)
+                else if (re is ExplicitRowSet er && cx.obs[er.index] is Index ex
+                    && flags != (Flags.Bindings | Flags.Body))
                 {
-                    cx.obs = cx.obs + (ex.defpos, ex) + (rrs.defpos, rrs);
-                    cx.result = rrs.defpos;
+                    _cx.obs = cx.obs + (ex.defpos, ex) + (re.defpos, re);
+                    _cx.result = re.defpos;
+                    _cx.Add(re);
                 }
-                else
-                    cx.result = -1L;
+                else if (ers is ExplicitRowSet es && cx.obs[es.index] is Index sx
+                    && flags != (Flags.Bindings | Flags.Body))
+                {
+                    _cx.obs = cx.obs + (sx.defpos, sx) + (ers.defpos, ers);
+                    _cx.result = ers.defpos;
+                    _cx.Add(ers);
+                }
+                if (cx.obs[_cx.result] is RowSet rr && flags != (Flags.Bindings | Flags.Body))
+                {
+                    if (sort != Domain.Null)
+                        rr = rr.Sort(cx, sort, false);
+                    if (size > 0)
+                        rr = new RowSetSection(cx, rr, 0, size);
+                    _cx.result = rr.defpos;
+                    _cx.Add(rr);
+                }
             }
-            else cx.result = ers.defpos;
             if (then != BList<long?>.Empty)
             {
                 var ac = new Activation(cx, "" + defpos);
@@ -4398,8 +4402,8 @@ namespace Pyrrho.Level3
                 cx.values += ac.values;
                 cx.db = ac.db;
             }
-            cx.binding = ob;
-            return cx;
+            cx.SlideDown();
+            return _cx;
         }
         /// <summary>
         /// The Match implementation uses continuations as in Scheme or Haskell.
@@ -4440,14 +4444,16 @@ namespace Pyrrho.Level3
             }
         }
         /// <summary>
-        /// EndStep is the final entry in any continuation. 
+        /// EndStep is the final entry in any continuation and includes computation of the (source row of) RETURN.
+        /// In a complex situation there may be several possibly alternative RETURNS, 
+        /// and all such must be placed in the binding table.
         /// </summary>
         internal class EndStep : Step
         {
             public EndStep(MatchStatement m) : base(m)
             { }
             /// <summary>
-            /// On success we simply call AddRow
+            /// On success we simply call AddRow, which does the work!
             /// </summary>
             public override void Next(Context cx, Step? cn, Sqlx tok,TNode? pd)
             {
@@ -4631,28 +4637,45 @@ namespace Pyrrho.Level3
         void AddRow(Context cx)
         {
             // everything has been checked
-            if (cx.obs[cx.result] is ExplicitRowSet ers && cx.obs[ers.index] is Index ex)
+            if (flags == Flags.None)
+                cx.val = TBool.True;
+            if (flags.HasFlag(Flags.Bindings) && cx.obs[bindings] is ExplicitRowSet ers 
+                && cx.obs[ers.index] is Index ex && ex.MakeKey(cx.binding) is CList<TypedValue> k 
+                && ex.rows?.Contains(k) != true)
             {
-                var pp = ex.keys.rowType.Last()?.value() ?? -1L;
-                if (ers.rowType.Count == 1 && ers.rowType[0] is long p && ers.representation[p] is Domain d)
-                {
-                    if (d == Domain.Bool && ers.explRows.Count == 0L)
-                        ers += (cx, ExplicitRowSet.ExplRows, new BList<(long, TRow)>((p, new TRow(ers, TBool.True))));
-                    else if (d is NodeType && d.defpos < 0 && cx.binding[p] is TNode tn)
-                    {
-                        var rw = new TRow(ers, new CTree<long, TypedValue>(p, tn));
-                        ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), rw));
-                    }
-                    else ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (cx.GetUid(), new TRow(ers, cx.binding)));
-                }
-                else if (ex.MakeKey(cx.binding) is CList<TypedValue> k)// && ex.rows?.Contains(k) != true)
-                {
-                    var uid = cx.GetUid();
-                    ex += (k, uid);
-                    ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (uid, new TRow(ers, cx.binding)));
-                }
+                var uid = cx.GetUid();
+                ex += (k, uid);
+                ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (uid, new TRow(ers, cx.binding)));
                 cx.Add(ex); cx.Add(ers);
             }
+            if (flags.HasFlag(Flags.Body) && cx._Ob(body) is Executable e)
+            {
+                var ob = cx.binding;
+                cx.nodes += gDefs;
+                var ac = new Activation(cx, "" + defpos);
+                ac.values += ob;
+                e.Obey(ac);
+                ac.SlideDown();
+                cx.values += ac.values;
+                cx.binding = ob;
+                cx.db = ac.db;
+                if (flags.HasFlag(Flags.Return))
+                {
+                    if (cx.obs[result] is ExplicitRowSet re && cx.obs[re.index] is Index rx)
+                    {
+                        var tr = cx.val as TRow ?? new TRow(re.domain, cx.val);
+                        var uid = cx.GetUid();
+                        if (rx.MakeKey(tr.values) is CList<TypedValue> sk)
+                        {
+                            rx += (sk, uid);
+                            re += (ExplicitRowSet.ExplRows, re.explRows + (uid, tr));
+                            cx.obs += (rx.defpos, rx); cx.obs += (re.defpos, re);
+                        }
+                    }
+                }
+            }
+            else if (flags == Flags.None)
+                cx.val = TBool.True;
         }
         static int _step = 0; // debugging assistant
         /// <summary>
@@ -4684,16 +4707,15 @@ namespace Pyrrho.Level3
                 cx.paths += (pa.matchAlt, pa);
                 PathNode(cx, new PathStep(be.alt, sp, 0,
                     new ExpStep(be.alt, be.matches?.Next(), be.next)), pd);
-                return;
-            }
+             }
             if (xn.MostSpecificType(cx) is NodeType nt)
                 xn += (_Domain, nt);
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             if (tok == Sqlx.WITH && pd is not null)
                 ds += (xn.defpos, pd.tableRow);
-            else if (xn.Eval(cx) is TNode nn)
-                ds += (xn.defpos, nn.tableRow);
+        //    else if (xn.Eval(cx) is TNode nn)
+        //        ds += (xn.defpos, nn.tableRow);
             else if (pd is not null && pd.dataType is EdgeType pe
                 && ((tok == Sqlx.ARROWBASE) ?
                 (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
@@ -4748,11 +4770,11 @@ namespace Pyrrho.Level3
                 ds = For(cx, xn, nt0, ds);
             else
                 for (var b = cx.db.role.dbobjects.First(); b != null; b = b.Next())
-                    if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
+                    if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1 && nt1 is not null)
                         ds = For(cx, xn, nt1, ds);
             var df = ds.First();
             if (df != null)
-                DbNode(cx, new NodeStep(be.alt,xn,df,new ExpStep(be.alt,be.matches?.Next(),be.next)),
+               DbNode(cx, new NodeStep(be.alt,xn,df,new ExpStep(be.alt,be.matches?.Next(),be.next)),
                     (xn is SqlEdge && xn is not SqlPath) ? xn.tok : tok, pd);
         }
         CTree<Domain,int> AddIn(CTree<Domain,int> ctr,EdgeType rt)
@@ -4895,7 +4917,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context</param>
         /// <param name="bp">The Step current state and continuation</param>
         /// <param name="dn">The most recent TNode</param>
-        void PathNode(Context cx, PathStep bp, TNode dn)
+        void PathNode(Context cx, PathStep bp, TNode? dn)
         {
             var step = ++_step;
             var ob = cx.binding;
@@ -5055,7 +5077,14 @@ namespace Pyrrho.Level3
             {
                 sb.Append(" Body "); sb.Append(Uid(body));
             }
-            
+            if (bindings>=0)
+            {
+                sb.Append(" Bindings "); sb.Append(Uid(bindings));
+            }
+            if (result >= 0)
+            {
+                sb.Append(" Result "); sb.Append(Uid(result));
+            }
             if (then!=BList<long?>.Empty)
             {
                 sb.Append(" THEN ["); cm = "";

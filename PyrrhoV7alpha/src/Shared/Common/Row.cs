@@ -1642,60 +1642,6 @@ namespace Pyrrho.Common
             return sb.ToString();
         }
     }
-    /// <summary>
-    /// The model for Xml values is that element ordering and repetition is important,
-    /// but attributes are not ordered and have unique names.
-    ///     
-    /// </summary>
-    internal class TXml : TypedValue
-    {
-        internal readonly string? name;
-        internal readonly CTree<string, TypedValue> attributes = CTree<string, TypedValue>.Empty;
-        internal readonly string content = "";
-        internal readonly CList<TXml> children = CList<TXml>.Empty;
-        internal static TXml Null = new (null);
-        internal TXml(string? n) : base(Domain.XML) { name = n; }
-        TXml(string? n,CTree<string,TypedValue>a,string c,CList<TXml> ch)
-            : base(Domain.XML)
-        {
-            name = n; attributes = a; content = c; children = ch;
-        }
-        internal override TypedValue Fix(Context cx)
-        {
-            return new TXml(name,cx.FixTsV(attributes),content,cx.FixLX(children));
-        }
-        public static TXml operator+(TXml t,(string,TypedValue)a)
-        {
-            return new TXml(t.name, t.attributes + a, t.content, t.children);
-        }
-        public static TXml operator+(TXml t,TXml c)
-        {
-            return new TXml(t.name,t.attributes,t.content,t.children + c);
-        }
-        public static TXml operator +(TXml t, string c)
-        {
-            return new TXml(t.name, t.attributes, c, t.children);
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder();
-            sb.Append("<" + name);
-            for (var b=attributes.First();b is not null;b=b.Next())
-                sb.Append(" " + b.key() + "=\"" + b.value().ToString() + "\"");
-            if (content != "")
-                sb.Append(">" + content + "</" + name + ">");
-            else if (children.Count > 0)
-            {
-                sb.Append('>');
-                for (var b=children.First();b is not null;b=b.Next())
-                    sb.Append(b.value().ToString());
-                sb.Append("</" + name + ">");
-            }
-            else
-                sb.Append("/>");
-            return sb.ToString();
-        }
-    }
     // shareable
     internal class Adapters
     {
