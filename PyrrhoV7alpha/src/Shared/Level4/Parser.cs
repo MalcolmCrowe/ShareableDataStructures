@@ -1456,24 +1456,6 @@ namespace Pyrrho.Level4
                 cx.result = es.defpos;
                 cx.Add(ms);
             }
-            if (tok == Sqlx.THEN)
-            {
-                Next();
-                var es = BList<long?>.Empty;
-                for (; ; )
-                {
-                    if (ParseProcedureStatement(Domain.Content) is Executable x)
-                    {
-                        cx.Add(x);
-                        es += x.defpos;
-                    }
-                    if (tok != Sqlx.SEMICOLON)
-                        break;
-                    Next();
-                }
-                Mustbe(Sqlx.END);
-                ms += (IfThenElse.Then, es);
-            }
             ms = (MatchStatement)cx.Add(ms);
             if (cx.parse == ExecuteStatus.Obey)
                 ms.Obey(cx);
