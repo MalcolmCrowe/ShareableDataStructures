@@ -3,7 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Common;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -367,6 +367,8 @@ namespace Pyrrho.Level4
         public long offset;
         public TGParam.Type tgg = TGParam.Type.None;
         public long tga;
+        public bool tex; // expecting a type?
+ //       public BTree<string,(int,long?)> tgt = BTree<string,(int,long?)>.Empty; // field names we know
         public long Position => offset + start;
         /// <summary>
         /// The current token's value
@@ -543,7 +545,20 @@ namespace Pyrrho.Level4
                         }
                     case Sqlx.LBRACE:
                     case Sqlx.COMMA:
-                        break;
+                        {
+      /*                      if (tgt.Contains(vo))
+                                break;
+                            var tg = new TGParam(Position, vo, gc, TGParam.Type.Field|tgg, tga);
+                            tgs += (tg.uid, tg); */
+                            break;
+                        }
+                    case Sqlx.COLON:
+                        {
+                            var tg = new TGParam(Position, vo, gc, 
+                                (tex?TGParam.Type.Type:TGParam.Type.Value)|tgg, tga);
+                            tgs += (tg.uid, tg);
+                            break;
+                        }
                     default:
                         {
                             var tg = new TGParam(Position, vo, gc, TGParam.Type.None|tgg, tga);

@@ -6,9 +6,11 @@ using Pyrrho.Level4;
 using System.Xml;
 using Pyrrho.Level5;
 using Pyrrho.Level1;
+using System.IO;
+using System.Data.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -71,7 +73,7 @@ namespace Pyrrho.Level3
                     cx.obs += (fr.defpos, fr + (ForwardReference.Subs, fr.subs + (defpos, true)));
             cx.Add(this);
         }
-        protected SqlValue(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal SqlValue(long dp, BTree<long, object> m) : base(dp, m) { }
         protected SqlValue(Context cx,string nm,Domain dt,long cf=-1L)
             :base(cx.GetUid(),cx.DoDepth(_Mem(cf)+(ObInfo.Name,nm)+(_Domain,dt)))
         {
@@ -141,6 +143,13 @@ namespace Pyrrho.Level3
         {
             return cs.Contains(defpos);
         }
+        /// <summary>
+        /// The result of this function is important only for its keys.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="kb"></param>
+        /// <param name="ambient"></param>
+        /// <returns></returns>
         internal virtual CTree<long,Domain> KnownFragments(Context cx,CTree<long,Domain> kb,
             bool ambient = false)
         {
@@ -2464,7 +2473,10 @@ namespace Pyrrho.Level3
                     }
                 case Sqlx.DOT:
                     {
-                        TypedValue a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
+                        var ol = cx.obs[left] as SqlValue;
+                        if (ol is SqlNode && cx.values[right] is TypedValue dv && dv != TNull.Value)
+                            return dv;
+                        TypedValue a = ol?.Eval(cx) ?? TNull.Value;
                         if (a == TNull.Value)
                             return v;
                         if (a is TRow ra)
@@ -6696,7 +6708,7 @@ namespace Pyrrho.Level3
             }
             else if (aggregates(op))
             {
-                var og = (cx.obs[from]?? cx.obs[cx.result]) as RowSet?? throw new PEException("PE29005");
+                var og = cx.obs[from] as RowSet ?? cx.obs[cx.result] as RowSet?? throw new PEException("PE29005");
                 var gc = og.groupCols;
                 var key = (gc == null || gc == Domain.Null) ? TRow.Empty : new TRow(gc, cx.values);
                 fc = cx.funcs[from]?[key]?[defpos] ?? StartCounter(cx, key);
@@ -11139,6 +11151,7 @@ cx.obs[high] is not SqlValue hi)
                 return false;
             cx.values += n.tableRow.vals;
             if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
+            {
                 for (var b = docValue?.First(); b != null; b = b.Next())
                     if (cx.GName(b.key()) is string k)
                     {
@@ -11156,10 +11169,10 @@ cx.obs[high] is not SqlValue hi)
                             }
                             switch (k)
                             {
-                      //          case "ID":
-                      //          case "LEAVING":
-                      //          case "ARRIVING":  // no need
-                      //              break;
+                                //          case "ID":
+                                //          case "LEAVING":
+                                //          case "ARRIVING":  // no need
+                                //              break;
                                 case "SPECIFICTYPE":
                                     if (!n.dataType.Match(xv.ToString()))
                                         return false;
@@ -11171,6 +11184,7 @@ cx.obs[high] is not SqlValue hi)
                             }
                         }
                     }
+            }
             for (var b = search.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlValue se)
                 {
@@ -11601,13 +11615,16 @@ cx.obs[high] is not SqlValue hi)
     {
         internal const long
             MatchExps = -487, // BList<long?> SqlNode
+            InclusionMode = -497, // Sqlx
             MatchMode = -483, // Sqlx
             PathId = -488;  // long
         internal Sqlx mode => (Sqlx)(mem[MatchMode] ?? Sqlx.NONE);
+        internal Sqlx inclusion => (Sqlx)(mem[InclusionMode] ?? Sqlx.NONE);
         internal long pathId => (long)(mem[PathId] ?? -1L);
         internal BList<long?> matchExps => (BList<long?>)(mem[MatchExps] ?? BList<long?>.Empty);
-        public SqlMatchAlt(long dp,Context cx, Sqlx m, BList<long?> p, long pp)
-            : base(dp, new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp))
+        public SqlMatchAlt(long dp,Context cx, Sqlx m, Sqlx sh, BList<long?> p, long pp)
+            : base(dp, new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp)
+                  + (InclusionMode,sh))
         {
             var min = 0; // minimum path length
             var hasPath = false;

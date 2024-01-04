@@ -10,7 +10,7 @@ using System.Globalization;
 using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -1492,8 +1492,8 @@ namespace Pyrrho
         /// </summary>
  		internal static string[] Version = new string[]
         {
-            "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.08alpha","(03 January 2024)", "http://www.pyrrhodb.com"
+            "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
+            "7.08alpha","(04 January 2024)", "http://www.pyrrhodb.com"
         };
 	}
 }

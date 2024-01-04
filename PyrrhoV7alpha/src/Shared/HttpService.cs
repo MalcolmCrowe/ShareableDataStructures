@@ -5,7 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 // NB: this file contains some code derived from W3Schools (c) 1999-2023 Refsnes Data under fair use
 // (As an alternative, use windows.alert line commented out below and change
 // TNode.Summary() in Graph.cs to use \\n instead of <br/>)

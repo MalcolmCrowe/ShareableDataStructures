@@ -2,7 +2,7 @@ using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -17,8 +17,8 @@ namespace Pyrrho.Level3
     /// MTree is used for total and partial orderings where the value is long (e.g. in Index structure)
     /// for partial ordering the final stage Slot Row all implement BTree (and are ATree(long,bool))
     /// Logically a MTree contains associations of form (key,pos)
-    /// Show partial orders this is implemented as a tree of (key,T) where T contains (pos,true).
-    /// All the implementation is done with SqlTrees or STree (STree allows set-valued keys).
+    /// Partial ordering is implemented as a tree of (key,T) where T contains (pos,true).
+    /// All the implementation is done with SqlTrees.
     /// A null key is entered if permitted by allowNulls;
     /// of course in a multi-level MTree with allowNulls, any element of the key might be null.
     /// We detect partial ordering through the TreeBehaviour on onDuplicate.

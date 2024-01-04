@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -702,11 +702,11 @@ namespace Pyrrho.Level4
                 cx.Add(this + (Ambient, am));
         }
         /// <summary>
-        /// 
+        /// KnownBase computes a set of SqlValue uids known by this rowSet. The set is
+        /// defined by the keys of the CTree result. We ignore the Domain values of these trees.
         /// </summary>
         /// <param name="cx"></param>
-        /// <param name="d"></param>
-        /// <returns></returns>
+        /// <returns>A set of SqlValues used to compute this RowSet</returns>
         internal CTree<long,Domain> KnownBase(Context cx)
         {
             var kb = CTree<long, Domain>.Empty; 
@@ -1473,8 +1473,8 @@ namespace Pyrrho.Level4
     /// Enumerators of any sort. The great advantage of bookmarks generally is
     /// that they are immutable. (E.g. the ABookmark classes always refer to a
     /// snapshot of the tree at the time of constructing the bookmark.)
-    /// 2. The Rowset field is readonly but NOT immutable as it contains the Context _cx.
-    /// _cx.values is updated to provide shortcuts to current values.
+    /// 2. The Rowset field is readonly but NOT immutable as it contains the Context cx.
+    /// cx.values is updated to provide shortcuts to current values.
     /// 3. The TypedValues obtained by Value(..) are mostly immutable also, but
     /// updates to row columns (e.g. during trigger operations) are managed by 
     /// allowing the Cursor to override the usual results of 
@@ -1987,7 +1987,7 @@ namespace Pyrrho.Level4
             if (ds == 0)
                 ds = dm.rowType.Length;
             var wh = (CTree<long, bool>?)m[_Where];
-            // Show SelectRowSet, we compute the RdCols: all needs of selectors and wheres
+            // For SelectRowSet, we compute the RdCols: all needs of selectors and wheres
             if (m[ISMap] is BTree<long, long?> im)
             {
                 for (var b = dm.rowType.First(); b != null && b.key() < d; b = b.Next())
@@ -2116,8 +2116,8 @@ namespace Pyrrho.Level4
         {
             if (building)
                 throw new PEException("0017");
-            if (aggs != CTree<long, bool>.Empty && !mem.Contains(MatchStatement.MatchResult))
-                return false;
+            if (aggs != CTree<long, bool>.Empty && !mem.Contains(MatchStatement.MatchFlags)) 
+                return false; 
             return (bool)(mem[_Built]??false);
         }
         protected override bool CanAssign()
@@ -3667,7 +3667,6 @@ namespace Pyrrho.Level4
             }
         }
     }
-    
     internal class OrderedRowSet : RowSet
     {
         internal const long
@@ -4352,6 +4351,11 @@ namespace Pyrrho.Level4
         static BTree<long,object> _Mem(Context cx,Domain dt,BList<(long,TRow)>r)
         {
             var m = dt.mem + (ExplRows, r);
+            /* special case: if dt has GDefs, ignore field columns
+            if (m[MatchStatement.GDefs] is CTree<long, TGParam> gs)
+                for (var b = gs.First(); b != null; b = b.Next())
+                    if (b.value() is TGParam g && g.type.HasFlag(TGParam.Type.Field))
+                        dt -= g.uid; */
             if (r.Length == 0)
             {
                 var t = new MTree(dt, TreeBehaviour.Ignore, 0);
@@ -4441,18 +4445,20 @@ namespace Pyrrho.Level4
         
         internal class ExplicitCursor : Cursor
         {
-            readonly ExplicitRowSet _ers;
-            readonly ABookmark<int,(long,TRow)> _prb;
-            ExplicitCursor(Context _cx, ExplicitRowSet ers,ABookmark<int,(long,TRow)>prb,int pos) 
-                :base(_cx,ers,pos,E, prb.value().Item2)
+            protected readonly ExplicitRowSet _ers;
+            protected readonly ABookmark<int,(long,TRow)> _prb;
+            protected ExplicitCursor(Context cx, ExplicitRowSet ers,ABookmark<int,(long,TRow)>prb,int pos) 
+                :base(cx,ers,pos,E, prb.value().Item2)
             {
                 _ers = ers;
                 _prb = prb;
+                cx.values += values;
             }
-            ExplicitCursor(ExplicitCursor cu,Context cx, long p,TypedValue v):base(cu,cx,p,v)
+            protected ExplicitCursor(ExplicitCursor cu,Context cx, long p,TypedValue v):base(cu,cx,p,v)
             {
                 _ers = cu._ers;
                 _prb = cu._prb;
+                cx.values += (p, v);
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -4503,6 +4509,19 @@ namespace Pyrrho.Level4
                 return BList<TableRow>.Empty;
             }
         }
+    }
+    internal class TrueRowSet : ExplicitRowSet
+    {
+        internal const long
+            TrueResult = -437; // TrueRowSet
+        TrueRowSet(Context cx) : base(cx.GetUid(), BTree<long, object>.Empty
+            + (_Domain, new Domain(cx.GetUid(), cx, Sqlx.TABLE,
+                new BList<DBObject>(new SqlLiteral(--_uid, TBool.True)))))
+        {
+            Context._system.obs += (TrueResult, this);
+        }
+        internal static TrueRowSet OK(Context cx) => 
+            (TrueRowSet)(cx.obs[TrueResult] ?? new TrueRowSet(cx));
     }
     internal class ProcRowSet : RowSet
     {

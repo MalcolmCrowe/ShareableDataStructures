@@ -6,7 +6,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -72,6 +72,7 @@ namespace Pyrrho.Level3
             Start = -89, // Sqlx (D)
             Subtypes = -155, // CTree<long,bool> Domain
             SuperShape = -318, // bool
+            TrueRowSet = -437,// RowSet
             Under = -90, // Domain
             UnionOf = -91; // CTree<Domain,bool>
         internal static Domain Null, Value, Content, // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
@@ -2329,7 +2330,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 v = TNull.Value;
                 return null;
             }
-        bad:
             var xs = new string(lx.input, start, lx.pos - start);
             v = TNull.Value;
             return new DBException("2E303", ToString(), xs).Pyrrho()
@@ -3001,7 +3001,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         {
                             var s = tc.ToString();
                             if ((this+(Kind,Sqlx.ROW)).TryParse(new Scanner(0, ("("+s+")").ToCharArray(), 0, cx), out v) is DBException e)
-                                throw e;
+                                return v;
                         }
                         return Check(cx, v);
                     }

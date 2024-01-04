@@ -8,7 +8,7 @@ using System.Net.Http.Headers;
 namespace Pyrrho.Level5
 {
     // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-    // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+    // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
     //
     // This software is without support and no liability for damage consequential to use.
     // You can view and test this code
@@ -1677,7 +1677,7 @@ namespace Pyrrho.Level5
     internal class TGParam : TypedValue
     {
         [Flags]
-        internal enum Type { None=0,Node=1,Edge=2,Path=4,Group=8,Maybe=16 };
+        internal enum Type { None=0,Node=1,Edge=2,Path=4,Group=8,Maybe=16,Type=32,Field=64,Value=128 };
         internal readonly long uid;
         internal readonly long from;
         internal readonly Type type; // in reverse Polish order

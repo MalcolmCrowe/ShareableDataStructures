@@ -2,7 +2,7 @@ using System.Text;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -83,6 +83,7 @@ namespace Pyrrho.Security
                     case "Password": Send(Connecting.Password, v); break;
                     case "Modify": Send(Connecting.Modify, v); break;
                     case "Length": Send(Connecting.Length, v); break;
+					case "CaseSensitive": Send(Connecting.CaseSensitive, v); break;
 					default: goto bad;
 				}
 			}

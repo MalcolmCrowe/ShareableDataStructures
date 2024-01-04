@@ -1,10 +1,16 @@
+using System.Linq.Expressions;
+using System;
+using System.Runtime.CompilerServices;
 using System.Text;
+using System.Text.RegularExpressions;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using static Pyrrho.Common.Delta;
+using System.Linq;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -4172,36 +4178,46 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// The Match syntax consists of a graph expression, an optional where condition and an optional action part.
-    /// Parsing of the grap expression results in a collection of unbound identifiers and a collection
-    /// of constraints. The action part is often a RETURN statement: if this contains aggregating expressions,
-    /// then the aggregands are computed for each row of the binding table; if there are no aggregating expressions,
-    /// the whole of the RETURN statement can be computed. Thus if RETURN statements are present we want their
-    /// return values (or aggregands) to be placed in the binding table at the EndStep of the match process.
-    /// Like the CREATE syntax, a graph expression consists of a tree of node-edge-node chains.
-    /// The graph expression cannot contain subtype references or SqlExpressions and does not construct any nodes:
-    /// all identifiers are either unbound starting with _ (_ on its own means don't care)
-    /// or constant identfiers or values that are used for matching subgraphs.
-    /// Unbound identiers (other than _ itself) are progressively bound to particular values, and their
-    /// bindings are added to the constraints. 
-    /// Evaluation of the match expression traverses all of the nodes/edges in the database 
-    /// building a binding tree. This maximal graph object is maintained for the Database
-    /// Traversal occurs for each possible set of bindings, in lexicographic order of the identifiers
-    /// and constraints in the graph expression. Each line of the graph expression must begin with a node
-    /// so at the start of a line there may be a new unbound (or don't care) node for which there are a 
-    /// lot of possible nodes: if the next thing is an edge, there may be a number of possible edges, and so on.
-    /// Every time we succeed in binding all of the unbound identifiers, we record this
-    /// binding collection and then backtrack, unbinding the most recent binding 
-    /// removing the associated additional constraints, and continue from the current search position. 
-    /// We continue in this way until we have traversed all of the graph.
+    /// Parsing of the graph expression results in a collection of previously unbound identifiers(GDefs) 
+    /// and a collection of constraints(boolean SqlValueExpr). By default, the resulting domain is an ExplicitRowSet
+    /// whose columns match the bindings CList<TGParam>(an ordering of GDefs). Whether or not it is the final result,
+    /// this bindingtable is used during the match process to eleminate duplicate rows in the result.
+    /// If a return (or Yield) statement is present, a rowset built from its rows becomes the Match result: 
+    /// a SelectRowSet, built directly by the MatchStatement. Such a RETURN statement is just one 
+    /// of the statement types that can be dependent on the Match: it is very common for the dependent statement 
+    /// to be CREATE. Any dependent statement(s) are executed by AddRow in the EndStep of the match process, 
+    /// using the binding values it has found.
+    /// Like the CREATE syntax, a graph expression consists of a tree of node-edge-node chains. A path pattern 
+    /// also has this form but has the effect of an edge, since the starting and ending nodes are merged with the
+    /// adjacent nodes of the enclosing expression. If either part of this structural description is missing
+    /// in the given match expression, blank nodes are inserted so that the MatchStatement obeys these rules.
+    /// The graph expression cannot contain subtype references or SqlExpressions and the match process
+    /// does not construct any nodes: all identifiers are either unbound or constant identfiers 
+    /// or values that are used for matching subgraphs.
+    /// During the steps of the evaluation, unbound identiers are progressively bound to particular values, and their
+    /// binding values become additional constraints. 
+    /// Evaluation of the match statement traverses all of the nodes/edges in the database: each full traversal
+    /// building a row of the bindingtable. The set of nodes and edges matched in that row is a graph
+    /// and in this way a match statement defines a graph (the union of the graphs of its rows).
+    /// If there is a dependent statement, it is obeyed for each row of the binding table.
+    /// During pattern matching, the pattern is traversed: (a) on a node expression the database is examined for nodes
+    /// that match it, and where it satisfies all constraints on that node, the bindings are noted.
+    /// (b) For each matching node, if the next match expression is an edge, the database is examined for suitable edges, and so on.
+    /// In this way the process has (a) ExpSteps and (b) NodeSteps: there are also 
+    /// (c) PathSteps for the start of the next repetition of a path pattern, 
+    /// (d) GraphSteps for the next graph pattern in the MatchStatement, and
+    /// (e) an EndStep to record the resulting row in the bindingtable, and execute the dependent statement.
+    /// Each step apart from the end step has a next step, which is obeyed on success.
+    /// On completion of the match statement, or on failure at any point, we unbind the last binding made
+    /// and take the next choice from the previous step if any (backtracking).
     /// </summary>
     internal class MatchStatement : Executable
     {
         internal const long
-            _BindingTable = -490, // long ExplicitRowSet
+            BindingTable = -490, // long ExplicitRowSet
             GDefs = -210,   // CTree<long,TGParam>
             MatchFlags = -496, // Bindings=1,Body=2,Return=4
             MatchList = -491, // BList<long?> SqlMatchAlt
-            MatchResult = -437, // long ExplicitRowSet
             Truncating = -492; // BTree<long,(int,Domain)> EdgeType (or 0L)
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
@@ -4215,17 +4231,19 @@ namespace Pyrrho.Level3
             (BTree<long, (int, Domain)>)(mem[Truncating] ?? BTree<long, (int, Domain)>.Empty);
         internal Domain sort => (Domain?)mem[RowSet.RowOrder]??Domain.Null;
         internal int size => (int?)mem[RowSetSection.Size] ?? -1;
+        internal long ret => (long)(mem[ReturnStatement.Ret] ?? -1L);
         internal BTree<string, (int, long?)> names =>
             (BTree<string, (int, long?)>?)mem[ObInfo.Names] ?? BTree<string, (int, long?)>.Empty;
-        internal long result => (long)(mem[MatchResult]??-1L); // result.domain may have aggregations
-        internal long bindings => (long)(mem[_BindingTable] ?? -1L);  
+        internal long bindings => (long)(mem[BindingTable] ?? -1L);  
         [Flags]
         internal enum Flags { None=0, Bindings = 1, Body = 2, Return = 4 }
         internal Flags flags => (Flags)(mem[MatchFlags] ?? Flags.None);
         public MatchStatement(Context cx, BTree<long,(int,Domain)>? tg, CTree<long,TGParam> gs, BList<long?> ge, 
             BTree<long,object> m, long st,long re)
             : base(cx.GetUid(), _Mem(cx,m,tg,gs,st,re) + (MatchList,ge) + (Procedure.Body,st))
-        { }
+        {
+            cx.Add(this);
+        }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
         static BTree<long,object> _Mem(Context cx,BTree<long,object> m, BTree<long,(int,Domain)>? tg,
@@ -4236,8 +4254,6 @@ namespace Pyrrho.Level3
             m += (GDefs, gs);
             if (tg is not null)
                 m += (Truncating, tg);
-            var ers = BindingTable(cx, gs);
-            cx.Add(ers);
             var f = Flags.None;
             for (var b = gs.First(); b != null && f == Flags.None; b = b.Next())
                 if (b.value().value != "")
@@ -4250,9 +4266,7 @@ namespace Pyrrho.Level3
                 m += (Procedure.Body, st);
             }
             m += (MatchFlags, f);
-            if (re>=0)
-                m += (MatchResult, re);
-            m += (_BindingTable, ers.defpos);
+            m += (ReturnStatement.Ret, re);
             return m;
         }
         public static MatchStatement operator +(MatchStatement et, (long, object) x)
@@ -4290,26 +4304,6 @@ namespace Pyrrho.Level3
         {
             return new MatchStatement(dp,m);
         }
-        internal static ExplicitRowSet BindingTable(Context cx,CTree<long,TGParam>gs)
-        {
-            var rt = BList<long?>.Empty;
-            var re = CTree<long, Domain>.Empty;
-            var ns = BTree<string, (int, long?)>.Empty;
-            var j = 0;
-            for (var b = gs.First(); b != null; b = b.Next())
-                if (b.value() is TGParam g && g.value != "" && !re.Contains(g.uid))
-                {
-                    rt += g.uid;
-                    re += (g.uid, g.dataType);
-                    ns += (g.value, (j++, g.uid));
-                    if (cx.obs[g.uid] is SqlValue sx)
-                        sx.AddFrom(cx, g.from);
-                }
-            var dt = new Domain(-1L, cx, Sqlx.ROW, re, rt, rt.Length) + (ObInfo.Names, ns);
-            var ers = new ExplicitRowSet(cx.GetUid(), cx, dt, BList<(long, TRow)>.Empty);
-            ers += (ObInfo.Names, ns);
-            return ers;
-        }
         /// <summary>
         /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.
         /// The match graphs and the set of TGParams are in this MatchStatement.
@@ -4334,7 +4328,7 @@ namespace Pyrrho.Level3
             // Traverse the given graphs, binding as we go
             var cx = new Context(_cx);
             cx.binding = _cx.binding;
-            cx.result = result;
+            cx.result = domain.defpos;
             _step = 0;
             var gf = matchList.First();
             if (cx.obs[gf?.value() ?? -1L] is SqlMatch sm)
@@ -4346,54 +4340,70 @@ namespace Pyrrho.Level3
                         if (gf is not null && xf is not null)
                             ExpNode(cx, new ExpStep(sa, xf, new GraphStep(gf.Next(), new EndStep(this))), Sqlx.Null, null);
                     }
-            cx.values = CTree<long, TypedValue>.Empty;
-            cx.val = TNull.Value;
+            // aggregations
+            if (domain is SelectRowSet srs && srs.aggs!=CTree<long,bool>.Empty)
+            { // code copied from SelectRowSet.Build
+                var rws = CList<TRow>.Empty;
+                var re = (ReturnStatement?)cx.obs[ret];
+                var fd = cx.funcs[re?.ret ?? -1L];
+                for (var b = fd?.First(); b != null; b = b.Next())
+                    if (b.value() != BTree<long, Register>.Empty)
+                    {
+                        // Remember the aggregating SqlValues are probably not just aggregation SqlFunctions
+                        // Seed the keys in cx.values
+                        var vs = b.key().values;
+                        cx.values += vs;
+                        for (var d = srs.matching.First(); d != null; d = d.Next())
+                            if (cx.values[d.key()] is TypedValue v)
+                                for (var c = d.value().First(); c != null; c = c.Next())
+                                    if (!vs.Contains(c.key()))
+                                        vs += (c.key(), v);
+                        // and the aggregate function accumulated values
+                        for (var c = srs.aggs.First(); c != null; c = c.Next())
+                            if (cx.obs[c.key()] is SqlValue v)
+                            {
+                                if (v is SqlFunction fr && fr.op == Sqlx.RESTRICT)
+                                    cx.values += (fr.val, fr.Eval(cx));
+                                else
+                                    cx.values += (v.defpos, v.Eval(cx));
+                            }
+                        // compute the aggregation expressions from these seeds
+                        for (var c = srs.rowType.First(); c != null; c = c.Next())
+                            if (c.value() is long p && cx.obs[p] is SqlValue sv
+                                && sv.IsAggregation(cx, srs.aggs) != CTree<long, bool>.Empty)
+                                vs += (sv.defpos, sv.Eval(cx));
+                        // add in any exposed RESTRICT values
+                        for (var c = srs.aggs.First(); c != null; c = c.Next())
+                            if (cx.obs[c.key()] is SqlFunction fr && fr.op == Sqlx.RESTRICT)
+                                vs += (fr.val, fr.Eval(cx));
+                        // for the having calculation to work we must ensure that
+                        // having uses the uids that are in aggs
+                        for (var h = srs.having.First(); h != null; h = h.Next())
+                            if (cx.obs[h.key()]?.Eval(cx) != TBool.True)
+                                goto skip;
+                        rws += new TRow(srs, vs);
+                    skip:;
+                    }
+                if (rws == CList<TRow>.Empty)
+                    rws += new TRow(srs, CTree<long, TypedValue>.Empty);
+                cx.Add((RowSet)srs.New(srs.mem + (RowSet._Rows, rws) + (RowSet._Built, true) + (MatchFlags,true)
+                    - Index.Tree + (RowSet.Groupings, srs.groupings)));
+                cx.result = srs.defpos;
+            }
+            if (cx.obs[cx.result] is RowSet rs)
+            {
+                if (mem[RowSet.RowOrder] is Domain ord)
+                    rs = rs.Sort(cx, ord, false);
+                _cx.result = rs.defpos;
+                _cx.obs += (_cx.result, rs);
+            }
             var aff = cx.db.AffCount(cx);
             if (aff > 0)
-            {
                 _cx.result = -1L;
-                _cx.obs -= result;
-                _cx.db = cx.db;
-            }
-            else
-            {
-                var ers = cx.obs[bindings] as RowSet;
-                RowSet? re = cx.obs[result] as RowSet;
-                if (cx.obs[cx.lastret] is ReturnStatement st && cx.obs[st.result] is SelectRowSet ag &&
-                    re is not null)
-                {
-                    ag += (RowSet._Source, re.defpos);
-                    for (var b = ag.First(); b != null; b = b.Next())
-                        if (cx.obs[b.value() ?? -1L] is SqlFunction sf)
-                            cx.Add(sf + (_From, ag.defpos));
-                    ag = (SelectRowSet)ag.Build(cx) + (MatchResult, ag.defpos);
-                    _cx.obs += (ag.defpos, ag);
-                    _cx.result = ag.defpos;
-                }
-                else if (re is ExplicitRowSet er && cx.obs[er.index] is Index ex
-                    && flags != (Flags.Bindings | Flags.Body))
-                {
-                    _cx.obs = cx.obs + (ex.defpos, ex) + (re.defpos, re);
-                    _cx.result = re.defpos;
-                    _cx.Add(re);
-                }
-                else if (ers is ExplicitRowSet es && cx.obs[es.index] is Index sx
-                    && flags != (Flags.Bindings | Flags.Body))
-                {
-                    _cx.obs = cx.obs + (sx.defpos, sx) + (ers.defpos, ers);
-                    _cx.result = ers.defpos;
-                    _cx.Add(ers);
-                }
-                if (cx.obs[_cx.result] is RowSet rr && flags != (Flags.Bindings | Flags.Body))
-                {
-                    if (sort != Domain.Null)
-                        rr = rr.Sort(cx, sort, false);
-                    if (size > 0)
-                        rr = new RowSetSection(cx, rr, 0, size);
-                    _cx.result = rr.defpos;
-                    _cx.Add(rr);
-                }
-            }
+            else if (gDefs==CTree<long,TGParam>.Empty)
+                _cx.result = TrueRowSet.OK(_cx).defpos; 
+            else if (cx.obs[_cx.result] is RowSet rrs)
+                _cx.obs += (_cx.result,rrs);
             if (then != BList<long?>.Empty)
             {
                 var ac = new Activation(cx, "" + defpos);
@@ -4403,6 +4413,7 @@ namespace Pyrrho.Level3
                 cx.db = ac.db;
             }
             cx.SlideDown();
+            _cx.db = cx.db;
             return _cx;
         }
         /// <summary>
@@ -4457,6 +4468,9 @@ namespace Pyrrho.Level3
             /// </summary>
             public override void Next(Context cx, Step? cn, Sqlx tok,TNode? pd)
             {
+                for (var b = ms.where.First(); b != null; b = b.Next())
+                    if (cx.obs[b.key()] is SqlValueExpr se && se.Eval(cx) != TBool.True)
+                        return;
                 ms.AddRow(cx);
             }
 
@@ -4639,43 +4653,70 @@ namespace Pyrrho.Level3
             // everything has been checked
             if (flags == Flags.None)
                 cx.val = TBool.True;
-            if (flags.HasFlag(Flags.Bindings) && cx.obs[bindings] is ExplicitRowSet ers 
-                && cx.obs[ers.index] is Index ex && ex.MakeKey(cx.binding) is CList<TypedValue> k 
+            if (flags.HasFlag(Flags.Bindings) && cx.obs[bindings] is ExplicitRowSet ers
+                && cx.obs[ers.index] is Index ex && ex.MakeKey(cx.binding) is CList<TypedValue> k
                 && ex.rows?.Contains(k) != true)
             {
                 var uid = cx.GetUid();
                 ex += (k, uid);
                 ers += (cx, ExplicitRowSet.ExplRows, ers.explRows + (uid, new TRow(ers, cx.binding)));
                 cx.Add(ex); cx.Add(ers);
-            }
-            if (flags.HasFlag(Flags.Body) && cx._Ob(body) is Executable e)
-            {
-                var ob = cx.binding;
-                cx.nodes += gDefs;
-                var ac = new Activation(cx, "" + defpos);
-                ac.values += ob;
-                e.Obey(ac);
-                ac.SlideDown();
-                cx.values += ac.values;
-                cx.binding = ob;
-                cx.db = ac.db;
-                if (flags.HasFlag(Flags.Return))
+                cx.val = TNull.Value;
+                cx.values += cx.binding;
+                if (cx.obs[body] is Executable bd)
+                    cx = bd.Obey(cx);
+                if (cx.val is TRow rr)
                 {
-                    if (cx.obs[result] is ExplicitRowSet re && cx.obs[re.index] is Index rx)
+                    if (domain.defpos != bindings && cx.obs[domain.defpos] is ExplicitRowSet es)
                     {
-                        var tr = cx.val as TRow ?? new TRow(re.domain, cx.val);
-                        var uid = cx.GetUid();
-                        if (rx.MakeKey(tr.values) is CList<TypedValue> sk)
+                        var ur = cx.GetUid();
+                        es += (cx, ExplicitRowSet.ExplRows, es.explRows + (ur, rr));
+                        cx.obs+=(es.defpos,es);
+                    }
+                    if (domain.defpos != bindings && cx.obs[domain.defpos] is SelectRowSet srs)
+                    {
+                        if (srs.aggs != CTree<long, bool>.Empty)
+                        // This code is largely copied from SelectRowSet.Build
                         {
-                            rx += (sk, uid);
-                            re += (ExplicitRowSet.ExplRows, re.explRows + (uid, tr));
-                            cx.obs += (rx.defpos, rx); cx.obs += (re.defpos, re);
+                            cx.values += rr.values;
+                            if (!cx.funcs.Contains(defpos))
+                                cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
+                            if (srs.groupings.Count == 0)
+                                for (var b0 = srs.aggs.First(); b0 != null; b0 = b0.Next())
+                                {
+                                    if (cx.obs[b0.key()] is SqlFunction sf0)
+                                        sf0.AddIn(TRow.Empty, cx);
+                                }
+                            else for (var g = srs.groupings.First(); g != null; g = g.Next())
+                                    if (g.value() is long p && cx.obs[p] is Grouping gg)
+                                    {
+                                        var vals = CTree<long, TypedValue>.Empty;
+                                        for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
+                                            if (gb.value() is long gp && cx.obs[gp] is SqlValue v)
+                                                vals += (gp, v.Eval(cx));
+                                        var key = new TRow(srs.groupCols, vals);
+                                        for (var b1 = srs.aggs.First(); b1 != null; b1 = b1.Next())
+                                            if (cx.obs[b1.key()] is SqlFunction sf1)
+                                                sf1.AddIn(key, cx);
+                                    }
                         }
                     }
                 }
+                if (flags.HasFlag(Flags.Body) && cx._Ob(body) is Executable e)
+                {
+                    var ob = cx.binding;
+                    cx.nodes += gDefs;
+                    var ac = new Activation(cx, "" + defpos);
+                    ac.values += ob;
+                    e.Obey(ac);
+                    ac.SlideDown();
+                    cx.values += ac.values;
+                    cx.binding = ob;
+                    cx.db = ac.db;
+                }
+                else if (flags == Flags.None)
+                    cx.val = TBool.True;
             }
-            else if (flags == Flags.None)
-                cx.val = TBool.True;
         }
         static int _step = 0; // debugging assistant
         /// <summary>
@@ -4917,7 +4958,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context</param>
         /// <param name="bp">The Step current state and continuation</param>
         /// <param name="dn">The most recent TNode</param>
-        void PathNode(Context cx, PathStep bp, TNode? dn)
+        void PathNode(Context cx, PathStep bp, TNode dn)
         {
             var step = ++_step;
             var ob = cx.binding;
@@ -5080,10 +5121,6 @@ namespace Pyrrho.Level3
             if (bindings>=0)
             {
                 sb.Append(" Bindings "); sb.Append(Uid(bindings));
-            }
-            if (result >= 0)
-            {
-                sb.Append(" Result "); sb.Append(Uid(result));
             }
             if (then!=BList<long?>.Empty)
             {

@@ -9,7 +9,7 @@ using Pyrrho.Level5;
 using System.Runtime.Intrinsics.Arm;
 using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -314,9 +314,7 @@ namespace Pyrrho.Level2
             {
                 if (b.value() is not long p || dm.representation[p] is not Domain dv)
                     throw new PEException("PE10701");
-                if (fields[p] is not TypedValue v)
-                    throw new DBException("22206", cx.NameFor(p));
-                if (v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
+                if (fields[p] is TypedValue v && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
                 {
                     var nv = dv.Coerce(cx, v);
                     fields += (p, nv);
