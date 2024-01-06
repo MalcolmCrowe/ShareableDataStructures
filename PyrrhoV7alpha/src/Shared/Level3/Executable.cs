@@ -4240,14 +4240,20 @@ namespace Pyrrho.Level3
         internal Flags flags => (Flags)(mem[MatchFlags] ?? Flags.None);
         public MatchStatement(Context cx, BTree<long,(int,Domain)>? tg, CTree<long,TGParam> gs, BList<long?> ge, 
             BTree<long,object> m, long st,long re)
-            : base(cx.GetUid(), _Mem(cx,m,tg,gs,st,re) + (MatchList,ge) + (Procedure.Body,st))
+            : this(cx.GetUid(),cx,tg,gs,ge,m,st,re)
+        {
+            cx.Add(this);
+        }
+        MatchStatement(long dp,Context cx, BTree<long, (int, Domain)>? tg, CTree<long, TGParam> gs, BList<long?> ge,
+    BTree<long, object> m, long st, long re)
+            : base(dp, _Mem(dp, cx, m, tg, gs, ge, st, re) + (Procedure.Body, st))
         {
             cx.Add(this);
         }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
-        static BTree<long,object> _Mem(Context cx,BTree<long,object> m, BTree<long,(int,Domain)>? tg,
-            CTree<long,TGParam> gs,long st,long re)
+        static BTree<long, object> _Mem(long dp, Context cx, BTree<long, object> m, BTree<long, (int, Domain)>? tg,
+            CTree<long, TGParam> gs, BList<long?> ge, long st, long re)
         {
             for (var b = gs.First(); b != null; b = b.Next())
                 cx.undefined -= b.key();
@@ -4267,6 +4273,13 @@ namespace Pyrrho.Level3
             }
             m += (MatchFlags, f);
             m += (ReturnStatement.Ret, re);
+            m += (MatchList, ge);
+            for (var b = ge.First(); b != null; b = b.Next())
+                if (cx.obs[b.value() ?? -1L] is SqlMatch sm)
+                    for (var c = sm.matchAlts.First(); c != null; c = c.Next())
+                        if (cx.obs[c.value() ?? -1L] is SqlMatchAlt sa && gs[sa.pathId] is TGParam p
+                                && cx.obs[p.uid] is SqlValue sv)
+                            sv.AddFrom(cx, sa.defpos);
             return m;
         }
         public static MatchStatement operator +(MatchStatement et, (long, object) x)
@@ -4757,7 +4770,8 @@ namespace Pyrrho.Level3
                 ds += (xn.defpos, pd.tableRow);
         //    else if (xn.Eval(cx) is TNode nn)
         //        ds += (xn.defpos, nn.tableRow);
-            else if (pd is not null && pd.dataType is EdgeType pe
+            else 
+            if (pd is not null && pd.dataType is EdgeType pe
                 && ((tok == Sqlx.ARROWBASE) ?
                 (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
                 : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
@@ -4920,7 +4934,7 @@ namespace Pyrrho.Level3
                 if (dn is TEdge de && pd is not null
                     && ((bn.xn.tok == Sqlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
                     goto backtrack;
-                bn.next.Next(cx, null, tok, dn);
+                bn.next.Next(cx, null, (tok==Sqlx.WITH)?Sqlx.Null:tok, dn);
             backtrack:
                 if (ot is not null)
                     cx.paths += (bn.alt.defpos,ot);

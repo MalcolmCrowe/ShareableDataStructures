@@ -1040,7 +1040,7 @@ namespace Pyrrho.Level4
                 {
                     var ei = lxr.val.ToString();
                     Next();
-                    var et = cx.db.objects[cx.role.dbobjects[lxr.val.ToString()] ?? -1L] as EdgeType
+                    var et = cx.db.objects[cx.role.dbobjects[ei] ?? -1L] as EdgeType
                         ?? throw new DBException("42161", Sqlx.EDGETYPE);
                     cx.AddDefs(et);
                     k = et.defpos;
@@ -1328,7 +1328,15 @@ namespace Pyrrho.Level4
                             _ => TGParam.Type.None
                         } : TGParam.Type.Maybe;
                         if (lxr.tgs[lp] is TGParam ig && dm is not null)
-                            lxr.tgs += (lp, new TGParam(lp, ig.value, dm, pg, f));
+                        {
+                            Domain nd = dm;
+                            if (ig.type.HasFlag(TGParam.Type.Group))
+                            {
+                                nd = new Domain(-1L, Sqlx.ARRAY, dm);
+                                pg |= TGParam.Type.Group;
+                            }
+                            lxr.tgs += (lp, new TGParam(lp, ig.value, nd, pg, f));
+                        }
                     }
                 }
                 // state M29
@@ -1486,6 +1494,8 @@ namespace Pyrrho.Level4
                     var dr = sn.domain;
                     if (g.type.HasFlag(TGParam.Type.Type))
                         dr = Domain.Char;
+                    if (g.type.HasFlag(TGParam.Type.Group))
+                        dr = new Domain(-1L, Sqlx.ARRAY, dr);
                     re += (sn.defpos, dr);
                     rt += sn.defpos;
                     if (g.value!=null)
@@ -9778,8 +9788,11 @@ namespace Pyrrho.Level4
             }
             if (tok == Sqlx.Id && !cx.defs.Contains(eq))
                 cx.Add(new SqlValue(q, BList<Ident>.Empty, cx, Domain.Char));
-            return ((SqlValue)cx.Add(new SqlValue(k, BList<Ident>.Empty, cx, Domain.Content)),
-                (SqlValue)cx.Add(ParseSqlValue(Domain.Content)));
+            var dm = Domain.Content;
+            if (lxr.tgg.HasFlag(TGParam.Type.Group))
+                dm = new Domain(-1L, Sqlx.ARRAY, dm);
+            return ((SqlValue)cx.Add(new SqlValue(k, BList<Ident>.Empty, cx, dm)),
+                (SqlValue)cx.Add(ParseSqlValue(dm)));
         }
         /// <summary>
         /// Parse a document array
