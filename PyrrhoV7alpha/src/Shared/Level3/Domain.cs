@@ -719,7 +719,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 Sqlx.REAL => 8,
                 Sqlx.CHECK or Sqlx.LEVEL or Sqlx.NCHAR => 3,
                 Sqlx.CHAR => 3,
-                Sqlx.NODETYPE or Sqlx.EDGETYPE => 3, // a string versioon of the node/edge
                 Sqlx.TIMESTAMP => 4,
                 Sqlx.DATE => 13,
                 Sqlx.BLOB => 5,
@@ -728,7 +727,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 Sqlx.SET => 7,
                 Sqlx.MULTISET => 7,
                 Sqlx.TABLE => 7,
-                Sqlx.TYPE => 12,
+                Sqlx.TYPE or Sqlx.NODETYPE or Sqlx.EDGETYPE => 12,
                 Sqlx.BOOLEAN => 9,
                 Sqlx.INTERVAL => 10,
                 Sqlx.TIME => 11,
@@ -849,6 +848,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         }
                         return new TRow(new Domain(rdr.context.GetUid(),rdr.context,Sqlx.ROW,dt,rt), vs);
                     }
+                case Sqlx.NODETYPE:
+                case Sqlx.EDGETYPE:
                 case Sqlx.TYPE:
                     {
                         var dp = rdr.GetLong();

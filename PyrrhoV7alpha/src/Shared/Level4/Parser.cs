@@ -1443,6 +1443,7 @@ namespace Pyrrho.Level4
             var m = ers.mem;
             m += (ObInfo.Names, ns);
             m += (MatchStatement.BindingTable, ers.defpos);
+            m += (DBObject._Domain, ers);
             var wh = ParseWhereClause() ?? CTree<long, bool>.Empty;
             m += (RowSet._Where, wh);
             long e = -1L;
@@ -1494,7 +1495,7 @@ namespace Pyrrho.Level4
                     var dr = sn.domain;
                     if (g.type.HasFlag(TGParam.Type.Type))
                         dr = Domain.Char;
-                    if (g.type.HasFlag(TGParam.Type.Group))
+                    if (g.type.HasFlag(TGParam.Type.Group) && dr.kind!=Sqlx.ARRAY)
                         dr = new Domain(-1L, Sqlx.ARRAY, dr);
                     re += (sn.defpos, dr);
                     rt += sn.defpos;

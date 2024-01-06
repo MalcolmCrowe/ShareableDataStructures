@@ -582,7 +582,7 @@ namespace Pyrrho.Level1
             {
                 int n = ta.Length;
                 var et = a.dataType.elType ?? throw new DBException("22005");
-                PutString(et.ToString());
+                PutString(et.name??et.ToString());
                 PutInt(et.Typecode());
                 PutInt(n);
                 for (var b = ta.array.First(); b != null; b = b.Next())
@@ -973,10 +973,6 @@ namespace Pyrrho.Level1
                 case Sqlx.CHAR:
                     PutString(tv.ToString());
                     break;
-                case Sqlx.NODETYPE:
-                case Sqlx.EDGETYPE:
-                    PutString(((TNode)tv).ToString(_cx));
-                    break;
                 case Sqlx.PASSWORD: PutString("********"); break;
                 case Sqlx.POSITION:
                     PutString(tv.ToString()); break;
@@ -1052,6 +1048,10 @@ namespace Pyrrho.Level1
                         else throw new PEException("PE42168");
                         break;
                     }
+                case Sqlx.NODETYPE:
+                case Sqlx.EDGETYPE:
+                    PutString(((TNode)tv).ToString(_cx));
+                    break;
                 case Sqlx.TYPE: 
                     if (tv.dataType is UDType u && _cx.db.objects[u.defpos] is UDType ut)// may be different!
                     {

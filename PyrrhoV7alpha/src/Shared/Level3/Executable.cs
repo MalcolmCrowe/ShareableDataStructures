@@ -5010,7 +5010,15 @@ namespace Pyrrho.Level3
                             && cx.GName(b.key()) is string n
                             && ns?[n].Item2 is long np
                             && dn.tableRow.vals[np] is TypedValue tv)
-                            bi += (tg.uid, tv);
+                        {
+                            if (tg.type.HasFlag(TGParam.Type.Group))
+                            {
+                                var ta = bi[tg.uid] as TArray ?? new TArray(tv.dataType);
+                                bi += (tg.uid, ta + (ta.Length, tv));
+                            }
+                            else
+                                bi += (tg.uid, tv);
+                        }
                 for (var b = xn.state.First(); b != null; b = b.Next())
                 {
                     TypedValue tv = TNull.Value;

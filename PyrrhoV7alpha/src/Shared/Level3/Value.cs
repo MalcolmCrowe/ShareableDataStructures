@@ -11159,7 +11159,7 @@ cx.obs[high] is not SqlValue hi)
                             return false;
                         if (oi.names[k].Item2 is long e && !n.tableRow.vals.Contains(e))
                             return false;
-                        if (cx.GConstrain(b.value()) is TypedValue xv)
+                        if (cx.GConstrain(b.value()) is TypedValue xv && xv is not TArray)
                         {
                             if (xv is TGParam tg)
                             {
