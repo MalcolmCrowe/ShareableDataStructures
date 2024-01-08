@@ -2174,20 +2174,21 @@ namespace Pyrrho.Level4
             var gc = CTree<long, Domain>.Empty;
             var rs = dm as RowSet;
             for (var b = gs.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                if (b.value() is long p && rs!=null)
                 {
-                    if (obs[p] is SqlValue v && rs != null && v.KnownBy(this, rs))
+                    if (obs[p] is SqlValue v && v.KnownBy(this, rs))
                         gc += (p, _Dom(p));
                     if (obs[p] is Grouping gg)
                         for (var c = gg.keys.First(); c != null; c = c.Next())
-                            if (c.value() is long cp && _Dom(cp) is Domain cd)
+                            if (c.value() is long cp && _Ob(cp) is SqlValue ce)
                             {
-                                if (dm.representation.Contains(cp))
-                                    gc += (cp, cd);
+                                if (dm.representation.Contains(cp) || 
+                                    (rs!=null && ce.KnownBy(this, rs)))
+                                    gc += (cp, ce.domain);
                                 for (var d = rs?.matching.PositionAt(cp); d != null; d = d.Next())
                                     for (var e = d.value().First(); e != null; e = e.Next())
                                         if (dm.representation.Contains(e.key()))
-                                            gc += (cp, cd);
+                                            gc += (cp, ce.domain);
                             }
                 }
             var rt = BList<long?>.Empty;

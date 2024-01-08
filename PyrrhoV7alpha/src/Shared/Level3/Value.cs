@@ -136,6 +136,8 @@ namespace Pyrrho.Level3
         {  }
         internal virtual bool KnownBy(Context cx,RowSet q,bool ambient = false)
         {
+            if (q.mem[Domain.Nodes] is CTree<long,bool> xs && xs.Contains(defpos))
+                return true;
             return q.Knows(cx, defpos, ambient);
         }
         internal virtual bool KnownBy<V>(Context cx,CTree<long,V> cs,bool ambient = false) 
@@ -2092,7 +2094,7 @@ namespace Pyrrho.Level3
         internal override bool KnownBy(Context cx, RowSet q, bool ambient = false)
         {
             return ((cx.obs[left] as SqlValue)?.KnownBy(cx, q, ambient) != false)
-                && ((cx.obs[right] as SqlValue)?.KnownBy(cx, q, ambient) != false);
+                && (op==Sqlx.DOT || ((cx.obs[right] as SqlValue)?.KnownBy(cx, q, ambient) != false));
         }
         internal override bool KnownBy<V>(Context cx, CTree<long, V> cs, bool ambient = false)
         {
@@ -2131,7 +2133,7 @@ namespace Pyrrho.Level3
                 return r;
             if (cx.obs[left] is SqlValue sl)
                 r += sl.ExposedOperands(cx,ag,gc);
-            if (cx.obs[right] is SqlValue sr)
+            if (cx.obs[right] is SqlValue sr && op!=Sqlx.DOT)
                 r += sr.ExposedOperands(cx,ag,gc);
             return r;
         }
@@ -2855,15 +2857,11 @@ namespace Pyrrho.Level3
         internal override bool _MatchExpr(Context cx, SqlValue v, RowSet r)
         {
             if (base._MatchExpr(cx, v, r)) return true;
-            if (v is not SqlValueExpr e || CompareTo(v) != 0)
+            if (v is not SqlValueExpr e)
                 return false;
             if (cx.obs[left] is SqlValue lv && !lv._MatchExpr(cx, lv, r))
                 return false;
-            if (cx.obs[e.left] != null)
-                return false;
             if (cx.obs[right] is SqlValue rv && !rv._MatchExpr(cx, rv, r))
-                return false;
-            if (cx.obs[e.right] != null)
                 return false;
             return true;
         }

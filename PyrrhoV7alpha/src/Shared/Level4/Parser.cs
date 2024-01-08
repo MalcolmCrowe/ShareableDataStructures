@@ -1356,7 +1356,7 @@ namespace Pyrrho.Level4
                     Mustbe(Sqlx.RBRACE);
                 }
                 // state M30
-                else if (tok == Sqlx.WHERE)
+                if (tok == Sqlx.WHERE)
                 {
                     var cd = cx.defs;
                     if (dm is not null)
@@ -1437,6 +1437,14 @@ namespace Pyrrho.Level4
             lxr.tgs = CTree<long, TGParam>.Empty;
             lxr.ParsingMatch = true;
             var (tgs, svgs) = ParseSqlMatchList();
+                    var xs = CTree<long,bool>.Empty;
+                    for (var b = svgs.First(); b != null; b = b.Next())
+                        if (cx.obs[b.value() ?? -1] is SqlMatch ss)
+                            for (var c = ss.matchAlts.First(); c != null; c = c.Next())
+                                if (cx.obs[c.value() ?? -1L] is SqlMatchAlt sa)
+                                    for (var dd = sa.matchExps.First(); dd != null; dd = dd.Next())
+                                        if (dd.value() is long ep)
+                                            xs += (ep,true); 
             // state M18
             lxr.ParsingMatch = false;
             var (ers, ns) = BindingTable(cx, tgs);
@@ -1454,12 +1462,12 @@ namespace Pyrrho.Level4
                 cx.parse = ExecuteStatus.Graph;
                 if (tok != Sqlx.ORDER && tok != Sqlx.FETCH)
                 {
-                    var xe = ParseProcedureStatement(Domain.Content);
+                    var xe = ParseProcedureStatement(Domain.Content+(Domain.Nodes,xs));
                     e = cx.lastret;
                     pe = xe.defpos;
                 }
                 if (tok == Sqlx.ORDER)
-                    m += (RowSet.RowOrder, ParseOrderClause(Domain.Row, false));// limit to requirements specified here
+                    m += (RowSet.RowOrder, ParseOrderClause(Domain.Row + (Domain.Nodes,xs), false));// limit to requirements specified here
                 if (tok == Sqlx.FETCH)
                     m += (RowSetSection.Size, FetchFirstClause());
                 if (cx.obs[cx.lastret] is ReturnStatement rs && cx.obs[rs.ret]?.domain is Domain d && d != Domain.Null)
@@ -3805,7 +3813,7 @@ namespace Pyrrho.Level4
             var dp = cx.GetUid();
             var ep = -1L;
             var dm = xp;
-            if (xp == Domain.Content)
+            if (xp.kind == Sqlx.CONTENT)
             {
                 ep = cx.GetUid();
                 dm = ParseSelectList(-1L, xp) + (Domain.Kind, Sqlx.ROW);
@@ -3816,6 +3824,8 @@ namespace Pyrrho.Level4
                     var ii = cx.GetIid();
                     var sd = dm.SourceRow(cx, dp); // this is what we will need
                     RowSet sr = new SelectRowSet(ii, cx, dm, new ExplicitRowSet(ep, cx, sd, BList<(long,TRow)>.Empty));
+                    if (xp.mem[Domain.Nodes] is CTree<long,bool> xs) // passed to us for MatchStatement Return handling
+                        sr += (Domain.Nodes, xs); 
                     sr = ParseSelectRowSet((SelectRowSet)sr); // this is what we will do with it
                     ep = sr.defpos;
                     dm = sd;
@@ -6754,10 +6764,11 @@ namespace Pyrrho.Level4
             {
                 if (r.aggs == CTree<long, bool>.Empty)
                     throw new DBException("42128", "GROUP");
-                if (ParseGroupClause() is GroupSpecification gs)
+                if (ParseGroupClause(r) is GroupSpecification gs)
                 {
                     gc = gs.Cols(cx, r);
                     m += (RowSet.Group, gs.defpos);
+                    m += (RowSet.GroupCols, gc);
                 }
             }
             if (tok == Sqlx.HAVING)
@@ -6781,6 +6792,12 @@ namespace Pyrrho.Level4
                 for (var b = na.First(); b != null; b = b.Next())
                     if (cx.obs[b.key()] is SqlValue x)
                         gd += x.Operands(cx);
+                if (r.mem[Domain.Nodes] is CTree<long, bool> xs) // passed to us for KnownBy help
+                {
+                    gd += xs;
+                    m += (Domain.Nodes, xs);
+                    cx.Add(r + (Domain.Nodes, xs)); // do this before Apply!
+                }
                 for (var b = r.rowType.First(); b != null && b.key() < r.display; b = b.Next())
                     if (b.value() is long p && cx.obs[p] is SqlValue x)
                         os += x.ExposedOperands(cx, gd, gc);
@@ -7322,7 +7339,7 @@ namespace Pyrrho.Level4
         /// GroupingSetsSpec = GROUPING SETS '(' GroupingElement { ',' GroupingElement } ')' .
         /// </summary>
         /// <returns>The GroupSpecification</returns>
-        GroupSpecification? ParseGroupClause()
+        GroupSpecification? ParseGroupClause(RowSet rs)
         {
             if (tok != Sqlx.GROUP)
                 return null;
@@ -7340,11 +7357,11 @@ namespace Pyrrho.Level4
             bool simple = true;
             GroupSpecification r = new(lp.dp, cx, BTree<long, object>.Empty
                 + (GroupSpecification.DistinctGp, d));
-            r = ParseGroupingElement(r, ref simple);
+            r = ParseGroupingElement(r, rs, ref simple);
             while (tok == Sqlx.COMMA)
             {
                 Next();
-                r = ParseGroupingElement(r, ref simple);
+                r = ParseGroupingElement(r, rs, ref simple);
             }
             // simplify: see SQL2003-02 7.9 SR 10 .
             if (simple && r.sets.Count > 1)
@@ -7367,12 +7384,14 @@ namespace Pyrrho.Level4
         /// <param name="g">the group specification</param>
         /// <param name="simple">whether it is simple</param>
         /// <returns>whether it is simple</returns>
-        GroupSpecification ParseGroupingElement(GroupSpecification g, ref bool simple)
+        GroupSpecification ParseGroupingElement(GroupSpecification g, RowSet rs, ref bool simple)
         {
             if (Match(Sqlx.Id))
             {
-                var cn = ParseIdent();
-                var c = cx.Get(cn, Domain.Content) ?? throw new DBException("42112", cn.ident);
+                var c = ParseSqlValue(Domain.Content);
+                for (var b = rs.rowType.First(); b != null; b = b.Next())
+                    if (cx.obs[b.value() ?? -1L] is SqlValue sb && sb._MatchExpr(cx, c, rs))
+                        c = sb;
                 var ls = new Grouping(cx, BTree<long, object>.Empty + (Grouping.Members,
                     new CTree<long, int>(c.defpos, 0)));
                 cx.Add(ls);
@@ -7403,11 +7422,11 @@ namespace Pyrrho.Level4
             Next();
             Mustbe(Sqlx.SETS);
             Mustbe(Sqlx.LPAREN);
-            g = ParseGroupingElement(g, ref simple);
+            g = ParseGroupingElement(g, rs, ref simple);
             while (tok == Sqlx.COMMA)
             {
                 Next();
-                g = ParseGroupingElement(g, ref simple);
+                g = ParseGroupingElement(g, rs, ref simple);
             }
             Mustbe(Sqlx.RPAREN);
 #if OLAP

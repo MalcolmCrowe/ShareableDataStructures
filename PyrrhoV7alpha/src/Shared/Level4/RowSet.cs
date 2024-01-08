@@ -98,7 +98,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal CTree<Domain, CTree<long, bool>> indexes => // as defined for tables and restview targets
             (CTree<Domain, CTree<long, bool>>?)mem[Table.Indexes]??CTree<Domain, CTree<long, bool>>.Empty;
-        public override Domain domain => throw new NotImplementedException();
+        public override Domain domain => this;
         /// <summary>
         /// keys are added where the current set of columns includes all the keys from a target index or ordering.
         /// At most one keys entry is currently allowed: ordering if available, then target index
@@ -2132,7 +2132,7 @@ namespace Pyrrho.Level4
                         return true;
             return base.Knows(cx, rp, ambient);
         }
-        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long,object>? m = null)
+        internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long, object>? m = null)
         {
             var rt = this;
             if (cx.undefined != CTree<long, int>.Empty)
@@ -2140,27 +2140,27 @@ namespace Pyrrho.Level4
                 cx.Later(defpos, mm);
                 return this;
             }
+            var am = BTree<long, object>.Empty;
             var gr = (long)(mm[Group] ?? -1L);
             var groups = (GroupSpecification?)cx.obs[gr];
             var gs = groupings;
             for (var b = groups?.sets.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is Grouping g)
-                gs = _Info(cx, g, gs);
-            var am = BTree<long, object>.Empty;
+                    gs = _Info(cx, g, gs);
             if (gs != groupings)
             {
                 am += (Groupings, gs);
-                am += (GroupCols, cx.GroupCols(gs,this));
+                am += (GroupCols, cx.GroupCols(gs, this));
                 am += (Group, gr);
             }
-            if (mm[Aggs] is CTree<long,bool> t)
+            if (mm[Aggs] is CTree<long, bool> t)
                 am += (Aggs, aggs + t);
-            if (mm[Having] is CTree<long,bool>h && h!=CTree<long,bool>.Empty)
+            if (mm[Having] is CTree<long, bool> h && h != CTree<long, bool>.Empty)
                 am += (Having, having + h);
             var pm = mm - Aggs - Group - Groupings - GroupCols - Having;
             var r = (SelectRowSet)base.Apply(pm, cx);
             if (am != BTree<long, object>.Empty)
-                r = (SelectRowSet)r.ApplySR(am + (AggDomain,rt), cx); // NB  AggDomain has previous row type
+                r = (SelectRowSet)r.ApplySR(am + (AggDomain, rt), cx); // NB  AggDomain has previous row type
             return r;
         }
         /// <summary>
@@ -2191,7 +2191,7 @@ namespace Pyrrho.Level4
             var od = cx.done;
             cx.done = ObTree.Empty;
             var m = mem;
-            if (mm[GroupCols] is Domain gc && mm[Groupings] is BList<long?> lg
+            if (mm[GroupCols] is Domain gc && gc.Length>0 && mm[Groupings] is BList<long?> lg
                 && mm[Group] is long gs)
             {
                 m += (GroupCols, gc);
@@ -2470,6 +2470,42 @@ namespace Pyrrho.Level4
                     + (Groupings, r.groupings)));
             }
             return (RowSet)cx.Add(this + (_Built, true));
+        }
+        internal override RowSet Sort(Context cx, Domain os, bool dct)
+        {
+            if (rows.Count>0)
+            {
+                var nr = CList<TRow>.Empty;
+                for (var b = rows.First(); b != null; b = b.Next())
+                {
+                    var k = PositionFor(nr, os, b.value(), out var m);
+                    nr += (k,b.value());
+                }
+                return (RowSet)cx.Add(this + (_Rows, nr));
+            }
+            return base.Sort(cx, os, dct);
+        }
+        int PositionFor(CList<TRow> ts,Domain os,TRow v,out bool ma)
+        {
+            // binary search
+            int low = 0, high = (int)ts.Count, mid;
+            while (low < high)
+            {
+                mid = (low + high) >> 1;
+                TRow midk = ts[mid]??throw new PEException("PE40401");
+                int c = os.Compare(midk,v);
+                if (c == 0)
+                {
+                    ma = true;
+                    return mid;
+                }
+                if (c > 0)
+                    low = mid + 1;
+                else
+                    high = mid;
+            }
+            ma = false;
+            return high;
         }
         public override Cursor? First(Context _cx)
         {

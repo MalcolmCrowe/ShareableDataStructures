@@ -1,6 +1,7 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.Runtime.InteropServices;
+using System.Text.RegularExpressions;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -380,6 +381,10 @@ namespace Pyrrho.Common
             return base.Contains(k);
         }
     }
+    /// <summary>
+    /// CList is NOT a sorted list: it is a BList whose elements are Comparable
+    /// </summary>
+    /// <typeparam name="V"></typeparam>
     internal class CList<V> : BList<V>, IComparable where V : IComparable
     {
         public new static readonly CList<V> Empty = new ();

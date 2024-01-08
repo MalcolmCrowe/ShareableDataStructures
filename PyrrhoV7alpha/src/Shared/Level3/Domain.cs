@@ -61,6 +61,7 @@ namespace Pyrrho.Level3
             Element = -77, // Domain
             End = -78, // Sqlx (interval part) (D)
             Kind = -80, // Sqlx
+            Nodes = -499, // CTree<long,bool> SqlNode
             NotNull = -81, // bool
             NullsFirst = -82, // bool (C)
             _OrderCategory = -83, // OrderCategory
@@ -172,6 +173,8 @@ namespace Pyrrho.Level3
         public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory] ?? OrderCategory.None);
         public CTree<Domain, bool> unionOf =>
             (CTree<Domain, bool>?)mem[UnionOf] ?? CTree<Domain, bool>.Empty;
+        public CTree<long, bool> nodes =>
+            (CTree<long, bool>?)mem[Nodes] ?? CTree<long, bool>.Empty;
         internal Domain(Context cx, CTree<long, Domain> rs, BList<long?> rt, BTree<long, ObInfo> ii)
             : this(-1L, _Mem(cx, Sqlx.TABLE, rs, rt, rt.Length) + (Infos, ii)) { }
         internal Domain(long dp, Context cx, Sqlx t, CTree<long, Domain> rs, BList<long?> rt, int ds = 0)
@@ -956,6 +959,10 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         public virtual bool EqualOrStrongSubtypeOf(Domain dt)
         {
             var ki = Equivalent(kind);
+            if (dt == EdgeType && kind == Sqlx.EDGETYPE)
+                return true;
+            if (dt == NodeType && (kind == Sqlx.EDGETYPE || kind == Sqlx.NODETYPE))
+                return true;
             if (defpos > 0 && dt.defpos < 0 && ki == dt.kind)
                 return true;
             if (CompareTo(dt)==0) // the Equal case
@@ -2711,7 +2718,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         TypedValue Check(Context cx,TypedValue v)
         {
-            if (v!=TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(this))
+            if (kind!=Sqlx.PATH && v!=TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(this))
                     throw new PEException("PE10702");
             return v;
         }
