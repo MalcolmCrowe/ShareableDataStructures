@@ -792,6 +792,7 @@ namespace Pyrrho.Common
     /// The following two alternatives are O(logN)
     /// To add an entry to the end of a tree, use new BList(BList old,V v)
     /// If you want to replace an item, use new BList(BList old,int k,V v)
+    /// INVARIANT: the keys are always 0,..,Length-1
     /// </summary>
     /// <typeparam name="V"></typeparam>
     public class BList<V> : BTree<int, V>
@@ -809,7 +810,7 @@ namespace Pyrrho.Common
         /// <param name="k">An index</param>
         /// <param name="v"></param>
         public BList(BList<V> b, int k, V v)
-            : base((((BTree<int, V>)b) + (k, v)).root)
+            : base((((ATree<int, V>)b) + (k, v)).root)
         {
             if (k < 0 || k >= b.Length) // b is old version
                 throw new NotSupportedException();
@@ -821,40 +822,48 @@ namespace Pyrrho.Common
         /// <param name="b">The old tree</param>
         /// <param name="v">A value to add at the end</param>
         public BList(BList<V> b, V v)
-            : base((((BTree<int, V>)b) + (b.Length, v)).root) { }
+            : base((((ATree<int, V>)b) + (b.Length, v)).root) { }
         protected BList(Bucket<int, V>? r) : base(r) { }
+        /// <summary>
+        /// This is b=b.INSERTASKTH(k,v)
+        /// </summary>
+        /// <param name="k"></param>
+        /// <param name="v"></param>
+        /// <returns></returns>
+        /// <exception cref="Exception"></exception>
         protected override ATree<int, V> Add(int k, V v)
         {
             var r = BTree<int,V>.Empty;
+            var n = 0;
             var done = false;
-            var c = 0;
             for (var b= First();b is not null;b=b.Next())
             {
                 if (b.key() == k)
                 {
-                    r += (c++, v);
+                    r += (n++,v);
                     done = true;
                 }
-                r += (c++, b.value());
+                r += (n++,b.value());
             }
             if (!done)
             {
-                while (c < k - 1)
+                while (n < k - 1)
                 {
                     var dv = default(V) ?? throw new Exception("PE1002");
-                    r += (c++, dv);
+                    r += (n++,dv);
                 }
-                r += (c++, v);
+                r += (n++, v);
             }
             return new BList<V>(r);
         }
-        internal override ATree<int, V> Remove(int k)
+        public static BList<V> operator-(BList<V> t, int k)
         {
-            var r = Empty;
-            for (var b = First(); b != null; b = b.Next())
+            var r = BTree<int,V>.Empty;
+            var n = 0;
+            for (var b = t.First(); b != null; b = b.Next())
                 if (b.key() != k)
-                    r = new BList<V>(r,b.value());
-            return r;
+                    r += (n++,b.value());
+            return new BList<V>(r);
         }
         public static BList<V> operator +(BList<V> b, (int, V) x)
         {
@@ -866,17 +875,13 @@ namespace Pyrrho.Common
         }
         public static BList<V> operator +(BList<V> b, V v)
         {
-            return (BList<V>)b.Add((int)b.Count, v);
+            return new BList<V>(b, v);
         }
         public static BList<V> operator +(BList<V> b, BList<V> c)
         {
             for (var cb = c.First(); cb != null; cb = cb.Next())
                 b += cb.value();
             return b;
-        }
-        public static BList<V> operator -(BList<V> b, int i)
-        {
-            return (BList<V>)b.Remove(i);
         }
         public BList<V> Replace(int k, V w)
         {

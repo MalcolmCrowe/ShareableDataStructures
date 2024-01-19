@@ -2,7 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -308,55 +308,6 @@ namespace Pyrrho.Level4
             for (var b = First(cx); b != null; b = b.Next(cx))
                 r++;
             return r;
-        }
-        /// <summary>
-        /// Now is the right time to optimise join conditions. 
-        /// At this stage all comparisons have form left op right.
-        /// Ideally we can find an index that makes at least some of the join trivial.
-        /// Then we impose orderings for left and right that respect any remaining comparison join conditions,
-        /// overriding ordering requests from top down analysis.
-        /// </summary>
-        /// <param name="ord">Requested top-down order</param>
-        internal override DBObject Orders(Context cx, Domain ord)
-        {
-            var r = (JoinRowSet)base.Orders(cx, ord); // relocated if shared
-            var k = kind;
-            var jc = joinCond;
-            var lf = (RowSet?)cx.obs[first] ?? throw new PEException("PE1500");
-            var rg = (RowSet?)cx.obs[second] ?? throw new PEException("PE1500");
-            for (var b = jc.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValueExpr se) // we already know these have the right form
-                {
-                    var lo = lf.ordSpec;
-                    var ro = rg.ordSpec;
-                    var lv = cx.obs[se.left] as SqlValue
-                        ?? throw new PEException("PE196");
-                    var rv = (SqlValue?)cx.obs[se.right] ?? throw new PEException("PE1500");
-                    if (!Context.HasItem(lo.rowType, lv.defpos))
-                        lf = (RowSet)lf.Orders(cx,(Domain)lf.New(lo.mem + (RowType, lo.rowType + lv.defpos) 
-                            + (Representation, lo.representation + (lv.defpos, lv.domain))));
-                    if (!Context.HasItem(ro.rowType, rv.defpos))
-                        rg = (RowSet)rg.Orders(cx,(Domain)rg.New(ro.mem + (RowType, ro.rowType + rv.defpos)
-                            + (Representation, ro.representation + (rv.defpos, rv.domain)))); ;
-                }
-            if (joinCond.Count == 0)
-                for (var b = ord?.First(); b != null; b = b.Next()) // test all of these 
-                    if (b.value() is long p)
-                    {
-                        var lo = lf.ordSpec;
-                        var ro = rg.ordSpec;
-                        if (lf.rowType.Has(p)// && !(left.rowSet is IndexRowSet))
-                            && !Context.HasItem(lo.rowType, p) && cx.obs[p] is SqlValue sv)
-                            lf = (RowSet)lf.Orders(cx, (Domain)lf.New(lo.mem + (RowType, lo.rowType + sv.defpos)
-                            + (Representation, lo.representation + (sv.defpos, sv.domain))));
-                        if (rg.rowType.Has(p)// && !(right.rowSet is IndexRowSet))
-                            && !Context.HasItem(ro.rowType, p) && cx.obs[p] is SqlValue sw)
-                            rg = (RowSet)rg.Orders(cx,(Domain)rg.New(ro.mem + (RowType, ro.rowType + sw.defpos)
-                            + (Representation, ro.representation + (sw.defpos, sw.domain))));
-                    }
-            cx.Add(lf);
-            cx.Add(rg);
-            return (RowSet)cx.Add((RowSet)New(r.mem + (JoinKind, k) + (JoinCond, jc)));
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {

@@ -15,7 +15,7 @@ namespace Pyrrho.Common
 {
     /// <summary>
     /// Sqlx enumerates the tokens of SQL2011, mostly defined in the standard
-    /// The order is only roughly alphabetic
+    /// The keys is only roughly alphabetic
     /// </summary>
     public enum Sqlx
     {

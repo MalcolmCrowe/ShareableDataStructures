@@ -1886,7 +1886,6 @@ namespace Pyrrho.Level4
                 dt += (ObInfo.Name, rit.val as string ?? "");
                 Next();
             }
-            // Here we have the first change from the introduction of the typed graph model
             // UNDER may have specified a node or edge type. If so, we change the 
             // user-defined type dt created by lines 1583/1597/1603 above into a NodeType or EdgeType
             // respectively.
@@ -1896,13 +1895,13 @@ namespace Pyrrho.Level4
             {
                 if (dt is not EdgeType et)
                     et = new EdgeType(cx.GetUid(), typename.ident, Domain.EdgeType, e1, cx);
-                dt = et.FixEdgeType(cx, typename);
+                dt = et.NewNodeType(cx, typename.ident, 'V');
             }
             else if (under is NodeType n1)
             {
                 if (dt is not NodeType nt)
                     nt = new NodeType(cx.GetUid(), typename.ident, Domain.NodeType, n1, cx);
-                dt = nt.FixNodeType(cx, typename);
+                dt = nt.NewNodeType(cx, typename.ident, 'V');
             }
             else
             {
@@ -1968,8 +1967,10 @@ namespace Pyrrho.Level4
                             if (dt is not EdgeType et
                                 || cx.NameFor(et.leavingType) != ln.ToString()
                                 || cx.NameFor(et.arrivingType) != an.ToString())
+                            {
                                 et = new EdgeType(dt.defpos, typename.ident, dt, null, cx, m);
-                            et = et.FixEdgeType(cx, typename);
+                                et = et.FixEdgeType(cx,typename);
+                            }
                             (dt, ls) = et.Build(cx, et, ls, m);
                         }
                         else throw new PEException("PE60703");

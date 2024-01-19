@@ -264,6 +264,73 @@ namespace Pyrrho.Level5
             //#endif
             return rowSet;
         }
+        /// <summary>
+        /// Create a new NodeType (or EdgeType) if required.
+        /// </summary>
+        /// <param name="cx">The context</param>
+        /// <param name="n">The name of the new type</param>
+        /// <param name="cse">Use case: U: alter type, V: create type, W: insert graph</param>
+        /// <param name="id">IdCol name</param>
+        /// <param name="ic">IdCol has Char type</param>
+        /// <param name="it">Domain for IdCol</param>
+        /// <param name="lt">leavingType (if for EdgeType)</param>
+        /// <param name="at">arrivingType ..</param>
+        /// <param name="lc">leaveCol name ..</param>
+        /// <param name="ar">arriveCol name ..</param>
+        /// <param name="sl">leaveCol is a set type ..</param>
+        /// <param name="sa">arriveCol is a set type ..</param>
+        /// <returns></returns>
+        internal virtual NodeType NewNodeType(Context cx, string n, char cse, string id = "ID", bool ic = false,
+            NodeType? lt = null, NodeType? at = null, string lc = "LEAVING", string ar = "ARRIVING",
+            bool sl = false, bool sa = false)
+        {
+            NodeType? ot = null;
+            NodeType? nt = null;
+            var md = CTree<Sqlx, TypedValue>.Empty + (Sqlx.NODETYPE, TNull.Value);
+            if (id != "ID") md += (Sqlx.NODE, new TChar(id));
+            if (ic) md += (Sqlx.CHAR, new TChar(id));
+            // Step 1: How does this fit with what we have? 
+            var ob = cx.db.objects[cx.role.dbobjects[n] ?? -1L] as DBObject;
+            if (ob == null)
+            {
+                if (cse == 'U') throw new DBException("42107", n);
+                nt = new NodeType(cx.GetUid(), n, NodeType, null, cx);
+                (nt, _) = nt.Build(cx, NodeType, CTree<string, SqlValue>.Empty, md);
+            }
+            else if (ob is not Level5.NodeType)
+            {
+                var od = ob as Domain ?? throw new DBException("42104", n);
+                nt = (NodeType?)cx.Add(new PMetadata(n, od.Length, od, md, cx.db.nextPos));
+            }
+            else
+                nt = ot = (NodeType)ob;
+            // Step 2: Do we have an existing primary key that matches id?
+            if (ot != null && cx.db.objects[ot.idCol] is TableColumn tc && tc.infos[cx.role.defpos] is ObInfo ci)
+            {
+                if (ci.name != id)
+                {
+                    Level3.Index? ix = null;
+                    var xp = -1L;
+                    var dm = new Domain(Sqlx.ROW,cx,new BList<DBObject>(tc));
+                    for (var b = ot.indexes[dm]?.First(); b != null; b = b.Next())
+                        if (cx.db.objects[b.key()] is Level3.Index x &&
+                            (x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) || x.flags.HasFlag(PIndex.ConstraintType.Unique)))
+                            ix = x;
+                    if (ix == null)
+                    {
+                        xp = cx.db.nextPos;
+                        nt = (NodeType?)cx.Add(new PIndex("", ot, dm, PIndex.ConstraintType.Unique, -1L, cx.db.nextPos));
+                    }
+                    nt = (NodeType?)cx.Add(new AlterIndex(xp, cx.db.nextPos));
+                }
+                else
+                    nt = ot;
+            }
+            else
+                throw new DBException("42112", id);
+            return nt ?? throw new DBException("42105");
+        }
+
         internal override Table Base(Context cx)
         {
             return (Table)(cx.db.objects[super?.defpos ?? -1L] ?? base.Base(cx));
@@ -1208,6 +1275,20 @@ namespace Pyrrho.Level5
             }
             return et;
         }
+        internal EdgeType FixEdgeType(Context cx, Ident typename)
+        {
+            if (((Transaction)cx.db).physicals[typename.iix.dp] is not PType pt)
+                throw new PEException("PE50501");
+            if (pt is not PEdgeType)
+            {
+                pt = new PEdgeType(typename.ident, pt.ppos, this, cx);
+                cx.Add(pt);
+            }
+            FixColumns(cx, 1);
+            pt.under = super;
+            pt.dataType = this;
+            return (EdgeType)(cx.Add(pt) ?? throw new DBException("42105"));
+        }
         long NodeTypeFor(Context cx, TypedValue? v)
         {
             if (v is TTypeSpec ts && ts._dataType is NodeType nt)
@@ -1216,86 +1297,100 @@ namespace Pyrrho.Level5
                 return cx.role.dbobjects[s.value] ?? -1L;
             return -1L;
         }
-        internal EdgeType FixEdgeType(Context cx, Ident typename)
+        /// <summary>
+        /// Create a new EdgeType if required.
+        /// </summary>
+        /// <param name="cx">The context</param>
+        /// <param name="n">The name of the new type</param>
+        /// <param name="cse">Use case: U: alter type, V: create type, W: insert graph</param>
+        /// <param name="id">IdCol name</param>
+        /// <param name="ic">IdCol has Char type</param>
+        /// <param name="it">Domain for IdCol</param>
+        /// <param name="lt">leavingType (if for EdgeType)</param>
+        /// <param name="at">arrivingType ..</param>
+        /// <param name="lc">leaveCol name ..</param>
+        /// <param name="ar">arriveCol name ..</param>
+        /// <param name="sl">leaveCol is a set type ..</param>
+        /// <param name="sa">arriveCol is a set type ..</param>
+        /// <returns></returns>
+        internal override NodeType NewNodeType(Context cx, string n, char cse, string id = "ID", bool ic = false,
+            NodeType? lt = null, NodeType? at = null, string lc = "LEAVING", string ar = "ARRIVING",
+            bool sl = false, bool sa = false)
         {
-            var pt = ((Transaction)cx.db).physicals[typename.iix.dp] as PType ?? throw new DBException("42000");
-            var pe = pt as PEdgeType;
-            if (pe is null)
-                pe = new PEdgeType(typename.ident, pt.ppos, this, cx);
-            if (pe.leavingType != leavingType || pe.arrivingType != arrivingType)
+            EdgeType? ot = null;
+            EdgeType? et = null;
+            var md = CTree<Sqlx, TypedValue>.Empty + (Sqlx.EDGETYPE, TNull.Value);
+            if (id != "ID") md += (Sqlx.NODE, new TChar(id));
+            if (ic) md += (Sqlx.CHAR, new TChar(id));
+            if (lt is not null) md += (Sqlx.ARROW, new TChar(cx.NameFor(lt.defpos)));
+            else throw new PEException("PE50601");
+            if (at is not null) md += (Sqlx.RARROW, new TChar(cx.NameFor(at.defpos)));
+            else throw new PEException("PE50602");
+            if (lc != "LEAVING") md += (Sqlx.LPAREN, new TChar(lc));
+            if (ar != "ARRIVING") md += (Sqlx.RPAREN, new TChar(ar));
+            if (sl) md += (Sqlx.ARROWBASE, TBool.True);
+            if (sa) md += (Sqlx.RARROWBASE, TBool.True);
+            // Step 1: How does this fit with what we have? 
+            var ob = cx.db.objects[cx.role.dbobjects[n] ?? -1L] as DBObject;
+            if (ob == null)
             {
-                // we need a different table with similar columns to pe
-                var st = cx.db.objects[super?.defpos ?? -1L] as UDType;
-                EdgeType ot = cx.db.objects[cx.db.edgeTypes[pe.defpos]?[pe.leavingType]?[pe.arrivingType] ?? -1L] as EdgeType
-                    ?? throw new DBException("42105");
-                pe = new PEdgeType(typename.ident, cx.db.nextPos, this, cx);
-                var nt = (EdgeType?)cx.Add(pe) ?? throw new DBException("42105");
-                var ls = CTree<string, SqlValue>.Empty;
-                var md = CTree<Sqlx, TypedValue>.Empty;
-                md = md + (Sqlx.NODE, new TChar(cx.NameFor(idCol))) + (Sqlx.LPAREN, new TChar(cx.NameFor(leaveCol)))
-                    + (Sqlx.RPAREN, new TChar(cx.NameFor(arriveCol)));
-                for (var b = ot.rowType.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.value() ?? -1L] is TableColumn oc
-                        && st?.representation.Contains(oc.defpos) != true)
-                    {
-                        var nm = cx.NameFor(oc.defpos);
-                        switch (oc.flags)
-                        {
-                            case PColumn.GraphFlags.None:
-                                {
-                                    var pc = new PColumn3(nt, nm, -1, oc.domain,
-                                    oc.flags, -1L, -1L, cx.db.nextPos, cx);
-                                    nt = (EdgeType?)cx.Add(pc) ?? throw new DBException("42105");
-                                    break;
-                                }
-                            case PColumn.GraphFlags.IdCol:
-                                {
-                                    var pc = new PColumn3(nt, nm, 0, oc.domain,
-                                        oc.flags, -1L, -1L, cx.db.nextPos, cx);
-                                    nt = (EdgeType?)cx.Add(pc) ?? throw new DBException("42105");
-                                    var nc = (TableColumn?)cx.obs[pc.ppos] ?? throw new DBException("42105");
-                                    nt = (EdgeType?)cx.Add(new PIndex(nm, nt,
-                                    new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(nc), 1),
-                                    PIndex.ConstraintType.PrimaryKey, nt.defpos, cx.db.nextPos))
-                                   ?? throw new DBException("42105");
-                                    break;
-                                }
-                            case PColumn.GraphFlags.LeaveCol:
-                                {
-                                    var px = (cx.db.objects[leavingType] as Table)?.FindPrimaryIndex(cx)
-                                        ?? throw new DBException("42000");
-                                    var pc = new PColumn3(nt, nm, 1, oc.domain,
-                                        oc.flags, px.defpos, leavingType, cx.db.nextPos, cx);
-                                    nt = (EdgeType?)cx.Add(pc) ?? throw new DBException("42105");
-                                    var nc = (TableColumn?)cx.obs[pc.ppos] ?? throw new DBException("42105");
-                                    nt = (EdgeType?)cx.Add(new PIndex(nm, nt,
-                                    new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(nc), 1),
-                                    PIndex.ConstraintType.ForeignKey, leavingType, cx.db.nextPos))
-                                    ?? throw new DBException("42105");
-                                    break;
-                                }
-                            case PColumn.GraphFlags.ArriveCol:
-                                {
-                                    var px = (cx.db.objects[leavingType] as Table)?.FindPrimaryIndex(cx)
-                                        ?? throw new DBException("42000");
-                                    var pc = new PColumn3(nt, nm, 2, oc.domain,
-                                        oc.flags, px.defpos, arrivingType, cx.db.nextPos, cx);
-                                    nt = (EdgeType?)cx.Add(pc) ?? throw new DBException("42105");
-                                    var nc = (TableColumn?)cx.obs[pc.ppos] ?? throw new DBException("42105");
-                                    nt = (EdgeType?)cx.Add(new PIndex(nm, nt,
-                                    new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(nc), 1),
-                                    PIndex.ConstraintType.ForeignKey, arrivingType, cx.db.nextPos))
-                                    ?? throw new DBException("42105");
-                                    break;
-                                }
-                        }
-                    }
-                return nt;
+                if (cse == 'U') throw new DBException("42107", n);
+                et = new EdgeType(cx.GetUid(), n, EdgeType, null, cx, md);
+                var (e1, _) = et.Build(cx, EdgeType, CTree<string, SqlValue>.Empty, md);
+                et = (EdgeType)e1;
             }
-            pe.dataType = this;
-            FixColumns(cx, 3);
-            pe.under = super;
-            return (EdgeType)(cx.Add(pe) ?? throw new DBException("42105"));
+            else if (ob is not Level5.NodeType)
+            {
+                var od = ob as Domain ?? throw new DBException("42104", n);
+                et = (EdgeType?)cx.Add(new PMetadata(n, od.Length, od, md, cx.db.nextPos));
+            }
+            else
+                et = ot = (EdgeType)ob;
+            // Step 2: Do we have an existing primary key that matches id?
+            if (ot != null && cx.db.objects[ot.idCol] is TableColumn tc && tc.infos[cx.role.defpos] is ObInfo ci)
+            {
+                if (ci.name != id)
+                {
+                    Level3.Index? ix = null;
+                    var xp = -1L;
+                    var dm = new Domain(Sqlx.ROW,cx,new BList<DBObject>(tc));
+                    for (var b = ot.indexes[dm]?.First(); b != null; b = b.Next())
+                        if (cx.db.objects[b.key()] is Level3.Index x &&
+                            (x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) || x.flags.HasFlag(PIndex.ConstraintType.Unique)))
+                            ix = x;
+                    if (ix == null)
+                    {
+                        xp = cx.db.nextPos;
+                        et = (EdgeType?)cx.Add(new PIndex("", ot, dm, PIndex.ConstraintType.Unique, -1L, cx.db.nextPos));
+                    }
+                    et = (EdgeType?)cx.Add(new AlterIndex(xp, cx.db.nextPos));
+                }
+                else
+                    et = ot;
+            }
+            else
+                throw new DBException("42112", id);
+            // Step 3: Sort out leaving and arriving keys for et
+            var ol = cx.db.objects[ot.leaveCol] as TableColumn ?? throw new PEException("PE50603");
+            var olt = cx.db.objects[ot.leavingType] as NodeType ?? throw new PEException("PE50604");
+            var oa = cx.db.objects[ot.arriveCol] as TableColumn ?? throw new PEException("PE50605");
+            var oat = cx.db.objects[ot.arrivingType] as NodeType ?? throw new PEException("PE50606");
+            if (cx.NameFor(ol.defpos) != lc || olt != lt || cx.NameFor(oa.defpos) != ar || oat != at)
+            {
+                if (ot.super is not NodeType su)
+                {
+                    // make a supertype NodeType
+                    var sm = CTree<Sqlx, TypedValue>.Empty + (Sqlx.ID, new TChar(cx.NameFor(ot.idCol)))
+                        + (Sqlx.CHAR, TBool.For(tc.domain.kind == Sqlx.CHAR));
+                    var (ut, _) = ot.Build(cx, NodeType, CTree<string, SqlValue>.Empty, sm);
+                    ot = (EdgeType?)cx.Add(new EditType(n, ot, ot, ut, cx.db.nextPos, cx))
+                        ?? throw new DBException("42105");
+                    su = ut;
+                }
+                var (e2, _) = ot.Build(cx, su, CTree<string, SqlValue>.Empty, md);
+                et = (EdgeType)e2;
+            }
+            return et ?? throw new DBException("42105");
         }
         internal override Table _PathDomain(Context cx)
         {

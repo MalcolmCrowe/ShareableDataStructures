@@ -12,7 +12,7 @@ namespace Pyrrho.Common
 {
     /// <summary>
     /// The base class for all Trees in Pyrrho
-    /// All trees contain KeyValuePairs in key order
+    /// All trees contain KeyValuePairs in key keys
     /// </summary>
  //   [System.Diagnostics.DebuggerDisplay("{ToString()}")]
 	public abstract class ATree<K,V> where K:IComparable

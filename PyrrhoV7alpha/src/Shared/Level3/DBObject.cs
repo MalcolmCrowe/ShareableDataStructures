@@ -4,7 +4,7 @@ using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -445,10 +445,6 @@ namespace Pyrrho.Level3
         }
         internal virtual void _ReadConstraint(Context cx,TableRowSet.TableCursor cu)
         { }
-        internal virtual DBObject Orders(Context cx, Domain ord)
-        {
-            return this;
-        }
         public static bool Eval(CTree<long, bool> svs, Context cx)
         {
             for (var b = svs?.First(); b != null; b = b.Next())
