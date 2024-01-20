@@ -1946,39 +1946,53 @@ namespace Pyrrho.Level4
                     ls += (cn, new SqlLiteral(p, cn, tc.domain.defaultValue, tc.domain));
             var m = ParseMetadata(Sqlx.TYPE);
             // The metadata contains aliases for special columns etc
-            if (m.Contains(Sqlx.NODETYPE))
+                var ll = m[Sqlx.RARROW] as TList;
+                var al = m[Sqlx.ARROW] as TList;
+            if (m.Contains(Sqlx.NODETYPE) || ll?.Length*al?.Length>1)
             {
                 var nt = new NodeType(typename.iix.dp, dt.mem + (Domain.Kind, Sqlx.NODETYPE));
                 nt = nt.FixNodeType(cx, typename);
                 // Process ls and m 
-                (dt, ls) = nt.Build(cx, nt, ls, m);
+                (dt, _) = nt.Build(cx, nt, ls, m);
+                ls = CTree<string, SqlValue>.Empty;
                 // and fix the PType to be a PNodeType
             }
-            else if (m.Contains(Sqlx.EDGETYPE) && (dt is not NodeType || dt is EdgeType))
+            if (m.Contains(Sqlx.EDGETYPE))
             {
-                var ll = m[Sqlx.RARROW] as TList ?? throw new PEException("PE60701");
-                var al = m[Sqlx.ARROW] as TList ?? throw new PEException("PE60702");
+                if (((Transaction)cx.db).physicals[typename.iix.dp] is not PType pt)
+                    throw new PEException("PE50501");
+                var np = (dt is NodeType)?cx.db.nextPos:dt.defpos;
+                Table? un = dt as NodeType;
+                if (ll is null) throw new PEException("PE60701");
+                if (al is null) throw new PEException("PE60702");
                 for (var bl = ll.list.First(); bl != null; bl = bl.Next())
                     for (var ba = al.list.First(); ba != null; ba = ba.Next())
                         if (bl.value() is TypedValue ln && ba.value() is TypedValue an)
                         {
                             m += (Sqlx.RARROW, ln);
                             m += (Sqlx.ARROW, an);
-                            if (dt is not EdgeType et
-                                || cx.NameFor(et.leavingType) != ln.ToString()
-                                || cx.NameFor(et.arrivingType) != an.ToString())
+                            var lv = ln.ToString();
+                            var av = an.ToString();
+                            // try to find a specific edgeType for this combination
+                            var d = cx.role.FindEdgeType(cx.db,typename.ident, lv, av);
+                            if (d is not EdgeType et)
                             {
-                                et = new EdgeType(dt.defpos, typename.ident, dt, null, cx, m);
-                                et = et.FixEdgeType(cx,typename);
+                                var pe = new PEdgeType(typename.ident, Domain.EdgeType, un, -1L, np, cx);
+                                pt = pe;
+                                pe.leavingType = cx.role.dbobjects[lv] ?? throw new DBException("42133", lv);
+                                pe.arrivingType = cx.role.dbobjects[av] ??throw new DBException("42133", av);
+                                et = new EdgeType(np, typename.ident, dt, un, cx, m);
+                                pt.dataType = et;
                             }
+                            et = et.FixEdgeType(cx,pt);
                             (dt, ls) = et.Build(cx, et, ls, m);
+                            np = cx.db.nextPos;
                         }
                         else throw new PEException("PE60703");
             }
             else if (m != CTree<Sqlx, TypedValue>.Empty)
                 cx.Add(new PMetadata(typename.ident, -1, dt, m, cx.db.nextPos));
         }
-
         /// <summary>
         /// Method =  	MethodType METHOD id '(' Parameters ')' [RETURNS Type] [FOR id].
         /// MethodType = 	[ OVERRIDING | INSTANCE | STATIC | CONSTRUCTOR ] .
@@ -2552,7 +2566,10 @@ namespace Pyrrho.Level4
             }
             if (dom != od)
             {
-                dom = (Domain)dom.Relocate(cx.GetUid());
+                var nd = (Domain)dom.Relocate(cx.GetUid());
+                if (nd is EdgeType ne && nd.defpos != dom.defpos)
+                    ne.Fix(cx);
+                dom = nd;
                 cx.Add(dom);
                 tc += (DBObject._Domain, dom);
                 cx.Add(tc);

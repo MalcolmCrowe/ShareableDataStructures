@@ -4985,7 +4985,10 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal virtual UDType? New(Ident pn, Domain? un, long dp, Context cx)
         {
-            return (UDType?)cx.Add(new PType(pn.ident, (UDType)TypeSpec.Relocate(dp), un, -1L, dp, cx));
+            var dt = (UDType)TypeSpec.Relocate(dp);
+            if (dt is EdgeType ne && dt.defpos != defpos)
+                ne.Fix(cx);
+            return (UDType?)cx.Add(new PType(pn.ident, dt, un, -1L, dp, cx));
         }
         internal Ident.Idents Defs(Context cx)
         {

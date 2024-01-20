@@ -564,7 +564,9 @@ namespace Pyrrho.Level5
                 pp = si.names[id].Item2;
             if (pp == null && ui.names.Contains(id))
                 pp = ui.names[id].Item2;
-            if (pp == null)
+            if (pp == null || 
+                (cx.db.objects[pp.Value] is TableColumn cc 
+                && cc.tabledefpos!=ut.defpos && cc.tabledefpos!=ut.super?.defpos))
             {
                 pc = new PColumn3(ut, id, ut.Seq(cx, gf), cd, gf, rx?.defpos ?? -1L, kc,
                     cx.db.nextPos, cx);
@@ -1199,7 +1201,17 @@ namespace Pyrrho.Level5
         public Domain arriveColDomain => (Domain)(mem[ArriveColDomain] ?? Int);
         internal EdgeType(long dp, string nm, UDType dt, Table? ut, Context cx, CTree<Sqlx, TypedValue>? md = null)
             : base(dp, _Mem(nm, dt, ut, md, cx))
-        { }
+        {
+            var ro = cx.role;
+            var ln = cx.NameFor(leavingType);
+            var an = cx.NameFor(arrivingType);
+            var ra = ro.edgeTypes[nm] ?? BTree<string, BTree<string, long?>>.Empty;
+            var rb = ra[ln] ?? BTree<string, long?>.Empty;
+            rb += (an, dp);
+            ra += (ln, rb);
+            ro += (Role.EdgeTypes, ro.edgeTypes + (nm, ra));
+            cx.db += (Database.Role, ro);
+        }
         internal EdgeType(Sqlx t) : base(t)
         { }
         public EdgeType(long dp, BTree<long, object> m) : base(dp, m)
@@ -1245,7 +1257,10 @@ namespace Pyrrho.Level5
         }
         internal override UDType New(Ident pn, Domain? un, long dp, Context cx)
         {
-            return (UDType)(cx.Add(new PEdgeType(pn.ident, (EdgeType)EdgeType.Relocate(dp), un, -1L, dp, cx))
+            var nd = (EdgeType)EdgeType.Relocate(dp);
+            if (nd.defpos!=dp)
+                nd.Fix(cx);
+            return (UDType)(cx.Add(new PEdgeType(pn.ident, nd, un, -1L, dp, cx))
                 ?? throw new DBException("42105"));
         } 
         internal override NodeType Check(Context cx, CTree<string, SqlValue> ls)
@@ -1275,15 +1290,8 @@ namespace Pyrrho.Level5
             }
             return et;
         }
-        internal EdgeType FixEdgeType(Context cx, Ident typename)
+        internal EdgeType FixEdgeType(Context cx, PType pt)
         {
-            if (((Transaction)cx.db).physicals[typename.iix.dp] is not PType pt)
-                throw new PEException("PE50501");
-            if (pt is not PEdgeType)
-            {
-                pt = new PEdgeType(typename.ident, pt.ppos, this, cx);
-                cx.Add(pt);
-            }
             FixColumns(cx, 1);
             pt.under = super;
             pt.dataType = this;
@@ -1452,6 +1460,15 @@ namespace Pyrrho.Level5
         internal override Basis Fix(Context cx)
         {
             var r = New(cx.Fix(defpos), _Fix(cx, mem));
+            var ro = cx.role;
+            var n = name ?? cx.NameFor(defpos);
+            var ln = cx.NameFor(leavingType);
+            var an = cx.NameFor(arrivingType);
+            var e = ro.edgeTypes[n] ?? BTree<string, BTree<string, long?>>.Empty;
+            var f = e[ln] ?? BTree<string, long?>.Empty;
+            f += (an, r.defpos);
+            e += (ln, f);
+            cx.db += (Database.Role, ro + (Role.EdgeTypes, ro.edgeTypes + (n, e)));
             if (defpos != -1L)
                 cx.Add(r);
             return r;

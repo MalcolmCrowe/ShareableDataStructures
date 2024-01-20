@@ -1,5 +1,5 @@
 ﻿// Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -91,6 +91,7 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             var et = (EdgeType)dataType;
             et = et + (EdgeType.LeavingType,leavingType) + (EdgeType.ArrivingType,arrivingType);
+            et.Fix(rdr.context); // add this edge type to the catalogue
             dataType = et;
         }
         public override string ToString()

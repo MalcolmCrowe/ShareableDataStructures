@@ -563,6 +563,8 @@ namespace Pyrrho.Level4
                             if (lv.domain.kind == Sqlx.CONTENT || lv is SqlReview) // it has unknown type
                             {
                                 var nv = (Domain)uv.Relocate(lv.defpos);
+                                if (nv is EdgeType ne && nv.defpos != uv.defpos)
+                                    ne.Fix(this);
                                 Replace(lv, nv);
                                 Replace(uv, nv);
                             }
@@ -809,7 +811,12 @@ namespace Pyrrho.Level4
             if (rs[p] == d)
                 return dm;
             if (dm.defpos < Transaction.Executables)
-                dm = (Domain)dm.Relocate(GetUid());
+            {
+                var nd = (Domain)dm.Relocate(GetUid());
+                if (nd is EdgeType ne && nd.defpos != dm.defpos)
+                    ne.Fix(this);
+                dm = nd;
+            }
             var rt = dm.rowType;
             if (!rt.Has(p))
                 rt += p;
@@ -834,7 +841,12 @@ namespace Pyrrho.Level4
             if (!ch)
                 return dm;
             if (dm.defpos < Transaction.Executables)
-                dm = (Domain)dm.Relocate(GetUid());
+            {
+                var nd = (Domain)dm.Relocate(GetUid());
+                if (nd is EdgeType ne && nd.defpos != dm.defpos)
+                    ne.Fix(this);
+                dm = nd;
+            }
             var r = new Domain(dm.defpos, m);
             Add(r);
             return r;
@@ -970,6 +982,8 @@ namespace Pyrrho.Level4
         {
             if (!now.Verify(this))
                 throw new DBException("42112", now);
+            if (now is EdgeType ne && was.defpos != now.defpos)
+                ne.Fix(this);
             _Add(now);
             ATree<int, (DBObject, DBObject)> a = todo;
             ATree<int, (DBObject, DBObject)>.Add(ref a, 0, (was, now));

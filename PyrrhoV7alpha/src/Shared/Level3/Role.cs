@@ -2,8 +2,9 @@ using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -45,15 +46,16 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
+            EdgeTypes = -82, // BTree<string,BTree<string,BTree<string,long?>>> EdgeTypes by name,leavingtype,arrivingtype
             Procedures = -249; // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
        internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
         internal BTree<string, BTree<CList<Domain>,long?>> procedures => 
             (BTree<string, BTree<CList<Domain>,long?>>?)mem[Procedures]??BTree<string, BTree<CList<Domain>, long?>>.Empty;
- /*       internal BTree<string, BTree<string, BTree<string, long?>>> edgeTypes =>
+        internal BTree<string, BTree<string, BTree<string, long?>>> edgeTypes =>
             (BTree<string, BTree<string, BTree<string, long?>>>?)mem[EdgeTypes]
-            ?? BTree<string, BTree<string, BTree<string, long?>>>.Empty; */
+            ?? BTree<string, BTree<string, BTree<string, long?>>>.Empty; 
 
          public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
@@ -89,6 +91,10 @@ namespace Pyrrho.Level3
         public static Role operator +(Role r, (string, long) x)
         {
             return (Role)r.New(r.mem + (DBObjects, r.dbobjects + x));
+        }
+        public EdgeType? FindEdgeType(Database d,string tn,string ln, string an)
+        {
+            return d.objects[edgeTypes[tn]?[ln]?[an] ?? -1L] as EdgeType;
         }
         public override string ToString()
         {

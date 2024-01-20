@@ -1493,7 +1493,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.08alpha","(19 January 2024)", "http://www.pyrrhodb.com"
+            "7.08alpha","(20 January 2024)", "http://www.pyrrhodb.com"
         };
 	}
 }

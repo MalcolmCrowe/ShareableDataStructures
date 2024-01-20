@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -304,10 +304,11 @@ namespace Pyrrho.Level3
             if (pm.iri != "")
             {
                 var nb = (Table)ob.Relocate(pm.ppos); // make a new subtype
+                if (nb is EdgeType ne && nb.defpos != defpos)
+                    ne.Fix(cx);
                 nb += (ObInfo.Name, pm.iri);
                 nb += (Under, ob.defpos);
-                ob += (Subtypes, ob.subtypes + (nb.defpos,true));
-                cx.Add(ob);
+                nb += (Subtypes, ob.subtypes + (nb.defpos,true));
                 ob = nb;
             }
             return cx.Add(ob);
