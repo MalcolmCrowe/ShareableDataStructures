@@ -44,19 +44,15 @@ namespace Pyrrho.Level1
         /// the single read buffer
         /// </summary>
         internal Buffer rbuf = new ();
+        internal Buffer awakebuf = new();
         /// <summary>
         /// points to the current write buffer
         /// </summary>
         internal Buffer? wbuf = null;
-#if WINDOWS_PHONE
-        internal StreamSocket client;
-#endif
-#if (!SILVERLIGHT) && (!WINDOWS_PHONE) 
         /// <summary>
         /// The client Socket
         /// </summary>
         internal Socket? client;
-#endif
         /// <summary>
         /// Pyrrho cryptograhy
         /// </summary>
@@ -105,15 +101,16 @@ namespace Pyrrho.Level1
         {
             if (client == null)
                 throw new PEException("PE0100");
-            if (wcount != 2)
-                Flush();
-            if (rpos < rcount + 2)
-                return rbuf.bytes[rpos++];
-            rpos = 2;
-            rcount = 0;
-            rx = 0;
             try
             {
+                if (wcount != 2)
+                    Flush();
+                if (rpos < rcount + 2)
+                    return rbuf.bytes[rpos++];
+                rpos = 2;
+                rcount = 0;
+                rx = 0;
+
                 rbuf.wait = new ManualResetEvent(false);
                 int x = rcount;
                 client.BeginReceive(rbuf.bytes, 0, bSize, 0, new AsyncCallback(Callback), rbuf);
@@ -207,6 +204,16 @@ namespace Pyrrho.Level1
         public void Write(Responses p)
         {
             WriteByte((byte)p);
+        }
+        internal void SendAwake()
+        {
+            if (client == null)
+                throw new PEException("PE0013");
+            awakebuf.wait = new ManualResetEvent(false);
+            awakebuf.bytes[0] = 0; awakebuf.bytes[1] = 1;
+            awakebuf.bytes[2] = (byte)Responses.Continue;
+            client.BeginSend(awakebuf.bytes, 0, bSize, 0, new AsyncCallback(Callback1), awakebuf);
+            awakebuf.wait?.WaitOne();
         }
         /// <summary>
         /// flush a write buffer to the network

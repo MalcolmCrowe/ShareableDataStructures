@@ -2614,6 +2614,8 @@ namespace Pyrrho.Level4
         internal long nextPrep => _nextPrep;
         internal readonly Level1.TCPStream? _tcp = null;
         internal readonly bool caseSensitive = false;
+        internal DateTime awake = DateTime.Now;
+        internal readonly byte[] awakeBuf = new byte[] { 0, 1, (byte)Responses.Continue }; 
         /// <summary>
         /// A tree of prepared statements, whose object persist
         /// in the base context for the connection.
@@ -2643,6 +2645,14 @@ namespace Pyrrho.Level4
             props = cs;
             if (props["CaseSensitive"] == "true")
                 caseSensitive = true;
+        }
+        internal void Awake()
+        {
+            if (DateTime.Now - awake >TimeSpan.FromSeconds(20))
+            {
+                _tcp?.SendAwake();
+                awake = DateTime.Now;
+            }
         }
         public void Add(string nm,PreparedStatement ps)
         {

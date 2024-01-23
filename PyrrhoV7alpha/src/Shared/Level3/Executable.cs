@@ -4751,6 +4751,7 @@ namespace Pyrrho.Level3
                 be.next.Next(cx, null, tok, pd);
                 return;
             }
+            cx.conn.Awake();
             var step = ++_step;
             if (xn is SqlPath sp && sp.pattern.First() is ABookmark<int, long?> ma && pd is not null)
             {
@@ -4828,6 +4829,8 @@ namespace Pyrrho.Level3
                     if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1 && nt1 is not null)
                         ds = For(cx, xn, nt1, ds);
             var df = ds.First();
+            if (ds.Count > 100)
+                ;
             if (df != null)
                DbNode(cx, new NodeStep(be.alt,xn,df,new ExpStep(be.alt,be.matches?.Next(),be.next)),
                     (xn is SqlEdge && xn is not SqlPath) ? xn.tok : tok, pd);
