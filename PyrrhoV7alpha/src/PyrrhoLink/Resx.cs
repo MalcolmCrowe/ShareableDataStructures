@@ -85,6 +85,7 @@ namespace Pyrrho
             dict.Add("22G0N", "Repeating zeo-length output");
             dict.Add("23000", "Integrity constraint: {0}");
             dict.Add("23001", "RESTRICT: {0} referenced in {1} {2}");
+            dict.Add("23002", "RESTRICT: Index {0} is not empty");
             dict.Add("23101", "Integrity constraint on referencing table {0} (delete)");
             dict.Add("23102", "Integrity constraint on referencing table {0} (update)");
             dict.Add("23103", "This record cannot be updated: {0}");

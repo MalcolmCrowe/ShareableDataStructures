@@ -10,7 +10,7 @@ using System.Xml.Schema;
 using System.Net;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -232,16 +232,12 @@ namespace Pyrrho.Level3
                     .Add(Sqlx.COLUMN_NAME, new TChar(ci.name ?? "?"))
                     .Add(Sqlx.TABLE_NAME, new TChar(ti.name ?? "?"));
         }
-        internal override void Cascade(Context cx,
-            Drop.DropAction a = 0, BTree<long, TypedValue>? u = null)
+        protected override void _Cascade(Context cx,Drop.DropAction a, BTree<long, TypedValue>u)
         {
-            base.Cascade(cx, a, u);
-            if (cx.db != null && cx.db.objects[tabledefpos] is Table tb)
-                for (var b = tb?.indexes.First(); b != null; b = b.Next())
-                    for (var c = b.value().First(); c != null; c = c.Next())
-                        for (var d = b.key().First(); d != null; d = d.Next())
-                            if (d.value() == defpos && cx.db.objects[c.key()] is Index x)
-                                x.Cascade(cx, a, u);
+            base._Cascade(cx, a, u);
+            for (var b = checks.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Check ck)
+                    ck.Cascade(cx, a, u);
         }
         internal override Database Drop(Database d, Database nd,long p)
         {

@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using System.Text;
 using System.Runtime.ExceptionServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -235,18 +235,11 @@ namespace Pyrrho.Level3
                     .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
                     .Add(Sqlx.CONSTRAINT_NAME, new TChar("REFERENCES"));
         }
-        internal override void Cascade(Context cx,
-            Drop.DropAction a = Level2.Drop.DropAction.Restrict, BTree<long, TypedValue>? u = null)
+        protected override void _Cascade(Context cx, Drop.DropAction a, BTree<long, TypedValue> u)
         {
-            base.Cascade(cx, a, u);
-  //          if (reftabledefpos >= 0 && cx.db != null && cx.db.objects[reftabledefpos] is Table ta)
-  //              ta.FindPrimaryIndex(cx)?.Cascade(cx, a, u);
-            for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.db?.objects[p] is Table tb)
-                    for (var xb = tb.indexes.First(); xb != null; xb = xb.Next())
-                        for (var c = xb.value().First(); c != null; c = c.Next())
-                            if (cx.db.objects[c.key()] is Index rx && rx.refindexdefpos == defpos)
-                                rx.Cascade(cx, a, u);
+            if (a == 0 && rows?.Count > 0)
+                throw new DBException("23002",defpos);
+            base._Cascade(cx, a, u);
         }
         internal override Database Drop(Database db, Database nd, long p)
         {
@@ -270,7 +263,7 @@ namespace Pyrrho.Level3
                 if (xs.Count == 1)
                     xs = CTree<long, CTree<Domain, Domain>>.Empty;
                 else
-                    xs -= defpos;
+                    xs -= tabledefpos;
                 rt += (Table.RefIndexes, xs);
                 nd += (rt, p);
             }    

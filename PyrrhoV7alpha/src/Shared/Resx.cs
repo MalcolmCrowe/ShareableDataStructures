@@ -3,7 +3,7 @@ using System.Text;
 using System.Collections;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -86,6 +86,7 @@ namespace Pyrrho
             dict.Add("22G0N", "Repeating zeo-length output");
             dict.Add("23000", "Integrity constraint: {0}");
             dict.Add("23001", "RESTRICT: {0} referenced in {1} {2}");
+            dict.Add("23002", "RESTRICT: Index {0} is not empty");
             dict.Add("23101", "Integrity constraint on referencing table {0} (delete)");
             dict.Add("23102", "Integrity constraint on referencing table {0} (update)");
             dict.Add("23103", "This record cannot be updated: {0}");

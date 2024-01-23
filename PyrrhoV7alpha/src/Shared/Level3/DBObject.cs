@@ -354,12 +354,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Drop anything that needs this, directly or indirectly,
         /// and then drop this.
-        /// Called by Drop for Database on Commit and Load
         /// </summary>
-        /// <param name="d"></param>
-        /// <param name="nd"></param>
-        /// <returns></returns>
-        internal virtual void Cascade(Context cx, Drop.DropAction a=0,
+        internal void Cascade(Context cx, Drop.DropAction a=0,
             BTree<long,TypedValue>?u=null)
         {
             if (cx.db is not Transaction tr)
@@ -367,22 +363,11 @@ namespace Pyrrho.Level3
             for (var b = tr.physicals.First(); b != null; b = b.Next())
                 if (b.value() is Drop dr && dr.delpos == defpos)
                     return;
-            for (var b = dependents?.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key()] is DBObject ob)
-                {
-                    if (a == 0)
-                    {
-                        if (!(this is Table tb && cx.db.objects[b.key()] is TableColumn tc
-                            && tb.defpos == tc.tabledefpos))
-                        {
-                            throw new DBException("23001",
-                                GetType().Name + " " + Uid(defpos), ob.GetType().Name + " " + Uid(b.key()));
-                        }
-                    }
-                    ob.Cascade(cx, a, u);
-                }
+            _Cascade(cx, a, u??BTree<long,TypedValue>.Empty); // specific actions
             cx.Add(new Drop1(defpos, a, cx.tr?.nextPos??0));
         }
+        protected virtual void _Cascade(Context cx, Drop.DropAction a, BTree<long, TypedValue> u)
+        { }
         /// <summary>
         /// Execute an Insert operation for a Table, View, RestView.
         /// The new or existing Rowsets may be explicit or in the physical database.

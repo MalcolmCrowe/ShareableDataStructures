@@ -458,22 +458,18 @@ BTree<string, (int, long?)> ns)
                 r += (PathDomain, pd);
             return r;
         }
-        internal override void Cascade(Context cx,
-            Drop.DropAction a = 0, BTree<long, TypedValue>? u = null)
+        protected override void _Cascade(Context cx, Drop.DropAction a, BTree<long, TypedValue> u)
         {
-            var ro = cx.role ?? throw new DBException("42105");
-            base.Cascade(cx, a, u);
+            for (var b = tableChecks.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Check ck)
+                    ck.Cascade(cx, a, u);
+            for (var b = rowType.First();b!=null;b=b.Next())
+                if (cx.db.objects[b.value()??-1L] is TableColumn tc)
+                        tc.Cascade(cx, a, u);
             for (var b = indexes.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Index ix)
                         ix.Cascade(cx, a, u);
-            for (var b = ro.dbobjects.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.db.objects[p] is Table tb)
-                    for (var c = tb.indexes.First(); c != null; c = c.Next())
-                        for (var d = c.value().First(); d != null; d = d.Next())
-                            if (cx.db.objects[d.key()] is Index ix)
-                                if (ix.reftabledefpos == defpos)
-                                    tb.Cascade(cx, a, u);
         }
         internal override Database Drop(Database d, Database nd, long p)
         {

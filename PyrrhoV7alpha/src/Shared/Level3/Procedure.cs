@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -167,10 +167,9 @@ namespace Pyrrho.Level3
                 r += (Params, ps);
             return r;
         }
-        internal override void Cascade(Context cx,
-            Drop.DropAction a = 0, BTree<long, TypedValue>? u = null)
+        protected override void _Cascade(Context cx,Drop.DropAction a, BTree<long, TypedValue> u)
         {
-            base.Cascade(cx, a, u);
+            base._Cascade(cx, a, u);
             for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.db.objects[p] is DBObject ob)
                     if (ob.Calls(defpos, cx))

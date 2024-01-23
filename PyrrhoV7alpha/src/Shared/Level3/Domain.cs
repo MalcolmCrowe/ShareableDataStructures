@@ -5155,6 +5155,16 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
              throw new DBException("42000",name);
         }
+        protected override void _Cascade(Context cx, Drop.DropAction a, BTree<long, TypedValue> u)
+        {
+            for (var b = methods.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Method md)
+                    md.Cascade(cx, a, u);
+            for (var b = subtypes.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Domain st)
+                    st.Cascade(cx, a, u);
+            base._Cascade(cx, a, u);
+        }
         /// <summary>
         /// Generate a row for the Role$Class table: includes a C# class definition
         /// </summary>
