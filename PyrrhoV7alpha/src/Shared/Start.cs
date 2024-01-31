@@ -1070,7 +1070,7 @@ namespace Pyrrho
                 return;
             }
             tcp.Write(Responses.ReaderData);
-            int ncells = 1; // we will very naughtily poke this into the write buffer later (at offset 3)
+            tcp.ncells = 1; // we will very naughtily poke this into the write buffer later (at offset 3)
             // for now we announce that we will send one cell: we always send at least one cell
             tcp.PutInt(1);
             var domains = BTree<int, Domain>.Empty;
@@ -1121,14 +1121,14 @@ namespace Pyrrho
                 tcp.PutCell(cx, dc, nextCell, rv, rc);
                 if (++nextCol == ds)
                     lookAheadDone = false;
-                ncells++;
+                tcp.ncells++;
             }
             // naughty naughty: update ncells
-            if (ncells != 1)
+            if (tcp.ncells != 1)
             {
                 int owc = tcp.wcount;
                 tcp.wcount = 3;
-                tcp.PutInt(ncells);
+                tcp.PutInt(tcp.ncells);
                 tcp.wcount = owc;
             }
         }
@@ -1191,14 +1191,9 @@ namespace Pyrrho
                         return lc + 1 + tn.Length + ((TRow)o).Length;
                     }
                 case Sqlx.NODETYPE:
+                    return lc+1 + StringLength(((TNode)tv).tableRow.vals.ToString());
                 case Sqlx.EDGETYPE:
-                    {
-                        var s = 
-                        (tv is TNode tn && tn.dataType is NodeType nt
-                            && tn.tableRow.vals[nt.idCol] is TInt ni)?
-                            ni.ToString(): tv.ToString();
-                        return lc + 1 + StringLength(s);
-                    }
+                    return lc + 1 + StringLength(((TEdge)tv).tableRow.vals.ToString());
             }
             return lc + 1 + StringLength(o);
         }
@@ -1493,7 +1488,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.08alpha","(23 January 2024)", "http://www.pyrrhodb.com"
+            "7.08alpha","(31 January 2024)", "http://www.pyrrhodb.com"
         };
 	}
 }
