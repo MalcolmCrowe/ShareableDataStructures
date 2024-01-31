@@ -250,13 +250,14 @@ namespace Pyrrho.Level4
         internal int Compare(Context cx)
         {
             int c;
+            var ls = (RowSet?)cx.obs[first];
             for (var b = joinCond.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlValueExpr se && cx.obs[se.left] is SqlValue lv &&
                         cx.obs[se.right] is SqlValue rv)
                 {
                     c = lv.Eval(cx).CompareTo(rv.Eval(cx));
                     if (c != 0)
-                        return c;
+                        return (ls?.representation.Contains(lv.defpos) == true) ? c : -c;
                 }
             for (var b = onCond.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlValue lv && b.value() is long bv 
@@ -264,7 +265,7 @@ namespace Pyrrho.Level4
                 {
                     c = lv.Eval(cx).CompareTo(rv.Eval(cx));
                     if (c != 0)
-                        return c;
+                        return (ls?.representation.Contains(lv.defpos) == true) ? c : -c;
                 }
             return 0;
         }
