@@ -3,6 +3,7 @@ using System.Net;
 using System.Collections;
 using System.Globalization;
 using Pyrrho;
+using System.ComponentModel.Design;
 
 namespace PyrrhoCmd
 {
@@ -21,47 +22,44 @@ namespace PyrrhoCmd
 	class Link
 	{
 		public StreamReader head;
-		public Link tail;
-		public Link(StreamReader h,Link t)
+		public Link? tail;
+		public Link(StreamReader h,Link? t)
 		{
 			head = h; tail = t;
 		}
 	}
-	/// <summary>
-	/// Summary description for Cons.
-	/// </summary>
-	class Cons
-	{
-		/// <summary>
-		/// The main entry point for the application.
-		/// </summary>
-		static bool silent = false;
+    /// <summary>
+    /// Summary description for Cons.
+    /// </summary>
+    class Cons
+    {
+        /// <summary>
+        /// The main entry point for the application.
+        /// </summary>
+        static bool silent = false;
         static bool checks = false;
         static bool allowask = false;
-#if (!NETCF)
+        static bool interactive = true;
+        static bool caseSensitive = false;
+        static PyrrhoTransaction? transaction = null;
+        static PyrrhoConnect? db = null;
+        static DatabaseError? lasterr = null;
+        static int fileLines = -1;
+        static string files = ""; 
+        static int nrecs = 0;
+        static StreamReader? file = null; // command file from -f flag
         [STAThread]
-#endif
         static void Main(string[] args)
         {
-            string str = "Temp";
             string host = "::1";
             string port = "5433";
             string line = "";
-            DatabaseError lasterr = null;
-            bool interactive = true;
-            bool caseSensitive = false;
-            PyrrhoTransaction transaction = null;
-            Link stack = null;
-            StreamReader file = null;
             Console.InputEncoding = Encoding.Unicode;
             Console.OutputEncoding = Encoding.Unicode;
-            bool newfile = false;
-            int fileLines = -1;
-            string files = "";
             int k = 0;
             while (args.Length > k)
             {
-                if (args[k]=="+a")
+                if (args[k] == "+a")
                     allowask = true;
                 else if (args[k].StartsWith("-"))
                     switch (args[k][1])
@@ -82,7 +80,6 @@ namespace PyrrhoCmd
                             {
                                 file = new StreamReader(args[k].Substring(3));
                                 fileLines = 0;
-                                newfile = true;
                             }
                             catch (Exception)
                             {
@@ -103,7 +100,7 @@ namespace PyrrhoCmd
                 cs += ";AllowAsk=true";
             if (caseSensitive)
                 cs += ";CaseSensitive=true";
-            PyrrhoConnect db = new PyrrhoConnect(cs);
+            db = new PyrrhoConnect(cs);
             try
             {
                 db.Open();
@@ -114,309 +111,290 @@ namespace PyrrhoCmd
                 Console.ReadLine();
                 return;
             }
+            Commands(db);
+            file?.Close();
+        }
+        static void Commands(PyrrhoConnect db)
+        {
             for (bool done = false; !done; done = !interactive)
             {
-                if (interactive)
+                var str = GetCommand(db, null, interactive);
+                if (str == null)
+                    break;
+                str = InsertBlobs(str); // ~file or ~URL is replaced by a binary large object string
+                if (str.Length > 0)
+                    Obey(str);
+                var tr = (transaction != null) ? "0023" : "0020";
+                if (nrecs > 0)
+                    Console.WriteLine("" + nrecs + Format(tr) + files);
+                nrecs = 0;
+            }
+        }
+        static void Obey(string str)
+        {
+            DatabaseError? lasterr = null;
+            if (db is null)
+                return;
+            var cmd = db.CreateCommand();
+            try
+            {
+                cmd.CommandText = str;
+                var str0 = str.Trim().Trim(';');
+                str = str0.ToLower();
+                if (str.StartsWith("begin") || str.StartsWith("start"))
+                    str = str.Substring(5).Trim();
+                if (str.StartsWith("set"))
                 {
-                    if (file != null)
+                    var s1 = str0.Substring(3).Trim();
+                    if (s1.StartsWith("role"))
                     {
-                        str = file.ReadLine();
-                        if (newfile)
-                        {
-                            if (file.CurrentEncoding == Encoding.Default)
-                                Console.WriteLine(Format("0013"));
-                            newfile = false;
-                        }
-                        if (++fileLines % 1000 == 0)
-                        {
-                            Console.Write(fileLines); Console.WriteLine(Format("0024"));
-                        }
-                    }
-                    else
-                    {
-                        if (db.State != ConnectionState.Open)
-                        {
-                            Console.WriteLine(Format("0015"));
-                            break;
-                        }
-                        if (transaction != null)
-                            Console.Write("SQL-T>");
-                        else
-                            Console.Write("SQL> ");
-                        str = Console.ReadLine();
-                    }
-                    if (str == null)
+                        var rn = s1.Substring(4).Trim();
+                        db.SetRole(rn);
                         return;
-    /*                {
-                        file?.Close();
-                        if (stack == null)
-                            file = null;
-                        else
-                        {
-                            file = stack.head;
-                            stack = stack.tail;
-                        }
-                        continue;
-                    } */
-                    str = str.Trim();
-                    if (str.Length == 0)
-                        continue;
-                    // support QUIT
-                    if (str.Length >= 4 && str.ToUpper().StartsWith("QUIT"))
-                        break;
-                    // support comments
-                    if (str[0] == '/')
-                        continue;
-                    // support file input
-                    if (str[0] == '@')
-                    {
-                        if (file != null)
-                            stack = new Link(file, stack);
-                        try
-                        {
-                            file = new StreamReader(str.Substring(1).Trim());
-                            newfile = true;
-                        }
-                        catch (Exception ex)
-                        {
-                            Console.WriteLine(ex.Message);
-                        }
-                        continue;
-                    }
-                    // support multiline SQL statements for people who don't like wraparound
-                    if (str[0] == '[')
-                    {
-                        line = "";
-                        for (; ; )
-                        {
-                            if (str[str.Length - 1] == ']')
-                                break;
-                            if (file != null)
-                                line = file.ReadLine();
-                            else
-                            {
-                                Console.Write("> ");
-                                line = Console.ReadLine();
-                            }
-                            RemoveTrailingComment(ref line);
-                            if (line == null)
-                            {
-                                str += "]";
-                                break;
-                            }
-                            if (line.Length > 0)
-                            {
-                                line = line.Trim();
-                                if (str[str.Length - 1] == '\'' && line[0] == '\'')
-                                    str = str.Substring(0, str.Length - 1) + line.Substring(1);
-                                else
-                                    str += " " + line;
-                            }
-                        }
-                        str = str.Substring(1, str.Length - 2);
                     }
                 }
-                else
-                    str = line;
-                var cmd = db.CreateCommand();
-                PyrrhoReader rdr = null;
-                try
+                switch (str)
                 {
-                    str = InsertBlobs(str); // ~file or ~URL is replaced by a binary large object string
-                    cmd.CommandText = str;
-                    var str0 = str.Trim().Trim(';');
-                    str = str0.ToLower();
-                    if (str.StartsWith("begin"))
-                        str = str.Substring(5).Trim();
-                    if (str.StartsWith("set"))
-                    {
-                        var s1 = str0.Substring(3).Trim();
-                        if (s1.StartsWith("role"))
+                    case "transaction": // begin transaction
+                        if (transaction != null)
                         {
-                            var rn = s1.Substring(4).Trim();
-                            db.SetRole(rn);
-                            continue;
+                            Console.WriteLine(Format("0016"));
+                            return;
                         }
-                    }
-                    switch (str)
-                    {
-                        case "transaction": // begin transaction
-                            if (transaction != null)
-                            {
-                                Console.WriteLine(Format("0016"));
-                                continue;
-                            }
-                            transaction = db.BeginTransaction();
-                            continue;
-                        case "rollback":
+                        transaction = db.BeginTransaction();
+                        return;
+                    case "rollback":
+                        if (transaction == null)
+                        {
+                            Console.WriteLine(Format("0017"));
+                            return;
+                        }
+                        transaction.Rollback();
+                        transaction = null;
+                        return;
+                    case "commit":
+                        {
                             if (transaction == null)
                             {
-                                Console.WriteLine(Format("0017"));
-                                continue;
+                                Console.WriteLine(Format("0018"));
+                                return;
                             }
-                            transaction.Rollback();
+                            var c = transaction.Commit();
+                            nrecs += c;
                             transaction = null;
-                            continue;
-                        case "commit":
-                            {
-                                if (transaction == null)
-                                {
-                                    Console.WriteLine(Format("0018"));
-                                    continue;
-                                }
-                                var c = transaction.Commit();
-                                if (c > 0)
-                                    Console.WriteLine("" + c + Format("0020")+files);
-                                transaction = null;
-                            }
-                            continue;
-                        case "show diagnostics":
-                            if (lasterr == null)
-                                Console.WriteLine(Format("0019"));
-                            else
-                            {
-                                Console.WriteLine("Last error: " + lasterr.Message);
+                            return;
+                        }
+                    case "show diagnostics":
+                        if (lasterr == null)
+                            Console.WriteLine(Format("0019"));
+                        else
+                        {
+                            Console.WriteLine("Last error: " + lasterr.Message);
 #if MONO1
                                 foreach(KeyValuePair s in lasterr.info)
 #else
-                                foreach (var s in lasterr.info)
+                            foreach (var s in lasterr.info)
 #endif
-                                    Console.WriteLine(s.Key + ": " + s.Value);
-                            }
-                            continue;
-                    }
-                    if (str.StartsWith("delete") || str.StartsWith("update") || str.StartsWith("insert")
-                        || str.StartsWith("create"))
+                                Console.WriteLine(s.Key + ": " + s.Value);
+                        }
+                        return;
+                }
+                if (str.StartsWith("delete") || str.StartsWith("update") || str.StartsWith("insert")
+                    || str.StartsWith("create"))
+                {
+                    var n = cmd.ExecuteNonQuery();
+                    ShowWarnings(db);
+                    if (file is null)
                     {
-                        var n = cmd.ExecuteNonQuery();
+                        if (n < 0) // For cascade actions we don't get #affected rows
+                            Console.WriteLine(Format("0019")); // OK
+                        else
+                        nrecs += n;
+                    }
+                }
+                else if (str.StartsWith("match"))
+                {
+                    (var n, var rdr) = cmd.ExecuteMatch();
+                    if (rdr is null)
+                    {
                         ShowWarnings(db);
-                        var tr = (transaction != null) ? "0023" : "0020";
                         if (file is null)
                         {
                             if (n < 0) // For cascade actions we don't get #affected rows
                                 Console.WriteLine(Format("0019")); // OK
                             else
-                                Console.WriteLine("" + n + Format(tr) + files);
+                                nrecs += n;
                         }
-                    }
-                    else if (str.StartsWith("match"))
-                    {
-                        (var n, rdr) = cmd.ExecuteMatch();
-                        if (rdr is null)
-                        {
-                            ShowWarnings(db);
-                            var tr = (transaction != null) ? "0023" : "0020";
-                            if (file is null)
-                            {
-                                if (n < 0) // For cascade actions we don't get #affected rows
-                                    Console.WriteLine(Format("0019")); // OK
-                                else
-                                    Console.WriteLine("" + n + Format(tr) + files);
-                            }
-                            else if (n == 0)
-                                Console.WriteLine("Fault at line "+fileLines);
-                        } else
-                            try
-                            {
-                                ShowWarnings(db);
-                                Show(rdr);
-                            }
-                            catch (Exception e)
-                            {
-                                rdr.Close();
-                                throw e;
-                            }
+                        else if (n == 0)
+                            Console.WriteLine("Fault at line " + fileLines);
                     }
                     else
-                    {
-                        rdr = cmd.ExecuteReader();
-                        if (rdr != null)
-                            try
-                            {
-                                ShowWarnings(db);
-                                Show(rdr);
-                            }
-                            catch (Exception e)
-                            {
-                                rdr.Close();
-                                throw e;
-                            }
-
-                    }
-                }
-                catch (TransactionConflict e)
-                {
-                    lasterr = e;
-#if !MONO1
-                    while (Console.KeyAvailable)
-                        Console.ReadKey(true);
-#endif
-                    Console.WriteLine(e.Message);
-#if MONO1
-                    for (; ;)
-                    {
-                        Console.Write("Continue (Y)?");
-                        var s = Console.ReadLine();
-                        if (s.Trim() == "Y")
-                            break;
-                    }
-#endif
-                    transaction = null;
-                    if (!interactive)
-                        break;
-                    file?.Close();
-                    file = null;
-                    rdr = null;
-                }
-                catch (DatabaseError e)
-                {
-                    lasterr = e;
-                    Console.WriteLine(e.Message);
-                    if (transaction != null)
-                    {
-/*                        if (e.info.ContainsKey("TRANSACTION_ACTIVE")
-                            && ((string)e.info["TRANSACTION_ACTIVE"]) == "0") // v5.0
+                        try
                         {
-#if !MONO1
-                            while (Console.KeyAvailable)
-                                Console.ReadKey(true);
-#endif*/
-                            Console.WriteLine("The transaction has been rolled back");
-#if MONO1
-                            for (; ; )
-                            {
-                                Console.Write("Continue (Y)?");
-                                var s = Console.ReadLine();
-                                if (s.Trim() == "Y")
-                                    break;
-                            }
-#endif
-                            transaction = null;
-  /*                      } */
-                    }
-                    file?.Close();
-                    file = null;
-                    rdr = null;
+                            ShowWarnings(db);
+                            Show(rdr);
+                        }
+                        catch (Exception e)
+                        {
+                            rdr.Close();
+                            throw e;
+                        }
+                    if (rdr != null && !rdr.IsClosed)
+                        rdr.Close();
+                    return;
                 }
-                catch (Exception e)
+                else
                 {
-                    Console.WriteLine(e.Message);
-                    if (!interactive)
-                        break;
-                    file?.Close();
-                    file = null;
-                    rdr = null;
+                    var rdr = cmd.ExecuteReader();
+                    if (rdr != null)
+                        try
+                        {
+                            ShowWarnings(db);
+                            Show(rdr);
+                        }
+                        catch (Exception e)
+                        {
+                            rdr.Close();
+                            throw e;
+                        }
+                    if (rdr != null && !rdr.IsClosed)
+                        rdr.Close();
                 }
-                if (rdr != null && !rdr.IsClosed)
-                    rdr.Close();
             }
-            file?.Close();
+            catch (TransactionConflict e)
+            {
+                lasterr = e;
+                while (Console.KeyAvailable)
+                    Console.ReadKey(true);
+                Console.WriteLine(e.Message);
+                transaction = null;
+                if (!interactive)
+                    return;
+                file?.Close();
+                file = null;
+            }
+            catch (DatabaseError e)
+            {
+                lasterr = e;
+                Console.WriteLine(e.Message);
+                if (transaction != null)
+                {
+                    Console.WriteLine("The transaction has been rolled back");
+                    transaction = null;
+                }
+                file?.Close();
+                file = null;
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                if (!interactive)
+                    return;
+                file?.Close();
+                file = null;
+            }
         }
-        /// <summary>
-        /// remove comment starting with unquoted -- and extending to end of line
-        /// </summary>
-        /// <param name="line"></param>
-        static void RemoveTrailingComment(ref string line)
+    static string? GetCommand(PyrrhoConnect db, StreamReader? file, bool interactive)
+        {
+            Console.InputEncoding = Encoding.Unicode;
+            Console.OutputEncoding = Encoding.Unicode;
+            bool newfile = false;
+            int fileLines = -1;
+            string? str;
+            string? line = "";
+            if (interactive)
+            {
+                if (file != null)
+                {
+                    str = file.ReadLine();
+                    if (newfile)
+                    {
+                        if (file.CurrentEncoding == Encoding.Default)
+                            Console.WriteLine(Format("0013"));
+                    }
+                    if (++fileLines % 1000 == 0)
+                    {
+                        Console.Write(fileLines); Console.WriteLine(Format("0024"));
+                    }
+                }
+                else
+                {
+                    if (db.State != ConnectionState.Open)
+                    {
+                        Console.WriteLine(Format("0015"));
+                        return null;
+                    }
+                    if (transaction != null)
+                        Console.Write("SQL-T>");
+                    else
+                        Console.Write("SQL> ");
+                    str = Console.ReadLine();
+                }
+                if (str == null)
+                    return null;
+                str = str.Trim();
+                if (str.Length == 0)
+                    return str;
+                // support QUIT
+                if (str.Length >= 4 && str.ToUpper().StartsWith("QUIT"))
+                    return null;
+                // support file input
+                if (str[0] == '@')
+                {
+                    try
+                    {
+                        file = new StreamReader(str.Substring(1).Trim());
+                        newfile = true;
+                    }
+                    catch (Exception ex)
+                    {
+                        Console.WriteLine(ex.Message);
+                    }
+                    return null;
+                }
+                // support multiline SQL statements for people who don't like wraparound
+                if (str[0] == '[')
+                {
+                    for (; ; )
+                    {
+                        if (str[str.Length - 1] == ']')
+                            break;
+                        if (file != null)
+                            line = file.ReadLine();
+                        else
+                        {
+                            Console.Write("> ");
+                            line = Console.ReadLine();
+                        }
+                        RemoveTrailingComment(ref line);
+                        if (line == null)
+                        {
+                            str += "]";
+                            break;
+                        }
+                        if (line.Length > 0)
+                        {
+                            line = line.Trim();
+                            if (str[str.Length - 1] == '\'' && line[0] == '\'')
+                                str = str.Substring(0, str.Length - 1) + line.Substring(1);
+                            else
+                                str += " " + line;
+                        }
+                    }
+                    str = str.Substring(1, str.Length - 2);
+                }
+                else
+                    RemoveTrailingComment(ref line);
+            }
+            else
+                str = line;
+            return str;
+        }
+            /// <summary>
+            /// remove comment starting with unquoted -- and extending to end of line
+            /// </summary>
+            /// <param name="line"></param>
+            static void RemoveTrailingComment(ref string line)
         {
             var quote = '\0';
             var dash = false; // we have a saved dash
@@ -468,8 +446,10 @@ namespace PyrrhoCmd
                 }
             if (dash)
                 sb.Append('-');
+            if (slash)
+                sb.Append('/');
             line = sb.ToString();
-        }
+        } 
         static void ShowWarnings(PyrrhoConnect db)
         {
             var ww = db.Warnings;
@@ -531,7 +511,7 @@ namespace PyrrhoCmd
 		}
 		static string InsertBlob(string source)
 		{
-			Stream str = null;
+			Stream? str = null;
 			try 
 			{
 				if (source.StartsWith("http://"))
@@ -568,16 +548,6 @@ namespace PyrrhoCmd
 			return r.ToString();
 		}
 		static int blobwarning;
-        enum TextParser { StartRow, StartValue, EndValue, EndRow, End }
-        static char[] start = new char[] { '\'', '"', '[', '{', '(' };
-        static char[] end = new char[] { '\'', '"', ']', '}', ')' };
-        static int Special(char ch)
-        {
-            for (int i = 0; i < start.Length; i++)
-                if (start[i] == ch)
-                    return i;
-            return -1;
-        }
         /// <summary>
         /// Handle input text files such as csv, only if the ~ was preceded by keyword VALUES
         /// </summary>
@@ -586,74 +556,58 @@ namespace PyrrhoCmd
         /// <returns></returns>
         static string InsertText(string str, int it)
         {
+            nrecs = 0;
             var iv = it - 1;
-            while (iv > 7 && Char.IsWhiteSpace(str[iv]))
+            while (iv > 7 && char.IsWhiteSpace(str[iv]))
                 iv--;
             if (str.Substring(iv - 5, 6).ToLower() != "values")
-                return null;
-            var ef = it+1;
-            while (ef<str.Length && !Char.IsWhiteSpace(str[ef]))
+                return "";
+            var ef = it + 1;
+            while (ef < str.Length && !char.IsWhiteSpace(str[ef]))
                 ef++;
-            var r = new StringBuilder(str.Substring(0,it-1));
-            var st = new StreamReader(str.Substring(it+1,ef-it-1));
-            st.ReadLine();
-            var cc = "";
-            while (st.ReadLine() is string rs)
+            try
             {
-                r.Append(cc); cc = ",";
-                r.Append('(');
-                var ss = rs.Split('|');
-                var cm = "'";
-                for (var i=0; i<ss.Length; i++)
+                var r = new StringBuilder(str.Substring(0, it - 1));
+                var st = new StreamReader(str.Substring(it + 1, ef - it - 1));
+                st.ReadLine();
+                var cr = r;
+                while (st.ReadLine() is string rs)
                 {
-                    r.Append(cm); cm = ",'";
-                    r.Append(ss[i].Replace("'","''"));
-                    r.Append("'");
-                }
-                r.Append(')');
-            }
-            return r.ToString();
-        }
-        static char Next(StreamReader st,int rows)
-        {
-            var c = st.Read();
-            if (c == -1)
-                throw new Exception(Format("0014",""+rows));
-            return (char)c;
-        }
-        static char Next(StreamReader st)
-        {
-            var c = st.Read();
-            if (c == -1)
-            {
-                st.Close();
-                c = 0;
-            }
-            return (char)c;
-        }
-        static char CopyToMatch(StreamReader st, int si, StringBuilder r, int rows)
-        {
-            r.Append(start[si]);
-            while (true)
-            {
-                var ch = Next(st, rows);
-                if (ch == end[si])
-                {
-                    r.Append(ch);
-                    var nc = Next(st);
-                    if (nc == ch && (ch == '\'' || ch == '"'))
+                    r = new StringBuilder();
+                    r.Append(cr);
+                    r.Append('(');
+                    var ss = rs.Split('|');
+                    var cm = "'";
+                    for (var i = 0; i < ss.Length; i++)
                     {
-                        r.Append(nc);
-                        continue;
+                        r.Append(cm); cm = ",'";
+                        r.Append(ss[i].Replace("'", "''"));
+                        r.Append("'");
                     }
-                    return nc;
+                    r.Append(")");
+                    Obey(r.ToString());
                 }
-                var ti = Special(ch);
-                if (ti >= 0)
-                    ch = CopyToMatch(st, ti, r, rows);
-                else
-                    r.Append(ch);
+                st.Close();
+                return "";
             }
+            catch (DatabaseError e)
+            {
+                lasterr = e;
+                Console.WriteLine(e.Message);
+                if (transaction != null)
+                {
+                    Console.WriteLine("The transaction has been rolled back");
+                    transaction = null;
+                }
+            }
+            catch (Exception e)
+            {
+                Console.WriteLine(e.Message);
+                if (!interactive)
+                    return "";
+                transaction = null;
+            }
+            return "";
         }
         static void Show(PyrrhoReader rdr)
 		{
