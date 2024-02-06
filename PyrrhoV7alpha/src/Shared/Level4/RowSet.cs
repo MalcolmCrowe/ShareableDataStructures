@@ -2475,14 +2475,12 @@ namespace Pyrrho.Level4
         {
             if (rows.Count>0)
             {
-                var nr = CList<TRow>.Empty;
+                var rws = BList<(long, TRow)>.Empty;
                 for (var b = rows.First(); b != null; b = b.Next())
-                {
-                    var k = PositionFor(nr, os, b.value(), out var m);
-                    nr += (k,b.value());
-                }
-                return (RowSet)cx.Add(this + (_Rows, nr));
-            }
+                    rws += ((b.key(),b.value()));
+                var ers = new ExplicitRowSet(cx.GetUid(), cx, this-_Rows, rws);
+                return ers.Sort(cx, os, dct);
+            } 
             return base.Sort(cx, os, dct);
         }
         int PositionFor(CList<TRow> ts,Domain os,TRow v,out bool ma)
@@ -3714,7 +3712,7 @@ namespace Pyrrho.Level4
             : this(cx.GetUid(), cx, r, os, dct)
         { }
         internal OrderedRowSet(long dp, Context cx, RowSet r, Domain os, bool dct)
-            : base(dp, cx, r.mem + (_Source, r.defpos)
+            : base(dp, cx, r.mem -Aggs + (_Source, r.defpos)
                  + (RSTargets, r.rsTargets) + (RowOrder, os) + (Level3.Index.Keys, os)
                  + (Table.LastData, r.lastData) + (ObInfo.Name, r.name??"")
                  + (ISMap, r.iSMap) + (SIMap,r.sIMap)

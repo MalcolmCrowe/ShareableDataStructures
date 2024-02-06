@@ -1455,24 +1455,27 @@ namespace Pyrrho.Level4
             var wh = ParseWhereClause() ?? CTree<long, bool>.Empty;
             m += (RowSet._Where, wh);
             long e = -1L;
-            long pe = -1L;
+            var pe = -1L;
+            Domain rd = Domain.Row + (Domain.Nodes, xs);
+            ReturnStatement? re = null;
             if (tok != Sqlx.EOF && tok != Sqlx.END && tok != Sqlx.RPAREN)
             {
                 var op = cx.parse;
                 cx.parse = ExecuteStatus.Graph;
                 if (tok != Sqlx.ORDER && tok != Sqlx.FETCH)
                 {
-                    var xe = ParseProcedureStatement(Domain.Content+(Domain.Nodes,xs));
+                    var xe = ParseProcedureStatement(Domain.Content + (Domain.Nodes, xs));
                     e = cx.lastret;
+                    rd = cx.obs[(cx.obs[e] as ReturnStatement)?.result ?? -1L] as RowSet ?? rd;
                     pe = xe.defpos;
                 }
                 if (tok == Sqlx.ORDER)
-                    m += (RowSet.RowOrder, ParseOrderClause(Domain.Row + (Domain.Nodes,xs), false));// limit to requirements specified here
+                    m += (RowSet.RowOrder, ParseOrderClause(Domain.Row, false));// limit to requirements specified here
                 if (tok == Sqlx.FETCH)
                     m += (RowSetSection.Size, FetchFirstClause());
                 if (cx.obs[cx.lastret] is ReturnStatement rs && cx.obs[rs.ret]?.domain is Domain d && d != Domain.Null)
                 {
-                    RowSet es = (RowSet)(cx.obs[(long)(rs.mem[SqlInsert.Value]??-1L)]??throw new DBException("42000"));
+                    RowSet es = (RowSet)(cx.obs[(long)(rs.mem[SqlInsert.Value] ?? -1L)] ?? throw new DBException("42000"));
                     m += (DBObject._Domain, es);
                     cx.result = es.defpos;
                 }

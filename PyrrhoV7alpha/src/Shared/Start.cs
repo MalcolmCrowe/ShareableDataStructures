@@ -318,12 +318,6 @@ namespace Pyrrho
                                 cx = new(db, conn) {
                                     parse = ExecuteStatus.Prepare
                                 };
-                                if (nm.Contains('('))
-                                {
-                                    // install an edge rename intervention
-                                    cx.conn.Add(nm, sql);
-                                    break;
-                                }
                                 var nst = cx.db.nextStmt;
                                 db = new Parser(cx).ParseSql(sql, Domain.Content);
                                 cx.db = db;
@@ -1409,7 +1403,7 @@ namespace Pyrrho
                             FixPath();
                             break;
                         case 'D': DebugMode = true; break;
-                        case 'H': HTTPFeedbackMode = true; break;
+                        case 'H': break; // HTTPFeedbackMode = true; break;
                         case 'V': VerboseMode = true; break;
                         case 'T': TutorialMode = true; break;
                         default: Usage(); return;
@@ -1488,7 +1482,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.08alpha","(31 January 2024)", "http://www.pyrrhodb.com"
+            "7.08alpha","(06 February 2024)", "http://www.pyrrhodb.com"
         };
 	}
 }

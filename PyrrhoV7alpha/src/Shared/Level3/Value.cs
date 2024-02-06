@@ -1102,6 +1102,8 @@ namespace Pyrrho.Level3
         /// </summary>
         internal override TypedValue _Eval(Context cx)
         {
+            if (cx.values[val] is TypedValue v)
+                return domain.Coerce(cx,v);
             var tv = cx.obs[val]?.Eval(cx) ?? TNull.Value;
             if (!domain.HasValue(cx, tv))
                 throw new DBException("2200G", ToString() ?? "??",
@@ -11313,7 +11315,7 @@ cx.obs[high] is not SqlValue hi)
             // certainly the predecessor of an existing node must exist.
             // if the last one is undefined we will build it using the given property tree
             // (if it is defined we may add properties to it)
-            // if types earlier in the label are unbdefined we will create them here
+            // if types earlier in the label are undefined we will create them here
             // This loop traverses the given type label: watch for the position of the last component
             bool? retrying;
             do
@@ -11329,10 +11331,7 @@ cx.obs[high] is not SqlValue hi)
                             ty += (b.key(), gv);
                             if (gv is not TChar gc)
                                 gc = new TChar(gl.name ?? "?");
-                            // Take account of any prepared edge-renaming rules
-                            if (lN != null && aN != null && cx.conn.edgeTypes[gc.value]?[lN]?[aN] is string nN)
-                                gc = new TChar(nN);
-                            gt = (gv is TTypeSpec tt)?tt._dataType as EdgeType:
+                             gt = (gv is TTypeSpec tt)?tt._dataType as EdgeType:
                                 cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as EdgeType;
                             if (gt is not null && lT is not null && aT is not null
                                 && (gt.leavingType != lT.defpos || gt.arrivingType != aT.defpos))

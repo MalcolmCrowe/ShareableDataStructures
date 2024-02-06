@@ -4406,7 +4406,10 @@ namespace Pyrrho.Level3
             if (cx.obs[cx.result] is RowSet rs)
             {
                 if (mem[RowSet.RowOrder] is Domain ord)
-                    rs = rs.Sort(cx, ord, false);
+                {
+                    _cx.Add(rs);
+                    rs = rs.Sort(_cx, ord, false);
+                }
                 _cx.result = rs.defpos;
                 _cx.obs += (_cx.result, rs);
             }
