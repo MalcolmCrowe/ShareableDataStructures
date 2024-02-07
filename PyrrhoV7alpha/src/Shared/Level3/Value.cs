@@ -974,7 +974,7 @@ namespace Pyrrho.Level3
             _Diff = -468, // BTree<long,object>
             TreatExpr = -313; // long SqlValue
         BTree<long, object> diff => (BTree<long, object>)(mem[_Diff] ?? BTree<long, object>.Empty);
-        long val => (long)(mem[TreatExpr]??-1L);
+        internal long val => (long)(mem[TreatExpr]??-1L);
         /// <summary>
         /// constructor: a new Treat expression
         /// </summary>
@@ -3249,9 +3249,9 @@ namespace Pyrrho.Level3
         /// <returns>whether they are structurally equivalent</returns>
         internal override bool _MatchExpr(Context cx,SqlValue v,RowSet r)
         {
-            if (CompareTo(v)!=0)
+            if (v is not SqlLiteral)
                 return false;
-            return v is SqlLiteral c &&  val == c.val;
+            return CompareTo(v) == 0;
         }
         /// <summary>
         /// Get the literal value
@@ -6333,9 +6333,11 @@ namespace Pyrrho.Level3
         }
         internal override bool _MatchExpr(Context cx, SqlValue v, RowSet r)
         {
-            if (v is not SqlFunction f)
+            if (v is not SqlFunction f || op != f.op || op1 != f.op1 || op2 != f.op2)
                 return false;
-            return (op == f.op && val == f.val && op1 == f.op1 && op2 == f.op2);
+            if (cx._Ob(val) is not SqlValue vv || cx._Ob(f.val) is not SqlValue fv)
+                return false;
+            return vv._MatchExpr(cx, fv, r);
         }
         internal override CTree<long, bool> _Rdc(Context cx)
         {

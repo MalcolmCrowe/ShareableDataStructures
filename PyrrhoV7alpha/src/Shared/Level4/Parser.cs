@@ -1457,7 +1457,6 @@ namespace Pyrrho.Level4
             long e = -1L;
             var pe = -1L;
             Domain rd = Domain.Row + (Domain.Nodes, xs);
-            ReturnStatement? re = null;
             if (tok != Sqlx.EOF && tok != Sqlx.END && tok != Sqlx.RPAREN)
             {
                 var op = cx.parse;
@@ -1469,8 +1468,8 @@ namespace Pyrrho.Level4
                     rd = cx.obs[(cx.obs[e] as ReturnStatement)?.result ?? -1L] as RowSet ?? rd;
                     pe = xe.defpos;
                 }
-                if (tok == Sqlx.ORDER)
-                    m += (RowSet.RowOrder, ParseOrderClause(Domain.Row, false));// limit to requirements specified here
+                if (tok == Sqlx.ORDER && rd is RowSet rr)
+                    m += (RowSet.RowOrder, ParseOrderClause(rr, Domain.Row, false));// limit to requirements specified here
                 if (tok == Sqlx.FETCH)
                     m += (RowSetSection.Size, FetchFirstClause());
                 if (cx.obs[cx.lastret] is ReturnStatement rs && cx.obs[rs.ret]?.domain is Domain d && d != Domain.Null)
@@ -6362,7 +6361,7 @@ namespace Pyrrho.Level4
                     left += (RowSet.Distinct, true);
             }
             var ois = left.ordSpec;
-            var nis = ParseOrderClause(ois, true);
+            var nis = ParseOrderClause(left, ois, true);
             left = (RowSet)(cx.obs[left.defpos] ?? throw new PEException("PE20701"));
             if (ois.CompareTo(nis) != 0)
                 left = left.Sort(cx, nis, false);
@@ -6483,25 +6482,40 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="wfok">whether to allow a window function</param>
         /// <returns>the tree of OrderItems</returns>
-		Domain ParseOrderClause(Domain ord, bool wfok)
+		Domain ParseOrderClause(RowSet rs, Domain ord, bool wfok)
         {
             if (tok != Sqlx.ORDER)
                 return ord;
             cx.IncSD(new Ident(this)); // order by columns will be in the foregoing cursor spec
             Next();
             Mustbe(Sqlx.BY);
-            var kb = (ord as RowSet)?.KnownBase(cx);
             var bs = BList<DBObject>.Empty;
             for (var b = ord.rowType.First(); b != null; b = b.Next())
                 bs += cx._Ob(b.value() ?? -1L) ?? SqlNull.Value;
-            bs += cx._Ob(ParseOrderItem(wfok)) ?? SqlNull.Value;
+            var oi = (SqlValue?)cx._Ob(ParseOrderItem(wfok)) ?? SqlNull.Value;
+            bs += Simplify(cx,oi,rs);
             while (tok == Sqlx.COMMA)
             {
                 Next();
-                bs += cx._Ob(ParseOrderItem(wfok)) ?? SqlNull.Value;
+                oi = (SqlValue?)cx._Ob(ParseOrderItem(wfok)) ?? SqlNull.Value;
+                bs += Simplify(cx,oi,rs);
             }
             cx.DecSD();
             return new Domain(cx.GetUid(), cx, Sqlx.ROW, bs, bs.Length);
+        }
+        static SqlValue Simplify(Context cx,SqlValue oi,RowSet rs)
+        {
+            if (oi is SqlTreatExpr te)
+            {
+                var v = (SqlValue?)cx._Ob(te.val)??SqlNull.Value;
+                var w = Simplify(cx, v, rs);
+                if (v != w)
+                    return (SqlValue)cx.Add(new SqlTreatExpr(te.defpos, w, te.domain));
+            }
+            for (var b = rs.rowType.First(); b != null; b = b.Next())
+                if (cx._Ob(b.value() ?? -1L) is SqlValue e && oi._MatchExpr(cx, e, rs))
+                    oi = e;
+            return oi;
         }
         /// <summary>
         /// This version is for WindowSpecifications
@@ -6523,7 +6537,7 @@ namespace Pyrrho.Level4
                 Next();
                 bs += cx._Ob(ParseOrderItem(false)) ?? SqlNull.Value;
             }
-            return new Domain(cx.GetUid(), cx, Sqlx.ROW, bs, bs.Length);
+            return new Domain(cx.GetUid(), cx, Sqlx.ROW, bs, bs.Length) - Domain.Aggs;
         }
         /// <summary>
 		/// BList<long?> =  TypedValue [ ASC | DESC ] [ NULLS ( FIRST | LAST )] .
@@ -9464,7 +9478,7 @@ namespace Pyrrho.Level4
             Mustbe(Sqlx.GROUP);
             Mustbe(Sqlx.LPAREN);
             if (r.order != Domain.Row)
-                r += (cx, WindowSpecification.Order, ParseOrderClause(r.order, false));
+                r += (cx, WindowSpecification.Order, ParseOrderClause(r.order));
             Mustbe(Sqlx.RPAREN);
             return r;
         }

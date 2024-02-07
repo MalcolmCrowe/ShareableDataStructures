@@ -1,4 +1,3 @@
-using System.Runtime.CompilerServices;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -401,6 +400,7 @@ namespace Pyrrho.Level4
             RoleDomainResults();
             RoleDomainCheckResults();
             RoleEdgeTypeResults();
+            RoleGraphInfoResults();
             RoleIndexResults();
             RoleIndexKeyResults();
             RoleJavaResults();
@@ -501,6 +501,7 @@ namespace Pyrrho.Level4
                 case "Role$EdgeType": return RoleEdgeTypeBookmark.New(_cx, res);
                 case "Role$Domain": return RoleDomainBookmark.New(_cx, res);
                 case "Role$DomainCheck": return RoleDomainCheckBookmark.New(_cx, res);
+                case "Role$GraphInfo": return RoleGraphInfoBookmark.New(_cx, res);
                 case "Role$Index": return RoleIndexBookmark.New(_cx, res);
                 case "Role$IndexKey": return RoleIndexKeyBookmark.New(_cx, res);
                 case "Role$Java": return RoleJavaBookmark.New(_cx, res);
@@ -6814,6 +6815,89 @@ namespace Pyrrho.Level4
                 throw new NotImplementedException();
             }
         }
+        static void RoleGraphInfoResults()
+        {
+            var t = new SystemTable("Role$GraphInfo");
+            t += new SystemTableColumn(t, "Name", Int, 1);
+            t += new SystemTableColumn(t, "Count", Int, 0);
+            t.Add();
+        }
+        internal class RoleGraphInfoBookmark : SystemBookmark
+        {
+            readonly BTree<int, (string, long)> _values;
+            RoleGraphInfoBookmark(Context cx,SystemRowSet r,int pos, BTree<int, (string, long)> v)
+                :base(cx,r,pos,pos,pos,_Value(r,v,pos))
+            {
+                _values = v;
+            }
+            internal static RoleGraphInfoBookmark? New(Context cx, SystemRowSet res)
+            {
+                var ro = cx.role ?? throw new DBException("42105");
+                var bn = CTree<long, bool>.Empty; // base node types
+                var be = CTree<long, bool>.Empty; // base edge types
+                var nt = CTree<long, long>.Empty; // specific node types and count
+                var et = CTree<long, long>.Empty; // specific edge types and count
+                var ls = CTree<string, bool>.Empty; // labels
+                for (var b = ro.dbobjects.First(); b != null; b = b.Next())
+                    if (b.value() is long p && p >= 0 && cx.db.objects[p] is NodeType t)
+                    {
+                        ls += t.labels;
+                        if (t is EdgeType)
+                        {
+                            if (!(t.super is EdgeType))
+                            {
+                                be += (p, true);
+                                for (var c = t.tableRows.First(); c != null; c = c.Next())
+                                {
+                                    var tr = c.value();
+                                    et += (tr.tabledefpos, et[tr.tabledefpos] + 1);
+                                }
+                            }
+                        }
+                        else if (!(t.super is NodeType))
+                        {
+                            bn += (p, true);
+                            for (var c = t.tableRows.First(); c != null; c = c.Next())
+                            {
+                                var tr = c.value();
+                                nt += (tr.tabledefpos, nt[tr.tabledefpos] + 1);
+                            }
+                        }
+                    }
+                var v = BTree<int,(string,long)>.Empty;
+                v += (0, ("BaseTypes", bn.Count+be.Count));
+                v += (1, ("SpecificTypes", nt.Count + et.Count));
+                v += (2, ("NodeTypes", bn.Count));
+                v += (3, ("EdgeTypes", be.Count));
+                var tn = 0L;
+                for (var b = nt.First(); b != null; b = b.Next())
+                    tn += b.value();
+                var te = 0L;
+                for (var b = et.First(); b!=null;b=b.Next())
+                    te += b.value();
+                v += (4, ("Nodes", tn));
+                v += (5, ("Edges", te));
+                v += (6, ("Labels", ls.Count));
+                return new RoleGraphInfoBookmark(cx,res,0,v);
+            }
+            static TRow _Value(SystemRowSet r,BTree<int,(string,long)> vs,int pos)
+            {
+                var (s, n) = vs[pos];
+                return new TRow(r, new TChar(s), new TInt(n));
+            }
+
+            protected override Cursor? _Next(Context cx)
+            {
+                if (_pos >= _values.Count - 1) return null;
+                return new RoleGraphInfoBookmark(cx, res, _pos + 1, _values);
+            }
+
+            protected override Cursor? _Previous(Context cx)
+            {
+                if (_pos <= 0) return null;
+                return new RoleGraphInfoBookmark(cx, res, _pos - 1, _values);
+            }
+        }
         static void RoleNodeTypeResults()
         {
             var t = new SystemTable("Role$NodeType");
@@ -6829,8 +6913,8 @@ namespace Pyrrho.Level4
         internal class RoleNodeTypeBookmark : SystemBookmark
         {
             readonly ABookmark<long, object> _fb;
-            RoleNodeTypeBookmark(Context cx, SystemRowSet r, int pos, ABookmark<long,object> fb, NodeType nt) 
-                : base(cx, r, pos, nt.defpos, nt.defpos, _Value(cx,r,nt))
+            RoleNodeTypeBookmark(Context cx, SystemRowSet r, int pos, ABookmark<long, object> fb, NodeType nt)
+                : base(cx, r, pos, nt.defpos, nt.defpos, _Value(cx, r, nt))
             {
                 _fb = fb;
             }

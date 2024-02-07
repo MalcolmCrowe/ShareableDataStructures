@@ -4410,6 +4410,11 @@ namespace Pyrrho.Level3
                     _cx.Add(rs);
                     rs = rs.Sort(_cx, ord, false);
                 }
+                if (mem[RowSetSection.Size] is int ct)
+                {
+                    _cx.Add(rs);
+                    rs = new RowSetSection(_cx, rs, 0, ct);
+                }
                 _cx.result = rs.defpos;
                 _cx.obs += (_cx.result, rs);
             }
