@@ -80,6 +80,7 @@ namespace Pyrrho.Level1
         internal string? tName; // name of the thread
         static int _uid = 0;
         internal int uid = ++_uid;
+        internal int ncells = 0;
         /// <summary>
         /// Constructor: a new AsyncStream
         /// <paramref name="rs">Always non-null for an outgoing connection</paramref>
@@ -192,10 +193,22 @@ namespace Pyrrho.Level1
                 throw new PEException("PE0012");
             if (debug != null)
                 Console.WriteLine(debug + value.ToString("X"));
-            if (wcount < bSize)
+            if (wcount < bSize-1)
                 wbuf.bytes[wcount++] = value;
-            if (wcount >= bSize)
+            if (wcount >= bSize - 1)
+            {
+                // update ncells
+                if (ncells != 1)
+                {
+                    int owc = wcount;
+                    wcount = 3;
+                    PutInt(ncells);
+                    wcount = owc;
+                }
                 WriteBuf();
+                ncells = 1;
+                wbuf.bytes[wcount++] = value;
+            }
         }
         public void Write(Protocol p)
         {
@@ -920,8 +933,6 @@ namespace Pyrrho.Level1
         /// <summary>
         /// Send obs cell contents.
         /// Normal result of SELECT in client-server comms.
-        /// Used in server-server comms to collect traversal conditions,
-        /// and thus reduce the amount of obs transferred
         /// </summary>
         /// <param name="tv"></param>
         internal void PutData(Context _cx, TypedValue tv)

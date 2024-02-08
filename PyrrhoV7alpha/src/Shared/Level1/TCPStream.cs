@@ -197,7 +197,6 @@ namespace Pyrrho.Level1
                 wbuf.bytes[wcount++] = value;
             if (wcount >= bSize - 1)
             {
-                wbuf.bytes[wcount++] = (byte)Responses.ReaderData;
                 // update ncells
                 if (ncells != 1)
                 {
@@ -934,8 +933,6 @@ namespace Pyrrho.Level1
         /// <summary>
         /// Send obs cell contents.
         /// Normal result of SELECT in client-server comms.
-        /// Used in server-server comms to collect traversal conditions,
-        /// and thus reduce the amount of obs transferred
         /// </summary>
         /// <param name="tv"></param>
         internal void PutData(Context _cx, TypedValue tv)
