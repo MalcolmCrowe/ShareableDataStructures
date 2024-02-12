@@ -10,14 +10,12 @@ using System.Globalization;
 using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
-// You can view and test this code, and use it subject for any purpose.
+// You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
-// All other use or distribution or the construction of any product incorporating 
-// this technology requires a license from the University of the West of Scotland.
 
 namespace Pyrrho
 {
@@ -27,7 +25,7 @@ namespace Pyrrho
     /// and exits when the connection is closed. 
     /// There is a private PyrrhoServer instance for each thread.
     /// Communication is by asynchronous TCP transport, from a PyrrhoLink client or another server. 
-    /// Show HTTP communication see HttpService.cs
+    /// For HTTP communication see HttpService.cs
     /// </summary>
     internal class PyrrhoServer
     {
@@ -444,6 +442,47 @@ namespace Pyrrho
                                 }
                                 break;
                             }
+                        case Protocol.ExecuteMatch: // ExecuteMatch
+                            {
+                                if (rb != null)
+                                    throw new DBException("2E202").Mix();
+                                nextCol = 0; // discard anything left over from ReaderData
+                                var cmd = tcp.GetString();
+                                db = db.Transact(db.nextId, conn);
+                                cx = new(db, cx ?? throw new PEException("PE1400"));
+                                //           Console.WriteLine(cmd);
+                                db = new Parser(cx).ParseSql(cmd, Domain.TableType);
+                                cx.db = db;
+                                cx.done = ObTree.Empty;
+                                var tn = DateTime.Now.Ticks;
+                                var c = db.AffCount(cx);
+                                tcp.PutWarnings(cx);
+                                if (cx.result <= 0L)
+                                {
+                                    tcp.Write(Responses.MatchDone);
+                                    tcp.PutInt(c);   
+                                    db = db.RdrClose(ref cx);
+                                    var r = cx.rdC;
+                                    cx = new(db, conn) { rdC = r };
+                                }
+                                else
+                                {
+                                    tcp.Write(Responses.TableData);
+                                    tcp.PutSchema(cx);
+                                    rb = null;
+                                    if (cx.obs[cx.result] is RowSet res)
+                                    {
+                                        if (PyrrhoStart.ShowPlan)
+                                            res.ShowPlan(cx);
+                                        cx.rdC += res.dependents;
+                                        rb = res.First(cx);
+                                        while (rb != null && rb.IsNull)
+                                            rb = rb.Next(cx);
+                                    } 
+                                    db = cx.db;
+                                }
+                                break;
+                            }
                         case Protocol.Get: // GET rurl
                             {
                                 var k = tcp.GetLong();
@@ -651,11 +690,10 @@ namespace Pyrrho
                                     tcp.PutInt(en);
                                     for (var b = tb.rowType.First(); b != null; b = b.Next())
                                         if (b.value() is long a && tb.representation[a] is Domain dt &&
-                                                vs?.Contains(a) == true 
-                                                && dt.infos[cx.role.defpos] is ObInfo ci &&
+                                                vs?.Contains(a) == true &&
                                                 dt.Compare(old?[a] ?? TNull.Value, vs?[a] ?? TNull.Value) != 0)
                                         {
-                                            tcp.PutString(ci.name ?? "");
+                                            tcp.PutString(cx.NameFor(a));
                                             tcp.PutInt(dt.Typecode());
                                             tcp.PutData(cx, vs?[a] ?? TNull.Value);
                                         }
@@ -854,7 +892,7 @@ namespace Pyrrho
                     try
                     {
                         db = db.Rollback();
-                        cx = new Context(db);
+                        cx = new Context(db,cx?.conn);
                         rb = null;
                         tcp.StartException();
                         tcp.Write(Responses.Exception);
@@ -966,7 +1004,7 @@ namespace Pyrrho
                 {
                     string? str = null;
                     int b = tcp.crypt.ReadByte();
-                    if (b < (int)Connecting.Password || b > (int)Connecting.AllowAsk)
+                    if (b < (int)Connecting.Password || b > (int)Connecting.CaseSensitive)
                         throw new DBException("42105");
                     switch ((Connecting)b)
                     {
@@ -985,6 +1023,7 @@ namespace Pyrrho
                         case Connecting.Modify: str = "Modify"; break;
                         case Connecting.Length: str = "Length"; break;
                         case Connecting.Culture: str = "Locale"; break;
+                        case Connecting.CaseSensitive: str = "CaseSensitive"; break;
                         default:
                             throw new DBException("42105");
                     }
@@ -1031,7 +1070,7 @@ namespace Pyrrho
                 return;
             }
             tcp.Write(Responses.ReaderData);
-            int ncells = 1; // we will very naughtily poke this into the write buffer later (at offset 3)
+            tcp.ncells = 1; // we will very naughtily poke this into the write buffer later (at offset 3)
             // for now we announce that we will send one cell: we always send at least one cell
             tcp.PutInt(1);
             var domains = BTree<int, Domain>.Empty;
@@ -1082,14 +1121,14 @@ namespace Pyrrho
                 tcp.PutCell(cx, dc, nextCell, rv, rc);
                 if (++nextCol == ds)
                     lookAheadDone = false;
-                ncells++;
+                tcp.ncells++;
             }
             // naughty naughty: update ncells
-            if (ncells != 1)
+            if (tcp.ncells != 1)
             {
                 int owc = tcp.wcount;
                 tcp.wcount = 3;
-                tcp.PutInt(ncells);
+                tcp.PutInt(tcp.ncells);
                 tcp.wcount = owc;
             }
         }
@@ -1145,20 +1184,16 @@ namespace Pyrrho
                                 return lc + 1 + StringLength(ut.prefix) + StringLength(o);
                             if (ut.suffix != null)
                                 return lc + 1 + StringLength(o) + StringLength(ut.suffix);
+                            if (tv is TTypeSpec tt)
+                                return lc + 1 + StringLength(tt._dataType.name);
                         }
                         var tn = tv.dataType.name;
                         return lc + 1 + tn.Length + ((TRow)o).Length;
                     }
                 case Sqlx.NODETYPE:
+                    return lc+1 + StringLength(((TNode)tv).tableRow.vals.ToString());
                 case Sqlx.EDGETYPE:
-                    {
-                        var s = 
-                        (tv is TNode tn && tn.dataType is NodeType nt
-                            && tn.tableRow.vals[nt.idCol] is TInt ni)?
-                            ni.ToString(): tv.ToString();
-                        return lc + 1 + StringLength(s);
-                    }
-                case Sqlx.XML: break;
+                    return lc + 1 + StringLength(((TEdge)tv).tableRow.vals.ToString());
             }
             return lc + 1 + StringLength(o);
         }
@@ -1452,8 +1487,8 @@ namespace Pyrrho
         /// </summary>
  		internal static string[] Version = new string[]
         {
-            "Pyrrho DBMS (c) 2023 Malcolm Crowe and University of the West of Scotland",
-            "7.05alpha","(18 Aug 2023)", "http://www.pyrrhodb.com"
+            "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
+            "7.08alpha","(8 February January 2024)", "http://www.pyrrhodb.com"
         };
 	}
 }
