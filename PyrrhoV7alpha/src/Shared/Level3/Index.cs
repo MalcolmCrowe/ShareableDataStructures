@@ -3,6 +3,7 @@ using Pyrrho.Level4; // for rename/drop
 using Pyrrho.Common;
 using System.Text;
 using System.Runtime.ExceptionServices;
+using static Pyrrho.Level2.PIndex;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
@@ -213,7 +214,7 @@ namespace Pyrrho.Level3
             }
             return this + (Tree, rs);
         }
-        bool HasNull(CList<TypedValue> k)
+        static bool HasNull(CList<TypedValue> k)
         {
             for (var b = k.First(); b != null; b = b.Next())
                 if (b.value() == TNull.Value)
@@ -268,6 +269,18 @@ namespace Pyrrho.Level3
                 nd += (rt, p);
             }    
             return base.Drop(db, nd, p);
+        }
+        internal Index AddRows(Table tb,Context cx)
+        {
+            var x = this;
+            for (var b = tb.indexes[x.keys]?.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Index sx && sx.rows is not null
+                    && sx.flags.HasFlag(ConstraintType.PrimaryKey))
+                    x += (Tree, sx.rows);
+       //     for (var b = tb.super.First(); b != null; b = b.Next())
+       //         if (b.key() is Table t)
+       //             x = x.AddRows(t, cx);
+            return x;
         }
         /// <summary>
         /// A readable version of the Index

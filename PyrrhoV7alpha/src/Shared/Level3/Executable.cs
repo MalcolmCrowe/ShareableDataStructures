@@ -9,6 +9,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 using static Pyrrho.Common.Delta;
 using System.Linq;
+using System.ComponentModel;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -1792,8 +1793,7 @@ namespace Pyrrho.Level3
 	internal class WhenPart :Executable
 	{
         internal const long
-            Cond = -114, // long SqlValue
-            Stms = -115; // BList<long?> Executable
+            Cond = -114; // long SqlValue
         /// <summary>
         /// A search condition for the when part
         /// </summary>
@@ -1801,14 +1801,14 @@ namespace Pyrrho.Level3
         /// <summary>
         /// a tree of statements
         /// </summary>
-		public BList<long?> stms =>(BList<long?>?)mem[Stms]?? BList<long?>.Empty;
+		public BList<long?> stms =>(BList<long?>?)mem[CompoundStatement.Stms]?? BList<long?>.Empty;
         /// <summary>
         /// Constructor: A searched when part from the parser
         /// </summary>
         /// <param name="v">A search condition</param>
         /// <param name="s">A tree of statements for this when</param>
         public WhenPart(long dp,SqlValue v, BList<long?> s) 
-            : base(dp, BTree<long, object>.Empty+(Cond,v.defpos)+(Stms,s))
+            : base(dp, BTree<long, object>.Empty+(Cond,v.defpos)+(CompoundStatement.Stms,s))
         { }
         protected WhenPart(long dp, BTree<long, object> m) : base(dp, m) { }
         public static WhenPart operator +(WhenPart et, (long, object) x)
@@ -1834,7 +1834,7 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == Stms)
+            if (p == CompoundStatement.Stms)
                 m += (_Depth, cx._DepthBV((BList<long?>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
@@ -1860,7 +1860,7 @@ namespace Pyrrho.Level3
                 r += (Cond, nc);
             var ns = cx.FixLl(stms);
             if (ns != stms)
-                r += (Stms, ns);
+                r += (CompoundStatement.Stms, ns);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -1886,7 +1886,7 @@ namespace Pyrrho.Level3
                 r+=(cx, Cond, no);
             var nw = cx.ReplacedLl(stms);
             if (nw != stms)
-                r+=(cx, Stms, nw);
+                r+=(cx, CompoundStatement.Stms, nw);
             return r;
         }
         public override string ToString()
@@ -2461,7 +2461,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public BList<long?> stms => (BList<long?>?)mem[WhenPart.Stms]??BList<long?>.Empty;
+		public BList<long?> stms => (BList<long?>?)mem[CompoundStatement.Stms]??BList<long?>.Empty;
         /// <summary>
         /// Constructor: a loop statement from the parser
         /// </summary>
@@ -2493,7 +2493,7 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == WhenPart.Stms)
+            if (p == CompoundStatement.Stms)
                 m += (_Depth, cx._DepthBV((BList<long?>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
@@ -2516,7 +2516,7 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var ns = cx.FixLl(stms);
             if (ns != stms)
-                r += (WhenPart.Stms, ns);
+                r += (CompoundStatement.Stms, ns);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2554,7 +2554,7 @@ namespace Pyrrho.Level3
             var r = (LoopStatement)base._Replace(cx, so, sv);
             var nw = cx.ReplacedLl(stms);
             if (nw != stms)
-                r += (cx,WhenPart.Stms, nw);
+                r += (cx, CompoundStatement.Stms, nw);
             return r;
         }
         public override string ToString()
@@ -2577,8 +2577,7 @@ namespace Pyrrho.Level3
 	{
         internal const long
             ForVn = -125, // string
-            Sel = -127, // long RowSet
-            Stms = -128; // BList<long?> Executable
+            Sel = -127; // long RowSet
         /// <summary>
         /// The query for the FOR
         /// </summary>
@@ -2590,14 +2589,14 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public BList<long?> stms => (BList<long?>?)mem[Stms]??BList<long?>.Empty;
+		public BList<long?> stms => (BList<long?>?)mem[CompoundStatement.Stms]??BList<long?>.Empty;
         /// <summary>
         /// Constructor: a for statement from the parser
         /// </summary>
         /// <param name="n">The label for the FOR</param>
         public ForSelectStatement(long dp, string n,Ident vn, 
             RowSet rs,BList<long?>ss ) 
-            : base(dp,BTree<long, object>.Empty+ (Sel,rs.defpos) + (Stms,ss)
+            : base(dp,BTree<long, object>.Empty+ (Sel,rs.defpos) + (CompoundStatement.Stms,ss)
                   +(Label,n)+(ForVn,vn.ident))
 		{ }
         protected ForSelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2624,7 +2623,7 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == Stms)
+            if (p == CompoundStatement.Stms)
                 m += (_Depth, cx._DepthBV((BList<long?>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
@@ -2650,7 +2649,7 @@ namespace Pyrrho.Level3
                 r += (Sel, ns);
             var nn = cx.FixLl(stms);
             if (nn != stms)
-                r += (Stms, nn);
+                r += (CompoundStatement.Stms, nn);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2690,7 +2689,7 @@ namespace Pyrrho.Level3
                 r+=(cx, Sel, no);
             var nw = cx.ReplacedLl(stms);
             if (nw != stms)
-                r+=(cx,Stms, nw);
+                r+=(cx, CompoundStatement.Stms, nw);
             return r;
         }
         public override string ToString()
@@ -4151,18 +4150,8 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            string cm = " ", gm = " [";
-            for (var b = graphExps.First(); b != null; b = b.Next())
-                if (b.value() is CList<SqlNode> ge)
-                {
-                    sb.Append(gm); gm = ";";
-                    for (var c = ge.First(); c != null; c = c.Next())
-                    {
-                        sb.Append(Uid(c.key())); sb.Append('='); sb.Append(c.value());
-                    }
-                }
-            if (gm == ";") sb.Append(']'); 
-            cm = "";
+            string cm;
+            sb.Append('['); sb.Append(graphExps);sb.Append(']');
             if (stms!=BList<long?>.Empty)
             {
                 cm = " THEN [";
@@ -4339,9 +4328,11 @@ namespace Pyrrho.Level3
         {
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
-            var cx = new Context(_cx);
-            cx.binding = _cx.binding;
-            cx.result = domain.defpos;
+            var cx = new Context(_cx)
+            {
+                binding = _cx.binding,
+                result = domain.defpos
+            };
             _step = 0;
             var gf = matchList.First();
             if (cx.obs[gf?.value() ?? -1L] is SqlMatch sm)
@@ -4462,7 +4453,7 @@ namespace Pyrrho.Level3
             /// <param name="pd">The current last matched node if any</param>
             public abstract void Next(Context cx, Step? cn, Sqlx tok, TNode? pd);
             public virtual Step? Cont => null;
-            protected string Show(ABookmark<int,long?>? b)
+            protected static string Show(ABookmark<int,long?>? b)
             {
                 var sb = new StringBuilder();
                 var cm = '[';
@@ -4684,56 +4675,58 @@ namespace Pyrrho.Level3
                 cx.Add(ex); cx.Add(ers);
                 cx.val = TNull.Value;
                 cx.values += cx.binding;
-                if (cx.obs[body] is Executable bd)
+                if (cx.obs[body] is Executable bd && cx.binding!=CTree<long, TypedValue>.Empty)
+                { 
                     cx = bd.Obey(cx);
-                if (cx.val is TRow rr)
-                {
-                    if (domain.defpos != bindings && cx.obs[domain.defpos] is ExplicitRowSet es)
+                    if (cx.val is TRow rr)
                     {
-                        var ur = cx.GetUid();
-                        es += (cx, ExplicitRowSet.ExplRows, es.explRows + (ur, rr));
-                        cx.obs+=(es.defpos,es);
-                    }
-                    if (domain.defpos != bindings && cx.obs[domain.defpos] is SelectRowSet srs)
-                    {
-                        if (srs.aggs != CTree<long, bool>.Empty)
-                        // This code is largely copied from SelectRowSet.Build
+                        if (domain.defpos != bindings && cx.obs[domain.defpos] is ExplicitRowSet es)
                         {
-                            cx.values += rr.values;
-                            if (!cx.funcs.Contains(defpos))
-                                cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
-                            if (srs.groupings.Count == 0)
-                                for (var b0 = srs.aggs.First(); b0 != null; b0 = b0.Next())
-                                {
-                                    if (cx.obs[b0.key()] is SqlFunction sf0)
-                                        sf0.AddIn(TRow.Empty, cx);
-                                }
-                            else for (var g = srs.groupings.First(); g != null; g = g.Next())
-                                    if (g.value() is long p && cx.obs[p] is Grouping gg)
+                            var ur = cx.GetUid();
+                            es += (cx, ExplicitRowSet.ExplRows, es.explRows + (ur, rr));
+                            cx.obs += (es.defpos, es);
+                        }
+                        if (domain.defpos != bindings && cx.obs[domain.defpos] is SelectRowSet srs)
+                        {
+                            if (srs.aggs != CTree<long, bool>.Empty)
+                            // This code is largely copied from SelectRowSet.Build
+                            {
+                                cx.values += rr.values;
+                                if (!cx.funcs.Contains(defpos))
+                                    cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
+                                if (srs.groupings.Count == 0)
+                                    for (var b0 = srs.aggs.First(); b0 != null; b0 = b0.Next())
                                     {
-                                        var vals = CTree<long, TypedValue>.Empty;
-                                        for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
-                                            if (gb.value() is long gp && cx.obs[gp] is SqlValue v)
-                                                vals += (gp, v.Eval(cx));
-                                        var key = new TRow(srs.groupCols, vals);
-                                        for (var b1 = srs.aggs.First(); b1 != null; b1 = b1.Next())
-                                            if (cx.obs[b1.key()] is SqlFunction sf1)
-                                                sf1.AddIn(key, cx);
+                                        if (cx.obs[b0.key()] is SqlFunction sf0)
+                                            sf0.AddIn(TRow.Empty, cx);
                                     }
+                                else for (var g = srs.groupings.First(); g != null; g = g.Next())
+                                        if (g.value() is long p && cx.obs[p] is Grouping gg)
+                                        {
+                                            var vals = CTree<long, TypedValue>.Empty;
+                                            for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
+                                                if (gb.value() is long gp && cx.obs[gp] is SqlValue v)
+                                                    vals += (gp, v.Eval(cx));
+                                            var key = new TRow(srs.groupCols, vals);
+                                            for (var b1 = srs.aggs.First(); b1 != null; b1 = b1.Next())
+                                                if (cx.obs[b1.key()] is SqlFunction sf1)
+                                                    sf1.AddIn(key, cx);
+                                        }
+                            }
                         }
                     }
-                }
-                if (flags.HasFlag(Flags.Body) && cx._Ob(body) is Executable e)
-                {
-                    var ob = cx.binding;
-                    cx.nodes += gDefs;
-                    var ac = new Activation(cx, "" + defpos);
-                    ac.values += ob;
-                    e.Obey(ac);
-                    ac.SlideDown();
-                    cx.values += ac.values;
-                    cx.binding = ob;
-                    cx.db = ac.db;
+                    /*              if (flags.HasFlag(Flags.Body) && cx._Ob(body) is Executable e)
+                                  {
+                                      var ob = cx.binding;
+                                      cx.nodes += gDefs;
+                                      var ac = new Activation(cx, "" + defpos);
+                                      ac.values += ob;
+                                      e.Obey(ac);
+                                      ac.SlideDown();
+                                      cx.values += ac.values;
+                                      cx.binding = ob;
+                                      cx.db = ac.db;
+                                  } */
                 }
                 else if (flags == Flags.None)
                     cx.val = TBool.True;
@@ -4790,8 +4783,7 @@ namespace Pyrrho.Level3
             {
                 var ctr = CTree<Domain, int>.Empty;
                 var tg = truncating != CTree<long, (int, Domain)>.Empty;
-                while (pn.super is NodeType ns)
-                    pn = (NodeType)(cx.db.objects[ns.defpos] ?? throw new DBException("42105"));
+                pn = pn.TopNodeType();
                 for (var b = pn.rindexes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is EdgeType rt)
                     {
@@ -4837,20 +4829,25 @@ namespace Pyrrho.Level3
                     if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1 && nt1 is not null)
                         ds = For(cx, xn, nt1, ds);
             var df = ds.First();
-            if (ds.Count > 100)
-                ;
             if (df != null)
                DbNode(cx, new NodeStep(be.alt,xn,df,new ExpStep(be.alt,be.matches?.Next(),be.next)),
                     (xn is SqlEdge && xn is not SqlPath) ? xn.tok : tok, pd);
         }
-        CTree<Domain,int> AddIn(CTree<Domain,int> ctr,EdgeType rt)
+        static CTree<Domain,int> AddIn(CTree<Domain,int> ctr,EdgeType rt)
         {
-            for (var st = rt; st != null; st = st.super as EdgeType)
-                ctr += (st, ctr[st] + 1);
+            ctr = AddIn1(ctr, rt);
             ctr += (Domain.EdgeType, ctr[Domain.EdgeType]+1);
             return ctr;
         }
-        BTree<long,TableRow> Trunc(BTree<long,TableRow> ds,EdgeType rt,CTree<long,bool> t,int lm,Domain dm)
+        static CTree<Domain,int> AddIn1(CTree<Domain,int> ctr,Table tb)
+        {
+            ctr += (tb, ctr[tb] + 1);
+            for (var b = tb.super.First(); b != null; b = b.Next())
+                if (b.key() is Table t)
+                    ctr = AddIn1(ctr, t);
+            return ctr;
+        }
+        static BTree<long,TableRow> Trunc(BTree<long,TableRow> ds,EdgeType rt,CTree<long,bool> t,int lm,Domain dm)
         {
             var mt = new MTree(dm, TreeBehaviour.Ignore, 0);
             for (var b = t.First(); b != null; b = b.Next())
@@ -4870,12 +4867,20 @@ namespace Pyrrho.Level3
         }
         bool Trunc(CTree<Domain,int> ctr,EdgeType rt)
         {
-            for (var st = rt; st != null; st = st.super as EdgeType)
-                if (truncating.Contains(st.defpos) && ctr[st] >= truncating[st.defpos].Item1)
-                        return true;
+            if (Trunc1(ctr, rt))
+                return true;
             if (truncating.Contains(Domain.EdgeType.defpos) 
                 && (ctr[Domain.EdgeType]>= truncating[Domain.EdgeType.defpos].Item1))
                     return true;
+            return false;
+        }
+        bool Trunc1(CTree<Domain,int> ctr,Table st)
+        {
+            if (truncating.Contains(st.defpos) && ctr[st] >= truncating[st.defpos].Item1)
+                return true;
+            for (var b = st.super.First(); b != null; b = b.Next())
+                if (b.key() is Table t)
+                    return Trunc1(ctr, t);
             return false;
         }
         bool AllTrunc(CTree<Domain, int> ctr)
@@ -4885,7 +4890,7 @@ namespace Pyrrho.Level3
                 return true;
             return false;
         }
-        BTree<long, TableRow> For(Context cx, SqlNode xn, NodeType nt, BTree<long, TableRow>? ds)
+        static BTree<long, TableRow> For(Context cx, SqlNode xn, NodeType nt, BTree<long, TableRow>? ds)
         {
             ds ??= BTree<long, TableRow>.Empty;
             if (nt.FindPrimaryIndex(cx) is Index px
@@ -4920,7 +4925,7 @@ namespace Pyrrho.Level3
             var ob = cx.binding;
             var pa = cx.paths[bn.alt.defpos];
             var ot = pa;
-            TNode? dn = null;
+            TNode? dn;
             var ns = bn.nodes;
             while(ns is not null)
             {
@@ -4956,7 +4961,7 @@ namespace Pyrrho.Level3
                 cx.paths += (bn.alt.defpos,ot);
             cx.binding = ob;
         }
-        TPath PathInit(Context cx, TPath pa, ABookmark<int, long?> ma, int d)
+        static TPath PathInit(Context cx, TPath pa, ABookmark<int, long?> ma, int d)
         {
             for (var c = ma; c != null; c = c.Next())
                 if (cx.obs[c.value() ?? -1L] is SqlNode cn)
@@ -5120,7 +5125,7 @@ namespace Pyrrho.Level3
                 var (i, d) = b.value();
                 var k = b.key();
                 long nk = k;
-                if (cx.obs[k] is EdgeType et)
+                if (cx.obs[k] is EdgeType)
                     nk = cx.done[k]?.defpos ?? k;
                 var nd = cx.done[d.defpos] as Domain?? d;
                 if (k != nk || d.defpos != nd.defpos)

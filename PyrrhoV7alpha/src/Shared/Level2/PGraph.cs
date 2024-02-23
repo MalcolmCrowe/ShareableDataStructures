@@ -15,17 +15,17 @@ namespace Pyrrho.Level2
     /// <summary>
     /// PNodeType adds PTable behaviour to PType
     /// </summary>
-    internal class PNodeType : PType1
+    internal class PNodeType : PType2
     {
         internal PNodeType(string nm,PType pt,NodeType dm,Context cx)
-            :base (Type.PNodeType,nm,dm,dm.super,-1L,pt.ppos,cx)
+            :base(Type.PNodeType,nm,dm,dm.super,-1L,pt.ppos,cx)
         {  }
         internal PNodeType(Type t,string nm, long p, NodeType dm, Context cx)
             : base(t, nm, dm, dm.super, -1L, p, cx)
         { }
-        protected PNodeType(Type t, string nm, NodeType nt, Domain? un, long ns, long pp, Context cx)
+        protected PNodeType(Type t, string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
             : base(t,nm,nt,un,ns, pp,cx) { }
-        public PNodeType(string nm, NodeType nt, Domain? un, long ns, long pp, Context cx)
+        public PNodeType(string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
             : base(Type.PNodeType, nm, nt, un, ns, pp, cx) 
         { }
         public PNodeType(Reader rdr) : base(Type.PNodeType, rdr) 
@@ -55,7 +55,11 @@ namespace Pyrrho.Level2
             arrivingType = dm.arrivingType;
    //         GraphUse(cx, defpos, leavingType, arrivingType);
         }
-        public PEdgeType(string nm, EdgeType nt, Domain? un, long ns, long pp, Context cx) 
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            return base.Dependent(wr, tr);
+        }
+        public PEdgeType(string nm, EdgeType nt, CTree<Domain, bool> un, long ns, long pp, Context cx) 
             : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) { }
         public PEdgeType(Reader rdr) : base(Type.PEdgeType, rdr) 
         { }

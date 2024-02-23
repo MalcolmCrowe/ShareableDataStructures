@@ -150,11 +150,19 @@ namespace Pyrrho.Level4
                     }
                     else if (cm.Contains(n))
                     {
-                        var ln = (lr.alias ?? lr.name) + "." + n;
-                        var nl = sv + (_Alias, ln);
-                        cx.Replace(sv, nl);
-                        ls += ln;
-                        nn += (ln, (b.key(), sv.defpos));
+                        if ((lr.alias ?? lr.name) is string xl)
+                        {
+                            var ln = xl + "." + n;
+                            var nl = sv + (_Alias, ln);
+                            cx.Replace(sv, nl);
+                            ls += ln;
+                            nn += (ln, (b.key(), sv.defpos));
+                        }
+                        else
+                        {
+                            nn += (n, (b.key(), sv.defpos));
+                            ls += n;
+                        }
                         cs += sv.defpos;
                     }
                     else
@@ -174,11 +182,19 @@ namespace Pyrrho.Level4
                     }
                     else if (cm.Contains(n))
                     {
-                        var rn = (rr.alias ?? rr.name) + "." + n;
-                        var nr = rv + (_Alias, rn);
-                        cx.Replace(rv, nr);
-                        rs += rn;
-                        nn += (rn, (b.key(), rv.defpos));
+                        if ((rr.alias ?? rr.name) is string xr)
+                        {
+                            var rn = xr + "." + n;
+                            var nr = rv + (_Alias, rn);
+                            cx.Replace(rv, nr);
+                            rs += rn;
+                            nn += (rn, (b.key(), rv.defpos));
+                        }
+                        else
+                        {
+                            nn += (n, (b.key(), rv.defpos));
+                            rs += n;
+                        }
                         cs += rv.defpos;
                     }
                     else
@@ -723,7 +739,8 @@ namespace Pyrrho.Level4
         }
         internal static InnerJoinBookmark? New(Context cx,JoinRowSet j)
         {
-            var left = ((RowSet?)cx.obs[j.first])?.First(cx);
+            var lrs = ((RowSet?)cx.obs[j.first]);
+            var left = lrs?.First(cx);
             var right = ((RowSet?)cx.obs[j.second])?.First(cx);
             if (left == null || right == null)
                 return null;

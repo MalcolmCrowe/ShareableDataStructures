@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -118,19 +118,8 @@ namespace Pyrrho.Level2
                 index = (dataType as NodeType)?.idIx??-1L;
             else if (flags.HasFlag(GraphFlags.LeaveCol))
                 index = (dataType as EdgeType)?.leaveIx ?? -1L;
-            if (wr.cx.uids[tabledefpos] is long tp)
-                for (var ta =wr.cx.db.objects[tp] as Table; ta != null; 
-                    ta = wr.cx.db.objects[ta.super?.defpos??-1L] as Table)
-            {
-                var rt = BList<long?>.Empty;
-                for (var b = ta.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p && p != ppos && p<Transaction.TransPos)
-                        rt += p;
-                ta += (Domain.RowType, rt);
-                ta += (Domain.Representation, ta.representation - ppos);
-                ta += (Table.PathDomain, ta._PathDomain(wr.cx));
-                wr.cx.db += (ta.defpos, ta);
-            }
+            if (wr.cx.uids[tabledefpos] is long tp && wr.cx.db.objects[tp] is Table ta)
+                Commit(wr.cx, ta);
             var (nt,ph) = base.Commit(wr, tr);
             if (wr.cx.uids[tabledefpos] is long t && wr.cx.db.objects[t] is Table tb)
             {
@@ -162,6 +151,20 @@ namespace Pyrrho.Level2
                     wr.cx.db += (tb.defpos, tb);
             }
             return (nt,ph);
+        }
+        void Commit(Context cx,Table ta)
+        {
+            var rt = BList<long?>.Empty;
+            for (var b = ta.rowType.First(); b != null; b = b.Next())
+                if (b.value() is long p && p != ppos && p < Transaction.TransPos)
+                    rt += p;
+            ta += (Domain.RowType, rt);
+            ta += (Domain.Representation, ta.representation - ppos);
+            ta += (Table.PathDomain, ta._PathDomain(cx));
+            cx.db += (ta.defpos, ta);
+            for (var b = ta.super.First(); b != null; b = b.Next())
+                if (b.key() is Table t)
+                    Commit(cx, t);
         }
         /// <summary>
         /// Serialise this Physical to the PhysBase
@@ -286,7 +289,11 @@ namespace Pyrrho.Level2
             if (table.defpos < 0)
                 throw new DBException("42105");
             seq = (tc.flags==GraphFlags.None) ? -1:tc.seq;
-            table += (cx, seq, tc); // this is where the NodeType stuff happens
+            var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105");
+            ti += (ObInfo.Names, ti.names + (name, (seq,ppos)));
+            table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
+            var ot = table;
+            table += (cx, tc); // this is where the NodeType stuff happens
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
             tc += (TableColumn.Seq, seq);
             cx.db += (tc.defpos, tc);
@@ -294,7 +301,7 @@ namespace Pyrrho.Level2
             for (var b = table.subtypes.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is NodeType st)
                 {
-                    st += (Domain.Under, table);
+                    st += (Domain.Under, st.super-ot+(table,true));
                     cx.db += (st, cx.db.loadpos);
                     cx.db += st;
                 }

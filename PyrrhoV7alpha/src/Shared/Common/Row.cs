@@ -9,7 +9,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -1684,4 +1684,32 @@ namespace Pyrrho.Common
     [Flags]
     internal enum OrderCategory 
     { None = 0, Equals = 1, Full = 2, Relative = 4, Map = 8, State = 16, Primitive = 32 };
+    /// <summary>
+    /// A set of DBObject references
+    /// </summary>
+    internal class TMeta : TypedValue
+    {
+        public readonly long defpos;
+        public readonly Sqlx kind;
+        public readonly CTree<string, TypedValue> props;
+        public readonly DBObject? dbo;
+        public TMeta(long dp,Sqlx k,Context cx) : base(Domain.Content) 
+        {
+            defpos = dp;
+            kind = k;
+            var r = CTree<string,TypedValue>.Empty;
+            if (cx.db.objects[dp] is DBObject ob)
+            {
+                dbo = ob;
+                r += ("Pos", new TInt(dp));
+                r += ("Type", new TChar(ob.GetType().Name));
+                r += ("Domain", new TChar(ob.domain.kind.ToString()));
+                if (ob.definer>0)
+                    r += ("Definer", new TInt(ob.definer));
+                if (ob.infos[cx.role.defpos] is ObInfo oi && oi.name is string no)
+                    r += ("Name", new TChar(no));
+            }
+            props = r;
+        }
+    }
 }

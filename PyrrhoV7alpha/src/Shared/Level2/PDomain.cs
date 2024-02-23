@@ -23,7 +23,7 @@ namespace Pyrrho.Level2
         /// </summary>
 		public virtual long defpos { get { return ppos; } }
         internal Domain domain = Domain.Null;
-        internal Domain? element = null, under = null;
+        internal Domain? element = null;
         internal long domdefpos = -1L;
 
         public override long Dependent(Writer wr, Transaction tr)
@@ -49,28 +49,25 @@ namespace Pyrrho.Level2
             string co, string dv, Domain? sd, long pp, Context cx)
             : base(t, pp, cx, nm, Grant.AllPrivileges)
         {
-            long k;
-            if (dt == Sqlx.ARRAY || dt == Sqlx.MULTISET)
-            {
-                k = Domain.Element;
-                element = sd;
-            }
-            else
-            {
-                k = Domain.Under;
-                under = sd;
-            }
             var v = (dv == "") ? null : Domain.For(dt).Parse(cx.db.uid, dv, Context._system);
             domdefpos = pp;
             name = nm;
-            domain = new Domain(-1L, dt, BTree<long,object>.Empty + (DBObject._Depth,SqlValue._Depths(element,under))
+            domain = new Domain(-1L, dt, BTree<long, object>.Empty
+                + (DBObject._Depth, SqlValue._Depths(element))
                 + (Domain.Precision, dl) + (Domain.Scale, sc)
-                + (Domain.Charset, ch) + (DBObject.LastChange,pp)
+                + (Domain.Charset, ch) + (DBObject.LastChange, pp)
                 + (Domain.Culture, CultureInfo.GetCultureInfo(co))
                 + (Domain.DefaultString, dv)
                 + (ObInfo.Name, nm));
-            if (sd != null)
-                domain += (k, sd.defpos);
+            if (sd is not null)
+            {
+                if (dt == Sqlx.ARRAY || dt == Sqlx.MULTISET || dt == Sqlx.SET)
+                {
+                    element = sd;
+                    domain += (Domain.Element, sd.defpos);
+                }
+                throw new PEException("PE090601");
+            }
             if (v != null)
                 domain += (Domain.Default, v);
         }
@@ -169,13 +166,7 @@ namespace Pyrrho.Level2
                 ds = "'" + ds + "'";
                 domain += (Domain.DefaultString, ds);
             }
-            var sd = (Domain?)rdr.context._Ob(rdr.GetLong());
-            if (sd is not null && kind == Sqlx.TYPE)
-            {
-                under = sd;
-                domain += (Domain.Under, sd);
-            }
-            else if (sd is not null)
+            if (rdr.context._Ob(rdr.GetLong()) is Domain sd)
             {
                 element = sd;
                 domain += (Domain.Element, sd);

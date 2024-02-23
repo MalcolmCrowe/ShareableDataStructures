@@ -74,7 +74,7 @@ namespace Pyrrho.Level3
             Subtypes = -155, // CTree<long,bool> Domain
             SuperShape = -318, // bool
             TrueRowSet = -437,// RowSet
-            Under = -90, // Domain
+            Under = -90, // CTree<Domain,bool> direct supertypes (GQL)
             UnionOf = -91; // CTree<Domain,bool>
         internal static Domain Null, Value, Content, // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
     Bool, Blob, Char, Password, Int, _Numeric, Real, Date, Timespan, Timestamp,
@@ -157,7 +157,8 @@ namespace Pyrrho.Level3
         public CTree<long, TypedValue> defaultRowValues =>
             (CTree<long, TypedValue>?)mem[DefaultRowValues] ?? CTree<long, TypedValue>.Empty;
         public int display => (int)(mem[Display] ?? 0);
-        public Domain? super => (Domain?)mem[Under];
+        public CTree<Domain,bool> super => 
+            (CTree<Domain,bool>)(mem[Under]??CTree<Domain,bool>.Empty);
         public bool superShape => (bool)(mem[SuperShape] ?? false);
         public CTree<long, bool> subtypes =>
             (CTree<long, bool>)(mem[Subtypes] ?? CTree<long, bool>.Empty);
@@ -351,8 +352,9 @@ namespace Pyrrho.Level3
 ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr,
  BTree<string, (int, long?)> ns)
         {
-            if (super is Table st)
-                (rt, rs, sr, tr, ns) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns);
+            for (var b=super.First();b!=null;b=b.Next())
+                if (b.key() is Table st)
+                    (rt, rs, sr, tr, ns) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns);
             var j = 0;
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && (cx.obs[p]??representation[p]) is SqlValue tc)
@@ -371,9 +373,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         internal virtual (Table, BList<long?>, CTree<long, Domain>)
             ColsFrom(Context cx,BList<long?> rt, CTree<long, Domain> rs)
         {
-            Table r;
-            if (super is Table st)
-                (r, rt, rs) = st.ColsFrom(cx, rt, rs);
+            for (var b = super.First(); b != null; b = b.Next())
+                if (b.key() is Table st)
+                    (_, rt, rs) = st.ColsFrom(cx, rt, rs);
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && representation[p] is Domain cd)
                 {
@@ -449,8 +451,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal bool Match(string n)
         {
-            for (var d = this; d != null; d = (d as UDType)?.super)
-                if (d.name == n)
+            for (var d = super.First(); d != null; d = d.Next())
+                if (d.key() is UDType su && (su.name == n || su.Match(n)))
                     return true;
             return false;
         }
@@ -668,7 +670,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             return kind switch
             {
-                Sqlx.NCHAR or Sqlx.CLOB or Sqlx.NCLOB or Sqlx.VARCHAR => Sqlx.CHAR,
+                Sqlx.NCHAR or Sqlx.CLOB or Sqlx.NCLOB or Sqlx.VARCHAR or Sqlx.STRING or Sqlx.CHARACTER => Sqlx.CHAR,
                 Sqlx.INT or Sqlx.BIGINT or Sqlx.POSITION or Sqlx.SMALLINT => Sqlx.INTEGER,
                 Sqlx.DECIMAL or Sqlx.DEC => Sqlx.NUMERIC,
                 Sqlx.DOUBLE or Sqlx.FLOAT => Sqlx.REAL,
@@ -858,11 +860,15 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         var dp = rdr.GetLong();
                         var ut = (UDType)(rdr.context.db.objects[dp] ?? throw new DBException("42105"));
                         ut.Instance(dp, rdr.context, null);
+                        var r = CTree<long, TypedValue>.Empty;
                         if (ut.superShape == true)
-                            return new TSubType(ut, ut.super?.Get(log, rdr, pp) ?? TNull.Value);
+                        {
+                            for (var b = ut.super.First(); b != null; b = b.Next())
+                                if (b.key().Get(log, rdr, pp) is TRow tr)
+                                    r += tr.values;
+                        }
                         else
                         {
-                            var r = CTree<long, TypedValue>.Empty;
                             var ma = BTree<string, long?>.Empty;
                             if (rdr.context.db.format < 52)
                                 for (var b = ut.rowType.First(); b != null; b = b.Next())
@@ -883,8 +889,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 if (ut.representation[cp] is Domain cdt)
                                     r += (cp, cdt.Get(log, rdr, pp));
                             }
-                            return new TRow(ut, r);
                         }
+                        return new TRow(ut, r);
                     }
                 case Sqlx.CONTENT:
                     return new TChar(rdr.GetString());
@@ -1692,8 +1698,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             if (sensitive != dt.sensitive)
                  return false;
-            for (var du = dt; du != null; du = (du as UDType)?.super)
-                if (du.name == name)
+            if(dt is UDType ut && ut.Match(name))
                     return true;
             if (kind == Sqlx.VALUE || kind == Sqlx.CONTENT)
                 return true;
@@ -2716,10 +2721,10 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 lx.Advance();
             return int.Parse(new string(lx.input, s, lx.pos - s));
         }
-        TypedValue Check(Context cx,TypedValue v)
+        TypedValue Check(TypedValue v)
         {
-            if (kind!=Sqlx.PATH && v!=TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(this))
-                    throw new PEException("PE10702");
+            if (defpos>=0 && kind!=Sqlx.PATH && v!=TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(this))
+                   throw new PEException("PE10702");
             return v;
         }
         /// <summary>
@@ -2741,38 +2746,38 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 {
                     var du = b.key();
                     if (du.HasValue(cx, v))
-                        return Check(cx,v);
+                        return Check(v);
                 }
             if (kind == Sqlx.COLLECT && elType is not null && v.dataType.EqualOrStrongSubtypeOf(elType))
                 return v;
             if (abbrev != "" && v.dataType.kind == Sqlx.CHAR && kind != Sqlx.CHAR)
                 v = Parse(new Scanner(-1, v.ToString().ToCharArray(), 0, cx));
-            for (var dd = v.dataType; dd != null; dd = (dd as UDType)?.super)
+            for (var dd = v.dataType; dd != null; dd = (super.Count==1L)?super.First()?.key() as UDType:null)
                 if (CompareTo(dd) == 0)
-                    return Check(cx, v);
+                    return Check(v);
             var vk = Equivalent(v.dataType.kind);
             if (Equivalent(kind) != Sqlx.ROW && (vk == Sqlx.ROW || vk == Sqlx.TABLE) && v is TRow rw && rw.Length == 1
                 && rw.dataType.rowType.First()?.value() is long p && rw.dataType.representation[p] is Domain di
                 && rw.values[p] is TypedValue va)
                 return di.Coerce(cx, va);
             if (v.dataType is UDType ut && CanTakeValueOf(ut) && v is TSubType ts)
-                return Check(cx,ts.value);
+                return Check(ts.value);
             if (v.dataType.kind == Sqlx.SET && ((TSet)v).Cardinality() == 1)
                 return ((TSet)v).First()?.Value() ?? TNull.Value;
             if (v.dataType.kind == Sqlx.MULTISET && ((TMultiset)v).Cardinality() == 1)
-                return Check(cx,((TMultiset)v).First()?.Value() ?? TNull.Value);
+                return Check(((TMultiset)v).First()?.Value() ?? TNull.Value);
             //          if (v.dataType.name == name)
             var kn = Equivalent(kind);
             if (kn == Sqlx.UNION)
-                return Check(cx, v);
+                return Check(v);
             switch (kn)
             {
                 case Sqlx.BOOLEAN:
                     if (vk==Sqlx.CHAR)
                     {
                         var s = v.ToString().ToUpper();
-                        if (s == "TRUE") return Check(cx,TBool.True);
-                        if (s == "FALSE") return Check(cx,TBool.False);
+                        if (s == "TRUE") return Check(TBool.True);
+                        if (s == "FALSE") return Check(TBool.False);
                     }
                     throw new DBException("42161", "BOOLEAN", v);
                 case Sqlx.INTEGER:
@@ -2791,12 +2796,12 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 if (iv >= limit || iv <= -limit)
                                     throw new DBException("22003").ISO()
                                         .AddType(this).AddValue(v);
-                                return Check(cx,new TInteger(this, iv));
+                                return Check(new TInteger(this, iv));
                             }
                             if (v.ToLong() is long vl)
-                                return Check(cx,new TInt(this, vl));
+                                return Check(new TInt(this, vl));
                             if (v.ToInteger() is Integer xv)
-                                return Check(cx,new TInteger(this, xv));
+                                return Check(new TInteger(this, xv));
                             break;
                         }
                         if (vk == Sqlx.NUMERIC && v is TNumeric a)
@@ -2822,7 +2827,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                     throw new DBException("22003").ISO()
                                         .AddType(this).Add(Sqlx.VALUE, v);
                             }
-                            return Check(cx,new TInteger(this, na.mantissa));
+                            return Check(new TInteger(this, na.mantissa));
                         }
                         if (vk == Sqlx.REAL && v.ToLong() is long ii)
                         {
@@ -2834,12 +2839,12 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                     throw new DBException("22003").ISO()
                                          .AddType(this).AddValue(v);
                             }
-                            return Check(cx,new TInt(this, ii));
+                            return Check(new TInt(this, ii));
                         }
                         if (vk == Sqlx.CHAR)
                             return new TInt(Integer.Parse(v.ToString()));
                         if (vk == Sqlx.NODETYPE || vk == Sqlx.EDGETYPE)
-                            return Check(cx,((TNode)v).id);
+                            return Check(((TNode)v).id);
                     }
                     break;
                 case Sqlx.NUMERIC:
@@ -2886,7 +2891,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 throw new DBException("22003").ISO()
                                      .AddType(this).AddValue(v);
                         }
-                        return Check(cx,new TNumeric(this, a));
+                        return Check(new TNumeric(this, a));
                     }
                 case Sqlx.REAL:
                     {
@@ -2905,32 +2910,32 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             break;
                         if (sg)
                             d = -d;
-                        return Check(cx,new TReal(this, (double)d));
+                        return Check(new TReal(this, (double)d));
                     }
                 case Sqlx.DATE:
                     {
                         switch (vk)
                         {
                             case Sqlx.DATE:
-                                return Check(cx,v);
+                                return Check(v);
                             case Sqlx.CHAR:
-                                return Check(cx,new TDateTime(this, DateTime.Parse(v.ToString(),
+                                return Check(new TDateTime(this, DateTime.Parse(v.ToString(),
                                     (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
                                     : v.dataType.culture)));
                         }
                         if (v is TDateTime dt)
-                            return Check(cx,new TDateTime(this, dt.value));
+                            return Check(new TDateTime(this, dt.value));
                         if (v.ToLong() is long lv)
-                            return Check(cx,new TDateTime(this, new DateTime(lv)));
+                            return Check(new TDateTime(this, new DateTime(lv)));
                         break;
                     }
                 case Sqlx.TIME:
                     switch (vk)
                     {
                         case Sqlx.TIME:
-                            return Check(cx,v);
+                            return Check(v);
                         case Sqlx.CHAR:
-                            return Check(cx, new TTimeSpan(this, TimeSpan.Parse(v.ToString(),
+                            return Check(new TTimeSpan(this, TimeSpan.Parse(v.ToString(),
                                 (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
                                 : v.dataType.culture)));
                     }
@@ -2940,23 +2945,23 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     {
                         case Sqlx.TIMESTAMP: return v;
                         case Sqlx.DATE:
-                            return Check(cx, new TDateTime(this, ((TDateTime)v).value));
+                            return Check(new TDateTime(this, ((TDateTime)v).value));
                         case Sqlx.CHAR:
                             if (!v.ToString().Contains('-'))
                             {
                                 var s = long.Parse(v.ToString());
-                                return Check(cx, new TDateTime(new DateTime(s*10000+new DateTime(1970,1,1).Ticks)));
+                                return Check(new TDateTime(new DateTime(s*10000+new DateTime(1970,1,1).Ticks)));
                             }
-                            return Check(cx, new TDateTime(this, DateTime.Parse(v.ToString(),
+                            return Check(new TDateTime(this, DateTime.Parse(v.ToString(),
                                 (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
                                 : v.dataType.culture)));
                     }
                     if (v.ToLong() is long vm)
-                        return Check(cx, new TDateTime(this, new DateTime(vm)));
+                        return Check(new TDateTime(this, new DateTime(vm)));
                     break;
                 case Sqlx.INTERVAL:
                     if (v is TInterval zv)
-                        return Check(cx, new TInterval(this, zv.value));
+                        return Check(new TInterval(this, zv.value));
                     break;
                 case Sqlx.CHAR:
                     {
@@ -2972,13 +2977,13 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         if (prec != 0 && str.Length > prec)
                             throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
                                                 .AddType(this).AddValue(vt);
-                        return Check(cx, new TChar(this, str));
+                        return Check(new TChar(this, str));
                     }
                 case Sqlx.PERIOD:
                     {
                         if (v is not TPeriod pd || elType is null)
                             return TNull.Value;
-                        return Check(cx,new TPeriod(this, new Period(elType.Coerce(cx, pd.value.start),
+                        return Check(new TPeriod(this, new Period(elType.Coerce(cx, pd.value.start),
                             elType.Coerce(cx, pd.value.end))));
                     }
                 case Sqlx.DOCUMENT:
@@ -2989,29 +2994,29 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 {
                                     var vs = v.ToString();
                                     if (vs[0] == '{')
-                                        return Check(cx, new TDocument(vs));
+                                        return Check(new TDocument(vs));
                                     break;
                                 }
                             case Sqlx.BLOB:
                                 {
                                     var i = 0;
-                                    return Check(cx, new TDocument(((TBlob)v).value, ref i));
+                                    return Check(new TDocument(((TBlob)v).value, ref i));
                                 }
                         }
                         return v;
                     }
-                case Sqlx.CONTENT: return Check(cx, v);
-                case Sqlx.PASSWORD: return Check(cx, v);
+                case Sqlx.CONTENT: return Check(v);
+                case Sqlx.PASSWORD: return Check(v);
                 case Sqlx.DOCARRAY: goto case Sqlx.DOCUMENT;
                 case Sqlx.TYPE:
                     {
                         if (v is TChar tc)
                         {
                             var s = tc.ToString();
-                            if ((this+(Kind,Sqlx.ROW)).TryParse(new Scanner(0, ("("+s+")").ToCharArray(), 0, cx), out v) is DBException e)
+                            if ((this+(Kind,Sqlx.ROW)).TryParse(new Scanner(0, ("("+s+")").ToCharArray(), 0, cx), out v) is not null)
                                 return v;
                         }
-                        return Check(cx, v);
+                        return Check(v);
                     }
                 case Sqlx.ROW:
                     {
@@ -3029,39 +3034,39 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 vs += (pp, dt.Coerce(cx, tv));
                         if (vb != null)
                             goto bad;
-                        return Check(cx, new TRow(this, vs));
+                        return Check(new TRow(this, vs));
                     }
                 case Sqlx.VALUE:
                 case Sqlx.NULL:
-                    return Check(cx, v);
+                    return Check(v);
                 case Sqlx.ARRAY:
                     if (v is TList && elType is not null && v.dataType.elType is not null
                         && elType.CanTakeValueOf(v.dataType.elType))
-                        return Check(cx, v);
+                        return Check(v);
                     if (v is TArray && elType is not null && v.dataType.elType is not null
                         && elType.CanTakeValueOf(v.dataType.elType))
-                        return Check(cx, v);
+                        return Check(v);
                     break;
                 case Sqlx.SET:
                     if (v.dataType.elType is not null)
                     {
                         if (v is TSet && elType is not null && elType.CanTakeValueOf(v.dataType.elType))
-                            return Check(cx, v);
+                            return Check(v);
                         else if (v.dataType.EqualOrStrongSubtypeOf(v.dataType.elType))
-                            return Check(cx, new TSet(v.dataType, new CTree<TypedValue, bool>(v, true)));
+                            return Check(new TSet(v.dataType, new CTree<TypedValue, bool>(v, true)));
                     }
                     if (elType?.CanTakeValueOf(v.dataType) == true)
-                        return Check(cx, new TSet(this, new CTree<TypedValue, bool>(v, true)));
+                        return Check(new TSet(this, new CTree<TypedValue, bool>(v, true)));
                     break;
                 case Sqlx.MULTISET:
                     if (v is TMultiset && elType is not null && v.dataType.elType is not null
                         && elType.CanTakeValueOf(v.dataType.elType))
-                        return Check(cx, v);
+                        return Check(v);
                     if (elType?.CanTakeValueOf(v.dataType) == true)
-                        return Check(cx, new TMultiset(v.dataType, new BTree<TypedValue, long?>(v, 1L), 1));
+                        return Check(new TMultiset(v.dataType, new BTree<TypedValue, long?>(v, 1L), 1));
                     break;
                 default:
-                    return Check(cx, v);
+                    return Check(v);
             }
         bad: throw new DBException("22005", this, v.ToString()).ISO();
         }
@@ -3074,9 +3079,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         internal TypedValue Coerce(Context cx,object ob)
         {
             if (ob==null)
-                return Check(cx, defaultValue);
+                return Check(defaultValue);
             if (abbrev != "" && ob is string so && Equivalent(kind) != Sqlx.CHAR)
-                return Check(cx, Parse(new Scanner(-1, so.ToCharArray(), 0, cx)));
+                return Check(Parse(new Scanner(-1, so.ToCharArray(), 0, cx)));
             switch (Equivalent(kind))
             {
                 case Sqlx.UNION:
@@ -3084,13 +3089,13 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     {
                         var du = b.key();
                         if (du.Coerce(cx, ob) is TypedValue t0)
-                            return Check(cx, t0);
+                            return Check(t0);
                     }
                     break;
                 case Sqlx.INTEGER:
                     if (ob is long lo)
-                        return Check(cx, new TInt(this, lo));
-                    return Check(cx, new TInt(this, (int)ob));
+                        return Check(new TInt(this, lo));
+                    return Check(new TInt(this, (int)ob));
                 case Sqlx.NUMERIC:
                     {
                         Numeric nm = new (0);
@@ -3102,36 +3107,36 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             nm = new (om);
                         if (ob is int io)
                             nm = new Numeric(io);
-                        return Check(cx, new TNumeric(this, nm));
+                        return Check(new TNumeric(this, nm));
                     }
                 case Sqlx.REAL:
                     {
                         if (ob is decimal om)
-                            return Check(cx, new TReal(this, (double)om));
+                            return Check(new TReal(this, (double)om));
                         if (ob is float fo)
-                            return Check(cx, new TReal(this, fo));
-                        return Check(cx, new TReal(this, (double)ob));
+                            return Check(new TReal(this, fo));
+                        return Check(new TReal(this, (double)ob));
                     }
                 case Sqlx.DATE:
-                    return Check(cx, new TDateTime(this, (DateTime)ob));
+                    return Check(new TDateTime(this, (DateTime)ob));
                 case Sqlx.TIME:
-                    return Check(cx, new TTimeSpan(this, (TimeSpan)ob));
+                    return Check(new TTimeSpan(this, (TimeSpan)ob));
                 case Sqlx.TIMESTAMP:
                     {
                         if (ob is DateTime dt)
-                            return Check(cx, new TDateTime(this, dt));
+                            return Check(new TDateTime(this, dt));
                         if (ob is Date od)
-                            return Check(cx, new TDateTime(this, od.date));
+                            return Check(new TDateTime(this, od.date));
                         if (ob is string os)
-                            return Check(cx, new TDateTime(this,
+                            return Check(new TDateTime(this,
                                 DateTime.Parse(os, culture)));
                         if (ob is long ol)
-                            return Check(cx, new TDateTime(this, new DateTime(ol)));
+                            return Check(new TDateTime(this, new DateTime(ol)));
                         break;
                     }
                 case Sqlx.INTERVAL:
                     if (ob is Interval oi)
-                        return Check(cx, new TInterval(this, oi));
+                        return Check(new TInterval(this, oi));
                     break;
                 case Sqlx.CHAR:
                     {
@@ -3145,23 +3150,23 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         if (prec != 0 && str.Length > prec)
                             throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
                                                 .AddType(this);
-                        return Check(cx, new TChar(this, str));
+                        return Check(new TChar(this, str));
                     }
                 case Sqlx.PERIOD:
                     {
                         var pd = ob as Period ?? throw new DBException("22000");
                         if (elType is null) 
                             throw new DBException("22000");
-                        return Check(cx, new TPeriod(this, new Period(elType.Coerce(cx, pd.start),
+                        return Check(new TPeriod(this, new Period(elType.Coerce(cx, pd.start),
                             elType.Coerce(cx, pd.end))));
                     }
                 case Sqlx.DOCUMENT:
                     {
                         if (ob is string vs && vs[0] == '{')
-                            return Check(cx, new TDocument(vs));
+                            return Check(new TDocument(vs));
                         int i = 0;
                         if (ob is byte[] bs)
-                            return Check(cx, new TDocument(bs, ref i));
+                            return Check(new TDocument(bs, ref i));
                         break;
                     }
                 case Sqlx.ROW:
@@ -3309,7 +3314,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         var r = new TRow(this, vs);
                         if (d.Contains("$check")) // used for remote data
                             r += (Rvv.RVV, new TRvv(cx, vs));
-                        return Check(cx, r);
+                        return Check(r);
                     }
                     break;
                 case Sqlx.TABLE:
@@ -3322,7 +3327,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         var va = BList<TypedValue>.Empty;
                         foreach (var o in da.items)
                             va += dr.Coerce(cx, o);
-                        return Check(cx, new TList(dt, va));
+                        return Check(new TList(dt, va));
                     }
                     break;
                 case Sqlx.ARRAY:
@@ -3331,7 +3336,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         var va = BList<TypedValue>.Empty;
                         foreach (var o in db.items)
                             va += elType.Coerce(cx, o);
-                        return Check(cx, new TList(elType, va));
+                        return Check(new TList(elType, va));
                     }
                     break;
                 case Sqlx.SET:
@@ -3343,7 +3348,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             var v = elType.Coerce(cx, o);
                             va += (v, true);
                         }
-                        return Check(cx, new TSet(elType, va));
+                        return Check(new TSet(elType, va));
                     }
                     break;
                 case Sqlx.MULTISET:
@@ -3358,7 +3363,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             va += (v, k);
                             n++;
                         }
-                        return Check(cx, new TMultiset(elType, va, n));
+                        return Check(new TMultiset(elType, va, n));
                     }
                     break;
             }
@@ -3464,25 +3469,24 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             { sb.Append(','); elType.FieldType(cx, sb); }
             sb.Append(")]\r\n"); 
         }
-        internal string Java(Sqlx kind)
+        internal static string Java(Sqlx kind)
         {
-            switch (kind)
+            return kind switch
             {
-                case Sqlx.ARRAY: return "Array";
-                case Sqlx.MULTISET: return "Multiset";
-                case Sqlx.INTEGER: return "Integer";
-                case Sqlx.NUMERIC: return "Decimal";
-                case Sqlx.NCHAR:
-                case Sqlx.CHAR: return "String";
-                case Sqlx.REAL: return "Real";
-                case Sqlx.DATE:  return "Date";
-                case Sqlx.TIME: return "Time";
-                case Sqlx.INTERVAL: return "Interval";
-                case Sqlx.BOOLEAN: return "Bool";
-                case Sqlx.TIMESTAMP: return "Timestamp";
-                case Sqlx.ROW: return "Row";
-            }
-            return "Object";
+                Sqlx.ARRAY => "Array",
+                Sqlx.MULTISET => "Multiset",
+                Sqlx.INTEGER => "Integer",
+                Sqlx.NUMERIC => "Decimal",
+                Sqlx.NCHAR or Sqlx.CHAR => "String",
+                Sqlx.REAL => "Real",
+                Sqlx.DATE => "Date",
+                Sqlx.TIME => "Time",
+                Sqlx.INTERVAL => "Interval",
+                Sqlx.BOOLEAN => "Bool",
+                Sqlx.TIMESTAMP => "Timestamp",
+                Sqlx.ROW => "Row",
+                _ => "Object"
+            };
         }
         /// <summary>
         /// Implementation of the Role$Java table: Produce a type annotation for a field
@@ -4983,7 +4987,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             return new UDType(dp, m + (Kind, Sqlx.TYPE));
         }
-        internal virtual UDType? New(Ident pn, Domain? un, long dp, Context cx)
+        internal virtual UDType? New(Ident pn, CTree<Domain,bool> un, long dp, Context cx)
         {
             var dt = (UDType)TypeSpec.Relocate(dp);
             if (dt is EdgeType ne && dt.defpos != defpos)
@@ -5040,32 +5044,43 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         public override bool EqualOrStrongSubtypeOf(Domain dt)
         {
-            for (Domain? s = this; s != null; s = (s as UDType)?.super)
-                if (s.name==dt.name)
+            if (defpos == dt.defpos)
+                return true;
+            for (var b=super.First();b!=null;b=b.Next())
+                if (b.key().EqualOrStrongSubtypeOf(dt))
                     return true;
-            return base.EqualOrStrongSubtypeOf(dt);
+            return false;
         }
+        /// <summary>
+        /// Deal with inheritance
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
         internal override Table _PathDomain(Context cx)
         {
-            var pd = (super as Table)?._PathDomain(cx);
-            var rt = pd?.rowType ??BList<long?>.Empty;
-            var rs = pd?.representation??CTree<long,Domain>.Empty;
+            var rt = BList<long?>.Empty;
+            var rs = CTree<long,Domain>.Empty;
             var ii = infos;
-            if (pd is not null)
-                for (var b = infos.First(); b != null; b = b.Next())
-                    if (b.value() is ObInfo ti)
-                    {
-                        if (pd.infos[cx.role.defpos] is ObInfo si)
-                            ti += si;
-                        else throw new DBException("42105");
-                        ii += (b.key(), ti);
-                    }
-            for (var b = pd?.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && pd?.representation[p] is Domain cd && !rs.Contains(p))
+            var ui = infos[cx.role.defpos];
+            for (var b = super.First(); b != null; b = b.Next()) // probably Count <=1
+                if (b.key() is Table su)
                 {
-                    rt += p;
-                    rs += (p, cd);
+                    var pd = su._PathDomain(cx);
+                    for (var c = pd.rowType.First(); c != null; c = c.Next())
+                        if (c.value() is long p && pd.representation[p] is Domain d)
+                        {
+                            rt += p;
+                            rs += (p, d);
+                        }
+                    if (pd.infos[cx.role.defpos] is ObInfo pi)
+                    {
+                        ii += (su.defpos, pi);
+                        if (ui is not null)
+                            ui += (ObInfo.Names, pi.names);
+                    }
                 }
+            if (ui is not null)
+                ii += (cx.role.defpos, ui);
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && representation[p] is Domain cd && !rs.Contains(p))
                 {
@@ -5078,18 +5093,13 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             return to;
         }
-        bool IsSubTypeOf(UDType u)
+        internal Domain? LowestCommonSuper(Domain a)
         {
-            for (UDType? s=this; s!=null; s= s.super as UDType)
-                if (s.dbg==u.dbg)
-                    return true;
-            return false;
-        }
-        internal UDType? LowestCommonSuper(UDType a)
-        {
-            for (UDType? s = this; s != null; s = s.super as UDType)
-                if (a.IsSubTypeOf(s))
-                    return s;
+            if (a.defpos == defpos)
+                return this;
+            for (var b = super.First(); b != null; b = b.Next())
+                if (b.key() is UDType ut && a.EqualOrStrongSubtypeOf(ut))
+                    return ut;
             return null;
         }
         /// <summary>
@@ -5101,7 +5111,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         /// <returns>a tree of all columns in subtypes with their defining type</returns>
         internal BTree<string,(int,long?)> AllSubTypeCols(Context cx)
         {
-            var oi = infos[cx.role.defpos] ?? throw new DBException("42105");
+            if (cx._Ob(defpos) is not UDType a ||  a.infos[cx.role.defpos] is not ObInfo oi)
+                return BTree<string, (int, long?)>.Empty;
             var r = BTree<string, (int, long?)>.Empty;
             for (var b = subtypes.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is UDType u)
@@ -5110,21 +5121,34 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal BTree<string,(int,long?)> HierarchyCols(Context cx)
         {
-            for (var b = this;;)
-                if (b.super is UDType nb)
-                    b = nb;
-                else
-                    return b.AllSubTypeCols(cx);
-            // not reached
+            if (cx._Ob(defpos) is not UDType a)
+                return BTree<string, (int, long?)>.Empty;
+            var r = a.AllSubTypeCols(cx);   
+            for (var b=super.First();b!=null;b=b.Next())
+                if (b.key() is UDType ut)
+                    r += ut.HierarchyCols(cx);
+            return r;
+        }
+        internal CTree<long,Domain> HierarchyRepresentation(Context cx)
+        {
+            var r = CTree<long, Domain>.Empty;
+            for (var b = HierarchyCols(cx).First(); b != null; b = b.Next())
+                if (cx._Ob(b.value().Item2 ?? -1L) is DBObject o)
+                    r += (o.defpos, o.domain);
+            return r;
         }
         public override bool HasValue(Context cx, TypedValue v)
         {
             var ki = Equivalent(kind);
             if (ki == Sqlx.UNION)
             {
-                for (var d = v.dataType; d != null; d = (d as UDType)?.super)
-                    if (mem.Contains(cx.db.Find(d)?.defpos ?? throw new PEException("PE48813")))
+                for (var d = v.dataType.super.First(); d != null; d = d.Next())
+                {
+                    if (mem.Contains(cx.db.Find(d.key())?.defpos ?? throw new PEException("PE48813")))
                         return true;
+                    if (d.key().HasValue(cx, v))
+                        return true;
+                }
                 return false;
             }
             return base.HasValue(cx, v);
@@ -5133,15 +5157,14 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (UDType)base._Replace(cx, so,sv);
-            if (super?.Replace(cx, so, sv) is Domain und
-    && und != super)
+            if (cx.ReplacedTDb(super) is CTree<Domain,bool> und && und != super)
                 r += (Under, und);
             return r;
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
             var r = base._Fix(cx,m);
-            var ns = super?.Fix(cx);
+            var ns = cx.FixTDb(super);
             if (super != ns && ns is not null)
                 r += (Under, ns);
             var nu = cx.FixTlb(subtypes);
@@ -5183,7 +5206,14 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (md.description != "")
                 sb.Append("/// " + md.description + "\r\n");
             sb.Append("/// </summary>\r\n");
-            sb.Append("public class " + md.name + ((super is not null)?" : "+super.name:"") + " {\r\n");
+            var su = new StringBuilder();
+            var cm = ':';
+            for (var b = super.First(); b != null; b = b.Next())
+                if (b.key().name != "")
+                {
+                    su.Append(cm); cm = ','; su.Append(b.key().name);
+                }
+            sb.Append("public class " + md.name + su.ToString() + " {\r\n");
             for (var b = representation.First(); b != null; b = b.Next())
             {
                 var p = b.key();
@@ -5204,20 +5234,25 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             if (prefix != null || suffix != null)
                 return 3; // string
-            if (super != null)
-                return super.Typecode();
+            if (super.Count==1L && super.First()?.key() is Domain su)
+                return su.Typecode();
             return 12;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(Uid(defpos));
             sb.Append(' '); sb.Append(base.ToString());
+            var cm = "";
             if (mem.Contains(Under))
             {
-                sb.Append(" Under="); sb.Append(super);
+                sb.Append(" Under=");
+                for (var b = super.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ","; sb.Append(Uid(b.key().defpos));
+                }
                 sb.Append(" PathDomain="); sb.Append(pathDomain);
             }
-            var cm = " Methods: ";
+            cm = " Methods: ";
             for (var b=methods.First();b is not null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";

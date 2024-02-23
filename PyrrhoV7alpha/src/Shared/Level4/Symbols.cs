@@ -2,6 +2,7 @@ using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Common;
 using Pyrrho.Level5;
+using System.Reflection.Emit;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -503,6 +504,12 @@ namespace Pyrrho.Level4
         }
         readonly static Domain NodeArray = new (-999, Sqlx.ARRAY, Domain.NodeType);
         readonly static Domain CharArray = new (-998, Sqlx.ARRAY, Domain.Char);
+        /// <summary>
+        /// MaybePrefix watches for GQL label expressions and deals with prefixable types.
+        /// In this version we can handle simple labels and & and | cobinations only
+        /// </summary>
+        /// <param name="s"></param>
+        /// <returns></returns>
         Sqlx MaybePrefix(string s)
         {
             var vo = (val is TChar tc) ? tc.value : s;
@@ -510,8 +517,8 @@ namespace Pyrrho.Level4
             var gc = (tgg == TGParam.Type.None) ? Domain.Char : CharArray;
             if (cx.defs[vo]?[cx.sD].Item1 is not null || cx.role.dbobjects.Contains(s))
                 return tok;
-            if (cx.parse == ExecuteStatus.Obey && cx.db is not null 
-                && cx.role is not null && cx.db.prefixes!= BTree<string,long?>.Empty
+            if (cx.parse == ExecuteStatus.Obey && cx.db is not null
+                && cx.role is not null && cx.db.prefixes != BTree<string, long?>.Empty
                 && cx.db.objects[cx.db.prefixes[s] ?? -1L] is UDType dt && val is not null
                 && dt.name is not null)
             {
@@ -528,43 +535,46 @@ namespace Pyrrho.Level4
                 else
                     val = new TSubType(dt, val);
             }
-            else if (tgs!=null)
-            switch (prevtok){
+            else if (tgs != null)
+            {
+                switch (prevtok)
+                {
                     case Sqlx.LPAREN:
                         {
-                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Node|tgg, tga);
+                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Node | tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
                     case Sqlx.ARROWBASE:
                     case Sqlx.RARROW:
                         {
-                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Edge|tgg, tga);
+                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Edge | tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
                     case Sqlx.LBRACE:
                     case Sqlx.COMMA:
                         {
-      /*                      if (tgt.Contains(vo))
-                                break;
-                            var tg = new TGParam(Position, vo, gc, TGParam.Type.Field|tgg, tga);
-                            tgs += (tg.uid, tg); */
+                            /*                      if (tgt.Contains(vo))
+                                                      break;
+                                                  var tg = new TGParam(Position, vo, gc, TGParam.Type.Field|tgg, tga);
+                                                  tgs += (tg.uid, tg); */
                             break;
                         }
                     case Sqlx.COLON:
                         {
-                            var tg = new TGParam(Position, vo, gc, 
-                                (tex?TGParam.Type.Type:TGParam.Type.Value)|tgg, tga);
+                            var tg = new TGParam(Position, vo, gc,
+                                (tex ? TGParam.Type.Type : TGParam.Type.Value) | tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
                     default:
                         {
-                            var tg = new TGParam(Position, vo, gc, TGParam.Type.None|tgg, tga);
+                            var tg = new TGParam(Position, vo, gc, TGParam.Type.None | tgg, tga);
                             tgs += (tg.uid, tg);
                             break;
                         }
+                }
             }
             return tok;
         }
@@ -727,7 +737,7 @@ namespace Pyrrho.Level4
                 while (char.IsDigit(Advance()))
                     ;
                 str = new string(input, start, pos - start);
-                val = new TReal(Common.Numeric.Parse(str));
+                val = new TReal(Numeric.Parse(str));
                 tok = Sqlx.REALLITERAL;
                 MaybeSuffix();
                 return tok;
@@ -758,7 +768,8 @@ namespace Pyrrho.Level4
                 case ',': Advance(); return tok = Sqlx.COMMA;
                 case '.': Advance(); return tok = Sqlx.DOT;
                 case ';': Advance(); return tok = Sqlx.SEMICOLON;
-                case '?': Advance(); return tok = Sqlx.QMARK; //added for Prepare()
+                case '&': Advance(); return tok = Sqlx.AMPERSAND; // GQL label expression
+                case '?': Advance(); return tok = Sqlx.QMARK; // added for Prepare()
                 case ':':
                     {
                         Advance();

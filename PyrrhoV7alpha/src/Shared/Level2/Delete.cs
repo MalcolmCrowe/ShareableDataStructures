@@ -3,7 +3,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -252,11 +252,7 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            var tb = (cx.db.objects[tabledefpos] as Table)?.DoDel(cx, this, p);
-            for (var t = cx.db.objects[tb?.super?.defpos ?? -1L] as Table; t != null;
-                t = cx.db.objects[t.super?.defpos ?? -1L] as Table)
-                t.DoDel(cx, this, p);
-            return tb;
+            return (cx.db.objects[tabledefpos] as Table)?.DoDel(cx, this, p);
         }
         public override string ToString()
         {

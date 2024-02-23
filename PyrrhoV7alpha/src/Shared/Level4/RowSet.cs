@@ -171,14 +171,6 @@ namespace Pyrrho.Level4
             cx.Add(this);
         }
         /// <summary>
-        /// special version for RowSet constructors that compute asserts
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="dp"></param>
-        /// <param name="m"></param>
-        protected RowSet(Context cx,long dp,BTree<long,object>m) :base(dp,m)
-        {  }
-        /// <summary>
         /// Constructor: relocate a rowset with no property changes
         /// </summary>
         /// <param name="dp"></param>
@@ -195,7 +187,6 @@ namespace Pyrrho.Level4
                 sce.AddFrom(cx, dp);
                 var sb = sce.rowType.First();
                 var rt = (BList<long?>)(m[RowType] ?? BList<long?>.Empty);
-                var rs = (CTree<long, Domain>)(m[Representation] ?? CTree<long, Domain>.Empty);
                 for (var b = rt.First(); b != null && sb is not null; b = b.Next(), sb = sb?.Next())
                 if (b.value() is long p && cx.obs[p] is SqlValue v &&
                         sb.value() is long sp && cx.obs[sp] is SqlValue sv) {
@@ -587,7 +578,7 @@ namespace Pyrrho.Level4
                     {
                         var ms = mm;
                         if (p == RestView.UsingTable)
-                            ms = ms - Target;
+                            ms -= Target;
                         if (cx.obs[sp] is RowSet sc)
                         {
                             if (ms[_Where] is CTree<long, bool> wh)
@@ -1282,9 +1273,9 @@ namespace Pyrrho.Level4
                             sb.Append(Uid(p));
                         }
                     sb.Append(")=");
+                    cn = "[";
                     for (var c = b.value().First(); c != null; c = c.Next())
                     {
-                        cn = "[";
                             if (c.key() is long p)
                             {
                                 sb.Append(cn); cn = ",";
@@ -1453,7 +1444,7 @@ namespace Pyrrho.Level4
                     sb.Append(cm); cm = ",";
                     sb.Append(Uid(b.key()));
                 }
-                sb.Append(")");
+                sb.Append(')');
             }
             if (PyrrhoStart.VerboseMode)
             {
@@ -1961,7 +1952,7 @@ namespace Pyrrho.Level4
         /// should bind more closely.
         /// </summary>
         internal SelectRowSet(Iix lp, Context cx, Domain dm, RowSet r, BTree<long, object>? m = null)
-            : base(cx, lp.dp, _Mem(cx, dm, r, m)) //  not p, cx, _Mem..
+            : base(lp.dp, _Mem(cx, dm, r, m)) //  not p, cx, _Mem..
         {
             cx.Add(this);
         }
@@ -1983,9 +1974,6 @@ namespace Pyrrho.Level4
                 r = (RowSet)cx.Add(new OrderedRowSet(cx, r, os, di));
             var rc = CTree<long, bool>.Empty;
             var d = Math.Max(dm.depth, r.depth) + 1;
-            var ds = dm.display;
-            if (ds == 0)
-                ds = dm.rowType.Length;
             var wh = (CTree<long, bool>?)m[_Where];
             // For SelectRowSet, we compute the RdCols: all needs of selectors and wheres
             if (m[ISMap] is BTree<long, long?> im)
@@ -2483,28 +2471,6 @@ namespace Pyrrho.Level4
             } 
             return base.Sort(cx, os, dct);
         }
-        int PositionFor(CList<TRow> ts,Domain os,TRow v,out bool ma)
-        {
-            // binary search
-            int low = 0, high = (int)ts.Count, mid;
-            while (low < high)
-            {
-                mid = (low + high) >> 1;
-                TRow midk = ts[mid]??throw new PEException("PE40401");
-                int c = os.Compare(midk,v);
-                if (c == 0)
-                {
-                    ma = true;
-                    return mid;
-                }
-                if (c > 0)
-                    low = mid + 1;
-                else
-                    high = mid;
-            }
-            ma = false;
-            return high;
-        }
         public override Cursor? First(Context _cx)
         {
             var r = (SelectRowSet)Build(_cx);
@@ -2755,7 +2721,7 @@ namespace Pyrrho.Level4
             (BList<long?>?)mem[SRowType] ?? BList<long?>.Empty;
         internal override Assertions Requires => Assertions.SimpleCols;
         protected InstanceRowSet(long dp, Context cx, BTree<long, object> m)
-            : base(cx, dp, _Mem1(cx,m)) 
+            : base(dp, _Mem1(cx,m)) 
         { }
         protected InstanceRowSet(long dp, BTree<long, object> m)
             : base(dp, m) 
@@ -2940,7 +2906,6 @@ namespace Pyrrho.Level4
             }
             if (pk != null)
                 m += (Level3.Index.Keys,pk);
-            var rr = BList<long?>.Empty;
             cx.AddDefs(tn, rt, (string?)m[_Alias]);
             var r = (m ?? BTree<long, object>.Empty)
                 + (RowType,rt) + (Representation,rs)+(Display,rt.Length)
@@ -4584,7 +4549,7 @@ namespace Pyrrho.Level4
             var sr = BList<long?>.Empty;        // our total SRow type
             var tr = BTree<long, long?>.Empty;  // mapping to physical columns (ignored)
             var ns = BTree<string, (int, long?)>.Empty; // column names
-            (rt, rs, sr, tr, ns) = pr.domain.ColsFrom(cx, dp, rt, rs, sr, tr, ns);
+            (rt, rs, sr, _, ns) = pr.domain.ColsFrom(cx, dp, rt, rs, sr, tr, ns);
             var r = BTree<long, object>.Empty
                 + (RowType, rt) + (Representation, rs) + (Display, rt.Length)
                 + (InstanceRowSet.SRowType, sr)
@@ -4798,7 +4763,7 @@ namespace Pyrrho.Level4
             m += (Target, ta);
             m += (ISMap, ts.iSMap);
             m += (RSTargets, new BTree<long, long?>(ts.target, ts.defpos));
-            m += (IxDefPos, t?.FindPrimaryIndex(cx)?.defpos ?? -1L);
+            m += (IxDefPos, t.FindPrimaryIndex(cx)?.defpos ?? -1L);
             // check now about conflict with generated columns
             var dfs = BTree<long, TypedValue>.Empty;
             if (cx._tty != PTrigger.TrigType.Delete)
@@ -4809,15 +4774,10 @@ namespace Pyrrho.Level4
                         dfs += (tc.defpos, tv);
                         cx.values += (tc.defpos, tv);
                     }
-            var fk = CTree<long, bool>.Empty;
-            for (var tt = t; tt != null; tt = tt.super as Table)
-            {
-                for (var b = tt.indexes.First(); b != null; b = b.Next())
-                    for (var c = b.value().First(); c != null; c = c.Next())
-                        if (cx.db.objects[c.key()] is Level3.Index ix &&
-                            ix.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
-                            fk += (ix.defpos, true);
-            }
+            var fk = t.AllForeignKeys(cx);
+            for (var b = t.super.First(); b != null; b = b.Next())
+                if (b.key() is Table tt)
+                    fk += tt.AllForeignKeys(cx);
             m += (TargetTrans, ts.sIMap);
             m += (TransTarget, ts.iSMap);
             m += (ForeignKeys, fk);
@@ -5105,7 +5065,7 @@ namespace Pyrrho.Level4
                             && cx.db.objects[ix.refindexdefpos] is Level3.Index rx
                             // && rx.rows != null
                             && cx.db.objects[ix.reftabledefpos] is Table tb
-                            && tb.Base(cx).FindPrimaryIndex(cx) is Level3.Index px && px.rows!=null
+                            && tb.Top().FindPrimaryIndex(cx) is Level3.Index px && px.rows!=null
                                && rx.MakeKey(r._rec.vals) is CList<TypedValue> k &&
                                k[0] is not TNull)
                         {
@@ -5133,8 +5093,9 @@ namespace Pyrrho.Level4
                 ColsFrom(Context cx,Table tb,BList<long?> rt,CTree<long,Domain> rs)
             {
                 cx.Add(tb.framing);
-                if (tb is NodeType && tb.super is Table st)
-                    (rt, rs) = ColsFrom(cx, st, rt, rs);
+                for(var b= tb.super.First();b!=null;b=b.Next())
+                    if (b.key() is Table st)
+                        (rt, rs) = ColsFrom(cx, st, rt, rs);
                 for (var b = tb.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.db.objects[p] is TableColumn tc)
                     {
@@ -5160,9 +5121,7 @@ namespace Pyrrho.Level4
                 if (cx is TableActivation ta)
                 {
                     Table tb = ta.table;
-                    for (var t = tb.super as Table; t != null; t = t.super as Table)
-                        tb = t;
-                    if (tb.FindPrimaryIndex(ta) is Level3.Index ix)
+                    if (tb.Top().FindPrimaryIndex(ta) is Level3.Index ix)
                     {
                         var k = CList<TypedValue>.Empty;
                         for (var b = ix.keys.First(); b != null; b = b.Next())
@@ -5198,24 +5157,6 @@ namespace Pyrrho.Level4
                 if (v is TChar tc)
                     return new TChar((int.Parse(tc.value) + 1).ToString());
                 return new TInt((v.ToInt()??0) + 1);
-            }
-            /// <summary>
-            /// If the nodeId seems to be null, make a unique nodeId, by temporarily giving it
-            /// the string version of the new Record ppos. This will be replaced during Commit
-            /// to the (unique) ppos of the new Record.
-            /// </summary>
-            /// <param name="cx"></param>
-            /// <param name="t"></param>
-            /// <param name="vs"></param>
-            /// <returns></returns>
-            /// <exception cref="DBException"></exception>
-            static CTree<long,TypedValue> CheckNodeId(Context cx,Table t,CTree<long,TypedValue> vs)
-            {
-                var x = t.FindPrimaryIndex(cx)??throw new DBException("42105");
-                var p = x.keys[0]??-1L;
-                if (vs[p] is not TypedValue v || v == TNull.Value)
-                    vs += (p, new TChar(cx.db.nextPos.ToString()));
-                return vs;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -5877,7 +5818,6 @@ namespace Pyrrho.Level4
             var nm = CTree<long, string>.Empty;
             var mn = BTree<string, (int,long?)>.Empty;
             var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
-            var ma = BTree<string, SqlValue>.Empty; // the set of referenceable columns in dt
             var ur = (Table?)cx.db.objects[vw.usingTable];
             var un = CTree<string, bool>.Empty;
             for (var b = ur?.rowType.First(); b != null; b = b.Next())
@@ -6002,7 +5942,6 @@ namespace Pyrrho.Level4
         }
         public HttpRequestMessage GetRequest(Context cx, string url, ObInfo? vi)
         {
-            var rv = (RestView?)cx.obs[restView] ?? throw new PEException("PE1410");
             var rq = new HttpRequestMessage
             {
                 RequestUri = new Uri(url)
@@ -6307,7 +6246,6 @@ namespace Pyrrho.Level4
                 if (distinct)
                     sql.Append("distinct ");
                 var co = "";
-                var rs = representation;
                 cx.groupCols += (defpos, groupCols);
                 var hasAggs = aggs!=CTree<long,bool>.Empty;
                 for (var b = rowType.First(); b != null; b = b.Next())

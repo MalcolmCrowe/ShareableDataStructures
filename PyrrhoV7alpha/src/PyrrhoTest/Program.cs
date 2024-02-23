@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("21 Dec 2023 Repeatable tests");
+                Console.WriteLine("23 February 2024 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -659,9 +659,9 @@ namespace Test
             Act(169, "alter table ad add c char"); 
             Act(170,"alter table ad alter c set default 'XX'");
             Act(172,"insert into ad(a,b) values(2,'Two')");
-            CheckResults(13, 2, "select * from ad", "[{A:20,B:'Twenty',C:'XX'},{A:2,B:'Two',C:'XX'}]"); // results for column C modified May 2023
+            CheckResults(13, 2, "select * from ad", "[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]"); // results for column C modified May 2023
             Act(173,"alter table ad drop b");
-            CheckResults(13,3,"select * from ad", "[{A:20,C:'XX'},{A:2,C:'XX'}]");
+            CheckResults(13,3,"select * from ad", "[{A:20},{A:2,C:'XX'}]");
             Act(174,"alter table ad add primary key(a)");
             Act(175,"insert into ad values(21,'AB')");
             Act(176,"create table de (d int references ad)");
@@ -673,30 +673,32 @@ namespace Test
                     Begin();
                     Act(177,"create table ad(a int,b char)");
                     Act(178,"insert into ad values(20,'Twenty')");
-                    Act(179,"alter table ad add c char default 'XX'");
-                    Act(180,"insert into ad(a,b) values(2,'Two')");
-                    Act(181,"alter table ad drop b");
-                    Act(182,"alter table ad add primary key(a)");
-                    Act(183,"insert into ad values(21,'AB')");
-                    Act(184,"create table de (d int references ad)");
+                    Act(179, "alter table ad add c char");
+                    Act(180, "alter table ad alter c set default 'XX'");
+                    Act(181,"insert into ad(a,b) values(2,'Two')");
+                    Act(182,"alter table ad drop b");
+                    Act(183,"alter table ad add primary key(a)");
+                    Act(184,"insert into ad values(21,'AB')");
+                    Act(185,"create table de (d int references ad)");
                 }
             }
-            Act(185,"insert into de values(21)");
+            Act(186,"insert into de values(21)");
             if (qry == 0 || qry == 5)
             {
                 CheckExceptionNonQuery(13, 5, "delete from ad where c='AB'", "Integrity constraint: RESTRICT - foreign key in use");
                 if (!commit)
                 {
                     Begin();
-                    Act(186,"create table ad(a int,b char)");
-                    Act(187,"insert into ad values(20,'Twenty')");
-                    Act(188,"alter table ad add c char default 'XX'");
-                    Act(189,"insert into ad(a,b) values(2,'Two')");
-                    Act(190,"alter table ad drop b");
-                    Act(191,"alter table ad add primary key(a)");
-                    Act(192,"insert into ad values(21,'AB')");
-                    Act(193,"create table de (d int references ad)");
-                    Act(194,"insert into de values(21)");
+                    Act(187,"create table ad(a int,b char)");
+                    Act(188,"insert into ad values(20,'Twenty')");
+                    Act(189, "alter table ad add c char");
+                    Act(190, "alter table ad alter c set default 'XX'");
+                    Act(191,"insert into ad(a,b) values(2,'Two')");
+                    Act(192,"alter table ad drop b");
+                    Act(193,"alter table ad add primary key(a)");
+                    Act(194,"insert into ad values(21,'AB')");
+                    Act(195,"create table de (d int references ad)");
+                    Act(196,"insert into de values(21)");
                 }
             }
             if (qry == 0 || qry == 6)
@@ -705,23 +707,24 @@ namespace Test
                 if (!commit)
                 {
                     Begin();
-                    Act(195,"create table ad(a int,b char)");
-                    Act(196,"insert into ad values(20,'Twenty')");
-                    Act(197,"alter table ad add c char default 'XX'");
-                    Act(198,"insert into ad(a,b) values(2,'Two')");
-                    Act(199,"alter table ad drop b");
-                    Act(200,"alter table ad add primary key(a)");
-                    Act(201,"insert into ad values(21,'AB')");
-                    Act(202,"create table de (d int references ad)");
-                    Act(203,"insert into de values(21)");
+                    Act(197,"create table ad(a int,b char)");
+                    Act(198,"insert into ad values(20,'Twenty')");
+                    Act(199, "alter table ad add c char");
+                    Act(200, "alter table ad alter c set default 'XX'");
+                    Act(201,"insert into ad(a,b) values(2,'Two')");
+                    Act(202,"alter table ad drop b");
+                    Act(203,"alter table ad add primary key(a)");
+                    Act(204,"insert into ad values(21,'AB')");
+                    Act(205,"create table de (d int references ad)");
+                    Act(206,"insert into de values(21)");
                 }
             }
-            Act(204,"drop de cascade");
-            Act(205,"alter table ad drop primary key(a)");
-            CheckResults(13,7, "select * from ad", "[{A:20,C:'XX'},{A:2,C:'XX'},{A:21,C:'AB'}]");
-            Act(206,"insert into ad(a) values(13)");
-            CheckResults(13,8, "select * from ad", "[{A:20,C:'XX'},{A:2,C:'XX'},{A:21,C:'AB'},{A:13,C:'XX'}]");
-            Act(207,"drop ad");
+            Act(207,"drop de cascade");
+            Act(208,"alter table ad drop primary key(a)");
+            CheckResults(13,7, "select * from ad", "[{A:20},{A:2,C:'XX'},{A:21,C:'AB'}]");
+            Act(209,"insert into ad(a) values(13)");
+            CheckResults(13,8, "select * from ad", "[{A:20},{A:2,C:'XX'},{A:21,C:'AB'},{A:13,C:'XX'}]");
+            Act(210,"drop ad");
             if (qry == 0 || qry == 11)
             {
                 CheckExceptionQuery(13, 11, "select * from ad", "Table AD undefined");
@@ -1270,12 +1273,12 @@ namespace Test
                 +"BEGIN n.born = 1962; r.since = 1996 END");
             CheckResults(25, 9, "MATCH (n:Person)-[:married{since:d}]->() RETURN n.name,d", 
                 "[{N.NAME:'Emil',D:2000},{N.NAME:'Joe Hill',D:1996}]");
-            Act(365, "MATCH (e:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),"
-                +"(e)-[r:owns ]->(d),(d)-[r2:owned_by]->(e)");
+            Act(365, "MATCH (ee:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),"
+                +"(ee)-[r:owns ]->(d),(d)-[r2:owned_by]->(ee)");
             Act(366, "MATCH (d:Dog {name: 'Rex'})-[r:owned_by]->() DELETE r;");
             Act(367, "MATCH (k{name:'Karin'}),()-[o:owns ]->({name:'Rex'}) SET o.leaving=k");
             CheckResults(25, 10, "select count(*) from owned_by", "[{COUNT:0}]");
-            CheckResults(25, 11, "MATCH (n)-[:owns]->(d) RETURN n.name,d.name as dog", 
+            CheckResults(25, 11, "MATCH (nx)-[:owns]->(dx) RETURN nx.name,dx.name as dog", 
                 "[{NAME:'Karin',DOG:'Rex'}]");
             Rollback();
         }

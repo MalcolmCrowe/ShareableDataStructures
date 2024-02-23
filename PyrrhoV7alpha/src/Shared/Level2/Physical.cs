@@ -8,7 +8,7 @@ using System.Reflection.Metadata;
 using System.Security.Cryptography;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -44,7 +44,7 @@ namespace Pyrrho.Level2
             PDateType, NotUsed2, NotUsed3, NotUsed4, //30-33 
             PType1, PProcedure2, PMethod2, PIndex1, Reference, Record2, Curated, //34-40
             NotUsed5, PDomain1, Namespace, PTable1, Alter2, AlterRowIri, PColumn3, //41-47
-            Alter3, NotUsed6, Metadata, PeriodDef, Versioning, PCheck2, NotUsed7, //48-54 PView1 is obsolete
+            Alter3, PType2, Metadata, PeriodDef, Versioning, PCheck2, NotUsed7, //48-54 
             NotUsed8, ColumnPath, Metadata2, PIndex2, DeleteReference1, //55-59
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
@@ -93,7 +93,7 @@ namespace Pyrrho.Level2
         public virtual long _Table => -1L;
         public virtual bool Committed(Writer wr,long pos)
         {
-            return pos < wr.Length || wr.cx.uids.Contains(pos);
+            return pos < Transaction.TransPos || wr.cx.uids.Contains(pos);
         }
         /// <summary>
         /// On commit, dependent Physicals must be committed first
@@ -121,7 +121,7 @@ namespace Pyrrho.Level2
             for (;tr is not null ; ) // check for uncommitted dependents
             {
                 var pd = Dependent(wr,tr);
-                if (Committed(wr,pd))
+                if (pd<Transaction.Analysing && Committed(wr,pd))
                     break;
                 // commit the dependent physical and update wr relocation info
                 tr.physicals[pd]?.Commit(wr,tr);

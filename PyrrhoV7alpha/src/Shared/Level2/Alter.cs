@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -66,7 +66,8 @@ namespace Pyrrho.Level2
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(name, priv);
             tc += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
-            table += (cx, seq, tc);
+            tc += (TableColumn.Seq, seq);
+            table += (cx, tc);
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
             seq = tc.seq;
             cx.Install(table, p);
@@ -136,8 +137,9 @@ namespace Pyrrho.Level2
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(name, priv);
+            tc += (TableColumn.Seq, seq);
             table += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
-            table += (cx, seq, tc);
+            table += (cx, tc);
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
             seq = tc.seq;
             cx.Install(table, p);
@@ -228,8 +230,9 @@ namespace Pyrrho.Level2
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var oc = new ObInfo(name, priv);
             tc += (ro.defpos, oc);
+            tc += (TableColumn.Seq, seq);
             cx.obs += (tc.defpos, tc);
-            table += (cx, seq, tc);
+            table += (cx, tc);
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
      //       seq = tc.seq;
             cx.Install(table, p);

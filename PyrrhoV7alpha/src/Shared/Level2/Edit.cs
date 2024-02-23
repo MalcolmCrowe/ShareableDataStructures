@@ -2,14 +2,15 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
- 
+
 namespace Pyrrho.Level2
 {
 	/// <summary>
@@ -32,7 +33,7 @@ namespace Pyrrho.Level2
         public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
                   dt.culture.Name,dt.defaultString,
-                  (dt as UDType)?.super,pp,cx)
+                  dt.super.First()?.key(),pp,cx)
         {
             if (cx.db != null)
                 _defpos = cx.db.Find(old)?.defpos ?? throw new DBException("42000",nm);
@@ -141,7 +142,7 @@ namespace Pyrrho.Level2
         /// <param name="sd">The (new) structure definition</param>
         /// <param name="un">The UNDER domain if any</param>
         /// <param name="pp">The ppos for this log record</param>
-        public EditType(string nm, UDType old, Domain sd, Domain? un, long pp, Context cx)
+        public EditType(string nm, UDType old, Domain sd, CTree<Domain,bool> un, long pp, Context cx)
             : base(Type.EditType, nm, 
                   (UDType)old.New(old.defpos,sd.mem), 
                   un, cx.db.nextStmt, pp, cx)
@@ -165,6 +166,8 @@ namespace Pyrrho.Level2
         {
             _defpos = wr.cx.Fix(x._defpos);
             prev = (Domain)x.prev.Relocate(wr.cx);
+            for (var b = x.under.First(); b != null; b = b.Next())
+                under += ((Domain)b.key().Relocate(wr.cx), true);
             hierCols = x.hierCols;
             _prev = prev.defpos;
         }
@@ -265,53 +268,51 @@ namespace Pyrrho.Level2
                         cx.MergeColumn(q, nq); // ShallowReplace does the work
                         fix += (dataType.defpos, true);
                     }
-            under = (UDType?)cx.db.objects[under?.defpos ?? -1L];
             // The second stage of merging columns considers the columns from a new under
-            if (under is UDType uD)
-            {
-                var hc = uD.HierarchyCols(cx);
-                for (var b = prev.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long np && cx.db.objects[np] is TableColumn tc
-                        && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string n
-                        && hc[n].Item2 is long ep  // in hierarchy
-                        && np != ep)
-                    {
-                        var q = Math.Min(np, ep);
-                        var nq = Math.Max(np, ep);
-                        cx.MergeColumn(q, nq); // ShallowReplace does the work
-                        fix += (uD.defpos,true);
-                    }
-                // under and dataType may have changed
-                dataType = (UDType)(cx.db.objects[dataType.defpos] ?? Domain.TypeSpec);
-                var ps = dataType.representation;
-                for (var dm = dataType.super; dm is not null; dm = dm.super)
-                    ps += dm.representation;
-                var rt = BList<long?>.Empty;
-                for (var b = ps.First(); b != null; b = b.Next())
-                    rt += b.key();
-                dataType += (Table.PathDomain, ((Table)dataType)._PathDomain(cx));
-                under = (UDType)(cx.db.objects[under.defpos] ?? throw new DBException("PE408202"));
-                // we need to add our tableRows to under 
-                if (under is NodeType nt && dataType is Table ns)
+            for (var ub = under.First(); ub != null; ub = ub.Next())
+                if (ub.key() is UDType uD)
                 {
-                    for (var b = ns.tableRows.First(); b != null; b = b.Next())
+                    var hc = uD.HierarchyCols(cx);
+                    for (var b = prev.rowType.First(); b != null; b = b.Next())
+                        if (b.value() is long np && cx.db.objects[np] is TableColumn tc
+                            && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string n
+                            && hc[n].Item2 is long ep  // in hierarchy
+                            && np != ep)
+                        {
+                            var q = Math.Min(np, ep);
+                            var nq = Math.Max(np, ep);
+                            cx.MergeColumn(q, nq); // ShallowReplace does the work
+                            fix += (uD.defpos, true);
+                        }
+                    // under and dataType may have changed
+                    dataType = (UDType)(cx.db.objects[dataType.defpos] ?? Domain.TypeSpec);
+                    var ps = ((UDType)dataType).HierarchyRepresentation(cx);
+                    var rt = BList<long?>.Empty;
+                    for (var b = ps.First(); b != null; b = b.Next())
+                        rt += b.key();
+                    dataType += (Table.PathDomain, ((Table)dataType)._PathDomain(cx));
+                    var un = (UDType)(cx.db.objects[uD.defpos] ?? throw new DBException("PE408202"));
+                    // we need to add our tableRows to under 
+                    if (un is NodeType nt && dataType is Table ns)
                     {
-                        for (var xb = nt.indexes.First(); xb != null; xb = xb.Next())
-                            for (var c = xb.value().First(); c != null; c = c.Next())
-                                if (cx.db.objects[c.key()] is Level3.Index x
-                                    && x.MakeKey(b.value().vals) is CList<TypedValue> k)
-                                {
-                                    x += (k, b.key());
-                                    cx.db += (x.defpos, x);
-                                }
+                        for (var b = ns.tableRows.First(); b != null; b = b.Next())
+                        {
+                            for (var xb = nt.indexes.First(); xb != null; xb = xb.Next())
+                                for (var c = xb.value().First(); c != null; c = c.Next())
+                                    if (cx.db.objects[c.key()] is Level3.Index x
+                                        && x.MakeKey(b.value().vals) is CList<TypedValue> k)
+                                    {
+                                        x += (k, b.key());
+                                        cx.db += (x.defpos, x);
+                                    }
+                        }
+                        un += (Table.TableRows, nt.tableRows + ns.tableRows);
+                        // record that we are a subType of Under
+                        un += (Domain.Subtypes, uD.subtypes - ppos + (prev.defpos, true));
+                        cx.db += (un.defpos, un);
+                        dataType += (Domain.Under, under-uD+(un,true));
                     }
-                    under += (Table.TableRows, nt.tableRows + ns.tableRows);
-                    // record that we are a subType of Under
-                    under += (Domain.Subtypes, uD.subtypes - ppos + (prev.defpos, true));
-                    cx.db += (under.defpos, under);
-                    dataType += (Domain.Under, under);
                 }
-            }
             // record our new dataType
             cx.db += (dataType.defpos, dataType);
             // and fix up the nodeIds tree
@@ -333,8 +334,11 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            return "EditType " + name + "[" + DBObject.Uid(prev.defpos) 
-                + "] Under: " + DBObject.Uid(under?.defpos??-1L);  
+            var sb = new StringBuilder("EditType " + name + "[" + DBObject.Uid(prev.defpos) + "] Under: ");
+            var cm = "";
+            for (var b = under.First(); b != null; b = b.Next())
+            { sb.Append(cm); cm = ","; sb.Append(b.ToString()); }
+            return sb.ToString();
         }
     }
 }

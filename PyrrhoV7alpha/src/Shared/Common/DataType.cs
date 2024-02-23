@@ -496,54 +496,54 @@ namespace Pyrrho.Common
         ZONED_DATETIME = 470, //GQL 
         ZONED_TIME = 471, // GQL last reserved word
         //====================TOKEN TYPES=====================
-        ARROW = 472, // ]-> GQL bracket right arrow 
-        ARROWL = 473, // <- GQL left arrow
-        ARROWLTILDE = 474, // <~ GQL left arrow tilde
-        ARROWR = 475, // -> GQL right arrow
-        ARROWRTILDE = 476, // ~> GQL tilde right arrow
-        ARROWTILDE = 477, // ]~> GQL bracket tilde right arrow
-        ARROWBASE = 478, // -[ GQL minus left bracket
-        ARROWBASETILDE = 479, // ~[ GQL tilde left bracket
-        BLOBLITERAL = 480, // 
-        BOOLEANLITERAL = 481,
-        CHARLITERAL = 482, //
-        COLON = 483, // :
-        COMMA = 484,  // ,        
-        CONCATENATE = 485, // ||        
-        DIVIDE = 486, // /        
-        DOT = 487, // . 5.2 was STOP
-        DOUBLEARROW = 488, // => GQL right double arrow
-        DOUBLECOLON = 489, // ::
-        DOUBLEPERIOD = 490, // ..
-        EQL = 491,  // =        
-        GEQ = 492, // >=    
-        GTR = 493, // >    
-        Id = 494, // identifier
-        INTEGERLITERAL = 495, // Pyrrho
-        LBRACE = 496, // {
-        LBRACK = 497, // [
-        LEQ = 498, // <=
-        LPAREN = 499, // (
-        LSS = 500, // <
-        MINUS = 501, // -
-        NEQ = 502, // <>
-        NUMERICLITERAL = 503, // 
-        PLUS = 504, // + 
-        QMARK = 505, // ?
-        RARROW = 506, // <-[ GQL left arrow bracket
-        RARROWTILDE = 507, // <~[ GQL left arrow tilde bracket
-        RARROWBASE = 508, // ]- GQL right bracket minus
-        RARROWBASETILDE = 509, // ]~ GQL right bracket tilde
-        RBRACE = 510, // } 
-        RBRACK = 511, // ] 
-        RBRACKTILDE = 512, // ]~
-        RDFDATETIME = 513, //
-        RDFLITERAL = 514, // 
-        RDFTYPE = 515, // Pyrrho 7.0
-        REALLITERAL = 516, //
-        RPAREN = 517, // ) 
-        SEMICOLON = 518, // ; 
-        TILDELEFT = 519, // ~[
+        AMPERSAND = 472, // for GQL label expression
+        ARROW = 473, // ]-> GQL bracket right arrow 
+        ARROWL = 474, // <- GQL left arrow
+        ARROWLTILDE = 475, // <~ GQL left arrow tilde
+        ARROWR = 476, // -> GQL right arrow
+        ARROWRTILDE = 477, // ~> GQL tilde right arrow
+        ARROWTILDE = 478, // ]~> GQL bracket tilde right arrow
+        ARROWBASE = 479, // -[ GQL minus left bracket
+        ARROWBASETILDE = 480, // ~[ GQL tilde left bracket
+        BLOBLITERAL = 481, // 
+        BOOLEANLITERAL = 482,
+        CHARLITERAL = 483, //
+        COLON = 484, // :
+        COMMA = 485,  // ,        
+        CONCATENATE = 486, // ||        
+        DIVIDE = 487, // /        
+        DOT = 488, // . 5.2 was STOP
+        DOUBLEARROW = 489, // => GQL right double arrow
+        DOUBLECOLON = 490, // ::
+        DOUBLEPERIOD = 491, // ..
+        EQL = 492,  // =
+        EXCLAMATION = 493, // !  GQL
+        GEQ = 494, // >=    
+        GTR = 495, // >    
+        Id = 496, // identifier
+        INTEGERLITERAL = 497, // Pyrrho
+        LBRACE = 498, // {
+        LBRACK = 499, // [
+        LEQ = 500, // <=
+        LPAREN = 501, // (
+        LSS = 502, // <
+        MINUS = 503, // -
+        NEQ = 504, // <>
+        NUMERICLITERAL = 505, // 
+        PLUS = 506, // + 
+        QMARK = 507, // ?
+        RARROW = 508, // <-[ GQL left arrow bracket
+        RARROWTILDE = 509, // <~[ GQL left arrow tilde bracket
+        RARROWBASE = 510, // ]- GQL right bracket minus
+        RBRACE = 511, // } 
+        RBRACK = 512, // ] 
+        RBRACKTILDE = 513, // ]~
+        RDFDATETIME = 514, //
+        RDFLITERAL = 515, // 
+        RDFTYPE = 516, // Pyrrho 7.0
+        REALLITERAL = 517, //
+        RPAREN = 518, // ) 
+        SEMICOLON = 519, // ; 
         TIMES = 520, // *
         VBAR = 521, // | 
         VPLUS = 522, // |+| GQL multiset alternation operator

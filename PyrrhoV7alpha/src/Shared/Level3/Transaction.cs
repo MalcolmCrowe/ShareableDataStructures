@@ -5,7 +5,7 @@ using System;
 using System.Net;
 using System.Transactions;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -208,20 +208,20 @@ namespace Pyrrho.Level3
                     }
                 }
                 if (pt is not null)
-                for (var b = tb; b != null; b = b.Next())
-                {
-                    var p = b.value();
-                    var ce = ph.Conflicts(rdr.context.db, cx, p, pt);
-                    if (ce is not null)
+                    for (var b = tb; b != null; b = b.Next())
                     {
-                        cx.wconflicts++;
-                        throw ce;
+                        var p = b.value();
+                        var ce = ph.Conflicts(rdr.context.db, cx, p, pt);
+                        if (ce is not null)
+                        {
+                            cx.wconflicts++;
+                            throw ce;
+                        }
                     }
-                }
             }
             lock (wr.file)
-            { 
-                if (databases[name] is Database nd && nd!=db)// may have moved on 
+            {
+                if (databases[name] is Database nd && nd != db)// may have moved on 
                     db = nd;
                 rdr = new Reader(new Context(db), ph?.ppos ?? loadpos) { locked = true };
                 since = rdr.GetAll(); // resume where we had to stop above, use new file length
@@ -245,15 +245,15 @@ namespace Pyrrho.Level3
                         }
                     }
                     if (pu is not null)
-                    for (var b = tb; b != null; b = b.Next())
-                    {
-                        var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pu);
-                        if (ce != null)
+                        for (var b = tb; b != null; b = b.Next())
                         {
-                            cx.wconflicts++;
-                            throw ce;
+                            var ce = ph.Conflicts(rdr.context.db, cx, b.value(), pu);
+                            if (ce != null)
+                            {
+                                cx.wconflicts++;
+                                throw ce;
+                            }
                         }
-                    }
                 }
                 if (physicals.Count == 0)
                     return Rollback();
@@ -285,33 +285,39 @@ namespace Pyrrho.Level3
                 cx.parse = ExecuteStatus.Obey;
                 wr.cx.db += (LastModified, File.GetLastWriteTimeUtc(name));
                 wr.cx.result = -1L;
-                var at = CTree<long,Domain>.Empty;
+                var at = CTree<long, Domain>.Empty;
                 for (var b = wr.cx.uids.First(); b != null; b = b.Next())
-                {
-                    var o = wr.cx.db.objects[b.value() ?? -1L];
-                    for (var a = wr.cx.db.objects[(o as Domain)?.super?.defpos ?? -1L] as Domain; a != null;
-                        a = wr.cx.db.objects[a.super?.defpos ?? -1L] as Domain)
-                        at += (a.defpos, a);
-                    for (var a = wr.cx.db.objects[(o as Index)?.reftabledefpos ?? -1L] as Domain; a != null;
-                        a = wr.cx.db.objects[a.super?.defpos ?? -1L] as Domain)
-                        at += (a.defpos, a);
-                }
-                for (var b = at.First();b!=null;b=b.Next())
+                    if (wr.cx.db.objects[b.value() ?? -1L] is DBObject o)
+                    {
+                        if (o is Domain dm)
+                            at = Supers(wr.cx, dm, at);
+                        if (o is Index ix && wr.cx.db.objects[ix.reftabledefpos] is Domain dn)
+                            at = Supers(wr.cx, dn, at);
+                    }
+                for (var b = at.First(); b != null; b = b.Next())
                     if (b.value() is Domain ad)
                     {
                         var na = (Domain)ad.Fix(wr.cx);
                         if (na.mem.ToString() != ad.mem.ToString())
                             wr.cx.db += na;
                     }
-                wr.PutBuf();
-                df.Flush();
-                cx.newnodes += wr.cx.newnodes; 
-                var r = new Database(wr.Length,wr.cx.db.mem);
-                lock (_lock)
-                    databases += (name, r-Role-User);
-                cx.db = r;
-                return r;
             }
+            wr.PutBuf();
+            df.Flush();
+            cx.newnodes += wr.cx.newnodes;
+            var r = new Database(wr.Length, wr.cx.db.mem);
+            lock (_lock)
+                databases += (name, r - Role - User);
+            cx.db = r;
+            return r;
+        }
+        static CTree<long,Domain> Supers(Context cx,Domain dm,CTree<long,Domain> at)
+        {
+            at += (dm.defpos, dm);
+            for (var b = dm.super.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key().defpos] is Domain d)
+                    at += (d.defpos, d);
+            return at;
         }
         /// <summary>
         /// Contsruct a DBException and add in some diagnostics information

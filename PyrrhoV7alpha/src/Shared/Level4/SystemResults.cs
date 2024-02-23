@@ -428,7 +428,7 @@ namespace Pyrrho.Level4
             SysClassificationResults();
             SysClassifiedColumnDataResults();
             SysEnforcementResults();
-            SysGraphResults();
+           // SysGraphResults();
             SysAuditResults();
             SysAuditKeyResults();
             RolePrimaryKeyResults();
@@ -528,7 +528,7 @@ namespace Pyrrho.Level4
                 case "Sys$Classification": return SysClassificationBookmark.New(_cx, res);
                 case "Sys$ClassifiedColumnData": return SysClassifiedColumnDataBookmark.New(_cx, res);
                 case "Sys$Enforcement": return SysEnforcementBookmark.New(_cx, res);
-                case "Sys$Graph": return SysGraphBookmark.New(_cx,res);
+                //case "Sys$Graph": return SysGraphBookmark.New(_cx,res);
                 case "Sys$Audit": return SysAuditBookmark.New(_cx, res);
                 case "Sys$AuditKey": return SysAuditKeyBookmark.New(_cx, res);
                 case "Role$PrimaryKey": return RolePrimaryKeyBookmark.New(_cx, res);
@@ -3300,7 +3300,15 @@ namespace Pyrrho.Level4
             static TRow _Value(SystemRowSet res, Physical ph)
             {
                 PType t = (PType)ph;
-                var un = (t.under is null) ? TNull.Value : Pos(t.under.defpos);
+                var sb = new StringBuilder();
+                var cm = "";
+                TypedValue un = TNull.Value;
+                if (t.under.Count > 0)
+                {
+                    for (var b = t.under.First(); b != null; b = b.Next())
+                    { sb.Append(cm); cm = ","; sb.Append(Pos(b.key().defpos)); }
+                    un = new TChar(sb.ToString());
+                }
                 TypedValue gr = (t is PEdgeType) ? new TChar("EDGETYPE")
                     : (t is PNodeType) ? new TChar("NODETYPE") : TNull.Value;
                 return new TRow(res,
@@ -4618,7 +4626,7 @@ namespace Pyrrho.Level4
                 throw new NotImplementedException();
             }
         }
-        static void SysGraphResults()
+ /*       static void SysGraphResults()
         {
             var t = new SystemTable("Sys$Graph");
             t += new SystemTableColumn(t, "Uid", Position, 1);
@@ -4667,7 +4675,7 @@ namespace Pyrrho.Level4
             {
                 throw new NotImplementedException();
             }
-        }
+        } */
         /// <summary>
         /// set up the Role$View table
         /// </summary>
@@ -6675,12 +6683,19 @@ namespace Pyrrho.Level4
                     throw new DBException("42105");
                 TypedValue gr = (t is EdgeType) ? new TChar("EDGETYPE")
                             : (t is NodeType) ? new TChar("NODETYPE") : TNull.Value;
+                var su = new StringBuilder();
+                var cm = "";
+                for (var b = t.super.First(); b != null; b = b.Next())
+                    if (b.key().name != "")
+                    {
+                        su.Append(cm); cm = ","; su.Append(b.key().name);
+                    }
                 return new TRow(rs,
                     Pos(t.defpos),
                     new TChar(t.name),
-                    new TChar(t.super?.name??""),
-                    (t.orderFunc is null)?TNull.Value:new TChar(t.orderFunc.NameFor(_cx)),
-                    new TChar((t.orderflags == OrderCategory.None) ? "":
+                    new TChar(su.ToString()),
+                    (t.orderFunc is null) ? TNull.Value : new TChar(t.orderFunc.NameFor(_cx)),
+                    new TChar((t.orderflags == OrderCategory.None) ? "" :
                         t.orderflags.ToString()),
                     new TInt(t.subtypes.Count),
                     Pos(t.definer),
@@ -6818,7 +6833,7 @@ namespace Pyrrho.Level4
         static void RoleGraphInfoResults()
         {
             var t = new SystemTable("Role$GraphInfo");
-            t += new SystemTableColumn(t, "Name", Int, 1);
+            t += new SystemTableColumn(t, "Name", Char, 1);
             t += new SystemTableColumn(t, "Count", Int, 0);
             t.Add();
         }
@@ -6835,46 +6850,56 @@ namespace Pyrrho.Level4
                 var ro = cx.role ?? throw new DBException("42105");
                 var bn = CTree<long, bool>.Empty; // base node types
                 var be = CTree<long, bool>.Empty; // base edge types
-                var nt = CTree<long, long>.Empty; // specific node types and count
-                var et = CTree<long, long>.Empty; // specific edge types and count
-                var ls = CTree<string, bool>.Empty; // labels
+                var st = CTree<long, bool>.Empty; // specific types
+                var tn = 0L; // node count
+                var te = 0L; // edge count
+                var ls = CTree<long, bool>.Empty; // labels
                 for (var b = ro.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p && p >= 0 && cx.db.objects[p] is NodeType t)
                     {
                         ls += t.labels;
                         if (t is EdgeType)
                         {
-                            if (!(t.super is EdgeType))
-                            {
+                            var bs = true;
+                            for (var c = t.super.First(); c != null; c = c.Next())
+                                if (c.key() is EdgeType)
+                                    bs = false;
+                            if (bs)
                                 be += (p, true);
-                                for (var c = t.tableRows.First(); c != null; c = c.Next())
-                                {
-                                    var tr = c.value();
-                                    et += (tr.tabledefpos, et[tr.tabledefpos] + 1);
-                                }
-                            }
-                        }
-                        else if (!(t.super is NodeType))
-                        {
-                            bn += (p, true);
                             for (var c = t.tableRows.First(); c != null; c = c.Next())
                             {
                                 var tr = c.value();
-                                nt += (tr.tabledefpos, nt[tr.tabledefpos] + 1);
+                                if (tr.tabledefpos == t.defpos)
+                                {
+                                    st += (t.defpos, true);
+                                    te++;
+                                }
+                            }
+                        }
+                        else
+                        {
+                            var bs = true;
+                            for (var c = t.super.First(); c != null; c = c.Next())
+                                if (c.key() is EdgeType)
+                                    bs = false;
+                            if (bs)
+                                bn += (p, true);
+                            for (var c = t.tableRows.First(); c != null; c = c.Next())
+                            {
+                                var tr = c.value();
+                                if (tr.tabledefpos == t.defpos)
+                                {
+                                    st += (t.defpos, true);
+                                    tn++;
+                                }
                             }
                         }
                     }
                 var v = BTree<int,(string,long)>.Empty;
                 v += (0, ("BaseTypes", bn.Count+be.Count));
-                v += (1, ("SpecificTypes", nt.Count + et.Count));
+                v += (1, ("SpecificTypes", st.Count));
                 v += (2, ("NodeTypes", bn.Count));
                 v += (3, ("EdgeTypes", be.Count));
-                var tn = 0L;
-                for (var b = nt.First(); b != null; b = b.Next())
-                    tn += b.value();
-                var te = 0L;
-                for (var b = et.First(); b!=null;b=b.Next())
-                    te += b.value();
                 v += (4, ("Nodes", tn));
                 v += (5, ("Edges", te));
                 v += (6, ("Labels", ls.Count));

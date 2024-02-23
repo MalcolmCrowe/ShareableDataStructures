@@ -283,11 +283,7 @@ namespace Pyrrho.Level2
             tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
             cx.db += tb;
             x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));
-            for (var st = tb.super as Table; st != null; st = st.super as Table)
-                for (var b = st.indexes[x.keys]?.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is Level3.Index sx && sx.rows is not null
-                        && sx.flags.HasFlag(ConstraintType.PrimaryKey))
-                        x += (Level3.Index.Tree, sx.rows);
+            x = x.AddRows(tb, cx);
             cx.Install(x, p);
             if (reference >= 0 && cx.db.objects[x.refindexdefpos] is Level3.Index rx)
             {

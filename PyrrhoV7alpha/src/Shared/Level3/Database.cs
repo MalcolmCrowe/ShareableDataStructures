@@ -116,7 +116,7 @@ namespace Pyrrho.Level3
     /// 
     /// Prior to version 7, every Pyrrho database began with user and role records. From version 7 on,
     /// this is not required: the database user for a new empty database is the account running the engine,
-    /// and this account is initially allowed to use the the schema role (with key 0). 
+    /// and this account is initially allowed to use the the schema role. 
     /// 
     /// Creation of a new database by a connected user other than the server account can be permitted
     /// using command-line flags (it is not the default), and in that case the creator user is 
@@ -151,10 +151,9 @@ namespace Pyrrho.Level3
             Curated = -53, // long
             EdgeTypes = -471, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType,NodeType,NodeType,EdgeType
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
-            Graphs = -461, // CTree<long,TGraph> the set of disjoint graphs for 7.03
-   //         GraphUsage = -482, // CTree<long,CTree<long,bool>> NodeType NodeType
+            Graph = -481, // CTree<long,bool> NodeType current Graph (by default: all nodetypes in role)
             Guest = -55, // long: a role holding all grants to PUBLIC
-            Public = -311, // long: always -1L, a dummy user Id
+            KeyLabels = -461, // BTree<CTree<string,bool>,long?> NodeType 
             LastModified = -279, // DateTime
             Leaving = -466, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Levels = -56, // BTree<Level,long?>
@@ -166,6 +165,7 @@ namespace Pyrrho.Level3
             Owner = -59, // long: the defpos of the owner user for the database
             Prefixes = -375, // BTree<string,long?> UDT
             Procedures = -95, // CTree<long,string> Procedure
+            Public = -311, // long: always -1L, a dummy user Id
             Role = -285, // Role: the current role (e.g. an executable's definer)
             Roles = -60, // BTree<string,long?>
             _Schema = -291, // long: the owner role for the database
@@ -190,6 +190,8 @@ namespace Pyrrho.Level3
         internal Role guest => (Role)(mem[Guest]??throw new PEException("PE1003"));
         internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
         internal Role role => (Role)(mem[Role] ?? guest);
+        internal CTree<long,bool> graph =>
+            (CTree<long, bool>)(mem[Graph]??CTree<long,bool>.Empty);
         internal User? user => (User?)mem[User];
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
@@ -210,10 +212,6 @@ namespace Pyrrho.Level3
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
-        public CTree<long,TGraph> graphs =>
-            (CTree<long,TGraph>)(mem[Graphs]??CTree<long,TGraph>.Empty);
-  /*      public CTree<long,CTree<long,bool>> graphUsage =>
-            (CTree<long, CTree<long, bool>>)(mem[GraphUsage]??CTree<long,CTree<long,bool>>.Empty); */
         internal static Role schemaRole;
         internal static Role guestRole;
         /// <summary>
@@ -364,16 +362,6 @@ namespace Pyrrho.Level3
             }
             ro += (Level3.Role.DBObjects, ro.dbobjects - et.name);
             return db + (ro, db.loadpos);
-        }
-        internal TGraph? Graph(TNode r) // r a node or edge
-        {
-            if (r.dataType is not NodeType nt) // or edgetype
-                return null;
-            if (r[nt.idCol] is TInt id)
-                for (var b = graphs.First(); b != null; b = b.Next())
-                    if (b.value().nodes.Contains(id.value))
-                        return b.value();
-            return null;
         }
         internal virtual DBObject? Add(Context cx,Physical ph,long lp)
         {

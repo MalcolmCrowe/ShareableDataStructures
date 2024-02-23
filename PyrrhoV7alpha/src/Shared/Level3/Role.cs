@@ -39,6 +39,11 @@ namespace Pyrrho.Level3
     /// If a role is granted to another role it causes a cascade of permissions, but does not establish
     /// an ongoing relationship between the roles (granting a role to a user does):
     /// for this reason granting a role to a role is deprecated.
+    /// Insert label sets (consisting of &-separated type names in canonical order) 
+    /// are tolerated as keys in dbobjects. These compound names are constructed 
+    /// in SqlNode._NodeType from CTree(long,bool) where long is an existing graph type, and in that case
+    /// (i.e. if the name has &) we always get a NodeType, which, if we are expecting an Edge Type,
+    /// will have the EdgeType we want as a subtype.
     /// Immutable
     /// 
     /// </summary>
@@ -46,18 +51,14 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
-            EdgeTypes = -82, // BTree<string,BTree<string,BTree<string,long?>>> EdgeTypes by name,leavingtype,arrivingtype
             Procedures = -249; // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
        internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
         internal BTree<string, BTree<CList<Domain>,long?>> procedures => 
             (BTree<string, BTree<CList<Domain>,long?>>?)mem[Procedures]??BTree<string, BTree<CList<Domain>, long?>>.Empty;
-        internal BTree<string, BTree<string, BTree<string, long?>>> edgeTypes =>
-            (BTree<string, BTree<string, BTree<string, long?>>>?)mem[EdgeTypes]
-            ?? BTree<string, BTree<string, BTree<string, long?>>>.Empty; 
-
-         public const Grant.Privilege use = Grant.Privilege.UseRole,
+ 
+        public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>
         /// Just to create the schema and guest roles
@@ -91,10 +92,6 @@ namespace Pyrrho.Level3
         public static Role operator +(Role r, (string, long) x)
         {
             return (Role)r.New(r.mem + (DBObjects, r.dbobjects + x));
-        }
-        public EdgeType? FindEdgeType(Database d,string tn,string ln, string an)
-        {
-            return d.objects[edgeTypes[tn]?[ln]?[an] ?? -1L] as EdgeType;
         }
         public override string ToString()
         {
@@ -329,7 +326,7 @@ namespace Pyrrho.Level3
                 r += (Names, ns);
             return r;
         }
-        CTree<Sqlx,TypedValue> ShallowReplace(Context cx,CTree<Sqlx,TypedValue> md,long was, long now)
+        static CTree<Sqlx,TypedValue> ShallowReplace(Context cx,CTree<Sqlx,TypedValue> md,long was, long now)
         {
             for (var b=md.First();b!=null;b=b.Next())
                 if (b.value() is TypedValue v)
@@ -340,7 +337,7 @@ namespace Pyrrho.Level3
                 }
             return md;
         }
-        BTree<string,(int,long?)>ShallowReplace(Context cx,BTree<string,(int,long?)> ns, long was, long now)
+        static BTree<string,(int,long?)>ShallowReplace(Context cx,BTree<string,(int,long?)> ns, long was, long now)
         {
             for (var b = ns.First(); b != null; b = b.Next())
             {

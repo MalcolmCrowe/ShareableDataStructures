@@ -110,120 +110,23 @@ namespace Pyrrho.Level3
             : base(dp, cx, Sqlx.TABLE, rs, rt, ds) { }
         internal Table(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
-        /// The Node Type and PathDomain things make this operation more complex
+        /// The Node Type and PathDomain things make this operation more complex,
+        /// For multiple inheritance the subtype has a new uid for identity and is used here.
+        /// but otherwise we do not worry about identity inheritance (this is fixed in Record.Install).
+        /// Although this is not theoretically necessary, for presentational purposes 
+        /// we adjust so that our identity column is first (seq=0), followed by leaving and arriving if any,
+        /// other properties in declaration order.
         /// </summary>
         /// <param name="tb">The Table</param>
         /// <param name="x">(Context,suggested seq,TableColumn)</param>
-        /// <returns>The update Table including updated PathDomain (note TableColumn may be changed)</returns>
+        /// <returns>The updated Table including updated PathDomain (note TableColumn may be changed)</returns>
         /// <exception cref="DBException"></exception>
         /// <exception cref="PEException"></exception>
-        public static Table operator +(Table tb, (Context, int, TableColumn) x)
+        public static Table operator +(Table tb, (Context, TableColumn) x)
         {
-            var (cx, i0, tc) = x;
-            var i = tb.Seq(cx,tc.flags);
-            if (i != i0)
-            {
-                // update the column seq number (this will be transmitted to the Physical pc)
-                tc += (TableColumn.Seq, i);
-                cx.Add(tc);
-            }
-            var oi = tb.infos[cx.role.defpos] ?? throw new DBException("42105");
-            var ci = tc.infos[cx.role.defpos] ?? throw new DBException("42105");
-            var su = tb.super ?? TableType;
-            var si = su.infos[cx.role.defpos];
-            // tc.index etc likely to have default values here at this point (this is okay)
-            if (tc.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
-            {
-                tb = tb + (EdgeType.ArriveCol, tc.defpos) 
-                    + (EdgeType.ArriveIx, tc.index);
-                if (tc.toType >= 0)
-                {
-                    tb += (EdgeType.ArrivingType, tc.toType);
-                    var at = cx._Ob(tc.toType) as NodeType ?? throw new PEException("PE10706");
-                    if (at.idColDomain.defpos != tc.domain.defpos) throw new PEException("PE10707");
-                    tb += (EdgeType.ArriveColDomain, at.idColDomain);
-                }
-                if (tc.flags.HasFlag(PColumn.GraphFlags.SetValue))
-                    tb += (EdgeType.ArrivingEnds, true);
-            }
-            else if (tc.flags.HasFlag(PColumn.GraphFlags.LeaveCol))
-            {
-                tb = tb + (EdgeType.LeaveCol, tc.defpos)
-                    + (EdgeType.LeaveIx, tc.index);
-                if (tc.toType >= 0)
-                {
-                    tb += (EdgeType.LeavingType, tc.toType);
-                    var lt = cx._Ob(tc.toType) as NodeType ?? throw new PEException("PE10708");
-                    if (lt.idColDomain.defpos != tc.domain.defpos) throw new PEException("PE10709");
-                    tb += (EdgeType.LeaveColDomain, lt.idColDomain);
-                }
-                if (tc.flags.HasFlag(PColumn.GraphFlags.SetValue))
-                    tb += (EdgeType.LeavingEnds, true);
-            }
-            else if (tc.flags.HasFlag(PColumn.GraphFlags.IdCol))
-                tb = tb + (NodeType.IdCol, tc.defpos) + (NodeType.IdIx, tc.index);
-            if (ci.name is null)
-                throw new PEException("PE60701");
-            if (i != i0)
-                oi += (ObInfo.Names, oi.names + (ci.name, (i, tc.defpos)));
-            var rs = tb.representation + (tc.defpos, tc.domain);
-            var rn = oi.names + (ci.name, (i, tc.defpos));
-            var st = su as Table;
-            // recompute tb.rowType and the pathDomain
-            var rt = BList<long?>.Empty;
-            var pt = BList<long?>.Empty;
-            var ss = BTree<long, bool>.Empty;
-            if (st?.idCol is long sd && sd > 0 && !cx.uids.Contains(sd))
-                pt += sd;
-            else if (tb.idCol > 0 && !cx.uids.Contains(tb.idCol))
-            {
-                rt += tb.idCol; pt += tb.idCol; ss += (tb.idCol, true);
-            }
-            if (st?.leaveCol is long sl && sl > 0 && !cx.uids.Contains(sl))
-                pt += sl;
-            else if (tb.leaveCol > 0 && !cx.uids.Contains(tb.leaveCol))
-            {
-                rt += tb.leaveCol; pt += tb.leaveCol; ss += (tb.leaveCol, true);
-            }
-            if (st?.arriveCol is long sa && sa > 0 && !cx.uids.Contains(sa))
-                pt += sa;
-            else if (tb.arriveCol > 0 && !cx.uids.Contains(tb.arriveCol))
-            {
-                rt += tb.arriveCol; pt += tb.arriveCol; ss += (tb.arriveCol, true);
-            }
-            for (var b = su?.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && p != tb.idCol && p != tb.leaveCol && p != tb.arriveCol)
-                    pt += p;
-            for (var b = tb.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && !ss.Contains(p))
-                {
-                    rt += p;
-                    pt += p;
-                    ss += (p, true);
-                }
-            if (tc.flags==PColumn.GraphFlags.None && !ss.Contains(tc.defpos))
-            {
-                rt += tc.defpos;
-                pt += tc.defpos;
-            }
-            tb = tb + (RowType, rt) + (Representation, rs) + (Infos, tb.infos + (cx.role.defpos, oi));
-            if (tc.flags.HasFlag(PColumn.GraphFlags.IdCol))
-                tb += (NodeType.IdColDomain,tc.domain);
-            if (tc.flags.HasFlag(PColumn.GraphFlags.LeaveCol))
-                tb += (EdgeType.LeaveColDomain, tc.domain);
-            if (tc.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
-                tb += (EdgeType.ArriveColDomain, tc.domain);
+            var (cx, tc) = x;
+            tb = tb.Seq(cx,tc); // rt will contain only id,leaving,arriving at this point
             tb += (PathDomain, tb._PathDomain(cx));
-            var ps = su?.representation ?? CTree<long, Domain>.Empty;
-            if (tb is NodeType)
-                tb += (PathDomain, new Domain(-1L, cx, Sqlx.TABLE, ps + rs, pt, pt.Length));
-            oi += (ObInfo.Names, rn);
-            if (tb.super?.infos[cx.role.defpos] is ObInfo ui)
-            {
-                rn += ui.names;
-                oi += (ObInfo.Names, rn);
-            }
-            tb += (Infos, tb.infos + (cx.role.defpos, oi));
             cx.Add(tb);
             cx.db += (tb.defpos, tb);
             tb += (Dependents, tb.dependents + (tc.defpos, true));
@@ -279,9 +182,40 @@ namespace Pyrrho.Level3
                     return p;
             return -1L;
         }
-        internal virtual int Seq(Context cx,PColumn.GraphFlags gf)
+        /// <summary>
+        /// The base operation (for an ordinary Table) adds the new TableColumn at the end
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <param name="tc">The TableColumn</param>
+        /// <returns></returns>
+        internal virtual Table Seq(Context cx,TableColumn tc)
         {
-            return Length;
+            var tb = this;
+            var i = Length;
+            var oi = tb.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var ci = tc.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var ns = oi.names;
+            if (i != tc.seq)
+            {
+                // update the column seq number (this will be transmitted to the Physical pc)
+                tc += (TableColumn.Seq, i);
+                if (ci.name != null)
+                    ns += (ci.name, (i, tc.defpos));
+                cx.Add(tc);
+            }
+            oi += (ObInfo.Names, ns);
+            if (!tb.representation.Contains(tc.defpos))
+            {
+                tb += (RowType, tb.rowType + tc.defpos);
+                tb += (Representation, tb.representation + (tc.defpos, tc.domain));
+                tb += (Infos, tb.infos + (cx.role.defpos, oi));
+            }
+      //      cx.Add(tb);
+            cx.db += (tb.defpos, tb);
+            tb += (Dependents, tb.dependents + (tc.defpos, true));
+            if (tc.sensitive)
+                tb += (Sensitive, true);
+            return (Table)cx.Add(tb);
         }
         internal virtual ObInfo _ObInfo(long ppos, string name, Grant.Privilege priv)
         {
@@ -307,7 +241,7 @@ namespace Pyrrho.Level3
                 if (nb is EdgeType ne && nb.defpos != defpos)
                     ne.Fix(cx);
                 nb += (ObInfo.Name, pm.iri);
-                nb += (Under, ob.defpos);
+                nb += (Under, new CTree<Domain,bool>(ob,true));
                 nb += (Subtypes, ob.subtypes + (nb.defpos,true));
                 ob = nb;
             }
@@ -400,8 +334,9 @@ ColsFrom(Context cx, long dp,
 BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr,
 BTree<string, (int, long?)> ns)
         {
-            if (super is Table st)
-                (rt, rs, sr, tr, ns) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns);
+            for (var b=super.First();b!=null;b=b.Next())
+                if (b.key() is Table st)
+                    (rt, rs, sr, tr, ns) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns);
             var j = 0;
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.value()??-1L] is TableColumn tc && !tr.Contains(tc.defpos))
@@ -490,6 +425,18 @@ BTree<string, (int, long?)> ns)
         {
             return this;
         }
+        internal Table Top()
+        {
+            var t = this;
+            for (var b = super.First(); b != null; b = b.Next())
+                if (b.key() is Table a)
+                {
+                    var c = a.Top();
+                    if (c.defpos < t.defpos && c.defpos > 0)
+                        t = c;
+                }
+            return t;
+        }
         internal virtual Index? FindPrimaryIndex(Context cx)
         {
             for (var b = indexes.First(); b != null; b = b.Next())
@@ -498,6 +445,16 @@ BTree<string, (int, long?)> ns)
                         ix.flags.HasFlag(PIndex.ConstraintType.PrimaryKey))
                          return ix;
             return null;
+        }
+        internal CTree<long,bool> AllForeignKeys(Context cx)
+        {
+            var fk = CTree<long, bool>.Empty;
+            for (var b = indexes.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.key()] is Index ix &&
+                        ix.flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+                        fk += (ix.defpos, true);
+            return fk;
         }
         internal Index[]? FindIndex(Database db, Domain key, 
             PIndex.ConstraintType fl=(PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique))
@@ -522,6 +479,7 @@ BTree<string, (int, long?)> ns)
         internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm, 
             Grant.Privilege pr=Grant.Privilege.Select,string? a=null)
         {
+            cx.AddDefs(id, this, a);
             cx.Add(this);
             cx.Add(framing);
             var m = mem + (_From, fm) + (_Ident,id);
@@ -555,9 +513,12 @@ BTree<string, (int, long?)> ns)
             }
             return xs;
         }
-        internal Table DoDel(Context cx, Delete del, long p)
+        internal Table? DoDel(Context cx, Delete del, long p)
         {
-            if (tableRows[del.delpos] is TableRow delRow)
+            if (cx._Ob(defpos) is not Table a) return null;
+            for (var b=a.super.First();b!=null;b=b.Next())
+                (b.key() as Table)?.DoDel(cx, del, p);
+            if (a.tableRows[del.delpos] is TableRow delRow)
                 for (var b = indexes.First(); b != null; b = b.Next())
                     for (var c = b.value().First(); c != null; c = c.Next())
                         if (cx.db.objects[c.key()] is Index ix &&
@@ -569,7 +530,7 @@ BTree<string, (int, long?)> ns)
                                 ix += (Index.Tree, new MTree(inf, mt.nullsAndDuplicates, 0));
                             cx.Install(ix, p);
                         }
-            var tb = this;
+            var tb = a;
             tb -= del.delpos;
             tb += (LastData, p);
             cx.Install(tb, p);
@@ -823,8 +784,15 @@ BTree<string, (int, long?)> ns)
             sb.Append("\r\n/**\r\n *\r\n * @author "); sb.Append(ud.name); sb.Append("\r\n */\r\n");
             if (mi.description != "")
                 sb.Append("/* " + mi.description + "*/\r\n");
-            if (this is UDType ty && ty.super is not null)
-                sb.Append("public class " + mi.name + " extends " + ty.super.name + " {\r\n");
+            var su = new StringBuilder();
+            var cm = "";
+            for (var b = super.First(); b != null; b = b.Next())
+                if (b.key().name != "")
+                {
+                    su.Append(cm); cm = ","; su.Append(b.key().name);
+                }
+            if (this is UDType && super.Count!=0L)
+                sb.Append("public class " + mi.name + " extends " + su.ToString() + " {\r\n");
             else
                 sb.Append("public class " + mi.name + (versioned ? " extends Versioned" : "") + " {\r\n");
             for (var b = rowType.First(); b != null; b = b.Next())
@@ -867,8 +835,15 @@ BTree<string, (int, long?)> ns)
             var key = BuildKey(cx, out Domain keys);
             if (mi.description != "")
                 sb.Append("# " + mi.description + "\r\n");
-            if (this is UDType ty && ty.super is not null)
-                sb.Append("public class " + nm + "(" + ty.super.NameFor(cx) + "):\r\n");
+            var su = new StringBuilder();
+            var cm = "";
+            for (var b = super.First(); b != null; b = b.Next())
+                if (b.key().name != "")
+                {
+                    su.Append(cm); cm = ","; su.Append(b.key().name);
+                }
+            if (this is UDType && super.Count!=0L)
+                sb.Append("public class " + nm + "(" + su.ToString() + "):\r\n");
             else
                 sb.Append("class " + nm + (versioned ? "(Versioned)" : "") + ":\r\n");
             sb.Append(" def __init__(self):\r\n");
@@ -915,7 +890,7 @@ BTree<string, (int, long?)> ns)
         }
         internal override TRow RoleSQLValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
-            if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
+            if (cx.role is not Role ro || infos[ro.defpos] is null
                 || kind == Sqlx.Null || from.kind == Sqlx.Null)
                 throw new DBException("42105");
             var sb = new StringBuilder();

@@ -200,8 +200,9 @@ namespace Pyrrho.Level2
         }
         static CTree<long, Domain> ColsFrom(Context cx, Table tb, CTree<long, Domain> cdt)
         {
-            if (tb is NodeType nt && nt.super is Table st)
-                cdt = ColsFrom(cx, st, cdt);
+            for (var b = tb.super.First(); b != null; b = b.Next())
+                if (b.key() is Table st)
+                    cdt = ColsFrom(cx, st, cdt);
             return cdt + tb.tableCols;
         }
         public CList<TypedValue> MakeKey(BList<long?> cols)
@@ -293,7 +294,7 @@ namespace Pyrrho.Level2
                         if (cx.db.objects[x.refindexdefpos] is Level3.Index rx &&
                         //    rx.rows?.Contains(k)!=true
                              cx.db.objects[x.reftabledefpos] is Table tb
-                            && tb.Base(cx).FindPrimaryIndex(cx) is Level3.Index px 
+                            && tb.Top().FindPrimaryIndex(cx) is Level3.Index px 
                             && px.rows?.Contains(k) != true
                             && cx.db is Transaction)
                             throw new DBException("23000", "missing foreign key ", k);
@@ -330,18 +331,10 @@ namespace Pyrrho.Level2
             try
             {
                 var now = Now(cx);
-                for (var tt = tb; tt != null; tt=cx.db.objects[tt.super?.defpos??-1L] as Table) 
-                {
-                    if (tt != tb)   // update supertypes: extra values are harmless
-                    {
-                        subType = tb.defpos;
-                        tabledefpos = tt.defpos;
-                    }
-                    AddRow(tt, now,cx);
-                    tt += now;
-                    tt += (Table.LastData, ppos);
-                    cx.Install(tt, p);
-                }
+                Add(cx, tb, now, null, p);
+                for (var b = tb.super.First(); b != null; b = b.Next())
+                    if (b.key() is Table tt)
+                        Add(cx, tt, now, tb, p);
             }
             catch (DBException e)
             {
@@ -355,6 +348,21 @@ namespace Pyrrho.Level2
             subType = ost;
             tabledefpos = tp;
             return tb;
+        }
+        void Add(Context cx,Table tt, TableRow now, Table? su, long p)
+        {
+            if (su is not null)   // update supertypes: extra values are harmless
+            {
+                if (tt is NodeType nt && su is NodeType st && nt.idCol!=st.idCol 
+                    && now.vals[st.idCol] is TypedValue tv)
+                    now += (nt.idCol, tv);
+                subType = su.defpos;
+                tabledefpos = tt.defpos;
+            }
+            AddRow(tt, now, cx);
+            tt += now;
+            tt += (Table.LastData, ppos);
+            cx.Install(tt, p);
         }
         internal override void Affected(ref BTree<long, BTree<long, long?>> aff)
         {

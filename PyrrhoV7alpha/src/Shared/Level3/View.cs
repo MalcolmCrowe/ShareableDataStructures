@@ -588,7 +588,7 @@ namespace Pyrrho.Level3
         {
             if (cx.role == null) 
                 throw new DBException("42105");
-            var tb = (Table)(super as Table ?? throw new DBException("42105"));
+            var tb = (Table)(super.First()?.key() as Table ?? throw new DBException("42105"));
             var ro = cx.role;
             var md = infos[ro.defpos] ?? throw new DBException("42105");
             cx.Add(framing);
