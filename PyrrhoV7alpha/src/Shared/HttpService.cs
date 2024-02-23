@@ -342,7 +342,7 @@ namespace Pyrrho
                 && e is TableRowSet.TableCursor tc && tc._rec is TableRow tr
                 && tc._table is NodeType nt)
             {
-                var (li,ts) = nt.NodeTable(_cx, new Level5.TNode(_cx, nt, tr));
+                var (li,ts) = NodeType.NodeTable(_cx, new Level5.TNode(_cx, nt, tr));
                 var bl = CTree<int,NodeType>.Empty;
                 for (var b = ts.First(); b != null; b = b.Next())
                     bl += (b.value(),b.key());
