@@ -6665,7 +6665,7 @@ namespace Pyrrho.Level4
             internal static RoleTypeBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var en = _cx.db.objects.PositionAt(0); en != null; en = en.Next())
-                    if (en.value() is Domain)
+                    if (en.value() is UDType)
                     {
                         var rb =new RoleTypeBookmark(_cx,res,0, en);
                         if (rb.Match(res) && Eval(res.where, _cx))
@@ -6688,7 +6688,7 @@ namespace Pyrrho.Level4
                 for (var b = t.super.First(); b != null; b = b.Next())
                     if (b.key().name != "")
                     {
-                        su.Append(cm); cm = ","; su.Append(b.key().name);
+                        su.Append(cm); cm = ","; su.Append(Uid(b.key().defpos));
                     }
                 return new TRow(rs,
                     Pos(t.defpos),

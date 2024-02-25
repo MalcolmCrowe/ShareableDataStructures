@@ -1945,12 +1945,15 @@ namespace Pyrrho.Level4
                 ls = CTree<string, SqlValue>.Empty;
                 // and fix the PType to be a PNodeType
             }
+            var odt = dt;
             if (m.Contains(Sqlx.EDGETYPE))
             {
                 if (((Transaction)cx.db).physicals[typename.iix.dp] is not PType pt)
                     throw new PEException("PE50501");
                 var np = (dt is NodeType)?cx.db.nextPos:dt.defpos;
-                var un = CTree<Domain,bool>.Empty;
+                var un = CTree<Domain, bool>.Empty;
+                if (dt is NodeType)
+                    un += (dt, true);
                 if (ll is null) throw new PEException("PE60701");
                 if (al is null) throw new PEException("PE60702");
                 for (var bl = ll.list.First(); bl != null; bl = bl.Next())
@@ -1961,6 +1964,7 @@ namespace Pyrrho.Level4
                             m += (Sqlx.ARROW, an);
                             var lv = cx.role.dbobjects[ln.ToString()];
                             var av = cx.role.dbobjects[an.ToString()];
+                            dt = odt;
                             // try to find a specific edgeType for this combination
                             var d = cx.db.objects[cx.db.edgeTypes[typename.iix.dp]?[lv??-1L]?[av??-1L]??-1L] as EdgeType;
                             if (d is not EdgeType et)

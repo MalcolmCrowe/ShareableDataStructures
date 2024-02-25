@@ -11096,7 +11096,7 @@ cx.obs[high] is not SqlValue hi)
                 }
             // We are now ready to check or build the node type nt
             if (nt.defpos >= 0 && nt.defpos < Transaction.Analysing)
-                nt = nt.Check(cx, ls);
+                nt = nt.Check(cx, this, ls);
             else if (cx.db.objects[cx.role.defpos] is Role rr
                                 && cx.db.objects[rr.dbobjects[nt.name ?? "_"] ?? -1L] is NodeType ot)
                 nt = ot;

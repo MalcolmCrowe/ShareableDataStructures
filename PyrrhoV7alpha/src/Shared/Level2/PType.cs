@@ -37,7 +37,7 @@ namespace Pyrrho.Level2
         {
             name = nm;
             var dm1 = (t==Type.EditType)? dm: (Domain)dm.Relocate(pp);
-            if (dm1 is EdgeType ne && dm1.defpos != dm.defpos)
+            if (dm1 is EdgeType ne && dm1.defpos != dm.defpos && ne.leavingType>0 && ne.arrivingType>0)
                 ne.Fix(cx);
             dataType = dm1 + (ObInfo.Name,nm);
             under = un;
@@ -329,7 +329,7 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
         }
     }
-    internal class PType2 : PType1
+    internal class PType2 : PType
     {
         public PType2(Reader rdr) : base(Type.PType2, rdr) { }
         public PType2(Type t,Reader rdr): base(t,rdr) { }

@@ -527,7 +527,7 @@ namespace Pyrrho.Level5
             }
             return (ut, ls);
         }
-        internal virtual NodeType Check(Context cx, CTree<string, SqlValue> ls)
+        internal virtual NodeType Check(Context cx, SqlNode e, CTree<string, SqlValue> ls)
         {
             if (cx._Ob(defpos) is not NodeType nt || nt.infos[definer] is not ObInfo ni)
                 throw new DBException("PE42133", name);
@@ -679,10 +679,10 @@ namespace Pyrrho.Level5
         }
         void AddForeignIndex(Context cx,NodeType ut,Domain di,PIndex.ConstraintType fl)
         {
-            if (FindPrimaryIndex(cx) is Level3.Index xs)
-                cx.Add(new PIndex(cx.NameFor(idCol), ut, di, fl, xs?.defpos ?? -1L, cx.db.nextPos));
-            for (var b = super.First();b!=null;b=b.Next())
-                (b.key() as NodeType)?.AddForeignIndex(cx, ut, di, fl);
+    //        if (FindPrimaryIndex(cx) is Level3.Index xs)
+    //            cx.Add(new PIndex(cx.NameFor(idCol), ut, di, fl, xs?.defpos ?? -1L, cx.db.nextPos));
+    //        for (var b = super.First();b!=null;b=b.Next())
+    //            (b.key() as NodeType)?.AddForeignIndex(cx, ut, di, fl);
         }
         static BList<long?> Remove(BList<long?> rt, long v)
         {
@@ -1361,30 +1361,44 @@ namespace Pyrrho.Level5
             return (UDType)(cx.Add(new PEdgeType(pn.ident, nd, un, -1L, dp, cx))
                 ?? throw new DBException("42105"));
         } 
-        internal override NodeType Check(Context cx, CTree<string, SqlValue> ls)
+        internal override NodeType Check(Context cx, SqlNode n, CTree<string, SqlValue> ls)
         {
-            var et = base.Check(cx, ls);
-            if (cx._Ob(et.leavingType) is UDType el && el.infos[cx.role.defpos] is ObInfo li
-                && li.name is string en && ls[en] is SqlValue sl && sl.Eval(cx) is TChar lv
-                && cx.db.objects[NodeTypeFor(cx, lv)] is NodeType lt
-                && !lt.EqualOrStrongSubtypeOf(el))
+            var et = base.Check(cx, n, ls);
+            var e = (SqlEdge)n;
+            if (cx.obs[e.leavingValue] is not SqlNode nl || cx.obs[e.arrivingValue] is not SqlNode na)
+                throw new PEException("PE60904");
+            if (cx._Ob(et.leavingType) is UDType el && cx._Ob(et.arrivingType) is UDType ea)
             {
-                var pp = cx.db.nextPos;
-                var pi = new Ident(pp.ToString(), new Iix(pp));
-                var xt = (Domain)cx.Add(et + (LeavingType,
-                    new NodeType(cx.GetUid(), pi.ident, TypeSpec, el.super, cx).defpos));
-                cx.Add(xt);
-            }
-            if (cx._Ob(et.arrivingType) is UDType ea && ea.infos[cx.role.defpos] is ObInfo ai
-                && ai.name is string an && ls[an] is SqlValue sa && sa.Eval(cx) is TChar av
-                && cx.db.objects[NodeTypeFor(cx, av)] is NodeType at
-                && !at.EqualOrStrongSubtypeOf(ea))
-            {
-                var pp = cx.db.nextPos;
-                var pi = new Ident(pp.ToString(), new Iix(pp));
-                var xt = (Domain)cx.Add(et + (ArrivingType,
-                    new NodeType(cx.GetUid(), pi.ident, TypeSpec, ea.super, cx).defpos));
-                cx.Add(xt);
+                if (nl.domain.defpos != et.leavingType || na.domain.defpos != et.arrivingType)
+                {
+                    var md = CTree<Sqlx, TypedValue>.Empty + (Sqlx.ARROW, new TChar(na.domain.name))
+                        + (Sqlx.RARROW, new TChar(nl.domain.name));
+                    var ne = new EdgeType(cx.GetUid(), name, Domain.EdgeType, CTree<Domain, bool>.Empty, cx,
+                        md);
+                    (et,ls) = ne.Build(cx, CTree<long, bool>.Empty, ls, md);
+                }
+                if (el.infos[cx.role.defpos] is ObInfo li
+                    && li.name is string en && ls[en] is SqlValue sl && sl.Eval(cx) is TChar lv
+                    && cx.db.objects[NodeTypeFor(cx, lv)] is NodeType lt
+                    && !lt.EqualOrStrongSubtypeOf(el))
+                {
+                    var pp = cx.db.nextPos;
+                    var pi = new Ident(pp.ToString(), new Iix(pp));
+                    var xt = (Domain)cx.Add(et + (LeavingType,
+                        new NodeType(cx.GetUid(), pi.ident, TypeSpec, el.super, cx).defpos));
+                    cx.Add(xt);
+                }
+                if (ea.infos[cx.role.defpos] is ObInfo ai
+                    && ai.name is string an && ls[an] is SqlValue sa && sa.Eval(cx) is TChar av
+                    && cx.db.objects[NodeTypeFor(cx, av)] is NodeType at
+                    && !at.EqualOrStrongSubtypeOf(ea))
+                {
+                    var pp = cx.db.nextPos;
+                    var pi = new Ident(pp.ToString(), new Iix(pp));
+                    var xt = (Domain)cx.Add(et + (ArrivingType,
+                        new NodeType(cx.GetUid(), pi.ident, TypeSpec, ea.super, cx).defpos));
+                    cx.Add(xt);
+                }
             }
             return et;
         }
