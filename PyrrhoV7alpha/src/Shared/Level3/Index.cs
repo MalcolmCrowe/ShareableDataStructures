@@ -5,7 +5,7 @@ using System.Text;
 using System.Runtime.ExceptionServices;
 using static Pyrrho.Level2.PIndex;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -18,7 +18,6 @@ namespace Pyrrho.Level3
     /// This class corresponds to logical Index database objects.
     /// Indexes are database objects that are created by primary key and unique constraints.
     /// Indexes have unique names of form U(nnn), since they are not named in SQL.
-    /// 
     /// </summary>
     internal class Index : DBObject 
     {

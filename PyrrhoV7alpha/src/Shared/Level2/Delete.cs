@@ -3,7 +3,7 @@ using Pyrrho.Level4;
 using Pyrrho.Common;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -19,15 +19,16 @@ namespace Pyrrho.Level2
 	internal class Delete : Physical
 	{
         public long delpos;
-        public long tabledefpos;
+        public CTree<long,bool> tabledefpos = CTree<long,bool>.Empty;
         public TableRow? delrec;
         public CTree<long,CTree<Domain,Domain>> deC 
             = CTree<long,CTree<Domain,Domain>>.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
             var dp = wr.cx.Fix(delpos);
-            if (!Committed(wr,dp)) return dp;
-            if (!Committed(wr,tabledefpos)) return tabledefpos;
+            if (!Committed(wr, dp)) return dp;
+            for (var b = tabledefpos.First(); b != null; b = b.Next())
+                if (!Committed(wr, b.key())) return b.key();
             return -1;
         }
         /// <summary>
@@ -42,13 +43,15 @@ namespace Pyrrho.Level2
             delrec = rw;
             delpos = rw.defpos;
 		}
-        protected Delete(Type t,TableRow rw, Table tb, long pp)
+        protected Delete(Type t,TableRow rw, long pp, Context cx)
     : base(t, pp)
         {
             tabledefpos = rw.tabledefpos;
             delrec = rw;
             delpos = rw.defpos;
-            deC = tb.rindexes;
+            for (var b = tabledefpos.First();b!=null;b=b.Next())
+                if (cx.db.objects[b.key()] is Table tb)
+                    deC += tb.rindexes;
         }
         /// <summary>
         /// Constructor: a new Delete request from the buffer
@@ -84,8 +87,10 @@ namespace Pyrrho.Level2
 		{
             var dp = wr.cx.Fix(delpos);
             wr.PutLong(dp);
-            wr.cx.affected = (wr.cx.affected ?? Rvv.Empty) 
-                + (wr.cx.Fix(tabledefpos), (dp, ppos));
+            wr.cx.affected ??= Rvv.Empty;
+            var ts = wr.cx.Fix(tabledefpos);
+            for (var b=ts.First();b!=null;b=b.Next())
+               wr.cx.affected += (b.key(), (dp, ppos));
 			base.Serialise(wr);
 		}
         /// <summary>
@@ -100,9 +105,12 @@ namespace Pyrrho.Level2
         }
         internal override void Affected(ref BTree<long, BTree<long, long?>> aff)
         {
-            var ta = aff[tabledefpos] ?? BTree<long, long?>.Empty;
-            ta += (delpos, ppos);
-            aff += (tabledefpos, ta);
+            for (var b = tabledefpos.First(); b != null; b = b.Next())
+                if (aff[b.key()] is BTree<long, long?> ta)
+                {
+                    ta += (delpos, ppos);
+                    aff += (b.key(), ta);
+                }
         }
         /// <summary>
         /// A readable version of the Delete
@@ -118,42 +126,47 @@ namespace Pyrrho.Level2
             {
                 case Type.Delete:
                 case Type.Delete1:
+                case Type.Delete2:
                     if (((Delete)that).delpos == delpos)
                         return new DBException("40014", delpos, that, ct);
                     break;
                 case Type.Update:
                 case Type.Update1:
+                case Type.Update2:
                     {
                         // conflict if we refer to the deleted row
                         var u = (Update)that;
                         if (u._defpos == delpos)
                             return new DBException("40029", delpos, that, ct);
-                        for (var b = u.inC.First(); b != null; b = b.Next())
-                            for (var c = b.value().First(); c != null; c = c.Next())
-                                if (db.objects[c.key()] is Level3.Index x &&
-                                       x.reftabledefpos == tabledefpos &&
-                                       db.objects[x.refindexdefpos] is Level3.Index rx &&
-                                u.MakeKey(rx.keys.rowType) is CList<TypedValue> k && 
-                                rx.rows is MTree mt && mt.Contains(k) != true)
-                                    throw new DBException("40074", delpos, that, ct);
+                        for (var t = tabledefpos.First(); t != null; t = t.Next())
+                            for (var b = u.inC.First(); b != null; b = b.Next())
+                                for (var c = b.value().First(); c != null; c = c.Next())
+                                    if (db.objects[c.key()] is Level3.Index x &&
+                                           x.reftabledefpos == t.key() &&
+                                           db.objects[x.refindexdefpos] is Level3.Index rx &&
+                                    u.MakeKey(rx.keys.rowType) is CList<TypedValue> k &&
+                                    rx.rows is MTree mt && mt.Contains(k) != true)
+                                        throw new DBException("40074", delpos, that, ct);
                         break;
                     }
                 case Type.Record:
                 case Type.Record2:
                 case Type.Record3:
+                case Type.Record4:
                     {
                         // conflict if we refer to the deleted row
                         var r = (Record)that;
                         if (r.defpos == delpos)
                             return new DBException("40029", delpos, that, ct);
-                        for (var b = r.inC.First(); b != null; b = b.Next())
-                            for (var c = b.value().First(); c != null; c = c.Next())
-                                if (db.objects[c.key()] is Level3.Index x &&
-                                x.reftabledefpos == tabledefpos &&
-                                db.objects[x.refindexdefpos] is Level3.Index rx &&
-                                r.MakeKey(rx.keys.rowType) is CList<TypedValue> k && 
-                                rx.rows is MTree mt && mt.Contains(k) != true)
-                                    throw new DBException("40027", delpos, that, ct);
+                        for (var t = tabledefpos.First(); t != null; t = t.Next())
+                            for (var b = r.inC.First(); b != null; b = b.Next())
+                                for (var c = b.value().First(); c != null; c = c.Next())
+                                    if (db.objects[c.key()] is Level3.Index x &&
+                                    x.reftabledefpos == t.key() &&
+                                    db.objects[x.refindexdefpos] is Level3.Index rx &&
+                                    r.MakeKey(rx.keys.rowType) is CList<TypedValue> k &&
+                                    rx.rows is MTree mt && mt.Contains(k) != true)
+                                        throw new DBException("40027", delpos, that, ct);
                         break;
                     }
             }
@@ -209,9 +222,14 @@ namespace Pyrrho.Level2
         /// Constructor: a new Delete request from the engine
         /// </summary>
         /// <param name="rc">The defining position of the record</param>
-        /// <param name="tb">The local database</param>
-        public Delete1(TableRow rw, Table tb, long pp)
-            : base(Type.Delete1, rw, tb, pp)
+        public Delete1(TableRow rw, long pp, Context cx)
+            : base(Type.Delete1, rw, pp, cx)
+        {
+            tabledefpos = rw.tabledefpos;
+            delpos = rw.defpos;
+        }
+        public Delete1(Type t, TableRow rw, long pp, Context cx)
+           : base(t, rw, pp, cx)
         {
             tabledefpos = rw.tabledefpos;
             delpos = rw.defpos;
@@ -222,6 +240,7 @@ namespace Pyrrho.Level2
         /// <param name="bp">the buffer</param>
         /// <param name="pos">a defining position</param>
 		public Delete1(Reader rdr) : base(Type.Delete1, rdr) { }
+        protected Delete1(Type t,Reader rdr) : base(t, rdr) { }
         protected Delete1(Delete1 x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.cx.Fix(x.tabledefpos);
@@ -237,7 +256,8 @@ namespace Pyrrho.Level2
         /// <param name="r">Reclocation of position information</param>
         public override void Serialise(Writer wr)
         {
-            wr.PutLong(wr.cx.Fix(tabledefpos));
+            var tp = tabledefpos.Last()?.key()??throw new PEException("PE00805");
+            wr.PutLong(tp);
             base.Serialise(wr);
         }
         /// <summary>
@@ -248,15 +268,52 @@ namespace Pyrrho.Level2
         {
             var tb = rdr.GetLong();
             base.Deserialise(rdr);
-            tabledefpos = tb;
+            tabledefpos += (tb,true);
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            return (cx.db.objects[tabledefpos] as Table)?.DoDel(cx, this, p);
+            Table? r = null;
+            for (var b = tabledefpos.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is Table t && t.DoDel(cx, this, p) is Table u && t != u)
+                    r = u;
+            return r ?? throw new PEException("PE00806");
         }
         public override string ToString()
         {
             return base.ToString()+"["+tabledefpos+"]";
+        }
+    }
+    internal class Delete2 : Delete1
+    {
+        public Delete2(Reader rdr) : base(Type.Delete2,rdr)
+        { }
+
+        public Delete2(TableRow old, long pp, Context cx)
+            : base(Type.Delete2, old, pp, cx)
+        { }
+
+        protected Delete2(Delete1 x, Writer wr) : base(x, wr)
+        { }
+
+        protected override Physical Relocate(Writer wr)
+        {
+            return new Delete2(this, wr);
+        }
+
+        public override void Deserialise(Reader rdr)
+        {
+            var n = rdr.GetInt();
+            for (var i = 0; i < n; i++)
+                tabledefpos += (rdr.GetLong(), true);
+            base.Deserialise(rdr);
+        }
+        public override void Serialise(Writer wr)
+        {
+            var n = (int)tabledefpos.Count - 1;
+            wr.PutInt(n);
+            for (var b = tabledefpos.First(); b != null && n-- > 0; b = b.Next())
+                wr.PutLong(b.key());
+            base.Serialise(wr);
         }
     }
 }

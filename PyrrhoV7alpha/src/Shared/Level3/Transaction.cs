@@ -5,7 +5,7 @@ using System;
 using System.Net;
 using System.Transactions;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -126,6 +126,8 @@ namespace Pyrrho.Level3
             if (cx.parse != ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Compile)
                 return null;
             cx.db += (Physicals,physicals +(ph.ppos, ph));
+            if (ph is Record4)
+                return null;
             if (ph.ppos==cx.db.nextPos)
                 cx.db += (NextPos, ph.ppos + 1);
             return ph.Install(cx, lp);
@@ -194,7 +196,8 @@ namespace Pyrrho.Level3
                 ph = pb.value();
                 if (ph.type == Physical.Type.PTransaction)
                     pt = (PTransaction)ph;
-                if (cx.rdS[ph._Table] is CTree<long, bool> ct)
+                for (var b=ph._Table.First();b!=null;b=b.Next())
+                if (cx.rdS[b.key()] is CTree<long, bool> ct)
                 {
                     if (ct.Contains(-1L))
                     {
@@ -231,7 +234,8 @@ namespace Pyrrho.Level3
                     PTransaction? pu = null;
                     if (ph.type == Physical.Type.PTransaction)
                         pu = (PTransaction)ph;
-                    if (cx.rdS[ph._Table] is CTree<long, bool> ct)
+                    for (var b=ph._Table.First();b!=null;b=b.Next())
+                    if (cx.rdS[b.key()] is CTree<long, bool> ct)
                     {
                         if (ct.Contains(-1L))
                         {

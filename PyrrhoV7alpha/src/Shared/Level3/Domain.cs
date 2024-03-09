@@ -1602,12 +1602,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             c = ta.defpos.CompareTo(tb.defpos);
                             if (c != 0)
                                 break;
-                            if (na.tableRow.vals[ta.idCol] is TInt ia
-                            && nb.tableRow.vals[tb.idCol] is TInt ib)
-                            {
-                                c = ia.CompareTo(ib);
-                                break;
-                            }
+                            c = na.tableRow.defpos.CompareTo(nb.tableRow.defpos);
+                            return c;
                         }
                         throw new DBException("22004").ISO();
                     }
@@ -4493,6 +4489,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal static void SerialiseLevel(Writer wr, Level lev)
         {
+            if (wr.cx.db.levels == BTree<Level, long?>.Empty)
+                wr.cx.db += (D, 0L);
             if (wr.cx.db.levels.Contains(lev))
                 wr.PutLong(wr.cx.db.levels[lev]??-1L);
             else
@@ -4511,6 +4509,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal static Level DeserialiseLevel(Reader rd)
         {
+            if (rd.context.db.levels == BTree<Level, long?>.Empty)
+                rd.context.db += (D, 0L);
             Level lev;
             var lp = rd.GetLong();
             if (lp != -1)

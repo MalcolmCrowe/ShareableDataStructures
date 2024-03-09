@@ -8,7 +8,7 @@ using System.Reflection.Metadata;
 using System.Security.Cryptography;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -49,7 +49,8 @@ namespace Pyrrho.Level2
             Authenticate, RestView, TriggeredAction, RestView1, Metadata3, //60-64
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
             Update1, Delete1, Drop1, RefAction, Post, // 71-75
-            PNodeType, PEdgeType, EditType, AlterIndex, AlterEdgeType // 76-80
+            PNodeType, PEdgeType, EditType, AlterIndex, AlterEdgeType, // 76-80
+            Record4, Update2, Delete2 // 81-83
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -90,7 +91,7 @@ namespace Pyrrho.Level2
         /// Many Physicals affect another: we expose this in Log tables
         /// </summary>
         public virtual long Affects => ppos;
-        public virtual long _Table => -1L;
+        public virtual CTree<long, bool> _Table => CTree<long, bool>.Empty;
         public virtual bool Committed(Writer wr,long pos)
         {
             return pos < Transaction.TransPos || wr.cx.uids.Contains(pos);
@@ -274,15 +275,16 @@ namespace Pyrrho.Level2
             var uf = (int)ux.flags + (int)PIndex.ConstraintType.PrimaryKey - (int)PIndex.ConstraintType.Unique;
             px += (Level3.Index.IndexConstraint, (PIndex.ConstraintType)pf);
             ux += (Level3.Index.IndexConstraint, (PIndex.ConstraintType)uf);
-            if (ut is NodeType nt && cx.db.objects[ux.keys[0] ?? -1L] is TableColumn nk
-                && cx.db.objects[nt.idCol] is TableColumn ok)
+            if (ut is NodeType nt && cx.db.objects[ux.keys[0] ?? -1L] is TableColumn nk)
             {
+                var ok = cx.db.objects[nt.idCol] as TableColumn;
                 cx.db += (nk + (TableColumn.GraphFlag, PColumn.GraphFlags.IdCol), p);
-                cx.db += (ok - TableColumn.GraphFlag, p);
+                if (ok is not null)
+                    cx.db += (ok - TableColumn.GraphFlag, p);
                 nt = nt + (NodeType.IdIx, idindexdefpos) + (NodeType.IdCol, nk.defpos);
                 cx.db += (nt, p);
                 nt.Refresh(cx);
-                var cd = ok.domain.kind!=nk.domain.kind;
+                var cd = ok is null || ok.domain.kind!=nk.domain.kind;
                 var us = ut.rindexes;
                 for (var b = ut.rindexes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is EdgeType et)
@@ -290,6 +292,7 @@ namespace Pyrrho.Level2
                         var ks = CTree<long,bool>.Empty;
                         var rs = et.tableRows;
                         var dd = us[et.defpos];
+                        long rk = 0L;
                         for (var c = b.value().First(); c != null; c = c.Next())
                             for (var d = et.indexes[c.key()]?.First(); d != null; d = d.Next())
                                 if (cx.db.objects[d.key()] is Level3.Index rx && rx.rows is not null && dd is not null
@@ -307,6 +310,7 @@ namespace Pyrrho.Level2
                                         {
                                             tk = dk.Coerce(cx, tk);
                                             te += (kp, tk);
+                                            rk = (k as TInt)?.value??0L;
                                             rs += (te.defpos, te);
                                             var sl = new CList<TypedValue>(sk);
                                             if (st is null)
@@ -332,6 +336,7 @@ namespace Pyrrho.Level2
                                     cx.db += (rx, p);
                                 }
                         ut += (Table.RefIndexes, us);
+                        ut += (Table.SysRefIndexes, ut.sindexes - rk);
                         if (cd)
                         {
                             var er = et.representation;

@@ -9,6 +9,10 @@
     <StartupObject>Pyrrho.PyrrhoStart</StartupObject>
   </PropertyGroup>
 
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Release|AnyCPU'" />
+
+  <PropertyGroup Condition="'$(Configuration)|$(Platform)'=='Debug|AnyCPU'" />
+
   <ItemGroup>
     <Compile Remove="packages\**" />
     <Compile Remove="Properties\EP\**" />

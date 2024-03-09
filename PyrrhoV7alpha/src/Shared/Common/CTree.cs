@@ -360,6 +360,19 @@ namespace Pyrrho.Common
             }
             throw new DBException("22209", kind);
         }
+        public TypedValue AutoKey(TypedValue v)
+        {
+            if (v.dataType.kind == Sqlx.INT || v.dataType.kind == Sqlx.INTEGER)
+            {
+                var n = v?.ToInt() ?? 0;
+                return new TInt(n + 1);
+            }
+            if (v.dataType.kind == Sqlx.CHAR && int.Parse(v.ToString()) is int m && m>0)
+            {
+                return new TChar((m+1).ToString());
+            }
+            throw new DBException("22209", kind);
+        }
         public CTree<TypedValue, bool> Get(TypedValue k)
         {
             if (k.dataType != keyType.elType) throw new DBException("42000",k.dataType.kind);

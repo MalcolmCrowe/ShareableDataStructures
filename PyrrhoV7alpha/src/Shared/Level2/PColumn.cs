@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -145,6 +145,9 @@ namespace Pyrrho.Level2
                     }
                 if (rx != tb.rindexes)
                     tb += (Table.RefIndexes, rx);
+                var sx = wr.cx.FixTlTlTlb(tb.sindexes);
+                if (sx != tb.sindexes)
+                    tb += (Table.SysRefIndexes, sx);
                 if (tb.keyCols.Contains(ppos))
                     tb += (Table.KeyCols, tb.keyCols - ppos + (ph.ppos,true));
                 if (ot != tb)

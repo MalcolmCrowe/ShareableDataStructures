@@ -3,8 +3,9 @@ using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Reflection.Emit;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -40,8 +41,8 @@ namespace Pyrrho.Level3
             Indexes = -264, // CTree<Domain,CTree<long,bool>> SqlValue,Index
             KeyCols = -320, // CTree<long,bool> TableColumn (over all indexes)
             LastData = -258, // long
-            _NodeType = -86, // long NodeType
             RefIndexes = -250, // CTree<long,CTree<Domain,Domain>> referencing Table,referencing TableColumns,referenced TableColumns
+            SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,bool>>> referencingcol,recpos,recpos used for EdgeTypes
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // CTree<long,bool> Check
             PathDomain = -332, // Table but includes inherited columns
@@ -83,11 +84,13 @@ namespace Pyrrho.Level3
         /// </summary>
         internal Grant.Privilege enforcement => (Grant.Privilege)(mem[Enforcement]??0);
         internal long applicationPS => (long)(mem[ApplicationPS] ?? -1L);
-        internal long nodeType => (long)(mem[_NodeType] ?? -1L);
         internal long systemPS => (long)(mem[SystemPS] ?? -1L);
         internal CTree<long,CTree<Domain,Domain>> rindexes =>
             (CTree<long, CTree<Domain, Domain>>)(mem[RefIndexes] 
             ?? CTree<long, CTree<Domain, Domain>>.Empty);
+        internal CTree<long, CTree<long, CTree<long, bool>>> sindexes =>
+            (CTree<long, CTree<long, CTree<long, bool>>>)(mem[SysRefIndexes]
+            ?? CTree<long, CTree<long, CTree<long, bool>>>.Empty);
         internal CTree<long, bool> tableChecks => 
             (CTree<long, bool>)(mem[TableChecks] ?? CTree<long, bool>.Empty);
         internal CTree<PTrigger.TrigType, CTree<long,bool>> triggers =>
@@ -125,7 +128,44 @@ namespace Pyrrho.Level3
         public static Table operator +(Table tb, (Context, TableColumn) x)
         {
             var (cx, tc) = x;
-            tb = tb.Seq(cx,tc); // rt will contain only id,leaving,arriving at this point
+            var oi = tb.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var ci = tc.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var ns = oi.names;
+            tc += (TableColumn.Seq, tb.Length);
+            if (ci.name != null)
+                ns += (ci.name, (tb.Length, tc.defpos));
+            cx.Add(tc);
+            oi += (ObInfo.Names, ns);
+            if (!tb.representation.Contains(tc.defpos))
+            {
+                tb += (RowType, tb.rowType + tc.defpos);
+                tb += (Representation, tb.representation + (tc.defpos, tc.domain));
+                tb += (Infos, tb.infos + (cx.role.defpos, oi));
+            }
+            if (tc.flags.HasFlag(PColumn.GraphFlags.LeaveCol))
+            {
+                tb += (EdgeType.LeaveColDomain, tc.domain);
+                tb += (EdgeType.LeaveCol, tc.defpos);
+                if (cx.db.objects[tb.leavingType] is NodeType lt
+                        && lt.FindPrimaryIndex(cx) is null)
+                {
+                    lt += (SysRefIndexes, lt.sindexes + (tc.defpos, CTree<long, CTree<long, bool>>.Empty));
+                    cx.Add(lt);
+                    cx.db += lt;
+                }
+            }
+            if (tc.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
+            {
+                tb += (EdgeType.ArriveColDomain, tc.domain);
+                tb += (EdgeType.ArriveCol, tc.defpos);
+                if (cx.db.objects[tb.arrivingType] is NodeType at
+                        && at.FindPrimaryIndex(cx) is null)
+                {
+                    at += (SysRefIndexes, at.sindexes + (tc.defpos, CTree<long, CTree<long, bool>>.Empty));
+                    cx.Add(at);
+                    cx.db += at;
+                }
+            }
             tb += (PathDomain, tb._PathDomain(cx));
             cx.Add(tb);
             cx.db += (tb.defpos, tb);
@@ -182,45 +222,6 @@ namespace Pyrrho.Level3
                     return p;
             return -1L;
         }
-        /// <summary>
-        /// The base operation (for an ordinary Table) adds the new TableColumn at the end
-        /// </summary>
-        /// <param name="cx">The Context</param>
-        /// <param name="tc">The TableColumn</param>
-        /// <returns></returns>
-        internal virtual Table Seq(Context cx,TableColumn tc)
-        {
-            var tb = this;
-            var i = Length;
-            var oi = tb.infos[cx.role.defpos] ?? throw new DBException("42105");
-            var ci = tc.infos[cx.role.defpos] ?? throw new DBException("42105");
-            var ns = oi.names;
-            if (i != tc.seq)
-            {
-                // update the column seq number (this will be transmitted to the Physical pc)
-                tc += (TableColumn.Seq, i);
-                if (ci.name != null)
-                    ns += (ci.name, (i, tc.defpos));
-                cx.Add(tc);
-            }
-            oi += (ObInfo.Names, ns);
-            if (!tb.representation.Contains(tc.defpos))
-            {
-                tb += (RowType, tb.rowType + tc.defpos);
-                tb += (Representation, tb.representation + (tc.defpos, tc.domain));
-                tb += (Infos, tb.infos + (cx.role.defpos, oi));
-            }
-      //      cx.Add(tb);
-            cx.db += (tb.defpos, tb);
-            tb += (Dependents, tb.dependents + (tc.defpos, true));
-            if (tc.sensitive)
-                tb += (Sensitive, true);
-            return (Table)cx.Add(tb);
-        }
-        internal virtual ObInfo _ObInfo(long ppos, string name, Grant.Privilege priv)
-        {
-            return new ObInfo(name,priv);
-        }
         internal override DBObject Add(Check ck, Database db)
         {
             return New(defpos,mem+(TableChecks,tableChecks+(ck.defpos,true)));
@@ -273,6 +274,9 @@ namespace Pyrrho.Level3
             var rs = ShallowReplace(cx, rindexes,was,now);
             if (rs != rindexes)
                 r += (RefIndexes, rs);
+            var ss = ShallowReplace(cx, sindexes, was, now);
+            if (ss != sindexes)
+                r += (SysRefIndexes, ss);
             r += (PathDomain, r._PathDomain(cx));
             var ts = ShallowReplace(cx, tableRows, was, now);
             if (ts != tableRows)
@@ -304,6 +308,16 @@ namespace Pyrrho.Level3
                 if (v != b.value())
                     rs += (b.key(), v);
             }
+            return rs;
+        }
+        static CTree<long, CTree<long, CTree<long,bool>>> ShallowReplace(Context cx, CTree<long, CTree<long, CTree<long,bool>>> rs, long was, long now)
+        {
+            for (var b = rs.First(); b != null; b = b.Next())
+                if (b.key() == was)
+                {
+                    rs -= was;
+                    rs += (now, b.value());
+                }
             return rs;
         }
         static CTree<Domain,Domain> ShallowReplace(Context cx,CTree<Domain,Domain> rx,long was,long now)
@@ -376,6 +390,9 @@ BTree<string, (int, long?)> ns)
             var nr = cx.FixTlTDD(rindexes);
             if (nr != rindexes)
                 r += (RefIndexes, nr);
+            var ss = cx.FixTlTlTlb(sindexes);
+            if (ss != sindexes)
+                r += (SysRefIndexes, ss);
             var ns = cx.Fix(systemPS);
             if (ns!=systemPS)
                 r += (SystemPS, ns);

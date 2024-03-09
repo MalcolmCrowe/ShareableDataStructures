@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -89,9 +89,11 @@ namespace Pyrrho.Level2
         {
             switch (that.type)
             {
+                case Type.Record4:
                 case Type.Record3:
                 case Type.Record2:
                 case Type.Record:
+                case Type.Update2:
                 case Type.Update1:
                 case Type.Update:
                     {
@@ -210,9 +212,11 @@ namespace Pyrrho.Level2
         {
             switch (that.type)
             {
+                case Type.Record4:
                 case Type.Record3:
                 case Type.Record2:
                 case Type.Record:
+                case Type.Update2:
                 case Type.Update1:
                 case Type.Update:
                     {
@@ -337,7 +341,7 @@ namespace Pyrrho.Level2
             var sb = new StringBuilder("EditType " + name + "[" + DBObject.Uid(prev.defpos) + "] Under: ");
             var cm = "";
             for (var b = under.First(); b != null; b = b.Next())
-            { sb.Append(cm); cm = ","; sb.Append(b.ToString()); }
+            { sb.Append(cm); cm = ","; sb.Append(b.key().ToString()); }
             return sb.ToString();
         }
     }

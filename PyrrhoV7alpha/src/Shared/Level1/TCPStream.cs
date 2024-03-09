@@ -853,22 +853,24 @@ namespace Pyrrho.Level1
             var rec = rb.Rec();
             string? rc = null;
             var ro = cx.role;
-            if (rec != null && rec!=BList<TableRow>.Empty)
+            if (rec != null && rec != BList<TableRow>.Empty)
             {
                 var sb = new StringBuilder();
                 var cm = "";
                 for (var b = rec.First(); b != null; b = b.Next())
-                if (cx._Ob(b.value().tabledefpos) is DBObject ob && ob.infos[ro.defpos] is ObInfo md &&
-                        md.metadata.Contains(Sqlx.ENTITY)){
-                    var tr = b.value();
-                    sb.Append(cm); cm = ",";
-                    sb.Append('/');
-                    sb.Append(tr.tabledefpos);
-                    sb.Append('/');
-                    sb.Append(tr.defpos);
-                    sb.Append('/');
-                    sb.Append(tr.ppos);
-                }
+                    for (var c = b.value().tabledefpos.First(); c != null; c = c.Next())
+                        if (cx._Ob(c.key()) is DBObject ob && ob.infos[ro.defpos] is ObInfo md &&
+                                md.metadata.Contains(Sqlx.ENTITY))
+                        {
+                            var tr = b.value();
+                            sb.Append(cm); cm = ",";
+                            sb.Append('/');
+                            sb.Append(tr.tabledefpos);
+                            sb.Append('/');
+                            sb.Append(tr.defpos);
+                            sb.Append('/');
+                            sb.Append(tr.ppos);
+                        }
                 rc = sb.ToString();
             }
             return (rb._Rvv(cx).ToString(),rc);

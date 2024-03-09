@@ -117,23 +117,26 @@ namespace Pyrrho.Level2
                 case Type.Change: if (delpos == ((Change)that).Affects)
                         return new DBException("40047", delpos, that, ct);
                     break;
+                case Type.Record4:
                 case Type.Record3:
                 case Type.Record2:
                 case Type.Record:
                 case Type.Update:
                 case Type.Update1:
+                case Type.Update2:
                     {
                         var r = (Record)that;
-                        if (delpos == r.tabledefpos)
+                        if (r.tabledefpos.Contains(delpos))
                             return new DBException("40055", delpos, that, ct);
                         for (var b = r.fields.PositionAt(0); b != null; b = b.Next())
                             if (b.key() == delpos)
                                 return new DBException("40055", delpos, that, ct);
                         break;
                     }
+                case Type.Delete2:
                 case Type.Delete1:
                 case Type.Delete: 
-                    if (db.GetD(((Delete)that).delpos) is Delete td && td.tabledefpos == delpos)
+                    if (db.GetD(((Delete)that).delpos) is Delete td && td.tabledefpos.Contains(delpos))
                         return new DBException("40057", delpos, that, ct);
                     break;
                 case Type.PColumn3:

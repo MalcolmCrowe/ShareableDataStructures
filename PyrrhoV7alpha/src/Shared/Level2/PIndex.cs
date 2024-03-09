@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -253,7 +253,8 @@ namespace Pyrrho.Level2
                 if (tb.indexes[x.keys] is CTree<long, bool> ct)
                     wr.cx.db += (tb.defpos, tb + (Table.Indexes,tb.indexes + (x.keys, ct - ppos)));
                 if (reference > 0 && wr.cx.db.objects[x.reftabledefpos] is Table rt)
-                    wr.cx.db += (rt.defpos, rt + (Table.RefIndexes,rt.rindexes - ppos));
+                    wr.cx.db += (rt.defpos, rt + (Table.RefIndexes,rt.rindexes - ppos)
+                        + (Table.SysRefIndexes,rt.sindexes-(x.keys[0]??-1L)));
             }
             return (nt,ph);
         }
@@ -285,14 +286,17 @@ namespace Pyrrho.Level2
             x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));
             x = x.AddRows(tb, cx);
             cx.Install(x, p);
-            if (reference >= 0 && cx.db.objects[x.refindexdefpos] is Level3.Index rx)
+            if (reference >= 0)
             {
-                rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
                 var rt = (Table?)cx.db.objects[x.reftabledefpos] ?? throw new PEException("PE1435");
-                var at = rt.rindexes[tb.defpos] ?? CTree<Domain, Domain>.Empty;
-                rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at + (x.keys, rx.keys)));
+                if (cx.db.objects[x.refindexdefpos] is Level3.Index rx)
+                {
+                    rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
+                    var at = rt.rindexes[tb.defpos] ?? CTree<Domain, Domain>.Empty;
+                    rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at + (x.keys, rx.keys)));
+                    cx.Install(rx, p);
+                }
                 cx.Install(rt, p);
-                cx.Install(rx, p);
             }
             var cs = BList<long?>.Empty;
             var kc = tb.keyCols;
@@ -509,17 +513,19 @@ namespace Pyrrho.Level2
                     break;
                 case Type.Delete:
                 case Type.Delete1:
+                case Type.Delete2:
                     {
                         var x = (Level3.Index?)db.objects[index]??throw new PEException("PE1412");
-                        var dl = (Delete)that; if (dl.tabledefpos == x.tabledefpos)
+                        var dl = (Delete)that; if (dl.tabledefpos.Contains(x.tabledefpos))
                             return new DBException("40077", index, that, ct);
                         break;
                     }
                 case Type.Update:
                 case Type.Update1:
+                case Type.Update2:
                     {
                         var x = (Level3.Index?)db.objects[index] ?? throw new PEException("PE1412");
-                        var up = (Update)that; if (up.tabledefpos == x.tabledefpos)
+                        var up = (Update)that; if (up.tabledefpos.Contains(x.tabledefpos))
                             return new DBException("40077", index, that, ct);
                         break;
                     }

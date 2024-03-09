@@ -916,7 +916,7 @@ namespace Pyrrho.Level4
             var nm = cx.FixTlV(matches);
             if (nm != matches)
                 r += (_Matches, nm);
-            var mg = cx.FixTTllb(matching);
+            var mg = cx.FixTlTlb(matching);
             if (mg != matching)
                 r += (Matching, mg);
             var ts = cx.FixTll(rsTargets);
@@ -5135,15 +5135,8 @@ namespace Pyrrho.Level4
                                     else
                                     {
                                         v = ix.rows.NextKey(tc.domain.kind, k, 0, b.key());
-                                        var tr = (Transaction)cx.db;
-                                        for (var c = tr.physicals.PositionAt(tr.step); c != null; c = c.Next())
-                                            if (c.value() is Record r && r.fields.Contains(tc.defpos)
-                                                && r.fields[tc.defpos]?.CompareTo(v) == 0)
-                                                v = Inc(v);
                                         vs += (tc.defpos, v);
                                         cx.values += (trc._trs.targetTrans[tc.defpos] ?? -1L, v);
-                                        if (ix.MakeKey(vs) is CList<TypedValue> pk)
-                                            ta.index = ix + (Level3.Index.Tree, ix.rows + (pk, 0, -1L));
                                     }
                                 }
                                 k += v;
@@ -5151,12 +5144,6 @@ namespace Pyrrho.Level4
                     }
                 }
                 return vs;
-            }
-            static TypedValue Inc(TypedValue v)
-            {
-                if (v is TChar tc)
-                    return new TChar((int.Parse(tc.value) + 1).ToString());
-                return new TInt((v.ToInt()??0) + 1);
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -5272,7 +5259,8 @@ namespace Pyrrho.Level4
             else
                 for (var b = trs.First(cx); b != null; b = b.Next(cx))
                     for (var c=b.Rec()?.First();c is not null;c=c.Next())
-                        dat += (c.value().tabledefpos, c.value());
+                        for (var d=c.value().tabledefpos.First();d!=null;d=d.Next())
+                            dat += (d.key(), c.value());
             var ma = BTree<long, long?>.Empty;
             var rm = BTree<long, long?>.Empty;
             var rb = trs.rowType.First();
@@ -6982,7 +6970,7 @@ namespace Pyrrho.Level4
                             {
                                 (ph, _) = db._NextPhysical(b.key());
                                 var rc = ph as Record;
-                                if (rc?.tabledefpos != lrs.targetTable)
+                                if (rc?.tabledefpos.Contains(lrs.targetTable)!=true)
                                     continue;
                                 for (var c = lrs.rowType.First(); c != null; c = c.Next())
                                     if (c.value() is long cp)
@@ -7004,7 +6992,7 @@ namespace Pyrrho.Level4
                             {
                                 (ph, _) = db._NextPhysical(b.key());
                                 var rc = ph as Record;
-                                if (rc?.tabledefpos != lrs.targetTable)
+                                if (rc?.tabledefpos.Contains(lrs.targetTable)!=true)
                                     continue;
                                 for (var c = lrs.rowType.First(); c != null; c = c.Next())
                                     if (c.value() is long cp)
@@ -7024,7 +7012,7 @@ namespace Pyrrho.Level4
                         case Physical.Type.Delete1:
                             {
                                 (ph, _) = db._NextPhysical(b.key());
-                                if (ph is not Delete rc || rc.tabledefpos != lrs.targetTable)
+                                if (ph is not Delete rc || !rc.tabledefpos.Contains(lrs.targetTable))
                                     continue;
                                 for (var c = lrs.rowType.First(); c != null; c = c.Next())
                                     if (c.value() is long cp)

@@ -139,8 +139,6 @@ namespace Pyrrho.Level2
             if (dataType.name!="")
                 dataType = new Domain(dataType.defpos,dataType.mem- ObInfo.Name); // -= on Domain means something else
             var tb = /* (name[0] == '(') ? new VirtualTable(this, cx) :*/ new Table(this);
-            if (nodeType >= 0)
-                tb += (Table._NodeType, nodeType);
             ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

@@ -247,6 +247,7 @@ namespace Pyrrho.Level2
                 Physical.Type.PTrigger => new PTrigger(this),
                 Physical.Type.PType => new PType(this),
                 Physical.Type.PType1 => new PType1(this),
+                Physical.Type.PType2 => new PType2(this),
                 Physical.Type.PUser => new PUser(this),
                 Physical.Type.PView => new PView(this),
                 Physical.Type.RestView => new PRestView(this),
@@ -275,11 +276,14 @@ namespace Pyrrho.Level2
                 Physical.Type.Delete1 => new Delete1(this),
                 Physical.Type.Drop1 => new Drop1(this),
                 Physical.Type.RefAction => new RefAction(this),
-                Physical.Type.PNodeType=> new PNodeType(this),
+                Physical.Type.PNodeType => new PNodeType(this),
                 Physical.Type.PEdgeType => new PEdgeType(this),
                 Physical.Type.EditType => new EditType(this),
                 Physical.Type.AlterIndex => new AlterIndex(this),
                 Physical.Type.AlterEdgeType => new AlterEdgeType(this),
+                Physical.Type.Record4 => new Record4(this),
+                Physical.Type.Update2 => new Update2(this),
+                Physical.Type.Delete2 => new Delete2(this),
                 _ => throw new PEException("PE35"),
             };
             p.Deserialise(this);

@@ -4,7 +4,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -44,6 +44,8 @@ namespace Pyrrho.Level3
     /// in SqlNode._NodeType from CTree(long,bool) where long is an existing graph type, and in that case
     /// (i.e. if the name has &) we always get a NodeType, which, if we are expecting an Edge Type,
     /// will have the EdgeType we want as a subtype.
+    /// We need extra lookup tables for NodeTypes and EdgeTypes because it is legal in GQL to have ambiguous names.
+    /// For SQL purposes we can diambiguate where necessary with the defining position of a type as a numerical ID.
     /// Immutable
     /// 
     /// </summary>
@@ -51,13 +53,18 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
+            EdgeTypes = -128, // BTree<string,long?> EdgeType by name
+            NodeTypes = -115, // BTree<string,long?> NodeType by name
             Procedures = -249; // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
        internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
         internal BTree<string, BTree<CList<Domain>,long?>> procedures => 
             (BTree<string, BTree<CList<Domain>,long?>>?)mem[Procedures]??BTree<string, BTree<CList<Domain>, long?>>.Empty;
- 
+        internal BTree<string,long?> nodeTypes =>
+            (BTree<string, long?>)(mem[NodeTypes]??BTree<string,long?>.Empty);
+        internal BTree<string, long?> edgeTypes =>
+            (BTree<string, long?>)(mem[EdgeTypes] ?? BTree<string, long?>.Empty);
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>

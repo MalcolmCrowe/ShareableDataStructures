@@ -6,7 +6,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
-// NB: this file contains some code derived from W3Schools (c) 1999-2023 Refsnes Data under fair use
+// NB: this file contains some code derived from W3Schools (c) 1999-2024 Refsnes Data under fair use
 // (As an alternative, use windows.alert line commented out below and change
 // TNode.Summary() in Graph.cs to use \\n instead of <br/>)
 //
@@ -688,7 +688,7 @@ namespace Pyrrho
             sbuild.Append("    function hideModal() {document.getElementById(\"modalBox\").style.display=\"none\"; }\r\n");
             sbuild.Append(" </script>");
             sbuild.Append("<!--  The following code is almost entirely pasted from w3schools.com \r\n");
-            sbuild.Append("    and is (c)1999-2023 Refsnes Data. Its use in Pyrrho is covered by Fair Use\r\n");
+            sbuild.Append("    and is (c)1999-2024 Refsnes Data. Its use in Pyrrho is covered by Fair Use\r\n");
             sbuild.Append("    since Pyrrho is a free-to-use-and-copy research project\r\n");
             sbuild.Append("    If you copy code from here you should ensure that your use is also fair -->\r\n");
             sbuild.Append("<style>\r\nbody {font-family: Arial, Helvetica, sans-serif;}\r\n\r\n");

@@ -1941,7 +1941,7 @@ namespace Pyrrho.Level4
                 var nt = new NodeType(typename.iix.dp, dt.mem + (Domain.Kind, Sqlx.NODETYPE));
                 nt = nt.FixNodeType(cx, typename);
                 // Process ls and m 
-                (dt, _) = nt.Build(cx, nt.labels, ls, m);
+                (dt, _) = nt.Build(cx, null, nt.labels, ls, m);
                 ls = CTree<string, SqlValue>.Empty;
                 // and fix the PType to be a PNodeType
             }
@@ -1977,7 +1977,7 @@ namespace Pyrrho.Level4
                                 pt.dataType = et;
                             }
                             et = et.FixEdgeType(cx,pt);
-                            (dt, ls) = et.Build(cx, et.labels, ls, m);
+                            (dt, ls) = et.Build(cx, null, et.labels, ls, m);
                             np = cx.db.nextPos;
                         }
                         else throw new PEException("PE60703");
@@ -9171,6 +9171,7 @@ namespace Pyrrho.Level4
                         break;
                     }
                 case Sqlx.PERCENTILE_DISC: goto case Sqlx.PERCENTILE_CONT;
+#endif
                 case Sqlx.POSITION:
                     {
                         kind = tok;
@@ -9178,13 +9179,14 @@ namespace Pyrrho.Level4
                         if (tok == Sqlx.LPAREN)
                         {
                             Next();
-                            op1 = ParseSqlValue(Domain.Int.defpos);
+                            op1 = ParseSqlValue(Domain.Int);
                             Mustbe(Sqlx.IN);
-                            op2 = ParseSqlValue(Domain.Content.defpos);
+                            op2 = ParseSqlValue(Domain.Content);
                             Mustbe(Sqlx.RPAREN);
                         }
                         break;
                     }
+#if OLAP
                 case Sqlx.POSITION_REGEX:
                     {
                         kind = tok;

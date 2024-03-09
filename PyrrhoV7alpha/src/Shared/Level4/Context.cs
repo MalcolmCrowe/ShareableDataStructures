@@ -912,7 +912,6 @@ namespace Pyrrho.Level4
                     SqlCaseSimple.Cases => _DepthBPVV((BList<(long, long)>)o, d),
                     Domain.DefaultRowValues => _DepthTVX((CTree<long, TypedValue>)o, d),
                     IfThenElse.Else => _DepthBV((BList<long?>)o, d),
-                    SimpleCaseStatement.Else => _DepthBV((BList<long?>)o, d),
                     IfThenElse.Elsif => _DepthBV((BList<long?>)o, d),
                     ExplicitRowSet.ExplRows => _DepthBPVX((BList<(long, TRow)>)o, d),
                     RowSet.Filter => _DepthTVX((CTree<long, TypedValue>)o, d),
@@ -1198,8 +1197,8 @@ namespace Pyrrho.Level4
             {
                 var k = b.key();
                 var tr = b.value();
-                var nt = done[tr.tabledefpos]?.defpos ?? tr.tabledefpos;
-                var nr = new TableRow(b.value(), nt, w, n); 
+                var ts = ReplacedTlb(tr.tabledefpos);
+                var nr = new TableRow(tr,ts); 
                 ch = b.value() != nr;
                 r += (k, nr);
             }
@@ -1495,6 +1494,10 @@ namespace Pyrrho.Level4
         {
             return done[dp] ?? obs[dp] ?? (DBObject?)db.objects[dp];
         }
+        internal DBObject? _Od(long dp)
+        {
+            return db.objects[dp] as DBObject ?? obs[dp];
+        }
         internal Iix Fix(Iix iix)
         {
             return new Iix(iix, Fix(iix.dp));
@@ -1536,7 +1539,6 @@ namespace Pyrrho.Level4
                         case Domain.DefaultRowValues: v = ReplacedTlV((CTree<long, TypedValue>)v); break;
                         case SqlTreatExpr._Diff: v = Replaced((BTree<long,object>)v,w); break;
                         case IfThenElse.Else: v = ReplacedLl((BList<long?>)v); break;
-                        case SimpleCaseStatement.Else: v = ReplacedLl((BList<long?>)v); break;
                         case IfThenElse.Elsif: v = ReplacedLl((BList<long?>)v); break;
                         case LikePredicate.Escape: v = Replaced((long)v); break;
                         case ExplicitRowSet.ExplRows: v = ReplacedBlT((BList<(long, TRow)>)v); break;
@@ -1960,7 +1962,7 @@ namespace Pyrrho.Level4
         {
             if (_Ob(p??-1L) is not SqlValue sv)
                 return null;
-            if (sv is SqlValue && sv.name is string s)
+            if (sv.name is string s)
                 return s;
             var tv = sv.Eval(this);
             if (tv is TGParam tp && binding[tp.uid] is TChar tb)
@@ -2455,7 +2457,7 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        internal CTree<long,CTree<long,bool>> FixTTllb(CTree<long, CTree<long,bool>> ma)
+        internal CTree<long,CTree<long,bool>> FixTlTlb(CTree<long, CTree<long,bool>> ma)
         {
             var r = CTree<long, CTree<long,bool>>.Empty;
             var ch = false;
@@ -2546,6 +2548,20 @@ namespace Pyrrho.Level4
                 {
                     var bk = Fix(b.key());
                     var bv = FixTlTll(bt);
+                    ch = ch || bk != b.key() || bv != bt;
+                    r += (bk, bv);
+                }
+            return ch ? r : es;
+        }
+        internal CTree<long, CTree<long, CTree<long, bool>>> FixTlTlTlb(CTree<long, CTree<long, CTree<long, bool>>> es)
+        {
+            var r = CTree<long, CTree<long, CTree<long, bool>>>.Empty;
+            var ch = false;
+            for (var b = es.First(); b != null; b = b.Next())
+                if (b.value() is CTree<long, CTree<long, bool>> bt)
+                {
+                    var bk = Fix(b.key());
+                    var bv = FixTlTlb(bt);
                     ch = ch || bk != b.key() || bv != bt;
                     r += (bk, bv);
                 }

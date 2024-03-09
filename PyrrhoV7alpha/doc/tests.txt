@@ -72,7 +72,7 @@ select S,count(C) as occ,sum(C) as total from TB group by S
 ->[{S:Glasgow,OCC:2,TOTAL:72},{S:Paisley,OCC:1,TOTAL:82}]
 // contributed by Fritz Laux
 CREATE TABLE people (Id INT(11) NOT NULL, Name VARCHAR(50) , Salary NUMERIC(7,2), country VARCHAR(50), city VARCHAR(50) , PRIMARY KEY (Id) )
-/* UK*/
+// UK
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(1, 'Tom', 50000, 'UK', 'London')
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(2, 'Alex', 60000, 'UK', 'London')
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(3, 'Bob', 66000, 'UK', 'London')
@@ -91,7 +91,7 @@ INSERT INTO people(Id, Name, Salary, country, city) VALUES(20, 'Mike', 62000, 'U
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(21, 'Paul', 62000, 'UK', 'Liverpool')
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(22, 'John', 62000, 'UK', 'Liverpool')
 
-/* Germany*/
+// Germany
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(61, 'Tom', 50000, 'GER', 'Berlin')
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(62, 'Alex', 60000, 'GER', 'Berlin')
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(63, 'Bob', 66000, 'GER', 'Berlin')
@@ -110,7 +110,7 @@ INSERT INTO people(Id, Name, Salary, country, city) VALUES(80, 'Mike', 62000, 'G
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(81, 'Paul', 62000, 'GER', 'Tuebingen')
 INSERT INTO people(Id, Name, Salary, country, city) VALUES(82, 'John', 62000, 'GER', 'Tuebingen')
 
-/* Queries */
+// Queries 
 select city, avg(Salary), count(*) as numPeople from people where country = 'GER' group by city having count(*) > 4
 // MariaDB examples
 CREATE TABLE students ("name" CHAR, test CHAR, score INT)
@@ -376,7 +376,7 @@ select * from ad
 ->[{A:20,B:'Twenty'},{A:2,B:'Two',C:'XX'}]
 alter table ad drop b
 select * from ad
-->[{A:20,C:'XX'},{A:2,C:'XX'}]
+->[{A:20},{A:2,C:'XX'}]
 alter table ad add primary key(a)
 insert into ad values(21,'AB')
 create table de (d int references ad)
@@ -511,22 +511,22 @@ select gather2()
   -> [{Col0:'First, Second'}]
 20:
 create type point as (x int, y int)
-create type size as (w int,h int)
+create type rectsize as (w int,h int)
 create type line as (strt point,en point)
-[create type rect as (tl point,sz size) 
+[create type rect as (tl point,sz rectsize) 
   constructor method rect(x1 int,y1 int, x2 int, y2 int),
   method centre() returns point]
 create table figure(id int primary key,title char)
 create table figureline(id int primary key,fig int references figure,what line)
 create table figurerect(id int primary key,fig int references figure,what rect)
 [create constructor method rect(x1 int,y1 int,x2 int,y2 int) 
-  begin tl=point(x1,y1); sz=size(x2-x1,y2-y1) end]
+  begin tl=point(x1,y1); sz=rectsize(x2-x1,y2-y1) end]
 [create method centre() returns point for rect 
   return point(tl.x+sz.w/2,tl.y+sz.h/2)]
 [create function centrerect(a int) returns point 
   return (select what.centre() from figurerect where id=centrerect.a)]
 insert into figure values(1,'Diagram')
-insert into figurerect values(1,1,rect(point(1,2),size(3,4)))
+insert into figurerect values(1,1,rect(point(1,2),rectsize(3,4)))
 insert into figurerect values(2,1,rect(4,5,6,7))
 insert into figureline values(1,1,line(centrerect(1),centrerect(2)))
 select what from figureline
@@ -777,15 +777,17 @@ select * from ww
 {E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Eight'}]
 25:
 create type student as (name char,matric char) nodetype
-insert into student(name,matric) values ('Fred','22/456')
+insert into student values ('Fred','22/456')
 create type person as(name char) nodetype
 alter type student set under person
 create type staff under person as (title char)
-insert into staff(name,title) values ('Anne','Prof')
+insert into staff values ('Anne','Prof')
 select *,specifictype() from person
 create type married edgetype(bride=person,groom=person)
-insert into person values(3,'Joe'),(4,'Mary')
-insert into married(bride,groom) values(4,3)
+insert into person values('Joe'),('Mary')
+[insert into married(bride,groom) 
+  values((select position from person where name='Mary'),
+         (select position from person where name='Joe'))]
 select count(*) from married
 match ({name:'Joe'})<-[:married]-(x)
 [CREATE

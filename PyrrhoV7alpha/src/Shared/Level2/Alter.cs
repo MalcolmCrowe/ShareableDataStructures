@@ -4,7 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -298,20 +298,22 @@ namespace Pyrrho.Level2
                             return new DBException("40045", DBObject.Uid(table.defpos), that, ct);
                         break;
                     }
+                case Type.Record4:
                 case Type.Record3:
                 case Type.Record2:
                 case Type.Record:
                     {
                         var r = (Record)that;
-                        if (table.defpos == r.tabledefpos && r.fields.Contains(defpos)) 
+                        if (r.tabledefpos.Contains(table.defpos) && r.fields.Contains(defpos)) 
                             return new DBException("40079", ppos, that, ct);
                         break;
                     }
+                case Type.Update2:
                 case Type.Update1:
                 case Type.Update:
                     {
                         var r = (Update)that;
-                        if (table.defpos == r.tabledefpos && r.fields.Contains(defpos))
+                        if (r.tabledefpos.Contains(table.defpos) && r.fields.Contains(defpos))
                             return new DBException("40080", ppos, that, ct);
                         break;
                     }

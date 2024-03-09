@@ -10,7 +10,7 @@ using System.Xml.Schema;
 using System.Net;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -437,7 +437,7 @@ namespace Pyrrho.Level3
     {
         internal readonly long defpos;
         internal readonly long time;
-        internal readonly long tabledefpos;
+        internal readonly CTree<long,bool> tabledefpos;
         internal readonly long user;
         internal readonly long ppos;
         internal readonly long prev;
@@ -445,6 +445,7 @@ namespace Pyrrho.Level3
         internal readonly Level classification;
         internal readonly CTree<long, TypedValue> vals;
         internal static TableRow Any = new (-1L); // creates a dummy TableRow for TPath
+
         public TableRow(Record rc, Context cx)
         {
             rc.Check(cx);
@@ -494,7 +495,7 @@ namespace Pyrrho.Level3
             prev = dp;
             subType = c.dataType.defpos;
             classification = tb.classification;
-            tabledefpos = tb.defpos;
+            tabledefpos = new CTree<long,bool>(tb.defpos,true);
             vals = c.values;
         }
         internal TableRow(long vp,CTree<long,TypedValue>? vs=null)
@@ -505,7 +506,19 @@ namespace Pyrrho.Level3
             defpos = dp;
             time = DateTime.Now.Ticks;
             user = -1L;
-            tabledefpos = vp;
+            tabledefpos = new CTree<long,bool>(vp,true);
+            subType = -1L;
+            classification = Level.D;
+            ppos = dp;
+            prev = pp;
+            vals = vs;
+        }
+        internal TableRow(long dp,long pp,CTree<long,bool>ts,CTree<long,TypedValue> vs)
+        {
+            defpos = dp;
+            time = DateTime.Now.Ticks;
+            user = -1L;
+            tabledefpos = ts;
             subType = -1L;
             classification = Level.D;
             ppos = dp;
@@ -526,6 +539,20 @@ namespace Pyrrho.Level3
             if (x.vals[was] is TypedValue tv)
                 vals = vals - was + (now, tv);
         }
+
+        public TableRow(TableRow tr, CTree<long, bool> ts)
+        {
+            defpos = tr.defpos;
+            time = DateTime.Now.Ticks;
+            user = -1L;
+            tabledefpos = ts;
+            subType = -1L;
+            classification = Level.D;
+            ppos = tr.ppos;
+            prev = tr.prev;
+            vals = tr.vals;
+        }
+
         public static TableRow operator+(TableRow r,(long,TypedValue)x)
         {
             return new TableRow(r, r.vals + x);
@@ -634,7 +661,10 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Table=");sb.Append(DBObject.Uid(tabledefpos));
+            var cm = "";
+            sb.Append(" Table=");
+            for (var b = tabledefpos.First(); b != null; b = b.Next())
+            { sb.Append(cm); cm = "&"; sb.Append(DBObject.Uid(b.key())); }
             sb.Append(" Prev=");sb.Append(DBObject.Uid(prev));
             sb.Append(" Time=");sb.Append(new DateTime(time));
             return sb.ToString();
@@ -642,7 +672,10 @@ namespace Pyrrho.Level3
         public bool Equals(TableRow? other)
         {
             if (other==null) return false;
-            if (tabledefpos>0 && tabledefpos != other.tabledefpos) return false;
+            if (tabledefpos.Count != other.tabledefpos.Count) return false;
+            var ob = other.tabledefpos.First();
+            for (var b=tabledefpos.First();ob!=null && b!=null;b=b.Next())
+                if (ob.key()!=b.key()) return false;
             if (defpos > 0 && defpos != other.defpos) return false;
             for (var b = vals.First(); b != null; b = b.Next())
                 if (other.vals[b.key()]?.CompareTo(b.value()) != 0) return false;

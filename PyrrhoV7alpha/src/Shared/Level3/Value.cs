@@ -7097,7 +7097,13 @@ namespace Pyrrho.Level3
                             string s = cx.obs[op2]?.Eval(cx)?.ToString() ?? "";
                             return new TInt(s.IndexOf(t));
                         }
-                        break;
+                        var rv = Rvv.Empty;
+                        if (cx.obs[from] is not RowSet rs)
+                            break;
+                        for (var b = rs.rsTargets.First(); b != null; b = b.Next())
+                            if (b.value() is long p && cx.cursors[p] is Cursor c)
+                                rv += (b.key(), c._ds[b.key()]);
+                        return new TInt(rv.version);
                     }
                 case Sqlx.POWER:
                     {
@@ -7139,8 +7145,17 @@ namespace Pyrrho.Level3
                     {
                         var rs = cx._Ob(from) as RowSet;
                         var tr = cx.cursors[rs?.from ?? -1L]?.Rec()?[0];
-                        var p = (tr?.subType >= 0) ? tr.subType : tr?.tabledefpos;
-                        return new TChar((p is long) ? cx.NameFor(p.Value).Trim(':') : "");
+                        var sb = new StringBuilder();
+                        var cm = "";
+                        if (tr?.subType >= 0)
+                            sb.Append(cx.NameFor(tr.subType).Trim(':'));
+                        else 
+                            for (var b = tr?.tabledefpos.First(); b != null; b = b.Next())
+                            {
+                                sb.Append(cm); cm = "&";
+                                sb.Append(cx.NameFor(b.key()).Trim(':'));
+                            }
+                        return new TChar(sb.ToString());
                     }
                 case Sqlx.SQRT:
                     {
@@ -10939,7 +10954,7 @@ cx.obs[high] is not SqlValue hi)
             return (SqlNode)cx.Add(this + (State, tgs + state));
         }
         protected virtual (NodeType, CTree<Sqlx, TypedValue>)
-            _NodeType(Context cx, CTree<string, SqlValue> ls, NodeType dt)
+            _NodeType(Context cx, CTree<string, SqlValue> ls, NodeType dt, bool allowExtras = true)
         {
             var nd = this;
             // a label with at least one char SqlValue must be here
@@ -10958,6 +10973,33 @@ cx.obs[high] is not SqlValue hi)
             if (tl == CTree<long, bool>.Empty)
                 return (dt, md);
             var sd = "ID";
+            if (nd.name == "AMPERSAND")
+            {
+                var sb = new StringBuilder();
+                var cm = "";
+                var un = CTree<Domain, bool>.Empty;
+                for (var b=label.First();b!=null;b=b.Next())
+                {
+                    NodeType? n0 = null;
+                    var p = b.key();
+                    if ((cx.db.objects[p] ?? cx.obs[p]) is NodeType n1)
+                        n0 = n1;
+                    else if (cx.obs[p] is SqlValue t && t.Eval(cx) is TypedValue tv)
+                    {
+                        if (tv is TTypeSpec && tv.dataType is NodeType n2)
+                            n0 = n2;
+                        else if (tv is TChar tc && cx.db.objects[cx.role.dbobjects[tc.value] ?? -1L] is NodeType n3)
+                            n0 = n3;
+                    }
+                    if (n0 is null)
+                        throw new DBException("42161", "NODE TYPE");
+                    un += (n0, true);
+                    sb.Append(cm); cm = "&"; sb.Append(n0.name);
+                }
+                // JoinedNodeType is not committed to the database: it is a syntactic device leading to Record4 creation
+                NodeType jt = new JoinedNodeType(cx.GetUid(), sb.ToString(), Domain.NodeType, un, cx);
+                return (jt, CTree<Sqlx,TypedValue>.Empty);
+            }
             // the first part of the label is the least specific type (it may exist already).
             // it may be that all node/edge types for all parts of the label exist already
             // certainly the predecessor of an existing node must exist.
@@ -10966,10 +11008,7 @@ cx.obs[high] is not SqlValue hi)
             // if types earlier in the label are undefined we will create them here
             // This loop traverses the given type label
             // There should be at most one undefined compoonent
-            var uc = -1L;
             var dc = CTree<long, bool>.Empty;
-            // prepare the canonical name for the union (if AMPERSAND)
-            var cn = CTree<string, bool>.Empty;
             // if existing components are related, the top and bottom types found 
             var te = Domain.Null;
             var be = Domain.Null;
@@ -10992,35 +11031,37 @@ cx.obs[high] is not SqlValue hi)
                             cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as NodeType;
                         if (gt is not null && iC is null)
                         {
-                            iC = cx.db.objects[gt.idCol] as TableColumn ?? throw new DBException("42105");
-                            sd = iC.infos[cx.role.defpos]?.name ?? throw new DBException("42105");
-                            dt = gt;
-                            cn += (gt.name, true);
-                            dc += (gt.defpos, true);
-                            if (b.key() == 0)
+                            if (cx.db.objects[gt.idCol] is TableColumn ic0)
+                            {
+                                iC = ic0;
+                                sd = iC.infos[cx.role.defpos]?.name ?? throw new DBException("42105");
+                                nt = gt;
+                                dc += (gt.defpos, true);
+                                if (tp == 0)
+                                {
+                                    te = gt;
+                                    be = gt;
+                                }
+                                else
+                                {
+                                    if (te.EqualOrStrongSubtypeOf(gt))
+                                        te = gt;
+                                    else if (!gt.EqualOrStrongSubtypeOf(te))
+                                        te = Domain.Null;
+                                    if (gt.EqualOrStrongSubtypeOf(be))
+                                        be = gt;
+                                    else if (!be.EqualOrStrongSubtypeOf(gt))
+                                        be = Domain.Null;
+                                }
+                            }
+                            else
                             {
                                 te = gt;
                                 be = gt;
                             }
-                            else
-                            {
-                                if (te.EqualOrStrongSubtypeOf(gt))
-                                    te = gt;
-                                else if (!gt.EqualOrStrongSubtypeOf(te))
-                                    te = Domain.Null;
-                                if (gt.EqualOrStrongSubtypeOf(be))
-                                    be = gt;
-                                else if (!be.EqualOrStrongSubtypeOf(gt))
-                                    be = Domain.Null;
-                            }
                         }
-                        if (gt is null)
+                        if (gt is null && allowExtras)
                         {
-                            if (nd.name == "AMPERSAND")
-                            {
-                                uc = gl.defpos;
-                                continue;
-                            }
                             var un = CTree<Domain, bool>.Empty;
                             if (nt is not null)
                                 un += (nt, true);
@@ -11032,40 +11073,22 @@ cx.obs[high] is not SqlValue hi)
                                 && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
                                 gt = ht;
                             else
-                                (gt, _) = gt.Build(cx, dc, ls, md);
+                                (gt, _) = gt.Build(cx, this, dc, ls, md);
                             ls = CTree<string, SqlValue>.Empty;
                         }
+                        if (gt is null)
+                            throw new DBException("42000");
                         ty += (new TTypeSpec(gt), true);
                         nt = gt;
                         nd += (_Domain, nt);
                         cx.obs += (defpos, nd);
-                        if (nd.name == "AMPERSAND")
-                            iC = null;
                     }
                 }
-            if (nd.name == "AMPERSAND")
-            {
-                if (be is NodeType)
-                    return ((NodeType)be, md); // or maybe flag an error?
-                var sb = new StringBuilder();
-                var cm = "";
-                for (var b = cn.First(); b != null; b = b.Next())
-                { sb.Append(cm); cm = "&"; sb.Append(b.key()); }
-                var gn = sb.ToString();
-                var gt = cx.db.objects[cx.role.dbobjects[gn] ?? -1L] as NodeType;
-                if (gt is not null)
-                    return (gt, md);
-                var un = CTree<Domain, bool>.Empty;
-                if (nt is not null)
-                    un += (nt, true);
-                gt = new NodeType(cx.GetUid(), gn, Domain.NodeType, un, cx);
-                (nt, _) = gt.Build(cx, label, ls, md);
-            }
             if (nt is null)
                 throw new DBException("42000", "_NodeType");
             return (nt, md);
         }
-        internal virtual SqlNode Create(Context cx, NodeType dt)
+        internal virtual void Create(Context cx, NodeType dt, bool allowExtras = true)
         {
             var nd = this;
             var ls = CTree<string, SqlValue>.Empty;
@@ -11073,35 +11096,40 @@ cx.obs[high] is not SqlValue hi)
                 if (cx.obs[b.value() ?? -1L] is SqlValue sv)
                 {
                     if (cx.obs[b.key()] is not SqlValue sk) throw new DBException("42000", "Create");
-                    var k = (sk.name != null && sk.name != "COLON" && sk is SqlValue) ? sk.name
+                    var k = (sk.name != null && sk.name != "COLON") ? sk.name
                         : sk.Eval(cx).ToString();
                     ls += (k, sv);
                 }
-            var (nt, md) = _NodeType(cx, ls, dt);
+            allowExtras = allowExtras && name != "AMPERSAND";
+            var (nt, md) = _NodeType(cx, ls, dt, allowExtras);
             if (nt.defpos < 0 && md == CTree<Sqlx, TypedValue>.Empty && ls == CTree<string, SqlValue>.Empty)
                 throw new DBException("42161", "Specification", name ?? "Unbound");
             // we now have our NodeType nt and the names sd, il and ia of special columns
             // if nt is not built in the database yet we have the metadata we need to build it.
             // At this point, non-special properties matching those from dt
             // or new ones, may be provided in a Document. We prepare a tree
+            var ls0 = ls;
             for (var lb = dt.pathDomain.First(); lb != null; lb = lb.Next())
-                if (lb.value() is long pl && cx.obs[pl] is TableColumn tc
+                if (lb.value() is long pl && cx.db.objects[pl] is TableColumn tc
                         && tc.infos[cx.role.defpos] is ObInfo ti && ti.name is string cn)
                     ls += (cn, new SqlLiteral(pl, cn, tc.domain.defaultValue, tc.domain));
-            for (var b = nd.docValue?.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue sf && cx.obs[b.value() ?? -1L] is SqlValue sv)
-                {
-                    var fn = (sf.Eval(cx) as TChar)?.value ?? sf.name ?? "?";
-                    ls += (fn, sv);
-                }
+            if (ls != ls0)
+                for (var b = nd.docValue?.First(); b != null; b = b.Next())
+                    if (cx.obs[b.key()] is SqlValue sf && cx.obs[b.value() ?? -1L] is SqlValue sv)
+                    {
+                        var fn = (sf.Eval(cx) as TChar)?.value ?? sf.name ?? "?";
+                        ls += (fn, sv);
+                    }
             // We are now ready to check or build the node type nt
             if (nt.defpos >= 0 && nt.defpos < Transaction.Analysing)
-                nt = nt.Check(cx, this, ls);
+                nt = nt.Check(cx, this, ls, allowExtras);
             else if (cx.db.objects[cx.role.defpos] is Role rr
                                 && cx.db.objects[rr.dbobjects[nt.name ?? "_"] ?? -1L] is NodeType ot)
                 nt = ot;
             else
-                (nt, ls) = nt.Build(cx, label, ls, md); 
+                (nt, ls) = nt.Build(cx, this, label, ls, md);
+            if (nt is JoinedNodeType) // JoinedNodeType will have done everything
+                return;
             nd += (_Domain, nt);
             nd = (SqlNode)cx.Add(nd);
             ls = nd._AddEnds(cx, ls);
@@ -11142,7 +11170,7 @@ cx.obs[high] is not SqlValue hi)
                 var fm = (TableRowSet)ts.New(cx.GetUid(), ts.mem + (Domain.RowType, dr) + (Domain.Display, dr.Length));
                 var dm = new Domain(-1L, cx, Sqlx.ROW, ds, dr);
                 cx.Add(fm);
-                var rn = new SqlRow(cx.GetUid(), cx, dm, dm.rowType) + (cx, Table._NodeType, nt.defpos);
+                var rn = new SqlRow(cx.GetUid(), cx, dm, dm.rowType);
                 cx.Add(rn);
                 SqlValue n = rn;
                 n = new SqlRowArray(vp, cx, dm, new BList<long?>(n.defpos));
@@ -11158,15 +11186,16 @@ cx.obs[high] is not SqlValue hi)
                 s.Obey(cx);
                 if (nd.name != null)
                     cx.defs += (nd.name, new Iix(nd.defpos), Ident.Idents.Empty);
-                tn = cx.values[np] as TNode;
+                tn = cx.values[np] as TNode ?? throw new DBException("42105");
             }
             if (tn is not null)
             {
                 nd += (SqlLiteral._Val, tn);
+                if (nt.idCol<0)
+                    nd += (IdValue, tn.tableRow.defpos);
                 cx.values += (nd.defpos, tn);
             }
             cx.Add(nd);
-            return nd;
         }
         protected virtual CTree<string, SqlValue> _AddEnds(Context cx, CTree<string, SqlValue> ls)
         {
@@ -11215,7 +11244,7 @@ cx.obs[high] is not SqlValue hi)
         {
             if (this is not SqlEdge && n is TEdge)
                 return false;
-            if (cx.binding[idValue] is TNode ni && ni.id != n.id)
+            if (cx.binding[idValue] is TNode ni && ni.id.CompareTo(n.id)!=0)
                 return false;
             cx.values += n.tableRow.vals;
             if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
@@ -11356,7 +11385,7 @@ cx.obs[high] is not SqlValue hi)
             return 1;
         }
         protected override (NodeType, CTree<Sqlx, TypedValue>)
-          _NodeType(Context cx, CTree<string, SqlValue> ls, NodeType dt)
+          _NodeType(Context cx, CTree<string, SqlValue> ls, NodeType dt, bool allowEXtras = true)
         {
             var nd = this;
             //  nd for an edge will have a specific leavingnode and a specific arrivingnode 
@@ -11454,7 +11483,7 @@ cx.obs[high] is not SqlValue hi)
                                     && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
                                     gt = ht;
                                 else
-                                    (gt, _) = gt.Build(cx, label, ls, md);
+                                    (gt, _) = gt.Build(cx, this, label, ls, md);
                                 ls = CTree<string, SqlValue>.Empty;
                             }
                             ty += (new TTypeSpec(gt), true);
@@ -11468,10 +11497,10 @@ cx.obs[high] is not SqlValue hi)
         }
         void CheckType(Context cx, string? n, long? t, NodeType gt, long lx, bool lv)
         {
-            if (cx.db.objects[lx] is not Index nx
-                || cx.db.objects[nx.refindexdefpos] is not Index rx
-                || cx.db.objects[rx.tabledefpos] is not NodeType ut)
-                throw new PEException("PE408010");
+            NodeType ut = (cx.db.objects[lx] is Index nx
+                && cx.db.objects[nx.refindexdefpos] is Index rx
+                && cx.db.objects[rx.tabledefpos] is NodeType ut0) ? ut0
+                :  (cx.db.objects[t??-1L] as NodeType ?? throw new PEException("PE408010"));
             if (t == null)
                 throw new DBException("42133", n ?? "??");
             if (t == ut.defpos)
@@ -11534,10 +11563,6 @@ cx.obs[high] is not SqlValue hi)
                 ls += (cx.NameFor(et.arriveCol), (SqlValue)cx.Add(ai));
             }
             return ls;
-        }
-        internal override SqlNode Create(Context cx, NodeType dt)
-        {
-            return base.Create(cx, dt);
         }
         public override string ToString()
         {

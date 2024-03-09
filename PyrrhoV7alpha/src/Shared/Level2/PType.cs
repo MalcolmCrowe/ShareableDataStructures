@@ -5,7 +5,7 @@ using Pyrrho.Level5;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -257,12 +257,19 @@ namespace Pyrrho.Level2
                 if (ro.dbobjects[name] is long pp && cx.db.objects[pp] is EdgeType)
                     np = pp;
                 else
+                {
+                    ro += (Role.EdgeTypes, ro.edgeTypes + (name, defpos));
                     ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
+                }
                 cx.db += (np, pe.leavingType, pe.arrivingType, defpos);
+            }
+            else if (dataType is NodeType)
+            {
+                ro += (Role.NodeTypes, ro.nodeTypes + (name, defpos));
+                ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             }
             else
                 ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
-
             var ss = CTree<Domain, bool>.Empty;
             var ons = oi.names;
             if (dataType is UDType ut)

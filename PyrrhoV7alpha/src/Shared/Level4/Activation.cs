@@ -488,15 +488,17 @@ namespace Pyrrho.Level4
                         var st = rc.subType;
                         Record r;
                         if (level != Level.D)
-                            r = new Record3(table, newRow, st, level, db.nextPos, _cx);
+                            r = new Record3(new CTree<long,bool>(table.defpos,true), 
+                                newRow, st, level, db.nextPos, _cx);
                         else
-                            r = new Record(table, newRow, db.nextPos, _cx);
+                            r = new Record(new CTree<long, bool>(table.defpos, true), 
+                                newRow, db.nextPos, _cx);
                         Add(r);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (r.defpos, new TableRow(r,_cx)));
                         count++;
-                        if (table is NodeType nt && rc is TableRow)
-                            values += (r.defpos, new Level5.TNode(this,nt,rc));
+                        if (table is NodeType nt)
+                            values += (r.defpos, new TNode(this,nt,rc));
                         // install the record in the transaction
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
                         _cx.db = db;
@@ -566,8 +568,8 @@ namespace Pyrrho.Level4
                                 was?.Cascade(ct, newRow);
                         var nu = tgc._rec ?? throw new PEException("PE1907");
                         var u = (security == null) ?
-                                new Update(nu, table, newRow, db.nextPos, _cx) :
-                                new Update1(nu, table, newRow, ((TLevel)security.Eval(_cx)).val, db.nextPos, _cx);
+                                new Update(nu, new CTree<long,bool>(table.defpos,true), newRow, db.nextPos, _cx) :
+                                new Update2(nu, new CTree<long, bool>(table.defpos, true), newRow, ((TLevel)security.Eval(_cx)).val, db.nextPos, _cx);
                         Add(u);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (nu.defpos, new TableRow(u, _cx)));
@@ -602,7 +604,7 @@ namespace Pyrrho.Level4
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns - rc.defpos);
-                        Add(new Delete1(rc, table, db.nextPos));
+                        Add(new Delete2(rc, db.nextPos, this));
                         _cx.db = db;
                         count++;
                         break;
