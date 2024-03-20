@@ -9820,8 +9820,9 @@ namespace Pyrrho.Level4
             var dm = Domain.Content;
             if (lxr.tgg.HasFlag(TGParam.Type.Group))
                 dm = new Domain(-1L, Sqlx.ARRAY, dm);
-            return ((SqlValue)cx.Add(new SqlValue(k, BList<Ident>.Empty, cx, dm)),
-                (SqlValue)cx.Add(ParseSqlValue(dm)));
+            var va = ParseSqlValue(dm);
+            return ((SqlValue)cx.Add(new SqlValue(k, BList<Ident>.Empty, cx, va.domain)),
+                (SqlValue)cx.Add(va));
         }
         /// <summary>
         /// Parse a document array

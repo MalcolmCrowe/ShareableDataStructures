@@ -292,6 +292,8 @@ namespace Pyrrho.Level2
             if (table.defpos < 0)
                 throw new DBException("42105");
             seq = (tc.flags==GraphFlags.None) ? -1:tc.seq;
+            if (name == "ID" && table is NodeType)
+                table += (NodeType.IdCol, defpos);
             var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105");
             ti += (ObInfo.Names, ti.names + (name, (seq,ppos)));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));

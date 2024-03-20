@@ -98,7 +98,10 @@ namespace Pyrrho.Level3
                         cx.db.objects[tb.systemPS] is PeriodDef pd)
                         pos = pd.startCol;
                     rt += pos;
-                    rs += (pos, cx._Dom(pos) ?? throw new PEException("PE50201"));
+                    var cd = cx._Dom(pos);
+                    if (cd is null || cd.kind == Sqlx.Null)
+                        throw new PEException("PE50201");
+                    rs += (pos, cd);
                 }
             var kd = new Domain(-1L, cx, Sqlx.ROW, rs, rt, rt.Length);
             TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?

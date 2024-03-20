@@ -4795,8 +4795,8 @@ namespace Pyrrho.Level3
                 for (var b = pn.rindexes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is EdgeType rt)
                     {
-                        if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
-                            continue;
+                        //          if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
+                        //              continue;
                         var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
                         var ic = (xn.tok == Sqlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
                         var xp = (xn.tok == Sqlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;
@@ -4834,15 +4834,20 @@ namespace Pyrrho.Level3
                     if (cx._Ob(b.key()) is TableColumn tc
                         && cx._Ob(tc.tabledefpos) is EdgeType rt
                         && (xn.domain.defpos < 0 || xn.domain.defpos == rt.defpos)
-                        && b.value() is CTree<long, CTree<long, bool>> pt
-                        && pt[pd.tableRow.defpos] is CTree<long, bool> ct)
+                        && b.value() is CTree<long, CTree<long, bool>> pt)
                     {
-                        var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
-                        for (var c = ct.First(); c != null && lm-- > 0 && la-- > 0; c = c.Next())
-                            if (rt.tableRows[c.key()] is TableRow tr)
-                                ds += (tr.defpos, tr);
-                        if (lm <= 0 || la <= 0)
-                            break;
+                        var pv = pd.tableRow.defpos;
+                        if (cx._Ob(tc.toType) is NodeType tt && pd.tableRow.vals[tt.idCol]?.ToLong() is long vp)
+                            pv = vp;
+                         if (pt[pv] is CTree<long, bool> ct)
+                        {
+                            var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
+                            for (var c = ct.First(); c != null && lm-- > 0 && la-- > 0; c = c.Next())
+                                if (rt.tableRows[c.key()] is TableRow tr)
+                                    ds += (tr.defpos, tr);
+                            if (lm <= 0 || la <= 0)
+                                break;
+                        }
                     }
                 alldone:;
             }

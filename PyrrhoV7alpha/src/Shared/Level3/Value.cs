@@ -10972,7 +10972,7 @@ cx.obs[high] is not SqlValue hi)
                                                     // We may be using the default names, or we may inherit them from existing types
             if (tl == CTree<long, bool>.Empty)
                 return (dt, md);
-            var sd = "ID";
+            string? sd = null; // ID if present
             if (nd.name == "AMPERSAND")
             {
                 var sb = new StringBuilder();
@@ -11006,8 +11006,9 @@ cx.obs[high] is not SqlValue hi)
             // if the last one is undefined we will build it using the given property tree
             // (if it is defined we may add properties to it)
             // if types earlier in the label are undefined we will create them here
-            // This loop traverses the given type label
-            // There should be at most one undefined compoonent
+            // This loop traverses the given type label.
+            // There should be at most one undefined component in a label that contains embedded colons
+            // and none in any label expression with any other operators
             var dc = CTree<long, bool>.Empty;
             // if existing components are related, the top and bottom types found 
             var te = Domain.Null;
@@ -11068,7 +11069,8 @@ cx.obs[high] is not SqlValue hi)
                             if (gl.domain is StandardDataType)
                                 gd = domain as UDType ?? Domain.NodeType;
                             gt = new NodeType(cx.GetUid(), gc.value, (UDType)gd, un, cx);
-                            md += (Sqlx.NODE, new TChar(sd));
+                            if (sd is not null)
+                                md += (Sqlx.NODE, new TChar(sd));
                             if (cx.db.objects[cx.role.defpos] is Role rr
                                 && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
                                 gt = ht;
@@ -11412,7 +11414,7 @@ cx.obs[high] is not SqlValue hi)
             var md = CTree<Sqlx, TypedValue>.Empty; // some of what we will find on this search
                                                     // Begin to think about the names of special properties for the node we are building
                                                     // We may be using the default names, or we may inherit them from existing types
-            var sd = "ID";
+            string? sd = null;
             var il = "LEAVING";
             var ia = "ARRIVING";
             // the first part of the label is the least specific type (it may exist already).
@@ -11471,15 +11473,16 @@ cx.obs[high] is not SqlValue hi)
                                     un += (nt, true);
                                 if (gl.domain is StandardDataType)
                                     gd = domain as UDType ?? Domain.NodeType;
-                                gt = new EdgeType(cx.GetUid(), gc.value, (UDType)gd, un, cx);
-                                md = md + (Sqlx.EDGE, new TChar(sd))
-                                    + (Sqlx.LPAREN, new TChar(il))
+                                if (sd is not null)
+                                    md += (Sqlx.EDGE, new TChar(sd));
+                                md = md + (Sqlx.LPAREN, new TChar(il))
                                     + (Sqlx.RPAREN, new TChar(ia));
                                 if (lN is not null)
                                     md += (Sqlx.RARROW, new TChar(lN));
                                 if (aN is not null)
                                     md += (Sqlx.ARROW, new TChar(aN));
-                                if (cx.db.objects[cx.role.defpos] is Role rr
+                                gt = new EdgeType(cx.GetUid(), gc.value, (UDType)gd, un, cx, md, lT?.defpos, aT?.defpos);
+                                if (cx.db.objects[cx.role.defpos] is Role rr && sd is not null
                                     && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
                                     gt = ht;
                                 else

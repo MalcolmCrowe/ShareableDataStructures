@@ -528,7 +528,7 @@ namespace Pyrrho.Level4
                 case "Sys$Classification": return SysClassificationBookmark.New(_cx, res);
                 case "Sys$ClassifiedColumnData": return SysClassifiedColumnDataBookmark.New(_cx, res);
                 case "Sys$Enforcement": return SysEnforcementBookmark.New(_cx, res);
-                //case "Sys$Graph": return SysGraphBookmark.New(_cx,res);
+                //case "Sys$Graph": return SysGraphBookmark.New(cx,res);
                 case "Sys$Audit": return SysAuditBookmark.New(_cx, res);
                 case "Sys$AuditKey": return SysAuditKeyBookmark.New(_cx, res);
                 case "Role$PrimaryKey": return RolePrimaryKeyBookmark.New(_cx, res);
@@ -3631,7 +3631,7 @@ namespace Pyrrho.Level4
                 Record d = (Record)ph;
                 return new TRow(res,
                     Pos(d.ppos),
-                    Pos(d.tabledefpos),
+                    Pos(d.tabledefpos.Last()?.key()??-1L),
                     Pos(d.subType),
                     new TChar(d.classification.ToString()));
             }
@@ -3849,7 +3849,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(u.ppos),
                     Pos(u.defpos),
-                    Pos(u.tabledefpos),
+                    Pos(u.tabledefpos.Last()?.key()??-1L),
                     Pos(u.subType),
                     new TChar(u.classification.ToString()));
             }
@@ -6869,7 +6869,7 @@ namespace Pyrrho.Level4
                             for (var c = t.tableRows.First(); c != null; c = c.Next())
                             {
                                 var tr = c.value();
-                                if (tr.tabledefpos == t.defpos)
+                                if (tr.tabledefpos.Contains(t.defpos))
                                 {
                                     st += (t.defpos, true);
                                     te++;
@@ -6887,7 +6887,7 @@ namespace Pyrrho.Level4
                             for (var c = t.tableRows.First(); c != null; c = c.Next())
                             {
                                 var tr = c.value();
-                                if (tr.tabledefpos == t.defpos)
+                                if (tr.tabledefpos.Contains(t.defpos))
                                 {
                                     st += (t.defpos, true);
                                     tn++;
@@ -6902,7 +6902,7 @@ namespace Pyrrho.Level4
                 v += (3, ("EdgeTypes", be.Count));
                 v += (4, ("Nodes", tn));
                 v += (5, ("Edges", te));
-                v += (6, ("Labels", ls.Count));
+         //       v += (6, ("Labels", ls.Count));
                 return new RoleGraphInfoBookmark(cx,res,0,v);
             }
             static TRow _Value(SystemRowSet r,BTree<int,(string,long)> vs,int pos)
@@ -6929,10 +6929,6 @@ namespace Pyrrho.Level4
             t += new SystemTableColumn(t, "Pos", Char, 1);
             t += new SystemTableColumn(t, "Name", Char, 0);
             t += new SystemTableColumn(t, "IdName", Char, 0);
-            t += new SystemTableColumn(t, "LeavingName", Char, 0);
-            t += new SystemTableColumn(t, "LeavingType", Char, 0);
-            t += new SystemTableColumn(t, "ArrivingName", Char, 0);
-            t += new SystemTableColumn(t, "ArrivingType", Char, 0);
             t.Add();
         }
         internal class RoleNodeTypeBookmark : SystemBookmark
@@ -6943,14 +6939,14 @@ namespace Pyrrho.Level4
             {
                 _fb = fb;
             }
-            internal static RoleNodeTypeBookmark? New(Context _cx, SystemRowSet res)
+            internal static RoleNodeTypeBookmark? New(Context cx, SystemRowSet res)
             {
-                var ro = _cx.role ?? throw new DBException("42105");
-                for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
-                    if (outer.value() is NodeType ut)
+                var ro = cx.role ?? throw new DBException("42105");
+                for (var outer = cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
+                    if (outer.value() is NodeType ut && ut.kind!=Sqlx.EDGETYPE)
                     {
-                        var rb = new RoleNodeTypeBookmark(_cx, res, 0, outer, ut);
-                        if (rb.Match(res) && Eval(res.where, _cx))
+                        var rb = new RoleNodeTypeBookmark(cx, res, 0, outer, ut);
+                        if (rb.Match(res) && Eval(res.where, cx))
                             return rb;
                     }
                 return null;
@@ -6958,7 +6954,7 @@ namespace Pyrrho.Level4
             protected override Cursor? _Next(Context cx)
             {
                 for (var fb = _fb.Next(); fb != null; fb = fb.Next())
-                    if (fb.value() is NodeType nt)
+                    if (fb.value() is NodeType nt && nt.kind != Sqlx.EDGETYPE)
                     {
                         var rb = new RoleNodeTypeBookmark(cx, res, _pos + 1, fb, nt);
                         if (rb.Match(res) && Eval(res.where, cx))
@@ -6971,26 +6967,12 @@ namespace Pyrrho.Level4
             {
                 throw new NotImplementedException();
             }
-            static TRow _Value(Context _cx, SystemRowSet rs, NodeType nt)
+            static TRow _Value(Context cx, SystemRowSet rs, NodeType nt)
             {
-                if (_cx.role is not Role sr || nt.infos[sr.defpos] is not ObInfo oi
-                    || oi.name == null || _cx.db.objects[nt.idCol] is not TableColumn tc
-                    || tc.infos[_cx.role.defpos] is not ObInfo ci || ci.name==null)
-                    throw new PEException("PE49300");
-                var et = nt as EdgeType;
-                TypedValue lN = (_cx.db.objects[et?.leaveCol??-1L] is TableColumn lc
-                    && lc.infos[_cx.role.defpos] is ObInfo li && li.name is string ls)?new TChar(ls):TNull.Value;
-                TypedValue lT = (_cx.db.objects[et?.leavingType ?? -1L] is NodeType lt
-                    && lt.infos[_cx.role.defpos] is ObInfo tl && tl.name is string sl)?new TChar(sl):TNull.Value; 
-                TypedValue aN = (_cx.db.objects[et?.arriveCol??-1L] is TableColumn ac
-                    && ac.infos[_cx.role.defpos] is ObInfo ai && ai.name is string sa) ? new TChar(sa) : TNull.Value;
-                TypedValue aT = (_cx.db.objects[et?.arrivingType ?? -1L] is NodeType at
-                    && at.infos[_cx.role.defpos] is ObInfo ta && ta.name is string aa) ? new TChar(aa) : TNull.Value;
                 return new TRow(rs,
                     Pos(nt.defpos),
-                    new TChar(oi.name),
-                    new TChar(ci.name),
-                    lN,lT,aN,aT);
+                    new TChar(cx.NameFor(nt.defpos)),
+                    new TChar((nt.idCol>0)?cx.NameFor(nt.idCol):""));
             }
         }
         static void RoleEdgeTypeResults()
@@ -7048,7 +7030,7 @@ namespace Pyrrho.Level4
                     new TChar(cx.NameFor(nt.defpos)),
                     new TChar(cx.NameFor(nt.leavingType)),
                     new TChar(cx.NameFor(nt.arrivingType)),
-                    new TChar(cx.NameFor(nt.idCol)),
+                    new TChar((nt.idCol>0)?cx.NameFor(nt.idCol):""),
                     new TChar(cx.NameFor(nt.leaveCol)),
                     new TChar(cx.NameFor(nt.arriveCol)));
             }
