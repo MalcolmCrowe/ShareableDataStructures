@@ -1130,6 +1130,7 @@ namespace Pyrrho.Level4
                 Next();
             Mustbe(Sqlx.LPAREN, Sqlx.ARROWBASE, Sqlx.RARROW);
             var b = new Ident(this);
+            var nb = b;
             long id = -1L;
             var lp = lxr.Position;
             NodeType? dm = null;
@@ -1200,10 +1201,10 @@ namespace Pyrrho.Level4
             {
                 r = ab switch
                 {
-                    Sqlx.LPAREN => new SqlNode(b, BList<Ident>.Empty, cx, id, lb, dc, lxr.tgs, dm),
-                    Sqlx.ARROWBASE => new SqlEdge(b, BList<Ident>.Empty, cx, ab, id,
+                    Sqlx.LPAREN => new SqlNode(nb, BList<Ident>.Empty, cx, id, lb, dc, lxr.tgs, dm),
+                    Sqlx.ARROWBASE => new SqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
                     ln?.defpos ?? -1L, an?.defpos ?? -1L, lb, dc, lxr.tgs, dm),
-                    Sqlx.RARROW => new SqlEdge(b, BList<Ident>.Empty, cx, ab, id,
+                    Sqlx.RARROW => new SqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
                     an?.defpos ?? -1L, ln?.defpos ?? -1L, lb, dc, lxr.tgs, dm),
                     _ => throw new DBException("42000", ab)
                 };
