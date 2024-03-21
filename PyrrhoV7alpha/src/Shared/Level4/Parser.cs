@@ -1864,9 +1864,18 @@ namespace Pyrrho.Level4
             }
             else
             {
+                var dd = (UDType?)supers.First()?.key();
+                if (dd is not null)
+                    dd = dd.kind switch
+                    {
+                        Sqlx.NODETYPE => Domain.NodeType,
+                        Sqlx.EDGETYPE => Domain.EdgeType,
+                        _ => Domain.TypeSpec,
+                    };
+                dd ??= Domain.TypeSpec;
                 var pt = (supers.Count <= 1L)?
-                    new PType(typename.ident, Domain.TypeSpec, supers, -1L, cx.db.nextPos, cx)
-                    :new PType2(typename.ident, Domain.TypeSpec, supers, -1L, cx.db.nextPos, cx);
+                    new PType(typename.ident, dd, supers, -1L, cx.db.nextPos, cx)
+                    :new PType2(typename.ident, dd, supers, -1L, cx.db.nextPos, cx);
                 cx.Add(pt);
             }
             if (Match(Sqlx.RDFLITERAL))
