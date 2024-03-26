@@ -253,22 +253,23 @@ namespace Pyrrho.Common
     // shareable
     internal class TBool : TypedValue
     {
-        internal readonly bool value;
+        internal readonly bool? value;
         internal static TBool False = new (false);
         internal static TBool True = new (true);
-        private TBool(Domain dt, bool b) : base(dt) { value = b; }
-        private TBool(bool b) : this(Domain.Bool, b) { }
+        internal static TBool Unknown = new(null);
+        private TBool(Domain dt, bool? b) : base(dt) { value = b; }
+        private TBool(bool? b) : this(Domain.Bool, b) { }
         public override string ToString()
         {
-            return value.ToString();
+            return value?.ToString()??"Unknown";
         }
         internal override bool? ToBool()
         {
             return value;
         }
-        internal static TypedValue For(bool p)
+        internal static TypedValue For(bool? p)
         {
-            return p ? True : False;
+            return (p ==true)?True : (p==false)? False : Unknown;
         }
     }
     // shareable

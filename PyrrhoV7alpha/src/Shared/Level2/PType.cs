@@ -87,7 +87,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
 		public override void Serialise(Writer wr)
 		{
-            wr.PutLong(under.Last()?.key().defpos??-1L); // If Count>1 we use PType2 (allowed for Graph Types only)
+            wr.PutLong(under.Last()?.key().defpos??-1L); // If Count>1 we use PType2 (allowed for Node types only)
             // copied from PDomain.Serialise
             wr.PutString(name);
             wr.PutInt((int)dataType.kind);
@@ -252,7 +252,6 @@ namespace Pyrrho.Level2
             }
             if (dataType is EdgeType && this is PEdgeType pe)
             {
-                // the first edgetype with a given name has the alias table for any others
                 var np = defpos;
                 if (ro.dbobjects[name] is long pp && cx.db.objects[pp] is EdgeType)
                     np = pp;

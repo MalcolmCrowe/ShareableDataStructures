@@ -902,7 +902,7 @@ namespace Pyrrho.Level4
             return new Executable(lp, new string(lxr.input, lp, lxr.start - lp));
         }
         /// <summary>
-        /// Create: CREATE Graph {',' Graph } [THEN Statements END].
+        /// Create: CREATE GraphPattern {',' GraphPattern } [THEN Statements END].
         /// A graph fragment results in the addition of at least one Record
         /// in a node type: the node type definition comprising a table and UDT may 
         /// be created and/or altered on the fly, and may extend to further edge and edge types.
@@ -919,7 +919,7 @@ namespace Pyrrho.Level4
         /// 3. generates Physicals to update the set of types.
         /// 4. evaluates the SqlValueGraphs to generate Records and Updates (recursive)
         ///    Binds the (uncomitted) nodes
-        /// 5. adds the TGraph and Node->Edge associations to the database
+        /// 5. adds the Graph and Node->Edge associations to the database
         /// </summary>
         internal Executable ParseCreateGraph()
         {
@@ -1108,7 +1108,7 @@ namespace Pyrrho.Level4
             return (tgs, svg);
         }
         /// <summary>
-        /// Graph: Node Path .
+        /// GraphPattern: Node Path .
         /// Path: { Edge Node }.
         /// Node: '(' GraphItem ')'.
         /// Edge: '-[' GraphItem ']->' | '<-[' GraphItem ']-'.
@@ -1421,7 +1421,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// we have just matched MATCH|WITH
         /// MatchStatement: Match {',' Match} [WhereClause] [[THEN] Statement].
-        /// Match: MatchMode Graph
+        /// Match: MatchMode MatchPattern
         /// </summary>
         /// <returns></returns>
         /// <exception cref="DBException"></exception>
@@ -1944,8 +1944,8 @@ namespace Pyrrho.Level4
                     ls += (cn, new SqlLiteral(p, cn, tc.domain.defaultValue, tc.domain));
             var m = ParseMetadata(Sqlx.TYPE);
             // The metadata contains aliases for special columns etc
-                var ll = m[Sqlx.RARROW] as TList;
-                var al = m[Sqlx.ARROW] as TList;
+                var ll = m[Sqlx.RARROW] as TList?? new TList(Domain.TypeSpec,new TTypeSpec(Domain.NodeType));
+                var al = m[Sqlx.ARROW] as TList ?? new TList(Domain.TypeSpec, new TTypeSpec(Domain.NodeType));
             if (m.Contains(Sqlx.NODETYPE) || ll?.Length*al?.Length>1)
             {
                 var nt = new NodeType(typename.iix.dp, dt.mem + (Domain.Kind, Sqlx.NODETYPE));
@@ -1964,25 +1964,23 @@ namespace Pyrrho.Level4
                 var un = CTree<Domain, bool>.Empty;
                 if (dt is NodeType)
                     un += (dt, true);
-                if (ll is null) throw new PEException("PE60701");
-                if (al is null) throw new PEException("PE60702");
                 for (var bl = ll.list.First(); bl != null; bl = bl.Next())
                     for (var ba = al.list.First(); ba != null; ba = ba.Next())
                         if (bl.value() is TypedValue ln && ba.value() is TypedValue an)
                         {
                             m += (Sqlx.RARROW, ln);
                             m += (Sqlx.ARROW, an);
-                            var lv = cx.role.dbobjects[ln.ToString()];
-                            var av = cx.role.dbobjects[an.ToString()];
+                            var lv = cx.role.dbobjects[ln.ToString()]??Domain.NodeType.defpos;
+                            var av = cx.role.dbobjects[an.ToString()]??Domain.NodeType.defpos;
                             dt = odt;
                             // try to find a specific edgeType for this combination
-                            var d = cx.db.objects[cx.db.edgeTypes[typename.iix.dp]?[lv??-1L]?[av??-1L]??-1L] as EdgeType;
+                            var d = cx.db.objects[cx.db.edgeTypes[typename.iix.dp]?[lv]?[av]??-1L] as EdgeType;
                             if (d is not EdgeType et)
                             {
                                 var pe = new PEdgeType(typename.ident, Domain.EdgeType, un, -1L, np, cx);
                                 pt = pe;
-                                pe.leavingType = lv ?? throw new DBException("42133", ln);
-                                pe.arrivingType = av ??throw new DBException("42133", an);
+                                pe.leavingType = lv;
+                                pe.arrivingType = av;
                                 et = new EdgeType(np, typename.ident, dt, un, cx, m);
                                 pt.dataType = et;
                             }
@@ -2748,78 +2746,81 @@ namespace Pyrrho.Level4
                         {
                             m += (tok, o);
                             Next();
-                            Mustbe(Sqlx.LPAREN);
-                            var ll = new TList(Domain.Char);
-                            var ln = lxr.val; // ^1 ^3 or ^4, don't know yet
-                            Mustbe(Sqlx.Id);
-                            if (tok != Sqlx.EQL) // ln is ^1 or ^3
+                            if (tok == Sqlx.LPAREN)
                             {
-                                if (tok == Sqlx.CHAR || tok == Sqlx.STRING)
+                                Next();
+                                var ll = new TList(Domain.Char);
+                                var ln = lxr.val; // ^1 ^3 or ^4, don't know yet
+                                Mustbe(Sqlx.Id);
+                                if (tok != Sqlx.EQL) // ln is ^1 or ^3
                                 {
-                                    Next();
-                                    m += (Sqlx.CHAR, TChar.Empty); // ^2
+                                    if (tok == Sqlx.CHAR || tok == Sqlx.STRING)
+                                    {
+                                        Next();
+                                        m += (Sqlx.CHAR, TChar.Empty); // ^2
+                                    }
+                                    if (tok == Sqlx.COLON) // ln is ^1
+                                    {
+                                        Next();
+                                        m += (Sqlx.EDGE, ln); // ^1
+                                        ln = lxr.val;  // ln is ^3 or ^4
+                                        Mustbe(Sqlx.Id);
+                                    }
                                 }
-                                if (tok == Sqlx.COLON) // ln is ^1
+                                if (tok == Sqlx.EQL) // ln is ^3
                                 {
                                     Next();
-                                    m += (Sqlx.EDGE, ln); // ^1
-                                    ln = lxr.val;  // ln is ^3 or ^4
+                                    m += (Sqlx.LPAREN, ln); //^3
+                                    ln = lxr.val;  // ln is ^4
                                     Mustbe(Sqlx.Id);
                                 }
-                            }
-                            if (tok == Sqlx.EQL) // ln is ^3
-                            {
-                                Next();
-                                m += (Sqlx.LPAREN, ln); //^3
-                                ln = lxr.val;  // ln is ^4
+                                while (true) // ln is ^4
+                                {
+                                    if (!cx.role.dbobjects.Contains(ln.ToString()))
+                                        throw new DBException("42161", "NodeType", ln);
+                                    ll += ln;
+                                    if (tok != Sqlx.VBAR)
+                                        break;
+                                    Next();
+                                    ln = lxr.val; // ^+4
+                                    Mustbe(Sqlx.Id);
+                                }
+                                if (tok == Sqlx.SET) // ^5
+                                {
+                                    m += (Sqlx.ARROWBASE, TChar.Empty); // ^5
+                                    Next();
+                                }
+                                m += (Sqlx.RARROW, ll); // ^4
+                                Mustbe(Sqlx.COMMA);
+                                var al = new TList(Domain.Char);
+                                var an = lxr.val;  // an is ^5 or ^6
                                 Mustbe(Sqlx.Id);
+                                if (tok == Sqlx.EQL)  // ^5
+                                {
+                                    m += (Sqlx.RPAREN, an); // ^5
+                                    Next();
+                                    an = lxr.val;  // ^6
+                                    Mustbe(Sqlx.Id);
+                                }
+                                while (true) // ln is ^6
+                                {
+                                    if (!cx.role.dbobjects.Contains(an.ToString()))
+                                        throw new DBException("42161", "NodeType", an);
+                                    al += an;
+                                    if (tok != Sqlx.VBAR)
+                                        break;
+                                    Next();
+                                    an = lxr.val; // ^+5
+                                    Mustbe(Sqlx.Id);
+                                }
+                                if (tok == Sqlx.SET) // ^7
+                                {
+                                    m += (Sqlx.RARROWBASE, TChar.Empty); // ^7
+                                    Next();
+                                }
+                                m += (Sqlx.ARROW, al); // ^6
+                                Mustbe(Sqlx.RPAREN);
                             }
-                            while (true) // ln is ^4
-                            {
-                                if (!cx.role.dbobjects.Contains(ln.ToString()))
-                                    throw new DBException("42161", "NodeType", ln);
-                                ll += ln;
-                                if (tok != Sqlx.VBAR)
-                                    break;
-                                Next();
-                                ln = lxr.val; // ^+4
-                                Mustbe(Sqlx.Id);
-                            }
-                            if (tok == Sqlx.SET) // ^5
-                            {
-                                m += (Sqlx.ARROWBASE, TChar.Empty); // ^5
-                                Next();
-                            }
-                            m += (Sqlx.RARROW, ll); // ^4
-                            Mustbe(Sqlx.COMMA);
-                            var al = new TList(Domain.Char);
-                            var an = lxr.val;  // an is ^5 or ^6
-                            Mustbe(Sqlx.Id);
-                            if (tok == Sqlx.EQL)  // ^5
-                            {
-                                m += (Sqlx.RPAREN, an); // ^5
-                                Next();
-                                an = lxr.val;  // ^6
-                                Mustbe(Sqlx.Id);
-                            }
-                            while (true) // ln is ^6
-                            {
-                                if (!cx.role.dbobjects.Contains(an.ToString()))
-                                    throw new DBException("42161", "NodeType", an);
-                                al += an;
-                                if (tok != Sqlx.VBAR)
-                                    break;
-                                Next();
-                                an = lxr.val; // ^+5
-                                Mustbe(Sqlx.Id);
-                            }
-                            if (tok == Sqlx.SET) // ^7
-                            {
-                                m += (Sqlx.RARROWBASE, TChar.Empty); // ^7
-                                Next();
-                            }
-                            m += (Sqlx.ARROW, al); // ^6
-                            Mustbe(Sqlx.RPAREN);
                             break;
                         }
                     case Sqlx.CARDINALITY:
@@ -7619,7 +7620,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
 		/// Insert = INSERT INTO Table_id [ Cols ]  TypedValue [Classification]
-        ///        |  INSERT Graph.
+        ///        |  INSERT GraphPattern.
         /// </summary>
         /// <returns>the executable</returns>
         Executable ParseSqlInsert()

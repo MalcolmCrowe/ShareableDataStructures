@@ -50,7 +50,7 @@ namespace Pyrrho.Level2
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
             Update1, Delete1, Drop1, RefAction, Post, // 71-75
             PNodeType, PEdgeType, EditType, AlterIndex, AlterEdgeType, // 76-80
-            Record4, Update2, Delete2 // 81-83
+            Record4, Update2, Delete2, PGraph // 81-84
         };
         /// <summary>
         /// The Physical.Type of the Physical

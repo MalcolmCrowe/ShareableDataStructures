@@ -725,23 +725,23 @@ namespace Pyrrho.Level1
             int m = result.display;
             if (m == 0)
                 m = dt.Length;
-            PutInt(m);
-            if (m == 0)
-            {
-                Console.WriteLine("No columns?");
-                throw new PEException("PE246");
-            }
+            PutInt((m>0)?m:1);
             if (m > dt.Length)
             {
                 Console.WriteLine("Unreasonable rowType length " + dt.Length + " < " + m);
                 throw new PEException("PE247");
             }
-            if (m > 0)
+            PutString("Data");
+            int[] flags = new int[m];
+            result.Schema(cx, flags);
+            var j = 0;
+            if (m == 0)
             {
-                PutString("Data");
-                int[] flags = new int[m];
-                result.Schema(cx, flags);
-                var j = 0;
+                PutString("POSITION");
+                PutString("INTEGER");
+                PutInt(1);
+            }
+            else
                 for (var b = dt.First(); j < m && b != null; b = b.Next(), j++)
                     if (b.value() is long p)
                     {
@@ -749,13 +749,12 @@ namespace Pyrrho.Level1
                             throw new PEException("PE24602");
                         var i = b.key();
                         PutString(result.NameFor(cx, i));
-                        if (dn.kind != Sqlx.TYPE && dn.kind!=Sqlx.NODETYPE && dn.kind!=Sqlx.EDGETYPE)
+                        if (dn.kind != Sqlx.TYPE && dn.kind != Sqlx.NODETYPE && dn.kind != Sqlx.EDGETYPE)
                             PutString(dn.kind.ToString());
                         else
                             PutString(dn.name);
                         PutInt(flags[j]);
                     }
-            }
             Flush();
         }
         /// <summary>
@@ -946,7 +945,7 @@ namespace Pyrrho.Level1
                     PutData(_cx, ((TSensitive)tv).value);
                     break;
                 case Sqlx.BOOLEAN:
-                    PutInt(((TBool)tv).value ? 1 : 0);
+                    PutInt((tv.ToBool()==true) ? 1 : 0);
                     break;
                 case Sqlx.INTEGER:
                     {

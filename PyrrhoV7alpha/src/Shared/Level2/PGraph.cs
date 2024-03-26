@@ -103,4 +103,82 @@ namespace Pyrrho.Level2
             return base.ToString() + "(" + DBObject.Uid(leavingType) + "," + DBObject.Uid(arrivingType)+")";
         }
     }
+    internal class PGraph : Physical
+    {
+        public string iri = "";
+        public CTree<long, bool> types = CTree<long,bool>.Empty;
+        public CTree<long, bool> records = CTree<long, bool>.Empty;
+        public PGraph(long pp,string s,CTree<long,bool> ts,CTree<long,bool> ns) : base(Type.PGraph, pp)
+        {
+            iri = s;
+            types = ts;
+            records = ns;
+        }
+
+        public PGraph(Type tp, Reader rdr) : base(tp, rdr)
+        { }
+
+        public PGraph(PGraph x, Writer wr) : base(x, wr)
+        {
+            iri = x.iri;
+            types = wr.cx.Fix(x.types);
+            records = wr.cx.Fix(x.records);
+        }
+        public override void Deserialise(Reader rdr)
+        {
+            iri = rdr.GetString();
+            var n = rdr.GetInt();
+            for (var i = 0; i < n; i++)
+                types += (rdr.GetLong(), true);
+            n = rdr.GetInt();
+            for (var i = 0; i < n; i++)
+                records += (rdr.GetLong(), true);
+            base.Deserialise(rdr);
+        }
+        public override void Serialise(Writer wr)
+        {
+            wr.PutString(iri);
+            wr.PutInt((int)types.Count);
+            for (var b = types.First(); b != null; b = b.Next())
+                wr.PutLong(b.key());
+            wr.PutInt((int)records.Count);
+            for (var b = records.First(); b != null; b = b.Next())
+                wr.PutLong(b.key());
+            base.Serialise(wr);
+        }
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            return -1L;
+        }
+
+        protected override Physical Relocate(Writer wr)
+        {
+            types = wr.cx.Fix(types);
+            records = wr.cx.Fix(records);
+            return new PGraph(this, wr);
+        }
+
+        internal override DBObject? Install(Context cx, long p)
+        {
+            var ns = CTree<long, TNode>.Empty;
+            for (var b = records.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Record r)
+                {
+                    var t = new TableRow(r, cx);
+                    for (var c = r.tabledefpos.First(); c != null; c = c.Next())
+                     if (cx.db.objects[c.key()] is NodeType nt)
+                        ns += (r.defpos, new TNode(nt,t));
+                }
+            var g = new Graph(ppos, ns, iri, types);
+            cx.db += (g,p);
+            cx.Add(g);
+            return g;
+        }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (iri.StartsWith("http")) // do not commit
+                return (tr, this);
+            return base.Commit(wr, tr);
+        }
+    }
 }

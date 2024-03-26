@@ -880,6 +880,24 @@ namespace Pyrrho
                                 tcp.Flush();
                                 break;
                             }
+                        case Protocol.GraphInfo:
+                            {
+                                if (cx is null)
+                                    throw new DBException("3D001");
+                                if (cx.role?.dbobjects["Role$GraphInfo"] is not long tp
+                                    || db.objects[tp] is not SystemTable st)
+                                    throw new DBException("42105");
+                                tcp.Write(Responses.GraphInfo);
+                                for (var b = new SystemRowSet(cx, st).First(cx); b != null; b = b.Next(cx))
+                                {
+                                    tcp.PutString(b[0].ToString());
+                                    tcp.PutInt(b[1].ToInt()?? 0);
+                                }
+                                tcp.PutString("");
+                                tcp.Write(Responses.Done);
+                                tcp.Flush();
+                                break;
+                            }
                         case 0: goto case Protocol.EoF;
                         case Protocol.EoF:
                             Close();
@@ -1488,7 +1506,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.08alpha","(21 March 2024)", "http://www.pyrrhodb.com"
+            "7.08alpha","(26 March 2024)", "http://www.pyrrhodb.com"
         };
 	}
 }

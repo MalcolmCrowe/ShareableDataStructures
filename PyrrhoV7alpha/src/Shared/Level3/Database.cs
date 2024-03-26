@@ -151,7 +151,7 @@ namespace Pyrrho.Level3
             Curated = -53, // long
             EdgeTypes = -471, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType,NodeType,NodeType,EdgeType
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
-            Graph = -481, // CTree<long,bool> NodeType current Graph (by default: all nodetypes in role)
+            Graphs = -481, // CTree<long,bool> Graph 
             Guest = -55, // long: a role holding all grants to PUBLIC
             KeyLabels = -461, // BTree<CTree<string,bool>,long?> NodeType 
             LastModified = -279, // DateTime
@@ -191,7 +191,7 @@ namespace Pyrrho.Level3
         internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
         internal Role role => (Role)(mem[Role] ?? guest);
         internal CTree<long,bool> graph =>
-            (CTree<long, bool>)(mem[Graph]??CTree<long,bool>.Empty);
+            (CTree<long, bool>)(mem[Graphs]??CTree<long,bool>.Empty);
         internal User? user => (User?)mem[User];
         internal virtual bool autoCommit => true;
         internal virtual string source => "";

@@ -2385,7 +2385,7 @@ namespace Pyrrho.Level3
                         if (mod == Sqlx.BINARY && a is TInt aa && b is TInt ab) // JavaScript
                             return new TInt(aa.value & ab.value);
                         else if (a is TBool ba && b is TBool bb)
-                            return TBool.For(ba.value && bb.value);
+                            return TBool.For((ba.value is bool xa && bb.value is bool xb)?(xa && xb):null);
                         break;
                     }
                 case Sqlx.ASC: // JavaScript ++
@@ -2683,7 +2683,9 @@ namespace Pyrrho.Level3
                         if (mod == Sqlx.BINARY && a is TInt aa && b is TInt ab) // JavaScript
                             return new TInt(aa.value | ab.value);
                         else if (a is TBool ba && b is TBool bb)
-                            return TBool.For(ba.value || bb.value);
+                            return (ba.value is bool xa) ? 
+                                (bb.value is bool xb) ? TBool.For(xa || xb) : ba 
+                                : TBool.Unknown;
                         break;
                     }
                 case Sqlx.OVERLAPS:
@@ -7488,7 +7490,9 @@ namespace Pyrrho.Level3
                         if (window >= 0)
                             goto case Sqlx.COLLECT;
                         if (v is TBool tb)
-                            fc.bval = fc.bval || tb.value;
+                            fc.bval = (fc.bval is bool xf)?
+                                (tb.value is bool xt)?(xf||xt):xf
+                                :null;
                         break;
                     }
                 case Sqlx.COLLECT:
@@ -7516,7 +7520,7 @@ namespace Pyrrho.Level3
                 case Sqlx.EVERY:
                     {
                         if (v is TBool vb)
-                            fc.bval = fc.bval && vb.value;
+                            fc.bval = ((fc.bval is bool xf) && (vb.value is bool xv))? (xf && xv):null;
                         break;
                     }
                 case Sqlx.FIRST:
@@ -10960,7 +10964,6 @@ cx.obs[high] is not SqlValue hi)
             // a label with at least one char SqlValue must be here
             // evaluate them all as TTypeSpec or TChar
             var tl = nd.label;
-            var ty = CTree<TypedValue, bool>.Empty;
             NodeType? nt = null; // the node type of this node when we find it or construct it
             TableColumn? iC = null; // the special columns for this node
                                     // The label part gives us our bearings in the database. From it we will find
@@ -11000,32 +11003,36 @@ cx.obs[high] is not SqlValue hi)
                 NodeType jt = new JoinedNodeType(cx.GetUid(), sb.ToString(), Domain.NodeType, un, cx);
                 return (jt, CTree<Sqlx,TypedValue>.Empty);
             }
-            // the first part of the label is the least specific type (it may exist already).
-            // it may be that all node/edge types for all parts of the label exist already
-            // certainly the predecessor of an existing node must exist.
-            // if the last one is undefined we will build it using the given property tree
-            // (if it is defined we may add properties to it)
-            // if types earlier in the label are undefined we will create them here
-            // This loop traverses the given type label.
-            // There should be at most one undefined component in a label that contains embedded colons
-            // and none in any label expression with any other operators
+            // Pyrrho extends GQL by allowing :a:b in INSERT (as in Neo4j) but accepts that some vendors have
+            // this meaning :a is under :b and some that :b is under :a. 
+            // Pyrrho infers the relationship from the order of declaration: if one of them has 
+            // already been declared then the other will be a subtype. If neither, then the second will be
+            // the subtype. If both have been declared already it is an error.
             var dc = CTree<long, bool>.Empty;
             // if existing components are related, the top and bottom types found 
+            // We know we have :a:b if nd.name is not AMPERSAND and tl.Count==2
+            // gc,gd etc will be the new node type and this data will be used to define the new type gt
             var te = Domain.Null;
             var be = Domain.Null;
-            ABookmark<long, bool>? bn = null;
-            for (var b = tl.First(); b != null; b = bn)  // tl is the iterative type label
+            SqlValue? sg = null;
+            for (var b = tl.First(); b != null; b = b.Next())  // tl is the iterative type label
                 if (b.key() is long tp)
                 {
                     if (cx.db.objects[tp] is NodeType ne)
-                        return (ne, CTree<Sqlx, TypedValue>.Empty);
-                    if (cx.obs[tp] is SqlValue gl && gl.Eval(cx) is TypedValue gv)
                     {
+                        if (te == Domain.Null || te.defpos<ne.defpos) 
+                            te = ne;
+                        if (be == Domain.Null || ne.defpos<be.defpos)
+                            be = ne;
+                        nt = ne;
+                    }
+                    else if (cx.obs[tp] is SqlValue gl && gl.Eval(cx) is TypedValue gv)
+                    {
+                        sg = gl;
                         if (gv is TChar ge && cx._Ob(cx.role.dbobjects[ge.value] ?? -1L) is Domain gd)
                             gl = new SqlLiteral(cx.GetUid(), gd);
-                        else gd = Domain.Char;
-                        bn = b.Next();
-                        ty += (gv, true);
+                        else
+                            gd = Domain.Char;
                         if (gv is not TChar gc)
                             gc = new TChar(gl.name ?? "?");
                         NodeType? gt = (gv is TTypeSpec tt) ? tt._dataType as NodeType :
@@ -11066,21 +11073,17 @@ cx.obs[high] is not SqlValue hi)
                             var un = CTree<Domain, bool>.Empty;
                             if (nt is not null)
                                 un += (nt, true);
-                            if (gl.domain is StandardDataType)
+                            if (be is NodeType)
+                                gd = be;
+                            if (gd is null || gd is StandardDataType)
                                 gd = domain as UDType ?? Domain.NodeType;
-                            gt = new NodeType(cx.GetUid(), gc.value, (UDType)gd, un, cx);
+                            gt = new NodeType(cx.GetUid(), gc?.value ?? "??", (UDType)gd, un, cx);
                             if (sd is not null)
                                 md += (Sqlx.NODE, new TChar(sd));
-                            if (cx.db.objects[cx.role.defpos] is Role rr
-                                && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
-                                gt = ht;
-                            else
-                                (gt, _) = gt.Build(cx, this, dc, ls, md);
-                            ls = CTree<string, SqlValue>.Empty;
+                            (gt, _) = gt.Build(cx, this, dc, ls, md);
                         }
                         if (gt is null)
                             throw new DBException("42000");
-                        ty += (new TTypeSpec(gt), true);
                         nt = gt;
                         nd += (_Domain, nt);
                         cx.obs += (defpos, nd);
@@ -11387,11 +11390,12 @@ cx.obs[high] is not SqlValue hi)
             return 1;
         }
         protected override (NodeType, CTree<Sqlx, TypedValue>)
-          _NodeType(Context cx, CTree<string, SqlValue> ls, NodeType dt, bool allowEXtras = true)
+          _NodeType(Context cx, CTree<string, SqlValue> ls, NodeType dt, bool allowExtras = true)
         {
             var nd = this;
             //  nd for an edge will have a specific leavingnode and a specific arrivingnode 
             // the special columns for this node
+            TableColumn? iC = null;
             var lS = cx.obs[nd.leavingValue] as SqlNode;
             var lI = lS?.idValue ?? -1L;
             var lg = cx.binding[lI] ?? cx.nodes[lI];
@@ -11409,7 +11413,6 @@ cx.obs[high] is not SqlValue hi)
             // a label with at least one char SqlValue must be here
             // evaluate them all as TTypeSpec or TChar
             var tl = nd.label;
-            var ty = CTree<TypedValue, bool>.Empty;
             EdgeType? nt = null; // the node type of this node when we find it or construct it
             var md = CTree<Sqlx, TypedValue>.Empty; // some of what we will find on this search
                                                     // Begin to think about the names of special properties for the node we are building
@@ -11417,83 +11420,117 @@ cx.obs[high] is not SqlValue hi)
             string? sd = null;
             var il = "LEAVING";
             var ia = "ARRIVING";
-            // the first part of the label is the least specific type (it may exist already).
             // it may be that all node/edge types for all parts of the label exist already
             // certainly the predecessor of an existing node must exist.
             // if the last one is undefined we will build it using the given property tree
             // (if it is defined we may add properties to it)
             // if types earlier in the label are undefined we will create them here
-            // This loop traverses the given type label: watch for the position of the last component
-            bool? retrying;
-            do
-            {
-                retrying = false;
-                ABookmark<long, bool>? bn = null;
-                NodeType? gt = null;
-                for (var b = tl.First(); b != null; b = bn)  // tl is the iterative type label
-                    if (b.key() is long tp)
+            // This loop traverses the given type label
+            var dc = CTree<long, bool>.Empty;
+            // if existing components are related, the top and bottom types found 
+            var te = Domain.Null;
+            var be = Domain.Null;
+            SqlValue? sg = null;
+            for (var b = tl.First(); b != null; b = b.Next())  // tl is the iterative type label
+                if (b.key() is long tp)
+                {
+                    if (cx.db.objects[tp] is EdgeType ne)
                     {
-                        if (cx.db.objects[tp] is NodeType ne)
-                            return (ne, CTree<Sqlx, TypedValue>.Empty);
-                        if (cx.obs[tp] is SqlValue gl && gl.Eval(cx) is TypedValue gv)
+                        if (te == Domain.Null || te.defpos < ne.defpos)
+                            te = ne;
+                        if (be == Domain.Null || ne.defpos < be.defpos)
+                            be = ne;
+                        nt = ne;
+                    }
+                    else if (cx.obs[tp] is SqlValue gl && gl.Eval(cx) is TypedValue gv)
+                    {
+                        if (gv is TChar ge && cx._Ob(cx.role.dbobjects[ge.value] ?? -1L) is Domain gd)
+                            gl = new SqlLiteral(cx.GetUid(), gd);
+                        else
+                            gd = Domain.Char;
+                        if (gv is not TChar gc)
+                            gc = new TChar(gl.name ?? "?");
+                        var gt = (gv is TTypeSpec tt) ? tt._dataType as EdgeType :
+                           cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as EdgeType;
+                        if (gt is not null && lT is not null && aT is not null
+                            && (gt.leavingType != lT.defpos || gt.arrivingType != aT.defpos))
                         {
-                            if (gv is TChar ge && cx._Ob(cx.role.dbobjects[ge.value] ?? -1L) is Domain gd)
-                                gl = new SqlLiteral(cx.GetUid(), gd);
-                            else gd = Domain.Char;
-                            bn = b.Next();
-                            ty += (gv, true);
-                            if (gv is not TChar gc)
-                                gc = new TChar(gl.name ?? "?");
-                            gt = (gv is TTypeSpec tt) ? tt._dataType as EdgeType :
-                               cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as EdgeType;
-                            if (gt is not null && lT is not null && aT is not null
-                                && (gt.leavingType != lT.defpos || gt.arrivingType != aT.defpos))
-                            {
-                                var gn = gt.name;
-                                gt = cx.db.objects[cx.db.edgeTypes[gt.defpos]?[lT.defpos]?[aT.defpos] ?? -1L] as EdgeType;
-                                if (gt is null)
-                                {
-                                    gc = new TChar(gn);
-                                    dt = Domain.EdgeType;
-                                }
-                            }
-                            gt = cx.db.objects[gt?.defpos ?? -1L] as EdgeType ?? gt;
-                            if (gt is not null)
-                            {
-                                if (lN is not null && lN != "" && lT is not null)
-
-                                    CheckType(cx, lN, lT.defpos, gt, gt.leaveIx, true);
-                                if (aN is not null && aN != "" && aT is not null)
-                                    CheckType(cx, aN, aT.defpos, gt, gt.arriveIx, false);
-                            }
+                            var gn = gt.name;
+                            gt = cx.db.objects[cx.db.edgeTypes[gt.defpos]?[lT.defpos]?[aT.defpos] ?? -1L] as EdgeType;
                             if (gt is null)
                             {
-                                var un = CTree<Domain, bool>.Empty;
-                                if (nt is not null)
-                                    un += (nt, true);
-                                if (gl.domain is StandardDataType)
-                                    gd = domain as UDType ?? Domain.NodeType;
-                                if (sd is not null)
-                                    md += (Sqlx.EDGE, new TChar(sd));
-                                md = md + (Sqlx.LPAREN, new TChar(il))
-                                    + (Sqlx.RPAREN, new TChar(ia));
-                                if (lN is not null)
-                                    md += (Sqlx.RARROW, new TChar(lN));
-                                if (aN is not null)
-                                    md += (Sqlx.ARROW, new TChar(aN));
-                                gt = new EdgeType(cx.GetUid(), gc.value, (UDType)gd, un, cx, md, lT?.defpos, aT?.defpos);
-                                if (cx.db.objects[cx.role.defpos] is Role rr && sd is not null
-                                    && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
-                                    gt = ht;
-                                else
-                                    (gt, _) = gt.Build(cx, this, label, ls, md);
-                                ls = CTree<string, SqlValue>.Empty;
+                                gc = new TChar(gn);
+                                dt = Domain.EdgeType;
                             }
-                            ty += (new TTypeSpec(gt), true);
-                            nt = (EdgeType)gt;
                         }
-                    }
-            } while (retrying == true);
+                        gt = cx.db.objects[gt?.defpos ?? -1L] as EdgeType ?? gt;
+                        if (gt is not null)
+                        {
+                            if (lN is not null && lN != "" && lT is not null)
+                                CheckType(cx, lN, lT.defpos, gt, gt.leaveIx, true);
+                            if (aN is not null && aN != "" && aT is not null)
+                                CheckType(cx, aN, aT.defpos, gt, gt.arriveIx, false);
+                            nt = gt;
+                        }
+                        if (gt is not null && iC is null)
+                        {
+                            if (cx.db.objects[gt.idCol] is TableColumn ic0)
+                            {
+                                iC = ic0;
+                                sd = iC.infos[cx.role.defpos]?.name ?? throw new DBException("42105");
+                                nt = (EdgeType)gt;
+                                dc += (gt.defpos, true);
+                                if (tp == 0)
+                                {
+                                    te = gt;
+                                    be = gt;
+                                }
+                                else
+                                {
+                                    if (te.EqualOrStrongSubtypeOf(gt))
+                                        te = gt;
+                                    else if (!gt.EqualOrStrongSubtypeOf(te))
+                                        te = Domain.Null;
+                                    if (gt.EqualOrStrongSubtypeOf(be))
+                                        be = gt;
+                                    else if (!be.EqualOrStrongSubtypeOf(gt))
+                                        be = Domain.Null;
+                                }
+                            }
+                            else
+                            {
+                                te = gt;
+                                be = gt;
+                            }
+                        }
+                        if (gt is null && allowExtras)
+                        {
+                            var un = CTree<Domain, bool>.Empty;
+                            if (nt is not null)
+                                un += (nt, true);
+                            if (be is EdgeType)
+                                gd = be;
+                            if (gd is null || gd is StandardDataType)
+                                gd = domain as UDType ?? Domain.EdgeType;
+                            if (sd is not null)
+                                md += (Sqlx.EDGE, new TChar(sd));
+                            md = md + (Sqlx.LPAREN, new TChar(il))
+                                + (Sqlx.RPAREN, new TChar(ia));
+                            if (lN is not null)
+                                md += (Sqlx.RARROW, new TChar(lN));
+                            if (aN is not null)
+                                md += (Sqlx.ARROW, new TChar(aN));
+                            gt = new EdgeType(cx.GetUid(), gc?.value ?? "??", (UDType)gd, un, cx, md, lT?.defpos, aT?.defpos);
+                            /*           if (cx.db.objects[cx.role.defpos] is Role rr && sd is not null
+                                           && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
+                                           gt = ht; 
+                                       else */
+                            (var et, _) = gt.Build(cx, this, label, ls, md);
+                            gt = (EdgeType)et;
+                            nt = gt;
+                        }
+                }
+            }
             if (nt is null)
                 throw new DBException("42000", "_EdgeType");
             return (nt, md);

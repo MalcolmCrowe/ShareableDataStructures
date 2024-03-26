@@ -314,9 +314,9 @@ namespace Pyrrho.Common
         }
         internal bool GetBool(string n, bool def)
         {
-            if (this[n] is not TBool v || !v.value)
+            if (this[n].ToBool() is not bool v)
                 return def;
-            return v.value;
+            return v;
         }
         internal TDocument Remove(string n)
         {

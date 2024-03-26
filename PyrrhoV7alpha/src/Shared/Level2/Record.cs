@@ -88,8 +88,6 @@ namespace Pyrrho.Level2
             if (cx.tr==null || cx.db.user == null)
                 throw new DBException("42105");
             tabledefpos = ts;
-            if (fl.Count == 0)
-                throw new DBException("2201C");
             fields = fl;
             if (t!=Type.Record3)
                 _classification = cx.db.user.classification;

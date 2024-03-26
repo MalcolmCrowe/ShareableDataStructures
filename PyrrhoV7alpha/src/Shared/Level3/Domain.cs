@@ -133,7 +133,7 @@ namespace Pyrrho.Level3
             Position = new StandardDataType(Sqlx.POSITION);
             Metadata = new StandardDataType(Sqlx.METADATA);
             Star = new(--_uid, Sqlx.TIMES, BTree<long, object>.Empty);
-            Graph = new StandardDataType(Sqlx.GRAPH);
+            Graph = new StandardDataType(Sqlx.GRAPH); // opaque
             NodeType = new NodeType(Sqlx.NODETYPE);
             EdgeType = new EdgeType(Sqlx.EDGETYPE);
             PathType = new StandardDataType(Sqlx.PATH,OrderCategory.Primitive,NodeType);
@@ -3290,10 +3290,16 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                         break;
                                     case Sqlx.SOME:
                                     case Sqlx.ANY:
-                                        fc.bval = fc.bval || (bool)ra[0].Value;
+                                        {
+                                            fc.bval = (fc.bval is bool xf) ?
+                                                (ra[0].Value is bool xr) ? (xf || xr) : xf : null;
+                                        }
                                         break;
                                     case Sqlx.EVERY:
-                                        fc.bval = fc.bval && (bool)ra[0].Value;
+                                        {
+                                            fc.bval = (fc.bval is bool xf && ra[0].Value is bool xr)?
+                                                (xf && xr):null;
+                                        }
                                         break;
                                     case Sqlx.ROW_NUMBER:
                                         fc.row = (long)ra[0].Value;

@@ -4637,9 +4637,9 @@ namespace Pyrrho.Level4
         }
         internal class SysGraphBookmark : SystemBookmark
         {
-            readonly ABookmark<long, TGraph> _bmk;
+            readonly ABookmark<long, Graph> _bmk;
             public SysGraphBookmark(Context cx, SystemRowSet r, int pos, 
-                ABookmark<long,TGraph> bmk) 
+                ABookmark<long,Graph> bmk) 
                 : base(cx, r, pos, bmk.key(), cx.db.loadpos, _Value(r,bmk.value()))
             {
                 _bmk = bmk;
@@ -4654,7 +4654,7 @@ namespace Pyrrho.Level4
                 }
                 return null;
             }
-            static TRow _Value(SystemRowSet rs,TGraph g)
+            static TRow _Value(SystemRowSet rs,Graph g)
             {
                 if (g.nodes.First()?.value() is not TNode n)
                     throw new PEException("PE91046");
@@ -6839,8 +6839,10 @@ namespace Pyrrho.Level4
         }
         internal class RoleGraphInfoBookmark : SystemBookmark
         {
-            readonly BTree<int, (string, long)> _values;
-            RoleGraphInfoBookmark(Context cx,SystemRowSet r,int pos, BTree<int, (string, long)> v)
+            readonly BTree<string, int> _values;
+            static readonly string[] effects = new string[] 
+                {"schemas","directories","graphs","graph-types","nodes","edges","properties","labels","label-sets" };
+            RoleGraphInfoBookmark(Context cx,SystemRowSet r,int pos, BTree<string,int> v)
                 :base(cx,r,pos,pos,pos,_Value(r,v,pos))
             {
                 _values = v;
@@ -6851,13 +6853,17 @@ namespace Pyrrho.Level4
                 var bn = CTree<long, bool>.Empty; // base node types
                 var be = CTree<long, bool>.Empty; // base edge types
                 var st = CTree<long, bool>.Empty; // specific types
-                var tn = 0L; // node count
-                var te = 0L; // edge count
+                var tn = 0; // node count
+                var te = 0; // edge count
+                var ps = CTree<long, Domain>.Empty; // properties
                 var ls = CTree<long, bool>.Empty; // labels
+                var ll = CTree<CTree<long, bool>,bool>.Empty; // label sets
                 for (var b = ro.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p && p >= 0 && cx.db.objects[p] is NodeType t)
                     {
                         ls += t.labels;
+                        ll += (t.labels, true);
+                        ps += t.representation;
                         if (t is EdgeType)
                         {
                             var bs = true;
@@ -6895,19 +6901,22 @@ namespace Pyrrho.Level4
                             }
                         }
                     }
-                var v = BTree<int,(string,long)>.Empty;
-                v += (0, ("BaseTypes", bn.Count+be.Count));
-                v += (1, ("SpecificTypes", st.Count));
-                v += (2, ("NodeTypes", bn.Count));
-                v += (3, ("EdgeTypes", be.Count));
-                v += (4, ("Nodes", tn));
-                v += (5, ("Edges", te));
-         //       v += (6, ("Labels", ls.Count));
+                var v = BTree<string,int>.Empty;
+                v += ("schemas", 0);
+                v += ("directories",0);
+                v += ("graphs", 0);
+                v += ("graph-types", 0);
+                v += ("nodes", tn);
+                v += ("edges", te);
+                v += ("properties", (int)ps.Count);
+                v += ("labels", (int)ls.Count);
+                v += ("label-sets", (int)ll.Count);
                 return new RoleGraphInfoBookmark(cx,res,0,v);
             }
-            static TRow _Value(SystemRowSet r,BTree<int,(string,long)> vs,int pos)
+            static TRow _Value(SystemRowSet r,BTree<string,int> vs,int pos)
             {
-                var (s, n) = vs[pos];
+                var s = effects[pos];
+                var n = vs[s];
                 return new TRow(r, new TChar(s), new TInt(n));
             }
 

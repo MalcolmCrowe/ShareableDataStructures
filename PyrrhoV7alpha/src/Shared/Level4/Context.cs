@@ -2871,7 +2871,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// the boolean result so far
         /// </summary>
-        internal bool bval = false;
+        internal bool? bval = null;
         /// <summary>
         /// a multiset for accumulating things
         /// </summary>

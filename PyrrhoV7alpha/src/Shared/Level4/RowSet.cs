@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Text;
+using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -2750,6 +2751,8 @@ namespace Pyrrho.Level4
                     else
                         nr += (ip, rs[ip] ?? Domain.Content);
                 }
+            if (nr == CTree<long, Domain>.Empty)
+                nr = rs;
        //     if (cx.obs[(long)(m[Target]??-1L)] is Table tb)
        //         m += (Table.Indexes,tb.IIndexes(cx,sim));
             return m + (ISMap, ism) + (SIMap, sim) + (ObInfo.Names,ns) + (Representation,nr);
@@ -2907,6 +2910,14 @@ namespace Pyrrho.Level4
             if (pk != null)
                 m += (Level3.Index.Keys,pk);
             cx.AddDefs(tn, rt, (string?)m[_Alias]);
+            if (rt.Length==0) // add POSITION
+            {
+                var ps = new SqlFunction(cx.GetUid(), cx, Sqlx.POSITION, null, null, null, Sqlx.NO);
+                ps += (_From, dp);
+                cx.Add(ps);
+                rt += ps.defpos;
+                rs += (ps.defpos, Int);
+            }
             var r = (m ?? BTree<long, object>.Empty)
                 + (RowType,rt) + (Representation,rs)+(Display,rt.Length)
                 + (SRowType, sr) + (Table.Indexes, xs)
@@ -3253,7 +3264,7 @@ namespace Pyrrho.Level4
                 ABookmark<long, TableRow>? bmk, MTreeBookmark? mb = null,CList<TypedValue>? key=null) 
                 : base(cx,trs, pos, 
                       new BTree<long,(long,long)>(tb.defpos,(rec.defpos,rec.ppos)),
-                      _Row(trs,rec))
+                      _Row(cx,trs,rec))
             {
                 _bmk = bmk; _table = tb; _trs = trs; _mb = mb; 
                 _key = key ?? CList<TypedValue>.Empty; 
@@ -3269,13 +3280,16 @@ namespace Pyrrho.Level4
             {
                 return new TableCursor(this, cx, p, v);
             }
-            static TRow _Row(TableRowSet trs, TableRow rw)
+            static TRow _Row(Context cx,TableRowSet trs, TableRow rw)
             {
          //       var vs = CTree<long, TypedValue>.Empty;
                 var ws = CTree<long, TypedValue>.Empty;
                 for (var b = trs.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p && trs.iSMap[p] is long sp && rw.vals[sp] is TypedValue v)
-                        ws += (p, v);
+                    if (b.value() is long p) 
+                        if (trs.iSMap[p] is long sp && rw.vals[sp] is TypedValue v)
+                            ws += (p, v);
+                        else if (cx.obs[p] is SqlFunction f && f.op == Sqlx.POSITION)
+                            ws += (p, new TPosition(rw.defpos));
                 return new TRow(trs, ws);
             }
             internal static TableCursor? New(Context cx,TableRowSet trs,long defpos)
@@ -5001,10 +5015,10 @@ namespace Pyrrho.Level4
                                 var rs = CTree<long, Domain>.Empty;
                                 (rt, rs) = ColsFrom(cx, t, rt, rs); */
                 var td = cx._td;       //
-                if (td is UDType ut && ut.pathDomain!=Content)   //  
+                if (td is UDType ut && ut.pathDomain!=Content && ut.pathDomain.rowType.Length!=0)   //  
                     td = ut.pathDomain; //
                 var rt = td.rowType;   //
-                if (rt.Length==0)
+                if (rt.Length==0 && td is not Level5.NodeType)
                     return null;
                 var fb = (cx._tty != PTrigger.TrigType.Insert) ?
                     cx.next.cursors[trs.rsTargets[cx._tgt] ?? -1L] : null;

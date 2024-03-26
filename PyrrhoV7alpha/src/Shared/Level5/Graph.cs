@@ -398,12 +398,8 @@ namespace Pyrrho.Level5
                     var pe = new PEdgeType(tn, et, st, -1L, cx.db.nextPos, cx);
                     if (md[Sqlx.RARROW] is TChar lv && cx.role.dbobjects[lv.value] is long lp)
                         lt = pe.leavingType = lp;
-                    else
-                        throw new DBException("42107", md[Sqlx.RARROW]?.ToString() ?? "LEAVING");
                     if (md[Sqlx.ARROW] is TChar av && cx.role.dbobjects[av.value] is long ap)
                         at = pe.arrivingType = ap;
-                    //        else
-                    //            throw new DBException("42107", md[Sqlx.ARROW]?.ToString() ?? "ARRIVING");
                     pt = pe;
                 }
                 else
@@ -1294,10 +1290,8 @@ namespace Pyrrho.Level5
                 if (md[Sqlx.ARROW] is TChar ab) an = ab;
                 if (md[Sqlx.ARROWBASE] is TChar la) { ln = la; sl = true; }
                 if (md[Sqlx.RARROW] is TChar lb) ln = lb;
-                if (ln == null || an == null)
-                    throw new DBException("42000","Edge");
-                r += (LeavingType, lt??cx.role.dbobjects[ln.value] ?? throw new DBException("42107", ln));
-                r += (ArrivingType, at??cx.role.dbobjects[an.value] ?? throw new DBException("42107", an));
+                r += (LeavingType, lt??cx.role.dbobjects[ln?.value??"?"]??Domain.NodeType.defpos);
+                r += (ArrivingType, at??cx.role.dbobjects[an?.value??"?"] ?? Domain.NodeType.defpos);
                 if (sl) r += (LeavingEnds, true);
                 if (sa) r += (ArrivingEnds, true);
             }
@@ -1430,9 +1424,7 @@ namespace Pyrrho.Level5
             if (id != "ID") md += (Sqlx.NODE, new TChar(id));
             if (ic) md += (Sqlx.CHAR, new TChar(id));
             if (lt is not null) md += (Sqlx.ARROW, new TChar(cx.NameFor(lt.defpos)));
-            else throw new PEException("PE50601");
             if (at is not null) md += (Sqlx.RARROW, new TChar(cx.NameFor(at.defpos)));
-            else throw new PEException("PE50602");
             if (lc != "LEAVING") md += (Sqlx.LPAREN, new TChar(lc));
             if (ar != "ARRIVING") md += (Sqlx.RPAREN, new TChar(ar));
             if (sl) md += (Sqlx.ARROWBASE, TBool.True);
@@ -1460,7 +1452,7 @@ namespace Pyrrho.Level5
                 {
                     Level3.Index? ix = null;
                     var xp = -1L;
-                    var dm = new Domain(Sqlx.ROW,cx,new BList<DBObject>(tc));
+                    var dm = new Domain(Sqlx.ROW, cx, new BList<DBObject>(tc));
                     for (var b = ot.indexes[dm]?.First(); b != null; b = b.Next())
                         if (cx.db.objects[b.key()] is Level3.Index x &&
                             (x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) || x.flags.HasFlag(PIndex.ConstraintType.Unique)))
@@ -1474,27 +1466,25 @@ namespace Pyrrho.Level5
                 }
                 else
                     et = ot;
-            }
-            else
-                throw new DBException("42112", id);
-            // Step 3: Sort out leaving and arriving keys for et
-            var ol = cx.db.objects[ot.leaveCol] as TableColumn ?? throw new PEException("PE50603");
-            var olt = cx.db.objects[ot.leavingType] as NodeType ?? throw new PEException("PE50604");
-            var oa = cx.db.objects[ot.arriveCol] as TableColumn ?? throw new PEException("PE50605");
-            var oat = cx.db.objects[ot.arrivingType] as NodeType ?? throw new PEException("PE50606");
-            if (cx.NameFor(ol.defpos) != lc || olt != lt || cx.NameFor(oa.defpos) != ar || oat != at)
-            {
-                if (ot.super.Count == 0L)
+                // Step 3: Sort out leaving and arriving keys for et
+                var ol = cx.db.objects[ot.leaveCol] as TableColumn ?? throw new PEException("PE50603");
+                var olt = cx.db.objects[ot.leavingType] as NodeType ?? throw new PEException("PE50604");
+                var oa = cx.db.objects[ot.arriveCol] as TableColumn ?? throw new PEException("PE50605");
+                var oat = cx.db.objects[ot.arrivingType] as NodeType ?? throw new PEException("PE50606");
+                if (cx.NameFor(ol.defpos) != lc || olt != lt || cx.NameFor(oa.defpos) != ar || oat != at)
                 {
-                    // make a supertype NodeType
-                    var sm = CTree<Sqlx, TypedValue>.Empty + (Sqlx.ID, new TChar(cx.NameFor(ot.idCol)))
-                        + (Sqlx.CHAR, TBool.For(tc.domain.kind == Sqlx.CHAR));
-                    var (ut, _) = ot.Build(cx, null, new CTree<long, bool>(NodeType.defpos, true),
-                        CTree<string, SqlValue>.Empty, sm);
-                    ot = (EdgeType?)cx.Add(new EditType(n, ot, ot, new CTree<Domain,bool>(ut,true), cx.db.nextPos, cx))
-                        ?? throw new DBException("42105");
-                    var (e2, _) = ot.Build(cx, null, new CTree<long,bool>(ut.defpos,true), CTree<string, SqlValue>.Empty, md);
-                    et = (EdgeType)e2;
+                    if (ot.super.Count == 0L)
+                    {
+                        // make a supertype NodeType
+                        var sm = CTree<Sqlx, TypedValue>.Empty + (Sqlx.ID, new TChar(cx.NameFor(ot.idCol)))
+                            + (Sqlx.CHAR, TBool.For(tc.domain.kind == Sqlx.CHAR));
+                        var (ut, _) = ot.Build(cx, null, new CTree<long, bool>(NodeType.defpos, true),
+                            CTree<string, SqlValue>.Empty, sm);
+                        ot = (EdgeType?)cx.Add(new EditType(n, ot, ot, new CTree<Domain, bool>(ut, true), cx.db.nextPos, cx))
+                            ?? throw new DBException("42105");
+                        var (e2, _) = ot.Build(cx, null, new CTree<long, bool>(ut.defpos, true), CTree<string, SqlValue>.Empty, md);
+                        et = (EdgeType)e2;
+                    }
                 }
             }
             return et ?? throw new DBException("42105");
@@ -1750,103 +1740,68 @@ namespace Pyrrho.Level5
             return base.ToString();
         } 
     }
+    /// <summary>
+    /// Despite its name, a GraphType is not a Type or Domain
+    /// See GQL 4.13: it is a set of node types and edge types that are defined as constraints in a Graph
+    /// </summary>
+    internal class GraphType : DBObject
+    {
+        internal BTree<string, long?> nodeTypes => 
+            (BTree<string, long?>)(mem[Role.NodeTypes] ?? BTree<string, long?>.Empty);
+        internal BTree<string, long?> edgeTypes =>
+            (BTree<string, long?>)(mem[Role.EdgeTypes] ?? BTree<string, long?>.Empty);
+        public GraphType(long dp, BTree<long, object> m) : base(dp, m)
+        {
+        }
 
+        public GraphType(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
+        {
+        }
+
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            throw new NotImplementedException();
+        }
+    }
     // The Graph view of graph data
 
     // The database is considered to contain a (possibly empty) set of TGraphs.
     // Every Node in the database belongs to exactly one graph in this set. 
 
-    // The nodes of a graph are totally ordered by the order of insertion in the database
-    // but this is not the traversal ordering: the first node in a graph is the first in both orderings.
-    // The traversal ordering starts with this first node but preferentially follows edges
-    // (first the leavingNode edges ordered by their edge types and edge uids
-    // followed by arrivingNode edges ordered similarly)
-    // while not visiting any node or edge more than once.
-
-    // The set of graphs is totally ordered by the uids of their first node. 
-
-    // Show the data management language, an SqlNode is an SqlRow whose domain is a Node type.
-    // It may have an ad hoc (heap) uid. Evaluation of the SqlRow part gives a set of properties
-    // and edges of the node. Evaluation of the SqlNode gives a rowset of TGraph values.
-    // The datatype of TGraph is a primitive data type Graph that allows assignment of a JSON value as described above.
-
-    // A TGraph value may match a subgraph of one of the graphs in the database, in which case
-    // we say the TGraph is found in the database.
-
-    // An SqlMatchExpr is an SqlValue containing FormalParameters of form beginning with _ or ? .
-    // The result of a match is to give a number of alternative values for these identifiers,
-    // as a RowSet whose columns are the set of parameters in their uid order,
-    // and whose values are TypedValues, such that by assigning these values to the parameters,
-    // the SqlMatchExpr evaluates to a TGraph that is found in the database.
-
     /// <summary>
-    /// A TGraph is a TypedValue containing a tree of TNodes.
-    /// It always begins with the Node with the lowest uid (its representative), 
+    /// A Graph is a DBObject containing a tree of TNodes.
     /// </summary>
-    internal class TGraph : TypedValue
+    internal class Graph : DBObject,IComparable
     {
-        internal readonly BTree<long,TNode> nodes; // and edges
-        internal TGraph(BTree<long, TNode> ns) : base(Domain.Graph)
+        internal const long
+            GraphTypes = -86, // CTree<long,bool> GraphType
+            Iri = 147, // string
+            Nodes = -499; // CTree<long,TNode> // and edges
+        internal CTree<long,TNode> nodes =>
+            (CTree<long, TNode>) (mem[Nodes]??CTree<long,TNode>.Empty);
+        internal CTree<long,bool> graphTypes => 
+            (CTree<long,bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
+        internal string iri => (string)(mem[Iri]??"");
+        internal Graph(long dp,CTree<long, TNode> ns, string ir = "", CTree<long,bool>? ts = null)
+            : base(dp,BTree<long,object>.Empty+(Nodes,ns)+(Iri,ir)+(GraphTypes,ts??CTree<long,bool>.Empty))
+        { }
+
+        public Graph(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+
+        public static Graph operator+(Graph g,TNode r)
         {
-            nodes = ns;
+            return new Graph(g.defpos,g.nodes + (r.tableRow.defpos,r));
         }
-        internal TGraph(TNode n) : base(Domain.Graph) 
+        public int CompareTo(object? obj)
         {
-            nodes = new BTree<long,TNode>(n.tableRow.defpos,n);
-        }
-        public static TGraph operator+(TGraph g,TNode r)
-        {
-            return new TGraph(g.nodes + (r.tableRow.defpos,r));
-        }
-        internal TNode? Rep()
-        {
-            return nodes.First()?.value();
-        }
-        public override int CompareTo(object? obj)
-        {
-            if (obj is not TGraph tg)
+            if (obj is not Graph tg)
                 return 1;
-            var tb = tg.nodes.First();
-            var b = nodes.First();
-            for (; b != null && tb != null; b = b.Next(), tb = tb.Next())
-            {
-                var c = b.key().CompareTo(tb.key());
-                if (c!=0) return c;
-            }
-            if (b != null) return 1;
-            if (tb is not null) return -1;
-            return 0;
-        }
-        internal static CTree<TGraph, bool> Add(Context cx,CTree<TGraph, bool> t, TNode r)
-        {
-            if (Find(t, r) is not null)
-                return t;
-            if (r is not TEdge e || e.dataType is not EdgeType et)
-                return t + (new TGraph(r), true);
-            // Edge: end nodes already must be in t, but may be in different TGraphs
-            if (cx.db.objects[et.leavingType] is not NodeType lt || r[et.leaveCol] is not TInt li 
-                || et.tableRows[li.value] is not TableRow ln
-                || Find(t, new TNode(cx,lt,ln)) is not TGraph lg)
-                return t;
-            if (cx.db.objects[et.arrivingType] is not NodeType at || r[at.arriveCol] is not TInt ai
-                || et.tableRows[ai.value] is not TableRow an
-                || Find(t, new TNode(cx,at, an)) is not TGraph ag)
-                return t;
-            if (lg.Rep() is not TNode lr|| ag.Rep() is not TNode ar)
-                return t;
-            if (lr.tableRow.defpos == ar.tableRow.defpos) // already connected: add n to one of them
-                return t - lg + (lg + r, true);
-            else // merge the graphs and add n
-                return t - ag -lg + (new TGraph(lg.nodes + ag.nodes + (r.tableRow.defpos, r)), true);
-        }
-        static TGraph? Find(CTree<TGraph, bool> t, TNode? n)
-        {
-            if (n is null)
-                return null;
-            for (var b = t.First(); b != null; b = b.Next())
-                if (b.key().nodes.Contains(n.tableRow.defpos))
-                    return b.key();
-            return null;
+            var c = iri.CompareTo(tg.iri);
+            if (c != 0) return c;
+            c = nodes.CompareTo(tg.nodes);
+            if (c!=0) return c;
+            return graphTypes.CompareTo(tg.graphTypes);
         }
         public override string ToString()
         {
@@ -1859,6 +1814,11 @@ namespace Pyrrho.Level5
             }
             sb.Append(']');
             return sb.ToString();
+        }
+
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new Graph(dp,m);
         }
     }
     internal class TNode : TypedValue
