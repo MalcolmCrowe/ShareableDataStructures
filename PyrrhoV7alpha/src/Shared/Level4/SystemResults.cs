@@ -331,6 +331,8 @@ namespace Pyrrho.Level4
             if (f.name?.StartsWith("Log$")==true &&cx.user?.defpos!=cx.db.owner)
                 throw new DBException("42105");
             var r = (m??BTree<long,object>.Empty)+(SRowType,f.rowType)+(SysTable, f) + (SysFilt, sf);
+            if (w is not null)
+                r += (_Where, w);
             if (f.infos[cx.role.defpos]?.names is BTree<string, (int, long?)> ns)
                 r += (ObInfo.Names, ns);
             if (sx != null)
