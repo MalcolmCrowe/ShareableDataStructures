@@ -5,6 +5,8 @@ using System.Text;
 using Pyrrho.Level2;
 using System.Net.Http.Headers;
 using System.Security.Cryptography;
+using System.Runtime.CompilerServices;
+using System.Diagnostics.SymbolStore;
 
 namespace Pyrrho.Level5
 {
@@ -271,6 +273,44 @@ namespace Pyrrho.Level5
             }
             return base._Lookup(lp, cx, nm, n, r);
         }
+        internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, SqlNode xn, BTree<long, TableRow>? ds)
+        {
+            ds ??= BTree<long, TableRow>.Empty;
+            if (defpos < 0)
+            {
+                if (kind == Sqlx.NODETYPE) // We are Domain.NODETYPE itself: do this for all nodetypes in the role
+                    for (var b = cx.db.role.nodeTypes.First(); b != null; b = b.Next())
+                    {
+                        if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
+                            ds = nt1.For(cx, ms, xn, ds);
+                    }
+                if (kind == Sqlx.EDGETYPE) // We are Domain.EDGETYPE itself: do this for all edgetypes in the role
+                    for (var b = cx.db.role.edgeTypes.First(); b != null; b = b.Next())
+                    {
+                        if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
+                            ds = nt1.For(cx, ms, xn, ds);
+                    }
+                return ds;
+            }
+            var cl = xn.EvalProps(cx, this);
+            if (FindPrimaryIndex(cx) is Level3.Index px
+                && px.MakeKey(cl) is CList<TypedValue> pk
+                && tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)
+                return ds + (tr0.defpos, tr0);
+            for (var c = indexes.First(); c != null; c = c.Next())
+                for (var d = c.value().First(); d != null; d = d.Next())
+                    if (cx.db.objects[d.key()] is Level3.Index x
+                        && x.MakeKey(cl) is CList<TypedValue> xk
+                        && tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)
+                        return ds + (tr.defpos, tr);
+            // let DbNode check any given properties match
+            var lm = ms.truncating.Contains(defpos) ? ms.truncating[defpos].Item1 : int.MaxValue;
+            var la = ms.truncating.Contains(EdgeType.defpos) ? ms.truncating[EdgeType.defpos].Item1 : int.MaxValue;
+            for (var b = tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
+                if (b.value() is TableRow tr)
+                    ds += (tr.defpos, tr);
+            return ds;
+        }
         public override Domain For()
         {
             return NodeType;
@@ -318,8 +358,7 @@ namespace Pyrrho.Level5
             if (id != "ID") md += (Sqlx.NODE, new TChar(id));
             if (ic) md += (Sqlx.CHAR, new TChar(id));
             // Step 1: How does this fit with what we have? 
-            var ob = cx.db.objects[cx.role.dbobjects[n] ?? -1L] as DBObject;
-            if (ob == null)
+            if (cx.db.objects[cx.role.dbobjects[n] ?? -1L] is not DBObject ob)
             {
                 if (cse == 'U') throw new DBException("42107", n);
                 nt = new NodeType(cx.GetUid(), n, NodeType, CTree<Domain, bool>.Empty, cx);
@@ -1251,6 +1290,7 @@ namespace Pyrrho.Level5
         public Domain leaveColDomain => (Domain)(mem[LeaveColDomain] ?? Int);
         public bool arrivingEnds => (bool)(mem[ArrivingEnds] ?? false);
         public Domain arriveColDomain => (Domain)(mem[ArriveColDomain] ?? Int);
+        public bool undirected => (bool)(mem[QuantifiedPredicate.Between] ?? false);
         internal EdgeType(long dp, string nm, UDType dt, CTree<Domain,bool> un, Context cx, 
             CTree<Sqlx, TypedValue>? md = null,long? lt=null,long? at=null)
             : base(dp, _Mem(nm, dt, un, md, lt, at, cx))
@@ -1266,9 +1306,6 @@ namespace Pyrrho.Level5
         internal EdgeType(Sqlx t) : base(t)
         { }
         public EdgeType(long dp, BTree<long, object> m) : base(dp, m)
-        { }
-        internal EdgeType(long dp, BTree<long, object> m, PType pt)
-            : this(dp, m + (LeavingType, ((PEdgeType)pt).leavingType) + (ArrivingType, ((PEdgeType)pt).arrivingType))
         { }
         static BTree<long, object> _Mem(string nm, UDType dt, CTree<Domain,bool> ut, 
             CTree<Sqlx, TypedValue>? md, long? lt, long? at, Context cx)
@@ -1321,7 +1358,15 @@ namespace Pyrrho.Level5
                 throw new PEException("PE60904");
             if (cx._Ob(et.leavingType) is UDType el && cx._Ob(et.arrivingType) is UDType ea)
             {
-                if (!HasLabel(cx,nl.label,et.leavingType) || !HasLabel(cx,na.label,et.arrivingType))
+                var ll = nl.labelSet;
+                if (nl is SqlNode sl && cx.binding[sl.defpos] is TNode ln)
+                    for (var b = ln.tableRow.tabledefpos.First(); b != null; b = b.Next())
+                        ll += (b.key(), true);
+                var al = na.labelSet;
+                if (na is SqlNode sa && cx.binding[sa.defpos] is TNode an)
+                    for (var b = an.tableRow.tabledefpos.First(); b != null; b = b.Next())
+                        al += (b.key(), true);
+                if (!HasLabel(cx,ll,et.leavingType) || !HasLabel(cx,al,et.arrivingType))
                 {
                     if (!allowExtras)
                         throw new DBException("42000","&");
@@ -1332,7 +1377,7 @@ namespace Pyrrho.Level5
                     (et,ls) = ne.Build(cx, n, CTree<long, bool>.Empty, ls, md);
                 }
                 if (el.infos[cx.role.defpos] is ObInfo li
-                    && li.name is string en && ls[en] is SqlValue sl && sl.Eval(cx) is TChar lv
+                    && li.name is string en && ls[en] is SqlValue vl && vl.Eval(cx) is TChar lv
                     && cx.db.objects[NodeTypeFor(cx, lv)] is NodeType lt
                     && !lt.EqualOrStrongSubtypeOf(el))
                 {
@@ -1343,7 +1388,7 @@ namespace Pyrrho.Level5
                     cx.Add(xt);
                 }
                 if (ea.infos[cx.role.defpos] is ObInfo ai
-                    && ai.name is string an && ls[an] is SqlValue sa && sa.Eval(cx) is TChar av
+                    && ai.name is string aa && ls[aa] is SqlValue va && va.Eval(cx) is TChar av
                     && cx.db.objects[NodeTypeFor(cx, av)] is NodeType at
                     && !at.EqualOrStrongSubtypeOf(ea))
                 {
@@ -1656,11 +1701,9 @@ namespace Pyrrho.Level5
             (CTree<Domain, bool>)(mem[Under] ?? CTree<Domain, bool>.Empty);
         internal JoinedNodeType(long dp, string nm, UDType dt, CTree<Domain, bool> ut, Context cx) 
             : base(dp, nm, dt, ut, cx)
-        {
-        }
+        { }
         public JoinedNodeType(long dp, BTree<long, object> m) : base(dp, m)
-        {
-        }
+        { }
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             return base._Replace(cx, so, sv);
@@ -1700,8 +1743,9 @@ namespace Pyrrho.Level5
                 if (b.key() is NodeType nt && x is not null)
                 {
                     var np = cx.GetUid();
+                    var m = new BTree<long, object>(SqlNode.LabelSet, new CTree<long, bool>(nt.defpos, true));
                     var nd = new SqlNode(new Ident(Uid(np), new Iix(np)), CList<Ident>.Empty, cx,
-                        -1L, new CTree<long, bool>(nt.defpos, true), x.docValue, x.state, nt);
+                        -1L, x.docValue, x.state, nt);
                     nd.Create(cx, nt, false);
                     // locate the Record that has just been constructed in nt
                     tbs += (nt.defpos, true);
@@ -1746,21 +1790,38 @@ namespace Pyrrho.Level5
     /// </summary>
     internal class GraphType : DBObject
     {
-        internal BTree<string, long?> nodeTypes => 
-            (BTree<string, long?>)(mem[Role.NodeTypes] ?? BTree<string, long?>.Empty);
-        internal BTree<string, long?> edgeTypes =>
-            (BTree<string, long?>)(mem[Role.EdgeTypes] ?? BTree<string, long?>.Empty);
+        internal CTree<long, bool> constraints => 
+            (CTree<long,bool>)(mem[Domain.Constraints] ?? CTree<long, bool>.Empty);
+        internal GraphType(PGraphType pg, Context cx)
+            : this(pg.ppos, _Mem(pg,cx))
+        { }
         public GraphType(long dp, BTree<long, object> m) : base(dp, m)
-        {
-        }
-
+        { }
         public GraphType(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
+        {  }
+        static BTree<long,object> _Mem(PGraphType pg,Context cx)
         {
+            var r = BTree<long, object>.Empty;
+            r += (Graph.Iri, pg.iri);
+            r += (Graph.GraphTypes, pg.types);
+            var ix = pg.iri.LastIndexOf('/');
+            var nm = pg.iri.Substring(ix);
+            var oi = new ObInfo(nm, Grant.AllPrivileges);
+            var ns = BTree<string, (int, long?)>.Empty;
+            for (var b = pg.types.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is UDType ut)
+                    ns += (ut.name, (-1,b.key()));
+            oi += (ObInfo.Names, ns);
+            r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
+            return r;
         }
-
+        public static GraphType operator +(GraphType et, (long, object) x)
+        {
+            return (GraphType)et.New(et.defpos, et.mem + x);
+        }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            throw new NotImplementedException();
+            return new GraphType(dp,m);
         }
     }
     // The Graph view of graph data
@@ -1775,23 +1836,41 @@ namespace Pyrrho.Level5
     {
         internal const long
             GraphTypes = -86, // CTree<long,bool> GraphType
-            Iri = 147, // string
+            Iri = -147, // string
             Nodes = -499; // CTree<long,TNode> // and edges
         internal CTree<long,TNode> nodes =>
             (CTree<long, TNode>) (mem[Nodes]??CTree<long,TNode>.Empty);
         internal CTree<long,bool> graphTypes => 
             (CTree<long,bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
         internal string iri => (string)(mem[Iri]??"");
-        internal Graph(long dp,CTree<long, TNode> ns, string ir = "", CTree<long,bool>? ts = null)
-            : base(dp,BTree<long,object>.Empty+(Nodes,ns)+(Iri,ir)+(GraphTypes,ts??CTree<long,bool>.Empty))
+        internal Graph(PGraph pg,Context cx)
+            : base(pg.ppos,_Mem(cx,pg))
         { }
-
         public Graph(long dp, BTree<long, object> m) : base(dp, m)
         { }
-
+        static BTree<long,object> _Mem(Context cx,PGraph ps)
+        {
+            var r = BTree<long, object>.Empty
+                + (Nodes, ps.records) + (Iri, ps.iri) + (GraphTypes, ps.types ?? CTree<long, bool>.Empty);
+            var ix = ps.iri.LastIndexOf('/');
+            var nm = ps.iri.Substring(ix);
+            ps.name = nm;
+            var oi = new ObInfo(nm, Grant.AllPrivileges);
+            var ns = BTree<string, (int, long?)>.Empty;
+            for (var b = ps.types?.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is UDType ut)
+                    ns += (ut.name, (-1, b.key()));
+            oi += (ObInfo.Names, ns);
+            r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
+            return r;
+        }
+        public static Graph operator +(Graph et, (long, object) x)
+        {
+            return (Graph)et.New(et.defpos, et.mem + x);
+        }
         public static Graph operator+(Graph g,TNode r)
         {
-            return new Graph(g.defpos,g.nodes + (r.tableRow.defpos,r));
+            return new Graph(g.defpos,g.mem + (Nodes,g.nodes+(r.tableRow.defpos,r)));
         }
         public int CompareTo(object? obj)
         {
@@ -1815,10 +1894,44 @@ namespace Pyrrho.Level5
             sb.Append(']');
             return sb.ToString();
         }
-
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new Graph(dp,m);
+        }
+    }
+    internal class Schema : DBObject
+    {
+        internal const long
+            _Graphs = -362,    // CTree<long,bool> Graph
+            GraphTypes = -186; // CTree<long,bool> Graph
+        internal CTree<long,bool> graphs =>
+            (CTree<long, bool>)(mem[_Graphs] ?? CTree<long, bool>.Empty);
+        internal CTree<long, bool> graphTypes =>
+            (CTree<long, bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
+        internal string directoryPath => 
+            (string)(mem[Graph.Iri] ?? "");
+        public Schema (PSchema ps,Context cx)
+            :base(ps.ppos,_Mem(cx,ps))
+        { }
+        public Schema(long dp, BTree<long, object> m) : base(dp, m)
+        {  }
+        public Schema(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
+        {  }
+        static BTree<long,object> _Mem(Context cx,PSchema ps)
+        {
+            var r = BTree<long, object>.Empty;
+            r += (Graph.Iri, ps.directoryPath);
+            var oi = new ObInfo(ps.directoryPath, Grant.AllPrivileges);
+            r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
+            return r;
+        }
+        public static Schema operator +(Schema et, (long, object) x)
+        {
+            return (Schema)et.New(et.defpos, et.mem + x);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new Schema(dp, m);
         }
     }
     internal class TNode : TypedValue

@@ -2,8 +2,11 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.ComponentModel.Design;
 using System.Globalization;
 using System.Runtime.ExceptionServices;
+using System.Runtime.Intrinsics.Arm;
+using System.Text;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -99,6 +102,7 @@ namespace Pyrrho.Level4
             return cx.parse switch
             {
                 ExecuteStatus.Graph or
+                ExecuteStatus.GraphType or
                 ExecuteStatus.Obey => cx.Ix(lp, lp),
                 ExecuteStatus.Prepare => new Iix(lp, cx, cx.nextHeap++),
                 _ => new Iix(lp, cx, cx.GetUid()),
@@ -109,6 +113,7 @@ namespace Pyrrho.Level4
             return cx.parse switch
             {
                 ExecuteStatus.Graph or
+                ExecuteStatus.GraphType or
                 ExecuteStatus.Obey => lxr.Position,
                 ExecuteStatus.Prepare => cx.nextHeap++,
                 _ => cx.GetUid(),
@@ -273,7 +278,7 @@ namespace Pyrrho.Level4
                 }
             if (!(b == null && tok == Sqlx.EOF))
                 throw new DBException("33001");
-            cx.QParams(); // replace SqlLiterals that are QParams with actuals
+            cx.QParams(); // parm SqlLiterals that are QParams with actuals
             cx = pre.target?.Obey(cx) ?? cx;
             return cx.db;
         }
@@ -824,9 +829,12 @@ namespace Pyrrho.Level4
 		/// Create =	CREATE ROLE id [string]
 		/// |	CREATE DOMAIN id [AS] DomainDefinition {Metadata}
 		/// |	CREATE FUNCTION id '(' Parameters ')' RETURNS Type Body 
+        /// | CREATE [OR REPLACE] [PROPERTY] GRAPH [IF NOT EXISTS] GraphDetails 
+        /// | CREATE [OR REPLACE] [PROPERTY] GRAPH TYPE [IF NOT EXISTS] GraphTypeDetails
         /// |   CREATE ORDERING FOR id Order
 		/// |	CREATE PROCEDURE id '(' Parameters ')' Body
 		/// |	CREATE Method Body
+        /// | CREATE SCHEMA [IF NOT EXISTS] Path_Value id
 		/// |	CREATE TABLE id TableContents [UriType] {Metadata}
 		/// |	CREATE TRIGGER id (BEFORE|AFTER) Event ON id [ RefObj ] Trigger
 		/// |	CREATE TYPE id [UNDER id] AS Representation [ Method {',' Method} ] {Metadata}
@@ -835,7 +843,7 @@ namespace Pyrrho.Level4
         /// |   CREATE (Node) {-[Edge]->(Node)|<-[Edge]-(Node)}
         /// </summary>
         /// <returns>A tree of Executable references</returns>
-        Executable ParseCreateClause()
+        Executable ParseCreateClause(bool parm = false)
         {
             var lp = lxr.start;
             if (cx.role is Role dr
@@ -844,7 +852,8 @@ namespace Pyrrho.Level4
                 throw new DBException("42105");
             Next();
             MethodModes();
-            Match(Sqlx.TEMPORARY, Sqlx.ROLE, Sqlx.VIEW, Sqlx.TYPE, Sqlx.DOMAIN);
+            Match(Sqlx.TEMPORARY, Sqlx.ROLE, Sqlx.VIEW, Sqlx.TYPE, Sqlx.DOMAIN, 
+                Sqlx.GRAPH, Sqlx.PROPERTY, Sqlx.SCHEMA);
             if (Match(Sqlx.ORDERING))
                 ParseCreateOrdering();
             else if (tok == Sqlx.PROCEDURE || tok == Sqlx.FUNCTION)
@@ -897,9 +906,376 @@ namespace Pyrrho.Level4
             }
             else if (tok == Sqlx.VIEW)
                 ParseViewDefinition();
+            else if (tok == Sqlx.OR)
+            {
+                Next();
+                Mustbe(Sqlx.REPLACE);
+                return ParseCreateClause(true);
+            }
+            else if (tok == Sqlx.PROPERTY)
+                return ParseCreateClause(parm);
+            else if (tok == Sqlx.GRAPH)
+            {
+                Next();
+                if (tok == Sqlx.TYPE)
+                    ParseCreateGraphType(parm);
+                else
+                    ParseCreateGraph(parm);
+            }
+            else if (tok==Sqlx.IF)
+            {
+                Next();
+                Mustbe(Sqlx.NOT);
+                Mustbe(Sqlx.EXISTS);
+                ParseCreateClause(true); 
+            }
+            else if (tok == Sqlx.SCHEMA)
+                ParseCreateSchema(parm); 
             else if (tok == Sqlx.LPAREN)
-                return ParseCreateGraph();
+                return ParseInsertGraph();
             return new Executable(lp, new string(lxr.input, lp, lxr.start - lp));
+        }
+        (string,string) Schema(string iri)
+        {
+            var ix = iri.LastIndexOf('/');
+            return (iri.Substring(0,ix-1),iri.Substring(ix));
+        }
+        void ParseCreateSchema(bool ifnotexists = false)
+        {
+            var cr = ParseCatalogReference();
+            if (cr is null || cr == "")
+                throw new DBException("42000");
+            if (cx.role.schemas.Contains(cr))
+            {
+                if (!ifnotexists)
+                    throw new DBException("42104",cr.ToString());
+            } else  if (cx.parse == ExecuteStatus.Obey)
+                cx.Add(new PSchema(cx.db.nextPos, cr));
+        }
+        void ParseCreateGraph(bool replace = false)
+        {
+            bool ifnotexists = tok == Sqlx.IF;
+            if (ifnotexists) { Next(); Mustbe(Sqlx.NOT); Mustbe(Sqlx.EXISTS); }
+            var cr = ParseCatalogReference();
+            var (sd,nm) = Schema(cr);
+            var sc = cx._Ob(cx.role.schemas[sd] ?? -1L) as Schema;
+            if (sc is null || nm is null || nm == "")
+                throw new DBException("42000");
+            if (cx.role.graphs.Contains(cr.ToString()))
+            {
+                if (ifnotexists)
+                    return;
+                if (!replace)
+                    throw new DBException("42104",cr.ToString());
+            }
+            var oi = sc.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var gr = cx._Ob(oi.names[nm].Item2 ?? -1L) as Graph;
+            if (gr is not null)
+            {
+                if (ifnotexists)
+                    return;
+                if (!replace)
+                    throw new DBException("42104", cr.ToString());
+            }
+            var ts = CTree<long, bool>.Empty;
+            var ns = CTree<long, bool>.Empty;
+            if (Match(Sqlx.DOUBLECOLON, Sqlx.TYPED))
+                Next();
+            if (tok==Sqlx.ANY)
+            {
+                Next();
+                if (Match(Sqlx.PROPERTY)) Next();
+                if (tok == Sqlx.GRAPH) Next();
+            }
+            else if (tok == Sqlx.LIKE)
+            {
+                var op = cx.parse;
+                cx.parse = ExecuteStatus.GraphType;
+                var cs = (GraphInsertStatement)ParseInsertGraph();
+                cs.Obey(cx);
+                ts = cs.GraphTypes(cx);
+                cx.parse = op;
+            } 
+            else if (tok==Sqlx.Id)
+            {
+                var id = new Ident(this);
+                Mustbe(Sqlx.Id);
+                if (cx._Ob(cx.role.graphs[id.ident] ?? -1L) is not Graph g)
+                    throw new DBException("42107", id.ident);
+                ts = g.graphTypes;
+                for (var b = g.nodes.First(); b != null; b = b.Next())
+                    if (b.value() is TNode n)
+                        ns += (n.defpos, true);
+            } else
+            {
+                if (Match(Sqlx.PROPERTY))
+                    Next();
+                Mustbe(Sqlx.GRAPH);
+                Mustbe(Sqlx.LBRACE);
+                ts += (ParseGraphElementTypeSpec(ts),true);
+                while (tok == Sqlx.COMMA)
+                    ts += (ParseGraphElementTypeSpec(ts),true);
+                Mustbe(Sqlx.RBRACE);
+            }
+            if (tok == Sqlx.AS)
+            {
+                Next(); Mustbe(Sqlx.COPY); Next(); Mustbe(Sqlx.OF);
+                var cs = ParseInsertGraph();
+                cs.Obey(cx);
+            }
+            if (cx.parse == ExecuteStatus.Obey)
+                cx.Add(new PGraph(cx.db.nextPos, cr,ts,ns));
+        }
+        void ParseCreateGraphType(bool replace = false)
+        {
+            bool ifnotexists = tok == Sqlx.IF;
+            if (ifnotexists) { Next(); Mustbe(Sqlx.NOT); Mustbe(Sqlx.EXISTS); }
+            var cr = ParseCatalogReference();
+            var (pr, nm) = Schema(cr);
+            if (cx._Ob(cx.role.schemas[pr]??-1L) is not Schema sc || nm is null || nm == "")
+                throw new DBException("42000");
+            var oi = sc.infos[cx.role.defpos]??throw new DBException("42105");
+            var gt = cx._Ob(oi.names[nm].Item2??-1L) as GraphType;
+            var ts = CTree<long, bool>.Empty;
+            if (gt is not null)
+            {
+                if (ifnotexists)
+                    return;
+                if (!replace)
+                    throw new DBException("42104", cr.ToString());
+            }
+            if (tok == Sqlx.AS)
+                Next();
+            if (tok == Sqlx.COPY)
+            {
+                Next(); Mustbe(Sqlx.OF);
+                var id = new Ident(this);
+                var og = cx._Ob(cx.db.catalog[id.ident] ?? -1L) as GraphType
+                    ?? throw new DBException("42107", id.ident);
+                ts = og.constraints;
+            }
+            else if (tok == Sqlx.LIKE)
+            {
+                var op = cx.parse;
+                cx.parse = ExecuteStatus.GraphType;
+                var cs = (GraphInsertStatement)ParseInsertGraph();
+                cs.Obey(cx);
+                ts = cs.GraphTypes(cx);
+                cx.parse = op;
+            }
+            else 
+            {
+                Mustbe(Sqlx.LBRACE);
+                ts += (ParseGraphElementTypeSpec(ts), true);
+                while (tok == Sqlx.COMMA)
+                    ts += (ParseGraphElementTypeSpec(ts), true);
+                Mustbe(Sqlx.RBRACE);
+            }
+            if (cx.parse == ExecuteStatus.Obey)
+                cx.Add(new PGraphType(cx.db.nextPos, cr.ToString(), ts));
+        }
+        long ParseGraphElementTypeSpec(CTree<long,bool> ts)
+        {
+            var edge = false;
+            var und = false;
+            if (Match(Sqlx.DIRECTED)) { edge = true; Next(); }
+            if (Match(Sqlx.UNDIRECTED)) { edge = true; und = true; Next(); }
+            if (Match(Sqlx.NODE, Sqlx.VERTEX)) Next(); 
+            if (Match(Sqlx.EDGE, Sqlx.RELATIONSHIP)) { edge = true; Next(); }
+            if (Match(Sqlx.TYPE)) Next();
+            var id = new Ident(this);
+            var ni = id.ident;
+            if (Match(Sqlx.Id))
+            { 
+                Next();
+                cx.defs += (id, cx.sD);
+            }
+            var tr = edge ? cx.role.edgeTypes : cx.role.nodeTypes;
+            if (tr.Contains(id.ident))
+                throw new DBException("42104", id);
+            var al = new Ident(this);
+            if (Match(Sqlx.Id))
+            {
+                Next();
+                cx.defs += (new Ident(al.ident,id.iix),cx.sD);
+            }
+            var ls = CTree<long, bool>.Empty;
+            var ps = BList<(Ident, Domain)>.Empty;
+            if (Match(Sqlx.LABEL, Sqlx.LABELS, Sqlx.COLON, Sqlx.IS))
+                (ls,ni,ps) = ParseElementFiller(id);
+            Ident? ai = null;
+            string? an = null;
+            long at = -1L;
+            Ident? li = null;
+            string? ln = null;
+            long lt = -1L;
+            if (edge && tok==Sqlx.CONNECTING)
+            {
+                Next();
+                Mustbe(Sqlx.LPAREN);
+                var fi = new Ident(this);
+                var ft = cx.role.nodeTypes[fi.ident]??-1L;
+                Mustbe(Sqlx.Id);
+                var ar = tok;
+                Next();
+                var se = new Ident(this);
+                var st = cx.role.nodeTypes[se.ident] ?? -1L;
+                switch (ar)
+                {
+                    case Sqlx.TILDE:
+                    case Sqlx.TO:  
+                        und = true;
+                        goto case Sqlx.ARROW;
+                    case Sqlx.ARROW:
+                        li = fi; ln = fi.ident;  lt = ft; ai = se; an = se.ident; at = st;
+                        break;
+                    case Sqlx.RARROW:
+                        li = se; ln = se.ident; lt = st; ai = fi; an = fi.ident; at = ft;
+                        break;
+                }
+                Mustbe(Sqlx.RPAREN);
+            } else
+            {
+                Mustbe(Sqlx.LPAREN);
+                var fi = new Ident(this);
+                var fn = fi.ident;
+                if (tok == Sqlx.Id)
+                    Next();
+                else if (Match(Sqlx.LABEL, Sqlx.LABELS, Sqlx.COLON, Sqlx.IS))
+                    (_,fn,_) = ParseElementFiller(fi);
+                var ft = cx.role.nodeTypes[fn] ?? -1L;
+                Mustbe(Sqlx.RPAREN);
+                var fk = tok;
+                Next();
+                Mustbe(Sqlx.LPAREN);
+                var mi = new Ident(this);
+                var mn = fi.ident;
+                if (tok == Sqlx.Id)
+                    Next();
+                else if (Match(Sqlx.LABEL, Sqlx.LABELS, Sqlx.COLON, Sqlx.IS))
+                    (_, mn, _) = ParseElementFiller(mi);
+                if (mn != ni) throw new DBException("42161", ni, mn);
+                Mustbe(Sqlx.RPAREN);
+                var sk = tok;
+                Next();
+                Mustbe(Sqlx.LPAREN);
+                var si = new Ident(this);
+                var sn = fi.ident;
+                if (tok == Sqlx.Id)
+                    Next();
+                else if (Match(Sqlx.LABEL, Sqlx.LABELS, Sqlx.COLON, Sqlx.IS))
+                    (_, sn, _) = ParseElementFiller(mi);
+                var st = cx.role.nodeTypes[sn] ?? -1L;
+                Mustbe(Sqlx.RPAREN);
+                switch(fk)
+                {
+                    case Sqlx.ARROWBASETILDE:
+                        und = true;
+                        goto case Sqlx.ARROWBASE;
+                    case Sqlx.ARROWBASE:
+                        if (sk != Sqlx.ARROW) throw new DBException("42161", Sqlx.ARROW, sk);
+                        lt = ft; ln = fn; at = st; an = sn;
+                        break;
+                    case Sqlx.RARROW:
+                        if (sk!=Sqlx.RARROWBASE) throw new DBException("42161", Sqlx.ARROWBASE, sk);
+                        lt = st; ln = sn; at = ft; an = fn;
+                        break;
+                }
+            }
+            var un = CTree<Domain, bool>.Empty;
+            var tp = edge ? new PEdgeType(id.ident, (EdgeType)Domain.EdgeType.Relocate(id.iix.dp), un, -1L, cx.db.nextPos, cx)
+                    : new PNodeType(id.ident, (NodeType)Domain.NodeType.Relocate(id.iix.dp), un, -1L, cx.db.nextPos, cx);
+            cx.Add(tp);
+            var ut = (NodeType)tp.dataType;
+            ut += (NodeType.Labels, ls);
+            cx.Add(ut);
+            for (var b=ps.First();b!=null;b=b.Next())
+            {
+                var (cn, cd) = b.value();
+                var pc = new PColumn3(ut, cn.ident, -1, cd, PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx);
+                if (cn.ident==ln)
+                {
+                    pc.flags = PColumn.GraphFlags.LeaveCol;
+                    pc.toType = lt;
+                }
+                if (cn.ident==an)
+                {
+                    pc.flags = PColumn.GraphFlags.ArriveCol;
+                    pc.toType = at;
+                }
+                cx.Add(pc);
+            }
+            if (und && cx._Ob(ut.defpos) is EdgeType et)
+            {
+                et += (QuantifiedPredicate.Between, true);
+                cx.Add(et);
+            }
+            return tp.ppos;
+        }
+        (CTree<long,bool>,string,BList<(Ident,Domain)>) ParseElementFiller(Ident id)
+        {
+            var ls = CTree<long, bool>.Empty;
+            (ls,var s) = ParseLabelSet();
+            if (Match(Sqlx.DOUBLEARROW, Sqlx.IMPLIES))
+            {
+                Next();
+                (var la,_) = ParseLabelSet();
+                ls += la;
+            }
+            if (ls.Count == 0L)
+                ls += (id.iix.dp, true);
+            var ps = BList<(Ident, Domain)>.Empty;
+            if (Match(Sqlx.LBRACE))
+            {
+                Next();
+                var pn = new Ident(this);
+                Mustbe(Sqlx.Id);
+                var dt = ParseSqlDataType();
+                ps += (pn, dt);
+                while (tok == Sqlx.COMMA)
+                {
+                    Next();
+                    pn = new Ident(this);
+                    Mustbe(Sqlx.Id);
+                    dt = ParseSqlDataType();
+                    ps += (pn, dt);
+                }
+                Mustbe(Sqlx.RBRACE);
+            }
+            return (ls,s,ps);
+        }
+        (CTree<long,bool>,string) ParseLabelSet()
+        {
+            var sb = new StringBuilder();
+            var r = CTree<long, bool>.Empty;
+            Next();
+            var id = new Ident(this);
+            cx.Add(new SqlLabel(id));
+            cx.defs += (id, cx.sD);
+            r += (id.iix.dp, true);
+            sb.Append(id.ident);
+            while (tok==Sqlx.AMPERSAND)
+            {
+                id = new Ident(this);
+                cx.Add(new SqlLabel(id));
+                cx.defs += (id, cx.sD);
+                r += (id.iix.dp, true);
+                sb.Append('&'); sb.Append(id.ident);
+            }
+            return (r,sb.ToString());
+        }
+        void ParseUseClause()
+        {
+            // tok is Sqlx.USE
+            cx.graph = ParseCatalogReference();
+        }
+        internal string ParseCatalogReference()
+        {
+            lxr.cat = true;
+            Next();
+            var s = lxr.val.ToString();
+            lxr.cat = false;
+            return s;
         }
         /// <summary>
         /// Create: CREATE GraphPattern {',' GraphPattern } [THEN Statements END].
@@ -921,13 +1297,13 @@ namespace Pyrrho.Level4
         ///    Binds the (uncomitted) nodes
         /// 5. adds the Graph and Node->Edge associations to the database
         /// </summary>
-        internal Executable ParseCreateGraph()
+        internal Executable ParseInsertGraph()
         {
             // New nodes without Id keys should be assigned cx.db.nextPos.ToString(), and this is fixed
             // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
             var ge = ParseSqlGraphList();
             var st = BList<long?>.Empty;
-            var cs = (CreateStatement)cx.Add(new CreateStatement(cx.GetUid(), ge, st));
+            var cs = (GraphInsertStatement)cx.Add(new GraphInsertStatement(cx.GetUid(), ge, st));
             if (cx.parse == ExecuteStatus.Obey)
                 cs.Obey(cx);
             if (tok == Sqlx.THEN)
@@ -1196,16 +1572,16 @@ namespace Pyrrho.Level4
             }
             else
                 Mustbe(Sqlx.RPAREN);
-            var r = cx.obs[id] as SqlNode;
-            if (r == null)
+            var m = BTree<long, object>.Empty + (SqlNode.LabelSet, lb);
+            if (cx.obs[id] is not SqlNode r)
             {
                 r = ab switch
                 {
-                    Sqlx.LPAREN => new SqlNode(nb, BList<Ident>.Empty, cx, id, lb, dc, lxr.tgs, dm),
+                    Sqlx.LPAREN => new SqlNode(nb, BList<Ident>.Empty, cx, id, dc, lxr.tgs, dm, m),
                     Sqlx.ARROWBASE => new SqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
-                    ln?.defpos ?? -1L, an?.defpos ?? -1L, lb, dc, lxr.tgs, dm),
+                    ln?.defpos ?? -1L, an?.defpos ?? -1L, dc, lxr.tgs, dm, m),
                     Sqlx.RARROW => new SqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
-                    an?.defpos ?? -1L, ln?.defpos ?? -1L, lb, dc, lxr.tgs, dm),
+                    an?.defpos ?? -1L, ln?.defpos ?? -1L, dc, lxr.tgs, dm, m),
                     _ => throw new DBException("42000", ab)
                 };
                 if (wh is not null)
@@ -1287,60 +1663,36 @@ namespace Pyrrho.Level4
                     Next();
                 }
                 // state M26
-                var lb = CTree<long,bool>.Empty;
+                DBObject lb = Domain.NodeType;
                 if (tok == Sqlx.COLON)
                 {
                     lxr.tex = true; // expect a Type
                     Next();
-                    var a = new Ident(this);
-                    Mustbe(Sqlx.Id);
-                    var lv = (cx.obs[cx.defs[a]?.dp ?? -1L] is SqlValue od && od.domain is UDType) ? od :
-                        (cx.role.dbobjects[a.ident] is long ap && cx.db.objects[ap] is NodeType nt) ?
-                        new SqlLiteral(a.iix.dp, new TTypeSpec(nt))
-                        : new SqlValue(a, BList<Ident>.Empty, cx, Domain.TypeSpec);
-                    cx.defs += (a, a.iix);
-                    lb += (lv.defpos,true);
-                    if (lxr.tgs[lv.defpos] is TGParam qg)
+                    lb = ParseLabelExpression();
+                    if (lxr.tgs[lb.defpos] is TGParam qg)
                         st += (-(int)Sqlx.TYPE, qg);
-                    cx.Add(lv);
-                    while (tok == Sqlx.COLON)
-                    {
-                        // state M27
-                        Next();
-                        var c1 = new Ident(this);
-                        Mustbe(Sqlx.Id);
-                        var l1 = (cx.obs[cx.defs[c1]?.dp ?? -1L] is SqlValue o1 && o1.domain is UDType) ? o1 :
-                            (cx.role.dbobjects[c1.ident] is long a1 && cx.db.objects[a1] is NodeType n1) ?
-                            new SqlLiteral(c1.iix.dp, new TTypeSpec(n1))
-                            : new SqlValue(c1, BList<Ident>.Empty, cx, Domain.TypeSpec);
-                        cx.defs += (c1, c1.iix);
-                        lb += (l1.defpos,true);
-                        cx.Add(l1);
-                        // on Sqlx.COLON goto state M27
-                    }
                     // state M28
-                    if (lb.Last()?.key() is long xt && cx.obs[xt] is SqlValue gl && gl.Eval(cx) is TTypeSpec tt)
-                    {
+                    if (lb is NodeType et)
+
+                        dm = et;
+                    else if (lb is SqlValue gl && gl.Eval(cx) is TTypeSpec tt)
                         dm = tt._dataType as NodeType;
-     /*                   if (dm?.infos[cx.role.defpos] is ObInfo li)
-                            lxr.tgt = li.names; */
-                        var pg = (dm is not null) ? dm.kind switch
+                    var pg = (dm is not null) ? dm.kind switch
+                    {
+                        Sqlx.NODETYPE => TGParam.Type.Node,
+                        Sqlx.EDGETYPE => TGParam.Type.Edge,
+                        Sqlx.ARRAY => TGParam.Type.Path,
+                        _ => TGParam.Type.None
+                    } : TGParam.Type.Maybe;
+                    if (lxr.tgs[lp] is TGParam ig && dm is not null)
+                    {
+                        Domain nd = dm;
+                        if (ig.type.HasFlag(TGParam.Type.Group))
                         {
-                            Sqlx.NODETYPE => TGParam.Type.Node,
-                            Sqlx.EDGETYPE => TGParam.Type.Edge,
-                            Sqlx.ARRAY => TGParam.Type.Path,
-                            _ => TGParam.Type.None
-                        } : TGParam.Type.Maybe;
-                        if (lxr.tgs[lp] is TGParam ig && dm is not null)
-                        {
-                            Domain nd = dm;
-                            if (ig.type.HasFlag(TGParam.Type.Group))
-                            {
-                                nd = new Domain(-1L, Sqlx.ARRAY, dm);
-                                pg |= TGParam.Type.Group;
-                            }
-                            lxr.tgs += (lp, new TGParam(lp, ig.value, nd, pg, f));
+                            nd = new Domain(-1L, Sqlx.ARRAY, dm);
+                            pg |= TGParam.Type.Group;
                         }
+                        lxr.tgs += (lp, new TGParam(lp, ig.value, nd, pg, f));
                     }
                 }
                 // state M29
@@ -1367,7 +1719,7 @@ namespace Pyrrho.Level4
                         cx.AddDefs(dm);
                     var ot = lxr.tgs;
                     var od = dm ?? Domain.NodeType;
-                    cx.Add(new SqlNode(b, BList<Ident>.Empty, cx, -1L, CTree<long, bool>.Empty, BTree<long, long?>.Empty,
+                    cx.Add(new SqlNode(b, BList<Ident>.Empty, cx, -1L, BTree<long, long?>.Empty,
                         CTree<long, TGParam>.Empty, od));
                     cx.defs += (b, b.iix);
                     wh = ParseWhereClause();
@@ -1390,11 +1742,12 @@ namespace Pyrrho.Level4
                 else if (ab == Sqlx.LBRACK)
                     ba = Sqlx.RBRACK;
                 Mustbe(ba);
+                var m = BTree<long, object>.Empty + (SqlFunction._Val, lb.defpos);
                 r = ab switch
                 {
-                    Sqlx.LPAREN => new SqlNode(b, BList<Ident>.Empty, cx, id, lb, dc, st, dm),
-                    Sqlx.ARROWBASE => new SqlEdge(b, BList<Ident>.Empty, cx, ab, id, ln?.iix.dp ?? -1L, -1L, lb, dc, st, dm),
-                    Sqlx.RARROW => new SqlEdge(b, BList<Ident>.Empty, cx, ab, id, -1L, ln?.iix.dp ?? -1L, lb, dc, st, dm),
+                    Sqlx.LPAREN => new SqlNode(b, BList<Ident>.Empty, cx, id, dc, st, dm, m),
+                    Sqlx.ARROWBASE => new SqlEdge(b, BList<Ident>.Empty, cx, ab, id, ln?.iix.dp ?? -1L, -1L, dc, st, dm, m),
+                    Sqlx.RARROW => new SqlEdge(b, BList<Ident>.Empty, cx, ab, id, -1L, ln?.iix.dp ?? -1L, dc, st, dm, m),
                     _ => throw new DBException("42000", ab)
                 };
                 if (wh is not null)
@@ -1417,6 +1770,35 @@ namespace Pyrrho.Level4
             svg += ahead;
             lxr.tgs = og;
             return (r, svg, tgs);
+        }
+        DBObject ParseLabelExpression()
+        {
+            var lp = lxr.Position;
+            var neg = false;
+            if (tok==Sqlx.EXCLAMATION)
+            {
+                neg = true;
+                Next();
+            }
+            var c1 = new Ident(this);
+            Mustbe(Sqlx.Id);
+            DBObject left = (cx.obs[cx.defs[c1]?.dp ?? -1L] is SqlValue o1 && o1.domain is UDType) ? o1 :
+                (cx.role.dbobjects[c1.ident] is long a1 && cx.db.objects[a1] is NodeType n1) ?
+                n1 : new SqlValue(c1, BList<Ident>.Empty, cx, Domain.TypeSpec);
+            cx.defs += (c1, c1.iix);
+            cx.Add(left);
+            if (neg)
+                left = new SqlLabel(lp, Sqlx.EXCLAMATION, -1L, left.defpos);
+            while (Match(Sqlx.VBAR,Sqlx.AMPERSAND))
+            {
+                lp = lxr.Position;
+                var op = tok;
+                Next();
+                var right = ParseLabelExpression();
+                cx.Add(right);
+                left = new SqlLabel(lp, op, left.defpos, right.defpos);
+            }
+            return left;
         }
         /// <summary>
         /// we have just matched MATCH|WITH
@@ -1964,8 +2346,8 @@ namespace Pyrrho.Level4
                 var un = CTree<Domain, bool>.Empty;
                 if (dt is NodeType)
                     un += (dt, true);
-                for (var bl = ll.list.First(); bl != null; bl = bl.Next())
-                    for (var ba = al.list.First(); ba != null; ba = ba.Next())
+                for (var bl = ll?.list.First(); bl != null; bl = bl.Next())
+                    for (var ba = al?.list.First(); ba != null; ba = ba.Next())
                         if (bl.value() is TypedValue ln && ba.value() is TypedValue an)
                         {
                             m += (Sqlx.RARROW, ln);
@@ -2588,7 +2970,7 @@ namespace Pyrrho.Level4
             {
                 case Sqlx.TABLE:
                     return Match(Sqlx.ENTITY, Sqlx.PIE, Sqlx.HISTOGRAM, Sqlx.LEGEND, Sqlx.LINE,
-                    Sqlx.NODE, Sqlx.POINTS, Sqlx.DROP, Sqlx.JSON, Sqlx.CSV, Sqlx.CHARLITERAL, Sqlx.RDFLITERAL,
+                    Sqlx.NODE, Sqlx.VERTEX, Sqlx.POINTS, Sqlx.DROP, Sqlx.JSON, Sqlx.CSV, Sqlx.CHARLITERAL, Sqlx.RDFLITERAL,
                     Sqlx.REFERRED, Sqlx.ETAG, Sqlx.SECURITY);
                 case Sqlx.COLUMN:
                     return Match(Sqlx.ATTRIBUTE, Sqlx.X, Sqlx.Y, Sqlx.CAPTION, Sqlx.DROP,
@@ -2690,6 +3072,7 @@ namespace Pyrrho.Level4
                                 continue;
                             break;
                         }
+                    case Sqlx.VERTEX:
                     case Sqlx.NODE:
                         {
                             m += (tok, o);
@@ -6202,7 +6585,7 @@ namespace Pyrrho.Level4
                     cx.Add(pc);
                 }
             }
-            else if (Match(Sqlx.PROFILING))
+   /*         else if (Match(Sqlx.PROFILING))
             {
                 Next();
                 Mustbe(Sqlx.EQL);
@@ -6210,7 +6593,7 @@ namespace Pyrrho.Level4
                     throw new DBException("42105").Mix();
                 Mustbe(Sqlx.BOOLEANLITERAL);
                 // ignore for now
-            }
+            } */
             else if (Match(Sqlx.TIMEOUT))
             {
                 Next();
@@ -7629,7 +8012,7 @@ namespace Pyrrho.Level4
             Next();
             if (tok == Sqlx.INTO)
                 Next();
-            else return ParseCreateGraph();
+            else return ParseInsertGraph();
             Ident ic = new(this);
             cx.IncSD(ic);
             var fm = ParseTableReference(ic.iix.dp, Domain.TableType);

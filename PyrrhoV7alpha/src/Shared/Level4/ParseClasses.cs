@@ -67,7 +67,7 @@ namespace Pyrrho.Level4
         public BTree<string,bool> cols;
         internal PrivNames(Sqlx p) { priv = p; cols = BTree<string, bool>.Empty; }
     }
-    internal class LabelExpression // GQL
+ /*   internal class LabelExpression // GQL
     {
         public Sqlx op;
         public LabelExpression? left;
@@ -166,6 +166,6 @@ namespace Pyrrho.Level4
             if (label!=null) sb.Append(label);
             return sb.ToString();
         }
-    }
+    } */
 }
 

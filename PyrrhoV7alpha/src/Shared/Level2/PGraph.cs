@@ -10,6 +10,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Xml.Linq;
 namespace Pyrrho.Level2
 {
     /// <summary>
@@ -106,9 +107,11 @@ namespace Pyrrho.Level2
     internal class PGraph : Physical
     {
         public string iri = "";
+        public string name = ""; // placed by Graph constructor
         public CTree<long, bool> types = CTree<long,bool>.Empty;
         public CTree<long, bool> records = CTree<long, bool>.Empty;
-        public PGraph(long pp,string s,CTree<long,bool> ts,CTree<long,bool> ns) : base(Type.PGraph, pp)
+        public PGraph(long pp,string s,CTree<long,bool> ts,CTree<long,bool> ns) 
+            : base(Type.PGraph, pp)
         {
             iri = s;
             types = ts;
@@ -169,14 +172,138 @@ namespace Pyrrho.Level2
                      if (cx.db.objects[c.key()] is NodeType nt)
                         ns += (r.defpos, new TNode(nt,t));
                 }
-            var g = new Graph(ppos, ns, iri, types);
+            var g = new Graph(this,cx);
             cx.db += (g,p);
+            var ro = cx.role;
+            ro += (Role.Graphs, ro.graphs + (name, ppos));
+            cx.db += (g, p);
+            cx.db += (ro, p);
+            cx.Add(ro);
             cx.Add(g);
             return g;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
             if (iri.StartsWith("http")) // do not commit
+                return (tr, this);
+            return base.Commit(wr, tr);
+        }
+    }
+    internal class PGraphType : Physical
+    {
+        public string iri = "";
+        public string name = ""; // final component of iri, set in Graph constructor
+        public CTree<long, bool> types = CTree<long, bool>.Empty;
+        public PGraphType(long pp,  string s, CTree<long, bool> ts)
+            : base(Type.PGraph, pp)
+        {
+            iri = s;
+            types = ts;
+        }
+
+        public PGraphType(Type tp, Reader rdr) : base(tp, rdr)
+        { }
+
+        public PGraphType(PGraphType x, Writer wr) : base(x, wr)
+        {
+            iri = x.iri;
+            types = wr.cx.Fix(x.types);
+        }
+        public override void Deserialise(Reader rdr)
+        {
+            iri = rdr.GetString();
+            var n = rdr.GetInt();
+            for (var i = 0; i < n; i++)
+                types += (rdr.GetLong(), true);
+            base.Deserialise(rdr);
+        }
+        public override void Serialise(Writer wr)
+        {
+            wr.PutString(iri);
+            wr.PutInt((int)types.Count);
+            for (var b = types.First(); b != null; b = b.Next())
+                wr.PutLong(b.key());
+            base.Serialise(wr);
+        }
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            return -1L;
+        }
+        protected override Physical Relocate(Writer wr)
+        {
+            types = wr.cx.Fix(types);
+            return new PGraphType(this, wr);
+        }
+
+        internal override DBObject? Install(Context cx, long p)
+        {
+            var ns = CTree<long, TNode>.Empty;
+            var g = new GraphType(this, cx);
+            cx.db += (g, p);
+            var ro = cx.role;
+            ro += (Role.Graphs, ro.graphs + (name, ppos));
+            cx.db += (g, p);
+            cx.db += (ro, p);
+            cx.Add(ro);
+            cx.Add(g);
+            return g;
+        }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (iri.StartsWith("http")) // do not commit
+                return (tr, this);
+            return base.Commit(wr, tr);
+        }
+    }
+    internal class PSchema : Physical
+    {
+        public string directoryPath = "";
+        public PSchema(long pp, string s) : base(Type.PSchema, pp)
+        {
+            directoryPath = s;
+        }
+
+        public PSchema(Type tp, Reader rdr) : base(tp, rdr)
+        { }
+
+        public PSchema(PSchema x, Writer wr) : base(x, wr)
+        {
+            directoryPath = x.directoryPath;
+        }
+        public override void Deserialise(Reader rdr)
+        {
+            directoryPath = rdr.GetString();
+            base.Deserialise(rdr);
+        }
+        public override void Serialise(Writer wr)
+        {
+            wr.PutString(directoryPath);
+            base.Serialise(wr);
+        }
+        public override long Dependent(Writer wr, Transaction tr)
+        {
+            return -1L;
+        }
+
+        protected override Physical Relocate(Writer wr)
+        {
+            return new PSchema(this, wr);
+        }
+
+        internal override DBObject? Install(Context cx, long p)
+        {
+            var g = new Schema(this,cx);
+            var ro = cx.role;
+            ro += (Role.Schemas, ro.schemas + (directoryPath, ppos));
+            cx.db += (g, p);
+            cx.db += (ro, p);
+            cx.Add(ro);
+            cx.Add(g);
+            return g;
+        }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            if (directoryPath.StartsWith("http")) // do not commit
                 return (tr, this);
             return base.Commit(wr, tr);
         }

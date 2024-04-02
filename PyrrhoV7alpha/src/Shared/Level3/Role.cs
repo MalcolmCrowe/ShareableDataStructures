@@ -54,8 +54,10 @@ namespace Pyrrho.Level3
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
             EdgeTypes = -128, // BTree<string,long?> EdgeType by name
+            Graphs = -357,    // BTree<string,long?> Graph by name
             NodeTypes = -115, // BTree<string,long?> NodeType by name
-            Procedures = -249; // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
+            Procedures = -249, // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
+            Schemas = -356;    // BTree<string,long?> Schema by name
        internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
@@ -65,7 +67,10 @@ namespace Pyrrho.Level3
             (BTree<string, long?>)(mem[NodeTypes]??BTree<string,long?>.Empty);
         internal BTree<string, long?> edgeTypes =>
             (BTree<string, long?>)(mem[EdgeTypes] ?? BTree<string, long?>.Empty);
-        public const Grant.Privilege use = Grant.Privilege.UseRole,
+        internal BTree<string, long?> graphs =>
+            (BTree<string, long?>)(mem[Graphs] ?? BTree<string, long?>.Empty);
+        internal BTree<string, long?> schemas =>
+            (BTree<string, long?>)(mem[Schemas] ?? BTree<string, long?>.Empty); public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         /// <summary>
         /// Just to create the schema and guest roles
@@ -112,22 +117,73 @@ namespace Pyrrho.Level3
                     sb.Append(Uid(p));
                 }
             if (cm == ',') sb.Append(')');
-            sb.Append(" Procedures:"); cm = '(';
-            for (var b=procedures.First();b is not null;b=b.Next())
+            if (procedures.Count > 0)
             {
-                sb.Append(cm); cm = ';';
-                sb.Append(b.key()); sb.Append('=');
-                var cn = '[';
-                for (var a = b.value().First(); a != null; a = a.Next())
-                    if (a.value() is long p)
+                sb.Append(" Procedures:"); cm = '(';
+                for (var b = procedures.First(); b is not null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ';';
+                    sb.Append(b.key()); sb.Append('=');
+                    var cn = '[';
+                    for (var a = b.value().First(); a != null; a = a.Next())
+                        if (a.value() is long p)
+                        {
+                            sb.Append(a.key()); sb.Append(':');
+                            sb.Append(cn); cn = ',';
+                            sb.Append(Uid(p));
+                        }
+                    if (cn == ',') sb.Append(']');
+                }
+                if (cm == ';') sb.Append(')');
+            }
+            if (schemas.Count > 0)
+            {
+                sb.Append(" Schemas:");
+                cm = '(';
+                for (var b = schemas.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
                     {
-                        sb.Append(a.key()); sb.Append(':');
-                        sb.Append(cn); cn = ',';
+                        sb.Append(cm); cm = ','; sb.Append(b.key()); sb.Append('=');
                         sb.Append(Uid(p));
                     }
-                if (cn == ',') sb.Append(']');
+                if (cm == ',') sb.Append(')');
             }
-            if (cm == ';') sb.Append(')');
+            if (graphs.Count > 0)
+            {
+                sb.Append(" Graphs:");
+                cm = '(';
+                for (var b = graphs.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                    {
+                        sb.Append(cm); cm = ','; sb.Append(b.key()); sb.Append('=');
+                        sb.Append(Uid(p));
+                    }
+                if (cm == ',') sb.Append(')');
+            }
+            if (nodeTypes.Count > 0)
+            {
+                sb.Append(" NodeTypes:");
+                cm = '(';
+                for (var b = nodeTypes.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                    {
+                        sb.Append(cm); cm = ','; sb.Append(b.key()); sb.Append('=');
+                        sb.Append(Uid(p));
+                    }
+                if (cm == ',') sb.Append(')');
+            }
+            if (edgeTypes.Count > 0)
+            {
+                sb.Append(" EdgeTypes:");
+                cm = '(';
+                for (var b = edgeTypes.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                    {
+                        sb.Append(cm); cm = ','; sb.Append(b.key()); sb.Append('=');
+                        sb.Append(Uid(p));
+                    }
+                if (cm == ',') sb.Append(')');
+            }
             return sb.ToString();
         }
         internal override Basis New(BTree<long, object> m)

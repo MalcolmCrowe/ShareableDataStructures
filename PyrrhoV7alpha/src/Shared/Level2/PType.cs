@@ -163,7 +163,7 @@ namespace Pyrrho.Level2
             {
                 Sqlx.TYPE => new UDType(defpos, m),
                 Sqlx.NODETYPE => new NodeType(defpos, m),
-                Sqlx.EDGETYPE => new EdgeType(defpos,m,this),
+                Sqlx.EDGETYPE => new EdgeType(defpos,m),
                 _ => Domain.Null
             };
             base.Deserialise(rdr);

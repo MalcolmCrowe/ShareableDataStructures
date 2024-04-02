@@ -804,14 +804,14 @@ MATCH (n)-[:Child]->(c) RETURN n.name,c.name AS child
 MATCH (n {name:'Pete Smith'}) SET n.name='Peter Smith' 
 MATCH ({name:'Peter Smith'})[()-[:Child]->()]+(x) RETURN x.name
 [CREATE (e:Person {name:'Emil', born:1975 }), (k:Person {name:'Karin', born:1977 }),
-(e)-[:married {since:2000}]->(k)]
+(e)<-[:married {since:2000}]-(k)]
 [CREATE (Sue:Person {name:'Sue Hill', born:1975}),
-(Joe:Person {name:'Joe Hill', born:1952}),(Joe)-[:married {since:1995}]->(Sue)]
+(Joe:Person {name:'Joe Hill', born:1952}),(Joe)<-[:married {since:1995}]-(Sue)]
 MATCH (n:Person) RETURN collect(n.born)
 MATCH (n:Person) RETURN avg(n.born)
-[MATCH (n:Person {name:'Joe Hill'})-[r { since:1995}]->()
+[MATCH (n:Person {name:'Joe Hill'})<-[r { since:1995}]-()
 BEGIN n.born = 1962; r.since = 1996 END]
-MATCH (n:Person)-[:married{since:d}]->() RETURN n.name,d
+MATCH (n:Person)<-[:married{since:d}]-() RETURN n.name,d
 [MATCH (e:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),
 (e)-[r:owns ]->(d),(d)-[r2:owned_by]->(e)]
 MATCH (d:Dog {name: 'Rex'})-[r:owned_by]->() DELETE r

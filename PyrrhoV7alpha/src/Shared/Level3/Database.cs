@@ -101,7 +101,7 @@ namespace Pyrrho.Level3
             return ToString();
         }
     }
-    public enum ExecuteStatus { Parse, Obey, Graph, Prepare, Compile, Commit }
+    public enum ExecuteStatus { Parse, Obey, Graph, GraphType, Prepare, Compile, Commit }
 
     /// <summary>
     /// Counter-intuitively, a logical database (embodied by the durable contents of the transaction log)
@@ -148,6 +148,7 @@ namespace Pyrrho.Level3
         public override long lexeroffset => loadpos;
         internal const long
             Arriving = -469, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
+            Catalog = -247, // BTree<string,long?> DBObject
             Curated = -53, // long
             EdgeTypes = -471, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType,NodeType,NodeType,EdgeType
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
@@ -176,6 +177,8 @@ namespace Pyrrho.Level3
         internal virtual long uid => -1;
         public string name => (string)(mem[ObInfo.Name]??throw new PEException("PE1001"));
         internal FileStream df => dbfiles[name]??throw new PEException("PE1002");
+        internal BTree<string, long?> catalog =>
+            (BTree<string, long?>)(mem[Catalog] ?? new BTree<string, long?>("/",0L));
         internal long curated => (long)(mem[Curated]??-1L);
         internal long nextStmt => (long)(mem[NextStmt] ?? 
             throw new PEException("PE777"));

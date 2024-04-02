@@ -368,8 +368,8 @@ namespace Pyrrho.Level4
         public long offset;
         public TGParam.Type tgg = TGParam.Type.None;
         public long tga;
-        public bool tex; // expecting a type?
- //       public BTree<string,(int,long?)> tgt = BTree<string,(int,long?)>.Empty; // field names we know
+        public bool tex = false; // expecting a type?
+        public bool cat = false; // for GQL catalog parent (case sensitive, / and . in identifiers)
         public long Position => offset + start;
         /// <summary>
         /// The current token's value
@@ -634,7 +634,7 @@ namespace Pyrrho.Level4
             while (char.IsWhiteSpace(ch))
                 Advance();
             start = pos;
-            if (char.IsLetter(ch))
+            if (char.IsLetter(ch) || (cat && (ch=='/'||ch=='.')))
             {
                 char c = ch;
                 Advance();
@@ -666,10 +666,11 @@ namespace Pyrrho.Level4
                     MaybeSuffix();
                     return tok;
                 }
-                while (char.IsLetterOrDigit(ch) || ch == '_')
+                while (char.IsLetterOrDigit(ch) || ch == '_'
+                    || (cat && (ch=='/'||ch=='.')))
                     Advance();
                 string s0 = new(input, start, pos - start);
-                string s = caseSensitive?s0:s0.ToUpper();
+                string s = (caseSensitive||cat)?s0:s0.ToUpper();
                 if (CheckResWd(s))
                 {
                     switch (tok)
@@ -769,6 +770,7 @@ namespace Pyrrho.Level4
                 case '.': Advance(); return tok = Sqlx.DOT;
                 case ';': Advance(); return tok = Sqlx.SEMICOLON;
                 case '&': Advance(); return tok = Sqlx.AMPERSAND; // GQL label expression
+                case '~': Advance(); return tok = Sqlx.TILDE;  // GQL
                 case '?': Advance(); return tok = Sqlx.QMARK; // added for Prepare()
                 case ':':
                     {

@@ -238,6 +238,12 @@ namespace Pyrrho.Level3
                     return new SqlCopy(defpos, cx, name, defpos, p);
             return this;
         }
+        internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, SqlNode xn, BTree<long, TableRow>? ds)
+        {
+            if (Eval(cx).dataType is NodeType nt) // or EdgeType
+                return nt.For(cx, ms, xn, ds);
+            throw new PEException("PE70301");
+        }
         internal static string Show(Sqlx op)
         {
             return op switch
@@ -8283,10 +8289,8 @@ namespace Pyrrho.Level3
             Low = -352, // long SqlValue
             Op = -353, // Sqlx
             _Select = -354, //long RowSet
-            Vals = -355, //BList<long?> SqlValue
-            What = -356, //long SqlValue
-            Where = -357; // long SqlValue
-        public long what => (long)(mem[What]??-1L);
+            Vals = -355; //BList<long?> SqlValue
+        public long what => (long)(mem[WhileStatement.What]??-1L);
         /// <summary>
         /// The comparison operator: LSS etc
         /// </summary>
@@ -8308,7 +8312,7 @@ namespace Pyrrho.Level3
         /// <param name="s">the rowset to test against</param>
         internal QuantifiedPredicate(long dp,Context cx,SqlValue w, Sqlx o, bool a, 
             RowSet s)
-            : base(dp,_Mem(cx,w,s) + (What,w.defpos)+(Op,o)+(All,a)+(_Select,s.defpos)) 
+            : base(dp,_Mem(cx,w,s) + (WhileStatement.What, w.defpos)+(Op,o)+(All,a)+(_Select,s.defpos)) 
         {
             cx.Add(this);
         }
@@ -8373,7 +8377,7 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var nw = cx.Fix(what);
             if (nw != what)
-                r = cx.Add(r, What, nw);
+                r = cx.Add(r, WhileStatement.What, nw);
             var ns = cx.Fix(select);
             if (ns != select)
                 r = cx.Add(r, _Select, ns);
@@ -8384,7 +8388,7 @@ namespace Pyrrho.Level3
             var r = (QuantifiedPredicate)base._Replace(cx, so, sv);
             var wh = cx.ObReplace(what,so,sv);
             if (wh != what)
-                r +=(cx, What, wh);
+                r +=(cx, WhileStatement.What, wh);
             var se = cx.ObReplace(select, so, sv);
             if (se != select)
                 r +=(cx, _Select, se);
@@ -8401,7 +8405,7 @@ namespace Pyrrho.Level3
             var r = (QuantifiedPredicate)base.AddFrom(cx, q);
             var a = ((SqlValue?)cx.obs[r.what])?.AddFrom(cx, q)??SqlNull.Value;
             if (a.defpos != r.what)
-                r += (cx, What, a.defpos);
+                r += (cx, WhileStatement.What, a.defpos);
             return (SqlValue)cx.Add(r);
         }
         /// <summary>
@@ -8556,7 +8560,7 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class BetweenPredicate : SqlValue
     {
-        public long what =>(long)(mem[QuantifiedPredicate.What]??-1L);
+        public long what =>(long)(mem[WhileStatement.What]??-1L);
         /// <summary>
         /// BETWEEN or NOT BETWEEN
         /// </summary>
@@ -8578,7 +8582,7 @@ namespace Pyrrho.Level3
         /// <param name="sv">the high end of the range</param>
         internal BetweenPredicate(long dp, Context cx, SqlValue w, bool b, SqlValue a, SqlValue h)
             : base(dp, _Mem(cx, w, a, h)
-                  + (QuantifiedPredicate.What, w.defpos) + (QuantifiedPredicate.Between, b)
+                  + (WhileStatement.What, w.defpos) + (QuantifiedPredicate.Between, b)
                   + (QuantifiedPredicate.Low, a.defpos) + (QuantifiedPredicate.High, h.defpos))
         {
             cx.Add(this);
@@ -8706,7 +8710,7 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var nw = cx.Fix(what);
             if (what!=nw)
-                r += (QuantifiedPredicate.What, cx.Fix(what));
+                r += (WhileStatement.What, cx.Fix(what));
             var nl = cx.Fix(low);
             if (low!=nl)
                 r += (QuantifiedPredicate.Low, nl);
@@ -8720,7 +8724,7 @@ namespace Pyrrho.Level3
             var r = (BetweenPredicate)base._Replace(cx, so, sv);
             var wh = cx.ObReplace(what, so, sv);
             if (wh != what)
-                r +=(cx, QuantifiedPredicate.What, wh);
+                r +=(cx, WhileStatement.What, wh);
             var lw = cx.ObReplace(low, so, sv);
             if (lw != low)
                 r +=(cx, QuantifiedPredicate.Low, lw);
@@ -8775,7 +8779,7 @@ namespace Pyrrho.Level3
             {
                 var a = wo.AddFrom(cx, q);
                 if (a.defpos != r.what)
-                    r += (cx,QuantifiedPredicate.What, a.defpos);
+                    r += (cx, WhileStatement.What, a.defpos);
             }
             if (cx.obs[r.low] is SqlValue lo)
             {
@@ -9320,7 +9324,7 @@ cx.obs[high] is not SqlValue hi)
     /// </summary>
     internal class InPredicate : SqlValue
     {
-        public long what => (long)(mem[QuantifiedPredicate.What]??-1L);
+        public long what => (long)(mem[WhileStatement.What]??-1L);
         /// <summary>
         /// In, or not in, a tree of values, a rowset or a collection-valued scalar expression
         /// </summary>
@@ -9346,7 +9350,7 @@ cx.obs[high] is not SqlValue hi)
             var dm = Domain.Bool;
             var cs = BList<long?>.Empty;
             var ag = w.IsAggregation(cx,CTree<long,bool>.Empty);
-            m += (QuantifiedPredicate.What, w.defpos);
+            m += (WhileStatement.What, w.defpos);
             if (ag!=CTree<long,bool>.Empty)
                 m += (Domain.Aggs, ag);
             if (ag != CTree<long, bool>.Empty)
@@ -9478,7 +9482,7 @@ cx.obs[high] is not SqlValue hi)
             var r = base._Fix(cx,m);
             var nw = cx.Fix(what);
             if (what!=nw)
-                r = cx.Add(r, QuantifiedPredicate.What, nw);
+                r = cx.Add(r, WhileStatement.What, nw);
             var ns = cx.Fix(select);
             if (select!=ns)
                 r = cx.Add(r, QuantifiedPredicate._Select, ns);
@@ -9492,7 +9496,7 @@ cx.obs[high] is not SqlValue hi)
             var r = (InPredicate)base._Replace(cx, so, sv);
             var wh = cx.ObReplace(what, so, sv);
             if (wh != what)
-                r +=(cx, QuantifiedPredicate.What, wh);
+                r +=(cx, WhileStatement.What, wh);
             var wr = cx.ObReplace(select, so, sv);
             if (wr != select)
                 r +=(cx, QuantifiedPredicate._Select, wr);
@@ -9522,7 +9526,7 @@ cx.obs[high] is not SqlValue hi)
                 throw new PEException("PE43360");
             var a = w.AddFrom(cx, q);
             if (a.defpos != r.what)
-                r += (cx,QuantifiedPredicate.What, a.defpos);
+                r += (cx, WhileStatement.What, a.defpos);
             var vs = r.vals;
             var ch = false;
             for (var b = vs.First(); b != null; b = b.Next())
@@ -9710,9 +9714,7 @@ cx.obs[high] is not SqlValue hi)
     internal class MemberPredicate : SqlValue
     {
         internal const long
-            Found = -360, // bool
-            Lhs = -361, // long SqlValue
-            Rhs = -362; // long SqlValue
+            Lhs = -361; // long SqlValue
         /// <summary>
         /// the test expression
         /// </summary>
@@ -9720,11 +9722,11 @@ cx.obs[high] is not SqlValue hi)
         /// <summary>
         /// found or not found
         /// </summary>
-        public bool found => (bool)(mem[Found]??false);
+        public bool found => (bool)(mem[QuantifiedPredicate.Found]??false);
         /// <summary>
         /// the right operand
         /// </summary>
-        public long rhs => (long)(mem[Rhs]??-1L);
+        public long rhs => (long)(mem[MultipleAssignment.Rhs]??-1L);
         /// <summary>
         /// Constructor: a member predicate from the parser
         /// </summary>
@@ -9732,7 +9734,8 @@ cx.obs[high] is not SqlValue hi)
         /// <param name="f">found or not found</param>
         /// <param name="b">the right operand</param>
         internal MemberPredicate(long dp,Context cx,SqlValue a, bool f, SqlValue b)
-            : base(dp, _Mem(cx,a,b)+(Lhs,a)+(Found,f)+(Rhs,b)+(_Depth,_Depths(a,b)))
+            : base(dp, _Mem(cx,a,b)+(Lhs,a)+(QuantifiedPredicate.Found, f)
+                  +(MultipleAssignment.Rhs,b)+(_Depth,_Depths(a,b)))
         {
             cx.Add(this);
         }
@@ -9832,7 +9835,7 @@ cx.obs[high] is not SqlValue hi)
                 r += (Lhs, nl);
             var nr = cx.Fix(rhs);
             if (nr != rhs)
-                r = cx.Add(r, Rhs, rhs);
+                r = cx.Add(r, MultipleAssignment.Rhs, rhs);
             return r;
         }
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -9843,7 +9846,7 @@ cx.obs[high] is not SqlValue hi)
                 r +=(cx, Lhs, lf);
             var rg = cx.ObReplace(rhs,so,sv);
             if (rg != rhs)
-                r +=(cx, Rhs, rg);
+                r +=(cx, MultipleAssignment.Rhs, rg);
             return r;
         }
         internal override bool Grouped(Context cx, GroupSpecification gs)
@@ -9864,7 +9867,7 @@ cx.obs[high] is not SqlValue hi)
                 r += (cx,Lhs, a.defpos);
             a = rh.AddFrom(cx, q);
             if (a.defpos != r.rhs)
-                r += (cx,Rhs, a.defpos);
+                r += (cx, MultipleAssignment.Rhs, a.defpos);
             return (SqlValue)cx.Add(r);
         }
         /// <summary>
@@ -10020,12 +10023,12 @@ cx.obs[high] is not SqlValue hi)
         /// <summary>
         /// OF or NOT OF
         /// </summary>
-        public bool found => (bool)(mem[MemberPredicate.Found]??false);
+        public bool found => (bool)(mem[QuantifiedPredicate.Found]??false);
         /// <summary>
         /// the right operand: a tree of Domain
         /// </summary>
         public BList<Domain> rhs => 
-            (BList<Domain>)(mem[MemberPredicate.Rhs] ?? BList<Domain>.Empty); // naughty: MemberPreciate Rhs is SqlValue
+            (BList<Domain>)(mem[MultipleAssignment.Rhs] ?? BList<Domain>.Empty); // naughty: MemberPreciate Rhs is SqlValue
         /// <summary>
         /// Constructor: a member predicate from the parser
         /// </summary>
@@ -10034,8 +10037,8 @@ cx.obs[high] is not SqlValue hi)
         /// <param name="b">the right operand</param>
         internal TypePredicate(long dp,SqlValue a, bool f, BList<Domain> r)
             : base(dp, new BTree<long, object>(_Domain, Domain.Bool) 
-                  + (_Depth,_Dep(a,r))+(MemberPredicate.Lhs,a.defpos)+(MemberPredicate.Found,f)
-                  +(MemberPredicate.Rhs,r))
+                  + (_Depth,_Dep(a,r))+(MemberPredicate.Lhs,a.defpos)+(QuantifiedPredicate.Found,f)
+                  +(MultipleAssignment.Rhs,r))
         {  }
         protected TypePredicate(long dp, BTree<long, object> m) : base(dp, m) { }
         static int _Dep(SqlValue a,BList<Domain> r)
@@ -10091,7 +10094,7 @@ cx.obs[high] is not SqlValue hi)
                 r = cx.Add(r, MemberPredicate.Lhs, nl);
             var nr = cx.FixBD(rhs);
             if (nr!=rhs)
-                r = cx.Add(r, MemberPredicate.Rhs, nr);
+                r = cx.Add(r, MultipleAssignment.Rhs, nr);
             return r;
         }
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -10880,12 +10883,94 @@ cx.obs[high] is not SqlValue hi)
         }
     }
     /// <summary>
+    /// Care: left and right can be NodeType defpos
+    /// op can be Sqlx.EXCLAMATION,Sqlx.VBAR,Sqlx.AMPERSAND
+    /// </summary>
+    internal class SqlLabel : SqlValue
+    {
+        internal Sqlx op => (Sqlx)(mem[SqlValueExpr.Op] ?? Sqlx.NO);
+        public SqlLabel(long dp, Sqlx op, long lf, long rg) 
+            : base(dp,BTree<long, object>.Empty + (SqlValueExpr.Op, op) + (Left, lf) + (Right, rg))
+        { }
+        internal SqlLabel(Ident id) :this(id.iix.dp,new BTree<long, object>(ObInfo.Name, id.ident))
+        { }
+        internal SqlLabel(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        public static SqlLabel operator+(SqlLabel sl,(long,object) x)
+        {
+            return (SqlLabel)sl.New(sl.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new SqlLabel(defpos,m);
+        }
+        internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, SqlNode xn, BTree<long, TableRow>? ds)
+        {
+            switch(op)
+            {
+                case Sqlx.VBAR:
+                    {
+                        var lt = cx._Ob(left) ?? throw new DBException("PE70302");
+                        var rt = cx._Ob(right) ?? throw new DBException("PE70303");
+                        return lt.For(cx, ms, xn, ds)+rt.For(cx,ms,xn,ds);
+                    }
+                case Sqlx.AMPERSAND:
+                    {
+                        var lt = cx._Ob(left) ?? throw new DBException("PE70304");
+                        var es = lt.For(cx, ms, xn, ds);
+                        var rt = cx._Ob(right) ?? throw new DBException("PE70305");
+                        var fs = rt.For(cx, ms, xn, ds);
+                        var eb = es.First();
+                        ds = BTree<long, TableRow>.Empty;
+                        for (var fb=fs.First();eb!=null&&fb!=null;)
+                        {
+                            var ep = eb.key();
+                            var fp = fb.key();
+                            if (ep == fp)
+                            {
+                                ds += (ep,eb.value());
+                                eb = eb.Next();
+                                fb = fb.Next();
+                            }
+                            else if (ep < fp)
+                                eb = eb.Next();
+                            else
+                                fb = fb.Next();
+                        }
+                        return ds;
+                    }
+                case Sqlx.EXCLAMATION:
+                    {
+                        var nl = cx._Ob(left) ?? throw new DBException("PE70306");
+                        var ns = nl.For(cx, ms, xn, ds);
+                        var xs = xn.domain.For(cx, ms, xn, null);
+                        for (var b = xs.First(); xs!=null && b != null; b = b.Next())
+                            if (ns.Contains(b.key()))
+                                xs -= b.key();
+                        ds = xs;
+                        break;
+                    }
+            }
+            return ds??BTree<long,TableRow>.Empty;
+        }
+        public override string ToString()
+        {
+            var r = new StringBuilder();
+            if (left>0)
+                r.Append(Uid(left));
+            r.Append(op);
+            if (right>0)
+                r.Append(Uid(right));
+            return r.ToString();
+        }
+    }
+    /// <summary>
     /// SqlNode will evaluate to a TNode (and SqlEdge to a TEdge) once the enclosing
-    /// CreateStatement or MatchStatement has been Obeyed.
+    /// GraphInsertStatement or MatchStatement has been Obeyed.
     /// In general, any of the contained SqlValues in an SqlNode may evaluate to via a TGParam 
     /// that should have been bound by MatchStatement.Obey.
-    /// However, TGParams are not found in CreateStatement graphs.
-    /// CreateStatement.Obey will traverse its GraphExpression so that the context maps SqlNodes to TNodes.
+    /// However, TGParams are not found in GraphInsertStatement graphs.
+    /// GraphInsertStatement.Obey will traverse its GraphExpression so that the context maps SqlNodes to TNodes.
     /// MatchStatement.Obey will traverse its GraphExpression binding as it goes, so that the dependent executable
     /// is executed only for fully-bound SqlNodes.
     /// For an insert node label set, tok (mem[SVE.Op]) here can be Sqlx.COLON or Sqlx.AMPERSAND
@@ -10899,35 +10984,43 @@ cx.obs[high] is not SqlValue hi)
         internal const long
             DocValue = -477,    // BTree<long,long?> SqlValue -> SqlValue
             IdValue = -480,     // long             SqlValue of Int
-            LabelValue = -476,  // CTree<long,bool>  Type.defpos or SqlValue.defpos of TChar
-            State = -245;       // CTree<long,TGParam> tgs in this SqlNode  (always empty for CreateStatement)
+            _Label = -360,      // long             NodeType
+            LabelSet = -476,  // CTree<long,bool> SqlValue (used in Create)
+            State = -245;       // CTree<long,TGParam> tgs in this SqlNode  (always empty for GraphInsertStatement)
         public BTree<long, long?>? docValue => (BTree<long, long?>?)mem[DocValue];
         public long idValue => (long)(mem[IdValue] ?? -1L);
-        public CTree<long,bool> label =>
-            (CTree<long,bool>)(mem[LabelValue] ?? CTree<long,bool>.Empty);
+        public CTree<long,bool> labelSet =>
+            (CTree<long,bool>)(mem[LabelSet] ?? CTree<long,bool>.Empty);
+        public long label => (long)(mem[_Label] ?? -1L); // used in SqlMatch
         public CTree<long, bool> search => // can occur in Match GraphExp
             (CTree<long, bool>)(mem[RowSet._Where] ?? CTree<long, bool>.Empty);
         public CTree<long, TGParam> state =>
             (CTree<long, TGParam>)(mem[State] ?? CTree<long, TGParam>.Empty);
         public Sqlx tok => (Sqlx)(mem[SqlValueExpr.Op] ?? Sqlx.Null);
-        public SqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<long,bool> l, BTree<long, long?>? d,
+        public SqlNode(Ident nm, BList<Ident> ch, Context cx, long i, BTree<long, long?>? d,
             CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
-            : base(nm, ch, cx, dm ?? ((m is null) ? Domain.NodeType : Domain.EdgeType), _Mem(i, l, d, tgs, m))
+            : base(nm, ch, cx, dm ?? _Type(cx,m), _Mem(i, d, tgs, m))
         { }
         protected SqlNode(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long, object> _Mem(long i, CTree<long,bool> l, BTree<long, long?>? d, CTree<long, TGParam> tgs,
+        static BTree<long, object> _Mem(long i, BTree<long, long?>? d, CTree<long, TGParam> tgs,
             BTree<long, object>? m)
         {
             m ??= BTree<long, object>.Empty;
             if (i > 0)
                 m += (IdValue, i);
-            if (l != CTree<long,bool>.Empty)
-                m += (LabelValue, l);
             if (d is not null)
                 m += (DocValue, d);
             m += (State, tgs);
             return m;
+        }
+        static NodeType _Type(Context cx,BTree<long,object> m)
+        {
+            if (m[_Label] is long p && cx.db.objects[p] is NodeType d) return d;
+            for (var b = (m[LabelSet] as CTree<long, bool>)?.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is EdgeType dl)
+                    return Domain.EdgeType;
+            return Domain.NodeType;
         }
         public static SqlNode operator +(SqlNode n, (long, object) x)
         {
@@ -10945,10 +11038,6 @@ cx.obs[high] is not SqlValue hi)
         {
             return cx.values[defpos] ?? cx.binding[idValue] ?? TNull.Value;
         }
-        internal NodeType? MostSpecificType(Context cx)
-        {
-            return cx.GType(label.Last()?.key());
-        }
         internal virtual int MinLength(Context cx)
         {
             return 0;
@@ -10963,7 +11052,7 @@ cx.obs[high] is not SqlValue hi)
             var nd = this;
             // a label with at least one char SqlValue must be here
             // evaluate them all as TTypeSpec or TChar
-            var tl = nd.label;
+            var tl = nd.labelSet;
             NodeType? nt = null; // the node type of this node when we find it or construct it
             TableColumn? iC = null; // the special columns for this node
                                     // The label part gives us our bearings in the database. From it we will find
@@ -10973,7 +11062,7 @@ cx.obs[high] is not SqlValue hi)
             var md = CTree<Sqlx, TypedValue>.Empty; // some of what we will find on this search
                                                     // Begin to think about the names of special properties for the node we are building
                                                     // We may be using the default names, or we may inherit them from existing types
-            if (tl == CTree<long, bool>.Empty)
+            if (tl==CTree<long,bool>.Empty)
                 return (dt, md);
             string? sd = null; // ID if present
             if (nd.name == "AMPERSAND")
@@ -10981,7 +11070,7 @@ cx.obs[high] is not SqlValue hi)
                 var sb = new StringBuilder();
                 var cm = "";
                 var un = CTree<Domain, bool>.Empty;
-                for (var b=label.First();b!=null;b=b.Next())
+                for (var b=labelSet.First();b!=null;b=b.Next())
                 {
                     NodeType? n0 = null;
                     var p = b.key();
@@ -11132,7 +11221,7 @@ cx.obs[high] is not SqlValue hi)
                                 && cx.db.objects[rr.dbobjects[nt.name ?? "_"] ?? -1L] is NodeType ot)
                 nt = ot;
             else
-                (nt, ls) = nt.Build(cx, this, label, ls, md);
+                (nt, ls) = nt.Build(cx, this, labelSet, ls, md);
             if (nt is JoinedNodeType) // JoinedNodeType will have done everything
                 return;
             nd += (_Domain, nt);
@@ -11147,7 +11236,7 @@ cx.obs[high] is not SqlValue hi)
                 nd += (SqlLiteral._Val, tn);
                 cx.values += (nd.defpos, tn);
             }
-            else if (nt.defpos > 0)
+            else if (nt.defpos > 0 && cx.parse!=ExecuteStatus.GraphType)
             {
                 var vp = cx.GetUid();
                 var ts = new TableRowSet(cx.GetUid(), cx, nt.defpos);
@@ -11301,15 +11390,22 @@ cx.obs[high] is not SqlValue hi)
             var sb = new StringBuilder(base.ToString());
             if (idValue > 0)
             { sb.Append(" Id="); sb.Append(Uid(idValue)); }
-            var cm = " [";
-            for (var b = label.First(); b != null; b = b.Next())
-                if (b.key() is long p)
-                {
-                    sb.Append(cm); cm = ",";
-                    sb.Append(Uid(p));
-                }
-            if (cm==",") sb.Append(']');
-            cm = " {";
+            if (label>0)
+            {
+                sb.Append(':');sb.Append(Uid(label));
+            }
+            if (labelSet != CTree<long, bool>.Empty)
+            {
+                var cl = " [";
+                for (var b = labelSet.First(); b != null; b = b.Next())
+                    if (b.key() is long p)
+                    {
+                        sb.Append(cl); cl = ",";
+                        sb.Append(Uid(p));
+                    }
+                if (cl == ",") sb.Append(']');
+            }
+            var cm = " {";
             for (var b = docValue?.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
@@ -11366,9 +11462,9 @@ cx.obs[high] is not SqlValue hi)
         public long arrivingValue => (long)(mem[ArrivingValue]??-1L);
         public long leavingValue => (long)(mem[LeavingValue]??-1L);
         public Sqlx direction => (Sqlx)(mem[SqlValueExpr.Op] ?? Sqlx.NO); // ARROWBASE or ARROW
-        public SqlEdge(Ident nm, BList<Ident> ch, Context cx, Sqlx t, long i, long l, long a, CTree<long,bool> la, 
-            BTree<long, long?>? d, CTree<long, TGParam> tgs, NodeType? dm=null)
-            : base(nm, ch, cx, i, la,d, tgs,dm??Domain.EdgeType, BTree<long,object>.Empty
+        public SqlEdge(Ident nm, BList<Ident> ch, Context cx, Sqlx t, long i, long l, long a,
+            BTree<long, long?>? d, CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
+            : base(nm, ch, cx, i, d, tgs,dm??Domain.EdgeType, (m??BTree<long,object>.Empty)
                   +(LeavingValue,l)+(ArrivingValue,a)+(SqlValueExpr.Op,t))
         { }
         protected SqlEdge(long dp, BTree<long, object> m) : base(dp, m)
@@ -11412,7 +11508,7 @@ cx.obs[high] is not SqlValue hi)
             var aN = aT?.name;
             // a label with at least one char SqlValue must be here
             // evaluate them all as TTypeSpec or TChar
-            var tl = nd.label;
+            var tl = nd.labelSet;
             EdgeType? nt = null; // the node type of this node when we find it or construct it
             var md = CTree<Sqlx, TypedValue>.Empty; // some of what we will find on this search
                                                     // Begin to think about the names of special properties for the node we are building
@@ -11430,7 +11526,6 @@ cx.obs[high] is not SqlValue hi)
             // if existing components are related, the top and bottom types found 
             var te = Domain.Null;
             var be = Domain.Null;
-            SqlValue? sg = null;
             for (var b = tl.First(); b != null; b = b.Next())  // tl is the iterative type label
                 if (b.key() is long tp)
                 {
@@ -11525,7 +11620,7 @@ cx.obs[high] is not SqlValue hi)
                                            && cx.db.objects[rr.dbobjects[sd] ?? -1L] is NodeType ht)
                                            gt = ht; 
                                        else */
-                            (var et, _) = gt.Build(cx, this, label, ls, md);
+                            (var et, _) = gt.Build(cx, this, labelSet, ls, md);
                             gt = (EdgeType)et;
                             nt = gt;
                         }

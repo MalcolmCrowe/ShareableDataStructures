@@ -1,15 +1,9 @@
-using System.Linq.Expressions;
-using System;
-using System.Runtime.CompilerServices;
+using System.Runtime.Intrinsics.X86;
 using System.Text;
-using System.Text.RegularExpressions;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
-using static Pyrrho.Common.Delta;
-using System.Linq;
-using System.ComponentModel;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -3834,9 +3828,9 @@ namespace Pyrrho.Level3
     }
     internal class DeleteNode : Executable
     {
-        internal long what => (long)(mem[QuantifiedPredicate.What] ?? -1L);
+        internal long what => (long)(mem[WhileStatement.What] ?? -1L);
         internal DeleteNode(long dp,SqlValue v)
-            : base(dp,new BTree<long,object>(QuantifiedPredicate.What,v.defpos)) 
+            : base(dp,new BTree<long,object>(WhileStatement.What,v.defpos)) 
         { }
         protected DeleteNode(long dp, BTree<long, object>? m = null) : base(dp, m)
         {
@@ -4049,7 +4043,7 @@ namespace Pyrrho.Level3
             return new UpdateSearch(dp, m);
         }
     }
-    internal class CreateStatement : Executable
+    internal class GraphInsertStatement : Executable
     {
         internal const long
             GraphExps = -307; // CList<CList<SqlNode>> SqlNode (alternately with SqlEdges)
@@ -4058,12 +4052,12 @@ namespace Pyrrho.Level3
             (CList<CList<SqlNode>>)(mem[GraphExps] ?? CList<CList<SqlNode>>.Empty);
         internal BList<long?> stms => 
             (BList<long?>?)mem[IfThenElse.Then] ?? BList<long?>.Empty;
-        public CreateStatement(long dp, CList<CList<SqlNode>> ge, BList<long?> th)
+        public GraphInsertStatement(long dp, CList<CList<SqlNode>> ge, BList<long?> th)
             : base(dp, new BTree<long, object>(GraphExps, ge) + (IfThenElse.Then, th))
         { }
-        public CreateStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
+        public GraphInsertStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
-        public static CreateStatement operator +(CreateStatement et, (long, object) x)
+        public static GraphInsertStatement operator +(GraphInsertStatement et, (long, object) x)
         {
             var d = et.depth;
             var m = et.mem;
@@ -4076,10 +4070,10 @@ namespace Pyrrho.Level3
                 if (d > et.depth)
                     m += (_Depth, d);
             }
-            return (CreateStatement)et.New(m + x);
+            return (GraphInsertStatement)et.New(m + x);
         }
 
-        public static CreateStatement operator +(CreateStatement e, (Context, long, object) x)
+        public static GraphInsertStatement operator +(GraphInsertStatement e, (Context, long, object) x)
         {
             var d = e.depth;
             var m = e.mem;
@@ -4093,15 +4087,15 @@ namespace Pyrrho.Level3
                 if (d > e.depth)
                     m += (_Depth, d);
             }
-            return (CreateStatement)e.New(m + (p, o));
+            return (GraphInsertStatement)e.New(m + (p, o));
         }
 
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new CreateStatement(dp,m);
+            return new GraphInsertStatement(dp,m);
         }
         /// <summary>
-        /// CreateStatement contains a CTree of SqlNode in lexical sequence.
+        /// GraphInsertStatement contains a CTree of SqlNode in lexical sequence.
         /// In Obey() we ensure that cx.values has a corresponding sequence of TNode.
         /// We create whatever nodee, edges, nodetypes, edgetypes are needed.
         /// </summary>
@@ -4121,7 +4115,7 @@ namespace Pyrrho.Level3
                         {
                             var nt = (NodeType)nd.domain;
                             if (nt.defpos < 0 && nt.name != "AMPERSAND")
-                                for (var c = nd.label.First(); c != null; c = c.Next())
+                                for (var c = nd.labelSet.First(); c != null; c = c.Next())
                                     if (cx.obs[c.key()] is SqlLiteral sl
                                             && sl.Eval(cx) is TChar tc
                                             && cx._Od(cx.role.nodeTypes[tc.value] ?? -1L) is NodeType nt0)
@@ -4154,6 +4148,16 @@ namespace Pyrrho.Level3
                         throw new DBException("22G0L",ed.ToString());
                 }
             return cx;
+        }
+        internal CTree<long,bool> GraphTypes(Context cx)
+        {
+            var r = CTree<long, bool>.Empty;
+            for (var b = graphExps.First(); b != null; b = b.Next())
+                if (b.value() is CList<SqlNode> nl)
+                    for (var c = nl.First(); c != null; c = c.Next())
+                        if (c.value() is SqlNode sn)
+                            r += (sn.domain.defpos, true);
+            return r;
         }
         public override string ToString()
         {
@@ -4772,8 +4776,6 @@ namespace Pyrrho.Level3
                 PathNode(cx, new PathStep(be.alt, sp, 0,
                     new ExpStep(be.alt, be.matches?.Next(), be.next)), pd);
             }
-            if (xn.MostSpecificType(cx) is NodeType nt)
-                xn += (_Domain, nt);
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             if (tok == Sqlx.WITH && pd is not null)
@@ -4851,19 +4853,8 @@ namespace Pyrrho.Level3
                     }
                 alldone:;
             }
-            else if (xn.domain is NodeType nt0 && nt0.defpos > 0) // a specific label, maybe limit by props
-                ds = For(cx, xn, nt0, ds);
-            else // no label specified, maybe limit by props
-                if (xn.domain.kind == Sqlx.NODETYPE)
-                for (var b = cx.db.role.nodeTypes.First(); b != null; b = b.Next())
-                {
-                    if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
-                        ds = For(cx, xn, nt1, ds);
-                }
-            else
-                for (var b = cx.db.role.edgeTypes.First(); b != null; b = b.Next())
-                    if (b.value() is long p2 && cx.db.objects[p2] is EdgeType et1)
-                        ds = For(cx, xn, et1, ds);
+            else // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
+                ds = (cx._Ob(xn.label)??xn.domain).For(cx, this, xn, ds);
             var df = ds.First();
             if (df != null)
                 DbNode(cx, new NodeStep(be.alt, xn, df, new ExpStep(be.alt, be.matches?.Next(), be.next)),
@@ -4925,28 +4916,6 @@ namespace Pyrrho.Level3
                 && (ctr[Domain.EdgeType] >= truncating[Domain.EdgeType.defpos].Item1))
                 return true;
             return false;
-        }
-        BTree<long, TableRow> For(Context cx, SqlNode xn, NodeType nt, BTree<long, TableRow>? ds)
-        {
-            ds ??= BTree<long, TableRow>.Empty;
-            var cl = xn.EvalProps(cx,nt); 
-            if (nt.FindPrimaryIndex(cx) is Index px
-                && px.MakeKey(cl) is CList<TypedValue> pk
-                && nt.tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)
-                return ds + (tr0.defpos, tr0);
-            for (var c = nt.indexes.First(); c != null; c = c.Next())
-                for (var d = c.value().First(); d != null; d = d.Next())
-                    if (cx.db.objects[d.key()] is Index x
-                        && x.MakeKey(cl) is CList<TypedValue> xk
-                        && nt.tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)
-                        return ds + (tr.defpos, tr);
-            // let DbNode check any given properties match
-            var lm = truncating.Contains(nt.defpos) ? truncating[nt.defpos].Item1 : int.MaxValue;
-            var la = truncating.Contains(Domain.EdgeType.defpos) ? truncating[Domain.EdgeType.defpos].Item1 : int.MaxValue;
-            for (var b = nt.tableRows.First(); b != null && lm-- > 0 && la-- >0; b = b.Next())
-                if (b.value() is TableRow tr)
-                    ds += (tr.defpos, tr);
-            return ds;
         }
         /// <summary>
         /// For each dn in ds:

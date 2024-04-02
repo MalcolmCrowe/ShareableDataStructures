@@ -84,6 +84,7 @@ namespace Pyrrho.Level4
         internal int sD => (int)defsStore.Count; // see IncSD() and DecSD() below
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal long lexical = 0L; // current select block, set in incSD()
+        internal string? graph = null; // current graph, set by USE
         internal CTree<long, int> undefined = CTree<long, int>.Empty;
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long?> uids = BTree<long, long?>.Empty;
@@ -1562,6 +1563,8 @@ namespace Pyrrho.Level4
                         case JoinRowSet.JSecond: v = Replaced((long)v); break;
                         case Table.KeyCols: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case Level3.Index.Keys: v = ((Domain)v).Replaced(this); break;
+                        case SqlNode._Label: v = Replaced((long)v); break;
+                        case SqlNode.LabelSet: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case MergeRowSet._Left: v = Replaced((long)v); break;
                         case SqlValue.Left: v = Replaced((long)v); break;
                         case MemberPredicate.Lhs: v = Replaced((long)v); break;
@@ -1595,7 +1598,7 @@ namespace Pyrrho.Level4
                         case RowSet.RestRowSetSources: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RestRowSetUsing.RestTemplate: v = Replaced((long)v); break;
                         case ReturnStatement.Ret: v = Replaced((long)v); break;
-                        case MemberPredicate.Rhs: v = Replaced((long)v); break;
+                        case Schema._Graphs: v = ReplacedTlb((CTree<long,bool>)v); break;
                         case MultipleAssignment.Rhs: v = Replaced((long)v); break;
                         case MergeRowSet._Right: v = Replaced((long)v); break;
                         case SqlValue.Right: v = Replaced((long)v); break;
@@ -1643,8 +1646,6 @@ namespace Pyrrho.Level4
                         case SqlInsert.Value: v = Replaced((long)v); break;
                         case SelectRowSet.ValueSelect: v = Replaced((long)v); break;
                         case SqlCall.Var: v = Replaced((long)v); break;
-                        case QuantifiedPredicate.What: v = Replaced((long)v); break;
-                        case QuantifiedPredicate.Where: v = Replaced((long)v); break;
                         case SqlFunction.Window: v = Replaced((long)v); break;
                         case SqlFunction.WindowId: v = Replaced((long)v); break;
                         case UpdateAssignment.Vbl: v = Replaced((long)v); break;
@@ -1683,6 +1684,7 @@ namespace Pyrrho.Level4
                         r = done[dp]?.defpos ?? dp;
                     break;
                 case ExecuteStatus.Graph:
+                case ExecuteStatus.GraphType:
                 case ExecuteStatus.Obey:
                     if (instDFirst > 0 && dp > instSFirst
                         && dp <= instSLast)
@@ -2188,28 +2190,28 @@ namespace Pyrrho.Level4
             }
             return ut;
         }
-        internal Domain GroupCols(BList<long?> gs,Domain dm)
+        internal Domain GroupCols(BList<long?> gs, Domain dm)
         {
             var gc = CTree<long, Domain>.Empty;
-            var rs = dm as RowSet;
-            for (var b = gs.First(); b != null; b = b.Next())
-                if (b.value() is long p && rs!=null)
-                {
-                    if (obs[p] is SqlValue v && v.KnownBy(this, rs))
-                        gc += (p, _Dom(p));
-                    if (obs[p] is Grouping gg)
-                        for (var c = gg.keys.First(); c != null; c = c.Next())
-                            if (c.value() is long cp && _Ob(cp) is SqlValue ce)
-                            {
-                                if (dm.representation.Contains(cp) || 
-                                    (rs!=null && ce.KnownBy(this, rs)))
-                                    gc += (cp, ce.domain);
-                                for (var d = rs?.matching.PositionAt(cp); d != null; d = d.Next())
-                                    for (var e = d.value().First(); e != null; e = e.Next())
-                                        if (dm.representation.Contains(e.key()))
-                                            gc += (cp, ce.domain);
-                            }
-                }
+            if (dm is RowSet rs)
+                for (var b = gs.First(); b != null; b = b.Next())
+                    if (b.value() is long p && rs != null)
+                    {
+                        if (obs[p] is SqlValue v && v.KnownBy(this, rs))
+                            gc += (p, _Dom(p));
+                        if (obs[p] is Grouping gg)
+                            for (var c = gg.keys.First(); c != null; c = c.Next())
+                                if (c.value() is long cp && _Ob(cp) is SqlValue ce)
+                                {
+                                    if (dm.representation.Contains(cp) ||
+                                        (rs != null && ce.KnownBy(this, rs)))
+                                        gc += (cp, ce.domain);
+                                    for (var d = rs?.matching.PositionAt(cp); d != null; d = d.Next())
+                                        for (var e = d.value().First(); e != null; e = e.Next())
+                                            if (dm.representation.Contains(e.key()))
+                                                gc += (cp, ce.domain);
+                                }
+                    }
             var rt = BList<long?>.Empty;
             for (var b = gc.First(); b != null; b = b.Next())
                 rt += b.key();

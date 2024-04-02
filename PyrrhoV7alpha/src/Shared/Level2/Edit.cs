@@ -295,7 +295,58 @@ namespace Pyrrho.Level2
                     for (var b = ps.First(); b != null; b = b.Next())
                         rt += b.key();
                     dataType += (Table.PathDomain, ((Table)dataType)._PathDomain(cx));
-                    var un = (UDType)(cx.db.objects[uD.defpos] ?? throw new DBException("PE408202"));
+                    var un = (UDType)(cx.db.objects[uD.defpos] ?? throw new DBException("PE40802"));
+                    // special case: if un is a nodetype without an ID column and we have an ID column
+                    if (un is NodeType nu && nu.idCol<0 && dataType is NodeType tn && tn.idCol>0)
+                    {
+                        // this will be okay provided nu has no columns and no rows
+                        if (nu.rowType.Count > 0 || nu.tableRows.Count > 0) throw new DBException("42000");
+                        var nx = cx.db.objects[tn.idIx] as Level3.Index ?? throw new PEException("PE40405"); 
+                        // we get nu to adopt the ID column of nt, and clone the ID index
+                        nu += (Domain.RowType, new BList<long>(tn.idCol));
+                        nu += (NodeType.IdCol, tn.idCol);
+                        var xi = (Level3.Index)(cx.Add(new Level3.Index(ppos+1, nx.mem)));
+                        nu += (NodeType.IdIx, xi.defpos);
+                        cx.Add(nu);
+                        cx.Add(xi);
+                        cx.db += (nu, p);
+                        cx.db += (xi, p);
+                        un = nu;
+                    }
+                    // special case: if un is an edge type without leaving/arriving indexes we clone those of st
+                    if (un is EdgeType eu && eu.leaveIx<0 && dataType is EdgeType te)
+                    {
+                        var lx = cx.db.objects[st.leaveIx] as Level3.Index ?? throw new DBException("PE40803");
+                        // we get nu to adopt the ID column of nt, and clone the ID index
+                        eu += (Domain.RowType, eu.rowType+te.leaveCol);
+                        eu += (EdgeType.LeaveCol, te.leaveCol);
+                        var xl = (Level3.Index)cx.Add(new Level3.Index(ppos+2, lx.mem));
+                        eu += (Table.Indexes, un.indexes + (xl.keys, new CTree<long, bool>(xl.defpos, true)));
+                        cx.Add(eu);
+                        cx.Add(xl);
+                        cx.db += (eu, p);
+                        cx.db += (xl, p);
+                        un = eu;
+                    }
+                    if (un is EdgeType ev && ev.arriveIx<0 && dataType is EdgeType tf)
+                    {
+                        var ax = cx.db.objects[st.arriveIx] as Level3.Index ?? throw new PEException("PE40804");
+                        var xa = (Level3.Index)cx.Add(new Level3.Index(ppos+3, ax.mem));
+                        ev += (Table.Indexes, un.indexes + (xa.keys, new CTree<long, bool>(xa.defpos, true)));
+                        ev += (Domain.RowType, ev.rowType+tf.arriveCol);
+                        ev += (EdgeType.ArriveCol,tf.arriveCol);
+                        for (var c = xa.keys.rowType.First(); c != null; c = c.Next())
+                            if (cx.db.objects[c.value() ?? -1L] is TableColumn tc)
+                            {
+                                cx.Add(tc + (TableColumn._Table, st.defpos));
+                                ev += (EdgeType.ArriveCol, tc.defpos);
+                            }
+                        cx.Add(ev);
+                        cx.Add(xa);
+                        cx.db += (ev, p);
+                        cx.db += (xa, p);
+                        un = ev;
+                    }
                     // we need to add our tableRows to under 
                     if (un is NodeType nt && dataType is Table ns)
                     {
@@ -313,27 +364,13 @@ namespace Pyrrho.Level2
                         un += (Table.TableRows, nt.tableRows + ns.tableRows);
                         // record that we are a subType of Under
                         un += (Domain.Subtypes, uD.subtypes - ppos + (prev.defpos, true));
-                        cx.db += (un.defpos, un);
+                        cx.Add(un);
+                        cx.db += (un, p);
                         dataType += (Domain.Under, under-uD+(un,true));
                     }
                 }
             // record our new dataType
             cx.db += (dataType.defpos, dataType);
-            // and fix up the nodeIds tree
- /*           var ni = cx.db.nodeIds;
-            for (var b = fix.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key()] is NodeType nd)
-                {
-                    while (nd.super is NodeType d1)
-                        nd = d1;
-                    if (nd.FindPrimaryIndex(cx) is Level3.Index px)
-                        for (var c = px.rows?.First(); c != null; c = c.Next())
-                            if (c.key()[0] is TChar k && c.Value() is long kp && nd.tableRows[kp] is TableRow t
-                                && cx.db.objects[t.tabledefpos] is NodeType td)
-                                ni += (k.value, new TNode(kp, td, t.vals));
-                }
-            if (ni != cx.db.nodeIds)
-                cx.db += (Database.NodeIds, ni); */
             return dataType;
         }
         public override string ToString()

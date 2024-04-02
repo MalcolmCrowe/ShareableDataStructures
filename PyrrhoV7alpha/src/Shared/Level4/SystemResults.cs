@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -330,9 +331,9 @@ namespace Pyrrho.Level4
             // NB: rowType stuff is done by TableRowSet
             if (f.name?.StartsWith("Log$")==true &&cx.user?.defpos!=cx.db.owner)
                 throw new DBException("42105");
-            var r = (m??BTree<long,object>.Empty)+(SRowType,f.rowType)+(SysTable, f) + (SysFilt, sf);
+            var r = (m ?? BTree<long, object>.Empty) + (SRowType, f.rowType) + (SysTable, f) + (SysFilt, sf);
             if (w is not null)
-                r += (_Where, w);
+                r  += (_Where,w);
             if (f.infos[cx.role.defpos]?.names is BTree<string, (int, long?)> ns)
                 r += (ObInfo.Names, ns);
             if (sx != null)
@@ -402,7 +403,12 @@ namespace Pyrrho.Level4
             RoleDomainResults();
             RoleDomainCheckResults();
             RoleEdgeTypeResults();
+            RoleGraphCatalogResults();
+            RoleGraphEdgeTypeResults();
             RoleGraphInfoResults();
+            RoleGraphLabelResults();
+            RoleGraphNodeTypeResults();
+            RoleGraphPropertyResults();
             RoleIndexResults();
             RoleIndexKeyResults();
             RoleJavaResults();
@@ -503,7 +509,12 @@ namespace Pyrrho.Level4
                 case "Role$EdgeType": return RoleEdgeTypeBookmark.New(_cx, res);
                 case "Role$Domain": return RoleDomainBookmark.New(_cx, res);
                 case "Role$DomainCheck": return RoleDomainCheckBookmark.New(_cx, res);
+                case "Role$GraphCatalog": return RoleGraphCatalogBookmark.New(_cx, res);
+                case "Role$GraphEdgeType": return RoleGraphEdgeTypeBookmark.New(_cx, res);
                 case "Role$GraphInfo": return RoleGraphInfoBookmark.New(_cx, res);
+                case "Role$GraphLabel": return RoleGraphLabelBookmark.New(_cx, res);
+                case "Role$GraphNodeType": return RoleGraphNodeTypeBookmark.New(_cx, res);
+                case "Role$GraphProperty": return RoleGraphPropertyBookmark.New(_cx, res);
                 case "Role$Index": return RoleIndexBookmark.New(_cx, res);
                 case "Role$IndexKey": return RoleIndexKeyBookmark.New(_cx, res);
                 case "Role$Java": return RoleJavaBookmark.New(_cx, res);
@@ -6832,6 +6843,154 @@ namespace Pyrrho.Level4
                 throw new NotImplementedException();
             }
         }
+        static void RoleGraphCatalogResults()
+        {
+            var t = new SystemTable("Role$GraphCatalog");
+            t += new SystemTableColumn(t, "Pos", Char, 1);
+            t += new SystemTableColumn(t, "PathOrName", Char, 1);
+            t += new SystemTableColumn(t, "Type", Char, 0);
+            t += new SystemTableColumn(t, "Owner", Int, 0);
+            t.Add();
+        }
+        internal class RoleGraphCatalogBookmark : SystemBookmark
+        {
+            readonly ABookmark<string,long?> _bmk;
+            public RoleGraphCatalogBookmark(Context cx, SystemRowSet r, int pos, ABookmark<string,long?> bmk, DBObject ob) 
+                : base(cx, r, pos, ob.defpos,ob.defpos,_Value(r,bmk,ob))
+            {
+                _bmk = bmk;
+            }
+            internal static RoleGraphCatalogBookmark? New(Context cx, SystemRowSet res)
+            {
+                for (var b = cx.db.catalog.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.value()??-1L] is DBObject c)
+                    {
+                        var rb = new RoleGraphCatalogBookmark(cx, res, 0, b,c);
+                        if (rb.Match(res) && Eval(res.where, cx))
+                            return rb;
+                    }
+                return null;
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                for (var b = _bmk.Next(); b != null; b = b.Next())
+                    if (cx.db.objects[b.value() ?? -1L] is DBObject c)
+                    {
+                        var rb = new RoleGraphCatalogBookmark(cx, res, _pos+1, b, c);
+                        if (rb.Match(res) && Eval(res.where, cx))
+                            return rb;
+                    }
+                return null;
+            }
+            /// <summary>
+            /// the current value: (Pos,PathOrname,Type,Owner)
+            /// </summary>
+            static TRow _Value(SystemRowSet rs, ABookmark<string,long?>bmk, DBObject ob)
+            {
+                return new TRow(rs,
+                    new TChar(Uid(ob.defpos)),
+                    new TChar(bmk.key()),
+                    new TChar(ob.GetType().Name),
+                    new TChar(Uid(ob.definer)));
+            }
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+        }
+        static void RoleGraphEdgeTypeResults()
+        {
+            var t = new SystemTable("Role$GraphEdgeType");
+            t += new SystemTableColumn(t, "Pos", Char, 1);
+            t += new SystemTableColumn(t, "GraphorGraphType", Char, 1);
+            t += new SystemTableColumn(t, "Name", Char, 0);
+            t += new SystemTableColumn(t, "Owner", Int, 0);
+            t.Add();
+        }
+        internal class RoleGraphEdgeTypeBookmark : SystemBookmark
+        {
+            readonly ABookmark<long, object> _obmk;
+            readonly DBObject _g;
+            readonly ABookmark<long, bool> _bmk;
+            public RoleGraphEdgeTypeBookmark(Context cx, SystemRowSet r, int pos, 
+                ABookmark<long,object> obmk,ABookmark<long, bool> bmk, DBObject g,EdgeType e)
+                : base(cx, r, pos, e.defpos, e.defpos, _Value(r,g,e))
+            {
+                _obmk = obmk;
+                _g = g;
+                _bmk = bmk;
+            }
+            internal static RoleGraphEdgeTypeBookmark? New(Context cx, SystemRowSet res)
+            {
+                for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
+                    if (b.value() is Graph g)
+                        for (var c = g.graphTypes.First(); c != null; c = c.Next())
+                        {
+                            if (cx._Ob(c.key()) is EdgeType e)
+                            {
+                                var rb = new RoleGraphEdgeTypeBookmark(cx, res, 0, b, c, g, e);
+                                if (rb.Match(res) && Eval(res.where, cx))
+                                    return rb;
+                            }
+                        }
+                    else if (b.value() is GraphType gt)
+                        for (var c = gt.constraints.First(); c != null; c = c.Next())
+                            if (cx._Ob(c.key()) is EdgeType e)
+                            {
+                                var rb = new RoleGraphEdgeTypeBookmark(cx, res, 0, b, c, gt, e);
+                                if (rb.Match(res) && Eval(res.where, cx))
+                                    return rb;
+                            }
+                    return null;
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                var obmk = _obmk;
+                var bmk = _bmk;
+                var g = _g;
+                for (; obmk != null;)
+                {
+                    for (var c = bmk?.Next(); c != null; c = c.Next())
+                        if (cx._Ob(c.key()) is EdgeType e)
+                        {
+                            var rb = new RoleGraphEdgeTypeBookmark(cx, res, _pos+1, obmk, c, g, e);
+                            if (rb.Match(res) && Eval(res.where, cx))
+                                return rb;
+                        }
+                    for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
+                    {
+                        if (obmk.value() is Graph g1)
+                        {
+                            g = g1;
+                            bmk = g1.graphTypes.First();
+                            break;
+                        }
+                        else if (obmk.value() is GraphType gt)
+                        {
+                            g = gt;
+                            bmk = gt.constraints.First();
+                            break;
+                        }
+                    }
+                }
+                return null;
+            }
+            /// <summary>
+            /// the current value: (Pos,Graph,Name,Owner)
+            /// </summary>
+            static TRow _Value(SystemRowSet rs,DBObject g,EdgeType e)
+            {
+                return new TRow(rs,
+                    new TChar(Uid(e.defpos)),
+                    new TChar(Uid(g.defpos)),
+                    new TChar(e.name ?? ""),
+                    new TChar(Uid(e.definer)));
+            }
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+        }
         static void RoleGraphInfoResults()
         {
             var t = new SystemTable("Role$GraphInfo");
@@ -6934,6 +7093,313 @@ namespace Pyrrho.Level4
                 return new RoleGraphInfoBookmark(cx, res, _pos - 1, _values);
             }
         }
+        static void RoleGraphLabelResults()
+        {
+            var t = new SystemTable("Role$GraphLabel");
+            t += new SystemTableColumn(t, "Pos", Char, 1);
+            t += new SystemTableColumn(t, "GraphorGraphType", Char, 0);
+            t += new SystemTableColumn(t, "NodeorEdgeType", Char, 0);
+            t += new SystemTableColumn(t, "Label", Char, 0);
+            t.Add();
+        }
+        internal class RoleGraphLabelBookmark : SystemBookmark
+        {
+            readonly ABookmark<long, object> _obmk;
+            readonly DBObject _g;
+            readonly ABookmark<long,bool> _mbmk;
+            readonly NodeType _nt;
+            readonly ABookmark<long, bool> _bmk;
+            public RoleGraphLabelBookmark(Context cx, SystemRowSet r, int pos,
+                ABookmark<long, object> obmk, ABookmark<long,bool> mbmk, ABookmark<long, bool> bmk, 
+                DBObject g, NodeType nt, string lb)
+                : base(cx, r, pos, nt.defpos, nt.defpos, _Value(r, g, nt, lb))
+            {
+                _obmk = obmk;
+                _mbmk = mbmk;
+                _g = g;
+                _nt = nt;
+                _bmk = bmk;
+            }
+            internal static RoleGraphLabelBookmark? New(Context cx, SystemRowSet res)
+            {
+                for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
+                    if (b.value() is Graph g)
+                        for (var c = g.graphTypes.First(); c != null; c = c.Next())
+                        {
+                            if (cx._Ob(c.key()) is NodeType e)
+                                for (var d = e.labels.First(); d != null; d = d.Next())
+                                    if (cx._Ob(d.key()) is NodeType f)
+                                    {
+                                        var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, g, e, f.name);
+                                        if (rb.Match(res) && Eval(res.where, cx))
+                                            return rb;
+                                    }
+                        }
+                    else if (b.value() is GraphType gt)
+                        for (var c = gt.constraints.First(); c != null; c = c.Next())
+                        {
+                            if (cx._Ob(c.key()) is NodeType e)
+                                for (var d = e.labels.First(); d != null; d = d.Next())
+                                    if (cx._Ob(d.key()) is NodeType f)
+                                    {
+                                        var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, gt, e, f.name);
+                                        if (rb.Match(res) && Eval(res.where, cx))
+                                            return rb;
+                                    }
+                        }
+                return null;
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                var obmk = _obmk;
+                var mbmk = _mbmk;
+                var bmk = _bmk;
+                var g = _g;
+                var nt = _nt;
+                for (; obmk != null;)
+                {
+                    for (var c = bmk?.Next(); c != null; c = c.Next())
+                        if (mbmk!=null && cx._Ob(c.key()) is NodeType e)
+                        {
+                            var rb = new RoleGraphLabelBookmark(cx, res, _pos + 1, obmk, mbmk, c, g, nt, e.name);
+                            if (rb.Match(res) && Eval(res.where, cx))
+                                return rb;
+                        }
+                    for (mbmk = mbmk?.Next(); mbmk != null; mbmk = mbmk.Next())
+                        if (cx._Ob(mbmk.key()) is NodeType n)
+                        {
+                            nt = n;
+                            bmk = n.labels.First();
+                            goto next;
+                        }
+                    for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
+                    {
+                        if (obmk.value() is Graph g1)
+                        {
+                            g = g1;
+                            mbmk = g1.graphTypes.First();
+                            break;
+                        }
+                        else if (obmk.value() is GraphType gt)
+                        {
+                            g = gt;
+                            mbmk = gt.constraints.First();
+                            break;
+                        }
+                    }
+                    next:;
+                }
+                return null;
+            }
+            /// <summary>
+            /// the current value: (Pos,Graph,name,Owner)
+            /// </summary>
+            static TRow _Value(SystemRowSet rs, DBObject g, NodeType e, string s)
+            {
+                return new TRow(rs,
+                    new TChar(Uid(e.defpos)),
+                    new TChar(Uid(g.defpos)),
+                    new TChar(e.name ?? ""),
+                    new TChar(s),
+                    new TChar(Uid(e.definer))); ;
+            }
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+        }
+        static void RoleGraphNodeTypeResults()
+        {
+            var t = new SystemTable("Role$GraphNodeType");
+            t += new SystemTableColumn(t, "Pos", Char, 1);
+            t += new SystemTableColumn(t, "Parent", Char, 1);
+            t += new SystemTableColumn(t, "Name", Char, 0);
+            t += new SystemTableColumn(t, "Owner", Int, 0);
+            t.Add();
+        }
+        internal class RoleGraphNodeTypeBookmark : SystemBookmark
+        {
+            readonly ABookmark<long, object> _obmk;
+            readonly Graph _g;
+            readonly ABookmark<long, bool> _bmk;
+            public RoleGraphNodeTypeBookmark(Context cx, SystemRowSet r, int pos,
+                ABookmark<long, object> obmk, ABookmark<long, bool> bmk, Graph g, NodeType e)
+                : base(cx, r, pos, e.defpos, e.defpos, _Value(r, g, e))
+            {
+                _obmk = obmk;
+                _g = g;
+                _bmk = bmk;
+            }
+            internal static RoleGraphNodeTypeBookmark? New(Context cx, SystemRowSet res)
+            {
+                for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
+                    if (b.value() is Graph g)
+                        for (var c = g.graphTypes.First(); c != null; c = c.Next())
+                            if (cx._Ob(c.key()) is NodeType e && e.domain.kind!=Sqlx.EDGETYPE)
+                            {
+                                var rb = new RoleGraphNodeTypeBookmark(cx, res, 0, b, c, g, e);
+                                if (rb.Match(res) && Eval(res.where, cx))
+                                    return rb;
+                            }
+                return null;
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                var obmk = _obmk;
+                var bmk = _bmk;
+                var g = _g;
+                for (; obmk != null;)
+                {
+                    for (var c = bmk?.Next(); c != null; c = c.Next())
+                        if (cx._Ob(c.key()) is NodeType e && e.domain.kind!=Sqlx.EDGETYPE)
+                        {
+                            var rb = new RoleGraphNodeTypeBookmark(cx, res, _pos + 1, obmk, c, g, e);
+                            if (rb.Match(res) && Eval(res.where, cx))
+                                return rb;
+                        }
+                    for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
+                        if (obmk.value() is Graph g1)
+                        {
+                            g = g1;
+                            bmk = g.graphTypes.First();
+                            break;
+                        }
+                }
+                return null;
+            }
+            /// <summary>
+            /// the current value: (Pos,Graph,name,Owner)
+            /// </summary>
+            static TRow _Value(SystemRowSet rs, Graph g, NodeType e)
+            {
+                return new TRow(rs,
+                    new TChar(Uid(e.defpos)),
+                    new TChar(Uid(g.defpos)),
+                    new TChar(e.name ?? ""),
+                    new TChar(Uid(e.definer))); ;
+            }
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+        }
+        static void RoleGraphPropertyResults()
+        {
+            var t = new SystemTable("Role$GraphProperty");
+            t += new SystemTableColumn(t, "Pos", Char, 1);
+            t += new SystemTableColumn(t, "GraphorGraphType", Char, 0);
+            t += new SystemTableColumn(t, "NodeorEdgeType", Char, 0);
+            t += new SystemTableColumn(t, "Name", Char, 0);
+            t += new SystemTableColumn(t, "ValueType", Char, 0);
+            t.Add();
+        }
+        internal class RoleGraphPropertyBookmark : SystemBookmark
+        {
+            readonly ABookmark<long, object> _obmk;
+            readonly DBObject _g;
+            readonly ABookmark<long, bool> _mbmk;
+            readonly NodeType _nt;
+            readonly ABookmark<int,long?> _bmk;
+            public RoleGraphPropertyBookmark(Context cx, SystemRowSet r, int pos,
+                ABookmark<long, object> obmk, ABookmark<long, bool> mbmk, ABookmark<int,long?> bmk,
+                DBObject g, NodeType nt, TableColumn tc)
+                : base(cx, r, pos, nt.defpos, nt.defpos, _Value(cx, r, g, nt, tc))
+            {
+                _obmk = obmk;
+                _mbmk = mbmk;
+                _g = g;
+                _nt = nt;
+                _bmk = bmk;
+            }
+            internal static RoleGraphPropertyBookmark? New(Context cx, SystemRowSet res)
+            {
+                for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
+                    if (b.value() is Graph g)
+                        for (var c = g.graphTypes.First(); c != null; c = c.Next())
+                        {
+                            if (cx._Ob(c.key()) is NodeType e)
+                                for (var d = e.rowType.First(); d != null; d = d.Next())
+                                    if (cx._Ob(d.value()??-1L) is TableColumn tc)
+                                    {
+                                        var rb = new RoleGraphPropertyBookmark(cx, res, 0, b, c, d, g, e, tc);
+                                        if (rb.Match(res) && Eval(res.where, cx))
+                                            return rb;
+                                    }
+                        }
+                    else if (b.value() is GraphType gt)
+                        for (var c = gt.constraints.First(); c != null; c = c.Next())
+                        {
+                            if (cx._Ob(c.key()) is NodeType e)
+                                for (var d = e.rowType.First(); d != null; d = d.Next())
+                                    if (cx._Ob(d.value()??-1L) is TableColumn tc)
+                                    {
+                                        var rb = new RoleGraphPropertyBookmark(cx, res, 0, b, c, d, gt, e, tc);
+                                        if (rb.Match(res) && Eval(res.where, cx))
+                                            return rb;
+                                    }
+                        }
+                return null;
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                var obmk = _obmk;
+                var mbmk = _mbmk;
+                var bmk = _bmk;
+                var g = _g;
+                var nt = _nt;
+                for (; obmk != null;)
+                {
+                    for (var c = bmk?.Next(); c != null; c = c.Next())
+                        if (mbmk != null && cx._Ob(c.value()??-1L) is TableColumn tc)
+                        {
+                            var rb = new RoleGraphPropertyBookmark(cx, res, _pos + 1, obmk, mbmk, c, g, nt, tc);
+                            if (rb.Match(res) && Eval(res.where, cx))
+                                return rb;
+                        }
+                    for (mbmk = mbmk?.Next(); mbmk != null; mbmk = mbmk.Next())
+                        if (cx._Ob(mbmk.key()) is NodeType n)
+                        {
+                            nt = n;
+                            bmk = n.rowType.First();
+                            goto next;
+                        }
+                    for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
+                    {
+                        if (obmk.value() is Graph g1)
+                        {
+                            g = g1;
+                            mbmk = g1.graphTypes.First();
+                            break;
+                        }
+                        else if (obmk.value() is GraphType gt)
+                        {
+                            g = gt;
+                            mbmk = gt.constraints.First();
+                            break;
+                        }
+                    }
+                next:;
+                }
+                return null;
+            }
+            /// <summary>
+            /// the current value: (Pos,Graph,name,Owner)
+            /// </summary>
+            static TRow _Value(Context cx,SystemRowSet rs, DBObject g, NodeType e, TableColumn tc)
+            {
+                return new TRow(rs,
+                    new TChar(Uid(e.defpos)),
+                    new TChar(Uid(g.defpos)),
+                    new TChar(e.name ?? ""),
+                    new TChar(cx.NameFor(tc.defpos)),
+                    new TChar(tc.domain.ToString()));
+            }
+            protected override Cursor? _Previous(Context cx)
+            {
+                throw new NotImplementedException();
+            }
+        }
+
         static void RoleNodeTypeResults()
         {
             var t = new SystemTable("Role$NodeType");

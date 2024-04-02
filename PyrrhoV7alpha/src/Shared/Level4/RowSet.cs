@@ -76,7 +76,6 @@ namespace Pyrrho.Level4
             Periods = -185, // BTree<long,PeriodSpec>
             UsingOperands = -411, // BTree<long,long?> SqlValue
             Referenced = -378, // CTree<long,bool> SqlValue (referenced columns)
-            _Repl = -186, // CTree<string,string> Sql output for remote views
             RestRowSetSources = -331, // CTree<long,bool>    RestRowSet or RestRowSetUsing
             _Rows = -407, // CList<TRow> 
             RowOrder = -404, // Domain
@@ -1135,6 +1134,8 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         internal virtual bool Knows(Context cx, long rp, bool ambient=false)
         {
+            if (cx.obs[rp] is SqlCopy sc && Knows(cx, sc.copyFrom, ambient))
+                return true;
             if (rp == defpos)
                 return true;
             for (var b = rowType.First(); b != null // && b.key()<ds

@@ -131,6 +131,10 @@ namespace Pyrrho.Level3
                     return p;
             return -1L;
         }
+        internal virtual BTree<long, TableRow> For(Context cx, MatchStatement ms, SqlNode xn, BTree<long, TableRow>? ds)
+        {
+            throw new PEException("PE70300");
+        }
         /// <summary>
         /// Do not use this function in a constructor of a subclass of SqlValue or RowSet
         /// </summary>
