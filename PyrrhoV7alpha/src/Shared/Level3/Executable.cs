@@ -4677,7 +4677,8 @@ namespace Pyrrho.Level3
             // everything has been checked
             if (flags == Flags.None)
                 cx.val = TBool.True;
-            if (flags.HasFlag(Flags.Bindings) && cx.obs[bindings] is ExplicitRowSet ers
+            if ((flags.HasFlag(Flags.Bindings)||flags.HasFlag(Flags.Schema))
+                && cx.obs[bindings] is ExplicitRowSet ers
                 && cx.obs[ers.index] is Index ex && ex.MakeKey(cx.binding) is CList<TypedValue> k
                 && ex.rows?.Contains(k) != true)
             {

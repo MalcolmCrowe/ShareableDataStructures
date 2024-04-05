@@ -1209,8 +1209,12 @@ namespace Pyrrho
                         return lc + 1 + tn.Length + ((TRow)o).Length;
                     }
                 case Sqlx.NODETYPE:
+                    if (tv.dataType is NodeType nt && tv is not TNode)
+                        return lc + 1 + StringLength(nt.Describe(cx));
                     return lc+1 + StringLength(((TNode)tv).tableRow.vals.ToString());
                 case Sqlx.EDGETYPE:
+                    if (tv.dataType is EdgeType et && tv is not TNode)
+                        return lc + 1 + StringLength(et.Describe(cx));
                     return lc + 1 + StringLength(((TEdge)tv).tableRow.vals.ToString());
             }
             return lc + 1 + StringLength(o);

@@ -1274,6 +1274,23 @@ namespace Pyrrho.Level5
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
+        public virtual string Describe(Context cx)
+        {
+            var sb = new StringBuilder();
+            sb.Append("NODE "); sb.Append(name);
+            var cm = " {";
+            for (var b = First(); b != null; b = b.Next())
+                if (b.value() is long p && representation[p] is Domain d)
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(cx.NameFor(p));
+                    sb.Append(' ');
+                    sb.Append(d.ToString());
+                }
+            if (cm == ",")
+                sb.Append('}');
+            return sb.ToString();
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -1684,6 +1701,31 @@ namespace Pyrrho.Level5
                 + (LeavingType, cx.Fix(leavingType))
                 + (ArrivingType, cx.Fix(arrivingType));
             return (EdgeType)cx.Add(r);
+        }
+        public override string Describe(Context cx)
+        {
+            var sb = new StringBuilder();
+            sb.Append("DIRECTED ");
+            sb.Append("EDGE "); sb.Append(name);
+            var cm = " {";
+            for (var b = First(); b != null; b = b.Next())
+                if (b.value() is long p && representation[p] is Domain d
+                    && d.kind!=Sqlx.POSITION)
+                {
+                    sb.Append(cm); cm = ",";
+                    sb.Append(cx.NameFor(p));
+                    sb.Append(' ');
+                    sb.Append(d.ToString());
+                }
+            if (cm == ",")
+                sb.Append('}');
+            if (cx.db.objects[leavingType] is NodeType ln && cx.db.objects[arrivingType] is NodeType an)
+            {
+                sb.Append(" CONNECTING (");
+                sb.Append(ln.name); sb.Append("->");
+                sb.Append(an.name); sb.Append(')');
+            }
+            return sb.ToString();
         }
         public override string ToString()
         {
