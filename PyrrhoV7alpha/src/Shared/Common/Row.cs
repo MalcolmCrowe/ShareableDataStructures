@@ -1087,6 +1087,35 @@ namespace Pyrrho.Common
                 str.Append(']');
             return str.ToString();
         }
+        /// <summary>
+        /// Used in MATCH SCHEMA output
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal override string ToString(Context cx)
+        {
+            var str = new StringBuilder();
+            var cm = '(';
+            for (var b = values.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is TableColumn tc && tc.infos[cx.role.defpos]?.name is string nm)
+                {
+                    if (tc.flags.HasFlag(Level2.PColumn.GraphFlags.LeaveCol)
+                        || tc.flags.HasFlag(Level2.PColumn.GraphFlags.ArriveCol))
+                        continue;
+                    str.Append(cm); cm = ',';
+                    str.Append(nm); str.Append('=');
+                    str.Append(b.value().ToString(cx));
+                }
+            if (cm == ',')
+                str.Append(')');
+            if (dataType is EdgeType et)
+            {
+                str.Append(" CONNECTS ("); str.Append(cx.NameFor(et.leavingType));
+                str.Append(") TO ("); str.Append(cx.NameFor(et.arrivingType));
+                str.Append(')');
+            }
+            return str.ToString();
+        }
         internal override TypedValue[] ToArray()
         {
             var r = new TypedValue[Length];

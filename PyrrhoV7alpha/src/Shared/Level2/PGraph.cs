@@ -10,6 +10,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Text;
 using System.Xml.Linq;
 namespace Pyrrho.Level2
 {
@@ -49,19 +50,19 @@ namespace Pyrrho.Level2
     {
         public long leavingType;
         public long arrivingType;
-        internal PEdgeType(string nm, long p, EdgeType dm, Context cx)
-            :base (Type.PEdgeType,nm, p, dm,cx)
-        {
-            leavingType = dm.leavingType;
-            arrivingType = dm.arrivingType;
-   //         GraphUse(cx, defpos, leavingType, arrivingType);
-        }
         public override long Dependent(Writer wr, Transaction tr)
         {
             return base.Dependent(wr, tr);
         }
-        public PEdgeType(string nm, EdgeType nt, CTree<Domain, bool> un, long ns, long pp, Context cx) 
-            : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) { }
+        public PEdgeType(string nm, EdgeType nt, CTree<Domain, bool> un, long ns, 
+            long lt, long at, long pp, Context cx) 
+            : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) 
+        {
+            if (lt < 0 || at < 0)
+                throw new PEException("PE20801");
+            leavingType = lt;
+            arrivingType = at;
+        }
         public PEdgeType(Reader rdr) : base(Type.PEdgeType, rdr) 
         { }
         protected PEdgeType(Type t, Reader rdr) : base(t, rdr) { }
@@ -117,10 +118,8 @@ namespace Pyrrho.Level2
             types = ts;
             records = ns;
         }
-
-        public PGraph(Type tp, Reader rdr) : base(tp, rdr)
+        public PGraph(Reader rdr) : base(Type.PGraph, rdr)
         { }
-
         public PGraph(PGraph x, Writer wr) : base(x, wr)
         {
             iri = x.iri;
@@ -188,6 +187,26 @@ namespace Pyrrho.Level2
                 return (tr, this);
             return base.Commit(wr, tr);
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("PGraph ");
+            sb.Append(iri); sb.Append('/'); sb.Append(name);
+            var cm = " [";
+            for (var b = types.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key()));
+            }
+            if (cm == ",")
+                sb.Append(']');
+            cm = " [";
+            for (var b = records.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key()));
+            }
+            if (cm == ",")
+                sb.Append(']');
+            return sb.ToString();
+        }
     }
     internal class PGraphType : Physical
     {
@@ -195,15 +214,13 @@ namespace Pyrrho.Level2
         public string name = ""; // final component of iri, set in Graph constructor
         public CTree<long, bool> types = CTree<long, bool>.Empty;
         public PGraphType(long pp,  string s, CTree<long, bool> ts)
-            : base(Type.PGraph, pp)
+            : base(Type.PGraphType, pp)
         {
             iri = s;
             types = ts;
         }
-
-        public PGraphType(Type tp, Reader rdr) : base(tp, rdr)
+        public PGraphType(Reader rdr) : base(Type.PGraphType, rdr)
         { }
-
         public PGraphType(PGraphType x, Writer wr) : base(x, wr)
         {
             iri = x.iri;
@@ -254,6 +271,19 @@ namespace Pyrrho.Level2
                 return (tr, this);
             return base.Commit(wr, tr);
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder("PGraphType ");
+            sb.Append(iri); sb.Append('/'); sb.Append(name);
+            var cm = " [";
+            for (var b = types.First(); b!=null;b=b.Next())
+            {
+                sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key()));
+            }
+            if (cm == ",")
+                sb.Append(']');
+            return sb.ToString();
+        }
     }
     internal class PSchema : Physical
     {
@@ -262,10 +292,8 @@ namespace Pyrrho.Level2
         {
             directoryPath = s;
         }
-
-        public PSchema(Type tp, Reader rdr) : base(tp, rdr)
+        public PSchema(Reader rdr) : base(Type.PSchema, rdr)
         { }
-
         public PSchema(PSchema x, Writer wr) : base(x, wr)
         {
             directoryPath = x.directoryPath;
@@ -306,6 +334,10 @@ namespace Pyrrho.Level2
             if (directoryPath.StartsWith("http")) // do not commit
                 return (tr, this);
             return base.Commit(wr, tr);
+        }
+        public override string ToString()
+        {
+            return "PSchema "+directoryPath;
         }
     }
 }

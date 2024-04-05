@@ -4114,7 +4114,7 @@ namespace Pyrrho.Level3
                             && nd is not SqlEdge)
                         {
                             var nt = (NodeType)nd.domain;
-                            if (nt.defpos < 0 && nt.name != "AMPERSAND")
+                            if (nt.defpos < 0 && nt.labels.Count<2)
                                 for (var c = nd.labelSet.First(); c != null; c = c.Next())
                                     if (cx.obs[c.key()] is SqlLiteral sl
                                             && sl.Eval(cx) is TChar tc
@@ -4137,7 +4137,7 @@ namespace Pyrrho.Level3
                             ed += (SqlEdge.LeavingValue, (ed.tok == Sqlx.ARROWBASE) ? ln.defpos : n.defpos);
                             ed += (SqlEdge.ArrivingValue, (ed.tok == Sqlx.ARROWBASE) ? n.defpos : ln.defpos);
                             ed = (SqlEdge)cx.Add(ed);
-                            ed.Create(cx, et, ln.name!="AMPERSAND");
+                            ed.Create(cx, et, ln.labelSet.Count<=1);
                             ed = null;
                             ln = n;
                         }
@@ -4217,7 +4217,7 @@ namespace Pyrrho.Level3
         internal const long
             BindingTable = -490, // long ExplicitRowSet
             GDefs = -210,   // CTree<long,TGParam>
-            MatchFlags = -496, // Bindings=1,Body=2,Return=4
+            MatchFlags = -496, // Bindings=1,Body=2,Return=4,Schema=8
             MatchList = -491, // BList<long?> SqlMatchAlt
             Truncating = -492; // BTree<long,(int,Domain)> EdgeType (or 0L)
         internal CTree<long, TGParam> gDefs =>
@@ -4237,7 +4237,7 @@ namespace Pyrrho.Level3
             (BTree<string, (int, long?)>?)mem[ObInfo.Names] ?? BTree<string, (int, long?)>.Empty;
         internal long bindings => (long)(mem[BindingTable] ?? -1L);
         [Flags]
-        internal enum Flags { None = 0, Bindings = 1, Body = 2, Return = 4 }
+        internal enum Flags { None = 0, Bindings = 1, Body = 2, Return = 4, Schema = 8 }
         internal Flags flags => (Flags)(mem[MatchFlags] ?? Flags.None);
         public MatchStatement(Context cx, BTree<long, (int, Domain)>? tg, CTree<long, TGParam> gs, BList<long?> ge,
             BTree<long, object> m, long st, long re)
@@ -4261,7 +4261,7 @@ namespace Pyrrho.Level3
             m += (GDefs, gs);
             if (tg is not null)
                 m += (Truncating, tg);
-            var f = Flags.None;
+            var f = (Flags)(m[MatchFlags]??Flags.None);
             for (var b = gs.First(); b != null && f == Flags.None; b = b.Next())
                 if (b.value().value != "")
                     f |= Flags.Bindings;
@@ -4934,40 +4934,46 @@ namespace Pyrrho.Level3
             var ob = cx.binding;
             var pa = cx.paths[bn.alt.defpos];
             var ot = pa;
-            TNode? dn;
+            TNode? dn = null;
             var ns = bn.nodes;
             while (ns is not null)
             {
                 step = ++_step;
                 if (ns?.value() is not TableRow tr)
                     goto backtrack;
-                NodeType? dt = null;
-                for (var b = tr.tabledefpos.First(); b != null; b = b.Next())
+                if (flags.HasFlag(Flags.Schema) 
+                    && cx._Ob(tr.tabledefpos.First()?.key()??-1L) is Domain dm)
+                    cx.binding += (bn.xn.defpos, new TRow(dm, tr.vals));
+                else
                 {
-                    dt = cx.db.objects[b.key()] as NodeType;
-                    if (bn.xn.domain.defpos < 0)
-                        break;
-                    if (dt is not null && dt.EqualOrStrongSubtypeOf(bn.xn.domain))
-                        break;
+                    NodeType? dt = null;
+                    for (var b = tr.tabledefpos.First(); b != null; b = b.Next())
+                    {
+                        dt = cx.db.objects[b.key()] as NodeType;
+                        if (bn.xn.domain.defpos < 0)
+                            break;
+                        if (dt is not null && dt.EqualOrStrongSubtypeOf(bn.xn.domain))
+                            break;
+                    }
+                    if (dt is null || (bn.xn.domain.defpos > 0 && !dt.EqualOrStrongSubtypeOf(bn.xn.domain)))
+                        goto backtrack;
+                    dn = (dt is EdgeType et) ? new TEdge(cx, et, tr) : new TNode(cx, dt, tr);
+                    if (bn.alt.mode == Sqlx.TRAIL && dn is TEdge && pa?.Contains(dn) == true)
+                        goto backtrack;
+                    if (bn.alt.mode == Sqlx.ACYCLIC && pa?.Contains(dn) == true)
+                        goto backtrack;
+                    if ((bn.alt.mode == Sqlx.SHORTEST || bn.alt.mode == Sqlx.SHORTESTPATH)
+                            && !Shortest(bn, cx))
+                        goto backtrack;
+                    if (pa is not null && dn != pd)
+                        cx.paths += (bn.alt.defpos, pa + dn);
+                    DoBindings(cx, bn.alt.defpos, bn.xn, dn);
+                    if (!bn.xn.CheckProps(cx, dn))
+                        goto backtrack;
+                    if (dn is TEdge de && pd is not null
+                        && ((bn.xn.tok == Sqlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
+                        goto backtrack;
                 }
-                if (dt is null || (bn.xn.domain.defpos>0 && !dt.EqualOrStrongSubtypeOf(bn.xn.domain)))
-                    goto backtrack;
-                dn = (dt is EdgeType et) ? new TEdge(cx, et, tr) : new TNode(cx, dt, tr);
-                if (bn.alt.mode == Sqlx.TRAIL && dn is TEdge && pa?.Contains(dn) == true)
-                    goto backtrack;
-                if (bn.alt.mode == Sqlx.ACYCLIC && pa?.Contains(dn) == true)
-                    goto backtrack;
-                if ((bn.alt.mode == Sqlx.SHORTEST || bn.alt.mode == Sqlx.SHORTESTPATH)
-                        && !Shortest(bn, cx))
-                    goto backtrack;
-                if (pa is not null && dn != pd)
-                    cx.paths += (bn.alt.defpos, pa + dn);
-                DoBindings(cx, bn.alt.defpos, bn.xn, dn);
-                if (!bn.xn.CheckProps(cx, dn))
-                    goto backtrack;
-                if (dn is TEdge de && pd is not null
-                    && ((bn.xn.tok == Sqlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
-                    goto backtrack;
                 bn.next.Next(cx, null, (tok == Sqlx.WITH) ? Sqlx.Null : tok, dn);
             backtrack:
                 if (ot is not null)

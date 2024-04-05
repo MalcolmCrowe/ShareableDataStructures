@@ -1069,7 +1069,7 @@ namespace Pyrrho.Level1
                     }
                 case Sqlx.NODETYPE:
                 case Sqlx.EDGETYPE:
-                    PutString(((TNode)tv).ToString(_cx));
+                    PutString(tv.ToString(_cx));
                     break;
                 case Sqlx.TYPE: 
                     if (tv.dataType is UDType u && _cx.db.objects[u.defpos] is UDType ut)// may be different!

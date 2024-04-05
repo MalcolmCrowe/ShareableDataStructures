@@ -87,8 +87,8 @@ namespace Pyrrho.Level3
     Metadata, HttpDate, Star, // Pyrrho v7
     _Rvv, Graph, PathType; // Rvv is V7 validator type
         internal static UDType TypeSpec;
-        internal static NodeType NodeType;
-        internal static EdgeType EdgeType;
+        internal static NodeType NodeType,NodeSchema;
+        internal static EdgeType EdgeType,EdgeSchema;
         static Domain()
         {
             Null = new StandardDataType(Sqlx.Null);
@@ -135,7 +135,9 @@ namespace Pyrrho.Level3
             Star = new(--_uid, Sqlx.TIMES, BTree<long, object>.Empty);
             Graph = new StandardDataType(Sqlx.GRAPH); // opaque
             NodeType = new NodeType(Sqlx.NODETYPE);
+            NodeSchema = new NodeType(Sqlx.SCHEMA);
             EdgeType = new EdgeType(Sqlx.EDGETYPE);
+            EdgeSchema = new EdgeType(Sqlx.SCHEMA);
             PathType = new StandardDataType(Sqlx.PATH,OrderCategory.Primitive,NodeType);
         }
         public override Domain domain => this;

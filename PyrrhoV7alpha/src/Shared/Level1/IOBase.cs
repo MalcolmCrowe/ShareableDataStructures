@@ -284,6 +284,9 @@ namespace Pyrrho.Level2
                 Physical.Type.Record4 => new Record4(this),
                 Physical.Type.Update2 => new Update2(this),
                 Physical.Type.Delete2 => new Delete2(this),
+                Physical.Type.PSchema => new PSchema(this),
+                Physical.Type.PGraph => new PGraph(this),
+                Physical.Type.PGraphType => new PGraphType(this),
                 _ => throw new PEException("PE35"),
             };
             p.Deserialise(this);

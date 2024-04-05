@@ -566,8 +566,9 @@ namespace Pyrrho.Level3
             var vs = vals;
             for (var b = dm.First(); b != null; b = b.Next())
             {
-                if (b.value() is not long p || dm.representation[p] is not Domain dv)
+                if (b.value() is not long p)
                     throw new PEException("PE10703");
+                var dv = dm.representation[p] ?? Domain.Position;
                 if (vs[p] is not TypedValue v)
                     throw new DBException("22206", cx.NameFor(p));
                 if (v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))

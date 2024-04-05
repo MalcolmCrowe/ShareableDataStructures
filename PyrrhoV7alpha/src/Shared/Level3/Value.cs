@@ -10906,6 +10906,8 @@ cx.obs[high] is not SqlValue hi)
         }
         internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, SqlNode xn, BTree<long, TableRow>? ds)
         {
+            xn += (SqlValueExpr.Op, op);
+            cx.Add(xn);
             switch(op)
             {
                 case Sqlx.VBAR:
@@ -10956,11 +10958,16 @@ cx.obs[high] is not SqlValue hi)
         public override string ToString()
         {
             var r = new StringBuilder();
-            if (left>0)
-                r.Append(Uid(left));
-            r.Append(op);
-            if (right>0)
-                r.Append(Uid(right));
+            if (name is string nm)
+                r.Append(nm);
+            else
+            {
+                if (left > 0)
+                    r.Append(Uid(left));
+                r.Append(op);
+                if (right > 0)
+                    r.Append(Uid(right));
+            }
             return r.ToString();
         }
     }
@@ -11065,7 +11072,7 @@ cx.obs[high] is not SqlValue hi)
             if (tl==CTree<long,bool>.Empty)
                 return (dt, md);
             string? sd = null; // ID if present
-            if (nd.name == "AMPERSAND")
+            if (nd.labelSet.Count>1 && tok==Sqlx.AMPERSAND)
             {
                 var sb = new StringBuilder();
                 var cm = "";
@@ -11548,7 +11555,8 @@ cx.obs[high] is not SqlValue hi)
                         var gt = (gv is TTypeSpec tt) ? tt._dataType as EdgeType :
                            cx.db.objects[cx.role.dbobjects[gc.value] ?? -1L] as EdgeType;
                         if (gt is not null && lT is not null && aT is not null
-                            && (gt.leavingType != lT.defpos || gt.arrivingType != aT.defpos))
+                            && ((gt.leavingType != lT.defpos && lT.defpos>0) 
+                            || (gt.arrivingType != aT.defpos && aT.defpos>0)))
                         {
                             var gn = gt.name;
                             gt = cx.db.objects[cx.db.edgeTypes[gt.defpos]?[lT.defpos]?[aT.defpos] ?? -1L] as EdgeType;

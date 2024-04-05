@@ -348,7 +348,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The current position (just after tok) in the input string
         /// </summary>
-		public int pos,pushPos;
+		public int pos,pushPos,prevPos;
         /// <summary>
         /// The start of tok in the input string
         /// </summary>
@@ -502,6 +502,11 @@ namespace Pyrrho.Level4
             tok = old;
             return tok;
         }
+        internal void Rescan()
+        {
+            pos = prevPos;
+            ch = input[pos];
+        }
         readonly static Domain NodeArray = new (-999, Sqlx.ARRAY, Domain.NodeType);
         readonly static Domain CharArray = new (-998, Sqlx.ARRAY, Domain.Char);
         /// <summary>
@@ -630,6 +635,7 @@ namespace Pyrrho.Level4
             }
             prevtok = tok;
             prevval = val;
+            prevPos = pos;
             val = TNull.Value;
             while (char.IsWhiteSpace(ch))
                 Advance();
@@ -787,6 +793,11 @@ namespace Pyrrho.Level4
                         Advance();
                     else
                         ch = minusch;
+                    if (ch=='>')
+                    {
+                        Advance();
+                        return tok = Sqlx.ARROWR;
+                    }
                     if (ch == '-')
                     {
                         Advance();    // -- comment
@@ -797,7 +808,7 @@ namespace Pyrrho.Level4
                     if (ch=='[')
                     {
                         Advance();
-                        return Sqlx.ARROWBASE;
+                        return tok = Sqlx.ARROWBASE;
                     }
                     return tok = Sqlx.MINUS;
                 case '|':
@@ -826,7 +837,7 @@ namespace Pyrrho.Level4
                             Advance();
                             return tok = Sqlx.RARROW;
                         }
-                        throw new DBException("42000", "<-");
+                        return tok = Sqlx.ARROWL;
                     }
                     return tok = Sqlx.LSS;
                 case '=': Advance(); return tok = Sqlx.EQL;

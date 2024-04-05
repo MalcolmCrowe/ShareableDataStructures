@@ -292,23 +292,33 @@ namespace Pyrrho.Level5
                     }
                 return ds;
             }
-            var cl = xn.EvalProps(cx, this);
-            if (FindPrimaryIndex(cx) is Level3.Index px
-                && px.MakeKey(cl) is CList<TypedValue> pk
-                && tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)
-                return ds + (tr0.defpos, tr0);
-            for (var c = indexes.First(); c != null; c = c.Next())
-                for (var d = c.value().First(); d != null; d = d.Next())
-                    if (cx.db.objects[d.key()] is Level3.Index x
-                        && x.MakeKey(cl) is CList<TypedValue> xk
-                        && tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)
-                        return ds + (tr.defpos, tr);
-            // let DbNode check any given properties match
-            var lm = ms.truncating.Contains(defpos) ? ms.truncating[defpos].Item1 : int.MaxValue;
-            var la = ms.truncating.Contains(EdgeType.defpos) ? ms.truncating[EdgeType.defpos].Item1 : int.MaxValue;
-            for (var b = tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
-                if (b.value() is TableRow tr)
-                    ds += (tr.defpos, tr);
+            if (!ms.flags.HasFlag(MatchStatement.Flags.Schema))
+            {
+                var cl = xn.EvalProps(cx, this);
+                if (FindPrimaryIndex(cx) is Level3.Index px
+                    && px.MakeKey(cl) is CList<TypedValue> pk
+                    && tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)
+                    return ds + (tr0.defpos, tr0);
+                for (var c = indexes.First(); c != null; c = c.Next())
+                    for (var d = c.value().First(); d != null; d = d.Next())
+                        if (cx.db.objects[d.key()] is Level3.Index x
+                            && x.MakeKey(cl) is CList<TypedValue> xk
+                            && tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)
+                            return ds + (tr.defpos, tr);
+                // let DbNode check any given properties match
+                var lm = ms.truncating.Contains(defpos) ? ms.truncating[defpos].Item1 : int.MaxValue;
+                var la = ms.truncating.Contains(EdgeType.defpos) ? ms.truncating[EdgeType.defpos].Item1 : int.MaxValue;
+                for (var b = tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
+                    if (b.value() is TableRow tr)
+                        ds += (tr.defpos, tr);
+            } else // construct a NodeType Schema
+            {
+                var vals = CTree<long, TypedValue>.Empty;
+                for (var b = rowType.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.value() ?? -1L] is TableColumn tc)
+                        vals += (tc.defpos, new TTypeSpec(tc.domain));
+                ds += (defpos, new TableRow(-1L, -1L, new CTree<long, bool>(defpos, true), vals));
+            }
             return ds;
         }
         public override Domain For()
@@ -434,11 +444,13 @@ namespace Pyrrho.Level5
                     }
                 if (this is EdgeType et)
                 {
-                    var pe = new PEdgeType(tn, et, st, -1L, cx.db.nextPos, cx);
                     if (md[Sqlx.RARROW] is TChar lv && cx.role.dbobjects[lv.value] is long lp)
-                        lt = pe.leavingType = lp;
+                        lt = lp;
                     if (md[Sqlx.ARROW] is TChar av && cx.role.dbobjects[av.value] is long ap)
-                        at = pe.arrivingType = ap;
+                        at = ap;
+                    if (lt is null || at is null)
+                        throw new DBException("42000");
+                    var pe = new PEdgeType(tn, et, st, -1L, lt.Value, at.Value, cx.db.nextPos, cx);
                     pt = pe;
                 }
                 else
@@ -1347,7 +1359,7 @@ namespace Pyrrho.Level5
             var nd = (EdgeType)EdgeType.Relocate(dp);
             if (nd.defpos!=dp)
                 nd.Fix(cx);
-            return (UDType)(cx.Add(new PEdgeType(pn.ident, nd, un, -1L, dp, cx))
+            return (UDType)(cx.Add(new PEdgeType(pn.ident, nd, un, -1L, nd.leavingType, nd.arrivingType, dp, cx))
                 ?? throw new DBException("42105"));
         } 
         internal override NodeType Check(Context cx, SqlNode n, CTree<string, SqlValue> ls, bool allowExtras = true)
@@ -1766,6 +1778,8 @@ namespace Pyrrho.Level5
                         }    
                 }
             var nr = new Record4(tbs, fl, -1L, Level.D, lp, cx);
+            if (x is not null)
+                cx.values += (x.defpos, new TNode(this, new TableRow(nr,cx)));
             cx.Add(nr);// Transaction.Add takes care not to Install to the factors again!
             return (this, ls);
         }
@@ -1959,15 +1973,17 @@ namespace Pyrrho.Level5
             var sb = new StringBuilder();
             sb.Append(ni.name);
             var cm = '(';
-            for (var b=nt.pathDomain.First();b!=null;b=b.Next())
-            if (b.value() is long cp){
-                sb.Append(cm); cm = ',';
-                sb.Append((cx.db.objects[cp] as TableColumn)?
-                           .infos[cx.role.defpos]?.name??"??");
-                    sb.Append("=");
+            for (var b = nt.pathDomain.First(); b != null; b = b.Next())
+                if (b.value() is long cp && nt.representation[cp] is not null
+                    && nt.representation[cp]?.kind!=Sqlx.POSITION
+                    && (cx.db.objects[cp] as TableColumn)?.infos[cx.role.defpos]?.name is string nm)
+                {
+                    sb.Append(cm); cm = ',';
+                    sb.Append(nm); sb.Append("=");
                     sb.Append(tableRow.vals[cp]);
-            }
-            sb.Append(')');
+                }
+            if (cm==',')
+                sb.Append(')');
             return sb.ToString();
         }
         internal string[] Summary(Context cx)
