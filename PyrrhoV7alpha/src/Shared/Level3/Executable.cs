@@ -4640,10 +4640,10 @@ namespace Pyrrho.Level3
             public NodeStep(SqlMatchAlt sa, SqlNode x, ABookmark<long, TableRow>? no,
                 Step n) : base(n.ms)
             { alt = sa; xn = x; nodes = no; next = n; }
-            public NodeStep(NodeStep s, ABookmark<long, TableRow>? ns) : base(s.ms)
+ /*           public NodeStep(NodeStep s, ABookmark<long, TableRow>? ns) : base(s.ms)
             {
                 alt = s.alt; nodes = ns; xn = s.xn; next = s.next;
-            }
+            } */
             /// <summary>
             /// On each success we call the continuation
             /// </summary>
@@ -4784,12 +4784,18 @@ namespace Pyrrho.Level3
             //    else if (xn.Eval(cx) is TNode nn)
             //        ds += (xn.defpos, nn.tableRow);
             else
-            if (pd is not null && pd.dataType is EdgeType pe
+            if (pd is not null && pd.dataType is EdgeType pe && pd.defpos!=pd.dataType.defpos
                 && ((tok == Sqlx.ARROWBASE) ?
                 (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
                 : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
                is TableRow tn)
                 ds += (tn.defpos, tn);
+            else if (pd is not null && pd.dataType is EdgeType pf && pd.defpos == pd.dataType.defpos // schema case
+                && ((tok == Sqlx.ARROWBASE) ?
+                (cx.db.objects[pf.arrivingType] as NodeType)?.Schema(cx)
+                : (cx.db.objects[pf.leavingType] as NodeType)?.Schema(cx))
+               is TableRow tq)
+                    ds += (tq.defpos, tq);
             else if (pd is not null && pd.dataType is NodeType pn) // an edge attached to the TNode pd
             {
                 var ctr = CTree<Domain, int>.Empty;
@@ -4798,6 +4804,11 @@ namespace Pyrrho.Level3
                 for (var b = pn.rindexes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is EdgeType rt)
                     {
+                        if (pd.defpos == pd.dataType.defpos) // schmema flag
+                        {
+                            ds += (rt.defpos, rt.Schema(cx));
+                            continue;
+                        }
                         //          if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
                         //              continue;
                         var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
@@ -4837,12 +4848,16 @@ namespace Pyrrho.Level3
                     if (cx._Ob(b.key()) is TableColumn tc
                         && cx._Ob(tc.tabledefpos) is EdgeType rt
                         && (xn.domain.defpos < 0 || xn.domain.defpos == rt.defpos)
-                        && b.value() is CTree<long, CTree<long, bool>> pt)
-                    {
+                        && b.value() is CTree<long, CTree<long, bool>> pt) {
+                        if (pd.defpos == pd.dataType.defpos)  // schema flag
+                        {
+                            ds += (rt.defpos, rt.Schema(cx));
+                            continue;
+                        }
                         var pv = pd.tableRow.defpos;
                         if (cx._Ob(tc.toType) is NodeType tt && pd.tableRow.vals[tt.idCol]?.ToLong() is long vp)
                             pv = vp;
-                         if (pt[pv] is CTree<long, bool> ct)
+                        if (pt[pv] is CTree<long, bool> ct)
                         {
                             var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
                             for (var c = ct.First(); c != null && lm-- > 0 && la-- > 0; c = c.Next())
@@ -4855,7 +4870,7 @@ namespace Pyrrho.Level3
                 alldone:;
             }
             else // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
-                ds = (cx._Ob(xn.label)??xn.domain).For(cx, this, xn, ds);
+                ds = (cx._Ob(xn.label) ?? xn.domain).For(cx, this, xn, ds);
             var df = ds.First();
             if (df != null)
                 DbNode(cx, new NodeStep(be.alt, xn, df, new ExpStep(be.alt, be.matches?.Next(), be.next)),
@@ -4942,9 +4957,20 @@ namespace Pyrrho.Level3
                 step = ++_step;
                 if (ns?.value() is not TableRow tr)
                     goto backtrack;
-                if (flags.HasFlag(Flags.Schema) 
-                    && cx._Ob(tr.tabledefpos.First()?.key()??-1L) is Domain dm)
-                    cx.binding += (bn.xn.defpos, new TRow(dm, tr.vals));
+                if (flags.HasFlag(Flags.Schema))
+                {
+                    for (var b = tr.tabledefpos.First(); b != null; b = b.Next())
+                        if (cx._Ob(b.key()) is NodeType dm)
+                        {
+                            if (dm is EdgeType et && pd is not null &&
+                                ((bn.xn.tok == Sqlx.ARROWBASE) ? et.leavingType : et.arrivingType) != pd.dataType.defpos)
+                                continue;
+                            cx.binding += (bn.xn.defpos, new TRow(dm, tr.vals));
+                            dn = new TNode(dm, tr);
+                            goto next;
+                        }
+                    goto backtrack;
+                }
                 else
                 {
                     NodeType? dt = null;
@@ -4975,6 +5001,7 @@ namespace Pyrrho.Level3
                         && ((bn.xn.tok == Sqlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
                         goto backtrack;
                 }
+            next:
                 bn.next.Next(cx, null, (tok == Sqlx.WITH) ? Sqlx.Null : tok, dn);
             backtrack:
                 if (ot is not null)

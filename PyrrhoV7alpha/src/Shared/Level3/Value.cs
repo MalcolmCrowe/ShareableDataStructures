@@ -11006,12 +11006,12 @@ cx.obs[high] is not SqlValue hi)
         public Sqlx tok => (Sqlx)(mem[SqlValueExpr.Op] ?? Sqlx.Null);
         public SqlNode(Ident nm, BList<Ident> ch, Context cx, long i, BTree<long, long?>? d,
             CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
-            : base(nm, ch, cx, dm ?? _Type(cx,m), _Mem(i, d, tgs, m))
+            : base(nm, ch, cx, dm ?? _Type(cx,m), _Mem(i, d, tgs, dm, m))
         { }
         protected SqlNode(long dp, BTree<long, object> m) : base(dp, m)
         { }
         static BTree<long, object> _Mem(long i, BTree<long, long?>? d, CTree<long, TGParam> tgs,
-            BTree<long, object>? m)
+            NodeType? dm, BTree<long, object>? m)
         {
             m ??= BTree<long, object>.Empty;
             if (i > 0)
@@ -11019,9 +11019,14 @@ cx.obs[high] is not SqlValue hi)
             if (d is not null)
                 m += (DocValue, d);
             m += (State, tgs);
+            if (dm is not null && dm.defpos>0)
+            {
+                m += (_Label, dm.defpos);
+                m += (LabelSet, dm.labels);
+            }
             return m;
         }
-        static NodeType _Type(Context cx,BTree<long,object> m)
+        static NodeType _Type(Context cx,BTree<long,object>? m)
         {
             if (m[_Label] is long p && cx.db.objects[p] is NodeType d) return d;
             for (var b = (m[LabelSet] as CTree<long, bool>)?.First(); b != null; b = b.Next())

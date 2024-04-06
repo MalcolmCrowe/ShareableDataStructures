@@ -311,15 +311,22 @@ namespace Pyrrho.Level5
                 for (var b = tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
                     if (b.value() is TableRow tr)
                         ds += (tr.defpos, tr);
-            } else // construct a NodeType Schema
-            {
-                var vals = CTree<long, TypedValue>.Empty;
-                for (var b = rowType.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.value() ?? -1L] is TableColumn tc)
-                        vals += (tc.defpos, new TTypeSpec(tc.domain));
-                ds += (defpos, new TableRow(-1L, -1L, new CTree<long, bool>(defpos, true), vals));
-            }
+            } else  // schema flag
+                ds += (defpos, Schema(cx));
             return ds;
+        }
+        /// <summary>
+        /// Construct a fake TableRow for a nodetype schema
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
+        internal TableRow Schema(Context cx)
+        {
+            var vals = CTree<long, TypedValue>.Empty;
+            for (var b = rowType.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value() ?? -1L] is TableColumn tc)
+                    vals += (tc.defpos, new TTypeSpec(tc.domain));
+            return new TableRow(defpos, -1L, new CTree<long, bool>(defpos, true), vals);
         }
         public override Domain For()
         {
