@@ -4784,18 +4784,30 @@ namespace Pyrrho.Level3
             //    else if (xn.Eval(cx) is TNode nn)
             //        ds += (xn.defpos, nn.tableRow);
             else
-            if (pd is not null && pd.dataType is EdgeType pe && pd.defpos!=pd.dataType.defpos
+            if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos
                 && ((tok == Sqlx.ARROWBASE) ?
                 (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
                 : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
                is TableRow tn)
                 ds += (tn.defpos, tn);
-            else if (pd is not null && pd.dataType is EdgeType pf && pd.defpos == pd.dataType.defpos // schema case
-                && ((tok == Sqlx.ARROWBASE) ?
-                (cx.db.objects[pf.arrivingType] as NodeType)?.Schema(cx)
-                : (cx.db.objects[pf.leavingType] as NodeType)?.Schema(cx))
-               is TableRow tq)
-                    ds += (tq.defpos, tq);
+            else if (pd is not null && pd.defpos == pd.dataType.defpos) // schema case
+            {
+                if (pd.dataType is EdgeType et &&
+                    cx.db.objects[(tok == Sqlx.ARROWBASE) ? et.leavingType : et.arrivingType] is NodeType pn
+                    && pn.Schema(cx) is TableRow ts)
+                    ds += (ts.defpos, ts);
+                else if (pd.dataType is NodeType pg)
+                {
+                    for (var b = pg.sindexes.First(); b != null; b = b.Next())
+                        if (cx.db.objects[b.key()] is TableColumn tc && tc.toType == pd.defpos
+                            && tc.flags.HasFlag((xn.tok == Sqlx.RARROW) ? PColumn.GraphFlags.ArriveCol : PColumn.GraphFlags.LeaveCol)
+                            && (cx.db.objects[tc.tabledefpos] as EdgeType)?.Schema(cx) is TableRow tq)
+                            ds += (tq.defpos, tq);
+                    for (var b= pg.rindexes.First();b!=null;b=b.Next())
+                        if ((cx.db.objects[b.key()] as EdgeType)?.Schema(cx) is TableRow tq)
+                            ds += (tq.defpos, tq);
+                }
+            }
             else if (pd is not null && pd.dataType is NodeType pn) // an edge attached to the TNode pd
             {
                 var ctr = CTree<Domain, int>.Empty;

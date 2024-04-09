@@ -945,8 +945,10 @@ namespace Pyrrho.Level1
                     PutData(_cx, ((TSensitive)tv).value);
                     break;
                 case Sqlx.BOOLEAN:
-                    PutInt((tv.ToBool()==true) ? 1 : 0);
-                    break;
+                    {
+                        PutInt((tv.ToBool() is bool b)?(b?1:0):-1);
+                        break;
+                    }
                 case Sqlx.INTEGER:
                     {
                         if (tv is TInteger ti)

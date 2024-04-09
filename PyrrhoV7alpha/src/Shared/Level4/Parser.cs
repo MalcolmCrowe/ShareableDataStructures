@@ -1614,7 +1614,7 @@ namespace Pyrrho.Level4
             }
             else
                 Mustbe(Sqlx.RPAREN);
-            var m = BTree<long, object>.Empty + (SqlNode.LabelSet, lb);
+            var m = BTree<long, object>.Empty + (SqlNode.LabelSet, lb) + (SqlValueExpr.Op,tk);
             if (cx.obs[id] is not SqlNode r)
             {
                 r = ab switch
@@ -8431,7 +8431,7 @@ namespace Pyrrho.Level4
         {
             var left = ParseSqlValueConjunct(xp, wfok, dm);
             var r = new CTree<long, bool>(left.defpos, true);
-            while (left.domain.kind == Sqlx.BOOLEAN && Match(Sqlx.AND))
+            while ((left.domain.kind == Sqlx.BOOLEAN|| left.domain.kind==Sqlx.Null) && Match(Sqlx.AND))
             {
                 Next();
                 left = ParseSqlValueConjunct(xp, wfok, dm);

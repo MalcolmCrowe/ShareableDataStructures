@@ -2382,12 +2382,12 @@ namespace Pyrrho.Level3
                     {
                         TypedValue a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
                         if (a == TNull.Value)
-                            return v;
+                            return TBool.Unknown;
                         if (a == TBool.False && mod != Sqlx.BINARY)
                             return a;
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)
-                            return v;
+                            return TBool.Unknown;
                         if (mod == Sqlx.BINARY && a is TInt aa && b is TInt ab) // JavaScript
                             return new TInt(aa.value & ab.value);
                         else if (a is TBool ba && b is TBool bb)
@@ -2669,7 +2669,7 @@ namespace Pyrrho.Level3
                     {
                         TypedValue a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
                         if (a == TNull.Value)
-                            return v;
+                            return TBool.Unknown;
                         if (mod == Sqlx.BINARY && a is TInt ia)
                             return new TInt(~ia.value);
                         if (a is TBool b)
@@ -2680,12 +2680,12 @@ namespace Pyrrho.Level3
                     {
                         TypedValue a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
                         if (a == TNull.Value)
-                            return v;
+                            return TBool.Unknown;
                         if (a == TBool.True && mod != Sqlx.BINARY)
                             return a;
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
                         if (b == TNull.Value)
-                            return v;
+                            return TBool.Unknown;
                         if (mod == Sqlx.BINARY && a is TInt aa && b is TInt ab) // JavaScript
                             return new TInt(aa.value | ab.value);
                         else if (a is TBool ba && b is TBool bb)
@@ -11077,7 +11077,7 @@ cx.obs[high] is not SqlValue hi)
             if (tl==CTree<long,bool>.Empty)
                 return (dt, md);
             string? sd = null; // ID if present
-            if (nd.labelSet.Count>1 && tok==Sqlx.AMPERSAND)
+            if (nd.labelSet.Count>1 && nd.tok==Sqlx.AMPERSAND)
             {
                 var sb = new StringBuilder();
                 var cm = "";
@@ -11206,7 +11206,7 @@ cx.obs[high] is not SqlValue hi)
                         : sk.Eval(cx).ToString();
                     ls += (k, sv);
                 }
-            allowExtras = allowExtras && name != "AMPERSAND";
+            allowExtras = allowExtras && (labelSet.Count<=1 || tok==Sqlx.COLON);
             var (nt, md) = _NodeType(cx, ls, dt, allowExtras);
             if (nt.defpos < 0 && md == CTree<Sqlx, TypedValue>.Empty && ls == CTree<string, SqlValue>.Empty)
                 throw new DBException("42161", "Specification", name ?? "Unbound");
