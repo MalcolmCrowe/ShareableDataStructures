@@ -986,7 +986,7 @@ namespace Pyrrho.Level4
                     throw new DBException("42104", cr.ToString());
             }
             var ts = CTree<long, bool>.Empty;
-            var ns = CTree<long, bool>.Empty;
+            var ns = CTree<long, TNode>.Empty;
             if (Match(Sqlx.DOUBLECOLON, Sqlx.TYPED))
                 Next();
             if (tok==Sqlx.ANY)
@@ -1013,7 +1013,7 @@ namespace Pyrrho.Level4
                 ts = g.graphTypes;
                 for (var b = g.nodes.First(); b != null; b = b.Next())
                     if (b.value() is TNode n)
-                        ns += (n.defpos, true);
+                        ns += (n.defpos, n);
             } else
             {
                 if (Match(Sqlx.PROPERTY))
@@ -2369,10 +2369,14 @@ namespace Pyrrho.Level4
             // We prepare a useful tree of all the columns we know about in case their names
             // occur in the metadata.
             var ls = CTree<string, SqlValue>.Empty;
+            var nn = CTree<string, long>.Empty;
             for (var b = dt.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is TableColumn tc
                         && tc.infos[cx.role.defpos] is ObInfo ti && ti.name is string cn)
+                {
                     ls += (cn, new SqlLiteral(p, cn, tc.domain.defaultValue, tc.domain));
+                    nn += (cn, tc.defpos);
+                }
             var m = ParseMetadata(Sqlx.TYPE);
             // The metadata contains aliases for special columns etc
                 var ll = m[Sqlx.RARROW] as TList?? new TList(Domain.TypeSpec,new TTypeSpec(Domain.NodeType));
@@ -2380,6 +2384,7 @@ namespace Pyrrho.Level4
             if (m.Contains(Sqlx.NODETYPE) || ll?.Length*al?.Length>1)
             {
                 var nt = new NodeType(typename.iix.dp, dt.mem + (Domain.Kind, Sqlx.NODETYPE));
+                nt += (NodeType._Names, nn);
                 nt = nt.FixNodeType(cx, typename);
                 // Process ls and m 
                 (dt, _) = nt.Build(cx, null, nt.labels, ls, m);

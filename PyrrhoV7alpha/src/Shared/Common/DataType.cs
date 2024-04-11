@@ -23,7 +23,7 @@ namespace Pyrrho.Common
         // reserved words (not case sensitive) SQL2011 vol2, vol4, vol14 + // entries
         // 3 alphabetical sequences: reserved words, token types, and non-reserved words
         ///===================RESERVED WORDS=====================
-        // last reserved word must be YEAR (mentioned in code below); XML is a special case
+        // last reserved word must be ZONED_TIME
         ABS = 1,
         ABSENT = 2, // GQL
         ACOS = 3,
@@ -559,9 +559,9 @@ namespace Pyrrho.Common
         ADMIN = 531,
         AFTER = 532,
         ALWAYS = 533,
-        APPLICATION = 534, // Pyrrho 4.6
-        ARRIVING = 535, // Pyrrho Metadata 7.07
-        NODETYPE = 536, // Metadata 7.03 must be 534
+        NODETYPE = 534, // Metadata 7.03 must be 534
+        APPLICATION = 535, // Pyrrho 4.6
+        ARRIVING = 536, // Pyrrho Metadata 7.07
         ASSERTION = 537,
         ATTRIBUTE = 538,
         ATTRIBUTES = 539,

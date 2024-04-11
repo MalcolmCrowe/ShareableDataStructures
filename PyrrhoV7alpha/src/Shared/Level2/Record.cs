@@ -393,8 +393,10 @@ namespace Pyrrho.Level2
         }
         Context Add(Context cx,Table tt, TableRow now, long p)
         {
+            if (tt.defpos < 0)
+                return cx;
             for (var b = tt.super.First(); b != null; b = b.Next())   // update supertypes: extra values are harmless
-                if (cx.db.objects[b.key()?.defpos ?? -1L] is Table st)
+                if (cx.db.objects[b.key()?.defpos ?? -1L] is Table st && st.defpos>0)
                 {
                     if (tt is NodeType nt && b.key() is NodeType sn && nt.idCol != sn.idCol)
                     {

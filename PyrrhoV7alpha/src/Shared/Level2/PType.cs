@@ -127,12 +127,16 @@ namespace Pyrrho.Level2
             var st = rdr.GetLong(); // a relic of the past
             var dt = dataType;
             m = m + (Domain.Representation, dt.representation) + (Domain.RowType, dt.rowType);
+            var nn = CTree<string, long>.Empty;
             var ns = BTree<string,(int,long?)>.Empty;
             for (var b = dt.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && rdr.context.NameFor(p) is string n)
+                {
                     ns += (n, (b.key(), p));
+                    nn += (n, p);
+                }
             m = m + (ObInfo.Name, name) + (Domain.Kind, k);
-            if (dt.super is not null)
+            if (dt.super.Count>0)
                 m += (Domain.Under, dt.super);
             if (un > 0)
             { // it can happen that under is more recent than dt (EditType), so be careful
@@ -158,6 +162,7 @@ namespace Pyrrho.Level2
                 m += (Domain.Under, under);
             }
             oi += (ObInfo.Names, ns);
+            m += (NodeType._Names, nn);
             m += (DBObject.Infos, new BTree<long, ObInfo>(rdr.context.role.defpos, oi));
             dataType = k switch
             {
@@ -177,12 +182,12 @@ namespace Pyrrho.Level2
             var sb = new StringBuilder(base.ToString());
             if (under.Count>0)
             {   
-                sb.Append(" Under: ");
-                var cm = "";
+                var cm = "Under: [";
                 for (var b=under.First();b!=null;b=b.Next())
                 {
                     sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key().defpos));
                 }
+                sb.Append(']');
             }
             return sb.ToString();
 		}
@@ -250,21 +255,31 @@ namespace Pyrrho.Level2
                 var ns = ((UDType)dataType).HierarchyCols(cx);
                 oi += (ObInfo.Names, ns);
             }
+            var ps = CTree<string,bool>.Empty;
+            if (name == "")
+                for (var b = dataType.representation.First(); b != null; b = b.Next())
+                    ps += (cx.NameFor(b.key()), true);
             if (dataType is EdgeType && this is PEdgeType pe)
             {
                 var np = defpos;
                 if (ro.dbobjects[name] is long pp && cx.db.objects[pp] is EdgeType)
                     np = pp;
-                else
+                else 
                 {
-                    ro += (Role.EdgeTypes, ro.edgeTypes + (name, defpos));
+                    if (name.Length > 1)
+                        ro += (Role.EdgeTypes, ro.edgeTypes + (name, defpos));
+                    else if (ps.Count > 0)
+                        ro += (Role.UnlabelledEdgeTypes, ro.unlabelledEdgeTypes + (ps, defpos));
                     ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
                 }
                 cx.db += (np, pe.leavingType, pe.arrivingType, defpos);
             }
             else if (dataType is NodeType)
             {
-                ro += (Role.NodeTypes, ro.nodeTypes + (name, defpos));
+                if (name.Length>1)
+                    ro += (Role.NodeTypes, ro.nodeTypes + (name, defpos));
+                else if (ps.Count>0)
+                    ro += (Role.UnlabelledNodeTypes, ro.unlabelledNodeTypes + (ps, defpos));
                 ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             }
             else

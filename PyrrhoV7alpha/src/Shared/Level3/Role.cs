@@ -53,12 +53,14 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
-            EdgeTypes = -128, // BTree<string,long?> EdgeType by name
-            Graphs = -357,    // BTree<string,long?> Graph by name
-            NodeTypes = -115, // BTree<string,long?> NodeType by name
+            EdgeTypes = -128, // BTree<string,long?> Labelled EdgeType by name
+            Graphs = -357,    // BTree<string,long?> Labelled Graph by name
+            NodeTypes = -115, // BTree<string,long?> Labelled NodeType by name
             Procedures = -249, // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
-            Schemas = -356;    // BTree<string,long?> Schema by name
-       internal BTree<string, long?> dbobjects => 
+            Schemas = -356,    // BTree<string,long?> Schema by name
+            UnlabelledNodeTypes = -237, // BTree<CTree<string,bool>,long?> Unlabelled NodeType by propertyset
+            UnlabelledEdgeTypes = -238; // BTree<CTree<string,bool>,long?> Unlabelled EdgeType by propertyset
+        internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
         internal BTree<string, BTree<CList<Domain>,long?>> procedures => 
@@ -72,6 +74,10 @@ namespace Pyrrho.Level3
         internal BTree<string, long?> schemas =>
             (BTree<string, long?>)(mem[Schemas] ?? BTree<string, long?>.Empty); public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
+        internal BTree<CTree<string, bool>, long?> unlabelledNodeTypes =>
+            (BTree<CTree<string, bool>, long?>)(mem[UnlabelledNodeTypes] ?? BTree<CTree<string, bool>, long?>.Empty);
+        internal BTree<CTree<string, bool>, long?> unlabelledEdgeTypes =>
+            (BTree<CTree<string, bool>, long?>)(mem[UnlabelledEdgeTypes] ?? BTree<CTree<string, bool>, long?>.Empty);
         /// <summary>
         /// Just to create the schema and guest roles
         /// </summary>

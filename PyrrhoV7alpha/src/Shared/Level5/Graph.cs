@@ -63,9 +63,11 @@ namespace Pyrrho.Level5
             IdCol = -472,  // long TableColumn (defining position used if not specified)
             IdColDomain = -493, // Domain (by default is Int)
             IdIx = -436,    // long Index (defining position used if not specified)
-            Labels = -482; // CTree<long,bool> Type (existing labels are always graph type names)
+            Labels = -482, // CTree<long,bool> Type (existing labels are always graph type names)
+            _Names = -145; // CTree<string,long> TableColumn definer's field names
         internal Domain idColDomain => (Domain)(mem[IdColDomain] ?? Int);
         internal CTree<long, bool> labels => (CTree<long, bool>)(mem[Labels] ?? CTree<long, bool>.Empty);
+        internal CTree<string, long> names => (CTree<string, long>)(mem[_Names] ?? CTree<string, long>.Empty);
         internal NodeType(Sqlx t) : base(t)
         { }
         public NodeType(long dp, BTree<long, object> m) : base(dp, m)
@@ -84,6 +86,7 @@ namespace Pyrrho.Level5
             var rt = BList<long?>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var ns = BTree<string, (int, long?)>.Empty;
+            var nn = CTree<string, long>.Empty;
             var n = 0;
             // At this stage we don't know anything about non-identity columns
             // add everything we find in direct supertypes to create the PathDomain
@@ -99,10 +102,12 @@ namespace Pyrrho.Level5
                             rt += p;
                             rs += (p, rd);
                             ns += (cn, (n++, p));
+                            nn += (cn, p);
                         }
                 }
             oi += (ObInfo.Names, ns);
             r += (PathDomain, new Domain(cx, rs, rt, new BTree<long, ObInfo>(cx.role.defpos, oi)));
+            r += (_Names, nn);
             return r;
         }
         internal TableRow? Get(Context cx, TypedValue? id)
@@ -155,7 +160,7 @@ namespace Pyrrho.Level5
             var ii = infos;
             var gi = rs.Contains(idCol) || idCol < 0L;
             for (var tb = super.First(); tb != null; tb = tb.Next())
-                if (cx._Ob(tb.key().defpos) is Table pd)
+                if (cx._Ob(tb.key().defpos) is Table pd && pd.defpos>0)
                 {
                     for (var b = infos.First(); b != null; b = b.Next())
                         if (b.value() is ObInfo ti)
@@ -279,17 +284,23 @@ namespace Pyrrho.Level5
             if (defpos < 0)
             {
                 if (kind == Sqlx.NODETYPE) // We are Domain.NODETYPE itself: do this for all nodetypes in the role
+                {
                     for (var b = cx.db.role.nodeTypes.First(); b != null; b = b.Next())
-                    {
                         if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
                             ds = nt1.For(cx, ms, xn, ds);
-                    }
+                    for (var b = cx.db.role.unlabelledNodeTypes.First(); b != null; b = b.Next())
+                        if (b.value() is long p2 && cx.db.objects[p2] is NodeType nt2)
+                            ds = nt2.For(cx, ms, xn, ds);
+                }
                 if (kind == Sqlx.EDGETYPE) // We are Domain.EDGETYPE itself: do this for all edgetypes in the role
+                {
                     for (var b = cx.db.role.edgeTypes.First(); b != null; b = b.Next())
-                    {
-                        if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
+                        if (b.value() is long p1 && cx.db.objects[p1] is EdgeType nt1)
                             ds = nt1.For(cx, ms, xn, ds);
-                    }
+                    for (var b = cx.db.role.unlabelledEdgeTypes.First(); b != null; b = b.Next())
+                        if (b.value() is long p2 && cx.db.objects[p2] is EdgeType nt2)
+                            ds = nt2.For(cx, ms, xn, ds);
+                }
                 return ds;
             }
             if (!ms.flags.HasFlag(MatchStatement.Flags.Schema))
@@ -1281,6 +1292,19 @@ namespace Pyrrho.Level5
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
+        public override int CompareTo(object? obj)
+        {
+            if (obj is NodeType that)
+            {
+                var c = labels.CompareTo(that.labels);
+                if (c != 0)
+                    return c;
+                c = names.CompareTo(that.names);
+                if (c != 0)
+                    return c;
+            }
+            return base.CompareTo(obj);
+        }
         public virtual string Describe(Context cx)
         {
             var sb = new StringBuilder();
@@ -1352,8 +1376,7 @@ namespace Pyrrho.Level5
             oi += (ObInfo.Name, nm);
             r += (Infos, dt.infos + (cx.role.defpos, oi));
             r += (Definer, cx.role.defpos);
-            if (ut != null)
-                r += (Under, ut);
+            r += (Under, ut);
             var sl = false;
             var sa = false;
             if (md != null)
@@ -1368,6 +1391,31 @@ namespace Pyrrho.Level5
                 if (sl) r += (LeavingEnds, true);
                 if (sa) r += (ArrivingEnds, true);
             }
+            var rt = BList<long?>.Empty;
+            var rs = CTree<long, Domain>.Empty;
+            var ns = BTree<string, (int, long?)>.Empty;
+            var nn = CTree<string, long>.Empty;
+            var n = 0;
+            // At this stage we don't know anything about non-identity columns
+            // add everything we find in direct supertypes to create the PathDomain
+            for (var tb = ut.First(); tb != null; tb = tb.Next())
+                if (cx._Ob(tb.key().defpos) is Table pd)
+                {
+                    var rp = pd.representation;
+                    for (var c = pd.rowType.First(); c != null; c = c.Next())
+                        if (c.value() is long p && rp[p] is Domain rd && rd.kind != Sqlx.Null
+                            && cx._Ob(p) is TableColumn tc && tc.infos[cx.role.defpos] is ObInfo ci
+                            && ci.name is string cn && !ns.Contains(cn))
+                        {
+                            rt += p;
+                            rs += (p, rd);
+                            ns += (cn, (n++, p));
+                            nn += (cn, p);
+                        }
+                }
+            oi += (ObInfo.Names, ns);
+            r += (PathDomain, new Domain(cx, rs, rt, new BTree<long, ObInfo>(cx.role.defpos, oi)));
+            r += (_Names, nn);
             return r;
         }
         internal override Basis New(BTree<long, object> m)
@@ -1577,7 +1625,7 @@ namespace Pyrrho.Level5
             var ii = infos;
             var gi = rs.Contains(idCol); 
             for (var tb = super.First(); tb != null; tb = tb.Next())
-                if (cx._Ob(tb.key().defpos) is Table pd)
+                if (cx._Ob(tb.key().defpos) is Table pd && pd.defpos>0)
                 {
                     for (var b = infos.First(); b != null; b = b.Next())
                         if (b.value() is ObInfo ti)
@@ -1806,7 +1854,7 @@ namespace Pyrrho.Level5
                     var np = cx.GetUid();
                     var m = new BTree<long, object>(SqlNode.LabelSet, new CTree<long, bool>(nt.defpos, true));
                     var nd = new SqlNode(new Ident(Uid(np), new Iix(np)), CList<Ident>.Empty, cx,
-                        -1L, x.docValue, x.state, nt);
+                        -1L, x.docValue, x.state, nt, m);
                     nd.Create(cx, nt, false);
                     // locate the Record that has just been constructed in nt
                     tbs += (nt.defpos, true);
@@ -1954,7 +2002,8 @@ namespace Pyrrho.Level5
                 sb.Append(cm); cm = ",";
                 sb.Append(b.value());
             }
-            sb.Append(']');
+            if (cm==",")
+                sb.Append(']');
             return sb.ToString();
         }
         internal override DBObject New(long dp, BTree<long, object> m)

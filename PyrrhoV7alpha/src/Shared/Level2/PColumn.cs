@@ -316,6 +316,23 @@ namespace Pyrrho.Level2
                 for (var b = ut.methods.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is Method me && me.udType.defpos == ut.defpos)
                         cx.db += (me.defpos, me + (Method.TypeDef, ut));
+            if (table is NodeType nt && table.name.Length==0)
+            {
+                var ps = CTree<string, bool>.Empty;
+                for (var b = nt.representation.First(); b != null; b = b.Next())
+                    ps += (cx.NameFor(b.key()), true);
+                var ts = (nt.kind == Sqlx.NODETYPE) ? cx.role.unlabelledNodeTypes : cx.role.unlabelledEdgeTypes;
+                if (ts[ps] is null || (ts[ps] is long tp && tp == nt.defpos))
+                {
+                    if (ts[ps - name] is long op && op == nt.defpos)
+                        ts -= ps - name;
+                    ro += ((nt.kind == Sqlx.NODETYPE) ? Role.UnlabelledNodeTypes : Role.UnlabelledEdgeTypes,
+                        ts + (ps, nt.defpos));
+                    cx.db += (ro, p);
+                }
+            }
+            if (table is NodeType nn && oi.name is string cn)
+                table += (NodeType._Names, nn.names + (cn, defpos));
             if (cx.db.format < 51)
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

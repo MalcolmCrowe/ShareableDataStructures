@@ -4114,12 +4114,14 @@ namespace Pyrrho.Level3
                             && nd is not SqlEdge)
                         {
                             var nt = (NodeType)nd.domain;
-                            if (nt.defpos < 0 && nt.labels.Count<2)
+                            if (nt.defpos < 0 && nt.labels.Count == 1)
                                 for (var c = nd.labelSet.First(); c != null; c = c.Next())
+                                {
                                     if (cx.obs[c.key()] is SqlLiteral sl
                                             && sl.Eval(cx) is TChar tc
                                             && cx._Od(cx.role.nodeTypes[tc.value] ?? -1L) is NodeType nt0)
                                         nt = nt0;
+                                }
                             nd.Create(cx, nt);
                         }
                     SqlNode? ln = null;

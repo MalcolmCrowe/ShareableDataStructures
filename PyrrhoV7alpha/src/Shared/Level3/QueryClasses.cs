@@ -534,17 +534,15 @@ namespace Pyrrho.Level3
     internal class UpdateAssignment : Basis,IComparable
     {
         internal const long
-            Literal = -217, // TypedValue;
-            Val = -237, // long SqlValue
-            Vbl = -238; // long SqlValue
-        public long vbl=>(long)(mem[Vbl]??-1L);
-        public long val=>(long)(mem[Val]??-1L);
+            Literal = -217; // TypedValue;
+        public long vbl=>(long)(mem[AssignmentStatement.Vbl]??-1L);
+        public long val=>(long)(mem[AssignmentStatement.Val]??-1L);
         public TypedValue lit => (TypedValue?)mem[Literal] ?? TNull.Value;
         public UpdateAssignment(long vb, long vl) : base(BTree<long, object>.Empty
-            + (Vbl, vb) + (Val, vl))
+            + (AssignmentStatement.Vbl, vb) + (AssignmentStatement.Val, vl))
         { }
         public UpdateAssignment(long vb, TypedValue vl) : base(BTree<long, object>.Empty
-    + (Vbl, vb) + (Literal, vl))
+    + (AssignmentStatement.Vbl, vb) + (Literal, vl))
         { }
         protected UpdateAssignment(BTree<long, object> m) : base(m) { }
         public static UpdateAssignment operator+ (UpdateAssignment u,(long, object)x)
@@ -563,10 +561,10 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var na = cx.Fix(val);
             if (na!=val)
-            r += (Val, na);
+            r += (AssignmentStatement.Val, na);
             var nb = cx.Fix(vbl);
             if (nb!=vbl)
-            r += (Vbl, nb);
+            r += (AssignmentStatement.Vbl, nb);
             return r;
         }
         internal UpdateAssignment Replace(Context cx,DBObject was,DBObject now)

@@ -61,7 +61,7 @@ namespace Pyrrho.Level3
             Element = -77, // Domain
             End = -78, // Sqlx (interval part) (D)
             Kind = -80, // Sqlx
-            Nodes = -499, // CTree<long,bool> SqlNode
+            Nodes = -260, // CTree<long,bool> SqlNode used for Match Return
             NotNull = -81, // bool
             NullsFirst = -82, // bool (C)
             _OrderCategory = -83, // OrderCategory
@@ -173,11 +173,10 @@ namespace Pyrrho.Level3
         public Procedure? orderFunc => (Procedure?)mem[OrderFunc];
         public CTree<long, bool> aggs =>
             (CTree<long, bool>?)mem[Aggs] ?? CTree<long, bool>.Empty;
+        public CTree<long, bool> nodes => (CTree<long, bool>)(mem[Nodes] ?? CTree<long, bool>.Empty);
         public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory] ?? OrderCategory.None);
         public CTree<Domain, bool> unionOf =>
             (CTree<Domain, bool>?)mem[UnionOf] ?? CTree<Domain, bool>.Empty;
-        public CTree<long, bool> nodes =>
-            (CTree<long, bool>?)mem[Nodes] ?? CTree<long, bool>.Empty;
         internal Domain(Context cx, CTree<long, Domain> rs, BList<long?> rt, BTree<long, ObInfo> ii)
             : this(-1L, _Mem(cx, Sqlx.TABLE, rs, rt, rt.Length) + (Infos, ii)) { }
         internal Domain(long dp, Context cx, Sqlx t, CTree<long, Domain> rs, BList<long?> rt, int ds = 0)

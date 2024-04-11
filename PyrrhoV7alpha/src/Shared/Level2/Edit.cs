@@ -379,10 +379,12 @@ namespace Pyrrho.Level2
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("EditType " + name + "[" + DBObject.Uid(prev.defpos) + "] Under: ");
-            var cm = "";
+            var sb = new StringBuilder("EditType " + name + "[" + DBObject.Uid(prev.defpos) + "]");
+            var cm = " Under: [";
             for (var b = under.First(); b != null; b = b.Next())
             { sb.Append(cm); cm = ","; sb.Append(b.key().ToString()); }
+            if (cm == ",")
+                sb.Append(']');
             return sb.ToString();
         }
     }

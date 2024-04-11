@@ -74,7 +74,6 @@ namespace Pyrrho.Level4
         internal BTree<long, BTree<TRow, BTree<long, Register>>> funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         internal BTree<Domain, long?> newTypes = BTree<Domain, long?>.Empty; // uncommitted types
-        internal CTree<long, TGParam> nodes = CTree<long, TGParam>.Empty; 
         internal CTree<long, TPath> paths = CTree<long, TPath>.Empty; // of trails by SqlMatchAlt.defpos
         /// <summary>
         /// Left-to-right accumulation of definitions during a parse: accessed only by RowSet
@@ -1641,14 +1640,12 @@ namespace Pyrrho.Level4
                         case RowSet.Windows: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case WindowSpecification.WQuery: v = Replaced((long)v); break;
                         case SqlFunction._Val: v = Replaced((long)v); break;
-                        case UpdateAssignment.Val: v = Replaced((long)v); break;
                         case QuantifiedPredicate.Vals: v = ReplacedLl((BList<long?>)v); break;
                         case SqlInsert.Value: v = Replaced((long)v); break;
                         case SelectRowSet.ValueSelect: v = Replaced((long)v); break;
                         case SqlCall.Var: v = Replaced((long)v); break;
                         case SqlFunction.Window: v = Replaced((long)v); break;
                         case SqlFunction.WindowId: v = Replaced((long)v); break;
-                        case UpdateAssignment.Vbl: v = Replaced((long)v); break;
                         default: break;
                     }
                 if (v is not null)
@@ -2638,6 +2635,16 @@ namespace Pyrrho.Level4
                     r += (p, FixTlb(x));
                 }
             return r;
+        }
+
+        internal TypedValue? Node(Domain? dm,long lI)
+        {
+            dm = db.objects[dm?.defpos ?? -1L] as Domain;
+            if (dm is EdgeType et && et.tableRows[lI] is TableRow tr)
+                return new TEdge(et,tr);
+            if (dm is NodeType nt && nt.tableRows[lI] is TableRow tn)
+                return new TNode(nt, tn);
+            return TNull.Value;
         }
     }
 

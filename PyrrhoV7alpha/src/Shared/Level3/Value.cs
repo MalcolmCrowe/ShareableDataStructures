@@ -11019,7 +11019,7 @@ cx.obs[high] is not SqlValue hi)
             if (d is not null)
                 m += (DocValue, d);
             m += (State, tgs);
-            if (dm is not null && dm.defpos>0)
+            if (dm is not null && dm.defpos>0 && !m.Contains(LabelSet))
             {
                 m += (_Label, dm.defpos);
                 m += (LabelSet, dm.labels);
@@ -11062,8 +11062,7 @@ cx.obs[high] is not SqlValue hi)
             _NodeType(Context cx, CTree<string, SqlValue> ls, NodeType dt, bool allowExtras = true)
         {
             var nd = this;
-            // a label with at least one char SqlValue must be here
-            // evaluate them all as TTypeSpec or TChar
+            // evaluate any SqlValue labels as TTypeSpec or TChar
             var tl = nd.labelSet;
             NodeType? nt = null; // the node type of this node when we find it or construct it
             TableColumn? iC = null; // the special columns for this node
@@ -11074,8 +11073,23 @@ cx.obs[high] is not SqlValue hi)
             var md = CTree<Sqlx, TypedValue>.Empty; // some of what we will find on this search
                                                     // Begin to think about the names of special properties for the node we are building
                                                     // We may be using the default names, or we may inherit them from existing types
-            if (tl==CTree<long,bool>.Empty)
-                return (dt, md);
+            if (tl == CTree<long, bool>.Empty && allowExtras)
+            { // unlabelled nodes have types determined by their kind and property set
+                var ps = CTree<string, bool>.Empty;
+                var pl = BList<DBObject>.Empty;
+                for (var b = ls.First(); b != null; b = b.Next())
+                    if (b.value() is SqlValue s)
+                    {
+                        ps += (b.key(), true);
+                        pl += s;
+                    }
+                if (cx.role.unlabelledNodeTypes[ps] is long p && cx.db.objects[p] is NodeType nu)
+                    return (nu, md);
+                var dn = new Domain(Sqlx.TYPE, cx, pl);
+                nt = new NodeType(cx.GetUid(),"",new UDType(-1L,dn.mem),
+                    new CTree<Domain,bool>(dn,true),cx);
+                cx.Add(nt);
+            }
             string? sd = null; // ID if present
             if (nd.labelSet.Count>1 && nd.tok==Sqlx.AMPERSAND)
             {
@@ -11206,6 +11220,7 @@ cx.obs[high] is not SqlValue hi)
                         : sk.Eval(cx).ToString();
                     ls += (k, sv);
                 }
+            // If there are no labels, we create new node types rather than adding altering existing
             allowExtras = allowExtras && (labelSet.Count<=1 || tok==Sqlx.COLON);
             var (nt, md) = _NodeType(cx, ls, dt, allowExtras);
             if (nt.defpos < 0 && md == CTree<Sqlx, TypedValue>.Empty && ls == CTree<string, SqlValue>.Empty)
@@ -11506,14 +11521,14 @@ cx.obs[high] is not SqlValue hi)
             TableColumn? iC = null;
             var lS = cx.obs[nd.leavingValue] as SqlNode;
             var lI = lS?.idValue ?? -1L;
-            var lg = cx.binding[lI] ?? cx.nodes[lI];
+            var lg = cx.binding[lI] ?? cx.Node(lS?.domain,lI);
             var lT = lS?.domain;
             if (lT is null || lT.defpos < 0L)
                 lT = lg?.dataType ?? cx.obs[lI]?.domain ?? lS?.domain;
             var lN = lT?.name;
             var aS = cx.obs[nd.arrivingValue] as SqlNode;
             var aI = aS?.idValue ?? -1L;
-            var ag = cx.binding[aI] ?? cx.nodes[aI];
+            var ag = cx.binding[aI] ?? cx.Node(aS?.domain,aI);
             var aT = aS?.domain;
             if (aT is null || aT.defpos < 0)
                 aT = ag?.dataType ?? cx.obs[aI]?.domain ?? aS?.domain;
@@ -11538,6 +11553,30 @@ cx.obs[high] is not SqlValue hi)
             // if existing components are related, the top and bottom types found 
             var te = Domain.Null;
             var be = Domain.Null;
+            if (tl == CTree<long, bool>.Empty)
+            { // unlabelled edges have types determined by their kind and property set
+                var ps = CTree<string, bool>.Empty;
+                var pl = BList<DBObject>.Empty;
+                for (var b = ls.First(); b != null; b = b.Next())
+                    if (b.value() is SqlValue s)
+                    {
+                        ps += (b.key(), true);
+                        pl += s;
+                    }
+                if (cx.role.unlabelledEdgeTypes[ps] is long p && cx.db.objects[p] is EdgeType nu)
+                    nt = nu;
+                else
+                {
+                    var dn = new Domain(Sqlx.TYPE, cx, pl);
+                    nt = new EdgeType(cx.GetUid(), "", new UDType(-1L, dn.mem),
+                        new CTree<Domain, bool>(dt, true), cx);
+                    if (lT is not null)
+                        nt += (EdgeType.LeavingType, lT.defpos);
+                    if (aT is not null)
+                        nt += (EdgeType.ArrivingType, aT.defpos);
+                    cx.Add(nt);
+                }
+            }
             for (var b = tl.First(); b != null; b = b.Next())  // tl is the iterative type label
                 if (b.key() is long tp)
                 {

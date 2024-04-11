@@ -110,8 +110,8 @@ namespace Pyrrho.Level2
         public string iri = "";
         public string name = ""; // placed by Graph constructor
         public CTree<long, bool> types = CTree<long,bool>.Empty;
-        public CTree<long, bool> records = CTree<long, bool>.Empty;
-        public PGraph(long pp,string s,CTree<long,bool> ts,CTree<long,bool> ns) 
+        public CTree<long, TNode> records = CTree<long, TNode>.Empty;
+        public PGraph(long pp,string s,CTree<long,bool> ts,CTree<long,TNode> ns) 
             : base(Type.PGraph, pp)
         {
             iri = s;
@@ -134,7 +134,14 @@ namespace Pyrrho.Level2
                 types += (rdr.GetLong(), true);
             n = rdr.GetInt();
             for (var i = 0; i < n; i++)
-                records += (rdr.GetLong(), true);
+            {
+                var tb = rdr.context.db.objects[rdr.GetLong()] as NodeType;
+                var p = rdr.GetLong();
+                if (tb is null || tb.tableRows[p] is not TableRow tr)
+                    Console.WriteLine("Warning: bad Graph record list");
+                else
+                    records += (p, new TNode(tb,tr));
+            }
             base.Deserialise(rdr);
         }
         public override void Serialise(Writer wr)
@@ -145,7 +152,10 @@ namespace Pyrrho.Level2
                 wr.PutLong(b.key());
             wr.PutInt((int)records.Count);
             for (var b = records.First(); b != null; b = b.Next())
+            {
+                wr.PutLong(b.value().dataType.defpos);
                 wr.PutLong(b.key());
+            }
             base.Serialise(wr);
         }
         public override long Dependent(Writer wr, Transaction tr)
