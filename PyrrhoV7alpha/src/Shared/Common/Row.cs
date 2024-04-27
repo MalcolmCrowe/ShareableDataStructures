@@ -109,6 +109,10 @@ namespace Pyrrho.Common
                         return d;
             return dt;
         }
+        internal virtual TypedValue Check(ConstrainedStandardType ct)
+        {
+            return this;
+        }
         internal virtual string ToString(Context cx)
         {
             return ToString();
@@ -162,6 +166,23 @@ namespace Pyrrho.Common
         internal readonly long value; // should be 0L for TInteger subclass
         internal TInt(Domain dt, long v) : base(dt.Best(Domain.Int)) { value = v; }
         internal TInt(long v) : this(Domain.Int, v) { }
+        internal override TypedValue Check(ConstrainedStandardType ct)
+        {
+            var bl = ct.bitLength;
+            var n = 0;
+            if (bl > 0)
+            {
+                var v = (value < 0) ? -value : value;
+                while (v>0)
+                {
+                    v = v >> 1;
+                    n++;
+                }
+            }
+            if ((ct.signed == Sqlx.UNSIGNED && value<0) || n >bl)
+                throw new DBException("22003");
+            return this;
+        }
         internal override TypedValue Next()
         {
             if (value == long.MaxValue)
@@ -218,6 +239,13 @@ namespace Pyrrho.Common
         internal override TypedValue Next()
         {
             return new TInteger(ivalue.Add(new Integer(1),0));
+        }
+        internal override TypedValue Check(ConstrainedStandardType ct)
+        {
+            var bl = ct.bitLength;
+            if ((ct.signed==Sqlx.UNSIGNED && ivalue.Sign)||(bl > 0 && ivalue.BitsNeeded() > bl))
+                throw new DBException("22003");
+            return this;
         }
         internal override byte BsonType()
         {
@@ -677,7 +705,7 @@ namespace Pyrrho.Common
         public static TList operator+(TList ar,TypedValue v)
         {
             if (ar.dataType.elType is null || !ar.dataType.elType.CanTakeValueOf(v.dataType))
-                throw new DBException("22005", ar.dataType.elType??Domain.Null, v.dataType);
+                throw new DBException("22G03", ar.dataType.elType??Domain.Null, v.dataType);
             return new TList(ar.dataType, ar.list + v);
         }
         public static TList operator-(TList ls,int k)
@@ -691,7 +719,7 @@ namespace Pyrrho.Common
         internal override bool Contains(TypedValue e)
         {
             if (dataType.elType is null || !dataType.elType.CanTakeValueOf(e.dataType))
-                throw new DBException("22005", dataType.elType??Domain.Null, e.dataType);
+                throw new DBException("22G03", dataType.elType??Domain.Null, e.dataType);
             for (var b = list.First(); b != null; b = b.Next())
                 if (b.value().CompareTo(e) == 0)
                     return true;
@@ -767,7 +795,7 @@ namespace Pyrrho.Common
         {
             var (i, v) = x;
             if (ar.dataType.elType is null || !ar.dataType.elType.CanTakeValueOf(v.dataType))
-                throw new DBException("22005", ar.dataType.elType ?? Domain.Null, v.dataType);
+                throw new DBException("22G03", ar.dataType.elType ?? Domain.Null, v.dataType);
             return new TArray(ar.dataType, ar.array + (i,v));
         }
         internal override int Cardinality()
@@ -1067,6 +1095,16 @@ namespace Pyrrho.Common
                     vs += (p, v);
                 }
             return new TRow(dt, vs);
+        }
+        internal bool Matches(Context cx, RowSet rs)
+        {
+            for (var b = rs.matches.First(); b != null; b = b.Next())
+                if (values[b.key()] is TypedValue v && v.CompareTo(b.value()) != 0)
+                    return false;
+            for (var b = rs.where.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is SqlValue sw && sw.Eval(cx) != TBool.True)
+                    return false;
+            return true;
         }
         /// <summary>
         /// Make a readable representation of the Row
@@ -1431,7 +1469,7 @@ namespace Pyrrho.Common
         internal TMultiset Add(TypedValue a, long n)
         {
              if (dataType.elType is null || !dataType.elType.CanTakeValueOf(a.dataType))
-                throw new DBException("22005", dataType.elType??Domain.Null, a).ISO();
+                throw new DBException("22G03", dataType.elType??Domain.Null, a).ISO();
             var nt = tree;
             if (!nt.Contains(a))
                 nt+=(a, n);

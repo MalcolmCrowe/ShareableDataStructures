@@ -129,7 +129,7 @@ namespace Pyrrho.Level2
             psr.cx.Install(pr, 0);
             odt.Defs(psr.cx);
             // and parse the body
-            if (psr.ParseProcedureStatement(pr.domain) is not Executable bd)
+            if (psr.ParseStatement(pr.domain,true) is not Executable bd)
                 throw new PEException("PE1978");
             proc = bd.defpos;
             framing = new Framing(psr.cx,nst);

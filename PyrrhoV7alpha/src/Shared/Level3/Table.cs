@@ -128,8 +128,8 @@ namespace Pyrrho.Level3
         public static Table operator +(Table tb, (Context, TableColumn) x)
         {
             var (cx, tc) = x;
-            var oi = tb.infos[cx.role.defpos] ?? throw new DBException("42105");
-            var ci = tc.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var oi = tb.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Sqlx.TABLE);
+            var ci = tc.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Sqlx.COLUMN);
             var ns = oi.names;
             tc += (TableColumn.Seq, tb.Length);
             if (ci.name != null)
@@ -268,7 +268,7 @@ namespace Pyrrho.Level3
             var xs = ShallowReplace(cx, indexes, was, now);
             if (xs != indexes)
                 r += (Indexes, xs);
-            var ks = cx.ShallowReplace(keyCols, was, now);
+            var ks = Context.ShallowReplace(keyCols, was, now);
             if (ks != keyCols)
                 r += (KeyCols, ks);
             var rs = ShallowReplace(cx, rindexes,was,now);
@@ -294,7 +294,7 @@ namespace Pyrrho.Level3
                 var k = (Domain)b.key().ShallowReplace(cx,was,now);
                 if (k != b.key())
                     xs -= b.key();
-                var v = cx.ShallowReplace(b.value(),was,now);
+                var v = Context.ShallowReplace(b.value(),was,now);
                 if (k != b.key() || v != b.value())
                     xs += (k, v);
             }
@@ -610,7 +610,7 @@ BTree<string, (int, long?)> ns)
             ABookmark<long, object> _enu)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.ROLE);
             var nm = NameFor(cx);
             var versioned = mi.metadata.Contains(Sqlx.ENTITY);
             var key = BuildKey(cx, out Domain keys);
@@ -788,7 +788,7 @@ BTree<string, (int, long?)> ns)
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
                 || kind==Sqlx.Null || from.kind ==Sqlx.Null
                 || cx.db.user is not User ud)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.ROLE);
             var versioned = true;
             var sb = new StringBuilder();
             sb.Append("/*\r\n * "); sb.Append(NameFor(cx)); sb.Append(".java\r\n *\r\n * Created on ");
@@ -843,7 +843,7 @@ BTree<string, (int, long?)> ns)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
                 || kind==Sqlx.Null || from.kind == Sqlx.Null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.ROLE);
             var versioned = true;
             var sb = new StringBuilder();
             var nm = NameFor(cx);
@@ -909,7 +909,7 @@ BTree<string, (int, long?)> ns)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is null
                 || kind == Sqlx.Null || from.kind == Sqlx.Null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.ROLE);
             var sb = new StringBuilder();
             sb.Append("--"); sb.Append(name); sb.Append(" Created on ");
             sb.Append(DateTime.Now);

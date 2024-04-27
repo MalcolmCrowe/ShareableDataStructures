@@ -85,7 +85,7 @@ namespace Pyrrho.Level3
         {
             if (cx.role==null || infos[cx.role.defpos] is not ObInfo oi
              || !oi.priv.HasFlag(Grant.Privilege.Execute))
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.EXECUTE);
             var a = cx.GetActivation();
             var vr = (SqlValue?)cx.obs[var]; // for a constructor, vr is null!
             if (cx.db.objects[udType.defpos] is not UDType ut)
@@ -116,7 +116,7 @@ namespace Pyrrho.Level3
             for (var b = me.ins.First(); b != null; b = b.Next(), i++)
                 if (b.value() is long p && act.obs[p] is FormalParameter pi) 
                 act.values += (pi.val, acts[i]);
-            cx = bd.Obey(act);
+            cx = bd._Obey(act);
             var r = act.Ret();
             if (r is TList)
                 for (var b = act.values.First(); b != null; b = b.Next())

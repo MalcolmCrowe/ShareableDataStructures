@@ -303,7 +303,8 @@ namespace Pyrrho.Level2
                         if (un is NodeType nu && nu.idCol < 0 && dataType is NodeType tn && tn.idCol > 0)
                         {
                             // this will be okay provided nu has no columns and no rows
-                            if (nu.rowType.Count > 0 || nu.tableRows.Count > 0) throw new DBException("42000");
+                            if (nu.rowType.Count > 0 || nu.tableRows.Count > 0) 
+                                throw new DBException("42000").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT);
                             var nx = cx.db.objects[tn.idIx] as Level3.Index ?? throw new PEException("PE40405");
                             // we get nu to adopt the ID column of nt, and clone the ID index
                             nu += (Domain.RowType, new BList<long>(tn.idCol));

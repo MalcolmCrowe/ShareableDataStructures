@@ -1,5 +1,6 @@
 using System.Text;
 using Pyrrho.Common;
+using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -84,6 +85,8 @@ namespace Pyrrho.Security
                     case "Modify": Send(Connecting.Modify, v); break;
                     case "Length": Send(Connecting.Length, v); break;
 					case "CaseSensitive": Send(Connecting.CaseSensitive, v); break;
+					case "Schema": Send(Connecting.Schema, v); break;
+					case "Graph": Send(Connecting.Graph, v); break;
 					default: goto bad;
 				}
 			}

@@ -249,6 +249,31 @@ namespace Pyrrho
             }
             return new PyrrhoColumn[0];
         }
+        public BTree<string,int> GetInfo()
+        {
+            var r = BTree<string, int>.Empty;
+            AcquireExecution();
+            try
+            {
+                Send(Protocol.GraphInfo);
+                if (Receive() == Responses.GraphInfo)
+                {
+                    for (; ; )
+                    {
+                        var c = GetString();
+                        if (c == "")
+                            return r;
+                        var f = GetInt();
+                        r += (c, f);
+                    }
+                }
+            }
+            finally
+            {
+                ReleaseExecution();
+            }
+            return r;
+        }
         /// <summary>
         /// Utility function for splitting up the connection string
         /// </summary>
@@ -373,7 +398,12 @@ namespace Pyrrho
                         }
                     }
                     break;
-                case 9: cell.val = GetInt() != 0; break;
+                case 9:
+                    {
+                        var v = GetInt();
+                        cell.val = (v < 0) ? null: (v == 1);
+                        break;
+                    }
                 case 10: cell.val = GetInterval(); break;
                 case 11: cell.val = GetTimeSpan(); break;
                 case 12: cell.val = GetRow(cell.subType); break;
@@ -676,6 +706,8 @@ namespace Pyrrho
                     case "AllowAsk": crypt.Send(Connecting.AllowAsk, v); break;
                     case "Locale": crypt.Send(Connecting.Culture, v); break;
                     case "CaseSensitive": crypt.Send(Connecting.CaseSensitive, v); break;
+                    case "Schema": crypt.Send(Connecting.Schema, v); break;
+                    case "Graph": crypt.Send(Connecting.Graph, v); break;
                     default: throw new DatabaseError("2E209", n);
                 }
             }
@@ -1442,7 +1474,7 @@ namespace Pyrrho
         bool active = true;
         internal PyrrhoTable schema;
         IEnumerator<PyrrhoRow> local = null;
-        internal CellValue[] row = null; // current row, as obtained by IDataReader.Read
+        public CellValue[] row = null; // current row, as obtained by IDataReader.Read
         public string version = null, entity = null;
         internal CellValue[] cells = null; // cells obtained from a single ReaderData call (4.2)
         internal BTree<string, BTree<string, Versioned>> versions = null;
@@ -1764,10 +1796,11 @@ namespace Pyrrho
             return (double)(decimal)row[i].val;
         }
 
-        public bool GetBoolean(int i)
+        public bool? GetBoolean(int i)
         {
             cmd.CheckThread();
-            return ((long)row[i].val) == 1;
+            var a = (long)row[i].val;
+            return (a<0)?null:(a== 1);
         }
 
         public Guid GetGuid(int i)

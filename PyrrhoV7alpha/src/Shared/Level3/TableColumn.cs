@@ -38,6 +38,7 @@ namespace Pyrrho.Level3
             (GenerationRule)(mem[Generated] ?? GenerationRule.None);
         public int seq => (int)(mem[Seq] ?? -1);
         public long tabledefpos => (long)(mem[_Table] ?? -1L);
+        public bool notNull => (bool)(mem[Domain.NotNull] ?? false);
         public CTree<UpdateAssignment,bool> update =>
             (CTree<UpdateAssignment,bool>?)mem[UpdateAssignments] 
             ?? CTree<UpdateAssignment,bool>.Empty;
@@ -99,7 +100,7 @@ namespace Pyrrho.Level3
             var r = BTree<long, object>.Empty + (Definer, c.definer)
                 + (Owner, c.owner) + (Infos, c.infos) + (Seq, c.seq)
                 + (_Domain, dt) + (LastChange, c.ppos);
-            if (c.notNull)
+            if (c.notNull || dt.notNull)
                 r += (Domain.NotNull, true);
             if (c.generated != GenerationRule.None)
                 r += (Generated, c.generated);
@@ -144,7 +145,7 @@ namespace Pyrrho.Level3
         internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? p)
         {
             if (cx._Ob(defpos) is not DBObject ob)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.COLUMN);
             SqlValue r = new SqlCopy(lp, cx, nm, p?.defpos??-1L, ob) + (_Domain, domain);
             cx.Add(r);
             return (r, n);
@@ -570,7 +571,7 @@ namespace Pyrrho.Level3
                     throw new PEException("PE10703");
                 var dv = dm.representation[p] ?? Domain.Position;
                 if (vs[p] is not TypedValue v)
-                    throw new DBException("22206", cx.NameFor(p));
+                    throw new DBException("22G0Y", cx.NameFor(p));
                 if (v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
                     throw new PEException("PE10704");
             }

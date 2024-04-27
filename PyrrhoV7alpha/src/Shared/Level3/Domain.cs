@@ -1,4 +1,5 @@
 using System.Globalization;
+using System.Numerics;
 using System.Text;
 using System.Xml;
 using Pyrrho.Common;
@@ -77,7 +78,9 @@ namespace Pyrrho.Level3
             Under = -90, // CTree<Domain,bool> direct supertypes (GQL)
             UnionOf = -91; // CTree<Domain,bool>
         internal static Domain Null, Value, Content, // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
-    Bool, Blob, Char, Password, Int, _Numeric, Real, Date, Timespan, Timestamp,
+    Bool, Blob, Char, Password, Int, Int8, Int16, Int32, Int64, Int128, Int256,
+    UInt8, UInt16, UInt32, UInt64, UInt128, UInt256,
+    Float16,Float32,Float64,Float128, Float256, _Numeric, Real, Date, Timespan, Timestamp,
     Interval, _Level, MTree, // pseudo type for MTree implementations
     Partial, // pseudo type for MTree implementation
     Array, SetType, Multiset, Collection, EdgeEnds, Cursor, UnionNumeric, UnionDate,
@@ -85,7 +88,7 @@ namespace Pyrrho.Level3
     Document, DocArray, ObjectId, JavaScript, ArgList, // Pyrrho 5.1
     TableType, Row, Delta, Position,
     Metadata, HttpDate, Star, // Pyrrho v7
-    _Rvv, Graph, PathType; // Rvv is V7 validator type
+    _Rvv, GraphSpec, PathType; // Rvv is V7 validator type
         internal static UDType TypeSpec;
         internal static NodeType NodeType,NodeSchema;
         internal static EdgeType EdgeType,EdgeSchema;
@@ -99,8 +102,25 @@ namespace Pyrrho.Level3
             Char = new StandardDataType(Sqlx.CHAR, OrderCategory.Primitive);
             Password = new StandardDataType(Sqlx.PASSWORD, OrderCategory.Primitive);
             Int = new StandardDataType(Sqlx.INTEGER, OrderCategory.Primitive);
+            Int8 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.SIGNED, 7);
+            Int16 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.SIGNED, 15);
+            Int32 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.SIGNED, 31);
+            Int64 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.SIGNED, 63);
+            Int128 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.SIGNED, 127);
+            Int256 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.SIGNED, 255);
+            UInt8 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.UNSIGNED, 8);
+            UInt16 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.UNSIGNED, 16);
+            UInt32 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.UNSIGNED, 32);
+            UInt64 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.UNSIGNED, 64);
+            UInt128 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.UNSIGNED, 128);
+            UInt256 = new ConstrainedStandardType(Sqlx.INTEGER, Sqlx.UNSIGNED, 256); 
             _Numeric = new StandardDataType(Sqlx.NUMERIC, OrderCategory.Primitive);
             Real = new StandardDataType(Sqlx.REAL, OrderCategory.Primitive);
+            Float16 = new ConstrainedStandardType(Sqlx.REAL, Sqlx.SIGNED, 10, 4);
+            Float32 = new ConstrainedStandardType(Sqlx.REAL, Sqlx.SIGNED, 23, 7);
+            Float64 = new ConstrainedStandardType(Sqlx.REAL, Sqlx.SIGNED, 52, 10);
+            Float128 = new ConstrainedStandardType(Sqlx.REAL, Sqlx.SIGNED, 112, 14);
+            Float256 = new ConstrainedStandardType(Sqlx.REAL, Sqlx.SIGNED, 236, 18);
             Date = new StandardDataType(Sqlx.DATE, OrderCategory.Primitive);
             HttpDate = new StandardDataType(Sqlx.HTTPDATE, OrderCategory.Primitive);
             Timespan = new StandardDataType(Sqlx.TIME, OrderCategory.Primitive);
@@ -133,7 +153,7 @@ namespace Pyrrho.Level3
             Position = new StandardDataType(Sqlx.POSITION);
             Metadata = new StandardDataType(Sqlx.METADATA);
             Star = new(--_uid, Sqlx.TIMES, BTree<long, object>.Empty);
-            Graph = new StandardDataType(Sqlx.GRAPH); // opaque
+            GraphSpec = new StandardDataType(Sqlx.GRAPH); // opaque
             NodeType = new NodeType(Sqlx.NODETYPE);
             NodeSchema = new NodeType(Sqlx.SCHEMA);
             EdgeType = new EdgeType(Sqlx.EDGETYPE);
@@ -561,7 +581,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 var p = b.key();
                 var cd = b.value();
                 if (cx._Ob(p) is not DBObject c || c.NameFor(cx) is not string n)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.COLUMN_NAME);
                 string tn = "";
                 if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
                     tn = cd.SystemType.Name;
@@ -569,7 +589,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 {
                     if (tn == "[]")
                         tn = "_T" + i + "[]";
-                    if (n.EndsWith("("))
+                    if (n.EndsWith('('))
                         n = "_F" + i;
                 }
                 cd.FieldType(cx, sb);
@@ -791,7 +811,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Sqlx.ARRAY:
                     {
                         var dp = rdr.GetLong();
-                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105");
+                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Sqlx.DOMAIN);
                         var vs = BList<TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
@@ -802,7 +822,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Sqlx.MULTISET:
                     {
                         var dp = rdr.GetLong();
-                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105");
+                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Sqlx.DOMAIN);
                         var m = new TMultiset(this);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
@@ -812,7 +832,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Sqlx.SET:
                     {
                         var dp = rdr.GetLong();
-                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105");
+                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Sqlx.DOMAIN);
                         var m = new TSet(this);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
@@ -859,7 +879,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Sqlx.TYPE:
                     {
                         var dp = rdr.GetLong();
-                        var ut = (UDType)(rdr.context.db.objects[dp] ?? throw new DBException("42105"));
+                        var ut = (UDType)(rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Sqlx.TYPE));
                         ut.Instance(dp, rdr.context, null);
                         var r = CTree<long, TypedValue>.Empty;
                         if (ut.superShape == true)
@@ -1490,9 +1510,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         if (a is TList x && b is TList y)
                         {
                             var xe = x.dataType.elType
-                                ?? throw new DBException("22202").Mix().AddValue(y.dataType);
+                                ?? throw new DBException("22G03").Mix().AddValue(y.dataType);
                             if (x.dataType.elType != y.dataType.elType)
-                                throw new DBException("22202").Mix()
+                                throw new DBException("22G03").Mix()
                                     .AddType(xe).AddValue(y.dataType); 
                             c = 0;
                             for (int j = 0; ; j++)
@@ -1509,9 +1529,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         if (a is TArray tx && b is TArray ty)
                         {
                             var xe = tx.dataType.elType
-                                ?? throw new DBException("22202").Mix().AddValue(ty.dataType);
+                                ?? throw new DBException("22G03").Mix().AddValue(ty.dataType);
                             if (tx.dataType.elType != ty.dataType.elType)
-                                throw new DBException("22202").Mix()
+                                throw new DBException("22G03").Mix()
                                     .AddType(xe).AddValue(ty.dataType);
                             c = 0;
                             var xb = tx.array.First();
@@ -1545,7 +1565,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         if (x.dataType.elType == null || y.dataType.elType == null)
                             throw new PEException("PE50705");
                         if (x.dataType.elType != y.dataType.elType)
-                            throw new DBException("22002").AddType(x.dataType.elType)
+                            throw new DBException("22G03").AddType(x.dataType.elType)
                                 .AddValue(y.dataType.elType);
                         var e = x.tree.First();
                         var f = y.tree.First();
@@ -1571,7 +1591,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         if (x.dataType.elType == null || y.dataType.elType == null)
                             throw new PEException("PE50706");
                         if (x.dataType.elType != y.dataType.elType)
-                            throw new DBException("22002").AddType(x.dataType.elType)
+                            throw new DBException("22G03").AddType(x.dataType.elType)
                                 .AddValue(y.dataType.elType);
                         var e = x.tree.First();
                         var f = y.tree.First();
@@ -1646,10 +1666,10 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             if (bb.key() is Domain dt)
                                 if (dt.CanBeAssigned(a) && dt.CanBeAssigned(b))
                                     return dt.Compare(a, b);
-                        throw new DBException("22202", a?.dataType.ToString()??"??", b?.dataType.ToString()??"??");
+                        throw new DBException("22G03", a?.dataType.ToString()??"??", b?.dataType.ToString()??"??");
                     }
                 case Sqlx.PASSWORD:
-                    throw new DBException("22202").ISO();
+                    throw new DBException("22G03").ISO();
                 default:
                     c = a.ToString().CompareTo(b.ToString()); break;
             }
@@ -2320,7 +2340,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             while (lx.pos < lx.len)
                             {
                                 var s = lx.NonWhite();
-                                if (s.ToUpper().CompareTo("REFERENCES") == 0)
+                                if (s.ToUpperInvariant().CompareTo("REFERENCES") == 0)
                                     rfseen = true;
                                 else if (rfseen)
                                     rfs +=(s, true);
@@ -2333,7 +2353,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         return null;
                     }
             }
-            if (lx.pos + 4 < lx.len && new string(lx.input, start, 4).ToLower() == "null")
+            if (lx.pos + 4 < lx.len && new string(lx.input, start, 4).ToLowerInvariant() == "null")
             {
                 for (int i = 0; i < 4; i++)
                     lx.Advance();
@@ -2422,7 +2442,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         /// <summary>
         /// Facilitate quick decoding of the interval fields
         /// </summary>
-        internal static Sqlx[] intervalParts = new Sqlx[] { Sqlx.YEAR, Sqlx.MONTH, Sqlx.DAY, Sqlx.HOUR, Sqlx.MINUTE, Sqlx.SECOND };
+        internal static Sqlx[] intervalParts = [Sqlx.YEAR, Sqlx.MONTH, Sqlx.DAY, Sqlx.HOUR, Sqlx.MINUTE, Sqlx.SECOND];
         /// <summary>
         /// helper for encoding interval fields
         /// </summary>
@@ -3065,7 +3085,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 default:
                     return Check(v);
             }
-        bad: throw new DBException("22005", this, v.ToString()).ISO();
+        bad: throw new DBException("22G03", this, v.ToString()).ISO();
         }
         /// <summary>
         ///  for accepting Json values
@@ -3175,7 +3195,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             {
                                 if (cn == null || cn == "")
                                     cn = "Col" + b.key();
-                                var di = cn.IndexOf(".");
+                                var di = cn.IndexOf('.');
                                 if (di > 0)
                                     cn = cn[(di + 1)..];
                                 var co = (cn != "" && cn != null && d.Contains(cn)) ? d[cn]
@@ -3370,7 +3390,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     }
                     break;
             }
-            throw new DBException("22005", this, ob?.ToString()??"??").ISO();
+            throw new DBException("22G03", this, ob?.ToString()??"??").ISO();
         }
         /// <summary>
         /// The System.Type corresponding to a SqlDataType
@@ -3812,7 +3832,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         break;
                     }
             }
-            throw new DBException("22005", kind, a).ISO();
+            throw new DBException("22G03", kind, a).ISO();
         }
         /// <summary>
         /// MaxLong bound for knowing if an Integer will fit into a long
@@ -4256,7 +4276,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (defpos < -1L || kind==Sqlx.Null)
                 return this;
             var r = this;
-            var ag = cx.ShallowReplace(aggs, was, now);
+            var ag = Context.ShallowReplace(aggs, was, now);
             if (ag != aggs)
                 r += (Aggs, ag);
             var dv = defaultValue.ShallowReplace(cx, was, now);
@@ -4270,7 +4290,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             var rs = cx.ShallowReplace(representation, was, now);
             if (rs != representation)
                 r += (Representation, rs);
-            var rt = cx.ShallowReplace(rowType, was, now);
+            var rt = Context.ShallowReplace(rowType, was, now);
             if (rt != rowType)
                 r += (RowType, rt);
             return r;
@@ -4446,6 +4466,12 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             types += (t, this);
             Context._system.db = Database._system;
         }
+        internal StandardDataType(Sqlx t, Domain o)
+            : base(-(long)t, t, _Mem(OrderCategory.Primitive, o, BTree<long,object>.Empty))
+        {
+            types += (t, this);
+            Context._system.db = Database._system;
+        }
         protected StandardDataType(long dp, BTree<long, object> m) : base(dp, m) { }
         public static StandardDataType operator+(StandardDataType dt,(long,object) x)
         {
@@ -4470,6 +4496,54 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (!u.Contains(_OrderCategory))
                 u += (_OrderCategory, oc);
             return u;
+        }
+    }
+    class ConstrainedStandardType : Domain
+    {
+        internal const long
+            BitLength = -86, // int
+            ExpBits = -150;  //int
+        internal int bitLength => (int)(mem[BitLength] ?? 0);
+        internal int expBits => (int)(mem[ExpBits] ?? 0);
+        internal Sqlx signed => (Sqlx)(mem[SqlValueExpr.Op] ?? Sqlx.SIGNED);
+        internal ConstrainedStandardType(Sqlx k, Sqlx o,int p,int s=0)
+            : base(--_uid,k,_Mem(o,p,s))
+        {
+            Context._system.db = Database._system;
+        }
+        protected ConstrainedStandardType(long dp, BTree<long, object> m) : base(dp, m)
+        { }
+        static BTree<long,object> _Mem(Sqlx o, int b, int e)
+        {
+            var r = BTree<long, object>.Empty;
+            r += (_OrderCategory, OrderCategory.Primitive);
+            r += (SqlValueExpr.Op, o);
+            if (b!=0)
+                r += (BitLength, b);
+            if (e!=0)
+                r += (ExpBits, e);
+            return r;
+        }
+        public static ConstrainedStandardType operator+(ConstrainedStandardType st,(long,object)x)
+        {
+            return new ConstrainedStandardType(st.defpos, st.mem + x);
+        }
+        internal override TypedValue Coerce(Context cx, TypedValue v)
+        {
+            var tv = base.Coerce(cx, v);
+            tv = tv.Check(this);
+            return tv;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (signed == Sqlx.UNSIGNED)
+                sb.Append(" unsigned");
+            if (bitLength > 0)
+            { sb.Append(" bits "); sb.Append(bitLength); }
+            if (expBits >0)
+            { sb.Append(" expBits "); sb.Append(expBits); }
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -4697,13 +4771,10 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
 
     }
     
-    internal class Period
+    internal class Period(TypedValue s, TypedValue e)
     {
-        public readonly TypedValue start, end;
-        public Period(TypedValue s, TypedValue e)
-        {
-            start = s; end = e;
-        }
+        public readonly TypedValue start = s, end = e;
+
         public Period(Period p) : this(p.start, p.end) { }
         public override string ToString()
         {
@@ -4899,15 +4970,11 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
     /// A class for RdfLiterals
     /// // shareable
     /// </summary>
-    internal class RdfLiteral : TChar
+    internal class RdfLiteral(Domain t, string s, object v, bool c) : TChar(t, s)
     {
-        public readonly object val; // the binary version
-        public readonly bool name; // whether str matches val
-        public RdfLiteral(Domain t, string s, object v, bool c) : base(t, s)
-        {
-            val = v;
-            name = c;
-        }
+        public readonly object val = v; // the binary version
+        public readonly bool name = c; // whether str matches val
+
         public override string ToString()
         {
             return base.ToString();
@@ -5205,7 +5272,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         internal override TRow RoleClassValue(Context cx, RowSet from, ABookmark<long, object> _enu)
         {
             var ro = cx.role;
-            var md = infos[ro.defpos]??throw new DBException("42105");
+            var md = infos[ro.defpos]??throw new DBException("42105").Add(Sqlx.OBJECT);
             var sb = new StringBuilder("using Pyrrho;\r\nusing Pyrrho.Common;\r\n");
             sb.Append("\r\n/// <summary>\r\n");
             sb.Append("/// Class " + md.name + " from Database " + cx.db.name
@@ -5224,7 +5291,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             for (var b = representation.First(); b != null; b = b.Next())
             {
                 var p = b.key();
-                var co = (DBObject?)cx.db.objects[p] ?? throw new DBException("42105");
+                var co = (DBObject?)cx.db.objects[p] ?? throw new DBException("42105").Add(Sqlx.OBJECT);
                 var dt = b.value();
                 var tn = ((dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name) + "?";
                 dt.FieldType(cx, sb);

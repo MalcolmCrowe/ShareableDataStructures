@@ -236,7 +236,7 @@ namespace Pyrrho.Level2
             : base(Type.Update1,old, tb, fl, pp, cx)
         {
             if (cx.db==null || cx.db.user?.defpos != cx.db.owner)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.USER);
             _classification = lv;
         }
         protected Update1(Type t, TableRow old, CTree<long, bool> tb, CTree<long, TypedValue> fl, Level lv,
@@ -244,7 +244,7 @@ namespace Pyrrho.Level2
             :base(t,old,tb,fl,pp,cx) 
         {
             if (cx.db == null || cx.db.user?.defpos != cx.db.owner)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.USER);
             _classification = lv;
         }
         public Update1(Reader rdr) : base(Type.Update1, rdr)

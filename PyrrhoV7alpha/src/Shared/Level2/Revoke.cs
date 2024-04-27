@@ -53,7 +53,7 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx, long p)
         {
             if (cx._Ob(obj) is not DBObject ob || ob.infos[cx.role.defpos] is not ObInfo oi)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.REVOKE);
             oi += (ObInfo.Privilege, oi.priv & ~priv);
             if (oi.priv == Privilege.NoPrivilege)
             {

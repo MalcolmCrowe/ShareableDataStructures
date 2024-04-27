@@ -506,13 +506,13 @@ namespace Pyrrho.Level3
             return (ss == sets) ? this :
                 (GroupSpecification)cx.Add(new GroupSpecification(cx.GetUid(), mem + (Sets, ss)));
         }
-        internal Domain Cols(Context cx,Domain dm)
+        internal Domain Cols(Context cx,RowSet rs)
         {
             var gs = BList<long?>.Empty;
             for (var b = sets.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is Grouping g)
-                    gs = SelectRowSet._Info(cx, g, gs);
-            return cx.GroupCols(gs,dm);
+                    gs = rs._Info(cx, g, gs);
+            return cx.GroupCols(gs,rs);
         }
         public override string ToString()
         {

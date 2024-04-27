@@ -151,7 +151,7 @@ namespace Pyrrho.Level5
         internal override UDType New(Ident pn, CTree<Domain, bool> un, long dp, Context cx)
         {
             return (UDType)(cx.Add(new PNodeType(pn.ident, (NodeType)NodeType.Relocate(dp),
-                un, -1L, dp, cx)) ?? throw new DBException("42105"));
+                un, -1L, dp, cx)) ?? throw new DBException("42105").Add(Sqlx.NODETYPE));
         }
         internal override Table _PathDomain(Context cx)
         {
@@ -167,7 +167,7 @@ namespace Pyrrho.Level5
                         {
                             if (pd.infos[cx.role.defpos] is ObInfo si)
                                 ti += si;
-                            else throw new DBException("42105");
+                            else throw new DBException("42105").Add(Sqlx.TYPE);
                             ii += (b.key(), ti);
                         }
                     if (pd is NodeType pn && (!gi) && (!rs.Contains(pn.idCol)))
@@ -421,7 +421,7 @@ namespace Pyrrho.Level5
                 else
                     nt = ot;
             }
-            return nt ?? throw new DBException("42105");
+            return nt ?? throw new DBException("42105").Add(Sqlx.NODETYPE);
         }
         internal override Table Base(Context cx)
         {
@@ -446,7 +446,7 @@ namespace Pyrrho.Level5
                 throw new DBException("42000", "Node name");
             // analyse the label set given
             long? lt = (ut as EdgeType)?.leavingType, at = (ut as EdgeType)?.arrivingType;
-            var st = ut.super;
+            var st = (name!="")?ut.super:CTree<Domain,bool>.Empty;
             // The new Type may not yet have a Physical record, so fix that
             if (defpos >= Transaction.Analysing)
             {
@@ -467,13 +467,13 @@ namespace Pyrrho.Level5
                     if (md[Sqlx.ARROW] is TChar av && cx.role.dbobjects[av.value] is long ap)
                         at = ap;
                     if (lt is null || at is null)
-                        throw new DBException("42000");
+                        throw new DBException("42000").Add(Sqlx.INSERT_STATEMENT);
                     var pe = new PEdgeType(tn, et, st, -1L, lt.Value, at.Value, cx.db.nextPos, cx);
                     pt = pe;
                 }
                 else
                     pt = new PNodeType(tn, ut, st, -1L, cx.db.nextPos, cx);
-                ut = (NodeType)(cx.Add(pt) ?? throw new DBException("42105"));
+                ut = (NodeType)(cx.Add(pt) ?? throw new DBException("42105").Add(Sqlx.INSERT_STATEMENT));
             }
             // for the metadata tokens used for these identifiers, see the ParseMetadata routine
             var id = ls.Contains("ID")?"ID":(md[Sqlx.NODE] as TChar)?.value ?? (md[Sqlx.EDGE] as TChar)?.value;
@@ -522,7 +522,7 @@ namespace Pyrrho.Level5
                 cx.Add(ut);
                 cx.db += ut;
             }
-            var ui = ut?.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var ui = ut?.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Sqlx.TYPE);
             for (var b = ls.First(); b != null; b = b.Next())
             {
                 var n = b.key();
@@ -531,7 +531,7 @@ namespace Pyrrho.Level5
                     var d = cx._Dom(b.value().defpos) ?? Content;
                     var pc = new PColumn3(ut, n, -1, d, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
                     true, GenerationRule.None, PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx);
-                    ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105"));
+                    ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Sqlx.COLUMN));
                     rt += pc.ppos;
                     rs += (pc.ppos, d);
                     var cn = new Ident(n, new Iix(pc.ppos));
@@ -619,7 +619,7 @@ namespace Pyrrho.Level5
             FixColumns(cx, 1);
             pt.under = cx.FixTDb(super);
             pt.dataType = this;
-            return (NodeType)(cx.Add(pt) ?? throw new DBException("42105"));
+            return (NodeType)(cx.Add(pt) ?? throw new DBException("42105").Add(Sqlx.INSERT_STATEMENT));
         }
         internal void FixColumns(Context cx, int off)
         {
@@ -652,7 +652,7 @@ namespace Pyrrho.Level5
         /// <returns>The name of the special column (which may have changed),
         /// the modified domain bits and names for ut, and ut with poissible changes to indexes</returns>
         /// <exception cref="DBException"></exception>
-        internal (string?, BList<long?>, CTree<long, Domain>, BTree<string, long?>, NodeType)
+        internal static (string?, BList<long?>, CTree<long, Domain>, BTree<string, long?>, NodeType)
             GetColAndIx(Context cx, NodeType ut, Level3.Index? rx, long kc, string? id, long xp, long cp, long tp,
                 bool se, BList<long?> rt, CTree<long, Domain> rs, BTree<string, long?> sn)
         {
@@ -672,10 +672,10 @@ namespace Pyrrho.Level5
                 EdgeType.ArriveCol => PColumn.GraphFlags.ArriveCol,
                 _ => PColumn.GraphFlags.None
             };
-            var ui = ut.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var ui = ut.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Sqlx.TYPE);
             var cd = se ? new TSet(sd).dataType : sd;
             if (id is null && cp == IdCol && ui.names["ID"].Item2 is long p 
-                && cx._Ob(p) is TableColumn ti)
+                && cx._Ob(p) is TableColumn)
             {
                 id = "ID";
                 ut += (IdCol, p);
@@ -692,7 +692,7 @@ namespace Pyrrho.Level5
                     pc = new PColumn3(ut, id, -1, cd, gf, rx?.defpos ?? -1L, kc,
                         cx.db.nextPos, cx);
                     // see note above
-                    ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105"));
+                    ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Sqlx.ID));
                     ut += (cp, pc.ppos);
                     sn += (id, pc.ppos);
                     //    rt = Remove(rt, kc); FIX
@@ -703,11 +703,11 @@ namespace Pyrrho.Level5
                         if (c.value() is long op)
                             rt += op;
                     rs += (pc.ppos, cd);
-                    tc = (TableColumn)(cx._Ob(pc.ppos) ?? throw new DBException("42105"));
+                    tc = (TableColumn)(cx._Ob(pc.ppos) ?? throw new DBException("42105").Add(Sqlx.COLUMN));
                 }
-                if (rx is null && (cp == EdgeType.LeaveCol || cp == EdgeType.ArriveCol))
+                if (rx is null && tc is not null && (cp == EdgeType.LeaveCol || cp == EdgeType.ArriveCol))
                 {
-                    tr = cx._Od(tc.toType) as Table ?? throw new DBException("42105");
+                    tr = cx._Od(tc.toType) as Table ?? throw new DBException("42105").Add(Sqlx.CONNECTING);
                     if (pc is not null)
                     {
                         pc.dataType = Position;
@@ -721,12 +721,15 @@ namespace Pyrrho.Level5
                     cx.db += tr;
                     cx.Add(tr);
                 }
-                di = new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(tc), 1);
-                px = new PIndex(id, ut, di, 
-                    (cp==IdCol)?PIndex.ConstraintType.PrimaryKey
-                    :(PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate),
-                    rx?.defpos ?? -1L, cx.db.nextPos);
-                tc += (Level3.Index.RefIndex, px.ppos);
+                if (tc is not null)
+                {
+                    di = new Domain(-1L, cx, Sqlx.ROW, new BList<DBObject>(tc), 1);
+                    px = new PIndex(id, ut, di,
+                        (cp == IdCol) ? PIndex.ConstraintType.PrimaryKey
+                        : (PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate),
+                        rx?.defpos ?? -1L, cx.db.nextPos);
+                    tc += (Level3.Index.RefIndex, px.ppos);
+                }
             }
             if (pc is not null)
             {
@@ -755,7 +758,7 @@ namespace Pyrrho.Level5
             }
             if (px is not null && tc is not null)
             {
-                ut = (NodeType)(cx.Add(px) ?? throw new DBException("42105"));
+                ut = (NodeType)(cx.Add(px) ?? throw new DBException("42105").Add(Sqlx.PRIMARY));
                 if (xp != -1L)
                     ut = ut + (cp, tc.defpos) + (xp, px.ppos);
             }
@@ -993,7 +996,7 @@ namespace Pyrrho.Level5
             ABookmark<long, object> _enu)
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.ROLE);
             var nm = NameFor(cx);
             var ne = (this is EdgeType) ? "EdgeType" : "NodeType";
             var key = BuildKey(cx, out Domain keys);
@@ -1163,7 +1166,7 @@ namespace Pyrrho.Level5
         {
             if (cx.role is not Role ro || infos[ro.defpos] is not ObInfo mi
                 || kind == Sqlx.Null || from.kind == Sqlx.Null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.ROLE);
             var versioned = true;
             var sb = new StringBuilder();
             var nm = NameFor(cx);
@@ -1432,7 +1435,7 @@ namespace Pyrrho.Level5
             if (nd.defpos!=dp)
                 nd.Fix(cx);
             return (UDType)(cx.Add(new PEdgeType(pn.ident, nd, un, -1L, nd.leavingType, nd.arrivingType, dp, cx))
-                ?? throw new DBException("42105"));
+                ?? throw new DBException("42105").Add(Sqlx.EDGETYPE));
         } 
         internal override NodeType Check(Context cx, SqlNode n, CTree<string, SqlValue> ls, bool allowExtras = true)
         {
@@ -1485,7 +1488,8 @@ namespace Pyrrho.Level5
             }
             return et;
         }
-        bool HasLabel(Context cx,CTree<long,bool> tl,long p)
+
+        static bool HasLabel(Context cx,CTree<long,bool> tl,long p)
         {
             if (tl.Contains(p))
                 return true;
@@ -1506,7 +1510,7 @@ namespace Pyrrho.Level5
             FixColumns(cx, 1);
             pt.under = cx.FixTDb(super);
             pt.dataType = this;
-            return (EdgeType)(cx.Add(pt) ?? throw new DBException("42105"));
+            return (EdgeType)(cx.Add(pt) ?? throw new DBException("42105").Add(Sqlx.EDGETYPE));
         }
         static long NodeTypeFor(Context cx, TypedValue? v)
         {
@@ -1559,12 +1563,11 @@ namespace Pyrrho.Level5
             if (sl) md += (Sqlx.ARROWBASE, TBool.True);
             if (sa) md += (Sqlx.RARROWBASE, TBool.True);
             // Step 1: How does this fit with what we have? 
-            var ob = cx.db.objects[cx.role.dbobjects[n] ?? -1L] as DBObject;
-            if (ob == null)
+            if (cx.db.objects[cx.role.dbobjects[n] ?? -1L] is not DBObject ob)
             {
                 if (cse == 'U') throw new DBException("42107", n);
-                et = new EdgeType(cx.GetUid(), n, EdgeType, CTree<Domain,bool>.Empty, cx, md);
-                var (e1, _) = et.Build(cx, null, new CTree<long,bool>(et.defpos,true), CTree<string, SqlValue>.Empty, md);
+                et = new EdgeType(cx.GetUid(), n, EdgeType, CTree<Domain, bool>.Empty, cx, md);
+                var (e1, _) = et.Build(cx, null, new CTree<long, bool>(et.defpos, true), CTree<string, SqlValue>.Empty, md);
                 et = (EdgeType)e1;
             }
             else if (ob is not Level5.NodeType)
@@ -1632,7 +1635,7 @@ namespace Pyrrho.Level5
                         {
                             if (pd.infos[cx.role.defpos] is ObInfo si)
                                 ti += si;
-                            else throw new DBException("42105");
+                            else throw new DBException("42105").Add(Sqlx.UNDER);
                             ii += (b.key(), ti);
                         }
                     if (pd is NodeType pn && (!gi) && (!rs.Contains(pn.idCol)))
@@ -1724,9 +1727,9 @@ namespace Pyrrho.Level5
             var (dp, ob) = x;
             if (et.mem[dp] == ob)
                 return et;
-            if (dp == LeavingType && et.leavingType>=0 && ob is long && (long)ob<0 )
+            if (dp == LeavingType && et.leavingType>=0 && ob is long v && v<0 )
                 return et;
-            if (dp == ArrivingType && et.arrivingType>=0 && ob is long && (long)ob<0)
+            if (dp == ArrivingType && et.arrivingType>=0 && ob is long v1 && v1<0)
                 return et;
             if (ob is DBObject bb && dp != _Depth)
             {
@@ -1896,13 +1899,10 @@ namespace Pyrrho.Level5
         } 
     }
     /// <summary>
-    /// Despite its name, a GraphType is not a Type or Domain
-    /// See GQL 4.13: it is a set of node types and edge types that are defined as constraints in a Graph
+    /// See GQL 4.13: it is a set of node types and edge types that are defined as constraints on a Graph
     /// </summary>
-    internal class GraphType : DBObject
+    internal class GraphType : Domain
     {
-        internal CTree<long, bool> constraints => 
-            (CTree<long,bool>)(mem[Domain.Constraints] ?? CTree<long, bool>.Empty);
         internal GraphType(PGraphType pg, Context cx)
             : this(pg.ppos, _Mem(pg,cx))
         { }
@@ -1946,7 +1946,7 @@ namespace Pyrrho.Level5
     internal class Graph : DBObject,IComparable
     {
         internal const long
-            GraphTypes = -86, // CTree<long,bool> GraphType
+            GraphTypes = -122, // CTree<long,bool> GraphType
             Iri = -147, // string
             Nodes = -499; // CTree<long,TNode> // and edges
         internal CTree<long,TNode> nodes =>
@@ -1964,7 +1964,7 @@ namespace Pyrrho.Level5
             var r = BTree<long, object>.Empty
                 + (Nodes, ps.records) + (Iri, ps.iri) + (GraphTypes, ps.types ?? CTree<long, bool>.Empty);
             var ix = ps.iri.LastIndexOf('/');
-            var nm = ps.iri.Substring(ix);
+            var nm = ps.iri[ix..];
             ps.name = nm;
             var oi = new ObInfo(nm, Grant.AllPrivileges);
             var ns = BTree<string, (int, long?)>.Empty;
@@ -2077,7 +2077,7 @@ namespace Pyrrho.Level5
                     && (cx.db.objects[cp] as TableColumn)?.infos[cx.role.defpos]?.name is string nm)
                 {
                     sb.Append(cm); cm = ',';
-                    sb.Append(nm); sb.Append("=");
+                    sb.Append(nm); sb.Append('=');
                     sb.Append(tableRow.vals[cp]);
                 }
             if (cm==',')
@@ -2088,7 +2088,7 @@ namespace Pyrrho.Level5
         {
             if (cx.db.objects[dataType.defpos] is not NodeType nt ||
                 nt.infos[cx.role.defpos] is not ObInfo ni)
-                return Array.Empty<string>();
+                return [];
             var ss = new string[Math.Max(nt.pathDomain.Length,5)+1];
             ss[0] = ni.name ?? "";
             for (var b = nt.pathDomain.First(); b != null && b.key() < 5; b = b.Next())
@@ -2133,8 +2133,7 @@ namespace Pyrrho.Level5
         }
         public override int CompareTo(object? obj)
         {
-            var that = obj as TNode;
-            if (that == null) return 1;
+            if (obj is not TNode that) return 1;
             return tableRow.defpos.CompareTo(that.tableRow.defpos);
         }
         public override string ToString()
@@ -2161,21 +2160,15 @@ namespace Pyrrho.Level5
     /// <summary>
     /// A class for an unbound identifier (A variable in Francis's paper)
     /// </summary>
-    internal class TGParam : TypedValue
+    internal class TGParam(long dp, string i, Domain d, TGParam.Type t, long f) : TypedValue(d)
     {
         [Flags]
         internal enum Type { None=0,Node=1,Edge=2,Path=4,Group=8,Maybe=16,Type=32,Field=64,Value=128 };
-        internal readonly long uid;
-        internal readonly long from;
-        internal readonly Type type; // in reverse Polish order
-        internal readonly string value;
-        public TGParam(long dp,string i,Domain d,Type t,long f) : base(d)
-        {
-            uid = dp;
-            type = t;
-            value = i;
-            from = f;
-        }
+        internal readonly long uid = dp;
+        internal readonly long from = f;
+        internal readonly Type type = t; // in reverse Polish order
+        internal readonly string value = i;
+
         public override int CompareTo(object? obj)
         {
             return (obj is TGParam tp && tp.uid == uid) ? 0 : -1;

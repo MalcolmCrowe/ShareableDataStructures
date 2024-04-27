@@ -135,9 +135,8 @@ namespace Pyrrho.Level2
             n = rdr.GetInt();
             for (var i = 0; i < n; i++)
             {
-                var tb = rdr.context.db.objects[rdr.GetLong()] as NodeType;
                 var p = rdr.GetLong();
-                if (tb is null || tb.tableRows[p] is not TableRow tr)
+                if (rdr.context.db.objects[rdr.GetLong()] is not NodeType tb || tb.tableRows[p] is not TableRow tr)
                     Console.WriteLine("Warning: bad Graph record list");
                 else
                     records += (p, new TNode(tb,tr));

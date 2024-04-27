@@ -78,6 +78,8 @@ namespace Pyrrho.Level3
             (BTree<CTree<string, bool>, long?>)(mem[UnlabelledNodeTypes] ?? BTree<CTree<string, bool>, long?>.Empty);
         internal BTree<CTree<string, bool>, long?> unlabelledEdgeTypes =>
             (BTree<CTree<string, bool>, long?>)(mem[UnlabelledEdgeTypes] ?? BTree<CTree<string, bool>, long?>.Empty);
+        internal long home_graph => (long)(mem[Executable.UseGraph] ?? -1);
+        internal long home_schema => (long)(mem[Executable.Schema] ?? -1);
         /// <summary>
         /// Just to create the schema and guest roles
         /// </summary>
@@ -93,7 +95,7 @@ namespace Pyrrho.Level3
         static BTree<long, object> _Mem(PRole p, Database db, bool first)
         {
             if (db.role is not Role ro || db.guest is not Role gu)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.USER);
             return ((first ? ro : gu).mem ?? BTree<long, object>.Empty) + (LastChange, p.ppos) 
                 + (ObInfo.Name, p.name) + (Definer, p.definer) + (Infos,p.infos) + (Owner,p.owner)
             + (DBObjects, first ? db.schema.dbobjects : db.guest.dbobjects)
@@ -303,7 +305,7 @@ namespace Pyrrho.Level3
                         continue;
                     case Sqlx.INVERTS:
                         sb.Append(b.key());
-                        sb.Append(" "); sb.Append(DBObject.Uid(b.value().ToLong()??-1L));
+                        sb.Append(' '); sb.Append(DBObject.Uid(b.value().ToLong()??-1L));
                         continue;
                     case Sqlx.MIN:
                     case Sqlx.MAX:
@@ -349,14 +351,14 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" "); sb.Append(name);
+            sb.Append(' ') ; sb.Append(name);
             if (mem.Contains(Privilege))
             {
                 sb.Append(" Privilege="); sb.Append((long)priv);
             }
             if (mem.Contains(_Metadata))
             { 
-                sb.Append(" "); sb.Append(Metadata(metadata,description)); 
+                sb.Append(' '); sb.Append(Metadata(metadata,description)); 
             }
             if (mem.Contains(Description))
             {

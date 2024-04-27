@@ -17,45 +17,31 @@ namespace Pyrrho
     /// </summary>
     public class Resx
     {
-#if SILVERLIGHT || WINDOWS_PHONE
-        internal static Dictionary<string,string> dict = null;
-#else
         public static Hashtable? dict = null;
-#endif
-        static bool SqlStateDone = false;
-        static void InitSqlstate()
+        static bool GqlStateDone = false;
+        static void InitGqlstate()
         {
-            if (SqlStateDone || dict==null)
+            if (GqlStateDone || dict==null)
                 return;
             dict.Add("02000", "Not found");
-            dict.Add("08000", "Invalid connection name");
-            dict.Add("08001", "SQL-client unable to establish SQL-connection");
-            dict.Add("08004", "SQL-server rejected establishment of SQL-connection");
-            dict.Add("08006", "Transaction failure");
-            dict.Add("08007", "Transaction exception - transaction resolution unknown");
-            dict.Add("08C00", "Client side threading violation for reader");
-            dict.Add("08C01", "Client side threading violation for command");
-            dict.Add("08C02", "Client side threading violation for transaction");
-            dict.Add("08C03", "An explicit transaction is already active in this thread and connection");
-            dict.Add("08C04", "A reader is already open in this thread and connection");
-            dict.Add("08C05", "Conflict with an open reader in this thread and connection");
-            dict.Add("08C06", "Cannot change connection properties during a transaction");
-            dict.Add("0U000", "Attempt to assign to a non-updatable column");
             dict.Add("21000", "Cardinality violation");
-            dict.Add("22000", "Data and incompatible type errors for {0}");
-            dict.Add("22003", "Out of bounds value");
-            dict.Add("22004", "Illegal null value");
-            dict.Add("22005", "Error in assignment: expected {0} got {1}");
-            dict.Add("22007", "DateTime format error: {0}");
+            dict.Add("22000", "Data exception");
+            dict.Add("22001", "String data, right truncation");
+            dict.Add("22003", "Numeric value out of range");
+            dict.Add("22004", "Null value not allowed");
+            dict.Add("22007", "Invalid datetime format: {0}");
             dict.Add("22008", "Datetime field overflow: {0}");
-            dict.Add("2200G", "Most specific type mismatch: expected {0} got {1} at {2}");
-            dict.Add("2200N", "Invalid XML content");
+            dict.Add("22011", "Substring error");
             dict.Add("22012", "Division by zero");
+            dict.Add("22015", "Interval field overflow");
+            dict.Add("22018", "Invalid character value for cast");
             dict.Add("22019", "Invalid escape character");
-            dict.Add("2201B", "Invalid regular expression");
-            dict.Add("2201C", "Null row not permitted in value");
-            dict.Add("2201M", "Namespace {0} not defined");
+            dict.Add("2201E", "Invalid argument for natural logarithm");
+            dict.Add("2201F", "Invalid argument for power function");
             dict.Add("22025", "Invalid escape sequence");
+            dict.Add("22027", "Trim error");
+            dict.Add("2202F", "Array data, right truncation");
+            dict.Add("2202G", "Invalid repeat argument in a sample clause");
             dict.Add("22041", "Invalid RDF format");
             dict.Add("22102", "Type mismatch on concatenate");
             dict.Add("22103", "Multiset element not found");
@@ -67,23 +53,39 @@ namespace Pyrrho
             dict.Add("22109", "Too few arguments");
             dict.Add("22110", "Too many arguments");
             dict.Add("22111", "Circular dependency found");
-            dict.Add("22201", "Unexpected type {0} for comparison with Decimal");
-            dict.Add("22202", "Incomparable types");
             dict.Add("22203", "Loss of precision on conversion");
             dict.Add("22204", "RowSet expected");
             dict.Add("22205", "Null value found in table {0}");
-            dict.Add("22206", "Null value not allowed in column {0}");
-            dict.Add("22207", "Row has incorrect length");
-            dict.Add("22208", "Mixing named and unnamed columns is not supported");
-            dict.Add("22209", "AutoKey is not available for {0}");
-            dict.Add("22210", "Illegal assignment of sensitive value");
-            dict.Add("22211", "Domain {0} Check constraint fails");
-            dict.Add("22212", "Column {0} Check constraint fails");
-            dict.Add("22300", "Bad document format: {0}");
-            dict.Add("22G0K", "Multi-sourced or multi-destined edge {0}");
+            dict.Add("22G02", "Negative limit value");
+            dict.Add("22G03", "Invalid value type");
+            dict.Add("22G04", "Values not comparable");
+            dict.Add("22G05", "Invalid date, time, or datetime function field name");
+            dict.Add("22G06", "Invalid datetime function value");
+            dict.Add("22G07", "Invalid duration field name");
+            dict.Add("22G0B", "List data, right truncation");
+            dict.Add("22G0C", "List element error");
+            dict.Add("22G0F", "Invalid number of paths or groups");
+            dict.Add("22G0H", "Invalid duration format");
+            dict.Add("22G0K", "Multi-sourced or multi-destined edge");
             dict.Add("22G0L", "Incomplete edge {0}");
-            dict.Add("22G0M", "Potentially infinite output");
-            dict.Add("22G0N", "Repeating zeo-length output");
+            dict.Add("22G0M", "Multiple assignments to a graph element property");
+            dict.Add("22G0N", "Number of node labels below supported minimum");
+            dict.Add("22G0P", "Number of node labels exceeds supported maximum");
+            dict.Add("22G0Q", "Number of edge labels below supported minimum");
+            dict.Add("22G0R", "Number of node labels exceeds supported maximum");
+            dict.Add("22G0S", "Number of node properties exceeds supported maximum");
+            dict.Add("22G0T", "Number of edge labels exceeds supported maximum");
+            dict.Add("22G0U", "Record fields do not match");
+            dict.Add("22G0V", "Reference value, invalid base type");
+            dict.Add("22G0W", "Reference value, invalid constrained type");
+            dict.Add("22G0X", "Record data, field unassignable");
+            dict.Add("22G0Y", "Record data, field missing");
+            dict.Add("22G0Z", "Malformed path");
+            dict.Add("22G10", "Path data, right truncation");
+            dict.Add("22G11", "Reference value, referent deleted");
+            dict.Add("22G12", "Invalid value type");
+            dict.Add("22G13", "Invalid group variable name");
+            dict.Add("22G14", "Incompatible temporal instant unit groups");
             dict.Add("23000", "Integrity constraint: {0}");
             dict.Add("23001", "RESTRICT: {0} referenced in {1} {2}");
             dict.Add("23002", "RESTRICT: Index {0} is not empty");
@@ -93,7 +95,7 @@ namespace Pyrrho
             dict.Add("24000", "Invalid cursor state");
             dict.Add("24101", "Cursor is not open");
             dict.Add("25000", "Invalid transaction state");
-            dict.Add("25001", "A transaction is in progress");
+            dict.Add("22G01", "A transaction is in progress");
             dict.Add("26000", "Invalid SQL statement name {0}");
             dict.Add("27000", "Invalid metadata {0}");
             dict.Add("28000", "Invalid authorisation specification: no {0} in database {1}");
@@ -211,6 +213,19 @@ namespace Pyrrho
             dict.Add("40085", "Transaction conflict: An update conflicts with delete of {0}");
             dict.Add("40086", "Transaction conflict: An update conflicts with update of {0}");
             dict.Add("42000", "Syntax error at {0}");
+            dict.Add("42001", "Invalid syntax");
+            dict.Add("42002", "Invalid reference");
+            dict.Add("42004", "Use of visually confusable identifiers");
+            dict.Add("42006", "Number of edge labels below supported minimum");
+            dict.Add("42007", "Number of edge labels exceeds supported maximum");
+            dict.Add("42008", "Number of edge properties exceeds supported maximum");
+            dict.Add("42009", "Number of node labels below supported minimum");
+            dict.Add("42010", "Number of node labels exceeds supported maximum");
+            dict.Add("42011", "Number of node properties exceeds supported maximum");
+            dict.Add("42012", "Number of node type key labels below supported minimum");
+            dict.Add("42013", "Number of node type key labels exceeds supported maximum");
+            dict.Add("42014", "Number of edge type key labels below supported minimum");
+            dict.Add("42015", "Number of edge type key labels exceeds supported maximum");
             dict.Add("42101", "Illegal character {0}");
             dict.Add("42102", "Name cannot be null");
             dict.Add("42103", "Key must have at least one column");
@@ -281,15 +296,15 @@ namespace Pyrrho
             dict.Add("44003", "Column check {0} fails for column {1} in table {2}");
             dict.Add("44004", "Column {0} in table {1} contains nulls, not null cannot be set");
             dict.Add("44005", "Column {0} in table {1} contains values, generation rule cannot be set");
-            SqlStateDone = true;
+            GqlStateDone = true;
         }
         public static string Format(string sig, params object[] obs)
         {
             try
             {
                 dict ??= new Hashtable();
-                if (!SqlStateDone)
-                    InitSqlstate();
+                if (!GqlStateDone)
+                    InitGqlstate();
                 var fmt = (string?)dict[sig];
                 if (fmt == null)
                     return "Signal " + sig;
@@ -317,19 +332,5 @@ namespace Pyrrho
         }
 
     }
-#if SILVERLIGHT
-    internal class ErrorsDictionary
-    {
-        BTree<string,string> tabl = BTree<string,string>.Empty;
-        internal void Add(string k, string v)
-        {
-            tabl +=(k, v);
-        }
-        internal string this[string k]
-        {
-            get { return tabl[k];  }
-        }
-    }
-#endif
 }
 

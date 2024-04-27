@@ -68,7 +68,7 @@ namespace Pyrrho.Level2
             tc += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
             tc += (TableColumn.Seq, seq);
             table += (cx, tc);
-            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT));
             seq = tc.seq;
             cx.Install(table, p);
             cx.db += (ro, p);
@@ -140,7 +140,7 @@ namespace Pyrrho.Level2
             tc += (TableColumn.Seq, seq);
             table += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
             table += (cx, tc);
-            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT));
             seq = tc.seq;
             cx.Install(table, p);
             cx.db += (ro, p);
@@ -233,7 +233,7 @@ namespace Pyrrho.Level2
             tc += (TableColumn.Seq, seq);
             cx.obs += (tc.defpos, tc);
             table += (cx, tc);
-            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT));
      //       seq = tc.seq;
             cx.Install(table, p);
             cx.db += (ro, p);
@@ -262,7 +262,7 @@ namespace Pyrrho.Level2
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             if (table == null)
-                return new DBException("42105");
+                return new DBException("42105").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT);
             switch (that.type)
             {
                 case Type.Alter3:

@@ -393,16 +393,20 @@ namespace Pyrrho.Level4
  		readonly static ResWd[] resWds = new ResWd[0x800]; // open hash
         static Lexer()
         {
-            int h;
             for (Sqlx t = Sqlx.ABS; t <= Sqlx.ZONED_TIME; t++)
-                if (t != Sqlx.TYPE) // TYPE is not a reserved word but is in this range
-                {
-                    string s = t.ToString();
-                    h = s.GetHashCode() & 0x7ff;
-                    while (resWds[h] != null)
-                        h = (h + 1) & 0x7ff;
-                    resWds[h] = new ResWd(t, s);
-                }
+                if (t != Sqlx.CLOB && t != Sqlx.CURSOR && t != Sqlx.INTERVAL0
+                    && t != Sqlx.MULTISET && t != Sqlx.NCHAR && t != Sqlx.NCLOB
+                    && t != Sqlx.NUMERIC && t != Sqlx.PASSWORD)
+                    AddResWd(t);
+            AddResWd(Sqlx.SET);
+        }
+        static void AddResWd(Sqlx t)
+        {
+            string s = t.ToString();
+            var h = s.GetHashCode() & 0x7ff;
+            while (resWds[h] != null)
+                h = (h + 1) & 0x7ff;
+            resWds[h] = new ResWd(t, s);
         }
         /// <summary>
         /// Check if a string matches a reserved word.

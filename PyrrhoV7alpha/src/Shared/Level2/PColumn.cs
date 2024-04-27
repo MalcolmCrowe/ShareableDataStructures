@@ -55,6 +55,7 @@ namespace Pyrrho.Level2
             if (table != null && dataType != null)
             {
                 if (!Committed(wr, table.defpos)) return table.defpos;
+                if (!Committed(wr, dataType.defpos)) return dataType.defpos;
                 domdefpos = dataType.Create(wr, tr);
             }
             return -1;
@@ -204,7 +205,7 @@ namespace Pyrrho.Level2
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             if (table == null || that == null || dataType==null)
-                return new DBException("42105");
+                return new DBException("42105").Add(Sqlx.COLUMN_NAME);
             switch(that.type)
             {
                 case Type.PColumn3:
@@ -290,16 +291,16 @@ namespace Pyrrho.Level2
             tc += (DBObject.Infos, tc.infos + (rp, oc)); // table name will already be known
             cx.Add(tc);
             if (table.defpos < 0)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.COLUMN_NAME);
             seq = (tc.flags==GraphFlags.None) ? -1:tc.seq;
             if (name == "ID" && table is NodeType)
                 table += (NodeType.IdCol, defpos);
-            var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105");
+            var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Sqlx.COLUMN_NAME);
             ti += (ObInfo.Names, ti.names + (name, (seq,ppos)));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
             var ot = table;
             table += (cx, tc); // this is where the NodeType stuff happens
-            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105"));
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Sqlx.COLUMN_NAME));
             tc += (TableColumn.Seq, seq);
             cx.db += (tc.defpos, tc);
             table += (DBObject.LastChange, ppos);

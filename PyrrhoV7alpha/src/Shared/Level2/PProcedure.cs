@@ -165,7 +165,7 @@ namespace Pyrrho.Level2
             psr.LexPos(); //synchronise with CREATE
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
-            if (psr.tok != Sqlx.EOF && psr.ParseProcedureStatement(dt) is Executable bd)
+            if (psr.tok != Sqlx.EOF && psr.ParseStatement(dt,true) is Executable bd)
                 proc = bd.defpos;
             psr.cx.parse = op;
             framing = new Framing(psr.cx,nst);

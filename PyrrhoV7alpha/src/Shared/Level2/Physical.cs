@@ -94,7 +94,7 @@ namespace Pyrrho.Level2
         public virtual CTree<long, bool> _Table => CTree<long, bool>.Empty;
         public virtual bool Committed(Writer wr,long pos)
         {
-            return pos < Transaction.TransPos || wr.cx.uids.Contains(pos);
+            return (pos < Transaction.TransPos|| pos>=Transaction.Executables) || wr.cx.uids.Contains(pos);
         }
         /// <summary>
         /// On commit, dependent Physicals must be committed first
@@ -122,7 +122,7 @@ namespace Pyrrho.Level2
             for (;tr is not null ; ) // check for uncommitted dependents
             {
                 var pd = Dependent(wr,tr);
-                if (pd<Transaction.Analysing && Committed(wr,pd))
+                if ((pd<Transaction.Analysing||pd>=Transaction.Executables) && Committed(wr,pd))
                     break;
                 // commit the dependent physical and update wr relocation info
                 tr.physicals[pd]?.Commit(wr,tr);
@@ -332,7 +332,7 @@ namespace Pyrrho.Level2
                                     if (st is not null)
                                         rx += (Level3.Index.Tree, st);
                                     else
-                                        throw new DBException("42105");
+                                        throw new DBException("42105").Add(Sqlx.CONSTRAINT_CATALOG);
                                     cx.db += (rx, p);
                                 }
                         ut += (Table.RefIndexes, us);
@@ -356,7 +356,7 @@ namespace Pyrrho.Level2
                 cx.db += (nt, p);
                 return nt; 
             }
-            throw new DBException("42105");
+            throw new DBException("42105").Add(Sqlx.CONSTRAINT_CATALOG);
         }
     }
     internal class AlterEdgeType : Physical
@@ -633,7 +633,7 @@ namespace Pyrrho.Level2
             if (cx.db.objects[obj] is not DBObject ob)
                 throw new DBException("42000","Classify");
             if (cx.role.defpos != ob.definer)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.SECURITY);
             for (var b = cx.db.roles.First(); b != null; b = b.Next())
                 if (b.value() is long bp && cx.db.objects[bp] is Role ro && ob.infos[ro.defpos] is ObInfo oi)
                     cx.db += (ro + (obj, oi + (DBObject.Classification, classification)), p);
@@ -817,7 +817,8 @@ namespace Pyrrho.Level2
         }
         HttpRequestMessage GetRequest()
         {
-            var vw = (RestView)(_cx.obs[_vw]??_cx.db.objects[_vw] ??throw new DBException("42105"));
+            var vw = (RestView)(_cx.obs[_vw]??_cx.db.objects[_vw] 
+                ??throw new DBException("42105").Add(Sqlx.VIEW));
             string? user = _cx.user?.name, password = null;
             var ss = url.Split('/');
             if (ss.Length > 3)

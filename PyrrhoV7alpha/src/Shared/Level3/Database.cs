@@ -26,20 +26,14 @@ namespace Pyrrho.Level3
     /// defpos (for DBObject)
     /// kind (for Domain)
     /// </summary>
-    internal abstract class Basis
+    internal abstract class Basis(BTree<long,object> m)
     {
-        internal static long _uid = -500;
+        public BTree<long, object> mem => m;   // negative keys are for system obs, positive for user-defined obs
+        internal static long _uid = -1000;
         static long _dbg = 0;
         internal readonly long dbg = ++_dbg;
-        // negative keys are for system obs, positive for user-defined obs
-        internal readonly BTree<long, object> mem;
         public virtual long lexeroffset => 0;
-        protected Basis (BTree<long,object> m)
-        {
-            mem = m;
-        }
         internal Basis(params (long, object)[] m) : this(_Mem(m)) { }
-
         static BTree<long,object> _Mem((long,object)[] m)
         {
             var mm = BTree<long, object>.Empty;
@@ -152,7 +146,6 @@ namespace Pyrrho.Level3
             Curated = -53, // long
             EdgeTypes = -471, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType,NodeType,NodeType,EdgeType
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
-            Graphs = -481, // CTree<long,bool> Graph 
             Guest = -55, // long: a role holding all grants to PUBLIC
             KeyLabels = -461, // BTree<CTree<string,bool>,long?> NodeType 
             LastModified = -279, // DateTime
@@ -193,8 +186,6 @@ namespace Pyrrho.Level3
         internal Role guest => (Role)(mem[Guest]??throw new PEException("PE1003"));
         internal long owner => (long)(mem[Owner] ?? throw new PEException("PE1005"));
         internal Role role => (Role)(mem[Role] ?? guest);
-        internal CTree<long,bool> graph =>
-            (CTree<long, bool>)(mem[Graphs]??CTree<long,bool>.Empty);
         internal User? user => (User?)mem[User];
         internal virtual bool autoCommit => true;
         internal virtual string source => "";
@@ -455,7 +446,7 @@ namespace Pyrrho.Level3
             if (con.props["Role"] is string rn) // 3. has a specific role been requested?
             {
                 ro = (Role)(objects[roles[rn]??-1L]
-                    ?? throw new DBException("42105")); // 3a
+                    ?? throw new DBException("42105").Add(Sqlx.ROLE)); // 3a
                 if (u is not null && ro.infos[u.defpos] is ObInfo ou
                         && ou.priv.HasFlag(Grant.Privilege.UseRole)) // user has usage
                     goto done;
@@ -464,7 +455,7 @@ namespace Pyrrho.Level3
                     goto done;
                 if (u is not null && owner == u.defpos && ro == schema) // 3ci1
                     goto done;
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.USER);
             }
             // 4. No specific role requested
             if (u.defpos == owner)
@@ -492,7 +483,7 @@ namespace Pyrrho.Level3
                 ro = guest;
             done:
             if (u == null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.USER);
             var tr = new Transaction(r, t, auto ?? autoCommit);
             if (u.defpos==-1L) // make a PUser for ad-hoc User, in case of Audit or Grant
             { 
@@ -518,8 +509,7 @@ namespace Pyrrho.Level3
         }
         public EdgeType? GetEdgeType(long e, long lt, long at)
         {
-            var et = objects[e] as EdgeType;
-            if (et is null) return null;
+            if (objects[e] is not EdgeType et) return null;
             if (edgeTypes[e] is not BTree<long, BTree<long, long?>> bt) return et;
             if (bt[lt] is not BTree<long, long?> ct) return et;
             if (objects[ct[at] ?? -1L] is EdgeType nt) return nt;

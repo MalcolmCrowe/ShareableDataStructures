@@ -111,8 +111,8 @@ namespace Pyrrho.Level2
                     if (ob.GetType().Name=="Domain" || ob.defpos<=0) // but Domains always belong to Database._system._role
                         continue;
                     var os = ob.infos;
-                    var oi = os[-502]??throw new PEException("PE1410");
-                    os -= -502;
+                    var oi = os[-1002]??throw new PEException("PE1410");
+                    os -= -1002;
                     os += (nr.defpos, oi);
                     cx.db += (k, ob.New(ob.mem+ (DBObject.Definer, nr.defpos)
                           +(DBObject.Infos,os)));

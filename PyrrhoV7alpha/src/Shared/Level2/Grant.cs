@@ -32,7 +32,7 @@ namespace Pyrrho.Level2
             GrantSelect=0x001000, GrantInsert=0x002000, GrantDelete=0x004000, GrantUpdate=0x008000, 
             GrantReferences=0x010000, GrantExecute=0x020000, GrantOwner=0x040000, AdminRole=0x080000, 
             GrantUsage=0x100000, GrantUnder=0x200000,  GrantTrigger=0x400000,
-            GrantMetadata=0x800000
+            GrantMetadata=0x800000, GrantGraph=0x1000000, GrantSchema=0x2000000
 		};
 		public static Privilege AllPrivileges = (Privilege)0x7fffff;
         /// <summary>
@@ -188,6 +188,10 @@ namespace Pyrrho.Level2
                 rg += (Role.Procedures, rg.procedures+(nm,ps));
                 cx.db += (grantee, rg);
             }
+            if (priv == Privilege.GrantGraph && ob is Level5.Graph gp)
+                rg += (Executable.UseGraph, gp.defpos);
+            if (priv == Privilege.GrantUsage && ob is Level5.Schema sc)
+                rg += (Executable.Schema, sc.defpos);
             // install the privilege on the target object
             oi += (ObInfo.Privilege, pr);
             ob = (DBObject)ob.New(ob.mem+(DBObject.Infos,ob.infos + (grantee, oi)));

@@ -184,7 +184,7 @@ namespace Pyrrho.Level2
         {
             var ro = cx.db.role;
             Table? rt = null;
-            if (ro == null || cx.db == null) throw new DBException("42105");
+            if (ro == null || cx.db == null) throw new DBException("42105").Add(Sqlx.DELETE_STATEMENT);
             for (var ob = ro.dbobjects.First(); ob != null; ob = ob.Next())
                 if (ob.value() is long op && cx.db.objects[op] is Table tb 
                     && tb.tableRows[delpos] is TableRow delRow)

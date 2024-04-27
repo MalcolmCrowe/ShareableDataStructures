@@ -478,7 +478,7 @@ namespace Pyrrho.Level3
                 dm = dm.Scalar(cx);
             if (!dt.CanTakeValueOf(dm))
                 return dt;
-         //       throw new DBException("22005", dt.kind, dm.kind);
+         //       throw new DBException("22G03", dt.kind, dm.kind);
             if ((isConstant(cx) && dm.kind == Sqlx.INTEGER) || dm.kind==Sqlx.Null)
                 return dt; // keep union options open
             return dm;
@@ -648,6 +648,7 @@ namespace Pyrrho.Level3
                 if (pa is SqlValue sv1 && sv1.domain is NodeType && sub is not null)
                 {
                     var co = new SqlField(sub.iix.dp, sub.ident, -1, sv1.defpos, Domain.Content, sv1.defpos);
+                    cx.defs += (idChain, idChain.iix);
                     return (new BList<DBObject>(cx.Add(co)), m);
                 }
             }
@@ -1660,6 +1661,10 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue _Eval(Context cx)
         {
+            if (cx.values[target] is TNode tt &&
+                tt.dataType.infos[cx.role.defpos]?.names[name ?? ""].Item2 is long p
+                && tt.tableRow.vals[p] is TypedValue nv)
+                return nv;
             var tv = cx.values[from];
             if (tv is TRow tr) return tr.values[target]??TNull.Value;
             if (tv is TNode tn && tn.dataType.infos[cx.role.defpos] is ObInfo ni
@@ -2381,13 +2386,15 @@ namespace Pyrrho.Level3
                 case Sqlx.AND:
                     {
                         TypedValue a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
-                        if (a == TNull.Value)
-                            return TBool.Unknown;
-                        if (a == TBool.False && mod != Sqlx.BINARY)
-                            return a;
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
-                        if (b == TNull.Value)
+                        if (mod != Sqlx.BINARY)
+                        {
+                            if (a==TBool.True && b==TBool.True)
+                                return TBool.True;
+                            if (a == TBool.False || b == TBool.False)
+                                return TBool.False;
                             return TBool.Unknown;
+                        }
                         if (mod == Sqlx.BINARY && a is TInt aa && b is TInt ab) // JavaScript
                             return new TInt(aa.value & ab.value);
                         else if (a is TBool ba && b is TBool bb)
@@ -2679,13 +2686,15 @@ namespace Pyrrho.Level3
                 case Sqlx.OR:
                     {
                         TypedValue a = cx.obs[left]?.Eval(cx) ?? TNull.Value;
-                        if (a == TNull.Value)
-                            return TBool.Unknown;
-                        if (a == TBool.True && mod != Sqlx.BINARY)
-                            return a;
                         TypedValue b = cx.obs[right]?.Eval(cx) ?? TNull.Value;
-                        if (b == TNull.Value)
+                        if (mod != Sqlx.BINARY)
+                        {
+                            if (a==TBool.False && b==TBool.False)
+                                return TBool.False;
+                            if (a == TBool.True || b==TBool.True)
+                                return TBool.True;
                             return TBool.Unknown;
+                        }
                         if (mod == Sqlx.BINARY && a is TInt aa && b is TInt ab) // JavaScript
                             return new TInt(aa.value | ab.value);
                         else if (a is TBool ba && b is TBool bb)
@@ -3301,13 +3310,13 @@ namespace Pyrrho.Level3
         }
         internal override bool isConstant(Context cx)
         {
-            return !(val is TQParam);
+            return val is not TQParam;
         }
         internal override Domain FindType(Context cx, Domain dt)
         {
             var vt = val.dataType;
             if (!dt.CanTakeValueOf(vt))
-                throw new DBException("22005", dt.kind, vt.kind).ISO();
+                throw new DBException("22G03", dt.kind, vt.kind).ISO();
             if (vt.kind==Sqlx.INTEGER)
                 return dt; // keep union options open
             return vt;
@@ -5441,9 +5450,9 @@ namespace Pyrrho.Level3
         static BTree<long,object> _Mem(long dp,Context cx,Procedure proc)
         {
             var m = BTree<long, object>.Empty;
-            var ro = cx.role ?? throw new DBException("42105");
+            var ro = cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
             if (proc.infos[ro.defpos] is not ObInfo pi || pi.name is null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.EXECUTE);
             if (proc.domain.rowType.Count > 0)
             {
                 var prs = new ProcRowSet(cx, proc) + (ObInfo.Name, pi.name)
@@ -5590,7 +5599,7 @@ namespace Pyrrho.Level3
         internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
             Grant.Privilege pr = Grant.Privilege.Select, string? a = null)
         {
-            var ro = cx.role ?? throw new DBException("42105");
+            var ro = cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
             if (cx.db.objects[procdefpos] is not Procedure proc
                 || proc.infos[proc.definer] is not ObInfo pi || pi.name is null)
                 throw new PEException("PE6840");
@@ -6725,7 +6734,7 @@ namespace Pyrrho.Level3
                 fc = cx.funcs[from]?[key]?[defpos] ?? StartCounter(cx, key);
             }
             TypedValue dv = domain.defaultValue ?? TNull.Value;
-            TypedValue v = TNull.Value;
+            TypedValue v;
             switch (op)
             {
                 case Sqlx.ABS:
@@ -6811,14 +6820,13 @@ namespace Pyrrho.Level3
                         v = vl.Eval(cx) ?? TNull.Value;
                         if (v == TNull.Value)
                             return dv;
-                        switch (vl.domain.kind)
+                        return vl.domain.kind switch
                         {
-                            case Sqlx.MULTISET: return new TInt(((TMultiset)v).Count);
-                            case Sqlx.SET: return new TInt(((TSet)v).tree.Count);
-                            case Sqlx.PATH:
-                            case Sqlx.ARRAY: return new TInt(((TArray)v).Length);
-                            default:throw new DBException("42113", v).Mix();
-                        }
+                            Sqlx.MULTISET => new TInt(((TMultiset)v).Count),
+                            Sqlx.SET => new TInt(((TSet)v).tree.Count),
+                            Sqlx.PATH or Sqlx.ARRAY => new TInt(((TArray)v).Length),
+                            _ => throw new DBException("42113", v).Mix(),
+                        };
                     }
                 case Sqlx.CAST:
                     {
@@ -7200,12 +7208,12 @@ namespace Pyrrho.Level3
                         var x = cx.obs[op2]?.Eval(cx) ?? TNull.Value;
                         var n1 = (int)i1.value;
                         if (n1 < 0 || n1 >= sv.Length)
-                            throw new DBException("22000");
+                            throw new DBException("22011");
                         if (x is not TInt i2)
                             return new TChar(sv[n1..]);
                         var n2 = (int)i2.value;
                         if (n2 < 0 || n2 + n1 - 1 >= sv.Length)
-                            throw new DBException("22000");
+                            throw new DBException("22011");
                         return new TChar(sv.Substring(n1, n2));
                     }
                 case Sqlx.SUM:
@@ -7471,11 +7479,7 @@ namespace Pyrrho.Level3
             var fc = cx.funcs[from]?[key]?[defpos] ?? StartCounter(cx, key);
             var ct = fc.count;
             var vl = cx.obs[val] as SqlValue;// not all window functions use val
-            // the first case here is needed for Match processing where the argument is computed within the Match
-            var v = (window<0 && cx.obs[from] is RowSet r
-                && cx.cursors[r.source] is Cursor c 
-                && c.values[val] is TypedValue cv && cv != TNull.Value)?cv
-                : vl?.Eval(cx)??TNull.Value; // normally we just evaluate the argument
+            var v = vl?.Eval(cx)??TNull.Value;
             if (mod == Sqlx.DISTINCT && vl is not null)
             {
                 if (fc.mset == null)
@@ -9166,6 +9170,7 @@ cx.obs[high] is not SqlValue hi)
                 throw new PEException("PE49301");
             return new LikePredicate(defpos,cx,a, !like,b, (SqlValue?)cx.obs[escape]);
         }
+
         /// <summary>
         /// Helper for computing LIKE
         /// </summary>
@@ -9173,7 +9178,7 @@ cx.obs[high] is not SqlValue hi)
         /// <param name="b">the right operand string</param>
         /// <param name="e">the escape character</param>
         /// <returns>the boolean result</returns>
-        bool Like(string a, string b, char e)
+        static bool Like(string a, string b, char e)
         {
             if (a == null || b == null)
                 return false;
@@ -10975,10 +10980,10 @@ cx.obs[high] is not SqlValue hi)
     /// SqlNode will evaluate to a TNode (and SqlEdge to a TEdge) once the enclosing
     /// GraphInsertStatement or MatchStatement has been Obeyed.
     /// In general, any of the contained SqlValues in an SqlNode may evaluate to via a TGParam 
-    /// that should have been bound by MatchStatement.Obey.
+    /// that should have been bound by MatchStatement._Obey.
     /// However, TGParams are not found in GraphInsertStatement graphs.
-    /// GraphInsertStatement.Obey will traverse its GraphExpression so that the context maps SqlNodes to TNodes.
-    /// MatchStatement.Obey will traverse its GraphExpression binding as it goes, so that the dependent executable
+    /// GraphInsertStatement._Obey will traverse its GraphExpression so that the context maps SqlNodes to TNodes.
+    /// MatchStatement._Obey will traverse its GraphExpression binding as it goes, so that the dependent executable
     /// is executed only for fully-bound SqlNodes.
     /// For an insert node label set, tok (mem[SVE.Op]) here can be Sqlx.COLON or Sqlx.AMPERSAND
     /// and the order of entries in the CTree is naturally in declaration order
@@ -11028,8 +11033,8 @@ cx.obs[high] is not SqlValue hi)
         }
         static NodeType _Type(Context cx,BTree<long,object>? m)
         {
-            if (m[_Label] is long p && cx.db.objects[p] is NodeType d) return d;
-            for (var b = (m[LabelSet] as CTree<long, bool>)?.First(); b != null; b = b.Next())
+            if (m?[_Label] is long p && cx.db.objects[p] is NodeType d) return d;
+            for (var b = (m?[LabelSet] as CTree<long, bool>)?.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is EdgeType dl)
                     return Domain.EdgeType;
             return Domain.NodeType;
@@ -11086,8 +11091,9 @@ cx.obs[high] is not SqlValue hi)
                 if (cx.role.unlabelledNodeTypes[ps] is long p && cx.db.objects[p] is NodeType nu)
                     return (nu, md);
                 var dn = new Domain(Sqlx.TYPE, cx, pl);
-                nt = new NodeType(cx.GetUid(),"",new UDType(-1L,dn.mem),
-                    new CTree<Domain,bool>(dn,true),cx);
+                var un = (cx.db.objects[cx.UnlabelledNodeSuper(ps)] is Domain st) ? 
+                    new CTree<Domain, bool>(st, true) : CTree<Domain, bool>.Empty;
+                nt = new NodeType(cx.GetUid(),"",new UDType(-1L,dn.mem),un,cx);
                 cx.Add(nt);
             }
             string? sd = null; // ID if present
@@ -11157,7 +11163,7 @@ cx.obs[high] is not SqlValue hi)
                             if (cx.db.objects[gt.idCol] is TableColumn ic0)
                             {
                                 iC = ic0;
-                                sd = iC.infos[cx.role.defpos]?.name ?? throw new DBException("42105");
+                                sd = iC.infos[cx.role.defpos]?.name ?? throw new DBException("42105").Add(Sqlx.COLUMN);
                                 nt = gt;
                                 dc += (gt.defpos, true);
                                 if (tp == 0)
@@ -11198,14 +11204,16 @@ cx.obs[high] is not SqlValue hi)
                             (gt, _) = gt.Build(cx, this, dc, ls, md);
                         }
                         if (gt is null)
-                            throw new DBException("42000");
+                            throw new DBException("42000")
+                                .Add(Sqlx.INSERT_STATEMENT,new TChar(name??sd??"??"));
                         nt = gt;
                         nd += (_Domain, nt);
                         cx.obs += (defpos, nd);
                     }
                 }
             if (nt is null)
-                throw new DBException("42000", "_NodeType");
+                throw new DBException("42000", "_NodeType")
+                    .Add(Sqlx.INSERT_STATEMENT,new TChar(name??"??"));
             return (nt, md);
         }
         internal virtual void Create(Context cx, NodeType dt, bool allowExtras = true)
@@ -11215,7 +11223,8 @@ cx.obs[high] is not SqlValue hi)
             for (var b = docValue?.First(); b != null; b = b.Next())
                 if (cx.obs[b.value() ?? -1L] is SqlValue sv)
                 {
-                    if (cx.obs[b.key()] is not SqlValue sk) throw new DBException("42000", "Create");
+                    if (cx.obs[b.key()] is not SqlValue sk) 
+                        throw new DBException("42000", "Create").Add(Sqlx.INSERT_STATEMENT,new TChar(name??"??"));
                     var k = (sk.name != null && sk.name != "COLON") ? sk.name
                         : sk.Eval(cx).ToString();
                     ls += (k, sv);
@@ -11304,10 +11313,10 @@ cx.obs[high] is not SqlValue hi)
                 // NB: The TargetCursor/trigger machinery will place values in cx.values in the !0.. range
                 // From the point of view of graph operations these are spurious, and should not be accessed
                 // The only exception is to retrieve the value of tn
-                s.Obey(cx);
+                s._Obey(cx);
                 if (nd.name != null)
                     cx.defs += (nd.name, new Iix(nd.defpos), Ident.Idents.Empty);
-                tn = cx.values[np] as TNode ?? throw new DBException("42105");
+                tn = cx.values[np] as TNode ?? throw new DBException("42105").Add(Sqlx.INSERT_STATEMENT);
             }
             if (tn is not null)
             {
@@ -11567,9 +11576,11 @@ cx.obs[high] is not SqlValue hi)
                     nt = nu;
                 else
                 {
+                    var un = (cx.db.objects[cx.UnlabelledEdgeSuper(ps)] is Domain st) ?
+                              new CTree<Domain, bool>(st, true) : CTree<Domain, bool>.Empty;
                     var dn = new Domain(Sqlx.TYPE, cx, pl);
                     nt = new EdgeType(cx.GetUid(), "", new UDType(-1L, dn.mem),
-                        new CTree<Domain, bool>(dt, true), cx);
+                        un, cx);
                     if (lT is not null)
                         nt += (EdgeType.LeavingType, lT.defpos);
                     if (aT is not null)
@@ -11624,7 +11635,7 @@ cx.obs[high] is not SqlValue hi)
                             if (cx.db.objects[gt.idCol] is TableColumn ic0)
                             {
                                 iC = ic0;
-                                sd = iC.infos[cx.role.defpos]?.name ?? throw new DBException("42105");
+                                sd = iC.infos[cx.role.defpos]?.name ?? throw new DBException("42105").Add(Sqlx.COLUMN);
                                 nt = (EdgeType)gt;
                                 dc += (gt.defpos, true);
                                 if (tp == 0)
@@ -11653,7 +11664,7 @@ cx.obs[high] is not SqlValue hi)
                         if (gt is null && allowExtras)
                         {
                             var un = CTree<Domain, bool>.Empty;
-                            if (nt is not null)
+                            if (nt is not null && tl.Count>0)
                                 un += (nt, true);
                             if (be is EdgeType)
                                 gd = be;
@@ -11679,10 +11690,11 @@ cx.obs[high] is not SqlValue hi)
                 }
             }
             if (nt is null)
-                throw new DBException("42000", "_EdgeType");
+                throw new DBException("42000", "_EdgeType").Add(Sqlx.INSERT_STATEMENT,new TChar(name??"??"));
             return (nt, md);
         }
-        void CheckType(Context cx, string? n, long? t, NodeType gt, long lx, bool lv)
+
+        static void CheckType(Context cx, string? n, long? t, NodeType gt, long lx, bool lv)
         {
             NodeType ut = (cx.db.objects[lx] is Index nx
                 && cx.db.objects[nx.refindexdefpos] is Index rx
@@ -11692,9 +11704,8 @@ cx.obs[high] is not SqlValue hi)
                 throw new DBException("42133", n ?? "??");
             if (t == ut.defpos)
                 return;
-            if (((cx.values[t ?? -1L] as TNode)?.dataType ?? cx.db.objects[t ?? -1L]) is not NodeType at
-                || at.FindPrimaryIndex(cx) is not Index ax)
-                throw new DBException("42105");
+            if (((cx.values[t ?? -1L] as TNode)?.dataType ?? cx.db.objects[t ?? -1L]) is not NodeType at)
+                throw new DBException("42105").Add(Sqlx.NODETYPE);
             if (at.EqualOrStrongSubtypeOf(ut))
             {
                 if ((lv?ut.leavingType:ut.arrivingType)!=gt.defpos)

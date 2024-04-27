@@ -83,11 +83,13 @@ namespace Pyrrho.Level4
         internal int sD => (int)defsStore.Count; // see IncSD() and DecSD() below
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal long lexical = 0L; // current select block, set in incSD()
-        internal string? graph = null; // current graph, set by USE
+        internal Graph? graph = null; // current graph, set by USE
+        internal Schema? schema = null; // current schema, set by AT
+        public BTree<long, bool> locals = BTree<long, bool>.Empty; // for binding table, activation locals
         internal CTree<long, int> undefined = CTree<long, int>.Empty;
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long?> uids = BTree<long, long?>.Empty;
-        internal long result = -1L,lastret = -1L;
+        internal long result = -1L,lastret = -1L; // usually an ExplicitRowSet (binding table)
         /// <summary>
         /// Used in Replace cascade
         /// </summary>
@@ -142,6 +144,10 @@ namespace Pyrrho.Level4
             next = null;
             cxid = db.lexeroffset;
             conn = cx.conn;
+            if (conn.props["Schema"] is string sn)
+                cx.schema = cx.db.objects[cx.role.schemas[sn] ?? -1] as Schema;
+            if (conn.props["Graph"] is string gn)
+                cx.graph = cx.db.objects[cx.role.graphs[gn] ?? -1] as Graph;
             nextHeap = conn.nextPrep;
             parseStart = 0L;
             this.db = db;
@@ -434,7 +440,7 @@ namespace Pyrrho.Level4
                 d = _DepthV(b.key(), d);
             return d;
         }
-        internal int _DepthBO(BList<SqlValue> t, int d)
+        internal static int _DepthBO(BList<SqlValue> t, int d)
         {
             for (var b = t.First(); b != null; b = b.Next())
                 d = Math.Max(b.value().depth + 1, d);
@@ -446,7 +452,7 @@ namespace Pyrrho.Level4
                 d = _DepthV(b.value(), d);
             return d;
         }
-        internal int _DepthTDb(CTree<Domain, bool> t, int d)
+        internal static int _DepthTDb(CTree<Domain, bool> t, int d)
         {
             for (var b = t.First(); b != null; b = b.Next())
                 d = Math.Max(b.key().depth + 1, d);
@@ -488,14 +494,14 @@ namespace Pyrrho.Level4
             }
             return d;
         }
-        internal int _DepthLT<T>(CList<T> s, int d) where T : TypedValue
+        internal static int _DepthLT<T>(CList<T> s, int d) where T : TypedValue
         {
             for (var b = s.First(); b != null; b = b.Next())
                 if (b.value() is TypedValue v)
                     d = Math.Max(v.dataType.depth + 1, d);
             return d;
         }
-        internal int _DepthLPlT<T>(Domain dm, BList<(long,T)> s, int d) where T : TypedValue
+        internal static int _DepthLPlT<T>(Domain dm, BList<(long,T)> s, int d) where T : TypedValue
         {
             for (var b = s.First(); b != null; b = b.Next())
                 if (b.value().Item2 is TypedValue v && v.dataType.defpos!=dm.defpos)
@@ -535,6 +541,8 @@ namespace Pyrrho.Level4
         /// <param name="tm">The source table expression</param>
         internal void DecSD(Domain? sm = null, RowSet? te = null)
         {
+            if (sD == 0)
+                return;  
             // we don't want to lose the current defs right away.
             // they will be needed for OrderBy and ForSelect bodies
             // Look at any undefined symbols in sm that are NOT in tm
@@ -632,7 +640,7 @@ namespace Pyrrho.Level4
         internal DBObject? Add(Physical ph, long lp = 0)
         {
             if (ph == null || db == null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.DATABASE);
             if (lp == 0)
                 lp = db.loadpos;
             if (PyrrhoStart.DebugMode && db is Transaction)
@@ -934,7 +942,6 @@ namespace Pyrrho.Level4
                     RestView.NamesMap => _DepthTVX((CTree<long, string>)o, d),
                     JoinRowSet.OnCond => _DepthTVV((BTree<long, long?>)o, d),
                     FetchStatement.Outs => _DepthBV((BList<long?>)o, d),
-                    SelectSingle.Outs => _DepthBV((BList<long?>)o, d),
                     PreparedStatement.QMarks => _DepthBV((BList<long?>)o, d),
                     SelectRowSet.RdCols => _DepthTVX((CTree<long, bool>)o, d),
                     RowSet.Referenced => _DepthTVX((CTree<long, bool>)o, d),
@@ -1421,7 +1428,7 @@ namespace Pyrrho.Level4
             }
             return rs;
         }
-        internal CTree<long, bool> ShallowReplace(CTree<long, bool> ag, long was, long now)
+        internal static CTree<long, bool> ShallowReplace(CTree<long, bool> ag, long was, long now)
         {
             for (var b = ag.First(); b != null; b = b.Next())
                 if (b.key() == was)
@@ -1431,7 +1438,7 @@ namespace Pyrrho.Level4
                 }
             return ag;
         }
-        internal BList<long?> ShallowReplace(BList<long?> rt, long was, long now)
+        internal static BList<long?> ShallowReplace(BList<long?> rt, long was, long now)
         {
             var r = BList<long?>.Empty;
             var ch = false;
@@ -1528,11 +1535,11 @@ namespace Pyrrho.Level4
                         case SqlSelectArray.ArrayValuedQE: v = Replaced((long)v); break;
                         case RowSet.Assig: v = ReplacedTUb((CTree<UpdateAssignment, bool>)v); break;
                         case Procedure.Body: v = Replaced((long)v); break;
-                        case SqlCall.Parms: v = ReplacedLl((BList<long?>)v); break;
                         case CallStatement.Call: v = Replaced((long)v); break;
                         case SqlCaseSimple.CaseElse: v = Replaced((long)v); break;
                         case SqlCaseSimple.Cases: v = ReplacedBll((BList<(long, long)>)v); break;
                         case WhenPart.Cond: v = Replaced((long)v); break;
+                        case ForStatement.CountCol: v = Replaced((long)v); break;
                         case Check.Condition: v = Replaced((long)v); break;
                         case FetchStatement.Cursor: v = Replaced((long)v); break;
                         case RowSet._Data: v = Replaced((long)v); break;
@@ -1583,7 +1590,7 @@ namespace Pyrrho.Level4
                         case WindowSpecification.Order: v = ((Domain)v).Replaced(this); break;
                         case Domain.OrderFunc: v = Replaced((long)v); break;
                         case FetchStatement.Outs: v = ReplacedLl((BList<long?>)v); break;
-                        case SelectSingle.Outs: v = ReplacedLl((BList<long?>)v); break;
+                        case SqlCall.Parms: v = ReplacedLl((BList<long?>)v); break;
                         case Procedure.Params: v = ReplacedLl((BList<long?>)v); break;
                         case WindowSpecification.PartitionType: v = ((Domain)v).Replaced(this); break;
                         //    case RowSet.Periods:        v = Replaced
@@ -1607,7 +1614,6 @@ namespace Pyrrho.Level4
                         case RowSet.RSTargets: v = ReplacedTll((BTree<long, long?>)v); break;
                         case SqlDefaultConstructor.Sce: v = Replaced((long)v); break;
                         case IfThenElse.Search: v = Replaced((long)v); break;
-                        case WhileStatement.Search: v = Replaced((long)v); break;
                         case ForSelectStatement.Sel: v = Replaced((long)v); break;
                         case QuantifiedPredicate._Select: v = Replaced((long)v); break;
                         case SignalStatement.SetList: v = Replaced((BTree<Sqlx, long?>)v); break;
@@ -1921,6 +1927,40 @@ namespace Pyrrho.Level4
                         Add(pp);
                     }
             }
+        }
+        internal long UnlabelledNodeSuper(CTree<string,bool> ps)
+        {
+            var rp = -1L;
+            int n = 0;
+            for (var b = role.unlabelledNodeTypes.First(); b != null; b = b.Next())
+            {
+                var nn = 0;
+                for (var c = b.key().First(); c != null; c = c.Next())
+                    if (ps.Contains(c.key()))
+                        nn++;
+                if (nn > n && b.value() is long p)
+                {
+                    rp = p; n = nn;
+                }
+            }
+            return rp;
+        }
+        internal long UnlabelledEdgeSuper(CTree<string, bool> ps)
+        {
+            var rp = -1L;
+            int n = 0;
+            for (var b = role.unlabelledEdgeTypes.First(); b != null; b = b.Next())
+            {
+                var nn = 0;
+                for (var c = b.key().First(); c != null; c = c.Next())
+                    if (ps.Contains(c.key()))
+                        nn++;
+                if (nn > n && b.value() is long p)
+                {
+                    rp = p; n = nn;
+                }
+            }
+            return rp;
         }
         internal CList<Domain> Signature(Procedure proc)
         {
@@ -2656,7 +2696,7 @@ namespace Pyrrho.Level4
         internal readonly Level1.TCPStream? _tcp = null;
         internal readonly bool caseSensitive = false;
         internal DateTime awake = DateTime.Now;
-        internal readonly byte[] awakeBuf = new byte[] { 0, 1, (byte)Responses.Continue }; 
+        internal readonly byte[] awakeBuf = [0, 1, (byte)Responses.Continue]; 
         /// <summary>
         /// A tree of prepared statements, whose object persist
         /// in the base context for the connection.
@@ -2704,7 +2744,7 @@ namespace Pyrrho.Level4
         public void Add(string nm, string n)
         {
             var i = nm.IndexOf('(');
-            var e = nm.Substring(0,i); // a (conflicting) edge type nmame
+            var e = nm[..i]; // a (conflicting) edge type nmame
             var j = nm.IndexOf(',');
             var s = nm.Substring(i + 1, j - i - 1); // its source node type
             var d = nm.Substring(j + 1, s.Length - j - 2); // its dest node type
@@ -2722,11 +2762,10 @@ namespace Pyrrho.Level4
     internal class Framing : Basis // for compiled code
     {
         internal const long
-            Obs = -449,     // ObTree 
-            Result = -452;  // long
+            Obs = -449;     // ObTree 
         public ObTree obs => 
             (ObTree?)mem[Obs]??ObTree.Empty;
-        public long result => (long)(mem[Result]??-1L);
+        public long result => (long)(mem[Executable.Result]??-1L);
         public Rvv? withRvv => (Rvv?)mem[Rvv.RVV];
         internal static Framing Empty = new();
         Framing() { }
@@ -2736,7 +2775,7 @@ namespace Pyrrho.Level4
         { }
         static BTree<long, object> _Mem(Context cx,long nst)
         {
-            var r = BTree<long, object>.Empty + (Result, cx.result);
+            var r = BTree<long, object>.Empty + (Executable.Result, cx.result);
             if (cx.affected is not null)
                  r+= (Rvv.RVV, cx.affected);
             var os = ObTree.Empty;
@@ -2764,7 +2803,7 @@ namespace Pyrrho.Level4
                     var nb = (DBObject)ob.Fix(cx);
                     r += (nb.defpos, nb);
                 }
-            return new Framing(BTree<long, object>.Empty + (Obs, r) + (Result, cx.uids[result] ?? result));
+            return new Framing(BTree<long, object>.Empty + (Obs, r) + (Executable.Result, cx.uids[result] ?? result));
         }
         public static Framing operator+(Framing f,(long,object)x)
         {
@@ -2812,7 +2851,7 @@ namespace Pyrrho.Level4
                     }
                 }
             r += (Obs, os);
-            r += (Result, cx.Fix(result));
+            r += (Executable.Result, cx.Fix(result));
             return r; 
         }
         public override string ToString()

@@ -300,7 +300,7 @@ namespace Pyrrho.Level2
         {
             if (_user >=0)
                 user = (User?)wr.cx.db.objects[wr.cx.Fix(_user)]
-                    ?? throw new DBException("42105");
+                    ?? throw new DBException("42105").Add(Sqlx.USER);
             table = wr.cx.Fix(table);
             match = wr.cx.Fix(match);
             return this;

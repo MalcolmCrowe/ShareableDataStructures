@@ -601,7 +601,7 @@ namespace Pyrrho.Level1
             if (a is TArray ta)
             {
                 int n = ta.Length;
-                var et = a.dataType.elType ?? throw new DBException("22005");
+                var et = a.dataType.elType ?? throw new DBException("22G03");
                 PutString(et.name??et.ToString());
                 PutInt(et.Typecode());
                 PutInt(n);
@@ -610,7 +610,7 @@ namespace Pyrrho.Level1
             } else if (a is TList tl)
             {
                 int n = tl.Length;
-                var et = tl.dataType.elType ?? throw new DBException("22005");
+                var et = tl.dataType.elType ?? throw new DBException("22G03");
                 PutString(et.ToString());
                 PutInt(et.Typecode());
                 PutInt(n);

@@ -4,6 +4,7 @@ using System.Collections;
 using System.Globalization;
 using Pyrrho;
 using System.ComponentModel.Design;
+using System.ComponentModel.DataAnnotations;
 
 namespace PyrrhoCmd
 {
@@ -138,6 +139,7 @@ namespace PyrrhoCmd
             var cmd = db.CreateCommand();
             try
             {
+                RemoveTrailingComment(ref str);
                 cmd.CommandText = str;
                 var str0 = str.Trim().Trim(';');
                 str = str0.ToLower();
@@ -302,6 +304,7 @@ namespace PyrrhoCmd
             int fileLines = -1;
             string? str;
             string? line = "";
+            var bk = 0;
             if (interactive)
             {
                 if (file != null)
@@ -325,9 +328,9 @@ namespace PyrrhoCmd
                         return null;
                     }
                     if (transaction != null)
-                        Console.Write("SQL-T>");
+                        Console.Write("QL-T>");
                     else
-                        Console.Write("SQL> ");
+                        Console.Write("QL> ");
                     str = Console.ReadLine();
                 }
                 if (str == null)
@@ -355,9 +358,15 @@ namespace PyrrhoCmd
                 // support multiline SQL statements for people who don't like wraparound
                 if (str[0] == '[')
                 {
+                    bk++;
                     for (; ; )
                     {
-                        if (str[str.Length - 1] == ']')
+                        for (var i = 1; i < str.Length; i++)
+                            if (str[i] == '[')
+                                bk++;
+                            else if (str[i] == ']')
+                                bk--;
+                        if (str[str.Length - 1] == ']' && bk==0)
                             break;
                         if (file != null)
                             line = file.ReadLine();
@@ -407,11 +416,14 @@ namespace PyrrhoCmd
                     case '\'':
                         if (ch == quote) // matching quote cancels
                             quote = '\0';
-                        else if (ch == '\0') 
+                        else if (ch != '\0') 
                             quote = ch; // else is a quoted quote
                         if (dash) // copy the saved dash if any
                             sb.Append('-');
                         dash = false;
+                        if (slash) // copy the saved dash if any
+                            sb.Append('/');
+                        slash = false;
                         sb.Append(ch); // copy the quote
                         break;
                     case '-':
@@ -646,7 +658,10 @@ namespace PyrrhoCmd
                     else
                     {
                         object o = rdr[j];
-                        row[j] = o.ToString();
+                        if (rdr.row[j] is CellValue cl && cl.subType == "BOOLEAN" && cl.val is null)
+                            row[j] = "Unknown";
+                        else
+                            row[j] = o.ToString();
                     }
                     if (row[j].Length > c.width)
                         c.width = row[j].Length;
@@ -744,7 +759,7 @@ namespace PyrrhoCmd
 				dict = new Hashtable();
 				dict.Add("0001","Note: the contents of {0}} are being copied as a blob to the server");
 				dict.Add("0002","Note: blob(s) from database copied to file(s)");
-				dict.Add("0003","Pyrrho Command Line Utility");
+				dict.Add("0003","Pyrrho Command Line Utility v7.09 April 2024");
 				dict.Add("0004","Usage: [-h:host] [-p:port] [-s] [-e:command|-f:file] [-c:locale] [-v] database ...");
 				dict.Add("0005","  -h  Pyrrho server host name. Default is localhost");
 				dict.Add("0006","  -p  Pyrrho server port name. Default is 5433");

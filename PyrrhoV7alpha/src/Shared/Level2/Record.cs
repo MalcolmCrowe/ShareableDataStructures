@@ -86,7 +86,7 @@ namespace Pyrrho.Level2
             Context cx)  : base(t, pp)
         {
             if (cx.tr==null || cx.db.user == null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.USER);
             tabledefpos = ts;
             fields = fl;
             if (t!=Type.Record3)
@@ -347,7 +347,7 @@ namespace Pyrrho.Level2
         {
             for (var b = tabledefpos.First(); b != null; b = b.Next())
             {
-                if (cx._Ob(b.key()) is not Table tb) throw new DBException("42105");
+                if (cx._Ob(b.key()) is not Table tb) throw new DBException("42105").Add(Sqlx.CONSTRAINT);
                 var dm = tb._PathDomain(cx);
                 for (var c = dm.First(); c != null; c = c.Next())
                 {
@@ -374,7 +374,7 @@ namespace Pyrrho.Level2
                 {
                     var now = Now(cx);
                     cx = Add(cx, tb, now, p);
-                    tb = (Table?)cx.obs[tb.defpos]??throw new DBException("42105");
+                    tb = (Table?)cx.obs[tb.defpos]??throw new DBException("42105").Add(Sqlx.TABLE);
                 }
                 catch (DBException e)
                 {
@@ -398,17 +398,30 @@ namespace Pyrrho.Level2
             for (var b = tt.super.First(); b != null; b = b.Next())   // update supertypes: extra values are harmless
                 if (cx.db.objects[b.key()?.defpos ?? -1L] is Table st && st.defpos>0)
                 {
-                    if (tt is NodeType nt && b.key() is NodeType sn && nt.idCol != sn.idCol)
+                    if (tt is NodeType yt && b.key() is NodeType sn && yt.idCol != sn.idCol)
                     {
                         tabledefpos -= sn.defpos;
                         if (now.vals[st.idCol] is TypedValue tv)
-                            now += (nt.idCol, tv);
+                            now += (yt.idCol, tv);
                     }
                     cx = Add(cx, st, now, p);
                     subType = st.defpos;
                     tabledefpos += (tt.defpos, true);
                 }
             AddRow(tt, now, cx);
+            // If this is a record for an unlabelled node or edge type, check we have a note of the type
+            if (tt is NodeType nt && nt.labels.Count == 0)
+            {
+                var ps = CTree<string, bool>.Empty;
+                for (var b = nt.infos[cx.role.defpos]?.names.First(); b != null; b = b.Next())
+                    ps += (b.key(), true);
+                var ro = cx.role;
+                if (nt is EdgeType && cx.role.unlabelledEdgeTypes[ps] is null)
+                    ro += (Role.UnlabelledEdgeTypes, ro.unlabelledEdgeTypes + (ps, tt.defpos));
+                else if (cx.role.unlabelledNodeTypes[ps] is null)
+                    ro += (Role.UnlabelledNodeTypes, ro.unlabelledNodeTypes + (ps, tt.defpos));
+                cx.db += (ro, p);
+            }
             if (tt is EdgeType et) // If a referenced NodeType has no primary index we need to enter it manually
             {
                 if (cx._Od(et.leavingType) is NodeType lt

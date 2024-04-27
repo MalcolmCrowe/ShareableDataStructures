@@ -53,7 +53,7 @@ namespace Pyrrho.Level3
         /// referenced objects in method OnInstance. 
         /// Instancing works differently during Load and during Parsing.
         /// 
-        /// DURING PARSING (cx.parse=ExecuteStatus.Obey or Prepare):
+        /// DURING PARSING (cx.parse=ExecuteStatus._Obey or Prepare):
         /// This routine prepares a fresh copy of a View reference, 
         /// moving all precompiled objects with Executable-range uids
         /// to the heap, including the View object itself.
@@ -168,7 +168,7 @@ namespace Pyrrho.Level3
         internal override RowSet RowSets(Ident vn,Context cx,Domain q,long fm,
             Grant.Privilege pr=Grant.Privilege.Select, string? a=null)
         {
-            var ts = (RowSet?)cx.obs[result] ?? throw new DBException("42105");
+            var ts = (RowSet?)cx.obs[result] ?? throw new DBException("42105").Add(Sqlx.VIEW);
             var m = new BTree<long, object>(ObInfo.Name, vn.ident);
             if (a != null)
                 m += (_Alias, a);
@@ -185,7 +185,7 @@ namespace Pyrrho.Level3
         {
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi || mi.name==null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.VIEW);
             var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
             sb.Append("\r\n[Schema("); sb.Append(from.lastChange); sb.Append(")]");
             sb.Append("\r\n/// <summary>\r\n");
@@ -212,7 +212,7 @@ namespace Pyrrho.Level3
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi
                     || mi.name == null || cx.db.user is not User ud)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.VIEW);
             var sb = new StringBuilder();
             sb.Append("\r\n/* \r\n * Class "); sb.Append(mi.name); sb.Append(".java\r\n");
             sb.Append("import org.pyrrhodb.*;\r\n");
@@ -240,7 +240,7 @@ namespace Pyrrho.Level3
         {
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi || mi.name == null)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.VIEW);
             var sb = new StringBuilder();
             sb.Append("# "); sb.Append(mi.name); sb.Append(" Created on ");
             sb.Append(DateTime.Now);
@@ -503,7 +503,7 @@ namespace Pyrrho.Level3
                     cx.defs += (new Ident(vn, id), vn.iix);
                 }
             var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, rs, rt, rt.Length);
-            var oi = infos[cx.role.defpos] ?? throw new DBException("42105");
+            var oi = infos[cx.role.defpos] ?? throw new DBException("42105").Add(Sqlx.VIEW);
             var rv = new RestView(cx.GetUid(), nd.mem + (UsingTable, usingTable)
                 + (NamesMap, nm) + (ObInfo.Names, ns) +(ViewDef,viewDef)
                 + (_Depth,nd.depth+1)
@@ -587,10 +587,10 @@ namespace Pyrrho.Level3
             ABookmark<long, object> _enu)
         {
             if (cx.role == null) 
-                throw new DBException("42105");
-            var tb = (Table)(super.First()?.key() as Table ?? throw new DBException("42105"));
+                throw new DBException("42105").Add(Sqlx.ROLE);
+            var tb = super.First()?.key() as Table ?? throw new DBException("42105").Add(Sqlx.UNDER);
             var ro = cx.role;
-            var md = infos[ro.defpos] ?? throw new DBException("42105");
+            var md = infos[ro.defpos] ?? throw new DBException("42105").Add(Sqlx.VIEW);
             cx.Add(framing);
             var versioned = md.metadata.Contains(Sqlx.ENTITY);
             var key = tb.BuildKey(cx, out Domain keys);

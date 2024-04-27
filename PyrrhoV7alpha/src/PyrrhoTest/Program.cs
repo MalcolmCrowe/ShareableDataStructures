@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("19 March 2024 Repeatable tests");
+                Console.WriteLine("26 April 2024 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -551,14 +551,14 @@ namespace Test
             {
                 Begin();
                 Act(134,"create table cs(b int not null,c int default 4,d int generated always as b+c)");
-                CheckExceptionNonQuery(11, 1, "insert into cs(c) values(5)", "Null value not allowed in column B");
+                CheckExceptionNonQuery(11, 1, "insert into cs(c) values(5)", "Null value not allowed");
             }
             if (qry == 0 || qry == 2)
             {
                 Begin();
                 Act(135,"create table cs(b int not null,c int default 4,d int generated always as b+c)");
                 Act(136,"insert into cs(b) values(3)");
-                CheckExceptionNonQuery(11, 2, "insert into cs values(1,2,3)", "Attempt to assign to a non-updatable column");
+                CheckExceptionNonQuery(11, 2, "insert into cs values(1,2,3)", "Record data, field unassignable");
             }
             if (qry == 0 || qry == 3)
             {
@@ -771,7 +771,7 @@ namespace Test
             testing = 15;
             Begin();
             Act(227,"create table ca(a char,b int check (b>0))");
-            CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99)","Column B Check constraint fails");
+            CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99)","Column check  fails for column B");
             if (!commit)
             {
                 Begin();

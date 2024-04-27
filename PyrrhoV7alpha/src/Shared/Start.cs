@@ -544,7 +544,7 @@ namespace Pyrrho
                                 break;
                             }
                         case Protocol.Post:
-                            {   // we go to a lot of trouble to set things up like SqlInsert.Obey()
+                            {   // we go to a lot of trouble to set things up like SqlInsert._Obey()
                                 // so that the trigger and cascade machinery gets called if necessary
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
@@ -557,7 +557,7 @@ namespace Pyrrho
                                 if (ss.Length < 3)
                                     throw new DBException("Protocol error");
                                 var t = long.Parse(ss[1]);
-                                var tb = (Table?)db.objects[t]??throw new DBException("42105");
+                                var tb = (Table?)db.objects[t]??throw new DBException("42105").Add(Sqlx.TABLE);
                                 var ti = tb.infos[db.role.defpos];
                                 var f = new TableRowSet(1L, cx, t);
                                 BTree<long, TargetActivation>? ans = null;
@@ -618,7 +618,7 @@ namespace Pyrrho
                                 break;
                             }
                         case Protocol.Put:
-                            {   // we go to a lot of trouble to set things up like UpdateSearch.Obey()
+                            {   // we go to a lot of trouble to set things up like UpdateSearch._Obey()
                                 // so that the trigger and cascade machinery gets called if necessary
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
@@ -635,7 +635,7 @@ namespace Pyrrho
                                 var tb = (Table?)db.objects[t];
                                 var ro = db.role;
                                 if (tb == null)
-                                    throw new DBException("42105");
+                                    throw new DBException("42105").Add(Sqlx.TABLE);
                                 var ti = tb.infos[ro.defpos];
                                 var f = new TableRowSet(1L, cx, t);
                                 BTree<long, TargetActivation>? ans = null;
@@ -706,7 +706,7 @@ namespace Pyrrho
                                 break;
                             }
                         case Protocol.Delete:
-                            {   // we go to a lot of trouble to set things up like QuerySearch.Obey()
+                            {   // we go to a lot of trouble to set things up like QuerySearch._Obey()
                                 // so that the trigger and cascade machinery gets called if necessary
                                 var k = tcp.GetLong();
                                 if (k == 0) k = 1; // someone chancing it?
@@ -723,7 +723,7 @@ namespace Pyrrho
                                 var tb = (Table?)db.objects[t];
                                 var ro = db.role;
                                 if (tb == null || ro == null)
-                                    throw new DBException("42105");
+                                    throw new DBException("42105").Add(Sqlx.TABLE);
                                 var ti = tb.infos[ro.defpos];
                                 var f = new TableRowSet(1L, cx, t);
                                 BTree<long, TargetActivation>? ans = null;
@@ -868,11 +868,11 @@ namespace Pyrrho
                                         rn[1..^1] : rn.ToUpper();
                                 }
                                 if (!db.roles.Contains(rn))
-                                    throw new DBException("42105");
+                                    throw new DBException("42105").Add(Sqlx.ROLE);
                                 conn.props += ("Role", rn);
                                 if (db.roles[rn] is not long rp || db.objects[rp] is not Role ro
                                     || cx==null)
-                                    throw new DBException("42105");
+                                    throw new DBException("42105").Add(Sqlx.ROLE);
                                 db += (ro, db.loadpos);
                                 db += (Database.Role, ro);
                                 cx.db = db;
@@ -886,7 +886,7 @@ namespace Pyrrho
                                     throw new DBException("3D001");
                                 if (cx.role?.dbobjects["Role$GraphInfo"] is not long tp
                                     || db.objects[tp] is not SystemTable st)
-                                    throw new DBException("42105");
+                                    throw new DBException("42105").Add(Sqlx.ROLE);
                                 tcp.Write(Responses.GraphInfo);
                                 for (var b = new SystemRowSet(cx, st).First(cx); b != null; b = b.Next(cx))
                                 {
@@ -1023,7 +1023,7 @@ namespace Pyrrho
                     string? str = null;
                     int b = tcp.crypt.ReadByte();
                     if (b < (int)Connecting.Password || b > (int)Connecting.CaseSensitive)
-                        throw new DBException("42105");
+                        throw new DBException("42105").Add(Sqlx.CONNECTION);
                     switch ((Connecting)b)
                     {
                         case Connecting.AllowAsk: str = "AllowAsk"; break;
@@ -1042,8 +1042,10 @@ namespace Pyrrho
                         case Connecting.Length: str = "Length"; break;
                         case Connecting.Culture: str = "Locale"; break;
                         case Connecting.CaseSensitive: str = "CaseSensitive"; break;
+                        case Connecting.Schema: str = "Schema"; break;
+                        case Connecting.Graph: str = "Graph"; break;
                         default:
-                            throw new DBException("42105");
+                            throw new DBException("42105").Add(Sqlx.CONNECTION);
                     }
                     dets += (str, tcp.crypt.GetString());
                 }
@@ -1465,9 +1467,9 @@ namespace Pyrrho
 		}
         static void FixPath()
         {
-            if (path.Contains('/') && !path.EndsWith("/"))
+            if (path.Contains('/') && !path.EndsWith('/'))
                 path += "/";
-            else if (path.Contains('\\') && !path.EndsWith("\\"))
+            else if (path.Contains('\\') && !path.EndsWith('\\'))
                 path += "\\";
 #if WINDOWS
             var acl = Directory.GetAccessControl(path);
@@ -1510,7 +1512,7 @@ namespace Pyrrho
  		internal static string[] Version = new string[]
         {
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.08alpha","(11 April 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(27 April 2024)", "http://www.pyrrhodb.com"
         };
 	}
 }

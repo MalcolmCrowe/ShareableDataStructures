@@ -18,12 +18,15 @@ namespace Pyrrho.Level3
     /// Immutable
     /// 
     /// </summary>
-    internal abstract class DBObject : Basis
+    /// <remarks>
+    /// Constructor
+    /// </remarks>
+    internal abstract class DBObject(long dp, BTree<long, object> m) : Basis(m)
     {
         /// <summary>
         /// The uid of the abstract object this is or affects
         /// </summary>
-        public readonly long defpos;
+        public readonly long defpos = dp;
         internal const long
             _Alias = -62, // string        
             Chain = -489, // BList<Ident>
@@ -77,13 +80,7 @@ namespace Pyrrho.Level3
         internal Framing framing =>
             (Framing?)mem[_Framing] ?? Framing.Empty;
         internal Ident? id => (Ident?)mem[_Ident];
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        protected DBObject(long dp, BTree<long, object> m) : base(m)
-        {
-            defpos = dp;
-        }
+
         protected DBObject(long pp, long dp, BTree<long, object>? m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp))
         { }
@@ -284,7 +281,8 @@ namespace Pyrrho.Level3
                 r += (Infos, fs);
             return r;
         }
-        BTree<long,ObInfo> ShallowReplace(Context cx,BTree<long,ObInfo> fs,long was,long now)
+
+        static BTree<long,ObInfo> ShallowReplace(Context cx,BTree<long,ObInfo> fs,long was,long now)
         {
             for (var b=fs.First();b!=null;b=b.Next())
                 if (b.value() is ObInfo oi)
@@ -620,7 +618,7 @@ namespace Pyrrho.Level3
             if (ob.alias is string s)
                 return s;
             var ci = ob.infos[cx.role.defpos] ?? ob.infos[definer] ??
-                ob.infos[Database.Guest] ?? throw new DBException("42105");
+                ob.infos[Database.Guest] ?? throw new DBException("42105").Add(Sqlx.OBJECT);
             return ci.name??"??";
         }
         internal virtual void Note(Context cx,StringBuilder sb,string target="C#")

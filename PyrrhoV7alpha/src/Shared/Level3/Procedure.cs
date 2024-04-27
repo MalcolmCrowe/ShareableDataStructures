@@ -31,7 +31,6 @@ namespace Pyrrho.Level3
             Body = -168, // long Executable
             Clause = -169,// string
             Inverse = -170, // long
-            Monotonic = -171, // bool
             Params = -172; // Domain  
         /// <summary>
         /// The arity (number of parameters) of the procedure
@@ -46,7 +45,7 @@ namespace Pyrrho.Level3
             (Domain)(mem[Params]?? Domain.Null);
         public string clause => (string?)mem[Clause]??"";
         public long inverse => (long)(mem[Inverse]??-1L);
-        public bool monotonic => (bool)(mem[Monotonic] ?? false);
+        public bool monotonic => (bool)(mem[SqlFunction.Monotonic] ?? false);
         /// <summary>
         /// Constructor: Build a level 3 procedure from a level 2 procedure
         /// </summary>
@@ -87,7 +86,7 @@ namespace Pyrrho.Level3
         {
             if (infos[cx.role.defpos] is not ObInfo oi
                 || !oi.priv.HasFlag(Grant.Privilege.Execute))
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.EXECUTE);
             cx.Add(framing);
             var n = ins.Length;
             var acts = new TypedValue[n];
@@ -100,9 +99,9 @@ namespace Pyrrho.Level3
             for (var b = ins.First(); b != null; b = b.Next(), i++)
                 if (b.value() is long p)
                     act.values += (p, acts[b.key()]);
-            cx = bd.Obey(act);
+            cx = bd._Obey(act);
             var r = act.Ret();
-            if (r is TList ts)
+            if (r is TList)
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());
@@ -138,7 +137,7 @@ namespace Pyrrho.Level3
         }
         internal override void Modify(Context cx, Modify m, long p)
         {
-            cx.db = cx.db + (this+(Body,m.proc),p);
+            cx.db += (this+(Body,m.proc),p);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -185,7 +184,7 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(' '); sb.Append(domain);
-            sb.Append(" Arity="); sb.Append(arity); sb.Append(" ");
+            sb.Append(" Arity="); sb.Append(arity); sb.Append(' ');
             sb.Append(" Params");
             var cm = '(';
             for (var i = 0; i < ins.Length; i++)
@@ -196,7 +195,7 @@ namespace Pyrrho.Level3
             sb.Append(") Body:"); sb.Append(Uid(body));
             sb.Append(" Clause{"); sb.Append(clause); sb.Append('}');
             if (mem.Contains(Inverse)) { sb.Append(" Inverse="); sb.Append(Uid(inverse)); }
-            if (mem.Contains(Monotonic)) { sb.Append(" Monotonic"); }
+            if (mem.Contains(SqlFunction.Monotonic)) { sb.Append(" Monotonic"); }
             return sb.ToString();
         }
     }

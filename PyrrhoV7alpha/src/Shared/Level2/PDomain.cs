@@ -235,7 +235,7 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx, long p)
         {
-            var ro = cx.db.role ?? throw new DBException("42105");
+            var ro = cx.db.role ?? throw new DBException("42105").Add(Sqlx.DOMAIN);
             var dt = domain;
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(domain.name, priv);

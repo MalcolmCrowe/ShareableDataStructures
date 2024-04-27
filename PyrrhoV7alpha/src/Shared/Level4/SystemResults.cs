@@ -122,7 +122,7 @@ namespace Pyrrho.Level4
         internal override string NameFor(Context cx)
         {
             if (Denied(cx, Grant.Privilege.Select))
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.SYSTEM);
             return name;
         }
         internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
@@ -330,7 +330,7 @@ namespace Pyrrho.Level4
                     }
             // NB: rowType stuff is done by TableRowSet
             if (f.name?.StartsWith("Log$")==true &&cx.user?.defpos!=cx.db.owner)
-                throw new DBException("42105");
+                throw new DBException("42105").Add(Sqlx.OWNER);
             var r = (m ?? BTree<long, object>.Empty) + (SRowType, f.rowType) + (SysTable, f) + (SysFilt, sf);
             if (w is not null)
                 r  += (_Where,w);
@@ -1561,7 +1561,7 @@ namespace Pyrrho.Level4
         {
             LogClearanceBookmark(Context _cx,SystemRowSet rs, int pos, Physical ph, long pp)
                 : base(_cx,rs, pos, ph, pp, _Value(rs, ph,
-                    (_cx.user??throw new DBException("42105")).defpos))
+                    (_cx.user??throw new DBException("42105").Add(Sqlx.SECURITY)).defpos))
             {
             }
             internal static LogClearanceBookmark? New(Context _cx,SystemRowSet res)
@@ -4743,7 +4743,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, long pos, object ob)
             {
                 if (_cx.role is not Role ro)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.ROLE);
                 var us = "";
                 if (ob is RestView rv && _cx.db.objects[rv.usingTable] is Table tb && tb.infos[ro.defpos] is ObInfo oi)
                         us = oi.name;
@@ -5123,7 +5123,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object tb, bool sys)
             {
                 if (_cx.role is not Role ro)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.ROLE);
                 var t = (Table)tb;
                 var oi = t.infos[_cx.role.defpos] ?? throw new PEException("PE0481");
                 var pd = (PeriodDef)(_cx.db.objects[sys ? t.systemPS : t.applicationPS]
@@ -5249,7 +5249,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet rs, object ta, int i,long p,Domain d)
             {
                 if (cx.role is not Role ro)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.ROLE);
                 if (ta is not Table tb || tb.infos[ro.defpos] is not ObInfo oi
                     || cx.db.objects[p] is not TableColumn tc
                     || tc.infos[ro.defpos] is not ObInfo si)
@@ -5870,7 +5870,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, int i, TableColumn tc)
             {
                 if (tc.infos[_cx.role.defpos] is not ObInfo oi)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.ROLE);
                 return new TRow(rs,
                     Pos(tc.defpos),
                     new TChar(oi?.name??""),
@@ -6271,7 +6271,7 @@ namespace Pyrrho.Level4
                 if (oo is not DBObject ob || _cx.role is not Role ro 
                     || ob.infos[ro.defpos] is not ObInfo oi || oi.name == null
                     || _cx.db.objects[xp] is not DBObject ox)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.OBJECT);
                 return new TRow(rs,
                     Pos(ob.defpos),
                     new TChar(ob.GetType().Name),
@@ -6466,7 +6466,7 @@ namespace Pyrrho.Level4
                 if (_cx.role is not Role ro ||
                     tb.infos[ro.defpos] is not ObInfo oi || oi.name == null ||
                     _cx.db.objects[tg.definer] is not Role de)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.TRIGGER);
                 return new TRow(rs,
                     Pos(tg.defpos),
                     new TChar(tg.name),
@@ -6693,7 +6693,7 @@ namespace Pyrrho.Level4
             {
                 var t = (UDType)ob;
                 if (_cx.role is null)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.ROLE);
                 TypedValue gr = (t is EdgeType) ? new TChar("EDGETYPE")
                             : (t is NodeType) ? new TChar("NODETYPE") : TNull.Value;
                 var su = new StringBuilder();
@@ -6774,7 +6774,7 @@ namespace Pyrrho.Level4
             }
             internal static RoleMethodBookmark? New(Context _cx, SystemRowSet res)
             {
-                var ro = _cx.role ?? throw new DBException("42105");
+                var ro = _cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is UDType ut && ut.infos[ro.defpos] is ObInfo oi)
                         for (var middle = oi.methodInfos.First(); middle != null;
@@ -6796,7 +6796,7 @@ namespace Pyrrho.Level4
                 if (_cx.role is not Role ro || _cx.db.objects[mp] is not Method p
                     || p.infos[ro.defpos] is not ObInfo mi 
                     || _cx.db.objects[p.definer] is not Role de)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.METHOD);
                 return new TRow(rs,
                    new TChar(t.name),
                    new TChar(mi.name??""),
@@ -7010,7 +7010,7 @@ namespace Pyrrho.Level4
             }
             internal static RoleGraphInfoBookmark? New(Context cx, SystemRowSet res)
             {
-                var ro = cx.role ?? throw new DBException("42105");
+                var ro = cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
                 var bn = CTree<long, bool>.Empty; // base node types
                 var be = CTree<long, bool>.Empty; // base edge types
                 var st = CTree<long, bool>.Empty; // specific types
@@ -7418,7 +7418,7 @@ namespace Pyrrho.Level4
             }
             internal static RoleNodeTypeBookmark? New(Context cx, SystemRowSet res)
             {
-                var ro = cx.role ?? throw new DBException("42105");
+                var ro = cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
                 for (var outer = cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is NodeType ut && ut.kind!=Sqlx.EDGETYPE)
                     {
@@ -7474,7 +7474,7 @@ namespace Pyrrho.Level4
             }
             internal static RoleEdgeTypeBookmark? New(Context _cx, SystemRowSet res)
             {
-                var ro = _cx.role ?? throw new DBException("42105");
+                var ro = _cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is EdgeType ut)
                     {
@@ -7674,7 +7674,7 @@ namespace Pyrrho.Level4
                 if (_cx.role is not Role ro)
                     throw new PEException("PE49310");
                 if (ob.infos[ro.defpos] is not ObInfo oi || oi.name == null)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.OBJECT);
                 var dm = ob as Domain;
                 return new TRow(rs,
                     new TChar(ob.GetType().Name),
@@ -7690,7 +7690,7 @@ namespace Pyrrho.Level4
             protected override Cursor? _Next(Context _cx)
             {
                 if (_cx.role is not Role ro)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.ROLE);
                 var en = _en;
                 for (en = en.Next(); en != null; en = en.Next())
                     if (en.value() is DBObject ob && ob.infos[ro.defpos] is ObInfo oi)
@@ -7761,7 +7761,7 @@ namespace Pyrrho.Level4
                 if (tb.infos[_cx.role.defpos] is not ObInfo oi
                     || e.value() is not long p
                     || _cx.db.objects[p] is not ObInfo ci)
-                    throw new DBException("42105");
+                    throw new DBException("42105").Add(Sqlx.OBJECT);
                 return new TRow(rs,
                     new TChar(oi.name??""),
                     new TInt(e.key()),

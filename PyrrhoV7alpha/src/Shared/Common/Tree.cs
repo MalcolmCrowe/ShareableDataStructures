@@ -15,7 +15,7 @@ namespace Pyrrho.Common
     /// All trees contain KeyValuePairs in key keys
     /// </summary>
  //   [System.Diagnostics.DebuggerDisplay("{ToString()}")]
-	public abstract class ATree<K,V> where K:IComparable
+	public abstract class ATree<K,V>(Bucket<K, V>? r) where K:IComparable
 	{
         /// <summary>
         /// MemoryLimit is a server configuration parameter. The default value of zero (no limit)
@@ -45,12 +45,9 @@ namespace Pyrrho.Common
         /// <summary>
         /// The BTree is a hierarchy of Buckets, which are Inner or Leaf buckets
         /// </summary>
-        public readonly Bucket<K,V>? root;
-        protected ATree(Bucket<K, V>? r)
-        {
-            root = r;
-        }
-         /// <summary>
+        public readonly Bucket<K,V>? root = r;
+
+        /// <summary>
         /// Indexer: Get the value corresponding to a given key
         /// </summary>
         /// <param name="k">The key to find</param>
@@ -258,26 +255,22 @@ namespace Pyrrho.Common
     /// Row for Inner slots are subtree Buckets
     /// Immutable
     /// </summary>
-    public abstract class Bucket<K,V> : IBucket where K:IComparable
+    /// <remarks>
+    /// Constructor: a new bucket
+    /// </remarks>
+    /// <param name="c">the count for the new bucket</param>
+    /// <param name="tot">the number of values in the new buckey and all its children</param>
+    public abstract class Bucket<K,V>(int c, long tot) : IBucket where K:IComparable
     {
         /// <summary>
         /// The number of slots in use
         /// </summary>
-        public readonly byte count;
+        public readonly byte count = (byte)c;
         /// <summary>
         /// The nuimber of values in this bucket and all its children
         /// </summary>
-        public readonly long total;
-        /// <summary>
-        /// Constructor: a new bucket
-        /// </summary>
-        /// <param name="c">the count for the new bucket</param>
-        /// <param name="tot">the number of values in the new buckey and all its children</param>
-        protected Bucket(int c,long tot)
-        {
-            count = (byte)c;
-            total = tot;
-        }
+        public readonly long total = tot;
+
         /// <summary>
         /// Accessor: Look to see if the subtree contains the given key
         /// </summary>
@@ -376,32 +369,27 @@ namespace Pyrrho.Common
     /// </summary>
     /// <typeparam name="K">The tree's key type</typeparam>
     /// <typeparam name="V">The tree's value type</typeparam>
-    public sealed class ABookmark<K, V> where K:IComparable // IMMUTABLE
+    /// <remarks>
+    /// Constructor: a bucket, a position in it, and the rest of the stack
+    /// </remarks>
+    /// <param name="b">The current bucket</param>
+    /// <param name="bp">The current position</param>
+    /// <param name="n">The rest of the stack</param>
+    public sealed class ABookmark<K, V>(Bucket<K, V> b, int bp, ABookmark<K, V>? n) where K:IComparable // IMMUTABLE
     {
         /// <summary>
         /// The Bucket this stack entry refers to
         /// </summary>
-        public readonly Bucket<K, V> _bucket;
+        public readonly Bucket<K, V> _bucket = b;
         /// <summary>
         /// The position in the Bucket (always less than or equal to the bucket.count)
         /// </summary>
-        public readonly int _bpos;
+        public readonly int _bpos = bp;
         /// <summary>
         /// The parent stack entry
         /// </summary>
-        public readonly ABookmark<K, V>? _parent;
-        /// <summary>
-        /// Constructor: a bucket, a position in it, and the rest of the stack
-        /// </summary>
-        /// <param name="b">The current bucket</param>
-        /// <param name="bp">The current position</param>
-        /// <param name="n">The rest of the stack</param>
-        public ABookmark(Bucket<K, V> b, int bp, ABookmark<K, V>? n)
-        {
-            _bucket = b;
-            _bpos = bp;
-            _parent = n;
-        }
+        public readonly ABookmark<K, V>? _parent = n;
+
         /// <summary>
         /// The key for the bookmarked entry
         /// </summary>
@@ -414,8 +402,8 @@ namespace Pyrrho.Common
         public V value()
         {
             var v = _bucket.Slot(_bpos).Value;
-            if (v is V)
-                return (V)v;
+            if (v is V v1)
+                return v1;
             throw new Exception("Null in tree");
         }
         /// <summary>
@@ -428,10 +416,7 @@ namespace Pyrrho.Common
             if (_parent != null)
                 r = _parent.position();
             for (int i = 0; i < _bpos; i++)
-            {
-                var b = _bucket.Slot(i).Value as IBucket;
-                r += (b!= null)?b.Total():1;
-            }
+                r += (_bucket.Slot(i).Value is IBucket b) ? b.Total() : 1;
             return r;
         }
         /// <summary>

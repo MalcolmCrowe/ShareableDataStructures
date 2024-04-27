@@ -352,7 +352,7 @@ namespace Pyrrho.Level3
             {
                 exec = e
             };
-            var ac = e.Obey(a);
+            var ac = e._Obey(a);
             if (a.signal != null)
             {
                 var ex = Exception(a.signal.signal, a.signal.objects);
@@ -501,7 +501,7 @@ namespace Pyrrho.Level3
 #endif
                             fc = new Parser(cx).ParseProcedureCall(pn);
                         }
-                        fc.Obey(cx);
+                        fc._Obey(cx);
                         break;
                     }
                 case "key":
@@ -992,7 +992,7 @@ namespace Pyrrho.Level3
             if (rx.keys.Length != key.Length)
                 throw new DBException("22207").Mix();
             var px = new PIndex1(name, tb, key, ct, rx.defpos, afn,nextPos);
-            return (Table?)cx.Add(px)??throw new DBException("42105");
+            return (Table?)cx.Add(px)??throw new DBException("42105").Add(Sqlx.CONSTRAINT);
         }
     }
     /// <summary>
