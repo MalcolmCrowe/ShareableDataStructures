@@ -176,12 +176,12 @@ namespace Pyrrho.Common
     internal class SqlTree : CTree<TypedValue, TypedValue>
     {
         /// <summary>
-        /// The kind of value. Possibilities are Sqlx.INT, Sqlx.T, Sqlx.M
+        /// The kind of value. Possibilities are Qlx.INT, Qlx.T, Qlx.M
         /// </summary>
-        public readonly Sqlx kind;
+        public readonly Qlx kind;
         /// <summary>
         /// A simple Domain (no columns). 
-        /// keyType.kind==Sqlx.SET and keyType.elType!= Domain.Null for set valued foreign keys
+        /// keyType.kind==Qlx.SET and keyType.elType!= Domain.Null for set valued foreign keys
         /// </summary>
         public Domain keyType; 
         /// <summary>
@@ -189,7 +189,7 @@ namespace Pyrrho.Common
         /// </summary>
         /// <param name="hd">The tree info</param>
         /// <param name="b">The root bucket</param>
-        internal SqlTree(Domain hd,Sqlx k,Bucket<TypedValue, TypedValue>? b)
+        internal SqlTree(Domain hd,Qlx k,Bucket<TypedValue, TypedValue>? b)
             : base(b)
         {
             keyType = hd;
@@ -202,7 +202,7 @@ namespace Pyrrho.Common
         /// <param name="vType">the nominal value type</param>
         /// <param name="k">a key</param>
         /// <param name="v">a value</param>
-        public SqlTree(Domain ti, Sqlx kT, TypedValue k, TypedValue v)
+        public SqlTree(Domain ti, Qlx kT, TypedValue k, TypedValue v)
             : this(ti, kT, new Leaf<TypedValue, TypedValue>(new KeyValuePair<TypedValue, TypedValue>(k, v)))
         { }
         public override int Compare(TypedValue a, TypedValue b)
@@ -331,15 +331,15 @@ namespace Pyrrho.Common
         {
             return (SqlTree)tree.Remove(k);
         }
-        public TypedValue AutoKey(Sqlx kt)
+        public TypedValue AutoKey(Qlx kt)
         {
-            if (kt == Sqlx.INT || kt == Sqlx.INTEGER)
+            if (kt == Qlx.INT || kt == Qlx.INTEGER)
             {
                 var v = Last()?.key();
                 var n = v?.ToInt() ?? 0;
                 return new TInt(n + 1);
             }
-            if (kt == Sqlx.CHAR)
+            if (kt == Qlx.CHAR)
             {
                 for (var b = PositionAt(new TChar("A"))?.Previous(); b is not null;b=b.Previous())
                 {
@@ -362,12 +362,12 @@ namespace Pyrrho.Common
         }
         public TypedValue AutoKey(TypedValue v)
         {
-            if (v.dataType.kind == Sqlx.INT || v.dataType.kind == Sqlx.INTEGER)
+            if (v.dataType.kind == Qlx.INT || v.dataType.kind == Qlx.INTEGER)
             {
                 var n = v?.ToInt() ?? 0;
                 return new TInt(n + 1);
             }
-            if (v.dataType.kind == Sqlx.CHAR && int.Parse(v.ToString()) is int m && m>0)
+            if (v.dataType.kind == Qlx.CHAR && int.Parse(v.ToString()) is int m && m>0)
             {
                 return new TChar((m+1).ToString());
             }

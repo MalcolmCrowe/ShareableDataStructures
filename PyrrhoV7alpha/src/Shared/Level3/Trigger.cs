@@ -26,7 +26,7 @@ namespace Pyrrho.Level3
             OldTable = -296, // long RowSet
             TrigPpos = -299, // long Trigger
             TrigType = -297, // PTrigger.TrigType
-            UpdateCols = -298; // BList<long?> SqlValue
+            UpdateCols = -298; // BList<long?> QlValue
         public long table => (long)(mem[RowSet.Target]??-1L);
         /// <summary>
         /// The trigger type (flags)

@@ -43,6 +43,7 @@ namespace Pyrrho.Level3
             (CTree<UpdateAssignment,bool>?)mem[UpdateAssignments] 
             ?? CTree<UpdateAssignment,bool>.Empty;
         public string? updateString => (string?)mem[UpdateString];
+        public string? defaultString => (string?)mem[Domain.DefaultString];
         public readonly static TableColumn Doc = new (-1L,BTree<long, object>.Empty);
         /// <summary>
         /// These properties are used for special columns in the Typed Graph Model
@@ -104,9 +105,8 @@ namespace Pyrrho.Level3
                 r += (Domain.NotNull, true);
             if (c.generated != GenerationRule.None)
                 r += (Generated, c.generated);
-            if (dt.defaultString != "")
-                r = r + (Domain.DefaultString, dt.defaultString)
-                  + (Domain.Default, dt.defaultValue);
+            if (c.dfs != "")
+                r = r + (Domain.DefaultString, c.dfs);
             if (dt.sensitive)
                 r += (Sensitive, true);
             if (c.dv != TNull.Value)
@@ -132,7 +132,6 @@ namespace Pyrrho.Level3
         internal override DBObject Instance(long lp,Context cx, BList<Ident>?cs=null)
         {
             var r = base.Instance(lp, cx);
-            cx.instances += (r.defpos, lp);
             for (var b = checks.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is Check ck)
                     ck.Instance(lp, cx);
@@ -145,8 +144,8 @@ namespace Pyrrho.Level3
         internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? p)
         {
             if (cx._Ob(defpos) is not DBObject ob)
-                throw new DBException("42105").Add(Sqlx.COLUMN);
-            SqlValue r = new SqlCopy(lp, cx, nm, p?.defpos??-1L, ob) + (_Domain, domain);
+                throw new DBException("42105").Add(Qlx.COLUMN);
+            QlValue r = new SqlCopy(lp, cx, nm, p?.defpos??-1L, ob) + (_Domain, domain);
             cx.Add(r);
             return (r, n);
         }
@@ -177,7 +176,7 @@ namespace Pyrrho.Level3
             if (generated.exp != -1L)
             {
                 var go = generated.exp;
-                var ge = (SqlValue)cx._Replace(go, so, sv);
+                var ge = (QlValue)cx._Replace(go, so, sv);
                 if (ge != cx._Ob(go))
                     r += (Generated, new GenerationRule(generated.gen,
                         generated.gfs, ge, defpos, cx.db.nextStmt));
@@ -210,8 +209,8 @@ namespace Pyrrho.Level3
                 if (nullfound ^ reverse && tb.infos[cx.role.defpos] is ObInfo ti &&
                     infos[cx.role.defpos] is ObInfo ci)
                     throw new DBException(reverse ? "44005" : "44004", ti.name??"?", ci.name??"?").ISO()
-                        .Add(Sqlx.TABLE_NAME, new TChar(ci.name ?? "?"))
-                        .Add(Sqlx.COLUMN_NAME, new TChar(ti.name ?? "?"));
+                        .Add(Qlx.TABLE_NAME, new TChar(ci.name ?? "?"))
+                        .Add(Qlx.COLUMN_NAME, new TChar(ti.name ?? "?"));
             }
         }
         /// <summary>
@@ -222,16 +221,16 @@ namespace Pyrrho.Level3
         internal void ColumnCheck(Transaction tr, Check c, string signal)
         {
             var cx = new Context(tr);
-            if (tr.objects[tabledefpos] is Table tb && cx.obs[c.search] is SqlValue sch &&
+            if (tr.objects[tabledefpos] is Table tb && cx.obs[c.search] is QlValue sch &&
                 tb.RowSets(new Ident("", cx.Ix(tr.uid)), cx, tb, tr.uid)
                 .Apply(cx, BTree<long, object>.Empty + (RowSet._Where, sch.Disjoin(cx))) is RowSet nf &&
                 nf.First(cx) != null && cx.role != null &&
                 cx._Ob(tabledefpos) is DBObject t && t.infos[cx.role.defpos] is ObInfo ti && 
                 infos[cx.role.defpos] is ObInfo ci)
                 throw new DBException(signal, c.name ?? "", this, tb).ISO()
-                    .Add(Sqlx.CONSTRAINT_NAME, new TChar(c.name ?? ""))
-                    .Add(Sqlx.COLUMN_NAME, new TChar(ci.name ?? "?"))
-                    .Add(Sqlx.TABLE_NAME, new TChar(ti.name ?? "?"));
+                    .Add(Qlx.CONSTRAINT_NAME, new TChar(c.name ?? ""))
+                    .Add(Qlx.COLUMN_NAME, new TChar(ci.name ?? "?"))
+                    .Add(Qlx.TABLE_NAME, new TChar(ti.name ?? "?"));
         }
         protected override void _Cascade(Context cx,Drop.DropAction a, BTree<long, TypedValue>u)
         {
@@ -331,7 +330,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             _Generation = -273, // Generation
-            GenExp = -274, // long SqlValue
+            GenExp = -274, // long QlValue
             GenString = -275; // string
         internal readonly static GenerationRule None = new (Generation.No);
         public Generation gen => (Generation)(mem[_Generation] ?? Generation.No); // or START or END for ROW START|END
@@ -340,7 +339,7 @@ namespace Pyrrho.Level3
         public long target => (long)(mem[RowSet.Target] ?? -1L);
         public long nextStmt => (long)(mem[Database.NextStmt] ?? -1L);  
         public GenerationRule(Generation g) : base(new BTree<long, object>(_Generation, g)) { }
-        public GenerationRule(Generation g, string s, SqlValue e, long t, long nst)
+        public GenerationRule(Generation g, string s, QlValue e, long t, long nst)
             : base(BTree<long, object>.Empty + (_Generation, g) + (GenExp, e.defpos) + (GenString, s)
                   +(RowSet.Target,t) + (Database.NextStmt,nst)) { }
         protected GenerationRule(BTree<long, object> m) : base(m) { }
@@ -390,7 +389,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The prefix Selector
         /// </summary>
-        public SqlValue? prev => (SqlValue?)mem[Prev];
+        public QlValue? prev => (QlValue?)mem[Prev];
         /// <summary>
         /// Constructor:
         /// </summary>
@@ -446,7 +445,6 @@ namespace Pyrrho.Level3
         internal readonly Level classification;
         internal readonly CTree<long, TypedValue> vals;
         internal static TableRow Any = new (-1L); // creates a dummy TableRow for TPath
-
         public TableRow(Record rc, Context cx)
         {
             rc.Check(cx);
@@ -682,6 +680,27 @@ namespace Pyrrho.Level3
             for (var b = vals.First(); b != null; b = b.Next())
                 if (other.vals[b.key()]?.CompareTo(b.value()) != 0) return false;
             return true;
+        }
+
+        internal TableRow Fix(Context cx)
+        {
+            var tp = CTree<long, bool>.Empty;
+            for (var b = tabledefpos.First(); b != null; b = b.Next())
+                tp += (cx.Fix(b.key()), true);
+            var vs = CTree<long,TypedValue>.Empty;
+            for (var b = vals.First(); b != null; b = b.Next())
+            {
+                var nk = cx.Fix(b.key());
+                if (cx.db.objects[b.key()] is TableColumn tc && tc.domain.kind == Qlx.POSITION)
+                {
+                    var v = b.value().ToLong() ?? -1L;
+                    var nv = cx.uids[v] ?? v;
+                    vs += (nk, new TInt(nv));
+                }
+                else
+                    vs += (nk, b.value().Fix(cx));
+            }
+            return new TableRow(cx.Fix(defpos), cx.Fix(ppos), tp, vs);
         }
     }
     

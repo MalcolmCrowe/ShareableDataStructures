@@ -75,6 +75,11 @@ namespace Pyrrho.Level3
                  + (TableDefPos, c.tabledefpos) + (IndexConstraint, c.flags)
                   + (ObInfo.Name, c.name))
         { }
+        public Index(long dp, PIndex c, Table tb, Context cx)
+            : base(dp, dp, _IndexProps(c, cx)
+         + (TableDefPos, tb.defpos) + (IndexConstraint, c.flags)
+          + (ObInfo.Name, c.name))
+        { }
         static BTree<long, object> _IndexProps(PIndex c, Context cx)
         {
             var ro = cx.role;
@@ -84,10 +89,19 @@ namespace Pyrrho.Level3
                 r += (Adapter, c.adapter);
                 r += (References, BTree<long, BList<TypedValue>>.Empty);
             }
-            if (c.reference > 0 && cx.db.objects[c.reference] is Index rx)
+            if (c.reference > 0)
             {
-                r += (RefIndex, rx.defpos);
-                r += (RefTable, rx.tabledefpos);
+                if (cx.db.objects[c.reference] is Index rx)
+                {
+                    r += (RefIndex, rx.defpos);
+                    r += (RefTable, rx.tabledefpos);
+                }
+                else if (cx.db.objects[c.reference] is Table tr)
+                {
+                    r += (RefTable, tr.defpos);
+                    if (tr.FindPrimaryIndex(cx) is Index px)
+                        r += (RefIndex, px.defpos);
+                }
             }
             var rt = BList<long?>.Empty;
             var rs = CTree<long, Domain>.Empty;
@@ -99,12 +113,13 @@ namespace Pyrrho.Level3
                         pos = pd.startCol;
                     rt += pos;
                     var cd = cx._Dom(pos);
-                    if (cd is null || cd.kind == Sqlx.Null)
+                    if (cd is null || cd.kind == Qlx.Null)
                         throw new PEException("PE50201");
                     rs += (pos, cd);
                 }
-            var kd = new Domain(-1L, cx, Sqlx.ROW, rs, rt, rt.Length);
-            TreeBehaviour isfk = (c.reference >= 0 || c.flags == PIndex.ConstraintType.NoType) ?
+            var kd = new Domain(-1L, cx, Qlx.ROW, rs, rt, rt.Length);
+            TreeBehaviour isfk = (c.reference >= 0 || c.flags == ConstraintType.NoType 
+                || c.flags.HasFlag(ConstraintType.ForeignKey)) ?
                 TreeBehaviour.Allow : TreeBehaviour.Disallow;
             r += (Keys, kd);
             var rows = new MTree(kd, isfk, 0);
@@ -185,8 +200,8 @@ namespace Pyrrho.Level3
                                 CheckRef(cx.db, m);
                             if (ux && rows.Contains(m) && tb.infos[cx.role.defpos] is ObInfo oi && oi.name != null)
                                 throw new DBException("44002", "PRIMARY/UNIQUE", oi.name).Mix()
-                                    .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
-                                    .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
+                                    .Add(Qlx.TABLE_NAME, new TChar(oi.name))
+                                    .Add(Qlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
                             rs += (m, 0, pp);
                         }
                     }
@@ -207,8 +222,8 @@ namespace Pyrrho.Level3
                         {
                             var oi = tb.infos[cx.role.defpos];
                             throw new DBException("44002", "PRIMARY/UNIQUE").Mix()
-                                  .Add(Sqlx.TABLE_NAME, new TChar(oi?.name ?? "??"))
-                                  .Add(Sqlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
+                                  .Add(Qlx.TABLE_NAME, new TChar(oi?.name ?? "??"))
+                                  .Add(Qlx.CONSTRAINT_NAME, new TChar("PRIMARY/UNIQUE"));
                         }
                         rs += (m, 0, pq.key());
                     }
@@ -235,8 +250,8 @@ namespace Pyrrho.Level3
            db.objects[reftabledefpos] is Table tb && (rx.rows == null || !rx.rows.Contains(m))
              && tb.infos[db.role.defpos] is ObInfo oi && oi.name is not null)
                 throw new DBException("44002", "REFERENCES", oi.name).Mix()
-                    .Add(Sqlx.TABLE_NAME, new TChar(oi.name))
-                    .Add(Sqlx.CONSTRAINT_NAME, new TChar("REFERENCES"));
+                    .Add(Qlx.TABLE_NAME, new TChar(oi.name))
+                    .Add(Qlx.CONSTRAINT_NAME, new TChar("REFERENCES"));
         }
         protected override void _Cascade(Context cx, Drop.DropAction a, BTree<long, TypedValue> u)
         {

@@ -24,14 +24,14 @@ namespace Pyrrho.Level4
             JFirst = -447, // long RowSet
             JSecond = -448, // long RowSet
             JoinCond = -203, // CTree<long,bool>
-            JoinKind = -204, // Sqlx
-            JoinUsing = -208, // BTree<long,long?> SqlValue SqlValue (right->left)
-            Natural = -207, // Sqlx
-            OnCond = -205; // BTree<long,long?> SqlValue SqlValue for simple equality
+            JoinKind = -204, // Qlx
+            JoinUsing = -208, // BTree<long,long?> QlValue QlValue (right->left)
+            Natural = -207, // Qlx
+            OnCond = -205; // BTree<long,long?> QlValue QlValue for simple equality
         /// <summary>
         /// NATURAL or USING or NO (the default)
         /// </summary>
-        public Sqlx naturaljoin => (Sqlx)(mem[Natural] ?? Sqlx.NO);
+        public Qlx naturaljoin => (Qlx)(mem[Natural] ?? Qlx.NO);
         /// <summary>
         /// The tree of common TableColumns for natural join
         /// </summary>
@@ -40,7 +40,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// the kind of Join
         /// </summary>
-        public Sqlx joinKind => (Sqlx)(mem[JoinKind] ?? Sqlx.CROSS);
+        public Qlx joinKind => (Qlx)(mem[JoinKind] ?? Qlx.CROSS);
         /// <summary>
         /// During analysis, we collect requirements for the join conditions.
         /// </summary>
@@ -61,7 +61,7 @@ namespace Pyrrho.Level4
         /// Important: we have already identified the references and aliases in the select tree.
         /// </summary>
         /// <param name="j">The Join part</param>
-		public JoinRowSet(long dp,Context cx, RowSet lr, Sqlx k,RowSet rr,
+		public JoinRowSet(long dp,Context cx, RowSet lr, Qlx k,RowSet rr,
             BTree<long,object>? m = null) :
             base(dp, cx, _Mem(cx,m,k,lr,(RowSet)cx.Add(rr+(_From,dp))))
         {
@@ -70,10 +70,10 @@ namespace Pyrrho.Level4
         protected JoinRowSet(long dp, BTree<long, object> m) : base(dp, m)
         { }
         static BTree<long,object> _Mem(Context cx, BTree<long, object>? m,
-            Sqlx k,RowSet lr, RowSet rr)
+            Qlx k,RowSet lr, RowSet rr)
         {
             m ??= BTree<long, object>.Empty;
-            m += (JoinKind, (k==Sqlx.COMMA)?Sqlx.CROSS:k);
+            m += (JoinKind, (k==Qlx.COMMA)?Qlx.CROSS:k);
             m += (JFirst, lr.defpos);
             m += (JSecond, rr.defpos);
             m += (ISMap, lr.iSMap + rr.iSMap);
@@ -102,8 +102,8 @@ namespace Pyrrho.Level4
             // Step 2: consider NATURAL and USING
             if (cm!=CTree<string,(long,long)>.Empty)
             {
-                var nt = (Sqlx)(m[Natural] ?? Sqlx.NO);
-                if (nt==Sqlx.NATURAL)
+                var nt = (Qlx)(m[Natural] ?? Qlx.NO);
+                if (nt==Qlx.NATURAL)
                 {
                     for (var b = cm.First(); b != null; b = b.Next())
                     {
@@ -114,7 +114,7 @@ namespace Pyrrho.Level4
                     }
                     cm = CTree<string, (long, long)>.Empty;
                 }
-                if (nt==Sqlx.USING)
+                if (nt==Qlx.USING)
                 {
                     var ju = (BTree<long, long?>)(m[JoinUsing]??BTree<long,long?>.Empty);
                     for (var b = ju.First(); b != null; b = b.Next())
@@ -131,13 +131,13 @@ namespace Pyrrho.Level4
             // Step 3: rename the columns remaining in lc, rc and construct the join's domain
             var ls = BList<string>.Empty;
             var rs = BList<string>.Empty;
-            var lm = BTree<string, SqlValue>.Empty;
+            var lm = BTree<string, QlValue>.Empty;
             var nn = BTree<string, (int,long?)>.Empty;
             var cs = BList<long?>.Empty;
             var fs = BList<long?>.Empty;
             var re = CTree<long, Domain>.Empty;
             for (var b = lr.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue sv)
+                if (b.value() is long p && cx.obs[p] is QlValue sv)
                 {
                     var n = sv.name ?? ("Col" + cs.Length);
                     lm += (n, sv);
@@ -169,7 +169,7 @@ namespace Pyrrho.Level4
                         fs += sv.defpos;
                 }
             for (var b = rr.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue rv)
+                if (b.value() is long p && cx.obs[p] is QlValue rv)
                 {
                     var n = rv.name ?? ("Col" + cs.Length);
                     lm += (n, rv);
@@ -212,8 +212,8 @@ namespace Pyrrho.Level4
             // note that there may be further optimisations once the TableExpression is complete
             if (oc == BTree<long, long?>.Empty)
             {
-                if (m[JoinKind] is Sqlx.INNER)
-                    m += (JoinKind, Sqlx.CROSS); // will be reviewed later
+                if (m[JoinKind] is Qlx.INNER)
+                    m += (JoinKind, Qlx.CROSS); // will be reviewed later
             }
             else
             {
@@ -268,16 +268,16 @@ namespace Pyrrho.Level4
             int c;
             var ls = (RowSet?)cx.obs[first];
             for (var b = joinCond.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValueExpr se && cx.obs[se.left] is SqlValue lv &&
-                        cx.obs[se.right] is SqlValue rv)
+                if (cx.obs[b.key()] is SqlValueExpr se && cx.obs[se.left] is QlValue lv &&
+                        cx.obs[se.right] is QlValue rv)
                 {
                     c = lv.Eval(cx).CompareTo(rv.Eval(cx));
                     if (c != 0)
                         return (ls?.representation.Contains(lv.defpos) == true) ? c : -c;
                 }
             for (var b = onCond.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue lv && b.value() is long bv 
-                    && cx.obs[bv] is SqlValue rv)
+                if (cx.obs[b.key()] is QlValue lv && b.value() is long bv 
+                    && cx.obs[bv] is QlValue rv)
                 {
                     c = lv.Eval(cx).CompareTo(rv.Eval(cx));
                     if (c != 0)
@@ -318,7 +318,7 @@ namespace Pyrrho.Level4
         }
         internal override int Cardinality(Context cx)
         {
-            if (where == CTree<long, bool>.Empty && kind == Sqlx.CROSS && cx.obs[first] is RowSet fi
+            if (where == CTree<long, bool>.Empty && kind == Qlx.CROSS && cx.obs[first] is RowSet fi
                 && cx.obs[second] is RowSet se)
                 return fi.Cardinality(cx) * se.Cardinality(cx);
             var r = 0;
@@ -374,7 +374,7 @@ namespace Pyrrho.Level4
             var jc = joinCond;
             for (var b = jc.First(); b != null; b = b.Next())
             {
-                var v = (SqlValue)cx._Replace(b.key(), so, sv);
+                var v = (QlValue)cx._Replace(b.key(), so, sv);
                 if (v.defpos != b.key())
                     jc += (b.key(), true);
             }
@@ -418,7 +418,7 @@ namespace Pyrrho.Level4
             if (mm[_Where] is CTree<long, bool> wh)
             {
                 for (var b = wh.First(); b != null; b = b.Next())
-                    if (cx.obs[b.key()] is SqlValueExpr sv && cx.obs[sv.left] is SqlValue le && cx.obs[sv.right] is SqlValue ri)
+                    if (cx.obs[b.key()] is SqlValueExpr sv && cx.obs[sv.left] is QlValue le && cx.obs[sv.right] is QlValue ri)
                     {
                         var lc = le.isConstant(cx);
                         var lv = lc ? le.Eval(cx) : null;
@@ -429,7 +429,7 @@ namespace Pyrrho.Level4
                         var rf = fi.Knows(cx, ri.defpos);
                         var rs = se.Knows(cx, ri.defpos);
                         wh -= sv.defpos;
-                        if (sv.op == Sqlx.EQL)
+                        if (sv.op == Qlx.EQL)
                         {
                             if (lc && lv != null)
                             {
@@ -484,7 +484,7 @@ namespace Pyrrho.Level4
                                 mg = mg + (le.defpos, ml + (ri.defpos, true))
                                     + (ri.defpos, mr + (le.defpos, true));
                                 mm += (Matching, mg);
-                                if (lf && rs && cx.obs[sv.left] is SqlValue vl && cx.obs[sv.right] is SqlValue vr)
+                                if (lf && rs && cx.obs[sv.left] is QlValue vl && cx.obs[sv.right] is QlValue vr)
                                 {
                                     mm += (OnCond, onCond + (sv.left, sv.right));
                                     lo = (Domain)lo.New(lo.mem + (RowType, lo.rowType + vl.defpos)
@@ -494,8 +494,8 @@ namespace Pyrrho.Level4
                                 }
                                 else if (ls && rf)
                                 {
-                                    var ns = new SqlValueExpr(cx.GetUid(), cx, Sqlx.EQL, ri, le, Sqlx.NO);
-                                    if (cx.obs[ns.left] is SqlValue nl && cx.obs[ns.right] is SqlValue nr)
+                                    var ns = new SqlValueExpr(cx.GetUid(), cx, Qlx.EQL, ri, le, Qlx.NO);
+                                    if (cx.obs[ns.left] is QlValue nl && cx.obs[ns.right] is QlValue nr)
                                     {
                                         mm += (OnCond, onCond + (ns.left, ns.right));
                                         lo = (Domain)lo.New(lo.mem + (RowType, lo.rowType + nl.defpos)
@@ -516,8 +516,8 @@ namespace Pyrrho.Level4
                 m += (JoinCond, jc);
             if (mm[OnCond] is BTree<long, long?> v)
             {
-                if (joinKind == Sqlx.CROSS)
-                    m += (JoinKind, Sqlx.INNER);
+                if (joinKind == Qlx.CROSS)
+                    m += (JoinKind, Qlx.INNER);
                 m += (OnCond, v);
                 fi = fi.Sort(cx, (Domain)lo.New(lo.mem + (RowType, lo.rowType + fi.ordSpec.rowType)
                     + (Representation, lo.representation + fi.ordSpec.representation)), fi.distinct);
@@ -565,11 +565,11 @@ namespace Pyrrho.Level4
         {
             JoinBookmark? r = joinKind switch
             {
-                Sqlx.CROSS => CrossJoinBookmark.New(_cx, this),
-                Sqlx.INNER => InnerJoinBookmark.New(_cx, this),
-                Sqlx.LEFT => LeftJoinBookmark.New(_cx, this),
-                Sqlx.RIGHT => RightJoinBookmark.New(_cx, this),
-                Sqlx.FULL => FullJoinBookmark.New(_cx, this),
+                Qlx.CROSS => CrossJoinBookmark.New(_cx, this),
+                Qlx.INNER => InnerJoinBookmark.New(_cx, this),
+                Qlx.LEFT => LeftJoinBookmark.New(_cx, this),
+                Qlx.RIGHT => RightJoinBookmark.New(_cx, this),
+                Qlx.FULL => FullJoinBookmark.New(_cx, this),
                 _ => throw new PEException("PE57"),
             };
             var b = r?.MoveToMatch(_cx);
@@ -579,11 +579,11 @@ namespace Pyrrho.Level4
         {
             JoinBookmark? r = joinKind switch
             {
-                Sqlx.CROSS => CrossJoinBookmark.New(this, cx),
-                Sqlx.INNER => InnerJoinBookmark.New(this, cx),
-                Sqlx.LEFT => LeftJoinBookmark.New(this, cx),
-                Sqlx.RIGHT => RightJoinBookmark.New(this, cx),
-                Sqlx.FULL => FullJoinBookmark.New(this, cx),
+                Qlx.CROSS => CrossJoinBookmark.New(this, cx),
+                Qlx.INNER => InnerJoinBookmark.New(this, cx),
+                Qlx.LEFT => LeftJoinBookmark.New(this, cx),
+                Qlx.RIGHT => RightJoinBookmark.New(this, cx),
+                Qlx.FULL => FullJoinBookmark.New(this, cx),
                 _ => throw new PEException("PE57"),
             };
             var b = r?.MoveToMatch(cx);

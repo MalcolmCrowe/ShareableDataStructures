@@ -1,4 +1,6 @@
+using System.ComponentModel;
 using System.Text;
+using System.Xml.Linq;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -41,7 +43,7 @@ namespace Pyrrho.Level3
     /// for this reason granting a role to a role is deprecated.
     /// Insert label sets (consisting of &-separated type names in canonical order) 
     /// are tolerated as keys in dbobjects. These compound names are constructed 
-    /// in SqlNode._NodeType from CTree(long,bool) where long is an existing graph type, and in that case
+    /// in GqlNode._NodeType from CTree(long,bool) where long is an existing graph type, and in that case
     /// (i.e. if the name has &) we always get a NodeType, which, if we are expecting an Edge Type,
     /// will have the EdgeType we want as a subtype.
     /// We need extra lookup tables for NodeTypes and EdgeTypes because it is legal in GQL to have ambiguous names.
@@ -53,13 +55,13 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
-            EdgeTypes = -128, // BTree<string,long?> Labelled EdgeType by name
+            EdgeTypes = -128, // BTree<string,BTree<long,BTree<long,long?>>> Labelled EdgeType by name
             Graphs = -357,    // BTree<string,long?> Labelled Graph by name
             NodeTypes = -115, // BTree<string,long?> Labelled NodeType by name
             Procedures = -249, // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
             Schemas = -356,    // BTree<string,long?> Schema by name
-            UnlabelledNodeTypes = -237, // BTree<CTree<string,bool>,long?> Unlabelled NodeType by propertyset
-            UnlabelledEdgeTypes = -238; // BTree<CTree<string,bool>,long?> Unlabelled EdgeType by propertyset
+            UnlabelledNodeTypesInfo = -476, //BTree<CTree<string,bool>,long?> NodeType
+            UnlabelledEdgeTypesInfo = -482; //BTree<long,BTree<long,BTree<CTree<string,bool>,long?>>> NodeType, NodeType, EdgeType
         internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
@@ -67,17 +69,20 @@ namespace Pyrrho.Level3
             (BTree<string, BTree<CList<Domain>,long?>>?)mem[Procedures]??BTree<string, BTree<CList<Domain>, long?>>.Empty;
         internal BTree<string,long?> nodeTypes =>
             (BTree<string, long?>)(mem[NodeTypes]??BTree<string,long?>.Empty);
-        internal BTree<string, long?> edgeTypes =>
-            (BTree<string, long?>)(mem[EdgeTypes] ?? BTree<string, long?>.Empty);
+        internal BTree<string, BTree<long, BTree<long,long?>>> edgeTypes =>
+            (BTree<string, BTree<long, BTree<long,long?>>>)(mem[EdgeTypes] 
+            ?? BTree<string, BTree<long,BTree<long,long?>>>.Empty);
+        internal BTree<CTree<string, bool>, long?> unlabelledNodeTypesInfo =>
+            (BTree<CTree<string, bool>, long?>)(mem[UnlabelledNodeTypesInfo]
+            ?? BTree<CTree<string, bool>, long?>.Empty);
+        internal BTree<long, BTree<long, BTree<CTree<string, bool>, long?>>> unlabelledEdgeTypesInfo =>
+            (BTree<long, BTree<long, BTree<CTree<string, bool>, long?>>>)(mem[UnlabelledEdgeTypesInfo]
+            ?? BTree<long, BTree<long, BTree<CTree<string, bool>, long?>>>.Empty);
         internal BTree<string, long?> graphs =>
             (BTree<string, long?>)(mem[Graphs] ?? BTree<string, long?>.Empty);
         internal BTree<string, long?> schemas =>
             (BTree<string, long?>)(mem[Schemas] ?? BTree<string, long?>.Empty); public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
-        internal BTree<CTree<string, bool>, long?> unlabelledNodeTypes =>
-            (BTree<CTree<string, bool>, long?>)(mem[UnlabelledNodeTypes] ?? BTree<CTree<string, bool>, long?>.Empty);
-        internal BTree<CTree<string, bool>, long?> unlabelledEdgeTypes =>
-            (BTree<CTree<string, bool>, long?>)(mem[UnlabelledEdgeTypes] ?? BTree<CTree<string, bool>, long?>.Empty);
         internal long home_graph => (long)(mem[Executable.UseGraph] ?? -1);
         internal long home_schema => (long)(mem[Executable.Schema] ?? -1);
         /// <summary>
@@ -95,7 +100,7 @@ namespace Pyrrho.Level3
         static BTree<long, object> _Mem(PRole p, Database db, bool first)
         {
             if (db.role is not Role ro || db.guest is not Role gu)
-                throw new DBException("42105").Add(Sqlx.USER);
+                throw new DBException("42105").Add(Qlx.USER);
             return ((first ? ro : gu).mem ?? BTree<long, object>.Empty) + (LastChange, p.ppos) 
                 + (ObInfo.Name, p.name) + (Definer, p.definer) + (Infos,p.infos) + (Owner,p.owner)
             + (DBObjects, first ? db.schema.dbobjects : db.guest.dbobjects)
@@ -113,6 +118,7 @@ namespace Pyrrho.Level3
         {
             return (Role)r.New(r.mem + (DBObjects, r.dbobjects + x));
         }
+
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -185,12 +191,24 @@ namespace Pyrrho.Level3
                 sb.Append(" EdgeTypes:");
                 cm = '(';
                 for (var b = edgeTypes.First(); b != null; b = b.Next())
-                    if (b.value() is long p)
+                {
+                    sb.Append(cm); cm = ','; sb.Append(b.key());
+                    var cn = '('; 
+                    for (var c = b.value().First(); c != null; c = c.Next())
                     {
-                        sb.Append(cm); cm = ','; sb.Append(b.key()); sb.Append('=');
-                        sb.Append(Uid(p));
+                        sb.Append(cn); cn = ','; sb.Append(c.key());
+                        var co = '(';
+                        for (var d = c.value().First(); d != null; d = d.Next())
+                        {
+                            sb.Append(co); co = ',';
+                            sb.Append(d.key()); sb.Append('=');
+                            sb.Append(Uid(d.value()??-1L));
+                        }
+                        if (co != '(') sb.Append(')');
                     }
-                if (cm == ',') sb.Append(')');
+                    if (cn != '(') sb.Append(')');
+                }
+                if (cm != '(') sb.Append(')');
             }
             return sb.ToString();
         }
@@ -201,6 +219,42 @@ namespace Pyrrho.Level3
         internal override DBObject New(long dp, BTree<long, object>m)
         {
             return new Role(dp, m);
+        }
+        // we should only need to worry about EdgeTypes and UnlabeledEdgeTypesInfo
+        internal Database Purge(Context cx)
+        {
+            var ro = cx.role;
+            for (var b = edgeTypes.First(); b != null; b = b.Next())
+            {
+                var t = b.value();
+                for (var c = t.First(); c != null; c = c.Next())
+                {
+                    if (c.key() >= Transaction.TransPos)
+                        t -= c.key();
+                    else if (c.value() is BTree<long, long?> u)
+                    {
+                        for (var d = u.First(); d != null; d = d.Next())
+                            if (d.key() >= Transaction.TransPos)
+                                u -= d.key();
+                        if (u.Count != 0)
+                            t += (c.key(), u);
+                    }
+                }
+                if (t is not null && t != b.value())
+                    ro += (EdgeTypes, ro.edgeTypes + (b.key(), t));
+            }
+            for (var b = unlabelledEdgeTypesInfo.First(); b != null; b = b.Next())
+            {
+                var t = b.value();
+                if (b.key() >= Transaction.TransPos)
+                    ro += (UnlabelledEdgeTypesInfo, unlabelledEdgeTypesInfo - b.key());
+                else
+                    for (var c = t.First(); c != null; c = c.Next())
+                        if (c.key() >= Transaction.TransPos)
+                            t -= c.key();
+                ro += (UnlabelledEdgeTypesInfo, unlabelledEdgeTypesInfo + (b.key(), t));
+            }
+            return cx.db + (ro, cx.db.loadpos);
         }
     }
     /// <summary>
@@ -216,7 +270,7 @@ namespace Pyrrho.Level3
     internal class ObInfo : Basis
     {
         internal const long
-            _Metadata = -254, // CTree<Sqlx,TypedValue>
+            _Metadata = -254, // CTree<Qlx,TypedValue>
             Description = -67, // string
             Inverts = -353, // long Procedure
             MethodInfos = -252, // BTree<string, BTree<CList<Domain>,long?>> Method
@@ -230,8 +284,8 @@ namespace Pyrrho.Level3
         public BTree<string, BTree<CList<Domain>, long?>> methodInfos =>
             (BTree<string, BTree<CList<Domain>, long?>>?)mem[MethodInfos] 
             ?? BTree<string, BTree<CList<Domain>, long?>>.Empty;
-        public CTree<Sqlx, TypedValue> metadata =>
-            (CTree<Sqlx, TypedValue>?)mem[_Metadata] ?? CTree<Sqlx, TypedValue>.Empty;
+        public CTree<Qlx, TypedValue> metadata =>
+            (CTree<Qlx, TypedValue>?)mem[_Metadata] ?? CTree<Qlx, TypedValue>.Empty;
         public string? name => (string?)mem[Name] ?? "";
         internal BTree<string,(int,long?)> names =>
             (BTree<string, (int,long?)>?)mem[Names]??BTree<string,(int, long?)>.Empty;
@@ -262,7 +316,7 @@ namespace Pyrrho.Level3
         public static ObInfo operator +(ObInfo d, PMetadata pm)
         {
             d += (_Metadata, pm.Metadata());
-            if (pm.detail[Sqlx.DESCRIBE] is TypedValue tv)
+            if (pm.detail[Qlx.DESCRIBE] is TypedValue tv)
                 d += (Description, tv);
             if (pm.refpos > 0)
                 d += (Inverts, pm.refpos);
@@ -276,7 +330,7 @@ namespace Pyrrho.Level3
         {
             return new ObInfo(m);
         }
-        internal static string Metadata(CTree<Sqlx,TypedValue> md,string description="")
+        internal static string Metadata(CTree<Qlx,TypedValue> md,string description="")
         {
             var sb = new StringBuilder();
             var cm = "";
@@ -285,36 +339,36 @@ namespace Pyrrho.Level3
                 sb.Append(cm); cm = " "; 
                 switch (b.key())
                 {
-                    case Sqlx.URL:
-                    case Sqlx.MIME:
-                    case Sqlx.SQLAGENT:
+                    case Qlx.URL:
+                    case Qlx.MIME:
+                    case Qlx.SQLAGENT:
                         sb.Append(b.key());
                         sb.Append(' '); sb.Append(b.value().ToString());
                         continue;
-                    case Sqlx.PASSWORD:
+                    case Qlx.PASSWORD:
                         sb.Append(b.key());
                         sb.Append(" ******");
                         continue;
-                    case Sqlx.IRI:
+                    case Qlx.IRI:
                         sb.Append(b.key());
                         sb.Append(' '); sb.Append(b.value().ToString());
                         continue;
-                    case Sqlx.NO: 
+                    case Qlx.NO: 
                         if (description != "")
                         { sb.Append(' '); sb.Append(description); }
                         continue;
-                    case Sqlx.INVERTS:
+                    case Qlx.INVERTS:
                         sb.Append(b.key());
                         sb.Append(' '); sb.Append(DBObject.Uid(b.value().ToLong()??-1L));
                         continue;
-                    case Sqlx.MIN:
-                    case Sqlx.MAX:
+                    case Qlx.MIN:
+                    case Qlx.MAX:
                         {
-                            var hi = md[Sqlx.MAX]?.ToInt();
-                            if (hi is not null && b.key() == Sqlx.MIN)
+                            var hi = md[Qlx.MAX]?.ToInt();
+                            if (hi is not null && b.key() == Qlx.MIN)
                                 continue; // already displayed
                             sb.Append("CARDINALITY(");
-                            var lw = md[Sqlx.MIN]?.ToInt();
+                            var lw = md[Qlx.MIN]?.ToInt();
                             sb.Append(lw);
                             if (hi is not null)
                             {
@@ -324,14 +378,14 @@ namespace Pyrrho.Level3
                             sb.Append(')');
                         }
                         continue;
-                    case Sqlx.MINVALUE:
-                    case Sqlx.MAXVALUE:
+                    case Qlx.MINVALUE:
+                    case Qlx.MAXVALUE:
                         {
-                            var hi = md[Sqlx.MAXVALUE]?.ToInt();
-                            if (hi is not null && b.key() == Sqlx.MINVALUE)
+                            var hi = md[Qlx.MAXVALUE]?.ToInt();
+                            if (hi is not null && b.key() == Qlx.MINVALUE)
                                 continue; // already displayed
                             sb.Append("MULTIPLICITY(");
-                            var lw = md[Sqlx.MINVALUE]?.ToInt();
+                            var lw = md[Qlx.MINVALUE]?.ToInt();
                             sb.Append(lw);
                             if (hi is not null)
                             {
@@ -397,7 +451,7 @@ namespace Pyrrho.Level3
                 r += (Names, ns);
             return r;
         }
-        static CTree<Sqlx,TypedValue> ShallowReplace(Context cx,CTree<Sqlx,TypedValue> md,long was, long now)
+        static CTree<Qlx,TypedValue> ShallowReplace(Context cx,CTree<Qlx,TypedValue> md,long was, long now)
         {
             for (var b=md.First();b!=null;b=b.Next())
                 if (b.value() is TypedValue v)

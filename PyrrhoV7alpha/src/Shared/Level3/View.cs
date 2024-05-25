@@ -112,10 +112,10 @@ namespace Pyrrho.Level3
                     continue;
                 if (qx.dp >= 0 && 
                     (qx.sd == vx.sd || qx.sd==vx.sd-1) &&  // substitute the references for the instance columns
-                        cx.obs[qx.dp] is SqlValue ov &&
-                        cx.obs[vx.dp] is SqlValue tv)
+                        cx.obs[qx.dp] is QlValue ov &&
+                        cx.obs[vx.dp] is QlValue tv)
                 {
-                    var nv = (SqlValue)tv.Relocate(qx.dp);
+                    var nv = (QlValue)tv.Relocate(qx.dp);
                     cx.Replace(ov, nv);
                     cx.Replace(tv, nv);
                     cx.undefined -= qx.dp;
@@ -128,7 +128,7 @@ namespace Pyrrho.Level3
             {
                 var iv = b.value();
                 if (cx.defs.Contains(iv.ident) && cx.defs[iv.ident]?[cx.sD].Item1.dp is long sp &&
-                    cx.obs[cx.uids[sp] ?? sp] is SqlValue so)
+                    cx.obs[cx.uids[sp] ?? sp] is QlValue so)
                 {
                     cx.Replace(so, (SqlCopy)so.Relocate(iv.iix.dp));
                     if (!cx.obs.Contains(sp))
@@ -168,7 +168,7 @@ namespace Pyrrho.Level3
         internal override RowSet RowSets(Ident vn,Context cx,Domain q,long fm,
             Grant.Privilege pr=Grant.Privilege.Select, string? a=null)
         {
-            var ts = (RowSet?)cx.obs[result] ?? throw new DBException("42105").Add(Sqlx.VIEW);
+            var ts = (RowSet?)cx.obs[result] ?? throw new DBException("42105").Add(Qlx.VIEW);
             var m = new BTree<long, object>(ObInfo.Name, vn.ident);
             if (a != null)
                 m += (_Alias, a);
@@ -185,7 +185,7 @@ namespace Pyrrho.Level3
         {
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi || mi.name==null)
-                throw new DBException("42105").Add(Sqlx.VIEW);
+                throw new DBException("42105").Add(Qlx.VIEW);
             var sb = new StringBuilder("using System;\r\nusing Pyrrho;\r\n");
             sb.Append("\r\n[Schema("); sb.Append(from.lastChange); sb.Append(")]");
             sb.Append("\r\n/// <summary>\r\n");
@@ -212,7 +212,7 @@ namespace Pyrrho.Level3
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi
                     || mi.name == null || cx.db.user is not User ud)
-                throw new DBException("42105").Add(Sqlx.VIEW);
+                throw new DBException("42105").Add(Qlx.VIEW);
             var sb = new StringBuilder();
             sb.Append("\r\n/* \r\n * Class "); sb.Append(mi.name); sb.Append(".java\r\n");
             sb.Append("import org.pyrrhodb.*;\r\n");
@@ -240,7 +240,7 @@ namespace Pyrrho.Level3
         {
             if (cx.db.role is not Role ro || _enu.value() is not View md ||
                     md.infos[ro.defpos] is not ObInfo mi || mi.name == null)
-                throw new DBException("42105").Add(Sqlx.VIEW);
+                throw new DBException("42105").Add(Qlx.VIEW);
             var sb = new StringBuilder();
             sb.Append("# "); sb.Append(mi.name); sb.Append(" Created on ");
             sb.Append(DateTime.Now);
@@ -270,9 +270,9 @@ namespace Pyrrho.Level3
                 var n = c.name.Replace('.', '_');
                 var tn = c.name;
                     var k = ob.kind;
-                if (k != Sqlx.TYPE && k != Sqlx.ARRAY && k != Sqlx.MULTISET && k!=Sqlx.SET)
+                if (k != Qlx.TYPE && k != Qlx.ARRAY && k != Qlx.MULTISET && k!=Qlx.SET)
                     tn = ob.SystemType.Name;
-                if (k == Sqlx.ARRAY || k == Sqlx.MULTISET || k==Sqlx.SET)
+                if (k == Qlx.ARRAY || k == Qlx.MULTISET || k==Qlx.SET)
                 {
                     if (tn == "[]")
                         tn = "_T" + i + "[]";
@@ -286,7 +286,7 @@ namespace Pyrrho.Level3
             for (var b = dt.rowType.First(); b != null; b = b.Next(), i++)
                 if (cx.role is  Role ro && b.value() is long p && dt.representation[p] is Domain ob && 
                     ob.infos[ro.defpos] is ObInfo ci && 
-                    (ob.kind==Sqlx.ARRAY || ob.kind==Sqlx.MULTISET || ob.kind==Sqlx.SET)
+                    (ob.kind==Qlx.ARRAY || ob.kind==Qlx.MULTISET || ob.kind==Qlx.SET)
                     && ob.elType is Domain ce)
                 {
                     var tn = ci.name;
@@ -315,9 +315,9 @@ namespace Pyrrho.Level3
                 {
                     var n = c.name.Replace('.', '_');
           //          var tn = c.name;
-          //          if (cd.kind != Sqlx.TYPE && cd.kind != Sqlx.ARRAY && cd.kind != Sqlx.MULTISET)
+          //          if (cd.kind != Qlx.TYPE && cd.kind != Qlx.ARRAY && cd.kind != Qlx.MULTISET)
           //              tn = cd.SystemType.Name;
-                    if (cd.kind == Sqlx.ARRAY || cd.kind == Sqlx.MULTISET) // ??
+                    if (cd.kind == Qlx.ARRAY || cd.kind == Qlx.MULTISET) // ??
                     {
            //             if (tn == "[]")
            //                 tn = "_T" + i + "[]";
@@ -387,7 +387,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             Mime = -255, // string
-            NamesMap = -399, // CTree<long,string> SqlValue (including exports)
+            NamesMap = -399, // CTree<long,string> QlValue (including exports)
             UsingTable = -372; // long Table
         internal string? mime => (string?)mem[Mime];
         internal long usingTable => (long)(mem[UsingTable]??-1L);
@@ -498,12 +498,12 @@ namespace Pyrrho.Level3
                     nm += (nk, n);
                     ns += (n, (b.key(),nk));
                     var id = new Ident(n, new Iix(nk,cx.sD,nk));
-                    var sv = new SqlValue(id,BList<Ident>.Empty, cx, dm);
+                    var sv = new QlValue(id,BList<Ident>.Empty, cx, dm);
                     cx.Add(sv);
                     cx.defs += (new Ident(vn, id), vn.iix);
                 }
-            var nd = new Domain(cx.GetUid(), cx, Sqlx.TABLE, rs, rt, rt.Length);
-            var oi = infos[cx.role.defpos] ?? throw new DBException("42105").Add(Sqlx.VIEW);
+            var nd = new Domain(cx.GetUid(), cx, Qlx.TABLE, rs, rt, rt.Length);
+            var oi = infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.VIEW);
             var rv = new RestView(cx.GetUid(), nd.mem + (UsingTable, usingTable)
                 + (NamesMap, nm) + (ObInfo.Names, ns) +(ViewDef,viewDef)
                 + (_Depth,nd.depth+1)
@@ -514,8 +514,8 @@ namespace Pyrrho.Level3
             var r = rv.RowSets(vn, cx, nd, lp);
             if (r is RestRowSetUsing rsu && cx.obs[rsu.usingTableRowSet] is TableRowSet utr)
                 for (var b = utr.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p && cx.obs[p] is SqlValue sv && sv.name is string sn
-                        && cx.defs[sn]?[cx.sD].Item1?.dp is long q && cx.obs[q] is SqlValue sq
+                    if (b.value() is long p && cx.obs[p] is QlValue sv && sv.name is string sn
+                        && cx.defs[sn]?[cx.sD].Item1?.dp is long q && cx.obs[q] is QlValue sq
                         && sv.dbg!=sq.dbg)
                         cx.Replace(sv, sq);
             cx.result = r.defpos;
@@ -541,8 +541,8 @@ namespace Pyrrho.Level3
                     if (vx == qx || qx == Iix.None)
                         continue;
                     if (qx.dp >= 0 && qx.dp!=vx.dp && qx.sd >= vx.sd &&  // substitute the references for the instance columns
-                            cx.obs[qx.dp] is SqlValue ov &&
-                            cx.obs[vx.dp] is SqlValue tv)
+                            cx.obs[qx.dp] is QlValue ov &&
+                            cx.obs[vx.dp] is QlValue tv)
                     {
                         var nv = tv.Relocate(qx.dp);
                         cx.Replace(ov, nv);
@@ -587,12 +587,12 @@ namespace Pyrrho.Level3
             ABookmark<long, object> _enu)
         {
             if (cx.role == null) 
-                throw new DBException("42105").Add(Sqlx.ROLE);
-            var tb = super.First()?.key() as Table ?? throw new DBException("42105").Add(Sqlx.UNDER);
+                throw new DBException("42105").Add(Qlx.ROLE);
+            var tb = super.First()?.key() as Table ?? throw new DBException("42105").Add(Qlx.UNDER);
             var ro = cx.role;
-            var md = infos[ro.defpos] ?? throw new DBException("42105").Add(Sqlx.VIEW);
+            var md = infos[ro.defpos] ?? throw new DBException("42105").Add(Qlx.VIEW);
             cx.Add(framing);
-            var versioned = md.metadata.Contains(Sqlx.ENTITY);
+            var versioned = md.metadata.Contains(Qlx.ENTITY);
             var key = tb.BuildKey(cx, out Domain keys);
             var fields = CTree<string, bool>.Empty;
             var sb = new StringBuilder("\r\nusing System;\r\nusing Pyrrho;\r\n");
@@ -608,7 +608,7 @@ namespace Pyrrho.Level3
             {
                 var p = b.key();
                 var dt = b.value();
-                var tn = (dt.kind == Sqlx.TYPE) ? dt.name : dt.SystemType.Name;
+                var tn = (dt.kind == Qlx.TYPE) ? dt.name : dt.SystemType.Name;
                 if (keys != null)
                 {
                     int j;
@@ -638,8 +638,8 @@ namespace Pyrrho.Level3
                     for (var d = ci.metadata.First(); d != null; d = d.Next())
                         switch (d.key())
                         {
-                            case Sqlx.X:
-                            case Sqlx.Y:
+                            case Qlx.X:
+                            case Qlx.Y:
                                 sb.Append(" [" + d.key().ToString() + "]\r\n");
                                 break;
                         }
@@ -655,7 +655,7 @@ namespace Pyrrho.Level3
                     if (cx._Ob(c.key()) is Index x && x.flags.HasFlag(PIndex.ConstraintType.ForeignKey)
                            && cx.db.objects[x.refindexdefpos] is Index rx
                            &&  cx._Ob(rx.tabledefpos) is DBObject ot && ot.infos[cx.role.defpos] is ObInfo rt
-                           && rt.metadata.Contains(Sqlx.ENTITY) && rt.name is not null)
+                           && rt.metadata.Contains(Qlx.ENTITY) && rt.name is not null)
                     {
                         // many-one relationship
                         var sa = new StringBuilder();
@@ -677,7 +677,7 @@ namespace Pyrrho.Level3
                 if (cx.role is not null && cx._Ob(b.key()) is DBObject ot && 
                     ot.infos[cx.role.defpos] is ObInfo rt && rt.name is not null)
                 {
-                    if (rt.metadata.Contains(Sqlx.ENTITY) &&
+                    if (rt.metadata.Contains(Qlx.ENTITY) &&
                         cx.db.objects[b.key()] is Table tt)
                         for (var c = b.value().First(); c != null; c = c.Next())
                         {
@@ -724,7 +724,7 @@ namespace Pyrrho.Level3
                                     // many-many relationship 
                                     cx.db.objects[px.reftabledefpos] is Table tu && // e.g. Supplier
                                     cx.role is not null && tb.infos[cx.role.defpos] is ObInfo ti &&
-                                    ti.metadata.Contains(Sqlx.ENTITY) && tu.FindPrimaryIndex(cx) is Level3.Index tx)
+                                    ti.metadata.Contains(Qlx.ENTITY) && tu.FindPrimaryIndex(cx) is Level3.Index tx)
                                 {
                                     var sk = new StringBuilder(); // e.g. Supplier primary key
                                     var cm = "\\\"";

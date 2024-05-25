@@ -41,7 +41,7 @@ namespace Pyrrho.Level4
         public Activation? cont;
         public Activation? brk;
         // for method calls
-        public SqlValue? var = null; 
+        public QlValue? var = null; 
         /// <summary>
         /// Constructor: a new activation for a given named block
         /// </summary>
@@ -150,8 +150,7 @@ namespace Pyrrho.Level4
     {
         internal Context _cx;
         internal readonly RowSet _fm;
-        internal readonly Domain _td; // snapshot of target
-        internal long _tgt;
+        internal Domain _tgt;
         internal PTrigger.TrigType _tty; // may be Insert
         internal int count = 0;
         internal TargetActivation(Context cx, RowSet fm, PTrigger.TrigType tt)
@@ -160,8 +159,7 @@ namespace Pyrrho.Level4
             _cx = cx;
             _tty = tt; // guaranteed to be Insert, Update or Delete
             _fm = fm;
-            _tgt = fm.target;
-            _td = cx._Ob(_tgt) as Domain??throw new PEException("PE634");
+            _tgt = cx._Ob(fm.target) as Domain??throw new DBException("42105");
         }
         internal virtual void EachRow(int pos)
         { }
@@ -184,13 +182,13 @@ namespace Pyrrho.Level4
             if (cx._Ob(vp) is not DBObject vo || vo.infos[cx.role.defpos] is not ObInfo vi)
                 throw new PEException("PE633");
             var post = rq.Method == HttpMethod.Post;
-            if (vi.metadata.Contains(Sqlx.ETAG)) // see Pyrrho manual sec 3.8.1
+            if (vi.metadata.Contains(Qlx.ETAG)) // see Pyrrho manual sec 3.8.1
             {
                 var et = rp.Headers.ETag?.ToString()??"";
-                var u = (vi.metadata.Contains(Sqlx.URL) ?
-                    vi.metadata[Sqlx.URL]?.ToString() :
-                    vi.metadata.Contains(Sqlx.DESC) ?
-                    vi.metadata[Sqlx.DESC]?.ToString() : vi.description)
+                var u = (vi.metadata.Contains(Qlx.URL) ?
+                    vi.metadata[Qlx.URL]?.ToString() :
+                    vi.metadata.Contains(Qlx.DESC) ?
+                    vi.metadata[Qlx.DESC]?.ToString() : vi.description)
                     ?? throw new DBException("2700", "URL");
                 var tr = (Transaction)cx.db;
                 if (et != null)
@@ -252,7 +250,7 @@ namespace Pyrrho.Level4
         internal readonly TransitionRowSet _trs;
         internal bool? trigFired = null;
         internal Level level = Level.D;
-        internal SqlValue? security = null;
+        internal QlValue? security = null;
         internal readonly Domain insertCols;
         internal BTree<long, UpdateAssignment> updates = BTree<long, UpdateAssignment>.Empty;
         internal CTree<long, CTree<long, TypedValue>> pending =
@@ -292,7 +290,7 @@ namespace Pyrrho.Level4
                     var vs = BList<DBObject>.Empty;
                     var tr = BTree<long, long?>.Empty;
                     for (var c = rt.rowType.First(); c != null; c = c.Next())
-                        if (c.value() is long p && cx.obs[p] is SqlValue sc 
+                        if (c.value() is long p && cx.obs[p] is QlValue sc 
                             && sc.infos[role.defpos] is ObInfo ci)
                         {
                             sc = new SqlCopy(GetUid(), cx, ci?.name ?? sc?.alias ?? sc?.name ?? "", cp, p);
@@ -300,7 +298,7 @@ namespace Pyrrho.Level4
                             vs += sc;
                             tr += (p, sc.defpos);
                         }
-                    var cd = new Domain(GetUid(), cx, Sqlx.TABLE, vs); //?? where should this be used?
+                    var cd = new Domain(GetUid(), cx, Qlx.TABLE, vs); //?? where should this be used?
                     for (var c = b.value()?.First(); c != null; c = c.Next())
                         if (c.value() is Domain xk && table.FindIndex(db, xk)?[0] is Level3.Index x)
                         {
@@ -339,7 +337,7 @@ namespace Pyrrho.Level4
                                         case PIndex.ConstraintType.SetDefaultUpdate:
                                             for (var kb = rx.keys.rowType.Last(); kb != null; kb = kb.Previous())
                                                 if (kb.value() is long p &&
-                                                    ra.obs[p] is SqlValue sc)
+                                                    ra.obs[p] is QlValue sc)
                                                     ra.updates += (p, new UpdateAssignment(p, sc.domain.defaultValue));
                                             break;
                                         case PIndex.ConstraintType.SetNullUpdate:
@@ -358,7 +356,7 @@ namespace Pyrrho.Level4
                                         case PIndex.ConstraintType.SetDefaultDelete:
                                             for (var kb = rx.keys.rowType.Last(); kb != null; kb = kb.Previous())
                                             if (kb.value() is long p &&
-                                                ra.obs[p] is SqlValue sc)
+                                                ra.obs[p] is QlValue sc)
                                                     ra.updates += (p, new UpdateAssignment(p, sc.domain.defaultValue));
                                             break;
                                         case PIndex.ConstraintType.SetNullDelete:
@@ -381,7 +379,7 @@ namespace Pyrrho.Level4
             {
                 case PTrigger.TrigType.Insert:
                     if (table.Denied(cx, Grant.Privilege.Insert))
-                        throw new DBException("42105").Add(Sqlx.INSERT, new TChar(table.NameFor(cx)));
+                        throw new DBException("42105").Add(Qlx.INSERT, new TChar(table.NameFor(cx)));
 //#if MANDATORYACCESSCONTROL
                     // parameter cl is only supplied when d_User.defpos==d.owner
                     // otherwise check if we should compute it
@@ -390,7 +388,7 @@ namespace Pyrrho.Level4
                     {
                         var uc = cx.db.user.clearance;
                         if (!uc.ClearanceAllows(table.classification))
-                            throw new DBException("42105").Add(Sqlx.SECURITY,new TChar(table.NameFor(cx)));
+                            throw new DBException("42105").Add(Qlx.SECURITY,new TChar(table.NameFor(cx)));
                         // The new record’s classification will have the user’s minimum clearance level:
                         // if this is above D, the groups will be the subset of the user’s groups 
                         // that are in the table classification, 
@@ -402,23 +400,23 @@ namespace Pyrrho.Level4
                     break;
                 case PTrigger.TrigType.Update:
                     if (table.Denied(cx, Grant.Privilege.Update))
-                        throw new DBException("42105").Add(Sqlx.UPDATE, new TChar(table.NameFor(cx)));
+                        throw new DBException("42105").Add(Qlx.UPDATE, new TChar(table.NameFor(cx)));
                     for (var ass = ts.assig.First(); ass != null; ass = ass.Next())
                     {
                         var ua = ass.key();
                         var vb = cx.obs[ua.vbl];
                         if (vb is SqlSecurity)
-                            security = cx.obs[ua.val] as SqlValue;
+                            security = cx.obs[ua.val] as QlValue;
                         else if (ts.representation.Contains(ua.vbl)==true)
                         {
-                            if (vb as SqlValue == null)
+                            if (vb as QlValue == null)
                                 throw new DBException("22G0X");
                             while (vb is SqlCopy sc && db.objects[sc.copyFrom] is DBObject oc) // Views have indirection here
                                 vb = oc;
                             if (vb is TableColumn tc && tc.generated.gen != Generation.No)
                                 throw new DBException("22G0X", vb.NameFor(this)).Mix();
                             if (vb.Denied(cx, Grant.Privilege.Update))
-                                throw new DBException("42105").Add(Sqlx.UPDATE, new TChar(vb.NameFor(this)));
+                                throw new DBException("42105").Add(Qlx.UPDATE, new TChar(vb.NameFor(this)));
                             updates += (vb.defpos, ua);
                         }
                     }
@@ -453,7 +451,7 @@ namespace Pyrrho.Level4
                         cx.db.user.clearance.maxLevel != table.classification.maxLevel))
 //#endif
                         )
-                        throw new DBException("42105").Add(Sqlx.DELETE, new TChar(table.NameFor(cx)));
+                        throw new DBException("42105").Add(Qlx.DELETE, new TChar(table.NameFor(cx)));
                     level = user?.clearance??Level.D;
                     trigFired = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachStatement);
                     if (trigFired != true)
@@ -543,7 +541,7 @@ namespace Pyrrho.Level4
                                  ((!level.ClearanceAllows(rc.classification))
                                  || level.minLevel != rc.classification.minLevel)
                                  : level.minLevel > 0))))
-                            throw new DBException("42105").Add(Sqlx.SECURITY, new TChar(NameFor(table.defpos)));
+                            throw new DBException("42105").Add(Qlx.SECURITY, new TChar(NameFor(table.defpos)));
 //#endif
                         // Step D
                         tgc = (TransitionRowSet.TargetCursor)(cursors[_trs.defpos] ??
@@ -595,7 +593,7 @@ namespace Pyrrho.Level4
                             // or the clearance does not allow access to the record, throw an Access Denied exception.
                             ((!level.ClearanceAllows(rc.classification)) || level.minLevel > rc.classification.minLevel)
                             : level.minLevel > 0)
-                            throw new DBException("42105").Add(Sqlx.DELETE);
+                            throw new DBException("42105").Add(Qlx.DELETE);
 //#endif
                         for (var b = casc.First(); b != null; b = b.Next())
                             if (b.value() is TableActivation ct)
@@ -653,18 +651,18 @@ namespace Pyrrho.Level4
             : base(cx, ts, tgt)
         {
             _rr = rr; 
-            _vw = (RestView)(cx.obs[_rr.restView] ?? throw new DBException("42105").Add(Sqlx.VIEW));
-            _tgt = _rr.defpos;
+            _vw = (RestView)(cx.obs[_rr.restView] ?? throw new DBException("42105").Add(Qlx.VIEW));
+            _tgt = _rr;
             if (_vw.infos[role.defpos] is ObInfo vi)
                 (url, _targetName) = _rr.GetUrl(this, vi);
             else
-                throw new DBException("42105").Add(Sqlx.VIEW);
+                throw new DBException("42105").Add(Qlx.VIEW);
             if (_targetName != null)
             { 
                 url += "/" + _targetName;
                 var ub = new StringBuilder(url);
                 for (var b = _rr.matches.First(); b != null; b = b.Next())
-                    if (obs[b.key()] is SqlValue sk)
+                    if (obs[b.key()] is QlValue sk)
                     {
                         var kn = sk.name;
                         ub.Append('/'); ub.Append(kn);
@@ -678,26 +676,26 @@ namespace Pyrrho.Level4
             {
                 case PTrigger.TrigType.Insert:
                     if (_vw.Denied(cx, Grant.Privilege.Insert))
-                        throw new DBException("42105").Add(Sqlx.INSERT,new TChar(NameFor(ts.target)));
+                        throw new DBException("42105").Add(Qlx.INSERT,new TChar(NameFor(ts.target)));
                     break;
                 case PTrigger.TrigType.Update:
                     if (_vw.Denied(cx, Grant.Privilege.Update))
-                        throw new DBException("42105").Add(Sqlx.UPDATE, new TChar(NameFor(ts.target)));
+                        throw new DBException("42105").Add(Qlx.UPDATE, new TChar(NameFor(ts.target)));
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
-                    if (cx.obs[ass.key().vbl] is SqlValue c){
-                        if (c is not SqlCopy && c.GetType().Name!="SqlValue")
+                    if (cx.obs[ass.key().vbl] is QlValue c){
+                        if (c is not SqlCopy && c.GetType().Name!="QlValue")
                             throw new DBException("22G0X");
                         DBObject oc = c;
                         while (oc is SqlCopy sc && cx.obs[sc.copyFrom] is DBObject co) // Views have indirection here
                             oc = co;
                         if (c.Denied(cx, Grant.Privilege.Update))
-                            throw new DBException("42105").Add(Sqlx.COLUMN, new TChar(c.name??""));
+                            throw new DBException("42105").Add(Qlx.COLUMN, new TChar(c.name??""));
                         updates += (oc.defpos, ass.key());
                     }
                     break;
                 case PTrigger.TrigType.Delete:
                     if (_vw.Denied(cx, Grant.Privilege.Delete))
-                        throw new DBException("42105").Add(Sqlx.DELETE, new TChar(_vw.NameFor(cx)));
+                        throw new DBException("42105").Add(Qlx.DELETE, new TChar(_vw.NameFor(cx)));
                     break;
             }
         }
@@ -710,7 +708,7 @@ namespace Pyrrho.Level4
                 obs[ru.usingTableRowSet] is TableRowSet ut && db.objects[ut.target] is Table tb)
             {
                 assig = ru.assig;
-                if (_Ob(ru.urlCol) is SqlValue uv)
+                if (_Ob(ru.urlCol) is QlValue uv)
                    Add(uv);
                 var u = obs[ru.urlCol]?.Eval(this);
                 if (u == null || u == TNull.Value) // can happen for Insert with a named column tree, and for Delete
@@ -737,7 +735,7 @@ namespace Pyrrho.Level4
                 var vi = _vw.infos[role.defpos];
                 var ub = new StringBuilder(url);
                 for (var b = _rr.matches.First(); b != null; b = b.Next())
-                    if (_cx.obs[b.key()] is SqlValue sv)
+                    if (_cx.obs[b.key()] is QlValue sv)
                     {
                         var kn = sv.name;
                         ub.Append('/'); ub.Append(kn);
@@ -761,7 +759,7 @@ namespace Pyrrho.Level4
                             if (b.value() is long p && vs[p] is TypedValue tv)
                             {
                                 _sql.Append(cm); cm = ",";
-                                if (tv.dataType.kind == Sqlx.CHAR)
+                                if (tv.dataType.kind == Qlx.CHAR)
                                 {
                                     _sql.Append('\'');
                                     _sql.Append(tv.ToString().Replace("'", "'''"));
@@ -781,8 +779,8 @@ namespace Pyrrho.Level4
                             break;
                         _sql.Append("update "); _sql.Append(_targetName);
                         for (var b = assig.First(); b != null; b = b.Next())
-                            if (b.key() is UpdateAssignment ua && obs[ua.vbl] is SqlValue vb
-                                    && obs[ua.val] is SqlValue va)
+                            if (b.key() is UpdateAssignment ua && obs[ua.vbl] is QlValue vb
+                                    && obs[ua.val] is QlValue va)
                             {
                                 _sql.Append(cm); cm = ",";
                                 _sql.Append(vb.name); _sql.Append('=');
@@ -840,20 +838,20 @@ namespace Pyrrho.Level4
             : base(cx, ts, tgt)
         {
             _rr = rr;
-            _vw = (RestView)(cx.obs[_rr.restView]??throw new DBException("42105").Add(Sqlx.VIEW));
-            _tgt = _rr.defpos;
+            _vw = (RestView)(cx.obs[_rr.restView]??throw new DBException("42105").Add(Qlx.VIEW));
+            _tgt = _rr;
             switch (tgt & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:
                     if (_vw.Denied(cx, Grant.Privilege.Insert))
-                        throw new DBException("42105").Add(Sqlx.INSERT, new TChar(_vw.NameFor(cx)));
+                        throw new DBException("42105").Add(Qlx.INSERT, new TChar(_vw.NameFor(cx)));
                     break;
                 case PTrigger.TrigType.Update:
                     if (_vw.Denied(cx, Grant.Privilege.Update))
-                        throw new DBException("42105").Add(Sqlx.VIEW, new TChar(_vw.NameFor(cx)));
+                        throw new DBException("42105").Add(Qlx.VIEW, new TChar(_vw.NameFor(cx)));
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
-                    if (cx.obs[ass.key().vbl] is SqlValue c){
-                        if (c is not SqlCopy && c.GetType().Name!="SqlValue")
+                    if (cx.obs[ass.key().vbl] is QlValue c){
+                        if (c is not SqlCopy && c.GetType().Name!="QlValue")
                             throw new DBException("22G0X");
                         DBObject oc = c;
                         while (oc is SqlCopy sc && cx.obs[sc.copyFrom] is DBObject oo) // Views have indirection here
@@ -861,13 +859,13 @@ namespace Pyrrho.Level4
                         if (oc is TableColumn tc && tc.generated != GenerationRule.None)
                             throw cx.db.Exception("22G0X", c.NameFor(cx)).Mix();
                         if (c.Denied(cx, Grant.Privilege.Update))
-                            throw new DBException("42105").Add(Sqlx.UPDATE, new TChar(_vw.NameFor(cx)));
+                            throw new DBException("42105").Add(Qlx.UPDATE, new TChar(_vw.NameFor(cx)));
                         updates += (oc.defpos, ass.key());
                     }
                     break;
                 case PTrigger.TrigType.Delete:
                     if (_vw.Denied(cx, Grant.Privilege.Delete))
-                        throw new DBException("42105").Add(Sqlx.DELETE, new TChar(_vw.NameFor(cx)));
+                        throw new DBException("42105").Add(Qlx.DELETE, new TChar(_vw.NameFor(cx)));
                     break;
             }
         }
@@ -879,10 +877,10 @@ namespace Pyrrho.Level4
                 return;
             var vs = cu.values;
             if (role is not Role ro || _vw.infos[ro.defpos] is not ObInfo vi)
-                throw new DBException("42105").Add(Sqlx.ROLE);
+                throw new DBException("42105").Add(Qlx.ROLE);
             var (url, _) = _rr.GetUrl(this, vi);
             if (url is null)
-                throw new DBException("42105").Add(Sqlx.URL);
+                throw new DBException("42105").Add(Qlx.URL);
             var sql = new StringBuilder();
             var rq = _rr.GetRequest(this, url, vi);
             var np = _cx.db.nextPos;
@@ -937,7 +935,7 @@ namespace Pyrrho.Level4
                             sql.Append(obs[p]?.NameFor(this) ?? "");
                             var tv = vs[p];
                             sql.Append("\":");
-                            if (tv != null && tv.dataType.kind == Sqlx.CHAR)
+                            if (tv != null && tv.dataType.kind == Qlx.CHAR)
                             {
                                 sql.Append('\'');
                                 sql.Append(tv.ToString().Replace("'", "'''"));
@@ -1095,7 +1093,7 @@ namespace Pyrrho.Level4
         internal override Context SlideDown()
         {
             if (next == null)
-                throw new DBException("42105").Add(Sqlx.EXECUTE);
+                throw new DBException("42105").Add(Qlx.EXECUTE);
             next.values = values;
             next.warnings += warnings;
             next.deferred += deferred;

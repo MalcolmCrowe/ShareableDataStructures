@@ -48,7 +48,7 @@ namespace Pyrrho.Common
                 n += (_id, 0);
             }
             for (var b = r.dataType.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue v &&
+                if (b.value() is long p && cx.obs[p] is QlValue v &&
                         v.infos[cx.role.defpos] is ObInfo vi && vi.name is not null)
                 {
                     n += (vi.name, (int)n.Count);
@@ -271,18 +271,18 @@ namespace Pyrrho.Common
             {
                 switch (r.sumType.kind)
                 {
-                    case Sqlx.INT:
-                    case Sqlx.INTEGER:
+                    case Qlx.INT:
+                    case Qlx.INTEGER:
                         if (r.sumInteger is Integer im)
                             tv = new TInteger(im);
                         else
                             tv = new TInt(r.sumLong);
                         break;
-                    case Sqlx.REAL:
+                    case Qlx.REAL:
                         tv = new TReal(r.sum1); break;
-                    case Sqlx.NUMERIC:
+                    case Qlx.NUMERIC:
                         tv = new TNumeric(r.sumDecimal ?? throw new PEException("PE0811")); break;
-                    case Sqlx.BOOLEAN:
+                    case Qlx.BOOLEAN:
                         tv = TBool.For(r.bval); break;
                 }
             }
@@ -607,8 +607,8 @@ namespace Pyrrho.Common
             else
                 switch (v.Item2.dataType.kind)
                 {
-                    case Sqlx.CONTENT: sb.Append('"'); sb.Append(v); sb.Append('"'); break;
-                    case Sqlx.DOCARRAY: sb.Append('[');
+                    case Qlx.CONTENT: sb.Append('"'); sb.Append(v); sb.Append('"'); break;
+                    case Qlx.DOCARRAY: sb.Append('[');
                         var d = (TDocArray)v.Item2;
                         var comma = "";
                         for (int i = 0; i < d.Count; i++)
@@ -619,7 +619,7 @@ namespace Pyrrho.Common
                         }
                         sb.Append(']');
                         break;
-                    case Sqlx.CHAR:
+                    case Qlx.CHAR:
                         sb.Append('\'');
                         sb.Append(v.Item2.ToString());
                         sb.Append('\'');
@@ -666,17 +666,17 @@ namespace Pyrrho.Common
                 return Array.Empty<byte>();
             switch (v.dataType.kind)
             {
-                case Sqlx.REAL:
+                case Qlx.REAL:
                     return BitConverter.GetBytes(((TReal)v).dvalue);
-                case Sqlx.CHAR:
+                case Qlx.CHAR:
                     return ToBytes(v.ToString());
-                case Sqlx.DOCUMENT:
+                case Qlx.DOCUMENT:
                     {
                         var doc = v as TDocument;
                         doc ??= new TDocument();
                         return doc.ToBytes(null);
                     }
-                case Sqlx.DOCARRAY:
+                case Qlx.DOCARRAY:
                     {
                         var d = (TDocArray)v;
                         var r = new List<byte>
@@ -702,7 +702,7 @@ namespace Pyrrho.Common
                         SetLength(r);
                         return r.ToArray();
                     }
-                case Sqlx.BLOB:
+                case Qlx.BLOB:
                     {
                         var b = (TBlob)v;
                         var r = new byte[b.Length];
@@ -710,13 +710,13 @@ namespace Pyrrho.Common
                             r[i] = b[i];
                         return r;
                     }
-                case Sqlx.BOOLEAN:
+                case Qlx.BOOLEAN:
                     return new byte[] { (byte)((v.ToBool() == false)?0:1) };
-                case Sqlx.TIMESTAMP:
+                case Qlx.TIMESTAMP:
                     return BitConverter.GetBytes(v.ToLong()??-1L);
-                case Sqlx.NUMERIC:
+                case Qlx.NUMERIC:
                     return ToBytes(v.ToString());
-                case Sqlx.INTEGER:
+                case Qlx.INTEGER:
                     if (v is TInteger integer)
                     {
                         var iv = integer.ivalue;
@@ -791,16 +791,16 @@ namespace Pyrrho.Common
         {
             switch (fv.Item2.dataType.kind)
             {
-                case Sqlx.INTEGER:
-                case Sqlx.INT:
+                case Qlx.INTEGER:
+                case Qlx.INT:
                     if (fv.Item2.ToInteger() is Integer iv && iv==Integer.Zero)
                         return true;
                     break;
-                case Sqlx.REAL:
+                case Qlx.REAL:
                     if (fv.Item2.ToDouble()== 0.0)
                         return true;
                     break;
-                case Sqlx.Null:
+                case Qlx.Null:
                     return true;
             }
             return false;
@@ -840,7 +840,7 @@ namespace Pyrrho.Common
         static int RowSet(string nm,TypedValue a, TypedValue b)
         {
             var ki = b.dataType.kind;
-            if (ki != Sqlx.DOCARRAY && ki != Sqlx.DOCUMENT)
+            if (ki != Qlx.DOCARRAY && ki != Qlx.DOCUMENT)
                 return -1;
             var vb = b[nm];
             vb ??= TNull.Value;
@@ -912,7 +912,7 @@ namespace Pyrrho.Common
                     {
                         if (n == "_id") // _id field mismatch
                             goto all;
-                        if (v.dataType.kind==Sqlx.DOCUMENT)
+                        if (v.dataType.kind==Qlx.DOCUMENT)
                             details+=new Action(m, Verb.Delta, n,
                                 new Delta((TDocument)v,
                                     (TDocument)ne.value().Item2));

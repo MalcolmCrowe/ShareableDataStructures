@@ -86,13 +86,13 @@ namespace Pyrrho.Level3
         {
             if (infos[cx.role.defpos] is not ObInfo oi
                 || !oi.priv.HasFlag(Grant.Privilege.Execute))
-                throw new DBException("42105").Add(Sqlx.EXECUTE);
+                throw new DBException("42105").Add(Qlx.EXECUTE);
             cx.Add(framing);
             var n = ins.Length;
             var acts = new TypedValue[n];
             var i = 0;
             for (var b = actIns.First(); b != null; b = b.Next(), i++)
-                if (b.value() is long p && cx.obs[p] is SqlValue v)
+                if (b.value() is long p && cx.obs[p] is QlValue v)
                     acts[i] = v.Eval(cx);
             var act = new CalledActivation(cx, this);
             var bd = (Executable?)cx.obs[body] ?? throw new DBException("42108", oi.name ?? "??");
@@ -111,9 +111,9 @@ namespace Pyrrho.Level3
                 {
                     var m = p.paramMode;
                     var v = act.values[p.val] ?? TNull.Value;
-                    if (m == Sqlx.INOUT || m == Sqlx.OUT)
+                    if (m == Qlx.INOUT || m == Qlx.OUT)
                         acts[i] = v;
-                    if (m == Sqlx.RESULT)
+                    if (m == Qlx.RESULT)
                         r = v;
                 }
             if (this is Method mt && mt.methodType == PMethod.MethodType.Constructor)
@@ -130,7 +130,7 @@ namespace Pyrrho.Level3
                     cx.obs[actIns[i] ?? -1L] is DBObject x)
                 {
                     var m = p.paramMode;
-                    if (m == Sqlx.INOUT || m == Sqlx.OUT)
+                    if (m == Qlx.INOUT || m == Qlx.OUT)
                         cx.AddValue(x, acts[i]);
                 }
             return cx;

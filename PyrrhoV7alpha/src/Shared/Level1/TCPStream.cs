@@ -749,7 +749,7 @@ namespace Pyrrho.Level1
                             throw new PEException("PE24602");
                         var i = b.key();
                         PutString(result.NameFor(cx, i));
-                        if (dn.kind != Sqlx.TYPE && dn.kind != Sqlx.NODETYPE && dn.kind != Sqlx.EDGETYPE)
+                        if (dn.kind != Qlx.TYPE && dn.kind != Qlx.NODETYPE && dn.kind != Qlx.EDGETYPE)
                             PutString(dn.kind.ToString());
                         else
                             PutString(dn.name);
@@ -798,8 +798,8 @@ namespace Pyrrho.Level1
                     var k = b.value().kind;
                     switch (k)
                     {
-                        case Sqlx.DOCUMENT:
-                        case Sqlx.LEVEL:
+                        case Qlx.DOCUMENT:
+                        case Qlx.LEVEL:
                             n = k.ToString();
                             break;
                     }
@@ -834,7 +834,7 @@ namespace Pyrrho.Level1
                 {
                     var n = sc.NameFor(cx);
                     PutString(n);
-                    PutString((sc.domain.kind == Sqlx.DOCUMENT) ? "DOCUMENT": n);
+                    PutString((sc.domain.kind == Qlx.DOCUMENT) ? "DOCUMENT": n);
                     var flags = sc.domain.Typecode() + (dn.domain.notNull ? 0x100 : 0) +
                     ((dn.generated != GenerationRule.None) ? 0x200 : 0);
                     PutInt(flags);
@@ -859,7 +859,7 @@ namespace Pyrrho.Level1
                 for (var b = rec.First(); b != null; b = b.Next())
                     for (var c = b.value().tabledefpos.First(); c != null; c = c.Next())
                         if (cx._Ob(c.key()) is DBObject ob && ob.infos[ro.defpos] is ObInfo md &&
-                                md.metadata.Contains(Sqlx.ENTITY))
+                                md.metadata.Contains(Qlx.ENTITY))
                         {
                             var tr = b.value();
                             sb.Append(cm); cm = ",";
@@ -940,16 +940,16 @@ namespace Pyrrho.Level1
         {
             switch (tv.dataType.kind)
             {
-                case Sqlx.Null: break;
-                case Sqlx.SENSITIVE:
+                case Qlx.Null: break;
+                case Qlx.SENSITIVE:
                     PutData(_cx, ((TSensitive)tv).value);
                     break;
-                case Sqlx.BOOLEAN:
+                case Qlx.BOOLEAN:
                     {
                         PutInt((tv.ToBool() is bool b)?(b?1:0):-1);
                         break;
                     }
-                case Sqlx.INTEGER:
+                case Qlx.INTEGER:
                     {
                         if (tv is TInteger ti)
                             PutInteger(ti.ivalue);
@@ -963,7 +963,7 @@ namespace Pyrrho.Level1
                         }
                     }
                     break;
-                case Sqlx.NUMERIC:
+                case Qlx.NUMERIC:
                     {
                         Numeric v;
                         if (tv is TNumeric nv)
@@ -976,7 +976,7 @@ namespace Pyrrho.Level1
                         PutNumeric(v);
                     }
                     break;
-                case Sqlx.REAL:
+                case Qlx.REAL:
                     {
                         Numeric v;
                         if (tv is TNumeric nv)
@@ -987,17 +987,17 @@ namespace Pyrrho.Level1
                         PutReal(v);
                     }
                     break;
-                case Sqlx.NCHAR:
-                case Sqlx.CLOB: 
-                case Sqlx.NCLOB: 
-                case Sqlx.LEVEL:
-                case Sqlx.CHAR:
+                case Qlx.NCHAR:
+                case Qlx.CLOB: 
+                case Qlx.NCLOB: 
+                case Qlx.LEVEL:
+                case Qlx.CHAR:
                     PutString(tv.ToString());
                     break;
-                case Sqlx.PASSWORD: PutString("********"); break;
-                case Sqlx.POSITION:
+                case Qlx.PASSWORD: PutString("********"); break;
+                case Qlx.POSITION:
                     PutString(tv.ToString()); break;
-                case Sqlx.DATE:
+                case Qlx.DATE:
                     {
                         if (tv.ToLong() is long tl)
                             PutDateTime(new DateTime(tl));
@@ -1005,7 +1005,7 @@ namespace Pyrrho.Level1
                             PutDateTime(td.value);
                         break;
                     }
-                case Sqlx.TIME:
+                case Qlx.TIME:
                     {
                         if (tv.ToLong() is long tt)
                             PutTimeSpan(new TimeSpan(tt));
@@ -1014,7 +1014,7 @@ namespace Pyrrho.Level1
                         else throw new PEException("PE42161");
                         break;
                     }
-                case Sqlx.TIMESTAMP:
+                case Qlx.TIMESTAMP:
                     {
                         if (tv.ToLong() is long ts)
                             PutDateTime(new DateTime(ts));
@@ -1023,60 +1023,60 @@ namespace Pyrrho.Level1
                         else throw new PEException("PE42162");
                         break;
                     }
-                case Sqlx.DOCUMENT:
+                case Qlx.DOCUMENT:
                     {
                         if (tv is TDocument d)
                             PutBytes(d.ToBytes(null));
                         else throw new PEException("PE42163");
                         break;
                     }
-                case Sqlx.DOCARRAY:
+                case Qlx.DOCARRAY:
                     {
                         if (tv is TDocArray d)
                             PutBytes(d.ToBytes());
                         else throw new PEException("PE42164");
                         break;
                     }
-                case Sqlx.OBJECT: PutString(tv.ToString()); break;
-                case Sqlx.BLOB:
+                case Qlx.OBJECT: PutString(tv.ToString()); break;
+                case Qlx.BLOB:
                     {
                         if (tv is TBlob d)
                             PutBytes(d.value);
                         else throw new PEException("PE42165");
                         break;
                     }
-                case Sqlx.REF:
-                case Sqlx.ROW: PutRow(_cx, (TRow)tv); break; // different!
-                case Sqlx.ARRAY: PutArray(_cx, tv); break;
-                case Sqlx.SET:
+                case Qlx.REF:
+                case Qlx.ROW: PutRow(_cx, (TRow)tv); break; // different!
+                case Qlx.ARRAY: PutArray(_cx, tv); break;
+                case Qlx.SET:
                     {
                         if (tv is TSet d)
                             PutSet(_cx, d);
                         else throw new PEException("PE42166");
                         break;
                     }
-                case Sqlx.MULTISET:
+                case Qlx.MULTISET:
                     {
                         if (tv is TMultiset d)
                             PutMultiset(_cx, d);
                         else throw new PEException("PE42166");
                         break;
                     }
-                case Sqlx.INTERVAL:
+                case Qlx.INTERVAL:
                     {
                         if (tv is TInterval d)
                         PutInterval(d.value);
                         else throw new PEException("PE42168");
                         break;
                     }
-                case Sqlx.NODETYPE:
-                case Sqlx.EDGETYPE:
+                case Qlx.NODETYPE:
+                case Qlx.EDGETYPE:
                     if (tv is TRow && tv.dataType is NodeType nt)
                         PutString(nt.Describe(_cx));
                     else
                         PutString(tv.ToString(_cx));
                     break;
-                case Sqlx.TYPE: 
+                case Qlx.TYPE: 
                     if (tv.dataType is UDType u && _cx.db.objects[u.defpos] is UDType ut)// may be different!
                     {
                         var tf = ut.rowType.First();
@@ -1100,8 +1100,8 @@ namespace Pyrrho.Level1
                             break;
                         }
                     }
-                    goto case Sqlx.ROW;
-                case Sqlx.TYPE_URI: PutString(tv.ToString()); break;
+                    goto case Qlx.ROW;
+                case Qlx.TYPE_URI: PutString(tv.ToString()); break;
                 default:
                     PutString(tv.ToString()); break;
             }

@@ -332,7 +332,7 @@ namespace Pyrrho.Level2
                                     if (st is not null)
                                         rx += (Level3.Index.Tree, st);
                                     else
-                                        throw new DBException("42105").Add(Sqlx.CONSTRAINT_CATALOG);
+                                        throw new DBException("42105").Add(Qlx.CONSTRAINT_CATALOG);
                                     cx.db += (rx, p);
                                 }
                         ut += (Table.RefIndexes, us);
@@ -356,7 +356,7 @@ namespace Pyrrho.Level2
                 cx.db += (nt, p);
                 return nt; 
             }
-            throw new DBException("42105").Add(Sqlx.CONSTRAINT_CATALOG);
+            throw new DBException("42105").Add(Qlx.CONSTRAINT_CATALOG);
         }
     }
     internal class AlterEdgeType : Physical
@@ -633,7 +633,7 @@ namespace Pyrrho.Level2
             if (cx.db.objects[obj] is not DBObject ob)
                 throw new DBException("42000","Classify");
             if (cx.role.defpos != ob.definer)
-                throw new DBException("42105").Add(Sqlx.SECURITY);
+                throw new DBException("42105").Add(Qlx.SECURITY);
             for (var b = cx.db.roles.First(); b != null; b = b.Next())
                 if (b.value() is long bp && cx.db.objects[bp] is Role ro && ob.infos[ro.defpos] is ObInfo oi)
                     cx.db += (ro + (obj, oi + (DBObject.Classification, classification)), p);
@@ -818,7 +818,7 @@ namespace Pyrrho.Level2
         HttpRequestMessage GetRequest()
         {
             var vw = (RestView)(_cx.obs[_vw]??_cx.db.objects[_vw] 
-                ??throw new DBException("42105").Add(Sqlx.VIEW));
+                ??throw new DBException("42105").Add(Qlx.VIEW));
             string? user = _cx.user?.name, password = null;
             var ss = url.Split('/');
             if (ss.Length > 3)
@@ -841,7 +841,7 @@ namespace Pyrrho.Level2
                 var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
                 rq.Headers.Add("Authorization","Basic "+d);
             }
-            if (vw.infos[_cx.role.defpos] is ObInfo vi && vi.metadata.Contains(Sqlx.ETAG))
+            if (vw.infos[_cx.role.defpos] is ObInfo vi && vi.metadata.Contains(Qlx.ETAG))
             {
                 if (_cx.obs[_cx.result] is RowSet rs && rs.First(_cx) is Cursor cu)
                     rq.Headers.Add("If-Match",cu._Rvv(_cx).ToString());
@@ -850,7 +850,7 @@ namespace Pyrrho.Level2
                     rq.Headers.Add("If-Match", "W/\"" + _cx.db.loadpos + "\"");
                     if (_cx.db.lastModified is DateTime dt)
                     rq.Headers.Add("If-Unmodified-Since",
-                        ""+new THttpDate(dt,vi.metadata.Contains(Sqlx.MILLI)));
+                        ""+new THttpDate(dt,vi.metadata.Contains(Qlx.MILLI)));
                 }
             }
             return rq;

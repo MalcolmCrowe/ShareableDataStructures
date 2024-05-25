@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -49,15 +50,15 @@ namespace Pyrrho.Level2
         public enum ConstraintType
         {
             NoType = 0, PrimaryKey = 1, ForeignKey = 2, Unique = 4, Desc = 8,
-            RestrictUpdate = 16, CascadeUpdate = 32, SetDefaultUpdate = 64, 
+            RestrictUpdate = 16, CascadeUpdate = 32, SetDefaultUpdate = 64,
             SetNullUpdate = 128, RestrictDelete = 256,
             CascadeDelete = 512, SetDefaultDelete = 1024, SetNullDelete = 2048,
             SystemTimeIndex = 4096, ApplicationTimeIndex = 8192, NoBuild = 16384
         }
-        internal const ConstraintType Deletes = 
+        internal const ConstraintType Deletes =
             ConstraintType.RestrictDelete | ConstraintType.CascadeDelete |
             ConstraintType.SetDefaultDelete | ConstraintType.SetNullDelete;
-        internal const ConstraintType Updates = 
+        internal const ConstraintType Updates =
             ConstraintType.RestrictUpdate | ConstraintType.CascadeUpdate
             | ConstraintType.SetDefaultUpdate | ConstraintType.SetNullUpdate;
         public const ConstraintType Cascade = Deletes | Updates;
@@ -67,16 +68,16 @@ namespace Pyrrho.Level2
         /// The referenced Index for a foreign key
         /// </summary>
         public long reference;
-       /// <summary>
+        /// <summary>
         /// The adapter function (PIndex1)
         /// </summary>
         public string adapter = "";
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
-            if (!Committed(wr,tabledefpos)) return tabledefpos;
-            for (var b=columns.First();b is not null;b=b.Next())
-                if (b.value() is long p && !Committed(wr,p)) return p;
+            if (defpos != ppos && !Committed(wr, defpos)) return defpos;
+            if (!Committed(wr, tabledefpos)) return tabledefpos;
+            for (var b = columns.First(); b is not null; b = b.Next())
+                if (b.value() is long p && !Committed(wr, p)) return p;
             if (reference >= 0 && wr.cx.db.objects[reference] is Level3.Index xr)
             {
                 var reftable = xr.tabledefpos;
@@ -98,7 +99,7 @@ namespace Pyrrho.Level2
         public PIndex(string nm, Table tb, Domain cl,
             ConstraintType fl, long rx, long pp) :
             this(Type.PIndex, nm, tb, cl, fl, rx, pp)
-        {  }
+        { }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
         /// </summary>
@@ -116,7 +117,7 @@ namespace Pyrrho.Level2
         {
             if (fl == ConstraintType.ForeignKey || fl == ConstraintType.NoType)
                 fl = Reference;
-            name = nm?? throw new DBException("42102").Mix();
+            name = nm ?? throw new DBException("42102").Mix();
             tabledefpos = tb.defpos;
             columns = cl;
             flags = fl;
@@ -145,10 +146,10 @@ namespace Pyrrho.Level2
             for (var b = x.columns.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
-                    var nc = wr.cx._Ob(wr.cx.Fix(p))?? throw new PEException("PE0098");
+                    var nc = wr.cx._Ob(wr.cx.Fix(p)) ?? throw new PEException("PE0098");
                     bs += nc;
                 }
-            columns = (Domain)wr.cx.Add(new Domain(-1L, wr.cx, Sqlx.ROW, bs, bs.Length));
+            columns = (Domain)wr.cx.Add(new Domain(-1L, wr.cx, Qlx.ROW, bs, bs.Length));
             flags = x.flags;
             reference = wr.cx.Fix(x.reference);
         }
@@ -170,7 +171,7 @@ namespace Pyrrho.Level2
             wr.PutLong(tabledefpos);
             wr.PutInt(columns.Length);
             for (int j = 0; j < columns.Length; j++)
-                wr.PutLong(columns[j]??-1L);
+                wr.PutLong(columns[j] ?? -1L);
             wr.PutInt((int)flags);
             reference = wr.cx.Fix(reference);
             wr.PutLong(reference);
@@ -195,7 +196,7 @@ namespace Pyrrho.Level2
                     rt += cp;
                     rs += (cp, rdr.context._Dom(cp) ?? Domain.Null); // for Log$ may be historical
                 }
-                columns = new Domain(-1L, rdr.context, Sqlx.ROW, rs, rt);
+                columns = new Domain(-1L, rdr.context, Qlx.ROW, rs, rt);
             }
             flags = (ConstraintType)rdr.GetInt();
             reference = rdr.GetLong();
@@ -209,7 +210,7 @@ namespace Pyrrho.Level2
         }
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
-            switch(that.type)
+            switch (that.type)
             {
                 case Type.Alter3:
                     if (((Alter3)that).table?.defpos == tabledefpos)
@@ -246,17 +247,17 @@ namespace Pyrrho.Level2
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
-            var (nt,ph) = base.Commit(wr, tr);
+            var (nt, ph) = base.Commit(wr, tr);
             if (tr is not null && wr.cx.db.objects[((PIndex)ph).tabledefpos] is Table tb
                 && wr.cx.db.objects[ph.ppos] is Level3.Index x)
             {
                 if (tb.indexes[x.keys] is CTree<long, bool> ct)
-                    wr.cx.db += (tb.defpos, tb + (Table.Indexes,tb.indexes + (x.keys, ct - ppos)));
+                    wr.cx.db += (tb.defpos, tb + (Table.Indexes, tb.indexes + (x.keys, ct - ppos)));
                 if (reference > 0 && wr.cx.db.objects[x.reftabledefpos] is Table rt)
-                    wr.cx.db += (rt.defpos, rt + (Table.RefIndexes,rt.rindexes - ppos)
-                        + (Table.SysRefIndexes,rt.sindexes-(x.keys[0]??-1L)));
+                    wr.cx.db += (rt.defpos, rt + (Table.RefIndexes, rt.rindexes - ppos)
+                        + (Table.SysRefIndexes, rt.sindexes - (x.keys[0] ?? -1L)));
             }
-            return (nt,ph);
+            return (nt, ph);
         }
         /// <summary>
         /// A readable version of this Physical
@@ -264,10 +265,10 @@ namespace Pyrrho.Level2
         /// <returns>The string representation</returns>
         public override string ToString()
         {
-            string r = GetType().Name + " "+ name;
+            string r = GetType().Name + " " + name;
             r = r + " on " + Pos(tabledefpos) + "(";
             for (int j = 0; j < columns.Length; j++)
-                r += ((j > 0) ? "," : "") + DBObject.Uid(columns[j]??-1L);
+                r += ((j > 0) ? "," : "") + DBObject.Uid(columns[j] ?? -1L);
             r += ") " + flags.ToString();
             if (reference >= 0)
                 r += " refers to [" + Pos(reference) + "]";
@@ -279,7 +280,7 @@ namespace Pyrrho.Level2
                 return null;
             var x = new Level3.Index(this, cx);
             if (!x.flags.HasFlag(ConstraintType.NoBuild))
-                x=x.Build(cx);
+                x = x.Build(cx);
             var t = tb.indexes[x.keys] ?? CTree<long, bool>.Empty;
             tb += (Table.Indexes, tb.indexes + (x.keys, t + (x.defpos, true)));
             cx.db += tb;
@@ -312,17 +313,32 @@ namespace Pyrrho.Level2
                 }
             if (fl.HasFlag(PColumn.GraphFlags.IdCol))
                 tb += (NodeType.IdIx, x.defpos);
+            var dp = defpos;
             if (fl.HasFlag(PColumn.GraphFlags.LeaveCol))
             {
                 if (tb.leavingType <= 0)
                     tb += (EdgeType.LeavingType, x.reftabledefpos);
                 tb += (EdgeType.LeaveIx, x.defpos);
+                for (var b = tb.subtypes.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is EdgeType st)
+                    {
+                        st += (EdgeType.LeaveIx, x.defpos);
+                        cx.db += (st.defpos, st);
+                        cx.obs += (st.defpos, st);
+                    }
             }
             if (fl.HasFlag(PColumn.GraphFlags.ArriveCol))
             {
                 if (tb.arrivingType <= 0)
                     tb += (EdgeType.ArrivingType, x.reftabledefpos);
-                tb = tb + (EdgeType.ArriveIx, x.defpos);
+                tb += (EdgeType.ArriveIx, x.defpos);
+                for (var b = tb.subtypes.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is EdgeType st)
+                    {
+                        st += (EdgeType.ArriveIx, x.defpos);
+                        cx.db += (st.defpos, st);
+                        cx.obs += (st.defpos, st);
+                    }
             }
             tb += (Table.KeyCols, kc);
             tb += (DBObject.LastChange, defpos);
@@ -330,10 +346,11 @@ namespace Pyrrho.Level2
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.db += (tb.defpos, tb);
-            cx.db += (x.defpos,x);
+            cx.db += (x.defpos, x);
             return tb;
         }
     }
+
     /// <summary>
     /// PIndex1 is used for conditional or adapted referential constraints
     /// </summary>

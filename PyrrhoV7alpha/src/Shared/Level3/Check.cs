@@ -20,7 +20,7 @@ namespace Pyrrho.Level3
     internal class Check : Domain
     {
         internal const long
-            Condition = -51, // long SqlValue
+            Condition = -51, // long QlValue
             Source = -52; // string
         /// <summary>
         /// The object to which the check applies
@@ -63,7 +63,7 @@ namespace Pyrrho.Level3
         protected Check(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(Database db)
         {
-            var ro = db.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
+            var ro = db.role ?? throw new DBException("42105").Add(Qlx.ROLE);
             return BTree<long, object>.Empty + (Definer, ro.defpos) + (Owner,db.user?.defpos??-501L);
         }
         public static Check operator+(Check c,(long,object)x)

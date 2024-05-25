@@ -78,15 +78,15 @@ namespace Pyrrho.Level3
                 if (fk==TreeBehaviour.Allow)
                 {
                     var x = new CTree<long, bool>(v, true);
-                    impl = new SqlTree(sd, Sqlx.T, head, new TPartial(x));
+                    impl = new SqlTree(sd, Qlx.T, head, new TPartial(x));
                 }
                 else
-                    impl = new SqlTree(sd, Sqlx.INT, head, new TInt(v));
+                    impl = new SqlTree(sd, Qlx.INT, head, new TInt(v));
             }
             else
             {
                 var x = new MTree(ti, fk, k, ff+1, v);
-                impl = new SqlTree(sd, Sqlx.M, head, new TMTree(x));
+                impl = new SqlTree(sd, Qlx.M, head, new TMTree(x));
             }
             count = 1;
         }
@@ -122,9 +122,9 @@ namespace Pyrrho.Level3
                 if (impl?[v] is TypedValue t)
                     return t.dataType.kind switch
                     {
-                        Sqlx.T => (int)((TPartial)t).value.Count,
-                        Sqlx.INT => (int)((TInt)t).value,
-                        Sqlx.M => ((TMTree)t).value.Cardinality(filt,off+1),
+                        Qlx.T => (int)((TPartial)t).value.Count,
+                        Qlx.INT => (int)((TInt)t).value,
+                        Qlx.M => ((TMTree)t).value.Cardinality(filt,off+1),
                         _ => 1,
                     };
                 else
@@ -136,13 +136,13 @@ namespace Pyrrho.Level3
                 var t = b.value();
                 switch (t.dataType.kind)
                 {
-                    case Sqlx.T:
+                    case Qlx.T:
                         r += (int)((TPartial)t).value.Count;
                         break;
-                    case Sqlx.INT:
+                    case Qlx.INT:
                         r += (int)((TInt)t).value;
                         break;
-                    case Sqlx.M:
+                    case Qlx.M:
                         r += ((TMTree)t).value.Cardinality(filt,off+1);
                         break;
                     default:
@@ -159,11 +159,11 @@ namespace Pyrrho.Level3
         /// <param name="ff">position in key</param>
         /// <param name="cur"></param>
         /// <returns></returns>
-        internal TypedValue NextKey(Sqlx kind, CList<TypedValue> key, int ff, int cur)
+        internal TypedValue NextKey(Qlx kind, CList<TypedValue> key, int ff, int cur)
         {
             if (off < cur && Ensure(key,ff) is MTree mt) 
                 return mt.NextKey(kind,key, ff + 1, cur);
-            return impl?.AutoKey(kind) ?? ((kind == Sqlx.CHAR) ? 
+            return impl?.AutoKey(kind) ?? ((kind == Qlx.CHAR) ? 
                 new TChar("1") : new TInt(1));
         }
         /// <summary>
@@ -227,7 +227,7 @@ namespace Pyrrho.Level3
             {
                 switch (tv.dataType.kind)
                 {
-                    case Sqlx.M:
+                    case Qlx.M:
                         {
                             if (tv is not TMTree tm)
                                 throw new PEException("PE4500");
@@ -236,7 +236,7 @@ namespace Pyrrho.Level3
                             nv = new TMTree(mt); // care: immutable
                             break;
                         }
-                    case Sqlx.T:
+                    case Qlx.T:
                         {
                             if (tv is not TPartial tp)
                                 throw new PEException("PE4501");
@@ -254,13 +254,13 @@ namespace Pyrrho.Level3
             {
                 switch (t.impl.kind)
                 {
-                    case Sqlx.M:
+                    case Qlx.M:
                         {
                             MTree mt = new (t.info, t.nullsAndDuplicates, k, off+1, v);
                             nv = new TMTree(mt);
                             break;
                         }
-                    case Sqlx.T:
+                    case Qlx.T:
                         {
                             var bt = new CTree<long, bool>(v, true);
                             nv = new TPartial(bt);
@@ -268,7 +268,7 @@ namespace Pyrrho.Level3
                         }
                     default:
                         if (t.nullsAndDuplicates==TreeBehaviour.Allow)
-                            goto case Sqlx.T;
+                            goto case Qlx.T;
                         if (t.nullsAndDuplicates == TreeBehaviour.Ignore && t.Contains(k,off))
                                 return TreeBehaviour.Allow;
                         nv = new TInt(v);
@@ -327,7 +327,7 @@ namespace Pyrrho.Level3
             TypedValue nv, tv = t.impl[head] ?? throw new PEException("PE6009");
             switch (tv.dataType.kind)
             {
-                case Sqlx.M:
+                case Qlx.M:
                     {
                         if (tv is not TMTree tm)
                             throw new PEException("PE4505");
@@ -361,7 +361,7 @@ namespace Pyrrho.Level3
             long nc = t.count;
             switch (tv.dataType.kind)
             {
-                case Sqlx.M:
+                case Qlx.M:
                     {
                         if (tv is not TMTree tm)
                             throw new PEException("PE4001");
@@ -381,7 +381,7 @@ namespace Pyrrho.Level3
                         }
                         break;
                     }
-                case Sqlx.T:
+                case Qlx.T:
                     {
                         if (tv is not TPartial tp)
                             throw new PEException("PE4002");
@@ -415,7 +415,7 @@ namespace Pyrrho.Level3
             TypedValue nv;
             switch (tv.dataType.kind)
             {
-                case Sqlx.M:
+                case Qlx.M:
                     {
                         if (tv is not TMTree tm)
                             throw new PEException("PE4005");
@@ -436,7 +436,7 @@ namespace Pyrrho.Level3
                         }
                         break;
                     }
-                case Sqlx.T:
+                case Qlx.T:
                     {
                         if (tv is not TPartial tp)
                             throw new PEException("PE4006");
@@ -479,13 +479,13 @@ namespace Pyrrho.Level3
                 return null;
             switch (tv.dataType.kind)
             {
-                case Sqlx.M:
+                case Qlx.M:
                     {
                         if (tv is TMTree tm)
                             return tm.value.Get(k,ff+1);
                         return null;
                     }
-                case Sqlx.T:
+                case Qlx.T:
                     {
                         if (tv is TPartial pt)
                             return pt.value.First()?.key();
@@ -552,12 +552,12 @@ namespace Pyrrho.Level3
                 var ov = outer.value();
                 switch (ov.dataType.kind)
                 {
-                    case Sqlx.M:
+                    case Qlx.M:
                         var inner = (ov as TMTree)?.value.First();
                         if (inner != null)
                             return new MTreeBookmark(mt,outer, mt.info, false, inner, null,0);
                         break;
-                    case Sqlx.T:
+                    case Qlx.T:
                         var pmk = (ov as TPartial)?.value.First();
                         if (pmk != null)
                             return new MTreeBookmark(mt,outer, mt.info, false, null, pmk,0);
@@ -577,12 +577,12 @@ namespace Pyrrho.Level3
                 var ov = outer.value();
                 switch (ov.dataType.kind)
                 {
-                    case Sqlx.M:
+                    case Qlx.M:
                         var inner = (ov as TMTree)?.value.Last();
                         if (inner != null)
                             return new MTreeBookmark(mt, outer, mt.info, false, inner, null, 0);
                         break;
-                    case Sqlx.T:
+                    case Qlx.T:
                         var pmk = (ov as TPartial)?.value.Last();
                         if (pmk != null)
                             return new MTreeBookmark(mt, outer, mt.info, false, null, pmk, 0);
@@ -629,7 +629,7 @@ namespace Pyrrho.Level3
                 if (outer.value() is TypedValue tv)
                 switch (tv.dataType.kind)
                 {
-                    case Sqlx.M:
+                    case Qlx.M:
                         inner = (tv as TMTree)?.value.PositionAt(key,off+1);
                         if (inner != null)
                             goto done;
@@ -637,7 +637,7 @@ namespace Pyrrho.Level3
                         if (outer == null)
                             return null;
                         continue;
-                    case Sqlx.T:
+                    case Qlx.T:
                         pmk = (tv as TPartial)?.value.First();
                         if (pmk != null)
                             goto done;
@@ -711,12 +711,12 @@ namespace Pyrrho.Level3
                     return null;
                 switch (oval.dataType.kind)
                 {
-                    case Sqlx.M:
+                    case Qlx.M:
                         inner = ((TMTree)oval).value?.PositionAt(_key,_mt.off+1);
                         if (inner != null)
                             goto done;
                         break;
-                    case Sqlx.T:
+                    case Qlx.T:
                         pmk = ((TPartial)oval).value?.First();
                         if (pmk != null)
                             goto done;
@@ -759,12 +759,12 @@ namespace Pyrrho.Level3
                 var oval = outer.value();
                 switch (oval.dataType.kind)
                 {
-                    case Sqlx.M:
+                    case Qlx.M:
                         inner = ((TMTree)oval).value?.PositionAt(_key,_mt.off+1);
                         if (inner != null)
                             goto done;
                         break;
-                    case Sqlx.T:
+                    case Qlx.T:
                         pmk = ((TPartial)oval).value?.Last();
                         if (pmk != null)
                             goto done;
@@ -809,13 +809,13 @@ namespace Pyrrho.Level3
             var ov = _outer.value();
             switch(ov.dataType.kind)
             {
-                case Sqlx.M:
+                case Qlx.M:
                     {
                         if (ov is not TMTree tm || _inner == null)
                             throw new PEException("PE4040");
                         return _inner._pos < tm.value.count-1;
                     }
-                case Sqlx.T:
+                case Qlx.T:
                     {
                         if (ov is not TPartial t || _pmk == null)
                             throw new PEException("PE4041");

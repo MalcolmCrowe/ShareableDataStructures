@@ -81,13 +81,13 @@ namespace Pyrrho.Level3
     internal class WindowSpecification : Domain
     {
         internal const long
-            Exclude = -222,// Sqlx
+            Exclude = -222,// Qlx
             High = -223, //WindowBound
             Low = -224,// WindowBound
             Order = -225, // Domain (extends the partition type)
             OrderWindow = -226, // string
             PartitionType = -229, // Domain
-            Units = -230, // Sqlx
+            Units = -230, // Qlx
             WQuery = -231; // long RowSet
         /// <summary>
         /// The associated RowSet
@@ -108,7 +108,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// ROW or RANGE if have window frame
         /// </summary>
-        internal Sqlx units => (Sqlx)(mem[Units]??Sqlx.NO);
+        internal Qlx units => (Qlx)(mem[Units]??Qlx.NO);
         /// <summary>
         /// low WindowBound if specified
         /// </summary>
@@ -120,7 +120,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// exclude CURRENT, TIES or OTHERS (NO if not specified)
         /// </summary>
-        internal Sqlx exclude => (Sqlx)(mem[Exclude]??Sqlx.Null);
+        internal Qlx exclude => (Qlx)(mem[Exclude]??Qlx.Null);
         /// <summary>
         /// Constructor: a window specification from the parser
         /// </summary>
@@ -143,7 +143,7 @@ namespace Pyrrho.Level3
         internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
         {
             for (var b = order.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p&& cx.obs[p] is SqlValue v)
+                if (b.value() is long p&& cx.obs[p] is QlValue v)
                     qn = v.Needs(cx, r, qn);
             return qn;
         }
@@ -231,10 +231,10 @@ namespace Pyrrho.Level3
             { 
                 sb.Append(" Order "); sb.Append(order);
             }
-            if (units != Sqlx.NO) { sb.Append(" Units "); sb.Append(units); }
+            if (units != Qlx.NO) { sb.Append(" Units "); sb.Append(units); }
             if (low is not null) { sb.Append(" Low "); sb.Append(low); }
             if (high != null) { sb.Append(" High "); sb.Append(high); }
-            if (exclude != Sqlx.Null) { sb.Append(" Exclude "); sb.Append(exclude); }
+            if (exclude != Qlx.Null) { sb.Append(" Exclude "); sb.Append(exclude); }
             return sb.ToString();
         }
         internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
@@ -277,9 +277,9 @@ namespace Pyrrho.Level3
     internal class Grouping :Domain,IComparable
     {
         internal const long
-            GroupKind = -232, //Sqlx
+            GroupKind = -232, //Qlx
             Groups = -233, // CList<Grouping>
-            Members = -234; // CTree<long,int> SqlValue
+            Members = -234; // CTree<long,int> QlValue
         /// <summary>
         /// GROUP, CUBE or ROLLUP
         /// </summary>
@@ -287,7 +287,7 @@ namespace Pyrrho.Level3
             (CList<Grouping>)(mem[Groups]?? CList<Grouping>.Empty);
         /// <summary>
         /// the names for this grouping.
-        /// See SqlValue.IsNeeded for where the ref gp parameter is used.
+        /// See QlValue.IsNeeded for where the ref gp parameter is used.
         /// </summary>
         internal CTree<long,int> members => 
             (CTree<long,int>)(mem[Members]??CTree<long,int>.Empty);
@@ -311,7 +311,7 @@ namespace Pyrrho.Level3
                 for (var i = 0; i < x.Length; i++)
                     if (cx._Ob(x[i]) is DBObject ob)
                         bs += ob;
-                var ks = (Domain)cx.Add(new Domain(cx.GetUid(), cx, Sqlx.ROW, bs, bs.Length));
+                var ks = (Domain)cx.Add(new Domain(cx.GetUid(), cx, Qlx.ROW, bs, bs.Length));
                 m += (Index.Keys, ks);
             }
             return m;
@@ -332,7 +332,7 @@ namespace Pyrrho.Level3
         internal bool Has(Context cx,string s)
         {
             for (var b=members.First();b is not null;b=b.Next())
-                if (cx.obs[b.key()] is SqlValue v && v.name == s)
+                if (cx.obs[b.key()] is QlValue v && v.name == s)
                     return true;
             for (var b = groups.First(); b != null; b = b.Next())
                 if (b.value().Has(cx,s))
@@ -343,7 +343,7 @@ namespace Pyrrho.Level3
         {
             var nd = CTree<long,bool>.Empty;
             for (var b = members.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v)
+                if (cx.obs[b.key()] is QlValue v)
                 nd += v.Needs(cx);
             for (var b = groups.First(); b != null; b = b.Next())
                 nd += b.value().Needs(cx);
@@ -362,7 +362,7 @@ namespace Pyrrho.Level3
             //               if (!cs.Contains(b.value()))
             //                   return false;
             for (var b = members.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue v && !v.KnownBy(cx, rrs))
+                if (cx.obs[b.key()] is QlValue v && !v.KnownBy(cx, rrs))
                     return false;
             return true;
         }
@@ -466,7 +466,7 @@ namespace Pyrrho.Level3
             for (var b = sets.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is Grouping g)
                     for (var c = g.keys.First(); c != null; c = c.Next())
-                        if (cx.obs[p] is SqlValue v)
+                        if (cx.obs[p] is QlValue v)
                             r += v.Operands(cx);
             return r;
         }
@@ -493,7 +493,7 @@ namespace Pyrrho.Level3
         internal bool Grouped(Context cx,BList<long?> vals)
         {
             for (var b = vals?.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue v && !v.Grouped(cx, this))
+                if (b.value() is long p && cx.obs[p] is QlValue v && !v.Grouped(cx, this))
                     return false;
             return true;
         }

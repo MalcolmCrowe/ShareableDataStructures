@@ -1,6 +1,7 @@
 ﻿using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
+using Pyrrho.Level5;
 using System;
 using System.Net;
 using System.Transactions;
@@ -27,15 +28,15 @@ namespace Pyrrho.Level3
     {
         internal const long
             AutoCommit = -278, // bool
-            Diagnostics = -280, // BTree<Sqlx,TypedValue>
+            Diagnostics = -280, // BTree<Qlx,TypedValue>
             _ETags = -374, // CTree<string,string> url, ETag
             Physicals = -79, // BTree<long,Physical>
             Posts = -398, // bool
             StartTime = -394, // DateTime
             Step = -276, // long
             TriggeredAction = -288; // long
-        public BTree<Sqlx, TypedValue> diagnostics =>
-            (BTree<Sqlx,TypedValue>)(mem[Diagnostics]??BTree<Sqlx, TypedValue>.Empty);
+        public BTree<Qlx, TypedValue> diagnostics =>
+            (BTree<Qlx,TypedValue>)(mem[Diagnostics]??BTree<Qlx, TypedValue>.Empty);
         internal override long uid => (long)(mem[NextId]??-1L);
         public override long lexeroffset => uid;
         internal long step => (long)(mem[Step] ?? TransPos);
@@ -123,11 +124,10 @@ namespace Pyrrho.Level3
         }
         internal override DBObject? Add(Context cx,Physical ph, long lp)
         {
-            if (cx.parse != ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Compile)
+            if (cx.parse != ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Compile && cx.parse!=ExecuteStatus.Graph
+                && cx.parse!=ExecuteStatus.GraphType)
                 return null;
             cx.db += (Physicals,physicals +(ph.ppos, ph));
-            if (ph is Record4)
-                return null;
             if (ph.ppos==cx.db.nextPos)
                 cx.db += (NextPos, ph.ppos + 1);
             return ph.Install(cx, lp);
@@ -275,16 +275,13 @@ namespace Pyrrho.Level3
                 var (tr, _) = pt.Commit(wr, this);
                 var os = BTree<long, Physical>.Empty;
                 cx.undefined = CTree<long, int>.Empty;
-                var ne = false; // watch out for new edge types
                 for (var b = physicals.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
                     cx.result = p.ppos;
-                    ne = ne || p is PEdgeType;
+                    cx.uids += (p.ppos,wr.Length);
                     (tr, _) = p.Commit(wr, tr);
                 }
-                if (ne)
-                    wr.cx.db += (EdgeTypes, wr.cx.FixTlTlTll(edgeTypes));
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 cx.parse = ExecuteStatus.Obey;
                 wr.cx.db += (LastModified, File.GetLastWriteTimeUtc(name));
@@ -308,7 +305,6 @@ namespace Pyrrho.Level3
             }
             wr.PutBuf();
             df.Flush();
-            cx.newnodes += wr.cx.newnodes;
             var r = new Database(wr.Length, wr.cx.db.mem);
             lock (_lock)
                 databases += (name, r - Role - User);
@@ -334,14 +330,14 @@ namespace Pyrrho.Level3
             var r = new DBException(sig, obs);
             for (var s = diagnostics.First(); s != null; s = s.Next())
                 r.Add(s.key(), s.value());
-            r.Add(Sqlx.CONNECTION_NAME, new TChar(name));
+            r.Add(Qlx.CONNECTION_NAME, new TChar(name));
 #if !EMBEDDED
-            r.Add(Sqlx.SERVER_NAME, new TChar(PyrrhoStart.host));
+            r.Add(Qlx.SERVER_NAME, new TChar(PyrrhoStart.host));
 #endif
-            if (diagnostics[Sqlx.TRANSACTIONS_COMMITTED] is TypedValue tc)
-                r.Add(Sqlx.TRANSACTIONS_COMMITTED, tc);
-            if (diagnostics[Sqlx.TRANSACTIONS_ROLLED_BACK] is TypedValue rb)
-                r.Add(Sqlx.TRANSACTIONS_ROLLED_BACK, rb);
+            if (diagnostics[Qlx.TRANSACTIONS_COMMITTED] is TypedValue tc)
+                r.Add(Qlx.TRANSACTIONS_COMMITTED, tc);
+            if (diagnostics[Qlx.TRANSACTIONS_ROLLED_BACK] is TypedValue rb)
+                r.Add(Qlx.TRANSACTIONS_ROLLED_BACK, rb);
             return r;
         }
         internal Context Execute(Executable e, Context cx)
@@ -357,7 +353,7 @@ namespace Pyrrho.Level3
             {
                 var ex = Exception(a.signal.signal, a.signal.objects);
                 for (var s = a.signal.setlist.First(); s != null; s = s.Next())
-                    if (s.value() is long p && cx.obs[p] is SqlValue v)
+                    if (s.value() is long p && cx.obs[p] is QlValue v)
                         ex.Add(s.key(), v.Eval(cx));
                 throw ex;
             }
@@ -380,7 +376,6 @@ namespace Pyrrho.Level3
             string query, string? mime, string sdata)
         {
             var db = this;
-            cx.inHttpService = true;
             int j, ln;
             if (sk!=0L)
             {
@@ -555,7 +550,7 @@ namespace Pyrrho.Level3
                             var v = psr.ParseSqlValue(new Ident(sk[si], cx.GetIid()), Domain.Bool);
                             var ls = v.Resolve(cx, f.defpos, BTree<long, object>.Empty).Item1;
                             for (var c = ls.First(); c != null; c = c.Next())
-                                if (c.value() is SqlValue cv)
+                                if (c.value() is QlValue cv)
                                     wt += cv.Disjoin(cx);
                         }
                         cx.Add(f + (cx,RowSet._Where,wt));
@@ -739,7 +734,7 @@ namespace Pyrrho.Level3
                 {
                     var n = "";
                     var isk = false;
-                    if (cx.obs[cc] is SqlValue sv && sv.name != null)
+                    if (cx.obs[cc] is QlValue sv && sv.name != null)
                     {
                         n = sv.name;
                         if (sv is SqlCopy sc && ix != null)
@@ -932,15 +927,15 @@ namespace Pyrrho.Level3
                         Grant.Privilege q = Grant.Privilege.NoPrivilege;
                         switch (mk.priv)
                         {
-                            case Sqlx.SELECT: q = Grant.Privilege.Select; break;
-                            case Sqlx.INSERT: q = Grant.Privilege.Insert; break;
-                            case Sqlx.DELETE: q = Grant.Privilege.Delete; break;
-                            case Sqlx.UPDATE: q = Grant.Privilege.Update; break;
-                            case Sqlx.REFERENCES: q = Grant.Privilege.References; break;
-                            case Sqlx.EXECUTE: q = Grant.Privilege.Execute; break;
-                            case Sqlx.TRIGGER: break; // ignore for now (?)
-                            case Sqlx.USAGE: q = Grant.Privilege.Usage; break;
-                            case Sqlx.OWNER:
+                            case Qlx.SELECT: q = Grant.Privilege.Select; break;
+                            case Qlx.INSERT: q = Grant.Privilege.Insert; break;
+                            case Qlx.DELETE: q = Grant.Privilege.Delete; break;
+                            case Qlx.UPDATE: q = Grant.Privilege.Update; break;
+                            case Qlx.REFERENCES: q = Grant.Privilege.References; break;
+                            case Qlx.EXECUTE: q = Grant.Privilege.Execute; break;
+                            case Qlx.TRIGGER: break; // ignore for now (?)
+                            case Qlx.USAGE: q = Grant.Privilege.Usage; break;
+                            case Qlx.OWNER:
                                 q = Grant.Privilege.Owner;
                                 if (!grant)
                                     throw Exception("4211A", mk).Mix();
@@ -992,7 +987,7 @@ namespace Pyrrho.Level3
             if (rx.keys.Length != key.Length)
                 throw new DBException("22207").Mix();
             var px = new PIndex1(name, tb, key, ct, rx.defpos, afn,nextPos);
-            return (Table?)cx.Add(px)??throw new DBException("42105").Add(Sqlx.CONSTRAINT);
+            return (Table?)cx.Add(px)??throw new DBException("42105").Add(Qlx.CONSTRAINT);
         }
     }
     /// <summary>

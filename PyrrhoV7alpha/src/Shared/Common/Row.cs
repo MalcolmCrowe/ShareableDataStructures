@@ -22,9 +22,9 @@ namespace Pyrrho.Common
     /// Data values and local variables can be of structured types 
     /// (row, array, multiset, user-defined, documents). 
     /// In normal use such complex obs can be in a class of TypedValue 
-    /// (containing other TypedValues), and can be referred to by a single SqlValue. 
+    /// (containing other TypedValues), and can be referred to by a single QlValue. 
     /// But if during analysis we find we are dealing with SQL references to its internal contents, 
-    /// it is built into a structured SqlValue (SqlRow, SqlArray etc) 
+    /// it is built into a structured QlValue (SqlRow, SqlArray etc) 
     /// whose referenceable elements are SqlValues. 
     /// Evaluation will restore the simple TypedValue structure.
     /// As of 26 April 2021, all TypedValue classes are shareable
@@ -103,7 +103,7 @@ namespace Pyrrho.Common
         internal Domain _DataType()
         {
             var dt = dataType;
-            if (dt.kind == Sqlx.UNION)
+            if (dt.kind == Qlx.UNION)
                 for (var b = dt.mem.First(); b != null; b = b.Next())
                     if (b.value() is Domain d && d.CanBeAssigned(this))
                         return d;
@@ -155,7 +155,7 @@ namespace Pyrrho.Common
             if (obj == null || obj is TNull)
                 return 0;
             var that = (TypedValue)obj;
-            if (that.dataType.nulls == Sqlx.FIRST)
+            if (that.dataType.nulls == Qlx.FIRST)
                 return 1;
             return -1;
         }
@@ -179,7 +179,7 @@ namespace Pyrrho.Common
                     n++;
                 }
             }
-            if ((ct.signed == Sqlx.UNSIGNED && value<0) || n >bl)
+            if ((ct.signed == Qlx.UNSIGNED && value<0) || n >bl)
                 throw new DBException("22003");
             return this;
         }
@@ -224,8 +224,12 @@ namespace Pyrrho.Common
         internal TPosition(long p) : base(Domain.Position, p) { }
         public override string ToString()
         {
-            if (value<0)
+            if (value < 0)
+            {
+                if (((Qlx)(-value)).ToString() is string s)
+                    return (s.Length > 5) ? (s[0..3]+"..") : s;
                 return "";
+            }
             return DBObject.Uid(value);
         }
     }
@@ -243,7 +247,7 @@ namespace Pyrrho.Common
         internal override TypedValue Check(ConstrainedStandardType ct)
         {
             var bl = ct.bitLength;
-            if ((ct.signed==Sqlx.UNSIGNED && ivalue.Sign)||(bl > 0 && ivalue.BitsNeeded() > bl))
+            if ((ct.signed==Qlx.UNSIGNED && ivalue.Sign)||(bl > 0 && ivalue.BitsNeeded() > bl))
                 throw new DBException("22003");
             return this;
         }
@@ -689,7 +693,7 @@ namespace Pyrrho.Common
     {
         internal readonly BList<TypedValue> list; 
         internal TList(Domain dt, params TypedValue[] a) 
-            : base(new Domain(-1L,Sqlx.ARRAY,dt)) 
+            : base(new Domain(-1L,Qlx.ARRAY,dt)) 
         { 
             var ts = BList<TypedValue>.Empty;
             foreach (var x in a)
@@ -781,7 +785,7 @@ namespace Pyrrho.Common
     {
         internal readonly CTree<int,TypedValue> array;
         internal TArray(Domain dt)
-            : base(new Domain(-1L, Sqlx.ARRAY, dt))
+            : base(new Domain(-1L, Qlx.ARRAY, dt))
         {
             array = CTree<int, TypedValue>.Empty;
         }
@@ -791,12 +795,18 @@ namespace Pyrrho.Common
             return new TArray((Domain)dataType.Fix(cx),
                 cx.FixTiV(array));
         }
-        public static TArray operator +(TArray ar, (int,TypedValue) x)
+        public static TArray operator +(TArray ar, (Context,int,TypedValue) x)
         {
-            var (i, v) = x;
-            if (ar.dataType.elType is null || !ar.dataType.elType.CanTakeValueOf(v.dataType))
+            var (cx, i, v) = x;
+            if (ar.dataType.elType is not Domain dt)
+                goto bad;
+            if (v is TChar tc 
+                && (cx.db.objects[cx.role.dbobjects[tc.value] ?? -1L]as Domain)?.EqualOrStrongSubtypeOf(dt)!=true)
+                goto bad;
+            if (v.dataType.EqualOrStrongSubtypeOf(dt))
+                return new TArray(ar.dataType, ar.array + (i,v));
+            bad:
                 throw new DBException("22G03", ar.dataType.elType ?? Domain.Null, v.dataType);
-            return new TArray(ar.dataType, ar.array + (i,v));
         }
         internal override int Cardinality()
         {
@@ -935,14 +945,14 @@ namespace Pyrrho.Common
     // shareable: no mutators
     internal sealed class TMetadata : TypedValue
     {
-        readonly CTree<Sqlx, TypedValue> md;
-        public TMetadata(CTree<Sqlx,TypedValue>? m=null) : base(Domain.Metadata)
+        readonly CTree<Qlx, TypedValue> md;
+        public TMetadata(CTree<Qlx,TypedValue>? m=null) : base(Domain.Metadata)
         {
-            md = m ?? CTree<Sqlx,TypedValue>.Empty;
+            md = m ?? CTree<Qlx,TypedValue>.Empty;
         }
         public override string ToString()
         {
-            if (md == CTree<Sqlx, TypedValue>.Empty)
+            if (md == CTree<Qlx, TypedValue>.Empty)
                 return "";
             var sb = new StringBuilder();
             var cm = '{';
@@ -1102,7 +1112,7 @@ namespace Pyrrho.Common
                 if (values[b.key()] is TypedValue v && v.CompareTo(b.value()) != 0)
                     return false;
             for (var b = rs.where.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue sw && sw.Eval(cx) != TBool.True)
+                if (cx.obs[b.key()] is QlValue sw && sw.Eval(cx) != TBool.True)
                     return false;
             return true;
         }
@@ -1179,8 +1189,8 @@ namespace Pyrrho.Common
     internal class TPath : TRow
     {
         internal readonly long matchAlt; 
-        internal TPath(long dp,Context cx) : base(new Domain(-1L,cx,Sqlx.ROW,BList<DBObject>.Empty,0), 
-            new CTree<long, TypedValue>(0, new TArray(new Domain(-1L,Sqlx.ARRAY,Domain.NodeType),CTree<int,TypedValue>.Empty))) 
+        internal TPath(long dp,Context cx) : base(new Domain(-1L,cx,Qlx.ROW,BList<DBObject>.Empty,0), 
+            new CTree<long, TypedValue>(0, new TArray(new Domain(-1L,Qlx.ARRAY,Domain.NodeType),CTree<int,TypedValue>.Empty))) 
         {
             matchAlt = dp;
         }
@@ -1188,10 +1198,11 @@ namespace Pyrrho.Common
         {
             matchAlt = dp;
         }
-        public static TPath operator+(TPath p,TNode n)
+        public static TPath operator+(TPath p,(Context,TNode) x)
         {
+            var (cx,n) = x;
             var a = (TArray)p[0L];
-            return new TPath(p.matchAlt,p.dataType,p.values + (0L, a+(a.Length,n)));
+            return new TPath(p.matchAlt,p.dataType,p.values + (0L, a+(cx,a.Length,n)));
         }
         public static TPath operator+(TPath p,(Context, long,TypedValue)x)
         {
@@ -1200,7 +1211,7 @@ namespace Pyrrho.Common
             if (dt.representation.Contains(k))
                 return new TPath(p.matchAlt,dt,p.values+(k,v));
             return new TPath(p.matchAlt,
-                (Domain)cx.Add(new Domain(dt.defpos,cx,Sqlx.ROW,dt.representation+(k,v.dataType),dt.rowType+k)),
+                (Domain)cx.Add(new Domain(dt.defpos,cx,Qlx.ROW,dt.representation+(k,v.dataType),dt.rowType+k)),
                 p.values+(k,v));
         }
         public static TPath operator +(TPath p, (Context, TypedValue, long) x)
@@ -1210,11 +1221,11 @@ namespace Pyrrho.Common
             if (dt.representation.Contains(k))
             {
                 var a = (TArray)p[k];
-                return new TPath(p.matchAlt, dt, p.values + (k, a+(a.Length,v)));
+                return new TPath(p.matchAlt, dt, p.values + (k, a+(cx,a.Length,v)));
             }
             return new TPath(p.matchAlt,
-                (Domain)cx.Add(new Domain(dt.defpos, cx, Sqlx.ROW,
-                dt.representation + (k, new Domain(-1L,Sqlx.ARRAY, v.dataType)), dt.rowType + k)),
+                (Domain)cx.Add(new Domain(dt.defpos, cx, Qlx.ROW,
+                dt.representation + (k, new Domain(-1L,Qlx.ARRAY, v.dataType)), dt.rowType + k)),
                 p.values + (k, v));
         }
         internal override TypedValue this[int i] => ((TArray)this[0L])?[i]??TNull.Value;
@@ -1240,7 +1251,7 @@ namespace Pyrrho.Common
         /// <summary>
         /// Constructor: a new Set
         /// </summary>
-        internal TSet(Domain dt) : base(new Domain(-1L, Sqlx.SET, dt))
+        internal TSet(Domain dt) : base(new Domain(-1L, Qlx.SET, dt))
         {
             tree = CTree<TypedValue, bool>.Empty;
         }
@@ -1436,7 +1447,7 @@ namespace Pyrrho.Common
         /// Constructor: a new Multiset
         /// </summary>
         /// <param name="tr">The transaction</param>
-        internal TMultiset(Domain dt) : base (new Domain(-1L,Sqlx.MULTISET,dt))
+        internal TMultiset(Domain dt) : base (new Domain(-1L,Qlx.MULTISET,dt))
         {
             tree = BTree<TypedValue,long?>.Empty;
             count = 0;
@@ -1758,10 +1769,10 @@ namespace Pyrrho.Common
     internal class TMeta : TypedValue
     {
         public readonly long defpos;
-        public readonly Sqlx kind;
+        public readonly Qlx kind;
         public readonly CTree<string, TypedValue> props;
         public readonly DBObject? dbo;
-        public TMeta(long dp,Sqlx k,Context cx) : base(Domain.Content) 
+        public TMeta(long dp,Qlx k,Context cx) : base(Domain.Content) 
         {
             defpos = dp;
             kind = k;

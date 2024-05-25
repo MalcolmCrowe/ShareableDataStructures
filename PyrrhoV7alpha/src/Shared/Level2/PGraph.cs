@@ -11,7 +11,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Text;
-using System.Xml.Linq;
+using System.Xml;
 namespace Pyrrho.Level2
 {
     /// <summary>
@@ -21,7 +21,9 @@ namespace Pyrrho.Level2
     {
         internal PNodeType(string nm,PType pt,NodeType dm,Context cx)
             :base(Type.PNodeType,nm,dm,dm.super,-1L,pt.ppos,cx)
-        {  }
+        {
+            dm.AddNodeOrEdgeType(cx);
+        }
         internal PNodeType(Type t,string nm, long p, NodeType dm, Context cx)
             : base(t, nm, dm, dm.super, -1L, p, cx)
         { }
@@ -34,10 +36,7 @@ namespace Pyrrho.Level2
         { }
         protected PNodeType(Type t, Reader rdr):base(t, rdr) { }
         protected PNodeType(PNodeType x,Writer wr) :base(x,wr) 
-        {
-            var nt = (NodeType)dataType;
-            dataType = (NodeType)nt.Fix(wr.cx);
-        }
+        { }
         protected override Physical Relocate(Writer wr)
         {
             return new PNodeType(this,wr);
@@ -58,26 +57,31 @@ namespace Pyrrho.Level2
             long lt, long at, long pp, Context cx) 
             : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) 
         {
-            if (lt < 0 || at < 0)
+            if (lt <= 0 || at <= 0)
                 throw new PEException("PE20801");
             leavingType = lt;
             arrivingType = at;
+            nt = (EdgeType)dataType;
+            nt = nt + (EdgeType.LeavingType, lt) + (EdgeType.ArrivingType, at);
+            for (var b = un.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key().defpos] is EdgeType et)
+                    nt = nt + (EdgeType.LeaveIx, et.leaveIx) + (EdgeType.LeaveCol, et.leaveCol)
+                        +(EdgeType.ArriveIx,et.arriveIx)+ (EdgeType.ArriveCol, et.arriveCol);
+            cx.Add(nt);
+            dataType = nt;
+            nt.AddNodeOrEdgeType(cx);
         }
         public PEdgeType(Reader rdr) : base(Type.PEdgeType, rdr) 
         { }
         protected PEdgeType(Type t, Reader rdr) : base(t, rdr) { }
         protected PEdgeType(PEdgeType x, Writer wr) : base(x, wr) 
         {
-            var et = (EdgeType)dataType;
             leavingType = wr.cx.Fix(x.leavingType);
             arrivingType = wr.cx.Fix(x.arrivingType);
-            dataType = (EdgeType)et.Fix(wr.cx);
-   //         GraphUse(wr.cx, defpos, leavingType, arrivingType);
+            dataType = (Domain)dataType.Fix(wr.cx);
         }
         protected override Physical Relocate(Writer wr)
         {
-            leavingType = wr.cx.Fix(leavingType);
-            arrivingType = wr.cx.Fix(arrivingType);
             return new PEdgeType(this, wr);
         }
         internal override void OnLoad(Reader rdr)

@@ -1,6 +1,7 @@
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
+using Pyrrho.Level5;
 using System;
 using System.Diagnostics.CodeAnalysis;
 
@@ -183,33 +184,60 @@ namespace Pyrrho.Level2
             for (var c = tabledefpos.First(); c != null; c = c.Next())
                 if (cx._Ob(c.key()) is Table tb)
                 {
-                    var dm = tb._PathDomain(cx);
-                    for (var b = dm.First(); b != null; b = b.Next())
+        //            var dm = tb._PathDomain(cx);
+                    for (var b = tb.First(); b != null; b = b.Next())
                     {
-                        if (b.value() is not long p || dm.representation[p] is not Domain dv)
+                        if (b.value() is not long p || tb.representation[p] is not Domain dv)
                             throw new PEException("PE10701");
                         if (fields[p] is TypedValue v
                             && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
                         {
-                            var nv = dm.Coerce(cx, v);
+                            var nv = dv.Coerce(cx, v);
                             fields += (p, nv);
                         }
                     }
                 }
         }
-        internal override void AddRow(Table tt, TableRow now, Context cx)
+        internal override Table AddRow(Table tt, TableRow now, Context cx)
         {
+            tt += now;
             if (prevrec is null) throw new PEException("PE40408");
-  /*          if (tt.defpos == tabledefpos && tt is NodeType tn
-                    && tn.rowType[0] is long p && now.vals[p] is TChar id
-                    && prevrec.vals[p] is TChar od && id.value != od.value
-                    && cx.db.nodeIds[id.value] is TypedValue tv)
+            if (tt is EdgeType et)
             {
-                if (tn is EdgeType te)
-                    cx.db = cx.db - (TEdge)tv + new TEdge(defpos, te, now.vals);
-                else
-                    cx.db = cx.db - (TNode)tv + new TNode(defpos, tn, now.vals);
-            } */
+                if (now.vals[et.leaveCol] == TNull.Value || now.vals[et.arriveCol] == TNull.Value)
+                    throw new PEException("PE6901");
+                if (et.FindPrimaryIndex(cx) is null)
+                {
+                    if (cx._Od(et.leavingType) is NodeType lt
+                        && prevrec.vals[et.leaveCol] is TInt ol && ol.ToLong() is long lo
+                       && now.vals[et.leaveCol] is TInt tl && tl.ToLong() is long li
+                       && lo!=li)
+                    {
+                        var cl = lt.sindexes[et.leaveCol] ?? CTree<long, CTree<long, bool>>.Empty;
+                        cl -= lo;
+                        var cc = cl[li] ?? CTree<long, bool>.Empty;
+                        cc += (now.defpos, true);
+                        cl += (li, cc);
+                        lt += (Table.SysRefIndexes, lt.sindexes + (et.leaveCol, cl));
+                        cx.Add(lt);
+                        cx.db += lt;
+                    }
+                    if (cx._Od(et.arrivingType) is NodeType at
+                        && prevrec.vals[et.leaveCol] is TInt oa && oa.ToLong() is long ao
+                        && now.vals[et.arriveCol] is TInt ta && ta.ToLong() is long ai
+                        && ao!=ai)
+                    {
+                        var ca = at.sindexes[et.arriveCol] ?? CTree<long, CTree<long, bool>>.Empty;
+                        ca -= ao;
+                        var cc = ca[ai] ?? CTree<long, bool>.Empty;
+                        cc += (now.defpos, true);
+                        ca += (ai, cc);
+                        at += (Table.SysRefIndexes, at.sindexes + (et.arriveCol, ca));
+                        cx.Add(at);
+                        cx.db += at;
+                    }
+                }
+            }
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x
@@ -221,6 +249,7 @@ namespace Pyrrho.Level2
                         x += (nk, defpos);
                         cx.db += (x, cx.db.loadpos);
                     }
+            return (Table)cx.Add(tt);
         }
         public override long Affects => _defpos;
         public override long defpos => _defpos;
@@ -236,7 +265,7 @@ namespace Pyrrho.Level2
             : base(Type.Update1,old, tb, fl, pp, cx)
         {
             if (cx.db==null || cx.db.user?.defpos != cx.db.owner)
-                throw new DBException("42105").Add(Sqlx.USER);
+                throw new DBException("42105").Add(Qlx.USER);
             _classification = lv;
         }
         protected Update1(Type t, TableRow old, CTree<long, bool> tb, CTree<long, TypedValue> fl, Level lv,
@@ -244,7 +273,7 @@ namespace Pyrrho.Level2
             :base(t,old,tb,fl,pp,cx) 
         {
             if (cx.db == null || cx.db.user?.defpos != cx.db.owner)
-                throw new DBException("42105").Add(Sqlx.USER);
+                throw new DBException("42105").Add(Qlx.USER);
             _classification = lv;
         }
         public Update1(Reader rdr) : base(Type.Update1, rdr)

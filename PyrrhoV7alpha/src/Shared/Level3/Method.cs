@@ -85,9 +85,9 @@ namespace Pyrrho.Level3
         {
             if (cx.role==null || infos[cx.role.defpos] is not ObInfo oi
              || !oi.priv.HasFlag(Grant.Privilege.Execute))
-                throw new DBException("42105").Add(Sqlx.EXECUTE);
+                throw new DBException("42105").Add(Qlx.EXECUTE);
             var a = cx.GetActivation();
-            var vr = (SqlValue?)cx.obs[var]; // for a constructor, vr is null!
+            var vr = (QlValue?)cx.obs[var]; // for a constructor, vr is null!
             if (cx.db.objects[udType.defpos] is not UDType ut)
                 return cx;
             a.var = vr;
@@ -128,9 +128,9 @@ namespace Pyrrho.Level3
                     if (act.values[p.val] is TypedValue v)
                     {
                         var m = p.paramMode;
-                        if (m == Sqlx.INOUT || m == Sqlx.OUT)
+                        if (m == Qlx.INOUT || m == Qlx.OUT)
                             acts[i] = v;
-                        if (m == Sqlx.RESULT)
+                        if (m == Qlx.RESULT)
                             r = v;
                     }
             if (this is Method mt && mt.methodType == PMethod.MethodType.Constructor)

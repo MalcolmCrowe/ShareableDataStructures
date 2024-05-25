@@ -14,10 +14,10 @@ using Pyrrho.Level3;
 namespace Pyrrho.Common
 {
     /// <summary>
-    /// Sqlx enumerates the tokens of SQL2011, mostly defined in the standard
+    /// Qlx enumerates the tokens of SQL2011, mostly defined in the standard
     /// The keys is only roughly alphabetic
     /// </summary>
-    public enum Sqlx
+    public enum Qlx
     {
         Null = 0,
         // reserved words from GQL ISO 39075 (SQL only words no longer reserved in Pyrrho)
@@ -352,325 +352,325 @@ namespace Pyrrho.Common
         CALLED = 324,
         CAPTION = 325, // Pyrrho 4.5
         CASCADE = 326,
-        CASCADED = 327,
-        CATALOG = 328,
-        CATALOG_NAME = 329,
-        CHAIN = 330,
-        CHARACTER = 331,
-        CHARACTER_SET_CATALOG = 332,
-        CHARACTER_SET_NAME = 333,
-        CHARACTER_SET_SCHEMA = 334,
-        CHARACTERS = 335,
-        CHECK = 336,
-        CLASS_ORIGIN = 337, // CLOB see 40
-        COBOL = 338, 
-        COLLATE = 339,
-        COLLATION = 340,
-        COLLATION_CATALOG = 341,
-        COLLATION_NAME = 342,
-        COLLATION_SCHEMA = 343,
-        COLLECT = 344,
-        COLUMN = 345,
-        COLUMN_NAME = 346,
-        COMMAND_FUNCTION = 347,
-        COMMAND_FUNCTION_CODE = 348,
-        COMMIT_COMMAND = 349, // GQL
-        COMMITTED = 350,
-        CONDITION = 351,
-        CONDITION_NUMBER = 352,
-        CONNECT = 353,
-        CONNECTING = 354, // GQL
-        CONNECTION = 355,
-        CONNECTION_NAME = 356,
-        CONSTRAINT = 357,
-        CONSTRAINT_CATALOG = 358,
-        CONSTRAINT_NAME = 359,
-        CONSTRAINT_SCHEMA = 360,
-        CONSTRAINTS = 361,
-        CONSTRUCTOR = 362,
-        CONTAINS = 363,
-        CONVERT = 364,
-        CONTENT = 365,
-        CONTINUE = 366,
-        CORR = 367,
-        CORRESPONDING = 368,
-        COVAR_POP = 359,
-        COVAR_SAMP = 370,
-        CREATE_GRAPH_STATEMENT = 371, // GQL
-        CREATE_GRAPH_TYPE_STATEMENT = 372, // GQL
-        CREATE_SCHEMA_STATEMENT = 373, // GQL
-        CROSS = 374,
-        CSV = 375, // Pyrrho 5.5
-        CUBE = 376,
-        CUME_DIST = 377,
-        CURATED = 378, // Pyrrho
-        CURRENT = 379,
-        CURRENT_CATALOG = 380,
-        CURRENT_DEFAULT_TRANSFORM_GROUP = 381,
-        CURRENT_PATH = 382,
-        CURRENT_ROLE = 383,
-        CURRENT_ROW = 384,
-        CURRENT_TRANSFORM_GROUP_FOR_TYPE = 385,
-        CURRENT_USER = 386, // CURSOR see 65
-        CURSOR_NAME = 387,
-        CYCLE = 388, // DATE see 67
-        DATA = 389,
-        DATABASE = 390, // Pyrrho
-        DATETIME_INTERVAL_CODE = 391,
-        DATETIME_INTERVAL_PRECISION = 392,
-        DEALLOCATE = 393,
-        DECFLOAT = 394,
-        DECLARE = 395,
-        DEFAULT = 396,
-        DEFAULTS = 397,
-        DEFERRABLE = 398,
-        DEFERRED = 399,
-        DEFINE = 400,
-        DEFINED = 401,
-        DEFINER = 402,
-        DEGREE = 403,
-        DENSE_RANK = 404,
-        DELETE_STATEMENT = 405, // GQL
-        DEPTH = 406,
-        DEREF = 407,
-        DERIVED = 408,
-        DESCRIBE = 409,
-        DESCRIPTOR = 410,
-        DESTINATION = 411, // GQL pre
-        DETERMINISTIC = 412,
-        DIAGNOSTICS = 413,
-        DIRECTED = 414, // GQL
-        DISPATCH = 415,
-        DISCONNECT = 416,
-        DO = 417, // from vol 4
-        DOCARRAY = 418, // Pyrrho 5.1
-        DOCUMENT = 419, // Pyrrho 5.1
-        DOMAIN = 420,
-        DROP_GRAPH_STATEMENT = 421, // GQL
-        DROP_GRAPH_TYPE_STATEMENT = 422, // GQL
-        DROP_SCHEMA_STATEMENT = 423, // GQL
-        DYNAMIC_FUNCTION = 424,
-        DYNAMIC_FUNCTION_CODE = 425,
-        EACH = 426,
-        EDGE = 427, // 7.03 EDGETYPE is 461
-        EDGES = 428, // GQL
-        ELEMENT = 429,
-        ELEMENTID = 430, // Pyrrho 7.05
-        ELEMENTS = 431, // GQL pre
-        ELSEIF = 432, // from vol 4
-        EMPTY = 433,
-        ENFORCED = 434,
-        ENTITY = 435, // Pyrrho 4.5
-        END_EXEC = 436, // misprinted in SQL2023 as END-EXEC
-        END_FRAME = 437,
-        END_PARTITION = 438,
-        EOF = 439,	// Pyrrho 0.1
-        EQUALS = 440,
-        ESCAPE = 441,
-        ETAG = 442, // Pyrrho Metadata 7.0
-        EVERY = 443,
-        EXCLUDE = 444,
-        EXCLUDING = 445,
-        EXEC = 446,
-        EXECUTE = 447,
-        EXIT = 448, // from vol 4
-        EXTERNAL = 449,
-        EXTRACT = 450,
-        FETCH = 451,
-        FILTER_STATEMENT = 452, // GQL
-        FINAL = 453,
-        FIRST = 454, // GQL
-        FIRST_VALUE = 455,
-        FLAG = 456,
-        FOLLOWING = 457,
-        FOR_STATEMENT = 458, // GQL
-        FOREIGN = 459,
-        EDGETYPE = 460, // Metadata 7.03 must be 461
-        FRAME_ROW = 461,
-        FREE = 462,
-        FORTRAN = 463,
-        FOUND = 464,
-        FULL = 465,
-        FUNCTION = 466,
-        FUSION = 467,
-        G = 468,
-        GENERAL = 469,
-        GENERATED = 470,
-        GET = 471,
-        GLOBAL = 472,
-        GO = 473,
-        GOTO = 474,
-        GRANT = 475,
-        GRANTED = 476,
-        GRAPH = 477, //7.03
-        GREATEST = 478,
-        GROUPING = 479,
-        GROUPS = 480,
-        HANDLER = 481, // vol 4 
-        HIERARCHY = 482,
-        HISTOGRAM = 483, // Pyrrho 4.5
-        HOLD = 484,
-        HTTP = 485,
-        HTTPDATE = 486, // Pyrrho 7 RFC 7231
-        ID = 487, // Distinguished from the token type Id from Pyrrho 7.05
-        IDENTITY = 488,
-        IGNORE = 489,
-        IMMEDIATE = 490,
-        IMMEDIATELY = 491,
-        IMPLEMENTATION = 492,
-        INCLUDING = 493,
-        INDICATOR = 494,
-        INITIAL = 495,
-        INNER = 496,
-        INOUT = 497,
-        INSENSITIVE = 498,
-        INCREMENT = 499,
-        INITIALLY = 500,
-        INPUT = 501,
-        INSERT_STATEMENT = 502, // GQL
-        INSTANCE = 503,
-        INSTANTIABLE = 504,
-        INSTEAD = 505,
-        INTERSECTION = 506, // INTERVAL is 152
-        INTO = 507,
-        INVERTS = 508, // Pyrrho Metadata 5.7
-        INVOKER = 509,
-        IRI = 510, // Pyrrho 7
-        ISOLATION = 511,
-        ITERATE = 512, // vol 4
-        JOIN = 513,
+        POSITION = 327, // Pyrrho 7.08 must be 327
+        CASCADED = 328,
+        CATALOG = 329,
+        CATALOG_NAME = 330,
+        CHAIN = 331,
+        CHARACTER = 332,
+        CHARACTER_SET_CATALOG = 333,
+        CHARACTER_SET_NAME = 334,
+        CHARACTER_SET_SCHEMA = 335,
+        CHARACTERS = 336,
+        CHECK = 337,
+        CLASS_ORIGIN = 338, // CLOB see 40
+        COBOL = 339, 
+        COLLATE = 340,
+        COLLATION = 341,
+        COLLATION_CATALOG = 342,
+        COLLATION_NAME = 343,
+        COLLATION_SCHEMA = 344,
+        COLLECT = 345,
+        COLUMN = 346,
+        COLUMN_NAME = 347,
+        COMMAND_FUNCTION = 348,
+        COMMAND_FUNCTION_CODE = 349,
+        COMMIT_COMMAND = 350, // GQL
+        COMMITTED = 351,
+        CONDITION = 352,
+        CONDITION_NUMBER = 353,
+        CONNECT = 354,
+        CONNECTING = 355, // GQL
+        CONNECTION = 356,
+        CONNECTION_NAME = 357,
+        CONSTRAINT = 358,
+        CONSTRAINT_CATALOG = 359,
+        CONSTRAINT_NAME = 360,
+        CONSTRAINT_SCHEMA = 361,
+        CONSTRAINTS = 362,
+        CONSTRUCTOR = 363,
+        CONTAINS = 364,
+        CONVERT = 365,
+        CONTENT = 366,
+        CONTINUE = 367,
+        CORR = 368,
+        CORRESPONDING = 369,
+        COVAR_POP = 370,
+        COVAR_SAMP = 371,
+        CREATE_GRAPH_STATEMENT = 372, // GQL
+        CREATE_GRAPH_TYPE_STATEMENT = 373, // GQL
+        CREATE_SCHEMA_STATEMENT = 374, // GQL
+        CROSS = 375,
+        CSV = 376, // Pyrrho 5.5
+        CUBE = 377,
+        CUME_DIST = 378,
+        CURATED = 379, // Pyrrho
+        CURRENT = 380,
+        CURRENT_CATALOG = 381,
+        CURRENT_DEFAULT_TRANSFORM_GROUP = 382,
+        CURRENT_PATH = 383,
+        CURRENT_ROLE = 384,
+        CURRENT_ROW = 385,
+        CURRENT_TRANSFORM_GROUP_FOR_TYPE = 386,
+        CURRENT_USER = 387, // CURSOR see 65
+        CURSOR_NAME = 388,
+        CYCLE = 389, // DATE see 67
+        DATA = 390,
+        DATABASE = 391, // Pyrrho
+        DATETIME_INTERVAL_CODE = 392,
+        DATETIME_INTERVAL_PRECISION = 393,
+        DEALLOCATE = 394,
+        DECFLOAT = 395,
+        DECLARE = 396,
+        DEFAULT = 397,
+        DEFAULTS = 398,
+        DEFERRABLE = 399,
+        DEFERRED = 400,
+        DEFINE = 401,
+        DEFINED = 402,
+        DEFINER = 403,
+        DEGREE = 404,
+        DENSE_RANK = 405,
+        DELETE_STATEMENT = 406, // GQL
+        DEPTH = 407,
+        DEREF = 408,
+        DERIVED = 409,
+        DESCRIBE = 410,
+        DESCRIPTOR = 411,
+        DESTINATION = 412, // GQL pre
+        DETERMINISTIC = 413,
+        DIAGNOSTICS = 414,
+        DIRECTED = 415, // GQL
+        DISPATCH = 416,
+        DISCONNECT = 417,
+        DO = 418, // from vol 4
+        DOCARRAY = 419, // Pyrrho 5.1
+        DOCUMENT = 420, // Pyrrho 5.1
+        DOMAIN = 421,
+        DROP_GRAPH_STATEMENT = 422, // GQL
+        DROP_GRAPH_TYPE_STATEMENT = 423, // GQL
+        DROP_SCHEMA_STATEMENT = 424, // GQL
+        DYNAMIC_FUNCTION = 425,
+        DYNAMIC_FUNCTION_CODE = 426,
+        EACH = 427,
+        EDGE = 428, // 7.03 EDGETYPE is 461
+        EDGES = 429, // GQL
+        ELEMENT = 430,
+        ELEMENTID = 431, // Pyrrho 7.05
+        ELEMENTS = 432, // GQL pre
+        ELSEIF = 433, // from vol 4
+        EMPTY = 434,
+        ENFORCED = 435,
+        ENTITY = 436, // Pyrrho 4.5
+        END_EXEC = 437, // misprinted in SQL2023 as END-EXEC
+        END_FRAME = 438,
+        END_PARTITION = 439,
+        EOF = 440,	// Pyrrho 0.1
+        EQUALS = 441,
+        ESCAPE = 442,
+        ETAG = 443, // Pyrrho Metadata 7.0
+        EVERY = 444,
+        EXCLUDE = 445,
+        EXCLUDING = 446,
+        EXEC = 447,
+        EXECUTE = 448,
+        EXIT = 449, // from vol 4
+        EXTERNAL = 450,
+        EXTRACT = 451,
+        FETCH = 452,
+        FILTER_STATEMENT = 453, // GQL
+        FINAL = 454,
+        FIRST = 455, // GQL
+        FIRST_VALUE = 456,
+        FLAG = 457,
+        FOLLOWING = 458,
+        FOR_STATEMENT = 459, // GQL
+        FOREIGN = 460,
+        EDGETYPE = 461, // Metadata 7.03 must be 461
+        FRAME_ROW = 462,
+        FREE = 463,
+        FORTRAN = 464,
+        FOUND = 465,
+        FULL = 466,
+        FUNCTION = 467,
+        FUSION = 468,
+        G = 469,
+        GENERAL = 470,
+        GENERATED = 471,
+        GET = 472,
+        GLOBAL = 473,
+        GO = 474,
+        GOTO = 475,
+        GRANT = 476,
+        GRANTED = 477,
+        GRAPH = 478, //7.03
+        GREATEST = 479,
+        GROUPING = 480,
+        GROUPS = 481,
+        HANDLER = 482, // vol 4 
+        HIERARCHY = 483,
+        HISTOGRAM = 484, // Pyrrho 4.5
+        HOLD = 485,
+        HTTP = 486,
+        HTTPDATE = 487, // Pyrrho 7 RFC 7231
+        ID = 488, // Distinguished from the token type Id from Pyrrho 7.05
+        IDENTITY = 489,
+        IGNORE = 490,
+        IMMEDIATE = 491,
+        IMMEDIATELY = 492,
+        IMPLEMENTATION = 493,
+        INCLUDING = 494,
+        INDICATOR = 495,
+        INITIAL = 496,
+        INNER = 497,
+        INOUT = 498,
+        INSENSITIVE = 499,
+        INCREMENT = 500,
+        INITIALLY = 501,
+        INPUT = 502,
+        INSERT_STATEMENT = 503, // GQL
+        INSTANCE = 504,
+        INSTANTIABLE = 505,
+        INSTEAD = 506,
+        INTERSECTION = 507, // INTERVAL is 152
+        INTO = 508,
+        INVERTS = 509, // Pyrrho Metadata 5.7
+        INVOKER = 510,
+        IRI = 511, // Pyrrho 7
+        ISOLATION = 512,
+        ITERATE = 513, // vol 4
         METADATA = 514, // must be 514
-        JSON = 515,
-        JSON_ARRAY = 516,
-        JSON_ARRAYAGG = 517,
-        JSON_EXISTS = 518,
-        JSON_OBJECT = 519,
-        JSON_OBJECTAGG = 520,
-        JSON_QUERY = 521,
-        JSON_SCALAR = 522,
-        JSON_SERIALIZE = 523,
-        JSON_TABLE = 524,
-        JSON_TABLE_PRIMITIVE = 525,
-        JSON_VALUE = 526,
-        K = 527,
-        KEEP = 528, // GQL
-        KEY = 529,
-        KEY_MEMBER = 530,
-        KEY_TYPE = 531,
-        LABEL = 532,  // GQL
-        LABELLED = 533, // GQL
+        JOIN = 515,
+        JSON = 516,
+        JSON_ARRAY = 517,
+        JSON_ARRAYAGG = 518,
+        JSON_EXISTS = 519,
+        JSON_OBJECT = 520,
+        JSON_OBJECTAGG = 521,
+        JSON_QUERY = 522,
+        JSON_SCALAR = 523,
+        JSON_SERIALIZE = 524,
+        JSON_TABLE = 525,
+        JSON_TABLE_PRIMITIVE = 526,
+        JSON_VALUE = 527,
+        K = 528,
+        KEEP = 529, // GQL
+        KEY = 530,
+        KEY_MEMBER = 531,
+        KEY_TYPE = 532,
+        LABEL = 533,  // GQL
         NODETYPE = 534, // Metadata 7.03 must be 534
-        LABELS = 535, // Pyrrho 7.05
-        LAG = 536,
-        LANGUAGE = 537,
-        LARGE = 538,
-        LAST = 539,
-        LAST_DATA = 540, // Pyrrho v7
-        LAST_VALUE = 541,
-        LATERAL = 542,
-        LEAD = 543,
-        LEAST = 544,
-        LEAVE = 545, // vol 4
-        LEAVING = 546, // Pyrrho Metadata 7.07
-        LEGEND = 547, // Pyrrho Metadata 4.8
-        LENGTH = 548,
-        LET_STATEMENT = 549, //GQL
-        LEVEL = 550,
-        LIKE_REGEX = 551,
-        LINE = 552, // Pyrrho 4.5
-        LISTAGG = 553,
-        LOCALTIME = 554,
-        LOCALTIMESTAMP = 555,
-        LOCATOR = 556,
-        LOOP = 557,  // vol 4
-        LPAD = 558,
-        M = 559,
-        MAP = 560,
-        MATCH_STATEMENT = 561, // GQL
-        MATCH_RECOGNIZE = 562,
-        MATCHED = 563,
-        MATCHES = 564,
-        MEMBER = 565,
-        MERGE = 566,
-        METHOD = 567,
-        MAXVALUE = 568,
-        MESSAGE_LENGTH = 569,
-        MESSAGE_OCTET_LENGTH = 570,
-        MESSAGE_TEXT = 571, // METADATA is 514
-        MILLI = 572, // Pyrrho 7
-        MIME = 573, // Pyrrho 7
-        MINVALUE = 574,
-        MONOTONIC = 575, // Pyrrho 5.7
-        MORE = 576,
-        MULTIPLICITY = 577, // Pyrrho 7.03
-        MUMPS = 578,
-        NAME = 579,
-        NAMES = 580,
-        NESTING = 581,
-        MATCH_NUMBER = 582,
-        MODIFIES = 583,
-        MODULE = 584,
-        NATIONAL = 585,
-        NATURAL = 586, // NCHAR 171 NCLOB 172
-        NEW = 587,
-        NFC = 588,  // GQL Normalization forms
-        NFD = 589,  // GQL
-        NFKC = 590,  // GQL
-        NFKD = 591,  // GQL
-        NO = 592,
-        NODE = 593, // 7.03 NODETYPE is 534
-        NONE = 594,
-        NORMALIZED = 595,
-        NULLABLE = 596,
-        NUMBER = 597,
-        NTH_VALUE = 598,
-        NTILE = 599, // NULL is 177
-        OBJECT = 600,
-        OCCURRENCE = 601,
-        OCCURRENCES_REGEX = 602,
-        OCTETS = 603,
-        OLD = 604,
-        OMIT = 605,
-        ON = 606,
-        ONE = 607,
-        ONLY = 608,
-        OPEN = 609,
-        OPTION = 610,
-        OPTIONS = 611,
-        ORDER_BY_AND_PAGE_STATEMENT = 612, // GQL
-        ORDERING = 613,
-        ORDINALITY = 614, // GQL
-        OTHERS = 615,
-        OUT = 616,
-        OUTER = 617,
-        OUTPUT = 618,
-        OVER = 619,
-        OVERLAPS = 620,
-        OVERLAY = 621,
-        OVERRIDING = 622,
-        OWNER = 623, // Pyrrho
-        P = 624,
-        PAD = 625,
-        PARAMETER_MODE = 626,
-        PARAMETER_NAME = 627,
-        PARAMETER_ORDINAL_POSITION = 628,
-        PARAMETER_SPECIFIC_CATALOG = 629,
-        PARAMETER_SPECIFIC_NAME = 630,
-        PARAMETER_SPECIFIC_SCHEMA = 631,
-        PARTIAL = 632,
-        PARTITION = 633,
-        PASCAL = 634,
-        PATTERN = 635,
-        PER = 636,
-        PERCENT = 637,
-        PERCENT_RANK = 638,
-        PERIOD = 639,
-        PIE = 640, // Pyrrho 4.5
-        PLACING = 641,
-        PL1 = 642,
-        POINTS = 643, // Pyrrho 4.5
-        PORTION = 644,
-        POSITION = 645,
+        LABELLED = 535, // GQL
+        LABELS = 536, // Pyrrho 7.05
+        LAG = 537,
+        LANGUAGE = 538,
+        LARGE = 539,
+        LAST = 540,
+        LAST_DATA = 541, // Pyrrho v7
+        LAST_VALUE = 542,
+        LATERAL = 543,
+        LEAD = 544,
+        LEAST = 545,
+        LEAVE = 546, // vol 4
+        LEAVING = 547, // Pyrrho Metadata 7.07
+        LEGEND = 548, // Pyrrho Metadata 4.8
+        LENGTH = 549,
+        LET_STATEMENT = 550, //GQL
+        LEVEL = 551,
+        LIKE_REGEX = 552,
+        LINE = 553, // Pyrrho 4.5
+        LISTAGG = 554,
+        LOCALTIME = 555,
+        LOCALTIMESTAMP = 556,
+        LOCATOR = 557,
+        LOOP = 558,  // vol 4
+        LPAD = 559,
+        M = 560,
+        MAP = 561,
+        MATCH_STATEMENT = 562, // GQL
+        MATCH_RECOGNIZE = 563,
+        MATCHED = 564,
+        MATCHES = 565,
+        MEMBER = 566,
+        MERGE = 567,
+        METHOD = 568,
+        MAXVALUE = 569,
+        MESSAGE_LENGTH = 570,
+        MESSAGE_OCTET_LENGTH = 571,
+        MESSAGE_TEXT = 572, // METADATA is 514
+        MILLI = 573, // Pyrrho 7
+        MIME = 574, // Pyrrho 7
+        MINVALUE = 575,
+        MONOTONIC = 576, // Pyrrho 5.7
+        MORE = 577,
+        MULTIPLICITY = 578, // Pyrrho 7.03
+        MUMPS = 579,
+        NAME = 580,
+        NAMES = 581,
+        NESTING = 582,
+        MATCH_NUMBER = 583,
+        MODIFIES = 584,
+        MODULE = 585,
+        NATIONAL = 586,
+        NATURAL = 587, // NCHAR 171 NCLOB 172
+        NEW = 588,
+        NFC = 589,  // GQL Normalization forms
+        NFD = 590,  // GQL
+        NFKC = 591,  // GQL
+        NFKD = 592,  // GQL
+        NO = 593,
+        NODE = 594, // 7.03 NODETYPE is 534
+        NONE = 595,
+        NORMALIZED = 596,
+        NULLABLE = 597,
+        NUMBER = 598,
+        NTH_VALUE = 599,
+        NTILE = 600, // NULL is 177
+        OBJECT = 601,
+        OCCURRENCE = 602,
+        OCCURRENCES_REGEX = 603,
+        OCTETS = 604,
+        OLD = 605,
+        OMIT = 606,
+        ON = 607,
+        ONE = 608,
+        ONLY = 609,
+        OPEN = 610,
+        OPTION = 611,
+        OPTIONS = 612,
+        ORDER_BY_AND_PAGE_STATEMENT = 613, // GQL
+        ORDERING = 614,
+        ORDINALITY = 615, // GQL
+        OTHERS = 616,
+        OUT = 617,
+        OUTER = 618,
+        OUTPUT = 619,
+        OVER = 620,
+        OVERLAPS = 621,
+        OVERLAY = 622,
+        OVERRIDING = 623,
+        OWNER = 624, // Pyrrho
+        P = 625,
+        PAD = 626,
+        PARAMETER_MODE = 627,
+        PARAMETER_NAME = 628,
+        PARAMETER_ORDINAL_POSITION = 629,
+        PARAMETER_SPECIFIC_CATALOG = 630,
+        PARAMETER_SPECIFIC_NAME = 631,
+        PARAMETER_SPECIFIC_SCHEMA = 632,
+        PARTIAL = 633,
+        PARTITION = 634,
+        PASCAL = 635,
+        PATTERN = 636,
+        PER = 637,
+        PERCENT = 638,
+        PERCENT_RANK = 639,
+        PERIOD = 640,
+        PIE = 641, // Pyrrho 4.5
+        PLACING = 642,
+        PL1 = 643,
+        POINTS = 644, // Pyrrho 4.5
+        PORTION = 645,// POSITION is 327 but is not a reserved word
         POSITION_REGEX = 646,
         PRECEDES = 647,
         PRECEDING = 648,
@@ -895,7 +895,7 @@ namespace Pyrrho.Common
         internal string signal; // Compatible with GQL
         internal object[] objects; // additional obs for insertion in (possibly localised) message format
         // diagnostic info (there is an active transaction unless we have just done a rollback)
-        internal ATree<Sqlx, TypedValue> info = new BTree<Sqlx, TypedValue>(Sqlx.TRANSACTION_ACTIVE, new TInt(1));
+        internal ATree<Qlx, TypedValue> info = new BTree<Qlx, TypedValue>(Qlx.TRANSACTION_ACTIVE, new TInt(1));
         readonly TChar iso = new ("ISO 39075");
         readonly TChar pyrrho = new ("Pyrrho");
         /// <summary>
@@ -922,29 +922,29 @@ namespace Pyrrho.Common
         /// <param name="k">diagnostic key as in SQL2023 or GQL</param>
         /// <param name="v">value of this diagnostic</param>
         /// <returns>this (so we can chain diagnostics)</returns>
-        internal DBException Add(Sqlx k, TypedValue? v = null)
+        internal DBException Add(Qlx k, TypedValue? v = null)
         {
-            ATree<Sqlx, TypedValue>.Add(ref info, k, v ?? TNull.Value);
+            ATree<Qlx, TypedValue>.Add(ref info, k, v ?? TNull.Value);
             return this;
         }
         internal DBException AddType(ObInfo t)
         {
-            Add(Sqlx.TYPE, new TChar(t.ToString()));
+            Add(Qlx.TYPE, new TChar(t.ToString()));
             return this;
         }
         internal DBException AddType(Domain t)
         {
-            Add(Sqlx.TYPE, new TChar(t.ToString()));
+            Add(Qlx.TYPE, new TChar(t.ToString()));
             return this;
         }
         internal DBException AddValue(TypedValue v)
         {
-            Add(Sqlx.VALUE, v);
+            Add(Qlx.VALUE, v);
             return this;
         }
         internal DBException AddValue(Domain t)
         {
-            Add(Sqlx.VALUE, new TChar(t.ToString()));
+            Add(Qlx.VALUE, new TChar(t.ToString()));
             return this;
         }
         /// <summary>
@@ -953,8 +953,8 @@ namespace Pyrrho.Common
         /// <returns>this (so we can chain diagnostics)</returns>
         internal DBException ISO()
         {
-            Add(Sqlx.CLASS_ORIGIN, iso);
-            Add(Sqlx.SUBCLASS_ORIGIN, pyrrho);
+            Add(Qlx.CLASS_ORIGIN, iso);
+            Add(Qlx.SUBCLASS_ORIGIN, pyrrho);
             return this;
         }
         /// <summary>
@@ -963,8 +963,8 @@ namespace Pyrrho.Common
         /// <returns>this (so we can chain diagnostics)</returns>
         internal DBException Pyrrho()
         {
-            Add(Sqlx.CLASS_ORIGIN, pyrrho);
-            Add(Sqlx.SUBCLASS_ORIGIN, pyrrho);
+            Add(Qlx.CLASS_ORIGIN, pyrrho);
+            Add(Qlx.SUBCLASS_ORIGIN, pyrrho);
             return this;
         }
         /// <summary>
@@ -973,8 +973,8 @@ namespace Pyrrho.Common
         /// <returns>this (so we can chain diagnostics)</returns>
         internal DBException Mix()
         {
-            Add(Sqlx.CLASS_ORIGIN, iso);
-            Add(Sqlx.SUBCLASS_ORIGIN, pyrrho);
+            Add(Qlx.CLASS_ORIGIN, iso);
+            Add(Qlx.SUBCLASS_ORIGIN, pyrrho);
             return this;
         }
     }
@@ -1013,7 +1013,7 @@ namespace Pyrrho.Common
         }
     }
     /// <summary>
-    /// Row Version cookie (Sqlx.VERSIONING). See Laiho/Laux 2010.
+    /// Row Version cookie (Qlx.VERSIONING). See Laiho/Laux 2010.
     /// Check allows transactions to find out if another transaction has overritten the row.
     /// RVV is calculated only when required: see affected in Context.
     /// Modified in V7 to conform to RFC 7232.

@@ -3,6 +3,7 @@ using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -122,18 +123,18 @@ namespace Pyrrho.Level3
         {
             for (var b = domain.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is DBObject ob &&
-                        ((p >= Transaction.TransPos && ob is SqlValue sv
+                        ((p >= Transaction.TransPos && ob is QlValue sv
                             && (sv.alias ?? sv.name) == c)
                         || ob.NameFor(cx) == c))
                     return p;
             return -1L;
         }
-        internal virtual BTree<long, TableRow> For(Context cx, MatchStatement ms, SqlNode xn, BTree<long, TableRow>? ds)
+        internal virtual BTree<long, TableRow> For(Context cx, MatchStatement ms, GqlNode xn, BTree<long, TableRow>? ds)
         {
             throw new PEException("PE70300");
         }
         /// <summary>
-        /// Do not use this function in a constructor of a subclass of SqlValue or RowSet
+        /// Do not use this function in a constructor of a subclass of QlValue or RowSet
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="vs"></param>
@@ -158,7 +159,7 @@ namespace Pyrrho.Level3
             return r + (Dependents, os) + (_Depth, d);
         }
         /// <summary>
-        /// Do not use this function in a constructor of a subclass of SqlValue or RowSet
+        /// Do not use this function in a constructor of a subclass of QlValue or RowSet
         /// </summary>
         /// <param name="vs"></param>
         /// <returns></returns>
@@ -618,7 +619,7 @@ namespace Pyrrho.Level3
             if (ob.alias is string s)
                 return s;
             var ci = ob.infos[cx.role.defpos] ?? ob.infos[definer] ??
-                ob.infos[Database.Guest] ?? throw new DBException("42105").Add(Sqlx.OBJECT);
+                ob.infos[Database.Guest] ?? throw new DBException("42105").Add(Qlx.OBJECT);
             return ci.name??"??";
         }
         internal virtual void Note(Context cx,StringBuilder sb,string target="C#")
@@ -634,7 +635,7 @@ namespace Pyrrho.Level3
         {
             if (defpos < Transaction.Analysing || defpos>= Transaction.HeapStart)
                 return true;
-            if (GetType().Name!="SqlValue" && from < 0)
+            if (GetType().Name!="QlValue" && from < 0)
                 return false;
             if (chain is null || chain==BList<Ident>.Empty)
                 return true;
@@ -776,7 +777,7 @@ namespace Pyrrho.Level3
         {
             var rs = cx.obs[f] as RowSet;
             for (var b = rs?.rowType.First(); b != null; b = b.Next())
-                if (cx.obs[b.value() ?? -1L] is SqlValue sv && sv.name == name && name is not null
+                if (cx.obs[b.value() ?? -1L] is QlValue sv && sv.name == name && name is not null
                     && cx.defs[name] is BTree<int, (Iix, Ident.Idents)> t)
                 {
                     var si = sv.domain.infos[cx.role.defpos];
@@ -784,7 +785,7 @@ namespace Pyrrho.Level3
                     cx.undefined -= defpos;
                     cx.defs += (name, new Iix(ix, sv.defpos), ds);
                     for (var c = ds.First(); c != null; c = c.Next())
-                        if (cx.obs[c.value()[cx.sD - 1].Item1.dp] is SqlValue sc && sc.name == c.key())
+                        if (cx.obs[c.value()[cx.sD - 1].Item1.dp] is QlValue sc && sc.name == c.key())
                         {
                             cx.undefined -= sc.defpos;
                             if (si is not null)
@@ -792,7 +793,7 @@ namespace Pyrrho.Level3
                                     cx.db.objects[si.names[c.key()].Item2 ?? -1L] as DBObject);
                             else
                                 sc = new SqlField(sc.defpos, sc.name, -1, defpos, Domain.Content, defpos);
-                            sv = new SqlValueExpr(defpos, cx, Sqlx.DOT, sv, sc, Sqlx.NO);
+                            sv = new SqlValueExpr(defpos, cx, Qlx.DOT, sv, sc, Qlx.NO);
                             cx.Add(sv);
                             cx.Replace(sc, sv);
                             cx.Add(sc);

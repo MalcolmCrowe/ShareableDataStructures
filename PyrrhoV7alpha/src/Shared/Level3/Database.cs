@@ -29,7 +29,7 @@ namespace Pyrrho.Level3
     internal abstract class Basis(BTree<long,object> m)
     {
         public BTree<long, object> mem => m;   // negative keys are for system obs, positive for user-defined obs
-        internal static long _uid = -1000;
+        internal static long _uid = -500;
         static long _dbg = 0;
         internal readonly long dbg = ++_dbg;
         public virtual long lexeroffset => 0;
@@ -144,7 +144,6 @@ namespace Pyrrho.Level3
             Arriving = -469, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Catalog = -247, // BTree<string,long?> DBObject
             Curated = -53, // long
-            EdgeTypes = -471, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType,NodeType,NodeType,EdgeType
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
             KeyLabels = -461, // BTree<CTree<string,bool>,long?> NodeType 
@@ -165,6 +164,8 @@ namespace Pyrrho.Level3
             _Schema = -291, // long: the owner role for the database
             Suffixes = -376, // BTree<string,long?> UDT
             Types = -61, // BTree<Domain,long?> should only be used for system types and unnamed types
+            UnlabelledNodeTypes = -237, // BTree<CTree<long,bool>,long?> Unlabelled NodeType by propertyset
+            UnlabelledEdgeTypes = -238, // BTree<long,BTree<long,BTree<CTree<long,bool>,long?>>> Unlabelled EdgeType by propertyset
             User = -277, // User: always the connection user
             Users = -287; // BTree<string,long?> users defined in the database
         internal virtual long uid => -1;
@@ -199,9 +200,12 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         public CTree<long, string> procedures =>
             (CTree<long, string>?)mem[Procedures] ?? CTree<long, string>.Empty;
-        public BTree<long, BTree<long, BTree<long, long?>>> edgeTypes
-            => (BTree<long, BTree<long, BTree<long, long?>>>?)mem[EdgeTypes] 
-            ?? BTree<long, BTree<long, BTree<long, long?>>>.Empty;
+        internal BTree<CTree<long, bool>, long?> unlabelledNodeTypes =>
+    (BTree<CTree<long, bool>, long?>)(mem[UnlabelledNodeTypes] ?? BTree<CTree<long, bool>, long?>.Empty);
+        internal BTree<long, BTree<long, BTree<CTree<long, bool>, long?>>> unlabelledEdgeTypes =>
+            (BTree<long, BTree<long, BTree<CTree<long, bool>, long?>>>)(mem[UnlabelledEdgeTypes]
+            ?? BTree<long, BTree<long, BTree<CTree<long, bool>, long?>>>.Empty);
+
         public BTree<string, long?> prefixes =>
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
@@ -324,39 +328,9 @@ namespace Pyrrho.Level3
             }
             if (dm.defpos!=-1L)
                 m += (dm.defpos, dm);
-            if (dm is EdgeType et && d.role.dbobjects[et.name] is long ep)
-                d += (ep, et.leavingType, et.arrivingType, et.defpos);
             return (Database)d.New(m);
         }
-        public static Database operator +(Database d, (long, long, long, long) x)
-        {
-            var (et, lt, at, nt) = x;
-            if (et < 0 || lt < 0 || at < 0 || nt < 0)
-                return d;
-            var es = d.edgeTypes;
-            var bt = es[et] ?? BTree<long, BTree<long, long?>>.Empty;
-            var ct = bt[lt] ?? BTree<long, long?>.Empty;
-            return (Database)d.New(d.mem + (EdgeTypes, es + (et, bt + (lt, ct + (at, nt)))));
-        }
-        public Database RemoveEdgeType(EdgeType et)
-        {
-            var ro = role;
-            var db = this;
-            var es = edgeTypes;
-            if (ro.dbobjects[et.name] is long ep && es[ep] is BTree<long, BTree<long, long?>> bt)
-            {
-                es -= ep;
-                for (var b = bt.First(); b != null; b = b.Next())
-                    for (var c = b.value().First(); c != null; c = c.Next())
-                        if (c.value() is long cp && cp != et.defpos)
-                        {
-                            ro += (Level3.Role.DBObjects, ro.dbobjects + (et.name, cp));
-                            return db + (ro, db.loadpos) + (EdgeTypes, es + (cp, bt));
-                        }
-            }
-            ro += (Level3.Role.DBObjects, ro.dbobjects - et.name);
-            return db + (ro, db.loadpos);
-        }
+
         internal virtual DBObject? Add(Context cx,Physical ph,long lp)
         {
             return ph.Install(cx, lp);
@@ -446,7 +420,7 @@ namespace Pyrrho.Level3
             if (con.props["Role"] is string rn) // 3. has a specific role been requested?
             {
                 ro = (Role)(objects[roles[rn]??-1L]
-                    ?? throw new DBException("42105").Add(Sqlx.ROLE)); // 3a
+                    ?? throw new DBException("42105").Add(Qlx.ROLE)); // 3a
                 if (u is not null && ro.infos[u.defpos] is ObInfo ou
                         && ou.priv.HasFlag(Grant.Privilege.UseRole)) // user has usage
                     goto done;
@@ -455,7 +429,7 @@ namespace Pyrrho.Level3
                     goto done;
                 if (u is not null && owner == u.defpos && ro == schema) // 3ci1
                     goto done;
-                throw new DBException("42105").Add(Sqlx.USER);
+                throw new DBException("42105").Add(Qlx.USER);
             }
             // 4. No specific role requested
             if (u.defpos == owner)
@@ -483,7 +457,7 @@ namespace Pyrrho.Level3
                 ro = guest;
             done:
             if (u == null)
-                throw new DBException("42105").Add(Sqlx.USER);
+                throw new DBException("42105").Add(Qlx.USER);
             var tr = new Transaction(r, t, auto ?? autoCommit);
             if (u.defpos==-1L) // make a PUser for ad-hoc User, in case of Audit or Grant
             { 
@@ -506,16 +480,6 @@ namespace Pyrrho.Level3
             return (role.procedures[n] is BTree<CList<Domain>, long?> pt &&
                 pt.Contains(a)) ? objects[pt[a] ?? -1L] as Procedure
                 : null;
-        }
-        public EdgeType? GetEdgeType(long e, long lt, long at)
-        {
-            if (objects[e] is not EdgeType et) return null;
-            if (edgeTypes[e] is not BTree<long, BTree<long, long?>> bt) return et;
-            if (bt[lt] is not BTree<long, long?> ct) return et;
-            if (objects[ct[at] ?? -1L] is EdgeType nt) return nt;
-            if (et.leavingType != lt || et.arrivingType != at)
-                throw new DBException("42133", "Edge");
-            return et;
         }
         public Domain? Find(Domain dm)
         {

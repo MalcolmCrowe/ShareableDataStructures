@@ -164,7 +164,6 @@ namespace Pyrrho.Level2
                     rt += p;
             ta += (Domain.RowType, rt);
             ta += (Domain.Representation, ta.representation - ppos);
-            ta += (Table.PathDomain, ta._PathDomain(cx));
             cx.db += (ta.defpos, ta);
             for (var b = ta.super.First(); b != null; b = b.Next())
                 if (b.key() is Table t)
@@ -205,7 +204,7 @@ namespace Pyrrho.Level2
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             if (table == null || that == null || dataType==null)
-                return new DBException("42105").Add(Sqlx.COLUMN_NAME);
+                return new DBException("42105").Add(Qlx.COLUMN_NAME);
             switch(that.type)
             {
                 case Type.PColumn3:
@@ -291,26 +290,18 @@ namespace Pyrrho.Level2
             tc += (DBObject.Infos, tc.infos + (rp, oc)); // table name will already be known
             cx.Add(tc);
             if (table.defpos < 0)
-                throw new DBException("42105").Add(Sqlx.COLUMN_NAME);
+                throw new DBException("42105").Add(Qlx.COLUMN_NAME);
             seq = (tc.flags==GraphFlags.None) ? -1:tc.seq;
             if (name == "ID" && table is NodeType)
                 table += (NodeType.IdCol, defpos);
-            var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Sqlx.COLUMN_NAME);
+            var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME);
             ti += (ObInfo.Names, ti.names + (name, (seq,ppos)));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
-            var ot = table;
             table += (cx, tc); // this is where the NodeType stuff happens
-            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Sqlx.COLUMN_NAME));
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME));
             tc += (TableColumn.Seq, seq);
             cx.db += (tc.defpos, tc);
             table += (DBObject.LastChange, ppos);
-            for (var b = table.subtypes.First(); b != null; b = b.Next())
-                if (cx._Ob(b.key()) is NodeType st)
-                {
-                    st += (Domain.Under, st.super-ot+(table,true));
-                    cx.db += (st, cx.db.loadpos);
-                    cx.db += st;
-                }
             cx.Install(table, p);
             cx.db += (table.defpos, table);
             if (table is UDType ut)
@@ -319,18 +310,14 @@ namespace Pyrrho.Level2
                         cx.db += (me.defpos, me + (Method.TypeDef, ut));
             if (table is NodeType nt && table.name.Length==0)
             {
-                var ps = CTree<string, bool>.Empty;
+                var ps = CTree<long, bool>.Empty;
+                var ns = CTree<string, bool>.Empty;
                 for (var b = nt.representation.First(); b != null; b = b.Next())
-                    ps += (cx.NameFor(b.key()), true);
-                var ts = (nt.kind == Sqlx.NODETYPE) ? cx.role.unlabelledNodeTypes : cx.role.unlabelledEdgeTypes;
-                if (ts[ps] is null || (ts[ps] is long tp && tp == nt.defpos))
                 {
-                    if (ts[ps - name] is long op && op == nt.defpos)
-                        ts -= ps - name;
-                    ro += ((nt.kind == Sqlx.NODETYPE) ? Role.UnlabelledNodeTypes : Role.UnlabelledEdgeTypes,
-                        ts + (ps, nt.defpos));
-                    cx.db += (ro, p);
+                    ps += (b.key(), true);
+                    ns += (name, true);
                 }
+                nt.AddNodeOrEdgeType(cx);
             }
             if (table is NodeType nn && oi.name is string cn)
                 table += (NodeType._Names, nn.names + (cn, defpos));
@@ -344,6 +331,7 @@ namespace Pyrrho.Level2
             cx.Install(tc, p);
             cx.obs += (table.defpos, table);
             cx.db += table;
+            cx.AddDefs(table);
             return table;
         }
     }
@@ -382,7 +370,7 @@ namespace Pyrrho.Level2
         /// <param name="db">The database</param>
         protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, string ds,
             TypedValue v, bool nn, GenerationRule ge, long pp, Context cx)
-            : base(t,pr,nm,sq,dm+(Domain.Default,v),pp,cx)
+            : base(t,pr,nm,sq,dm,pp,cx)
 		{
 			dfs = ds;
 			notNull = nn;
@@ -436,7 +424,7 @@ namespace Pyrrho.Level2
 		{
             var dfsrc = new Ident(rdr.GetString(), rdr.context.Ix(ppos + 1));
             dfs = dfsrc.ident;
-            notNull = (rdr.GetInt() != 0);
+            notNull = (rdr.GetInt() > 0);
 			var gn = (Generation)rdr.GetInt();
             base.Deserialise(rdr);
             if (dfs != "")
@@ -532,8 +520,20 @@ namespace Pyrrho.Level2
             flags = gf;
             index = ix;
             toType = tp;
-            if ((flags.HasFlag(GraphFlags.LeaveCol) || flags.HasFlag(GraphFlags.ArriveCol)) && toType < 0)
-                throw new PEException("PE20501");
+            if (flags.HasFlag(GraphFlags.LeaveCol))
+            {
+                if (pr is EdgeType et)
+                    cx.Add(et + (EdgeType.LeaveCol, pp));
+                if (toType < 0)
+                    throw new PEException("PE20501");
+            }
+            if (flags.HasFlag(GraphFlags.ArriveCol))
+            {
+                if (pr is EdgeType et)
+                    cx.Add(et + (EdgeType.ArriveCol, pp));
+                if (toType < 0)
+                    throw new PEException("PE20502");
+            }
         }
         /// <summary>
         /// Constructor: A new Column definition from the buffer

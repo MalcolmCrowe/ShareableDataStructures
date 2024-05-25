@@ -128,9 +128,6 @@ namespace Pyrrho.Level2
 			ptrole = (Role)(db.objects[rdr.GetLong()]??db.schema);
 			ptuser = (User?)db.objects[rdr.GetLong()];
 			pttime = rdr.GetLong();
-      //      if (rdr is Reader rr)
-       //         rr.context.Add(this);
-			// no base.Deserialise() for PTransaction
 		}
         /// <summary>
         /// A readable version of this Physical
@@ -144,8 +141,8 @@ namespace Pyrrho.Level2
 		}
         internal override DBObject? Install(Context cx, long p)
         {
-            if (ptrole!=cx.db.role)
-                cx.db += (ptrole,p);
+            if (ptrole.defpos!=cx.db.role.defpos)
+                cx.db += (Database.Role,cx.db.objects[ptrole.defpos] as Role??throw new DBException("42105"));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return ptrole;
@@ -300,7 +297,7 @@ namespace Pyrrho.Level2
         {
             if (_user >=0)
                 user = (User?)wr.cx.db.objects[wr.cx.Fix(_user)]
-                    ?? throw new DBException("42105").Add(Sqlx.USER);
+                    ?? throw new DBException("42105").Add(Qlx.USER);
             table = wr.cx.Fix(table);
             match = wr.cx.Fix(match);
             return this;

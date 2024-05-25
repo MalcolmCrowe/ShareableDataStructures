@@ -63,7 +63,7 @@ namespace Pyrrho.Level4
         {
             var lx = psr.lxr;
             iix = psr.LexPos();
-            ident = ((lx.tok == Sqlx.Id) ? lx.val?.ToString() : lx.tok.ToString()) ?? (DBObject.Uid(iix.dp));
+            ident = ((lx.tok == Qlx.Id) ? lx.val?.ToString() : lx.tok.ToString()) ?? (DBObject.Uid(iix.dp));
             sub = null;
         }
         internal Ident(Ident lf, Ident sb)
@@ -285,7 +285,7 @@ namespace Pyrrho.Level4
                         {
                             p = new Iix(p.lp,p.sd,nb.defpos);
                             for (var c = (nb as Domain)?.rowType.First(); c != null; c = c.Next())
-                                if (c.value() is long cp && cx.done[cp] is SqlValue v && v.name is not null)
+                                if (c.value() is long cp && cx.done[cp] is QlValue v && v.name is not null)
                                 {
                                     var ds = st[v.name] ?? BTree<int,(Iix,Idents)>.Empty;
                                     st = new Idents(st + (v.name, ds +(p.sd,(new Iix(v.defpos,p.sd,v.defpos),Empty))));
@@ -355,6 +355,7 @@ namespace Pyrrho.Level4
 		public int start = 0, pushStart;
         public bool allowminus = false;
         public bool caseSensitive = false;
+        public bool doublequoted = false;
         public bool docValue = false; // caseSensitive matters if docValue is true
         /// <summary>
         /// the current character in the input string
@@ -363,8 +364,8 @@ namespace Pyrrho.Level4
         /// <summary>
         /// The current token's identifier
         /// </summary>
-		public Sqlx tok, prevtok = Sqlx.Null;
-        public Sqlx pushBack = Sqlx.Null;
+		public Qlx tok, prevtok = Qlx.Null;
+        public Qlx pushBack = Qlx.Null;
         public long offset;
         public TGParam.Type tgg = TGParam.Type.None;
         public long tga;
@@ -386,21 +387,21 @@ namespace Pyrrho.Level4
         /// </summary>
 		class ResWd
 		{
-			public readonly Sqlx typ;
+			public readonly Qlx typ;
 			public readonly string spell;
-			public ResWd(Sqlx t,string s) { typ=t; spell=s; }
+			public ResWd(Qlx t,string s) { typ=t; spell=s; }
 		}
  		readonly static ResWd[] resWds = new ResWd[0x800]; // open hash
         static Lexer()
         {
-            for (Sqlx t = Sqlx.ABS; t <= Sqlx.ZONED_TIME; t++)
-                if (t != Sqlx.CLOB && t != Sqlx.CURSOR && t != Sqlx.INTERVAL0
-                    && t != Sqlx.MULTISET && t != Sqlx.NCHAR && t != Sqlx.NCLOB
-                    && t != Sqlx.NUMERIC && t != Sqlx.PASSWORD)
+            for (Qlx t = Qlx.ABS; t <= Qlx.ZONED_TIME; t++)
+                if (t != Qlx.CLOB && t != Qlx.CURSOR && t != Qlx.INTERVAL0
+                    && t != Qlx.MULTISET && t != Qlx.NCHAR && t != Qlx.NCLOB
+                    && t != Qlx.NUMERIC && t != Qlx.PASSWORD)
                     AddResWd(t);
-            AddResWd(Sqlx.SET);
+            AddResWd(Qlx.SET);
         }
-        static void AddResWd(Sqlx t)
+        static void AddResWd(Qlx t)
         {
             string s = t.ToString();
             var h = s.GetHashCode() & 0x7ff;
@@ -496,7 +497,7 @@ namespace Pyrrho.Level4
                 _ => -1,
             };
         }
-        public Sqlx PushBack(Sqlx old)
+        public Qlx PushBack(Qlx old)
         {
             pushBack = tok;
             pushVal = val;
@@ -511,19 +512,60 @@ namespace Pyrrho.Level4
             pos = prevPos;
             ch = input[pos];
         }
-        readonly static Domain NodeArray = new (-999, Sqlx.ARRAY, Domain.NodeType);
-        readonly static Domain CharArray = new (-998, Sqlx.ARRAY, Domain.Char);
+        readonly static Domain NodeArray = new (-999, Qlx.ARRAY, Domain.NodeType);
+        readonly static Domain CharArray = new (-998, Qlx.ARRAY, Domain.Char);
         /// <summary>
         /// MaybePrefix watches for GQL label expressions and deals with prefixable types.
         /// In this version we can handle simple labels and & and | cobinations only
         /// </summary>
         /// <param name="s"></param>
         /// <returns></returns>
-        Sqlx MaybePrefix(string s)
+        Qlx MaybePrefix(string s)
         {
             var vo = (val is TChar tc) ? tc.value : s;
             var gd = (tgg == TGParam.Type.None) ? Domain.NodeType : NodeArray;
             var gc = (tgg == TGParam.Type.None) ? Domain.Char : CharArray;
+            if (tgs != null)
+            {
+                switch (prevtok)
+                {
+                    case Qlx.LPAREN:
+                        {
+                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Node | tgg, tga);
+                            tgs += (tg.uid, tg);
+                            break;
+                        }
+                    case Qlx.ARROWBASE:
+                    case Qlx.RARROW:
+                        {
+                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Edge | tgg, tga);
+                            tgs += (tg.uid, tg);
+                            break;
+                        }
+                    case Qlx.LBRACE:
+                    case Qlx.COMMA:
+                        {
+                            /*                      if (tgt.Contains(vo))
+                                                      break;
+                                                  var tg = new TGParam(Position, vo, gc, TGParam.Type.Field|tgg, tga);
+                                                  tgs += (tg.uid, tg); */
+                            break;
+                        }
+                    case Qlx.COLON:
+                        {
+                            var tg = new TGParam(Position, vo, gc,
+                                (tex ? TGParam.Type.Type : TGParam.Type.Value) | tgg, tga);
+                            tgs += (tg.uid, tg);
+                            break;
+                        }
+                    default:
+                        {
+                            var tg = new TGParam(Position, vo, gc, TGParam.Type.None | tgg, tga);
+                            tgs += (tg.uid, tg);
+                            break;
+                        }
+                }
+            }
             if (cx.defs[vo]?[cx.sD].Item1 is not null || cx.role.dbobjects.Contains(s))
                 return tok;
             if (cx.parse == ExecuteStatus.Obey && cx.db is not null
@@ -544,50 +586,9 @@ namespace Pyrrho.Level4
                 else
                     val = new TSubType(dt, val);
             }
-            else if (tgs != null)
-            {
-                switch (prevtok)
-                {
-                    case Sqlx.LPAREN:
-                        {
-                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Node | tgg, tga);
-                            tgs += (tg.uid, tg);
-                            break;
-                        }
-                    case Sqlx.ARROWBASE:
-                    case Sqlx.RARROW:
-                        {
-                            var tg = new TGParam(Position, vo, gd, TGParam.Type.Edge | tgg, tga);
-                            tgs += (tg.uid, tg);
-                            break;
-                        }
-                    case Sqlx.LBRACE:
-                    case Sqlx.COMMA:
-                        {
-                            /*                      if (tgt.Contains(vo))
-                                                      break;
-                                                  var tg = new TGParam(Position, vo, gc, TGParam.Type.Field|tgg, tga);
-                                                  tgs += (tg.uid, tg); */
-                            break;
-                        }
-                    case Sqlx.COLON:
-                        {
-                            var tg = new TGParam(Position, vo, gc,
-                                (tex ? TGParam.Type.Type : TGParam.Type.Value) | tgg, tga);
-                            tgs += (tg.uid, tg);
-                            break;
-                        }
-                    default:
-                        {
-                            var tg = new TGParam(Position, vo, gc, TGParam.Type.None | tgg, tga);
-                            tgs += (tg.uid, tg);
-                            break;
-                        }
-                }
-            }
             return tok;
         }
-        Sqlx MaybeSuffix()
+        Qlx MaybeSuffix()
         {
             if (cx.parse == ExecuteStatus.Obey)
             {
@@ -598,14 +599,14 @@ namespace Pyrrho.Level4
                 var oldch = ch;
                 var t = Next();
                 var vs = val?.ToString();
-                if (t == Sqlx.Id && vs != null && cx.db is not null && cx.role is not null
+                if (t == Qlx.Id && vs != null && cx.db is not null && cx.role is not null
                     && cx.db.objects[cx.db.suffixes[vs]??-1L] is UDType dt
                     && dt.name != null && prevval is not null)
                 {
                     if (dt.infos[cx.role.defpos] is ObInfo mi 
                         && mi.methodInfos[dt.name] is BTree<CList<Domain>, long?> md
                         && cx.db.objects[md[sig]??-1L] is Method mt
-                        && cx.Add(new SqlLiteral(cx.GetUid(), prevval)) is SqlValue r)
+                        && cx.Add(new SqlLiteral(cx.GetUid(), prevval)) is QlValue r)
                         val = mt.Exec(cx, new BList<long?>(r.defpos)).val;
                     else
                         val = new TSubType(dt, prevval);
@@ -625,16 +626,16 @@ namespace Pyrrho.Level4
         /// tok and val are set for the new token
         /// </summary>
         /// <returns>The new value of tok</returns>
-		public Sqlx Next()
+		public Qlx Next()
         {
-            if (pushBack != Sqlx.Null)
+            if (pushBack != Qlx.Null)
             {
                 tok = pushBack;
                 val = pushVal;
                 start = pushStart;
                 pos = pushPos;
                 ch = pushCh;
-                pushBack = Sqlx.Null;
+                pushBack = Qlx.Null;
                 return tok;
             }
             prevtok = tok;
@@ -644,6 +645,7 @@ namespace Pyrrho.Level4
             while (char.IsWhiteSpace(ch))
                 Advance();
             start = pos;
+            doublequoted = ch == '"';
             if (char.IsLetter(ch) || (cat && (ch=='/'||ch=='.')))
             {
                 char c = ch;
@@ -670,7 +672,7 @@ namespace Pyrrho.Level4
                     }
                     while (pos != end)
                         Advance();
-                    tok = Sqlx.BLOBLITERAL;
+                    tok = Qlx.BLOBLITERAL;
                     val = new TBlob(b);
                     Advance();
                     MaybeSuffix();
@@ -685,18 +687,18 @@ namespace Pyrrho.Level4
                 {
                     switch (tok)
                     {
-                        case Sqlx.TRUE: val = TBool.True; return Sqlx.BOOLEANLITERAL;
-                        case Sqlx.FALSE: val = TBool.False; return Sqlx.BOOLEANLITERAL;
-                        case Sqlx.NULL: val = TNull.Value; return Sqlx.NULL;
-                        case Sqlx.UNKNOWN: val = TNull.Value; return Sqlx.BOOLEANLITERAL;
-                        case Sqlx.CURRENT_DATE: val = new TDateTime(DateTime.Today); return tok;
-                        case Sqlx.CURRENT_TIME: val = new TTimeSpan(DateTime.Now - DateTime.Today); return tok;
-                        case Sqlx.CURRENT_TIMESTAMP: val = new TDateTime(DateTime.Now); return tok;
+                        case Qlx.TRUE: val = TBool.True; return Qlx.BOOLEANLITERAL;
+                        case Qlx.FALSE: val = TBool.False; return Qlx.BOOLEANLITERAL;
+                        case Qlx.NULL: val = TNull.Value; return Qlx.NULL;
+                        case Qlx.UNKNOWN: val = TNull.Value; return Qlx.BOOLEANLITERAL;
+                        case Qlx.CURRENT_DATE: val = new TDateTime(DateTime.Today); return tok;
+                        case Qlx.CURRENT_TIME: val = new TTimeSpan(DateTime.Now - DateTime.Today); return tok;
+                        case Qlx.CURRENT_TIMESTAMP: val = new TDateTime(DateTime.Now); return tok;
                     }
                     return tok;
                 }
                 val = new TChar(s);
-                tok = Sqlx.Id;
+                tok = Qlx.Id;
                 MaybePrefix(s);
                 return tok;
             }
@@ -710,7 +712,7 @@ namespace Pyrrho.Level4
                 if (ch == '[')
                 {
                     Advance();
-                    return tok = Sqlx.ARROWBASE;
+                    return tok = Qlx.ARROWBASE;
                 }
                 if (!char.IsDigit(ch))
                 {
@@ -727,7 +729,7 @@ namespace Pyrrho.Level4
                         val = new TInteger(Integer.Parse(str));
                     else
                         val = new TInt(long.Parse(str));
-                    tok = Sqlx.INTEGERLITERAL;
+                    tok = Qlx.INTEGERLITERAL;
                     MaybeSuffix();
                     return tok;
                 }
@@ -737,7 +739,7 @@ namespace Pyrrho.Level4
                 {
                     str = new string(input, start, pos - start);
                     val = new TNumeric(Common.Numeric.Parse(str));
-                    tok = Sqlx.NUMERICLITERAL;
+                    tok = Qlx.NUMERICLITERAL;
                     MaybeSuffix();
                     return tok;
                 }
@@ -749,14 +751,14 @@ namespace Pyrrho.Level4
                     ;
                 str = new string(input, start, pos - start);
                 val = new TReal(Numeric.Parse(str));
-                tok = Sqlx.REALLITERAL;
+                tok = Qlx.REALLITERAL;
                 MaybeSuffix();
                 return tok;
             }
         uminus:
             switch (ch)
             {
-                case '[': Advance(); return tok = Sqlx.LBRACK;
+                case '[': Advance(); return tok = Qlx.LBRACK;
                 case ']': Advance(); 
                     if (ch=='-')
                     {
@@ -764,33 +766,33 @@ namespace Pyrrho.Level4
                         if (ch=='>')
                         {
                             Advance();
-                            return tok = Sqlx.ARROW;
+                            return tok = Qlx.ARROW;
                         }
-                        return tok = Sqlx.RARROWBASE;
+                        return tok = Qlx.RARROWBASE;
                     }
-                    return tok = Sqlx.RBRACK;
-                case '(': Advance(); return tok = Sqlx.LPAREN;
-                case ')': Advance(); return tok = Sqlx.RPAREN;
-                case '{': Advance(); return tok = Sqlx.LBRACE;
-                case '}': Advance(); return tok = Sqlx.RBRACE;
-                case '+': Advance(); return tok = Sqlx.PLUS;
-                case '*': Advance(); return tok = Sqlx.TIMES;
-                case '/': Advance(); return tok = Sqlx.DIVIDE;
-                case ',': Advance(); return tok = Sqlx.COMMA;
-                case '.': Advance(); return tok = Sqlx.DOT;
-                case ';': Advance(); return tok = Sqlx.SEMICOLON;
-                case '&': Advance(); return tok = Sqlx.AMPERSAND; // GQL label expression
-                case '~': Advance(); return tok = Sqlx.TILDE;  // GQL
-                case '?': Advance(); return tok = Sqlx.QMARK; // added for Prepare()
+                    return tok = Qlx.RBRACK;
+                case '(': Advance(); return tok = Qlx.LPAREN;
+                case ')': Advance(); return tok = Qlx.RPAREN;
+                case '{': Advance(); return tok = Qlx.LBRACE;
+                case '}': Advance(); return tok = Qlx.RBRACE;
+                case '+': Advance(); return tok = Qlx.PLUS;
+                case '*': Advance(); return tok = Qlx.TIMES;
+                case '/': Advance(); return tok = Qlx.DIVIDE;
+                case ',': Advance(); return tok = Qlx.COMMA;
+                case '.': Advance(); return tok = Qlx.DOT;
+                case ';': Advance(); return tok = Qlx.SEMICOLON;
+                case '&': Advance(); return tok = Qlx.AMPERSAND; // GQL label expression
+                case '~': Advance(); return tok = Qlx.TILDE;  // GQL
+                case '?': Advance(); return tok = Qlx.QMARK; // added for Prepare()
                 case ':':
                     {
                         Advance();
                         if (ch == ':')
                         {
                             Advance();
-                            return tok = Sqlx.DOUBLECOLON;
+                            return tok = Qlx.DOUBLECOLON;
                         }
-                        return tok = Sqlx.COLON;
+                        return tok = Qlx.COLON;
                     }
                 case '-':
                     if (minusch == ' ')
@@ -800,7 +802,7 @@ namespace Pyrrho.Level4
                     if (ch=='>')
                     {
                         Advance();
-                        return tok = Sqlx.ARROWR;
+                        return tok = Qlx.ARROWR;
                     }
                     if (ch == '-')
                     {
@@ -812,26 +814,26 @@ namespace Pyrrho.Level4
                     if (ch=='[')
                     {
                         Advance();
-                        return tok = Sqlx.ARROWBASE;
+                        return tok = Qlx.ARROWBASE;
                     }
-                    return tok = Sqlx.MINUS;
+                    return tok = Qlx.MINUS;
                 case '|':
                     if (Advance() == '|')
                     {
                         Advance();
-                        return tok = Sqlx.CONCATENATE;
+                        return tok = Qlx.CONCATENATE;
                     }
-                    return tok = Sqlx.VBAR;
+                    return tok = Qlx.VBAR;
                 case '<':
                     if (Advance() == '=')
                     {
                         Advance();
-                        return tok = Sqlx.LEQ;
+                        return tok = Qlx.LEQ;
                     }
                     else if (ch == '>')
                     {
                         Advance();
-                        return tok = Sqlx.NEQ;
+                        return tok = Qlx.NEQ;
                     }
                     if (ch=='-')
                     {
@@ -839,19 +841,19 @@ namespace Pyrrho.Level4
                         if (ch=='[')
                         {
                             Advance();
-                            return tok = Sqlx.RARROW;
+                            return tok = Qlx.RARROW;
                         }
-                        return tok = Sqlx.ARROWL;
+                        return tok = Qlx.ARROWL;
                     }
-                    return tok = Sqlx.LSS;
-                case '=': Advance(); return tok = Sqlx.EQL;
+                    return tok = Qlx.LSS;
+                case '=': Advance(); return tok = Qlx.EQL;
                 case '>':
                     if (Advance() == '=')
                     {
                         Advance();
-                        return tok = Sqlx.GEQ;
+                        return tok = Qlx.GEQ;
                     }
-                    return tok = Sqlx.GTR;
+                    return tok = Qlx.GTR;
                 case '"':   // delimited identifier if caseSensitive is false
                     {
                         start = pos;
@@ -870,8 +872,8 @@ namespace Pyrrho.Level4
                             Advance();
                         }
                         if (caseSensitive && docValue && cx.defs[v0] is null)
-                            return tok=Sqlx.CHARLITERAL;   
-                        tok = Sqlx.Id;
+                            return tok=Qlx.CHARLITERAL;   
+                        tok = Qlx.Id;
                         MaybePrefix(val.ToString());
                         return tok;
                     }
@@ -903,7 +905,7 @@ namespace Pyrrho.Level4
                                 rb[k--] = input[j];
                         }
                         val = new TChar(new string(rb));
-                        return tok = Sqlx.CHARLITERAL;
+                        return tok = Qlx.CHARLITERAL;
                     }
                 // These are for the new Position Domain in v7. Positions are always longs
                 case '!':
@@ -913,7 +915,7 @@ namespace Pyrrho.Level4
                             ;
                         str = new string(input, start + 1, pos - start - 1);
                         val = new TInt(long.Parse(str) + Transaction.TransPos);
-                        tok = Sqlx.INTEGERLITERAL;
+                        tok = Qlx.INTEGERLITERAL;
                         return tok;
                     }
                 case '#':
@@ -923,7 +925,7 @@ namespace Pyrrho.Level4
                             ;
                         str = new string(input, start + 1, pos - start - 1);
                         val = new TInt(long.Parse(str) + Transaction.Analysing);
-                        tok = Sqlx.INTEGERLITERAL;
+                        tok = Qlx.INTEGERLITERAL;
                         return tok;
                     }
                 case '`':
@@ -933,7 +935,7 @@ namespace Pyrrho.Level4
                             ;
                         str = new string(input, start + 1, pos - start - 1);
                         val = new TInt(long.Parse(str) + Transaction.Executables);
-                        tok = Sqlx.INTEGERLITERAL;
+                        tok = Qlx.INTEGERLITERAL;
                         return tok;
                     }
                 case '%':
@@ -943,11 +945,11 @@ namespace Pyrrho.Level4
                             ;
                         str = new string(input, start + 1, pos - start - 1);
                         val = new TInt(long.Parse(str) + Transaction.HeapStart);
-                        tok = Sqlx.INTEGERLITERAL;
+                        tok = Qlx.INTEGERLITERAL;
                         return tok;
                     }
                 case '\0':
-                    return tok = Sqlx.EOF;
+                    return tok = Qlx.EOF;
             }
             throw new DBException("42101", ch).Mix();
         }
@@ -1017,20 +1019,20 @@ namespace Pyrrho.Level4
             val = new TChar(new string(input, start, pos - start).Trim());
             return ch;
         }
-        public static string UnLex(Sqlx s)
+        public static string UnLex(Qlx s)
         {
             return s switch
             {
-                Sqlx.EQL => "=",
-                Sqlx.NEQ => "<>",
-                Sqlx.LSS => "<",
-                Sqlx.GTR => ">",
-                Sqlx.LEQ => "<=",
-                Sqlx.GEQ => ">=",
-                Sqlx.PLUS => "+",
-                Sqlx.MINUS => "-",
-                Sqlx.TIMES => "*",
-                Sqlx.DIVIDE => "/",
+                Qlx.EQL => "=",
+                Qlx.NEQ => "<>",
+                Qlx.LSS => "<",
+                Qlx.GTR => ">",
+                Qlx.LEQ => "<=",
+                Qlx.GEQ => ">=",
+                Qlx.PLUS => "+",
+                Qlx.MINUS => "-",
+                Qlx.TIMES => "*",
+                Qlx.DIVIDE => "/",
                 _ => s.ToString(),
             };
         }

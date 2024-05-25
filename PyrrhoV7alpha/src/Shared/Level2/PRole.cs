@@ -111,8 +111,8 @@ namespace Pyrrho.Level2
                     if (ob.GetType().Name=="Domain" || ob.defpos<=0) // but Domains always belong to Database._system._role
                         continue;
                     var os = ob.infos;
-                    var oi = os[-1002]??throw new PEException("PE1410");
-                    os -= -1002;
+                    var oi = os[-502]??throw new PEException("PE1410");
+                    os -= -502;
                     os += (nr.defpos, oi);
                     cx.db += (k, ob.New(ob.mem+ (DBObject.Definer, nr.defpos)
                           +(DBObject.Infos,os)));
@@ -142,7 +142,7 @@ namespace Pyrrho.Level2
          /// </summary>
         public long seq = -1L; // backward compatibility
         public long defpos;
-        public CTree<Sqlx,TypedValue> detail = CTree<Sqlx,TypedValue>.Empty;
+        public CTree<Qlx,TypedValue> detail = CTree<Qlx,TypedValue>.Empty;
         public string iri = "";
         public long refpos = -1L;
         public long flags = 0L;
@@ -152,17 +152,17 @@ namespace Pyrrho.Level2
             if (!Committed(wr,refpos)) return refpos;
             return -1;
         }
-        public PMetadata(string nm, long sq, DBObject ob, CTree<Sqlx,TypedValue> md, long pp)
+        public PMetadata(string nm, long sq, DBObject ob, CTree<Qlx,TypedValue> md, long pp)
             : this(Type.Metadata, nm, sq, ob, md, pp) { }
-        public PMetadata(Type t,string nm,long sq,DBObject ob, CTree<Sqlx,TypedValue> md,long pp)
+        public PMetadata(Type t,string nm,long sq,DBObject ob, CTree<Qlx,TypedValue> md,long pp)
             :base(t,pp)
         { 
             name = nm;
             seq = sq;
             defpos = ob.defpos;
             detail = md;
-            iri = md[Sqlx.IRI]?.ToString()??"";
-            refpos = md[Sqlx.INVERTS]?.ToLong()??-1L;
+            iri = md[Qlx.IRI]?.ToString()??"";
+            refpos = md[Qlx.INVERTS]?.ToLong()??-1L;
             flags = 0L;
         }
         public PMetadata(Reader rdr) : this(Type.Metadata, rdr) { }
@@ -203,7 +203,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{
 			name =rdr.GetString();
-            detail = new Parser(rdr.context,rdr.GetString()).ParseMetadata(Sqlx.ANY);
+            detail = new Parser(rdr.context,rdr.GetString()).ParseMetadata(Qlx.ANY);
             iri = rdr.GetString();
             seq = rdr.GetLong()-1;
             defpos = rdr.GetLong();
@@ -216,26 +216,26 @@ namespace Pyrrho.Level2
             for (var b = detail.First(); b != null; b = b.Next())
                 switch (b.key())
                 {
-                    case Sqlx.DESC:
-                    case Sqlx.URL:
+                    case Qlx.DESC:
+                    case Qlx.URL:
                         sb.Append(b.key());
                         sb.Append('\'');
                         sb.Append(b.value());
                         sb.Append("' ");
                         break;
-                    case Sqlx.MIME:
-                    case Sqlx.SQLAGENT:
-                    case Sqlx.USER:
-                    case Sqlx.PASSWORD:
+                    case Qlx.MIME:
+                    case Qlx.SQLAGENT:
+                    case Qlx.USER:
+                    case Qlx.PASSWORD:
                         sb.Append(b.key());
                         sb.Append(" \"");
                         sb.Append(b.value());
                         sb.Append("\" ");
                         break;
-                    case Sqlx.IRI:
+                    case Qlx.IRI:
                         sb.Append(b.value().ToString());
                         break;
-                    case Sqlx.INVERTS:
+                    case Qlx.INVERTS:
                         sb.Append(b.key());
                         sb.Append(' ');
                         if (b.value().ToLong() is long lp && wr.cx.db.objects[lp] is DBObject ob &&
@@ -243,18 +243,18 @@ namespace Pyrrho.Level2
                             sb.Append(oi.name);
                         sb.Append(' ');
                         break;
-                    case Sqlx.PREFIX:
-                    case Sqlx.SUFFIX:
+                    case Qlx.PREFIX:
+                    case Qlx.SUFFIX:
                         sb.Append(b.key());
                         sb.Append('"');
                         sb.Append(b.value());
                         sb.Append("\" ");
                         break;
-                    case Sqlx.MAX:
-                    case Sqlx.MIN:  
+                    case Qlx.MAX:
+                    case Qlx.MIN:  
                         {
-                            var lw = detail[Sqlx.MIN];
-                            var hi = detail[Sqlx.MAX]??new TChar("*");
+                            var lw = detail[Qlx.MIN];
+                            var hi = detail[Qlx.MAX]??new TChar("*");
                             sb.Append("CARDINALITY("); sb.Append(lw);
                             { sb.Append(" TO "); sb.Append(hi); }
                             sb.Append(')');
@@ -267,7 +267,7 @@ namespace Pyrrho.Level2
                 }
             return sb.ToString();
         }
-        internal static long Flags(CTree<Sqlx,TypedValue> md)
+        internal static long Flags(CTree<Qlx,TypedValue> md)
         {
             return 0L;
         }
@@ -275,7 +275,7 @@ namespace Pyrrho.Level2
         {
             return detail.ToString();
         }
-        internal CTree<Sqlx,TypedValue> Metadata()
+        internal CTree<Qlx,TypedValue> Metadata()
         {
             return detail;
         }
@@ -335,7 +335,7 @@ namespace Pyrrho.Level2
         /// <param name="sq">The column seq no for a view column</param>
         /// <param name="ob">the DBObject</param>
         /// <param name="db">The physical database</param>
-        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, CTree<Sqlx,TypedValue> md, long pp)
+        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, CTree<Qlx,TypedValue> md, long pp)
          : base(tp, nm, sq, ob, md, pp)
         {
         }
@@ -388,7 +388,7 @@ namespace Pyrrho.Level2
         /// <param name="ob">the DBObject</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-        public PMetadata3(string nm, long sq, DBObject ob, CTree<Sqlx,TypedValue> md, long pp)
+        public PMetadata3(string nm, long sq, DBObject ob, CTree<Qlx,TypedValue> md, long pp)
             : base(Type.Metadata3, nm, sq, ob, md, pp)
         {  }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }

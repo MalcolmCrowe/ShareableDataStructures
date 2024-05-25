@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("26 April 2024 Repeatable tests");
+                Console.WriteLine("24 May 2024 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -605,18 +605,18 @@ namespace Test
                 CheckResults(12, 7, "select * from dst", "[{C:10},{C:9}]");
                 CheckExecuteResults(12, 8, "[{C:9}]", "Sel1", "" + 10);
             }
-            Act(157, "create table p(q int primary key,r char,a int)");
-            Act(158, "create view v as select q,r as s,a from p");
+            Act(157, "create table pt(q int primary key,r char,a int)");
+            Act(158, "create view v as select q,r as s,a from pt");
             Act(159, "insert into v(s) values('Twenty'),('Thirty')");
             Act(160, "update v set s='Forty two' where q=1");
-            CheckResults(12, 9, "select r from p", "[{R:'Forty two'},{R:'Thirty'}]");
+            CheckResults(12, 9, "select r from pt", "[{R:'Forty two'},{R:'Thirty'}]");
             Act(161, "delete from v where s='Thirty'");
-            Act(162, "insert into p(r) values('Fifty')");
+            Act(162, "insert into pt(r) values('Fifty')");
             Act(163, "create table t(s char,u int)");
             Act(164, "insert into t values('Forty two',42),('Fifty',48)");
             Act(165, "create view w as select * from t natural join v");
             Act(166, "update w set u=50,a=21 where q=2");
-            CheckResults(12, 10, "table p", "[{Q:1,R:'Forty two'},{Q:2,R:'Fifty',A:21}]");
+            CheckResults(12, 10, "table pt", "[{Q:1,R:'Forty two'},{Q:2,R:'Fifty',A:21}]");
             CheckResults(12, 11, "table t", "[{S:'Forty two',U:42},{S:'Fifty',U:50}]");
             /* Fritz Laux example */
             Act(450, "create table umsatz (kunde char(12) primary key, KdUmsatz numeric(8,2))");
@@ -771,7 +771,7 @@ namespace Test
             testing = 15;
             Begin();
             Act(227,"create table ca(a char,b int check (b>0))");
-            CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99)","Column check  fails for column B");
+            CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99)","Column check");
             if (!commit)
             {
                 Begin();
@@ -1242,13 +1242,13 @@ namespace Test
             Act(353, "insert into staff (name,title) values ('Anne','Prof')");
             CheckResults(25,1, "select *,specifictype() from person",
                 "[{NAME:'Fred',SPECIFICTYPE:'STUDENT'},{NAME:'Anne',SPECIFICTYPE:'STAFF'}]");
-            Act(354, "create type married edgetype(bride=person,groom=person)");
+            Act(354, "create type wedding edgetype(bride=person,groom=person)");
             Act(355, "insert into person values('Joe'),('Mary')");
-            Act(356, "insert into married(bride,groom) values ("+
+            Act(356, "insert into wedding(bride,groom) values ("+
                 "(select position from person where name='Mary'),"+
                 "(select position from person where name='Joe'))");
-            CheckResults(25, 2, "select count(*) from married", "[{COUNT:1}]");
-            CheckResults(25, 3, "match ({name:'Joe'})<-[:married]-(x)", "[{X:'PERSON(NAME=Mary)'}]");
+            CheckResults(25, 2, "select count(*) from wedding", "[{COUNT:1}]");
+            CheckResults(25, 3, "match ({name:'Joe'})<-[:wedding]-(x)", "[{X:'PERSON(NAME=Mary)'}]");
             Act(357, "CREATE\r\n(:Product:WoodScrew {spec:'16/8x4'}),(:Product: WallPlug{spec:'18cm'}),"+
                 "(Joe:Customer {Name:'Joe Edwards', Address:'10 Station Rd.'}),"+
                 "(Joe)-[:Ordered {\"Date\":date'2002-11-22'} ]->(:\"Order\"{id:201})");
@@ -1256,31 +1256,31 @@ namespace Test
                 "begin MATCH(X: Product{ spec: '16/8x4'}) CREATE(O)-[:Item{Qty:5}]->(X);"+
                 "MATCH(X: Product{ spec: '18cm'}) CREATE(O)-[:Item{Qty:3}]->(X)end");
             CheckResults(25, 4, "match ()-[{Qty:QT}]->(:ST{spec:SA}) where QT>4",
-                "[{QT:5,ST:'WOODSCREW',SA:'16/8x4'}]");
-            Act(359, "CREATE (a:Person {name:'Fred Smith'})<-[:Child]-(b:Person {name:'Pete Smith'})," +
-                "(b)-[:Child]->(:Person {name:'Mary Smith'})");
+                "[{ST:'WOODSCREW',QT:5,SA:'16/8x4'}]");
+            Act(359, "CREATE (p1:Person {name:'Fred Smith'})<-[:Child]-(p2:Person {name:'Pete Smith'})," +
+                "(p2)-[:Child]->(:Person {name:'Mary Smith'})");
             CheckResults(25, 5, "MATCH (n)-[:Child]->(c) RETURN n.name,c.name AS child",
                 "[{NAME:'Pete Smith',CHILD:'Fred Smith'},{NAME:'Pete Smith',CHILD:'Mary Smith'}]");
             Act(360, "MATCH (n {name:'Pete Smith'}) SET n.name='Peter Smith' ");
             CheckResults(25, 6, "MATCH ({name:'Peter Smith'})[()-[:Child]->()]+(x) RETURN x.name",
                 "[{NAME:'Fred Smith'},{NAME:'Mary Smith'}]");
-            Act(361, "CREATE (e:Person {name:'Emil', born:1975 }), (k:Person {name:'Karin', born:1977 }),"
-                +"(e)-[:married {since:2000}]->(k)");
+            Act(361, "CREATE (e1:Person {name:'Emil', born:1975 }), (k1:Person {name:'Karin', born:1977 }),"
+                +"(e1)-[:married {since:2000}]->(k1)");
             Act(362, "CREATE (Sue:Person {name:'Sue Hill', born:1975}),"
                 +"(Joe:Person {name:'Joe Hill', born:1952}),(Joe)-[:married {since:1995}]->(Sue);");
             CheckResults(25, 7, "MATCH (n:Person) RETURN collect(n.born)",
                 "[{COLLECT:'MULTISET[1952,1975,1975,1977]'}]");
             CheckResults(25, 8, "MATCH (n:Person) RETURN avg(n.born)","[{AVG:1969.75}]");
-            Act(363, "MATCH (n:Person {name:'Joe Hill'})-[r { since:1995}]->() "
-                +"BEGIN n.born = 1962; r.since = 1996 END");
-            CheckResults(25, 9, "MATCH (n:Person)-[:married{since:d}]->() RETURN n.name,d", 
-                "[{N.NAME:'Emil',D:2000},{N.NAME:'Joe Hill',D:1996}]");
+            Act(363, "MATCH (nm:Person {name:'Joe Hill'})-[mr { since:1995}]->() "
+                +"BEGIN nm.born = 1962; mr.since = 1996 END");
+            CheckResults(25, 9, "MATCH (n:Person)-[:married{since:dt}]->() RETURN n.name,dt", 
+                "[{N.NAME:'Emil',DT:2000},{N.NAME:'Joe Hill',DT:1996}]");
             Act(364, "MATCH (ee:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),"
-                +"(ee)-[r:owns ]->(d),(d)-[r2:owned_by]->(ee)");
-            Act(365, "MATCH (d:Dog {name: 'Rex'})-[r:owned_by]->() DELETE r;");
-            Act(366, "MATCH (k{name:'Karin'}),()-[o:owns ]->({name:'Rex'}) SET o.leaving=k");
+                +"(ee)-[:owns]->(d),(d)-[:owned_by]->(ee)");
+            Act(365, "MATCH (dg:Dog {name: 'Rex'})-[ro:owned_by]->() DELETE ro;");
+            Act(366, "MATCH (ka{name:'Karin'}),()-[ow:owns ]->({name:'Rex'}) SET ow.leaving=ka");
             CheckResults(25, 10, "select count(*) from owned_by", "[{COUNT:0}]");
-            CheckResults(25, 11, "MATCH (n)-[:owns]->(d) RETURN n.name,d.name as dog", 
+            CheckResults(25, 11, "MATCH (n)-[:owns]->(dg) RETURN n.name,dg.name as dog", 
                 "[{NAME:'Karin',DOG:'Rex'}]");
             Rollback();
         }

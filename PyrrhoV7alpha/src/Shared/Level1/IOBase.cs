@@ -485,7 +485,7 @@ namespace Pyrrho.Level2
             var ds = pd.domain.defaultString;
             var domain = pd.domain;
             if (ds.Length > 0
-                && pd.dataType.kind == Sqlx.CHAR && ds[0] != '\'')
+                && pd.dataType.kind == Qlx.CHAR && ds[0] != '\'')
                 ds = "'" + ds + "'";
             if (ds != "")
                 try

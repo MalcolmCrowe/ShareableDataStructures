@@ -1,13 +1,9 @@
 
-using System;
 using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Level4; 
 using Pyrrho.Common;
-using System.Xml;
 using Pyrrho.Level5;
-using System.Runtime.Intrinsics.Arm;
-using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -18,13 +14,13 @@ using System.Security.AccessControl;
 
 namespace Pyrrho.Level2
 {
-	/// <summary>
-	/// A Level 2 Record record.
+    /// <summary>
+    /// A Level 2 Record record.
     /// Records are constructed within the transaction thread
     /// but can be shared at Level 4, so are immutable shareable
-	/// </summary>
-	internal class Record : Physical
-	{
+    /// </summary>
+    internal class Record : Physical
+    {
         /// <summary>
         /// The defining position of the record
         /// </summary>
@@ -32,8 +28,8 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The defining positions of the tables
         /// </summary>
-        public CTree<long,bool> tabledefpos = CTree<long,bool>.Empty;
-        public override CTree<long,bool> _Table => tabledefpos;
+        public CTree<long, bool> tabledefpos = CTree<long, bool>.Empty;
+        public override CTree<long, bool> _Table => tabledefpos;
         public bool nodeOrEdge = false; // set in constructor
         /// <summary>
         /// The tree of field ids and values for this record
@@ -48,18 +44,18 @@ namespace Pyrrho.Level2
         public virtual Level classification => _classification;
         public long subType = -1;
         // Insert and ReferenceInsert constraints: {keys} , tabledefpos->{(keys,fkeys)}
-        public CTree<Domain,CTree<long,bool>> inC = CTree<Domain,CTree<long,bool>>.Empty;
+        public CTree<Domain, CTree<long, bool>> inC = CTree<Domain, CTree<long, bool>>.Empty;
         public CTree<long, bool> refs = CTree<long, bool>.Empty;
-        public CTree<long,CTree<Domain,Domain>> riC 
-            = CTree<long,CTree<Domain,Domain>>.Empty;
+        public CTree<long, CTree<Domain, Domain>> riC
+            = CTree<long, CTree<Domain, Domain>>.Empty;
         public long triggeredAction;
         public override long Dependent(Writer wr, Transaction tr)
         {
-            if (defpos != ppos && !Committed(wr,defpos)) return defpos;
+            if (defpos != ppos && !Committed(wr, defpos)) return defpos;
             for (var b = tabledefpos.First(); b != null; b = b.Next())
                 if (!Committed(wr, b.key())) return b.key();
             for (var b = fields.PositionAt(0); b != null; b = b.Next())
-                if (!Committed(wr,b.key())) return b.key();
+                if (!Committed(wr, b.key())) return b.key();
             for (var b = tabledefpos.First(); b != null; b = b.Next())
                 if (tr.objects[b.key()] is EdgeType et)
                 {
@@ -68,11 +64,11 @@ namespace Pyrrho.Level2
                     if (fields[et.arrivingType] is TInt at &&
                         !Committed(wr, at.value)) return at.value;
                 }
-            if (!Committed(wr,subType)) return subType;
+            if (!Committed(wr, subType)) return subType;
             return -1;
         }
-        public Record(CTree<long,bool> tb, CTree<long, TypedValue> fl, long pp, Context cx)
-            : this(Type.Record, tb, fl, pp, cx) 
+        public Record(CTree<long, bool> tb, CTree<long, TypedValue> fl, long pp, Context cx)
+            : this(Type.Record, tb, fl, pp, cx)
         { }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the Parser
@@ -82,14 +78,14 @@ namespace Pyrrho.Level2
         /// <param name="fl">The field values</param>
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Record(Type t,CTree<long,bool> ts, CTree<long, TypedValue> fl, long pp, 
-            Context cx)  : base(t, pp)
+        protected Record(Type t, CTree<long, bool> ts, CTree<long, TypedValue> fl, long pp,
+            Context cx) : base(t, pp)
         {
-            if (cx.tr==null || cx.db.user == null)
-                throw new DBException("42105").Add(Sqlx.USER);
+            if (cx.tr == null || cx.db.user == null)
+                throw new DBException("42105").Add(Qlx.USER);
             tabledefpos = ts;
             fields = fl;
-            if (t!=Type.Record3)
+            if (t != Type.Record3)
                 _classification = cx.db.user.classification;
             if (cx.tr.triggeredAction > 0)
                 triggeredAction = cx.tr.triggeredAction;
@@ -106,7 +102,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-        public Record(Reader rdr) : base(Type.Record, rdr) 
+        public Record(Reader rdr) : base(Type.Record, rdr)
         { }
         /// <summary>
         /// Constructor: a new Record (INSERT) from the buffer
@@ -132,15 +128,6 @@ namespace Pyrrho.Level2
                 fields += (wr.cx.Fix(b.key()), v);
             }
         }
- /*       public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
-        {
-            if (tr != null)
-                for (var t = tr.objects[tabledefpos] as Table; t != null;
-                    t = tr.objects[(t as UDType)?.super?.defpos ?? -1L] as Table)
-                    if (t.defpos<Transaction.TransPos)
-                        tr += (t.defpos, t + (Table.TableRows,t.tableRows - defpos));
-            return base.Commit(wr, tr);
-        } */
         protected override Physical Relocate(Writer wr)
         {
             return new Record(this, wr);
@@ -163,7 +150,7 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
 		public override void Deserialise(Reader rdr)
         {
-            tabledefpos += (rdr.GetLong(),true);
+            tabledefpos += (rdr.GetLong(), true);
             GetFields(rdr);
             base.Deserialise(rdr);
         }
@@ -205,7 +192,7 @@ namespace Pyrrho.Level2
                     dt.Put(o, wr);
                 }
         }
-        static CTree<long, Domain> ColsFrom(Context cx, CTree<long,bool> tbs, CTree<long, Domain> cdt)
+        static CTree<long, Domain> ColsFrom(Context cx, CTree<long, bool> tbs, CTree<long, Domain> cdt)
         {
             for (var c = tbs.First(); c != null; c = c.Next())
             {
@@ -228,24 +215,24 @@ namespace Pyrrho.Level2
         public CList<TypedValue> MakeKey(BList<long?> cols)
         {
             var r = CList<TypedValue>.Empty;
-            for (var b = cols.First();b is not null;b=b.Next())
+            for (var b = cols.First(); b is not null; b = b.Next())
                 if (b.value() is long p)
-                    r += fields[p]??TNull.Value;
+                    r += fields[p] ?? TNull.Value;
             return r;
         }
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
-            switch(that.type)
+            switch (that.type)
             {
                 case Type.Drop:
                     {
                         var d = (Drop)that;
-                        for (var b=tabledefpos.First();b!=null;b=b.Next())
+                        for (var b = tabledefpos.First(); b != null; b = b.Next())
                             if (db.objects[b.key()] is Table table && d.delpos == table.defpos)
-                                return new DBException("40012",d.delpos,that,ct);
+                                return new DBException("40012", d.delpos, that, ct);
                         for (var s = fields.PositionAt(0); s != null; s = s.Next())
                             if (s.key() == d.delpos)
-                                return new DBException("40013",d.delpos,that,ct);
+                                return new DBException("40013", d.delpos, that, ct);
                         return null;
                     }
                 case Type.Alter3:
@@ -275,10 +262,10 @@ namespace Pyrrho.Level2
                 case Type.Record4:
                     {
                         var rec = (Record)that;
-                        if (DifferentTables(this,rec))
+                        if (DifferentTables(this, rec))
                             break;
                         for (var b = rec.inC.First(); b != null; b = b.Next())
-                            if (MakeKey(b.key().rowType).CompareTo(rec.MakeKey(b.key().rowType))==0)
+                            if (MakeKey(b.key().rowType).CompareTo(rec.MakeKey(b.key().rowType)) == 0)
                                 return new DBException("40026", that);
                         break;
                     }
@@ -301,8 +288,8 @@ namespace Pyrrho.Level2
         {
             var ab = a.tabledefpos.First();
             var bb = b.tabledefpos.First();
-            for (;ab is not null && bb is not null;ab=ab.Next(),bb=bb.Next())
-                if (ab.key().CompareTo(bb.key())==0) return false;
+            for (; ab is not null && bb is not null; ab = ab.Next(), bb = bb.Next())
+                if (ab.key().CompareTo(bb.key()) == 0) return false;
             return ab is null && bb is null;
         }
         /// <summary>
@@ -310,33 +297,79 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="db"></param>
         /// <returns></returns>
-        internal virtual void AddRow(Table tt, TableRow now, Context cx)
+        internal virtual Table AddRow(Table tt, TableRow now, Context cx)
         {
-            if (cx.db==null)
+            if (cx.db == null)
                 throw new PEException("PE6900");
-            if (tt is EdgeType et && 
-                (now.vals[et.leaveCol] == TNull.Value || now.vals[et.arriveCol] == TNull.Value))
-                throw new PEException("PE6901");
+            tt += now;
+            if (tt is EdgeType et)
+            {
+                if (now.vals[et.leaveCol] == TNull.Value || now.vals[et.arriveCol] == TNull.Value)
+                    throw new PEException("PE6901");
+                if (et.FindPrimaryIndex(cx) is null)
+                {
+                    if (cx._Od(et.leavingType) is NodeType lt
+                       && now.vals[et.leaveCol] is TInt tl && tl.ToLong() is long li)
+                    {
+                        var cl = lt.sindexes[et.leaveCol] ?? CTree<long, CTree<long, bool>>.Empty;
+                        var cc = cl[li] ?? CTree<long, bool>.Empty;
+                        cc += (now.defpos, true);
+                        cl += (li, cc);
+                        lt += (Table.SysRefIndexes, lt.sindexes + (et.leaveCol, cl));
+                        cx.Add(lt);
+                        cx.db += lt;
+                    }
+                    if (cx._Od(et.arrivingType) is NodeType at
+                        && now.vals[et.arriveCol] is TInt ta && ta.ToLong() is long ai)
+                    {
+                        var ca = at.sindexes[et.arriveCol] ?? CTree<long, CTree<long, bool>>.Empty;
+                        var cc = ca[ai] ?? CTree<long, bool>.Empty;
+                        cc += (now.defpos, true);
+                        ca += (ai, cc);
+                        at += (Table.SysRefIndexes, at.sindexes + (et.arriveCol, ca));
+                        cx.Add(at);
+                        cx.db += at;
+                    }
+                }
+            }
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
-                    if (cx.db.objects[c.key()] is Level3.Index x 
-                        && x.MakeKey(now.vals) is CList<TypedValue> k)
+                    if (cx.db.objects[c.key()] is Level3.Index x
+                        && x.MakeKey(now.vals) is CList<TypedValue> k && k[0] != TNull.Value)
                     {
                         if ((x.flags.HasFlag(PIndex.ConstraintType.PrimaryKey) ||
                                 x.flags.HasFlag(PIndex.ConstraintType.Unique))
                             && (x.rows?.Contains(k) == true) && cx.db is Transaction
-                            && x.rows?.Get(k,0) is long q && q!=now.defpos)
+                            && x.rows?.Get(k, 0) is long q && q != now.defpos)
                             throw new DBException("23000", "duplicate key ", k);
                         if (cx.db.objects[x.refindexdefpos] is Level3.Index rx &&
                         //    rx.rows?.Contains(k)!=true
                              cx.db.objects[x.reftabledefpos] is Table tb
-                            && tb.Top().FindPrimaryIndex(cx) is Level3.Index px 
+                            && tb.Top().FindPrimaryIndex(cx) is Level3.Index px
                             && px.rows?.Contains(k) != true
                             && cx.db is Transaction)
                             throw new DBException("23000", "missing foreign key ", k);
                         x += (k, defpos);
                         cx.db += (x, cx.db.loadpos);
                     }
+            // If this is a record for an unlabelled node or edge type, check we have a note of the type
+            if (tt is NodeType nt && nt.label.kind == Qlx.Null && nt.name == "")
+            {
+                var ps = CTree<long, bool>.Empty;
+                for (var b = nt.representation.First(); b != null; b = b.Next())
+                    ps += (b.key(), true);
+                if (nt is EdgeType en)
+                {
+                    var e = cx.db.unlabelledEdgeTypes[en.leavingType] ?? BTree<long, BTree<CTree<long, bool>, long?>>.Empty;
+                    var l = e[en.arrivingType] ?? BTree<CTree<long, bool>, long?>.Empty;
+                    cx.db += (Database.UnlabelledEdgeTypes,
+                        cx.db.unlabelledEdgeTypes + (en.leavingType,
+                            e + (en.arrivingType, l + (ps, tt.defpos))));
+                }
+                else if (cx.db.unlabelledNodeTypes[ps] is null)
+                    cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (ps, tt.defpos));
+            }
+            return (Table)cx.Add(tt);
         }
         protected virtual TableRow Now(Context cx)
         {
@@ -347,11 +380,11 @@ namespace Pyrrho.Level2
         {
             for (var b = tabledefpos.First(); b != null; b = b.Next())
             {
-                if (cx._Ob(b.key()) is not Table tb) throw new DBException("42105").Add(Sqlx.CONSTRAINT);
-                var dm = tb._PathDomain(cx);
-                for (var c = dm.First(); c != null; c = c.Next())
+                if (cx._Ob(b.key()) is not Table tb) throw new DBException("42105").Add(Qlx.CONSTRAINT);
+                //       var dm = tb._PathDomain(cx);
+                for (var c = tb.First(); c != null; c = c.Next())
                 {
-                    if (c.value() is not long p || dm.representation[p] is not Domain dv)
+                    if (c.value() is not long p || tb.representation[p] is not Domain dv)
                         throw new PEException("PE10701");
                     if (fields[p] is TypedValue v && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
                     {
@@ -360,6 +393,20 @@ namespace Pyrrho.Level2
                     }
                 }
             }
+        }
+        /// <summary>
+        /// The advantage of this override is that we have to hand uncommitted and committed versions
+        /// of this record and its host tables/nodetypes/edgetypes. 
+        /// </summary>
+        /// <param name="wr"></param>
+        /// <param name="tr"></param>
+        /// <returns></returns>
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            for (var b = tabledefpos.First(); b != null; b = b.Next())
+                if (tr?.objects[b.key()] is Table tb)
+                    tb.Forget(tr, this);
+            return base.Commit(wr, tr);
         }
         internal override DBObject? Install(Context cx, long p)
         {
@@ -374,7 +421,7 @@ namespace Pyrrho.Level2
                 {
                     var now = Now(cx);
                     cx = Add(cx, tb, now, p);
-                    tb = (Table?)cx.obs[tb.defpos]??throw new DBException("42105").Add(Sqlx.TABLE);
+                    tb = (Table?)cx.obs[tb.defpos]??throw new DBException("42105").Add(Qlx.TABLE);
                 }
                 catch (DBException e)
                 {
@@ -398,56 +445,22 @@ namespace Pyrrho.Level2
             for (var b = tt.super.First(); b != null; b = b.Next())   // update supertypes: extra values are harmless
                 if (cx.db.objects[b.key()?.defpos ?? -1L] is Table st && st.defpos>0)
                 {
-                    if (tt is NodeType yt && b.key() is NodeType sn && yt.idCol != sn.idCol)
-                    {
-                        tabledefpos -= sn.defpos;
+                    NodeType? ot = null;
+                    if (tt is NodeType yt && st is NodeType sn && (yt.idCol != sn.idCol || yt.idCol<0))
+                    { //??
+                        ot = sn;
                         if (now.vals[st.idCol] is TypedValue tv)
                             now += (yt.idCol, tv);
                     }
                     cx = Add(cx, st, now, p);
                     subType = st.defpos;
-                    tabledefpos += (tt.defpos, true);
+                    if (ot is not null && ot.defpos != st.defpos) //??
+                    {
+                        tabledefpos -= ot.defpos;
+                        tabledefpos += (tt.defpos, true);
+                    }
                 }
-            AddRow(tt, now, cx);
-            // If this is a record for an unlabelled node or edge type, check we have a note of the type
-            if (tt is NodeType nt && nt.labels.Count == 0)
-            {
-                var ps = CTree<string, bool>.Empty;
-                for (var b = nt.infos[cx.role.defpos]?.names.First(); b != null; b = b.Next())
-                    ps += (b.key(), true);
-                var ro = cx.role;
-                if (nt is EdgeType && cx.role.unlabelledEdgeTypes[ps] is null)
-                    ro += (Role.UnlabelledEdgeTypes, ro.unlabelledEdgeTypes + (ps, tt.defpos));
-                else if (cx.role.unlabelledNodeTypes[ps] is null)
-                    ro += (Role.UnlabelledNodeTypes, ro.unlabelledNodeTypes + (ps, tt.defpos));
-                cx.db += (ro, p);
-            }
-            if (tt is EdgeType et) // If a referenced NodeType has no primary index we need to enter it manually
-            {
-                if (cx._Od(et.leavingType) is NodeType lt
-                    && now.vals[et.leaveCol] is TInt tl && tl.ToLong() is long li)
-                {
-                    var cl = lt.sindexes[et.leaveCol] ?? CTree<long, CTree<long, bool>>.Empty;
-                    var cc = cl[li] ?? CTree<long, bool>.Empty;
-                    cc += (now.defpos, true);
-                    cl += (li, cc);
-                    lt += (Table.SysRefIndexes, lt.sindexes + (et.leaveCol, cl));
-                    cx.Add(lt);
-                    cx.db += lt;
-                }
-                if (cx._Od(et.arrivingType) is NodeType at
-                    && now.vals[et.arriveCol] is TInt ta && ta.ToLong() is long ai)
-                {
-                    var ca = at.sindexes[et.arriveCol] ?? CTree<long, CTree<long, bool>>.Empty;
-                    var cc = ca[ai] ?? CTree<long, bool>.Empty;
-                    cc += (now.defpos, true);
-                    ca += (ai, cc);
-                    at += (Table.SysRefIndexes, at.sindexes + (et.arriveCol, ca));
-                    cx.Add(at);
-                    cx.db += at;
-                }
-            }
-            tt += now;
+            tt = AddRow(tt, now, cx);
             tt += (Table.LastData, ppos);
             cx.db += tt;
             cx.Add(tt);
@@ -484,7 +497,7 @@ namespace Pyrrho.Level2
                 sb.Append(cm); cm = ",";
                 sb.Append(DBObject.Uid(k));sb.Append('=');sb.Append(v.ToString());
                 sb.Append("[");
-                if (v.dataType.kind != Sqlx.TYPE)
+                if (v.dataType.kind != Qlx.TYPE)
                     sb.Append(v.dataType.kind);
                 else
                     sb.Append(v.dataType.name);
@@ -625,6 +638,7 @@ namespace Pyrrho.Level2
         {
             return new Record4(this,wr);
         }
+
         public override void Deserialise(Reader rdr)
         {
             var n = rdr.GetInt();

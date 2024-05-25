@@ -103,7 +103,7 @@ namespace Pyrrho.Level4
                         rs += (sc.defpos, sc.domain);
                         break;
                     }
-            var ks = new Domain(--_uid, BTree<long, object>.Empty + (Kind, Sqlx.ROW) + (RowType, rt)
+            var ks = new Domain(--_uid, BTree<long, object>.Empty + (Kind, Qlx.ROW) + (RowType, rt)
                 + (Representation, rs));
             var x = new SystemIndex(defpos, ks);
             var sys = Database._system ?? throw new PEException("PE1014");
@@ -122,7 +122,7 @@ namespace Pyrrho.Level4
         internal override string NameFor(Context cx)
         {
             if (Denied(cx, Grant.Privilege.Select))
-                throw new DBException("42105").Add(Sqlx.SYSTEM);
+                throw new DBException("42105").Add(Qlx.SYSTEM);
             return name;
         }
         internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
@@ -209,8 +209,8 @@ namespace Pyrrho.Level4
     {
         public readonly long col;
         public readonly TypedValue val1,val2;
-        public readonly Sqlx op1,op2; // EQL, GTR etc
-        public SystemFilter(long c,Sqlx o,TypedValue v,Sqlx o2=Sqlx.NO,TypedValue? v2=null) 
+        public readonly Qlx op1,op2; // EQL, GTR etc
+        public SystemFilter(long c,Qlx o,TypedValue v,Qlx o2=Qlx.NO,TypedValue? v2=null) 
         { col = c; op1 = o; op2 = o2;  val1 = v; val2 = v2??TNull.Value; }
         internal TypedValue? Start(Context cx,SystemRowSet rs,string s,int i,bool desc)
         {
@@ -220,41 +220,41 @@ namespace Pyrrho.Level4
             {
                 switch (op1)
                 {
-                    case Sqlx.EQL:
+                    case Qlx.EQL:
                         return fi.val1;
-                    case Sqlx.GTR:
-                    case Sqlx.GEQ:
+                    case Qlx.GTR:
+                    case Qlx.GEQ:
                         if (!desc)return fi.val1;
                         break;
-                    case Sqlx.LSS:
-                    case Sqlx.LEQ:
+                    case Qlx.LSS:
+                    case Qlx.LEQ:
                         if (desc) return fi.val1;
                         break;
                 }
                 switch (op2)
                 {
-                    case Sqlx.EQL:
+                    case Qlx.EQL:
                         return fi.val2;
-                    case Sqlx.GTR:
-                    case Sqlx.GEQ:
+                    case Qlx.GTR:
+                    case Qlx.GEQ:
                         return desc ? null : fi.val2;
-                    case Sqlx.LSS:
-                    case Sqlx.LEQ:
+                    case Qlx.LSS:
+                    case Qlx.LEQ:
                         return desc ? fi.val2 : null;
                 }
             }
             return null;
         }
         internal static BTree<long,SystemFilter> Add(BTree<long,SystemFilter> sf,
-            long c,Sqlx o, TypedValue v)
+            long c,Qlx o, TypedValue v)
         {
             if (sf[c] is SystemFilter f)
             {
-                if ((f.op1 == Sqlx.LSS || f.op1 == Sqlx.LEQ)
-                    && (o==Sqlx.GTR || o==Sqlx.GEQ))
+                if ((f.op1 == Qlx.LSS || f.op1 == Qlx.LEQ)
+                    && (o==Qlx.GTR || o==Qlx.GEQ))
                     return sf + (c, new SystemFilter(c, f.op1, f.val1, o, v));
-                else if ((f.op1 == Sqlx.GTR || f.op1 == Sqlx.GEQ)
-                    && (o == Sqlx.LSS || o == Sqlx.LEQ))
+                else if ((f.op1 == Qlx.GTR || f.op1 == Qlx.GEQ)
+                    && (o == Qlx.LSS || o == Qlx.LEQ))
                     return sf + (c, new SystemFilter(c, o, v, f.op1, f.val1));
                 else
                     throw new DBException("42000","Filter");
@@ -265,7 +265,7 @@ namespace Pyrrho.Level4
         {
             var sb = new StringBuilder();
             sb.Append(DBObject.Uid(col));
-            sb.Append(SqlValue.Show(op1));
+            sb.Append(QlValue.Show(op1));
             sb.Append(val1);
             return sb.ToString();
         }
@@ -303,7 +303,7 @@ namespace Pyrrho.Level4
         {
             var mf = BTree<long,SystemFilter>.Empty;
             for (var b = w?.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is SqlValue s)
+                if (cx.obs[b.key()] is QlValue s)
                 mf = s.SysFilter(cx, mf);
             SystemIndex? sx = null;
             var sf = BList<SystemFilter>.Empty;
@@ -330,7 +330,7 @@ namespace Pyrrho.Level4
                     }
             // NB: rowType stuff is done by TableRowSet
             if (f.name?.StartsWith("Log$")==true &&cx.user?.defpos!=cx.db.owner)
-                throw new DBException("42105").Add(Sqlx.OWNER);
+                throw new DBException("42105").Add(Qlx.OWNER);
             var r = (m ?? BTree<long, object>.Empty) + (SRowType, f.rowType) + (SysTable, f) + (SysFilt, sf);
             if (w is not null)
                 r  += (_Where,w);
@@ -656,32 +656,32 @@ namespace Pyrrho.Level4
                     var v = this[sf.col];
                     if (!Test(v, sf.op1, sf.val1))
                         return false;
-                    if (sf.op1 != Sqlx.NO && !Test(v, sf.op2, sf.val2))
+                    if (sf.op1 != Qlx.NO && !Test(v, sf.op2, sf.val2))
                         return false;
                 }
                 return true;
             }
-            static bool Test(TypedValue v, Sqlx op, TypedValue w)
+            static bool Test(TypedValue v, Qlx op, TypedValue w)
             {
                 switch (op)
                 {
-                    case Sqlx.EQL:
+                    case Qlx.EQL:
                         if (v.CompareTo(w) != 0)
                             return false;
                         break;
-                    case Sqlx.GTR:
+                    case Qlx.GTR:
                         if (v.CompareTo(w) < 0)
                             return false;
                         break;
-                    case Sqlx.LSS:
+                    case Qlx.LSS:
                         if (v.CompareTo(w) >= 0)
                             return false;
                         break;
-                    case Sqlx.LEQ:
+                    case Qlx.LEQ:
                         if (v.CompareTo(w) > 0)
                             return false;
                         break;
-                    case Sqlx.GEQ:
+                    case Qlx.GEQ:
                         if (v.CompareTo(w) < 0)
                             return false;
                         break;
@@ -1087,11 +1087,11 @@ namespace Pyrrho.Level4
                     Pos(m.ppos),
                     Pos(m.defpos),
                     new TChar(m.name ?? throw new PEException("PE0311")),
-                    new TChar(md.Contains(Sqlx.PASSWORD)?"*******":m.detail.ToString()),
+                    new TChar(md.Contains(Qlx.PASSWORD)?"*******":m.detail.ToString()),
                     new TChar(m.MetaFlags()),
                     Pos(m.refpos),
                     // At present m.iri may contain a password (this should get fixed)
-                    new TChar((m.iri!="" && md.Contains(Sqlx.PASSWORD))?"*******":m.iri));
+                    new TChar((m.iri!="" && md.Contains(Qlx.PASSWORD))?"*******":m.iri));
             }
          }
         /// <summary>
@@ -1561,7 +1561,7 @@ namespace Pyrrho.Level4
         {
             LogClearanceBookmark(Context _cx,SystemRowSet rs, int pos, Physical ph, long pp)
                 : base(_cx,rs, pos, ph, pp, _Value(rs, ph,
-                    (_cx.user??throw new DBException("42105").Add(Sqlx.SECURITY)).defpos))
+                    (_cx.user??throw new DBException("42105").Add(Qlx.SECURITY)).defpos))
             {
             }
             internal static LogClearanceBookmark? New(Context _cx,SystemRowSet res)
@@ -4743,7 +4743,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, long pos, object ob)
             {
                 if (_cx.role is not Role ro)
-                    throw new DBException("42105").Add(Sqlx.ROLE);
+                    throw new DBException("42105").Add(Qlx.ROLE);
                 var us = "";
                 if (ob is RestView rv && _cx.db.objects[rv.usingTable] is Table tb && tb.infos[ro.defpos] is ObInfo oi)
                         us = oi.name;
@@ -5123,7 +5123,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, object tb, bool sys)
             {
                 if (_cx.role is not Role ro)
-                    throw new DBException("42105").Add(Sqlx.ROLE);
+                    throw new DBException("42105").Add(Qlx.ROLE);
                 var t = (Table)tb;
                 var oi = t.infos[_cx.role.defpos] ?? throw new PEException("PE0481");
                 var pd = (PeriodDef)(_cx.db.objects[sys ? t.systemPS : t.applicationPS]
@@ -5249,7 +5249,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context cx, SystemRowSet rs, object ta, int i,long p,Domain d)
             {
                 if (cx.role is not Role ro)
-                    throw new DBException("42105").Add(Sqlx.ROLE);
+                    throw new DBException("42105").Add(Qlx.ROLE);
                 if (ta is not Table tb || tb.infos[ro.defpos] is not ObInfo oi
                     || cx.db.objects[p] is not TableColumn tc
                     || tc.infos[ro.defpos] is not ObInfo si)
@@ -5571,9 +5571,9 @@ namespace Pyrrho.Level4
                         return rb;
                 }
                 for (middle = middle.Next(); middle != null; middle = middle.Next())
-                    if (middle.value() is SqlValue mc)
+                    if (middle.value() is QlValue mc)
                         for (inner = _cx.db.objects.PositionAt(0); inner != null; inner = inner.Next())
-                            if (_cx.db.objects[mc.defpos] is SqlValue rc && rc.defpos == mc.defpos)
+                            if (_cx.db.objects[mc.defpos] is QlValue rc && rc.defpos == mc.defpos)
                             {
                                 var rb = new RoleColumnPrivilegeBookmark(_cx,res, _pos + 1, middle, inner);
                                 if (rb.Match(res) && Eval(res.where, _cx))
@@ -5644,16 +5644,16 @@ namespace Pyrrho.Level4
                 long prec = 0;
                 long scale = 0;
                 var dm = (Domain)ob;
-                if (dm.kind == Sqlx.NUMERIC || dm.kind == Sqlx.REAL)
+                if (dm.kind == Qlx.NUMERIC || dm.kind == Qlx.REAL)
                 {
                     prec = dm.prec;
                     scale = dm.scale;
                 }
-                if (dm.kind == Sqlx.CHAR || dm.kind == Sqlx.NCHAR)
+                if (dm.kind == Qlx.CHAR || dm.kind == Qlx.NCHAR)
                     prec = dm.prec;
                 string start = "";
                 string end = "";
-                if (dm.kind == Sqlx.INTERVAL)
+                if (dm.kind == Qlx.INTERVAL)
                 {
                     start = dm.start.ToString();
                     end = dm.end.ToString();
@@ -5870,7 +5870,7 @@ namespace Pyrrho.Level4
             static TRow _Value(Context _cx, SystemRowSet rs, int i, TableColumn tc)
             {
                 if (tc.infos[_cx.role.defpos] is not ObInfo oi)
-                    throw new DBException("42105").Add(Sqlx.ROLE);
+                    throw new DBException("42105").Add(Qlx.ROLE);
                 return new TRow(rs,
                     Pos(tc.defpos),
                     new TChar(oi?.name??""),
@@ -6181,7 +6181,7 @@ namespace Pyrrho.Level4
                     new TInt(i),
                     new TChar(pp.name),
                     new TChar(pp.ToString()),
-                    new TChar(((pp.result==Sqlx.RESULT) ? Sqlx.RESULT : pp.paramMode).ToString()));
+                    new TChar(((pp.result==Qlx.RESULT) ? Qlx.RESULT : pp.paramMode).ToString()));
             }
             /// <summary>
             /// Move to the next parameter
@@ -6271,7 +6271,7 @@ namespace Pyrrho.Level4
                 if (oo is not DBObject ob || _cx.role is not Role ro 
                     || ob.infos[ro.defpos] is not ObInfo oi || oi.name == null
                     || _cx.db.objects[xp] is not DBObject ox)
-                    throw new DBException("42105").Add(Sqlx.OBJECT);
+                    throw new DBException("42105").Add(Qlx.OBJECT);
                 return new TRow(rs,
                     Pos(ob.defpos),
                     new TChar(ob.GetType().Name),
@@ -6466,7 +6466,7 @@ namespace Pyrrho.Level4
                 if (_cx.role is not Role ro ||
                     tb.infos[ro.defpos] is not ObInfo oi || oi.name == null ||
                     _cx.db.objects[tg.definer] is not Role de)
-                    throw new DBException("42105").Add(Sqlx.TRIGGER);
+                    throw new DBException("42105").Add(Qlx.TRIGGER);
                 return new TRow(rs,
                     Pos(tg.defpos),
                     new TChar(tg.name),
@@ -6693,7 +6693,7 @@ namespace Pyrrho.Level4
             {
                 var t = (UDType)ob;
                 if (_cx.role is null)
-                    throw new DBException("42105").Add(Sqlx.ROLE);
+                    throw new DBException("42105").Add(Qlx.ROLE);
                 TypedValue gr = (t is EdgeType) ? new TChar("EDGETYPE")
                             : (t is NodeType) ? new TChar("NODETYPE") : TNull.Value;
                 var su = new StringBuilder();
@@ -6774,7 +6774,7 @@ namespace Pyrrho.Level4
             }
             internal static RoleMethodBookmark? New(Context _cx, SystemRowSet res)
             {
-                var ro = _cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
+                var ro = _cx.role ?? throw new DBException("42105").Add(Qlx.ROLE);
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is UDType ut && ut.infos[ro.defpos] is ObInfo oi)
                         for (var middle = oi.methodInfos.First(); middle != null;
@@ -6796,7 +6796,7 @@ namespace Pyrrho.Level4
                 if (_cx.role is not Role ro || _cx.db.objects[mp] is not Method p
                     || p.infos[ro.defpos] is not ObInfo mi 
                     || _cx.db.objects[p.definer] is not Role de)
-                    throw new DBException("42105").Add(Sqlx.METHOD);
+                    throw new DBException("42105").Add(Qlx.METHOD);
                 return new TRow(rs,
                    new TChar(t.name),
                    new TChar(mi.name??""),
@@ -6827,7 +6827,7 @@ namespace Pyrrho.Level4
                             return rb;
                     }
                 for (outer = outer.Next(); outer != null; outer = outer.Next())
-                    if (_cx.role is Role ro && outer.value() is Domain ut && ut.kind == Sqlx.TYPE &&
+                    if (_cx.role is Role ro && outer.value() is Domain ut && ut.kind == Qlx.TYPE &&
                         ut.infos[ro.defpos] is ObInfo oi)
                         for (middle = oi.methodInfos.First(); middle != null; middle = middle.Next())
                             for (inner = middle.value().First(); inner != null; inner = inner.Next())
@@ -7010,20 +7010,21 @@ namespace Pyrrho.Level4
             }
             internal static RoleGraphInfoBookmark? New(Context cx, SystemRowSet res)
             {
-                var ro = cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
+                var ro = cx.role ?? throw new DBException("42105").Add(Qlx.ROLE);
                 var bn = CTree<long, bool>.Empty; // base node types
                 var be = CTree<long, bool>.Empty; // base edge types
                 var st = CTree<long, bool>.Empty; // specific types
                 var tn = 0; // node count
                 var te = 0; // edge count
                 var ps = CTree<long, Domain>.Empty; // properties
-                var ls = CTree<long, bool>.Empty; // labels
-                var ll = CTree<CTree<long, bool>,bool>.Empty; // label sets
+                var ls = CTree<Domain, bool>.Empty; // labels
+                var ll = CTree<CTree<Domain, bool>,bool>.Empty; // label sets
                 for (var b = ro.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p && p >= 0 && cx.db.objects[p] is NodeType t)
                     {
-                        ls += t.labels;
-                        ll += (t.labels, true);
+                        var ts = t.label.OnInsert(cx);
+                        ls += ts;
+                        ll += (ts, true);
                         ps += t.representation;
                         if (t is EdgeType)
                         {
@@ -7108,9 +7109,9 @@ namespace Pyrrho.Level4
             readonly DBObject _g;
             readonly ABookmark<long,bool> _mbmk;
             readonly NodeType _nt;
-            readonly ABookmark<long, bool> _bmk;
+            readonly ABookmark<Domain, bool> _bmk;
             public RoleGraphLabelBookmark(Context cx, SystemRowSet r, int pos,
-                ABookmark<long, object> obmk, ABookmark<long,bool> mbmk, ABookmark<long, bool> bmk, 
+                ABookmark<long, object> obmk, ABookmark<long,bool> mbmk, ABookmark<Domain, bool> bmk, 
                 DBObject g, NodeType nt, string lb)
                 : base(cx, r, pos, nt.defpos, nt.defpos, _Value(r, g, nt, lb))
             {
@@ -7127,8 +7128,8 @@ namespace Pyrrho.Level4
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is NodeType e)
-                                for (var d = e.labels.First(); d != null; d = d.Next())
-                                    if (cx._Ob(d.key()) is NodeType f)
+                                for (var d = e.label.OnInsert(cx).First(); d != null; d = d.Next())
+                                    if (d.key() is NodeType f)
                                     {
                                         var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, g, e, f.name);
                                         if (rb.Match(res) && Eval(res.where, cx))
@@ -7139,8 +7140,8 @@ namespace Pyrrho.Level4
                         for (var c = gt.constraints.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is NodeType e)
-                                for (var d = e.labels.First(); d != null; d = d.Next())
-                                    if (cx._Ob(d.key()) is NodeType f)
+                                for (var d = e.label.OnInsert(cx).First(); d != null; d = d.Next())
+                                    if (d.key() is NodeType f)
                                     {
                                         var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, gt, e, f.name);
                                         if (rb.Match(res) && Eval(res.where, cx))
@@ -7159,17 +7160,17 @@ namespace Pyrrho.Level4
                 for (; obmk != null;)
                 {
                     for (var c = bmk?.Next(); c != null; c = c.Next())
-                        if (mbmk!=null && cx._Ob(c.key()) is NodeType e)
+                        if (mbmk!=null && c.key() is NodeType e)
                         {
                             var rb = new RoleGraphLabelBookmark(cx, res, _pos + 1, obmk, mbmk, c, g, nt, e.name);
                             if (rb.Match(res) && Eval(res.where, cx))
                                 return rb;
                         }
                     for (mbmk = mbmk?.Next(); mbmk != null; mbmk = mbmk.Next())
-                        if (cx._Ob(mbmk.key()) is NodeType n)
+                        if (cx.obs[mbmk.key()] is NodeType n)
                         {
                             nt = n;
-                            bmk = n.labels.First();
+                            bmk = n.label.OnInsert(cx).First();
                             goto next;
                         }
                     for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
@@ -7235,7 +7236,7 @@ namespace Pyrrho.Level4
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
                     if (b.value() is Graph g)
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
-                            if (cx._Ob(c.key()) is NodeType e && e.domain.kind!=Sqlx.EDGETYPE)
+                            if (cx._Ob(c.key()) is NodeType e && e.domain.kind!=Qlx.EDGETYPE)
                             {
                                 var rb = new RoleGraphNodeTypeBookmark(cx, res, 0, b, c, g, e);
                                 if (rb.Match(res) && Eval(res.where, cx))
@@ -7251,7 +7252,7 @@ namespace Pyrrho.Level4
                 for (; obmk != null;)
                 {
                     for (var c = bmk?.Next(); c != null; c = c.Next())
-                        if (cx._Ob(c.key()) is NodeType e && e.domain.kind!=Sqlx.EDGETYPE)
+                        if (cx._Ob(c.key()) is NodeType e && e.domain.kind!=Qlx.EDGETYPE)
                         {
                             var rb = new RoleGraphNodeTypeBookmark(cx, res, _pos + 1, obmk, c, g, e);
                             if (rb.Match(res) && Eval(res.where, cx))
@@ -7317,7 +7318,7 @@ namespace Pyrrho.Level4
                     if (b.value() is Graph g)
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
                         {
-                            if (cx._Ob(c.key()) is NodeType e)
+                            if (cx.obs[c.key()] is NodeType e)
                                 for (var d = e.rowType.First(); d != null; d = d.Next())
                                     if (cx._Ob(d.value()??-1L) is TableColumn tc)
                                     {
@@ -7418,9 +7419,9 @@ namespace Pyrrho.Level4
             }
             internal static RoleNodeTypeBookmark? New(Context cx, SystemRowSet res)
             {
-                var ro = cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
+                var ro = cx.role ?? throw new DBException("42105").Add(Qlx.ROLE);
                 for (var outer = cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
-                    if (outer.value() is NodeType ut && ut.kind!=Sqlx.EDGETYPE)
+                    if (outer.value() is NodeType ut && ut.kind!=Qlx.EDGETYPE)
                     {
                         var rb = new RoleNodeTypeBookmark(cx, res, 0, outer, ut);
                         if (rb.Match(res) && Eval(res.where, cx))
@@ -7431,7 +7432,7 @@ namespace Pyrrho.Level4
             protected override Cursor? _Next(Context cx)
             {
                 for (var fb = _fb.Next(); fb != null; fb = fb.Next())
-                    if (fb.value() is NodeType nt && nt.kind != Sqlx.EDGETYPE)
+                    if (fb.value() is NodeType nt && nt.kind != Qlx.EDGETYPE)
                     {
                         var rb = new RoleNodeTypeBookmark(cx, res, _pos + 1, fb, nt);
                         if (rb.Match(res) && Eval(res.where, cx))
@@ -7474,7 +7475,7 @@ namespace Pyrrho.Level4
             }
             internal static RoleEdgeTypeBookmark? New(Context _cx, SystemRowSet res)
             {
-                var ro = _cx.role ?? throw new DBException("42105").Add(Sqlx.ROLE);
+                var ro = _cx.role ?? throw new DBException("42105").Add(Qlx.ROLE);
                 for (var outer = _cx.db.objects.PositionAt(0); outer != null; outer = outer.Next())
                     if (outer.value() is EdgeType ut)
                     {
@@ -7674,7 +7675,7 @@ namespace Pyrrho.Level4
                 if (_cx.role is not Role ro)
                     throw new PEException("PE49310");
                 if (ob.infos[ro.defpos] is not ObInfo oi || oi.name == null)
-                    throw new DBException("42105").Add(Sqlx.OBJECT);
+                    throw new DBException("42105").Add(Qlx.OBJECT);
                 var dm = ob as Domain;
                 return new TRow(rs,
                     new TChar(ob.GetType().Name),
@@ -7690,7 +7691,7 @@ namespace Pyrrho.Level4
             protected override Cursor? _Next(Context _cx)
             {
                 if (_cx.role is not Role ro)
-                    throw new DBException("42105").Add(Sqlx.ROLE);
+                    throw new DBException("42105").Add(Qlx.ROLE);
                 var en = _en;
                 for (en = en.Next(); en != null; en = en.Next())
                     if (en.value() is DBObject ob && ob.infos[ro.defpos] is ObInfo oi)
@@ -7761,7 +7762,7 @@ namespace Pyrrho.Level4
                 if (tb.infos[_cx.role.defpos] is not ObInfo oi
                     || e.value() is not long p
                     || _cx.db.objects[p] is not ObInfo ci)
-                    throw new DBException("42105").Add(Sqlx.OBJECT);
+                    throw new DBException("42105").Add(Qlx.OBJECT);
                 return new TRow(rs,
                     new TChar(oi.name??""),
                     new TInt(e.key()),

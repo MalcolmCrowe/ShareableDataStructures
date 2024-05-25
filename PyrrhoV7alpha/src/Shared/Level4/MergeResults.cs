@@ -32,14 +32,14 @@ namespace Pyrrho.Level4
         /// <summary>
         /// UNION/INTERSECT/EXCEPT
         /// </summary>
-        internal Sqlx oper => (Sqlx)(mem[Domain.Kind]??Sqlx.NONE);
+        internal Qlx oper => (Qlx)(mem[Domain.Kind]??Qlx.NONE);
         /// <summary>
         /// Constructor: a merge rowset from two queries, whose rowsets have been constructed
         /// </summary>
         /// <param name="a">the left operand</param>
         /// <param name="b">the right operand</param>
         /// <param name="q">true if DISTINCT specified</param>
-        internal MergeRowSet(long dp,Context cx, Domain q, RowSet a,RowSet b, bool d, Sqlx op)
+        internal MergeRowSet(long dp,Context cx, Domain q, RowSet a,RowSet b, bool d, Qlx op)
             : base(dp,cx,_Mem(q,a,b)+(Distinct,d)+(Domain.Kind,op)
                   +(_Left,a.defpos)+(_Right,b.defpos))
         {
@@ -100,10 +100,10 @@ namespace Pyrrho.Level4
         {
             return oper switch
             {
-                Sqlx.UNION => UnionBookmark.New(cx, this, 0,
+                Qlx.UNION => UnionBookmark.New(cx, this, 0,
                                     ((RowSet?)cx.obs[left])?.First(cx), ((RowSet?)cx.obs[right])?.First(cx)),
-                Sqlx.INTERSECT => IntersectBookmark.New(cx, this),
-                Sqlx.EXCEPT => ExceptBookmark.New(cx, this),
+                Qlx.INTERSECT => IntersectBookmark.New(cx, this),
+                Qlx.EXCEPT => ExceptBookmark.New(cx, this),
                 _ => throw new PEException("PE899"),
             };
         }
@@ -111,10 +111,10 @@ namespace Pyrrho.Level4
         {
             return oper switch
             {
-                Sqlx.UNION => UnionBookmark.New(cx, this, 0,
+                Qlx.UNION => UnionBookmark.New(cx, this, 0,
                                         ((RowSet?)cx.obs[left])?.Last(cx), ((RowSet?)cx.obs[right])?.Last(cx)),
-                Sqlx.INTERSECT => IntersectBookmark.New(this, cx),
-                Sqlx.EXCEPT => ExceptBookmark.New(this, cx),
+                Qlx.INTERSECT => IntersectBookmark.New(this, cx),
+                Qlx.EXCEPT => ExceptBookmark.New(this, cx),
                 _ => throw new PEException("PE899"),
             };
         }

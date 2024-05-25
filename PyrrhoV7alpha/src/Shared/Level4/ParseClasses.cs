@@ -46,7 +46,7 @@ namespace Pyrrho.Level4
     }
     internal class TablePeriodDefinition
     {
-        public Sqlx pkind = Sqlx.SYSTEM_TIME;
+        public Qlx pkind = Qlx.SYSTEM_TIME;
         public Ident periodname = new ("SYSTEM_TIME", Iix.None);
         public Ident? col1 = null;
         public Ident? col2 = null;
@@ -63,18 +63,18 @@ namespace Pyrrho.Level4
     }
     internal class PrivNames
     {
-        public Sqlx priv;
+        public Qlx priv;
         public BTree<string,bool> cols;
-        internal PrivNames(Sqlx p) { priv = p; cols = BTree<string, bool>.Empty; }
+        internal PrivNames(Qlx p) { priv = p; cols = BTree<string, bool>.Empty; }
     }
  /*   internal class LabelExpression // GQL
     {
-        public Sqlx op;
+        public Qlx op;
         public LabelExpression? left;
         public LabelExpression? right;
         public TypedValue? label;
-        internal LabelExpression (TypedValue s) { op = Sqlx.NO; label = s; }
-        internal LabelExpression (Sqlx o, LabelExpression? l, LabelExpression? r)
+        internal LabelExpression (TypedValue s) { op = Qlx.NO; label = s; }
+        internal LabelExpression (Qlx o, LabelExpression? l, LabelExpression? r)
         { op = o; left = l; right = r; }
         internal CTree<string,bool> ToSet()
         {
@@ -96,9 +96,9 @@ namespace Pyrrho.Level4
             {
                 var tk = cs[p] switch
                 {
-                    '|' => Sqlx.VBAR,
-                    '&' => Sqlx.AMPERSAND,
-                    _ => Sqlx.NO
+                    '|' => Qlx.VBAR,
+                    '&' => Qlx.AMPERSAND,
+                    _ => Qlx.NO
                 };
                 var (q,right) = FromString(p+1, cs.Length);
                 left = new LabelExpression(tk, left, right);
@@ -120,11 +120,11 @@ namespace Pyrrho.Level4
                         {
                             var op = cs[b] switch
                             {
-                                '|' => Sqlx.VBAR,
-                                '&' => Sqlx.AMPERSAND,
-                                _ => Sqlx.NO
+                                '|' => Qlx.VBAR,
+                                '&' => Qlx.AMPERSAND,
+                                _ => Qlx.NO
                             };
-                            if (op != Sqlx.NO)
+                            if (op != Qlx.NO)
                             {
                                 (b, var rg) = FromString(b + 1, len);
                                 return (b,new LabelExpression(op, lf, rg));
@@ -135,14 +135,14 @@ namespace Pyrrho.Level4
                 case '!':
                     {
                         var (o, e) = FromString(off + 1, len);
-                        return (o, new LabelExpression(Sqlx.EXCLAMATION, e, null));
+                        return (o, new LabelExpression(Qlx.EXCLAMATION, e, null));
                     }
                 case '(':
                     {
                         var (o, e) = FromString(off + 1, len);
                         if (cs[o] != ')')
                             throw new DBException("42161", "RPAREN");
-                        return (o + 1, new LabelExpression(Sqlx.LPAREN, null, e));
+                        return (o + 1, new LabelExpression(Qlx.LPAREN, null, e));
                     }
             }
         }
@@ -152,11 +152,11 @@ namespace Pyrrho.Level4
             if (left != null) sb.Append(left);
             var ch = op switch
             {
-                Sqlx.COLON => ':',
-                Sqlx.AMPERSAND => '&',
-                Sqlx.VBAR => '|',
-                Sqlx.EXCLAMATION => '!',
-                Sqlx.LPAREN => '(',
+                Qlx.COLON => ':',
+                Qlx.AMPERSAND => '&',
+                Qlx.VBAR => '|',
+                Qlx.EXCLAMATION => '!',
+                Qlx.LPAREN => '(',
                 _ => '\0'
             };
             if (ch!='\0') sb.Append(ch);
