@@ -7165,14 +7165,15 @@ namespace Pyrrho.Level3
                         var tr = cx.cursors[rs?.from ?? -1L]?.Rec()?[0];
                         var sb = new StringBuilder();
                         var cm = "";
-                        if (tr?.subType >= 0)
-                            sb.Append(cx.NameFor(tr.subType).Trim(':'));
-                        else 
+                        if (tr?.subType >= 0 && cx.NameFor(tr.subType) is string ns)
+                            sb.Append(ns.Trim(':'));
+                        else
                             for (var b = tr?.tabledefpos.First(); b != null; b = b.Next())
-                            {
-                                sb.Append(cm); cm = "&";
-                                sb.Append(cx.NameFor(b.key()).Trim(':'));
-                            }
+                                if (cx.NameFor(b.key()) is string nk)
+                                {
+                                    sb.Append(cm); cm = "&";
+                                    sb.Append(nk.Trim(':'));
+                                }
                         return new TChar(sb.ToString());
                     }
                 case Qlx.SQRT:
@@ -10937,7 +10938,9 @@ cx.obs[high] is not QlValue hi)
         }
         static NodeType _Type(Context cx,CTree<string,QlValue> d,BTree<long,object>? m)
         {
-            return (m?[_Label] as Domain)?.ForExtra(cx,m+(DocValue,d))?? Domain.NodeType;
+            if (m is null)
+                return Domain.NodeType;
+            return (m[_Label] as Domain)?.ForExtra(cx,m+(DocValue,d))?? Domain.NodeType;
         }
         public static GqlNode operator +(GqlNode n, (long, object) x)
         {
@@ -11580,7 +11583,8 @@ cx.obs[high] is not QlValue hi)
                 var li = (lc.domain.kind == Qlx.SET) ?
                     new SqlLiteral(cx.GetUid(), new TSet(lc.domain, CTree<TypedValue, bool>.Empty + (lv, true))) :
                     new SqlLiteral(cx.GetUid(), lv);
-                ls += (cx.NameFor(et.leaveCol), (QlValue)cx.Add(li));
+                if (cx.NameFor(et.leaveCol) is string lN)
+                    ls += (lN, (QlValue)cx.Add(li));
             }
             if (cx.db.objects[et.arriveCol] is TableColumn ac
                 && cx.obs[arrivingValue] is GqlNode sa
@@ -11590,7 +11594,8 @@ cx.obs[high] is not QlValue hi)
                 var ai = (ac.domain.kind == Qlx.SET) ?
                     new SqlLiteral(cx.GetUid(), new TSet(ac.domain, CTree<TypedValue, bool>.Empty + (av, true))) :
                     new SqlLiteral(cx.GetUid(), av);
-                ls += (cx.NameFor(et.arriveCol), (QlValue)cx.Add(ai));
+                if (cx.NameFor(et.arriveCol) is string aN)
+                    ls += (aN, (QlValue)cx.Add(ai));
             }
             return ls;
         }

@@ -50,10 +50,10 @@ namespace Pyrrho.Level2
         {
             return new Revoke(this, wr);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx._Ob(obj) is not DBObject ob || ob.infos[cx.role.defpos] is not ObInfo oi)
-                throw new DBException("42105").Add(Sqlx.REVOKE);
+                throw new DBException("42105").Add(Qlx.REVOKE);
             oi += (ObInfo.Privilege, oi.priv & ~priv);
             if (oi.priv == Privilege.NoPrivilege)
             {
@@ -64,7 +64,7 @@ namespace Pyrrho.Level2
             }
             else
                 ob = ob.New(ob.defpos,ob.mem+(DBObject.Infos, ob.infos + (cx.role.defpos, oi)));
-            cx.db += (ob, p);
+            cx.db += ob;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return ob;

@@ -4108,14 +4108,16 @@ namespace Pyrrho.Level3
     internal class GraphInsertStatement : Executable
     {
         internal const long
+            AtSchemaLevel = -333, // bool
             GraphExps = -307; // CList<CList<GqlNode>> GqlNode (alternately with SqlEdges)
         // In MatchStatement we can also have SqlNodes that are SqlPaths 
         internal CList<CList<GqlNode>> graphExps =>
             (CList<CList<GqlNode>>)(mem[GraphExps] ?? CList<CList<GqlNode>>.Empty);
         internal BList<long?> stms => 
             (BList<long?>?)mem[IfThenElse.Then] ?? BList<long?>.Empty;
-        public GraphInsertStatement(long dp, CList<CList<GqlNode>> ge, BList<long?> th)
-            : base(dp, new BTree<long, object>(GraphExps, ge) + (IfThenElse.Then, th))
+        internal bool atSchemaLevel => (bool)(mem[AtSchemaLevel] ?? false);
+        public GraphInsertStatement(long dp, bool sch, CList<CList<GqlNode>> ge, BList<long?> th)
+            : base(dp, new BTree<long, object>(GraphExps, ge) + (IfThenElse.Then, th) +(AtSchemaLevel,sch))
         { }
         public GraphInsertStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
@@ -4203,7 +4205,7 @@ namespace Pyrrho.Level3
                                     }
                                 if (et is null)
                                     et = (EdgeType)ed._NodeType(cx, Domain.EdgeType);
-                                ed.Create(cx, et, false);
+                                ed.Create(cx, et);
                             }
                             else
                                 bn = g.Eval(cx) as TNode;

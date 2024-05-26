@@ -1080,8 +1080,8 @@ namespace Pyrrho.Level4
                     return sn;
                 if (cx.obs[p] is Domain sd && sd.name is string n && n != "")
                     return n;
-                if (cx.obs[p] is SqlCall sc)
-                    return cx.NameFor(sc.procdefpos);
+                if (cx.obs[p] is SqlCall sc && cx.NameFor(sc.procdefpos) is string pn)
+                    return pn;
                 if (this is InstanceRowSet ir && ir.sRowType[i] is long ip
                     && cx.db.objects[ip] is DBObject tc && tc.infos[cx.role.defpos] is ObInfo ci
                     && ci.name is string im && im != "")
@@ -1937,8 +1937,8 @@ namespace Pyrrho.Level4
         {
             var ns = BTree<string, (int, long?)>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p)
-                    ns += (cx.NameFor(p), (b.key(), p));
+                if (b.value() is long p && cx.NameFor(p) is string n)
+                    ns += (n, (b.key(), p));
             var r = dm.mem + (ObInfo.Names, ns);
             if (a != null)
                 r = r + (_Alias, a) + (_Ident, new Ident(a, new Iix(dp)));
@@ -2086,8 +2086,8 @@ namespace Pyrrho.Level4
             var m = r.mem + (_Domain,dm);
             var ns = BTree<string, (int,long?)>.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p)
-                    ns += (cx.NameFor(p), (b.key(),p));
+                if (b.value() is long p && cx.NameFor(p) is string n)
+                    ns += (n, (b.key(),p));
             return m + (ObInfo.Names, ns);
         }
         public static SelectedRowSet operator +(SelectedRowSet et, (long, object) x)
@@ -4361,10 +4361,8 @@ namespace Pyrrho.Level4
             var ns = BTree<string, (int,long?)>.Empty;
             var i = 0;
             for (var b = dm.Needs(cx).First(); b != null; b = b.Next())
-            {
-                var p = b.key();
-                ns += (cx.NameFor(p), (i++,p));
-            }
+                if (cx.NameFor(b.key()) is string n)
+                    ns += (n, (i++, b.key()));
             return dm.mem + (ObInfo.Names, ns) + (Asserts, Assertions.AssignTarget);
         }
         internal override Basis New(BTree<long, object> m)

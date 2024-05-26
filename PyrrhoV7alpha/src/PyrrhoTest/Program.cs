@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("24 May 2024 Repeatable tests");
+                Console.WriteLine("26 May 2024 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -1242,13 +1242,13 @@ namespace Test
             Act(353, "insert into staff (name,title) values ('Anne','Prof')");
             CheckResults(25,1, "select *,specifictype() from person",
                 "[{NAME:'Fred',SPECIFICTYPE:'STUDENT'},{NAME:'Anne',SPECIFICTYPE:'STAFF'}]");
-            Act(354, "create type wedding edgetype(bride=person,groom=person)");
+            Act(354, "create type married edgetype(bride=person,groom=person)");
             Act(355, "insert into person values('Joe'),('Mary')");
-            Act(356, "insert into wedding(bride,groom) values ("+
+            Act(356, "insert into married(bride,groom) values ("+
                 "(select position from person where name='Mary'),"+
                 "(select position from person where name='Joe'))");
-            CheckResults(25, 2, "select count(*) from wedding", "[{COUNT:1}]");
-            CheckResults(25, 3, "match ({name:'Joe'})<-[:wedding]-(x)", "[{X:'PERSON(NAME=Mary)'}]");
+            CheckResults(25, 2, "select count(*) from married", "[{COUNT:1}]");
+            CheckResults(25, 3, "match ({name:'Joe'})<-[:married]-(x)", "[{X:'PERSON(NAME=Mary)'}]");
             Act(357, "CREATE\r\n(:Product:WoodScrew {spec:'16/8x4'}),(:Product: WallPlug{spec:'18cm'}),"+
                 "(Joe:Customer {Name:'Joe Edwards', Address:'10 Station Rd.'}),"+
                 "(Joe)-[:Ordered {\"Date\":date'2002-11-22'} ]->(:\"Order\"{id:201})");

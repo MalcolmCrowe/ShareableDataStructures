@@ -264,7 +264,7 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
             var tb = (DBObject)(cx.db.objects[target]??throw new PEException("PE2102"));
@@ -272,11 +272,11 @@ namespace Pyrrho.Level2
             tb = tb.AddTrigger(tg);
             var oi = new ObInfo(name, Grant.Privilege.Execute);
             tg += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
-            cx.db += (ro, p);
+            cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(tb, p);
-            cx.Install(tg, p);
+            cx.Install(tb);
+            cx.Install(tg);
             return tg;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? t)
@@ -291,7 +291,7 @@ namespace Pyrrho.Level2
             var co = (DBObject)(tr.objects[target] ?? throw new PEException("PE2102"));
             co = co.AddTrigger((Trigger)tg);
             wr.cx.instDFirst = -1;
-            return ((Transaction)(tr + (tg, tr.loadpos) + (co, tr.loadpos)), ph);
+            return (tr + tg + co, ph);
         }
     }
 }

@@ -72,6 +72,7 @@ namespace Pyrrho.Level5
         internal Domain idColDomain => (Domain)(mem[IdColDomain] ?? Int);
         internal Domain label => 
             (Domain)(mem[GqlNode._Label] ?? GqlLabel.Empty);
+        internal TRow? singleton => (TRow?)mem[TrivialRowSet.Singleton];
         internal CTree<string, long> names => 
             (CTree<string, long>)(mem[_Names] ?? CTree<string, long>.Empty);
         internal NodeType(Qlx t) : base(t)
@@ -161,28 +162,30 @@ namespace Pyrrho.Level5
                 var ps = CTree<long, bool>.Empty;
                 var pn = CTree<string, bool>.Empty;
                 for (var b = representation.First(); b != null; b = b.Next())
-                {
-                    ps += (b.key(), true);
-                    pn += (cx.NameFor(b.key()), true);
-                }
+                    if (cx.NameFor(b.key()) is string n)
+                    {
+                        ps += (b.key(), true);
+                        pn += (n, true);
+                    }
                 if (!ro.unlabelledNodeTypesInfo.Contains(pn))
                 {
                     ro += (Role.UnlabelledNodeTypesInfo, ro.unlabelledNodeTypesInfo + (pn, defpos));
                     cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (ps, defpos));
                 }
             }
-            cx.db += (this, cx.db.loadpos);
-            cx.db += (ro, cx.db.loadpos);
+            cx.db += this;
+            cx.db += ro;
             cx.db += (Database.Role, cx.db.objects[cx.role.defpos] ?? throw new DBException("42105"));
         }
         internal virtual bool HaveNodeOrEdgeType(Context cx)
         {
             if (name != "")
-                return cx.role.nodeTypes[name] is long p && p<Transaction.Analysing;
+                return cx.role.nodeTypes[name] is long p && p < Transaction.Analysing;
             var pn = CTree<string, bool>.Empty;
             for (var b = representation.First(); b != null; b = b.Next())
-                pn += (cx.NameFor(b.key()), true);
-            return cx.role.unlabelledNodeTypesInfo[pn] is long q && q<Transaction.Analysing;
+                if (cx.NameFor(b.key()) is string n)
+                    pn += (n, true);
+            return cx.role.unlabelledNodeTypesInfo[pn] is long q && q < Transaction.Analysing;
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -252,16 +255,16 @@ namespace Pyrrho.Level5
                     bd.Refresh(cx);
                 }
         }
-        internal override DBObject Add(Context cx, PMetadata pm, long p)
+        internal override DBObject Add(Context cx, PMetadata pm)
         {
             var ro = cx.role;
             if (pm.detail.Contains(Qlx.NODETYPE) && infos[ro.defpos] is ObInfo oi
                 && oi.name is not null)
             {
                 ro += (Role.NodeTypes, ro.nodeTypes + (oi.name, defpos));
-                cx.db += (ro, p);
+                cx.db += ro;
             }
-            return base.Add(cx, pm, p);
+            return base.Add(cx, pm);
         }
         internal override BList<long?> Add(BList<long?> a, int k, long v, long p)
         {
@@ -495,6 +498,7 @@ namespace Pyrrho.Level5
                         nt = (NodeType)(cx.Add(pc)??throw new DBException("42105"));
                     }
             }
+            nt = (NodeType)(cx._Ob(nt.defpos) ?? nt);
             return new CTree<Domain,bool>(nt,true);
         }
         internal override CTree<Domain, bool> OnInsert(Context cx, BTree<long,long?>? d,
@@ -700,9 +704,8 @@ namespace Pyrrho.Level5
                     + (EdgeType.ArrivingType, an.defpos);
                 ut = (EdgeType)cx.Add(ee);
             }
-            var dl = cx.db.loadpos;
             var ro = cx.role + (Role.DBObjects, cx.role.dbobjects + (ut.name, ut.defpos));
-            cx.db = cx.db + (ut, dl) + (ro, dl);
+            cx.db = cx.db + ut + ro;
             if (cx.db is Transaction ta && ta.physicals[ut.defpos] is PNodeType pn)
             {
                 pn.dataType = ut;
@@ -712,13 +715,15 @@ namespace Pyrrho.Level5
         }
         internal virtual NodeType Check(Context cx, GqlNode e, bool allowExtras = true)
         {
+            var r = this;
             if (cx._Ob(defpos) is not NodeType nt || nt.infos[definer] is not ObInfo ni)
                 throw new DBException("PE42133", name);
             for (var b = e.docValue.First(); b != null; b = b.Next())
                 if (!ni.names.Contains(b.key()) && allowExtras)
-                    cx.Add(new PColumn3(this, b.key(), -1, b.value().domain,
-                    PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx));
-            return this;
+                    r = (NodeType?)cx.Add(new PColumn3(r, b.key(), -1, b.value().domain,
+                    PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx))
+                        ??throw new DBException("42105");
+            return r;
         }
         internal NodeType FixNodeType(Context cx, Ident typename)
         {
@@ -1172,7 +1177,7 @@ namespace Pyrrho.Level5
                         var rn = ToCamel(rt.name);
                         for (var i = 0; fields.Contains(rn); i++)
                             rn = ToCamel(rt.name) + i;
-                        var fn = cx.NameFor(rx.keys[0] ?? -1L);
+                        var fn = cx.NameFor(rx.keys[0] ?? -1L)??"";
                         fields += (rn, true);
                         sb.Append("  public " + rt.name + "? " + sc.ToString()
                             + "is => conn?.FindOne<" + rt.name + ">((\"" + fn.ToString() + "\"," + sa.ToString() + "));\r\n");
@@ -1357,7 +1362,7 @@ namespace Pyrrho.Level5
                         var rn = ToCamel(rt.name);
                         for (var i = 0; fields.Contains(rn); i++)
                             rn = ToCamel(rt.name) + i;
-                        var fn = cx.NameFor(rx.keys[0] ?? -1L);
+                        var fn = cx.NameFor(rx.keys[0] ?? -1L)??"";
                         fields += (rn, true);
                         sb.Append(" def " + sc.ToString() + "is(): \r\n");
                         sb.Append("  return conn.FindOne(" + rt.name + ",\"" + fn.ToString() + "\"=" + sa.ToString() + ")\r\n");
@@ -1670,18 +1675,20 @@ namespace Pyrrho.Level5
     }
 
     /// <summary>
-    /// structural information about leaving and arriving is copied to subtypes
+    /// structural information about leaving and arriving is copied to subtypes.
+    /// For an undirected edge LeavingEnds is true, and there is no ArrivingType etc,
+    /// and the default identifier CONNECTING is used instead of LEAVING.
     /// </summary>
     internal class EdgeType : NodeType
     {
         internal const long
             ArriveCol = -474, // long TableColumn  NameFor is md[RPAREN]
-            ArriveColDomain = -495, // Domain
+            ArriveColDomain = -495, // Domain (usually INT or CHAR)
             ArriveIx = -435, // long Index
             ArrivingEnds = -371, // bool
             ArrivingType = -467, // long NodeType  NameFor is md[ARROW]
             LeaveCol = -473, // long TableColumn   NameFor is md[LPAREN]
-            LeaveColDomain = -494, // Domain
+            LeaveColDomain = -494, // Domain (usually INT or CHAR)
             LeaveIx = -470, // long Index
             LeavingEnds = -377, // bool
             LeavingType = -464; // long NodeType   NameFor is md[RARROW]
@@ -1803,7 +1810,7 @@ namespace Pyrrho.Level5
                     var ll = ee[leavingType] ?? BTree<long, long?>.Empty;
                     ro += (Role.EdgeTypes, ro.edgeTypes + (nm, ee + (leavingType,
                         ll + (arrivingType, defpos))));
-                    cx.db += (ro,cx.db.loadpos);
+                    cx.db += ro;
                 }
             }
             else
@@ -1813,10 +1820,11 @@ namespace Pyrrho.Level5
                 var ps = CTree<long, bool>.Empty;
                 var pn = CTree<string, bool>.Empty;
                 for (var b = representation.First(); b != null; b = b.Next())
-                {
-                    ps += (b.key(), true);
-                    pn += (cx.NameFor(b.key()), true);
-                }
+                    if (cx.NameFor(b.key()) is string n)
+                    {
+                        ps += (b.key(), true);
+                        pn += (n, true);
+                    }
                 if (ro.unlabelledEdgeTypesInfo[leavingType]?[arrivingType]?.Contains(pn) != true)
                 {
                     var ee = ro.unlabelledEdgeTypesInfo[leavingType] ?? BTree<long, BTree<CTree<string, bool>, long?>>.Empty;
@@ -1827,11 +1835,11 @@ namespace Pyrrho.Level5
                     var l = e[arrivingType] ?? BTree<CTree<long, bool>, long?>.Empty;
                     cx.db += (Database.UnlabelledEdgeTypes, cx.db.unlabelledEdgeTypes
                         + (leavingType, e + (arrivingType, l + (ps, defpos))));
-                    cx.db += (ro, cx.db.loadpos);
+                    cx.db += ro;
                 }
             }
             cx.db += (Database.Role, cx.db.objects[cx.role.defpos]??throw new DBException("42105"));
-            cx.db += (this, cx.db.loadpos);
+            cx.db += this;
         }
         internal override bool HaveNodeOrEdgeType(Context cx)
         {
@@ -1839,7 +1847,8 @@ namespace Pyrrho.Level5
                 return cx.role.edgeTypes[name]?[leavingType]?.Contains(arrivingType) == true;
             var pn = CTree<string, bool>.Empty;
             for (var b = representation.First(); b != null; b = b.Next())
-                pn += (cx.NameFor(b.key()), true);
+                if (cx.NameFor(b.key()) is string n)
+                pn += (n, true);
             return cx.role.unlabelledEdgeTypesInfo[leavingType]?[arrivingType]?.Contains(pn) == true;
         }
         internal EdgeType FixEdgeType(Context cx, PType pt)
@@ -1857,7 +1866,7 @@ namespace Pyrrho.Level5
                 return cx.role.dbobjects[s.value] ?? -1L;
             return -1L;
         }
-        internal override DBObject Add(Context cx, PMetadata pm, long p)
+        internal override DBObject Add(Context cx, PMetadata pm)
         {
             var ro = cx.role;
             if (pm.detail.Contains(Qlx.EDGETYPE) && infos[ro.defpos] is ObInfo oi
@@ -1869,10 +1878,10 @@ namespace Pyrrho.Level5
                     var l = e[leavingType] ?? BTree<long, long?>.Empty;
                     ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, e + (leavingType,
                         l + (arrivingType, defpos))));
-                    cx.db += (ro, p);
+                    cx.db += ro;
                 }
             }
-            return base.Add(cx, pm, p);
+            return base.Add(cx, pm);
         }
         /// <summary>
         /// Create a new EdgeType if required.
@@ -1899,8 +1908,8 @@ namespace Pyrrho.Level5
             var md = CTree<Qlx, TypedValue>.Empty + (Qlx.EDGETYPE, TNull.Value);
             if (id != "ID") md += (Qlx.NODE, new TChar(id));
             if (ic) md += (Qlx.CHAR, new TChar(id));
-            if (lt is not null) md += (Qlx.ARROW, new TChar(cx.NameFor(lt.defpos)));
-            if (at is not null) md += (Qlx.RARROW, new TChar(cx.NameFor(at.defpos)));
+            if (lt is not null && cx.NameFor(lt.defpos) is string sL) md += (Qlx.ARROW, new TChar(sL));
+            if (at is not null && cx.NameFor(at.defpos) is string sA) md += (Qlx.RARROW, new TChar(sA));
             if (lc != "LEAVING") md += (Qlx.LPAREN, new TChar(lc));
             if (ar != "ARRIVING") md += (Qlx.RPAREN, new TChar(ar));
             if (sl) md += (Qlx.ARROWBASE, TBool.True);
@@ -1951,8 +1960,9 @@ namespace Pyrrho.Level5
                     if (ot.super.Count == 0L)
                     {
                         // make a supertype NodeType
-                        var sm = CTree<Qlx, TypedValue>.Empty + (Qlx.ID, new TChar(cx.NameFor(ot.idCol)))
-                            + (Qlx.CHAR, TBool.For(tc.domain.kind == Qlx.CHAR));
+                        var sm = CTree<Qlx, TypedValue>.Empty + (Qlx.CHAR, TBool.For(tc.domain.kind == Qlx.CHAR));
+                        if (cx.NameFor(ot.idCol) is string nI)
+                            sm += (Qlx.ID, new TChar(nI));
                         var ut = ot.Build(cx, null, new BTree<long,object>(UnionOf,new CTree<Domain, bool>(NodeType,true)),sm);
                         ot = (EdgeType?)cx.Add(new EditType(n, ot, ot, new CTree<Domain, bool>(ut, true), cx.db.nextPos, cx))
                             ?? throw new DBException("42105");
@@ -2040,10 +2050,7 @@ namespace Pyrrho.Level5
             if (lt>0)
                 e += (lt, f);
             if (e != BTree<long, BTree<long, long?>>.Empty)
-            {
-                ro += (Role.EdgeTypes, ro.edgeTypes + (name, e));
-                cx.db += (ro, cx.db.loadpos);
-            }
+                cx.db += ro + (Role.EdgeTypes, ro.edgeTypes + (name, e));
             if (cx.db.objects.Contains(defpos))
                 cx.db += this;
             if (defpos != -1L)

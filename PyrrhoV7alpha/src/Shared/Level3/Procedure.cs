@@ -72,10 +72,10 @@ namespace Pyrrho.Level3
         {
             return (Procedure)p.New(p.mem + v);
         }
-        internal override Database Drop(Database d, Database nd, long p)
+        internal override Database Drop(Database d, Database nd)
         {
             nd += (Database.Procedures, d.procedures - defpos);
-            return base.Drop(d, nd, p);
+            return base.Drop(d, nd);
         }
         /// <summary>
         /// Execute a Procedure/function.
@@ -135,9 +135,9 @@ namespace Pyrrho.Level3
                 }
             return cx;
         }
-        internal override void Modify(Context cx, Modify m, long p)
+        internal override void Modify(Context cx, Modify m)
         {
-            cx.db += (this+(Body,m.proc),p);
+            cx.db += this+(Body,m.proc);
         }
         internal override Basis New(BTree<long, object> m)
         {

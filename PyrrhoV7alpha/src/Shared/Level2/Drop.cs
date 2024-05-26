@@ -220,11 +220,11 @@ namespace Pyrrho.Level2
 			return (pos==delpos)?new DBException("40073",delpos,ph,ct).Mix():null;
 		}
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db != null && cx.db.objects[delpos] is DBObject ob)
             {
-                cx.db = ob.Drop(cx.db, cx.db, p);
+                cx.db = ob.Drop(cx.db, cx.db);
                 if (cx.db.mem.Contains(Database.Log))
                     cx.db += (Database.Log, cx.db.log + (ppos, type));
             }

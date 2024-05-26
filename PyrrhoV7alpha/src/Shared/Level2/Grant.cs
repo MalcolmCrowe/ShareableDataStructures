@@ -166,7 +166,7 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db.objects[obj] is not DBObject ob)
                 throw new DBException("42000","Grant");
@@ -195,7 +195,7 @@ namespace Pyrrho.Level2
             // install the privilege on the target object
             oi += (ObInfo.Privilege, pr);
             ob = (DBObject)ob.New(ob.mem+(DBObject.Infos,ob.infos + (grantee, oi)));
-            cx.db += (ob, p);
+            cx.db += ob;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return rg;
@@ -249,7 +249,7 @@ namespace Pyrrho.Level2
             return "Authenticate [" +userpos+"] "+ pwd + " FOR [" + irolepos+"]";
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             throw new NotImplementedException();
         }

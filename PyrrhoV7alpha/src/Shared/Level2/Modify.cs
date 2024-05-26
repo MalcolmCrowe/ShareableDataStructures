@@ -126,7 +126,7 @@ namespace Pyrrho.Level2
                     var ip = rdr.context.Ix(p.defpos);
                     psr.cx.defs += (new Ident(p.name, ip), ip);
                 }
-            psr.cx.Install(pr, 0);
+            psr.cx.Install(pr);
             odt.Defs(psr.cx);
             // and parse the body
             if (psr.ParseStatement(pr.domain,true) is not Executable bd)
@@ -136,7 +136,7 @@ namespace Pyrrho.Level2
             framing += (Framing.Obs, pr.framing.obs + framing.obs);
             pr += (Procedure.Body, proc);
             pr += (DBObject._Framing,framing);
-            rdr.context.Install(pr, rdr.Position);
+            rdr.context.Install(pr);
         }
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -171,7 +171,7 @@ namespace Pyrrho.Level2
 		{
             return "Modify " + name + "["+ modifydefpos+"] to " + source?.ident;
 		}
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db.role is not Role ro ||cx.db.objects[modifydefpos] is not Method pr)
                 throw new PEException("PE48140");
@@ -183,10 +183,10 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute)));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + modifydefpos, ppos));
-            cx.db = cx.db + (ro, p) + (pr, p);
+            cx.db = cx.db + ro + pr;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(pr, p);
+            cx.Install(pr);
             return pr;
         }
     }

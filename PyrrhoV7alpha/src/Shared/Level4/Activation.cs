@@ -541,7 +541,7 @@ namespace Pyrrho.Level4
                                  ((!level.ClearanceAllows(rc.classification))
                                  || level.minLevel != rc.classification.minLevel)
                                  : level.minLevel > 0))))
-                            throw new DBException("42105").Add(Qlx.SECURITY, new TChar(NameFor(table.defpos)));
+                            throw new DBException("42105").Add(Qlx.SECURITY, new TChar(NameFor(table.defpos)??""));
 //#endif
                         // Step D
                         tgc = (TransitionRowSet.TargetCursor)(cursors[_trs.defpos] ??
@@ -676,11 +676,11 @@ namespace Pyrrho.Level4
             {
                 case PTrigger.TrigType.Insert:
                     if (_vw.Denied(cx, Grant.Privilege.Insert))
-                        throw new DBException("42105").Add(Qlx.INSERT,new TChar(NameFor(ts.target)));
+                        throw new DBException("42105").Add(Qlx.INSERT,new TChar(NameFor(ts.target)??""));
                     break;
                 case PTrigger.TrigType.Update:
                     if (_vw.Denied(cx, Grant.Privilege.Update))
-                        throw new DBException("42105").Add(Qlx.UPDATE, new TChar(NameFor(ts.target)));
+                        throw new DBException("42105").Add(Qlx.UPDATE, new TChar(NameFor(ts.target)??""));
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
                     if (cx.obs[ass.key().vbl] is QlValue c){
                         if (c is not SqlCopy && c.GetType().Name!="QlValue")
@@ -695,7 +695,7 @@ namespace Pyrrho.Level4
                     break;
                 case PTrigger.TrigType.Delete:
                     if (_vw.Denied(cx, Grant.Privilege.Delete))
-                        throw new DBException("42105").Add(Qlx.DELETE, new TChar(_vw.NameFor(cx)));
+                        throw new DBException("42105").Add(Qlx.DELETE, new TChar(_vw.NameFor(cx)??""));
                     break;
             }
         }

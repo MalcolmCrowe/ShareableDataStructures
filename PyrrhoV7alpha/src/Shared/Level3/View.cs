@@ -327,13 +327,13 @@ namespace Pyrrho.Level3
                     sb.Append("  self." + n + " = " + cd.defaultValue + "\r\n");
                 }
         }
-        internal override void Modify(Context cx, Modify m, long p)
+        internal override void Modify(Context cx, Modify m)
         {
             if (cx.db == null)
                 throw new PEException("PE48181");
             if (m.source == null)
                 throw new DBException("42000",m.name);
-            cx.db += (this + (ViewDef, m.source.ident), p);
+            cx.db += this + (ViewDef, m.source.ident);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -343,16 +343,16 @@ namespace Pyrrho.Level3
         {
             return new View(dp, m);
         }
-        internal override Database Drop(Database d, Database nd, long p)
+        internal override Database Drop(Database d, Database nd)
         {
             for (var b = d.roles.First(); b != null; b = b.Next())
                 if (b.value() is long bp && d.objects[bp] is Role ro 
                     && infos[ro.defpos] is ObInfo oi && oi.name is not null)
                 {
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
-                    nd += (ro, p);
+                    nd += ro;
                 }
-            return base.Drop(d, nd, p);
+            return base.Drop(d, nd);
         }
         /// <summary>
         /// a readable version of the View
@@ -424,14 +424,14 @@ namespace Pyrrho.Level3
             cx.depths += (depth, ds);
             cx.Add(this);
         }
-        internal override DBObject Add(Context cx, PMetadata pm, long p)
+        internal override DBObject Add(Context cx, PMetadata pm)
         {
             var md = pm.Metadata();
             var oi = (infos[cx.role.defpos]??new ObInfo(name))
                 +(ObInfo._Metadata,md)
-                +(ObInfo.SchemaKey, p);
+                +(ObInfo.SchemaKey, pm.ppos);
             var r = cx.Add(this + (Infos, infos + (cx.role.defpos, oi)));
-            cx.db += (r,p);
+            cx.db += r;
             return r;
         }
         public static RestView operator +(RestView r, (long, object) x)
@@ -646,8 +646,8 @@ namespace Pyrrho.Level3
                     if (ci.description?.Length > 1)
                         sb.Append("  // " + ci.description + "\r\n");
                 }
-                else
-                    fields += (cx.NameFor(p), true);
+                else if (cx.NameFor(p) is string n)
+                    fields += (n, true);
                 sb.Append("  public " + tn + " " + tb.NameFor(cx) + ";\r\n");
             }
             for (var b = tb.indexes.First(); b != null; b = b.Next())

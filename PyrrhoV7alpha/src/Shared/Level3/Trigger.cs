@@ -182,7 +182,7 @@ namespace Pyrrho.Level3
                 r +=(cx, NewTable, o);
             return r;
         }
-        internal override Database Drop(Database d, Database nd, long p)
+        internal override Database Drop(Database d, Database nd)
         {
             var tb = (Table)(nd.objects[table] ?? throw new DBException("42107", "??"));
             var tgs = CTree<PTrigger.TrigType, CTree<long, bool>>.Empty;
@@ -195,8 +195,8 @@ namespace Pyrrho.Level3
                 tgs += (b.key(), ts);
             }
             tb += (Table.Triggers, tgs);
-            nd += (tb, p);
-            return base.Drop(d, nd, p);
+            nd += tb;
+            return base.Drop(d, nd);
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {

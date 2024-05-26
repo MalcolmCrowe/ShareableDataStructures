@@ -226,10 +226,7 @@ namespace Pyrrho.Level3
             Database._system += this;
         }
         internal Domain(long dp, BTree<long, object> m) : base(dp, m)
-        {
-            if (representation.Contains(-1L))
-                ;
-        }
+        { }
         /// <summary>
         /// Allow construction of ad-hoc derived types such as ARRAY, MULTISET, SET, COLLECT
         /// </summary>
@@ -1886,8 +1883,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             // might be named or positional
             var ns = BTree<string, long?>.Empty;
             for (var b = rowType.First(); b != null; b = b.Next())
-            if (b.value() is long rp)
-                ns += (cx.NameFor(rp), rp);
+            if (b.value() is long rp && cx.NameFor(rp) is string n)
+                ns += (n, rp);
             for (var j = 0; j < rowType.Length;)
             {
                 var a = psr.lxr.val.ToString();
@@ -4371,7 +4368,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             var r = CTree<Domain, bool>.Empty;
             var tv = _Eval(cx);
-            if (tv is TTypeSpec ts && ts._dataType is NodeType n)
+            if (tv is TTypeSpec ts && cx._Ob(ts._dataType.defpos) is NodeType n)
                 r += (n, true);
             if (tv is TChar tc && cx.db.objects[cx.role.nodeTypes[tc.value] ?? -1L] is NodeType nt)
                 r += (nt, true);
@@ -5143,9 +5140,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             }
             return ids;
         }
-        internal override DBObject Add(Context cx, PMetadata pm, long p)
+        internal override DBObject Add(Context cx, PMetadata pm)
         {
-            var r = base.Add(cx,pm,p);
+            var r = base.Add(cx,pm);
             if (pm.detail[Qlx.PREFIX] is TChar pf)
             {
                 r += (Prefix, pf.value);

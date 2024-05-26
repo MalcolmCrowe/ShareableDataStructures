@@ -180,11 +180,11 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
             Table? rt = null;
-            if (ro == null || cx.db == null) throw new DBException("42105").Add(Sqlx.DELETE_STATEMENT);
+            if (ro == null || cx.db == null) throw new DBException("42105").Add(Qlx.DELETE_STATEMENT);
             for (var ob = ro.dbobjects.First(); ob != null; ob = ob.Next())
                 if (ob.value() is long op && cx.db.objects[op] is Table tb 
                     && tb.tableRows[delpos] is TableRow delRow)
@@ -204,11 +204,11 @@ namespace Pyrrho.Level2
                                     if (ix.rows == null)
                                         ix += (Level3.Index.Tree, 
                                             new MTree(inf,mt.nullsAndDuplicates,0));
-                                    cx.Install(ix, p);
+                                    cx.Install(ix);
                                 }
                         tb -= delpos;
                         tb += (Table.LastData, ppos);
-                        cx.Install(tb, p);
+                        cx.Install(tb);
                     }
 
             if (cx.db.mem.Contains(Database.Log))
@@ -270,11 +270,11 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             tabledefpos += (tb,true);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             Table? r = null;
             for (var b = tabledefpos.First(); b != null; b = b.Next())
-                if (cx._Ob(b.key()) is Table t && t.DoDel(cx, this, p) is Table u && t != u)
+                if (cx._Ob(b.key()) is Table t && t.DoDel(cx, this) is Table u && t != u)
                     r = u;
             return r ?? throw new PEException("PE00806");
         }

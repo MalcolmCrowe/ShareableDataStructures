@@ -158,7 +158,7 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var rp = Database._system.role.defpos;
             var mt = new Method(this);
@@ -183,7 +183,7 @@ namespace Pyrrho.Level2
             cx.db += (mt.defpos, mt);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(mt,p);
+            cx.Install(mt);
             return mt;
         }
     }

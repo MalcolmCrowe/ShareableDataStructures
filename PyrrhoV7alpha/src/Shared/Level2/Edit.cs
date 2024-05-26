@@ -253,10 +253,10 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject Install(Context cx, long p)
+        internal override DBObject Install(Context cx)
         {
             var fix = CTree<long, bool>.Empty;
-            var r = (Domain)base.Install(cx, p);
+            var r = (Domain)base.Install(cx);
             if (dataType is not Table st)
                 throw new PEException("PE408205");
             // To make things easier we consider the merging of columns in two stages,
@@ -315,8 +315,8 @@ namespace Pyrrho.Level2
                             nu += (NodeType.IdIx, xi.defpos);
                             cx.Add(nu);
                             cx.Add(xi);
-                            cx.db += (nu, p);
-                            cx.db += (xi, p);
+                            cx.db += nu;
+                            cx.db += xi;
                             un = nu;
                         }
                         // special case: if un is an edge type without leaving/arriving indexes we clone those of st
@@ -332,8 +332,8 @@ namespace Pyrrho.Level2
                             eu += (EdgeType.LeaveCol, te.leaveCol);
                             cx.Add(eu);
                             cx.Add(xl);
-                            cx.db += (eu, p);
-                            cx.db += (xl, p);
+                            cx.db += eu;
+                            cx.db += xl;
                             un = eu;
                         }
                         if (un is EdgeType ev && ev.arriveIx < 0 && dataType is EdgeType tf)
@@ -347,8 +347,8 @@ namespace Pyrrho.Level2
                             ev += (EdgeType.ArriveCol, tf.arriveCol);
                             cx.Add(ev);
                             cx.Add(xa);
-                            cx.db += (ev, p);
-                            cx.db += (xa, p);
+                            cx.db += ev;
+                            cx.db += xa;
                             un = ev;
                         }
                     }
@@ -370,7 +370,7 @@ namespace Pyrrho.Level2
                         // record that we are a subType of Under
                         un += (Domain.Subtypes, uD.subtypes - ppos + (prev.defpos, true));
                         cx.Add(un);
-                        cx.db += (un, p);
+                        cx.db += un;
                         dataType += (Domain.Under, under-uD+(un,true));
                     }
                 }

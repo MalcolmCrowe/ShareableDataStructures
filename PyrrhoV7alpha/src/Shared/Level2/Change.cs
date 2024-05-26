@@ -151,7 +151,7 @@ namespace Pyrrho.Level2
 			return (pos==Affects)?new DBException("40005",pos,r,ct).Mix():null;
 		}
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
             var ob = cx.db.objects[defpos] as DBObject;
@@ -161,13 +161,13 @@ namespace Pyrrho.Level2
             if (oi == null)
                 return null;
             var m = ob.mem;
-            m += (DBObject.LastChange, p);
+            m += (DBObject.LastChange, ppos);
             m += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, new ObInfo(name, oi.priv)));
             if (oi.name != null && ro.dbobjects.Contains(oi.name))
                 ro += (Role.DBObjects, ro.dbobjects - oi.name + (name, defpos));
             ob = (DBObject)ob.New(m);
-            cx.db += (ob, p);
-            cx.db += (ro, p);
+            cx.db += ob;
+            cx.db += ro;
             cx.obs += (defpos, ob);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

@@ -156,7 +156,7 @@ namespace Pyrrho.Level2
             parameters = rt;
             dataType = dt;
             framing = new Framing(psr.cx,nst); // heading only
-            var pr = (Procedure?)Install(psr.cx, rdr.Position);
+            var pr = (Procedure?)Install(psr.cx);
             if (pr is not null)
             {
                 psr.cx.AddParams(pr);
@@ -165,13 +165,13 @@ namespace Pyrrho.Level2
             psr.LexPos(); //synchronise with CREATE
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
-            if (psr.tok != Sqlx.EOF && psr.ParseStatement(dt,true) is Executable bd)
+            if (psr.tok != Qlx.EOF && psr.ParseStatement(dt,true) is Executable bd)
                 proc = bd.defpos;
             psr.cx.parse = op;
             framing = new Framing(psr.cx,nst);
             rdr.context.db = psr.cx.db;
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
             if (source == null || parameters==null)
@@ -180,7 +180,7 @@ namespace Pyrrho.Level2
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute);
             var ns = BTree<string, (int, long?)>.Empty;
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long q && framing.obs[q] is SqlValue v &&  v.name is string n)
+                if (b.value() is long q && framing.obs[q] is QlValue v &&  v.name is string n)
                     ns += (n, (b.key(), q));
             oi += (ObInfo.Names, ns);
             var pr = new Procedure(this, 
@@ -193,11 +193,10 @@ namespace Pyrrho.Level2
             ro += (Role.Procedures, ps + (name, pn));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            cx.db = cx.db + (ro, p) + (pr, p) 
-                + (Database.Procedures,cx.db.procedures+(defpos,name));
+            cx.db = cx.db + ro + pr + (Database.Procedures,cx.db.procedures+(defpos,name));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(pr, p);
+            cx.Install(pr);
             if (framing.obs.Count==0)
                 cx.AddParams(pr);
             cx.db += (pr.defpos, pr);

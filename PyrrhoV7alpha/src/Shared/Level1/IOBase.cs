@@ -184,7 +184,7 @@ namespace Pyrrho.Level2
             role = db.role;
             user = (User?)db.objects[db.owner];
             limit = file.Length;
-            GetBuf(db.loadpos);
+            GetBuf(db.length);
         }
         internal Reader(Context cx, long p, PTransaction? pt = null)
         {
@@ -506,7 +506,7 @@ namespace Pyrrho.Level2
         {
             ph.OnLoad(this);
             context.result = -1L;
-            context.db.Add(context, ph, Position);
+            context.db.Add(context, ph);
         }
         /// <summary>
         /// This important routine is part of the Commit sequence. It looks for

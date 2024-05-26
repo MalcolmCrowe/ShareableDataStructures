@@ -50,7 +50,7 @@ namespace Pyrrho.Level2
             _defpos = rdr.Prev(prev) ?? ppos;
             base.Deserialise(rdr);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
             if (table == null)
@@ -60,7 +60,7 @@ namespace Pyrrho.Level2
                 return null;
             if (table.infos[ro.defpos] is not ObInfo ti)
                 throw new PEException("PE47120");
-            ti += (ObInfo.SchemaKey, p);
+            ti += (ObInfo.SchemaKey, ppos);
             var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
@@ -68,13 +68,13 @@ namespace Pyrrho.Level2
             tc += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
             tc += (TableColumn.Seq, seq);
             table += (cx, tc);
-            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT));
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT));
             seq = tc.seq;
-            cx.Install(table, p);
-            cx.db += (ro, p);
+            cx.Install(table);
+            cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(tc, p);
+            cx.Install(tc);
             return tc;
         }
         /// <summary>
@@ -122,7 +122,7 @@ namespace Pyrrho.Level2
             _defpos = rdr.Prev(prev) ?? -1L;
             base.Deserialise(rdr);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
             if (table == null)
@@ -132,7 +132,7 @@ namespace Pyrrho.Level2
                 return null;
             if (table.infos[ro.defpos] is not ObInfo ti)
                 throw new PEException("PE427121");
-            ti += (ObInfo.SchemaKey, p);
+            ti += (ObInfo.SchemaKey, ppos);
             var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
@@ -140,13 +140,13 @@ namespace Pyrrho.Level2
             tc += (TableColumn.Seq, seq);
             table += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ci));
             table += (cx, tc);
-            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT));
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT));
             seq = tc.seq;
-            cx.Install(table, p);
-            cx.db += (ro, p);
+            cx.Install(table);
+            cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(tc, p);
+            cx.Install(tc);
             return tc;
         }
     }
@@ -212,7 +212,7 @@ namespace Pyrrho.Level2
             _defpos = rdr.Prev(previous) ?? -1L;
 			base.Deserialise(rdr);
 		}
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
             if (table == null)
@@ -223,7 +223,7 @@ namespace Pyrrho.Level2
             cx.obs += table.framing.obs;
             if (table.infos[ro.defpos] is not ObInfo ti)
                 throw new PEException("PE47122");
-            ti += (ObInfo.SchemaKey, p);
+            ti += (ObInfo.SchemaKey, ppos);
             var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
             cx.db += dataType;
             // the given role is the definer
@@ -233,13 +233,13 @@ namespace Pyrrho.Level2
             tc += (TableColumn.Seq, seq);
             cx.obs += (tc.defpos, tc);
             table += (cx, tc);
-            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT));
+            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT));
      //       seq = tc.seq;
-            cx.Install(table, p);
-            cx.db += (ro, p);
+            cx.Install(table);
+            cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(tc, p);
+            cx.Install(tc);
             return tc;
         }
         /// <summary>
@@ -262,7 +262,7 @@ namespace Pyrrho.Level2
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             if (table == null)
-                return new DBException("42105").Add(Sqlx.CREATE_GRAPH_TYPE_STATEMENT);
+                return new DBException("42105").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT);
             switch (that.type)
             {
                 case Type.Alter3:

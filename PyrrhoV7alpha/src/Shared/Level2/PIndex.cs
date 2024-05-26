@@ -274,7 +274,7 @@ namespace Pyrrho.Level2
                 r += " refers to [" + Pos(reference) + "]";
             return r;
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db.objects[tabledefpos] is not Table tb)
                 return null;
@@ -286,7 +286,7 @@ namespace Pyrrho.Level2
             cx.db += tb;
             x += (DBObject.Infos, x.infos + (cx.role.defpos, new ObInfo("", Grant.Privilege.Execute)));
             x = x.AddRows(tb, cx);
-            cx.Install(x, p);
+            cx.Install(x);
             if (reference >= 0)
             {
                 var rt = (Table?)cx.db.objects[x.reftabledefpos] ?? throw new PEException("PE1435");
@@ -295,9 +295,9 @@ namespace Pyrrho.Level2
                     rx += (DBObject.Dependents, rx.dependents + (x.defpos, true));
                     var at = rt.rindexes[tb.defpos] ?? CTree<Domain, Domain>.Empty;
                     rt += (Table.RefIndexes, rt.rindexes + (tb.defpos, at + (x.keys, rx.keys)));
-                    cx.Install(rx, p);
+                    cx.Install(rx);
                 }
-                cx.Install(rt, p);
+                cx.Install(rt);
             }
             var cs = BList<long?>.Empty;
             var kc = tb.keyCols;
@@ -342,7 +342,7 @@ namespace Pyrrho.Level2
             }
             tb += (Table.KeyCols, kc);
             tb += (DBObject.LastChange, defpos);
-            cx.Install(tb, p);
+            cx.Install(tb);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.db += (tb.defpos, tb);
@@ -549,7 +549,7 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject?     Install(Context cx)
         {
             var x = (Level3.Index?)cx.db.objects[index]??throw new DBException("42000","RefAction");
             var od = x.flags & PIndex.Deletes;
@@ -561,7 +561,7 @@ namespace Pyrrho.Level2
             var nt = (oc | nc) | ((nd == PIndex.ConstraintType.NoType) ? od : nd) 
                 | ((nu == PIndex.ConstraintType.NoType) ? ou : nu);
             x += (Level3.Index.IndexConstraint, nt);
-            cx.db += (x, p);
+            cx.db += x;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return x;

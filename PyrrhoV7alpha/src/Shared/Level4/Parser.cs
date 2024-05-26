@@ -1538,8 +1538,13 @@ namespace Pyrrho.Level4
             // New nodes without Id keys should be assigned cx.db.nextPos.ToString(), and this is fixed
             // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
             var ge = ParseInsertGraphList();
+            var sch = false;
+            if (Match(Qlx.SCHEMA))
+            {
+                sch = true; Next();
+            }
             var st = BList<long?>.Empty;
-            var cs = (GraphInsertStatement)cx.Add(new GraphInsertStatement(cx.GetUid(), ge, st));
+            var cs = (GraphInsertStatement)cx.Add(new GraphInsertStatement(cx.GetUid(), sch, ge, st));
             if (cx.parse == ExecuteStatus.Obey)
                 cs._Obey(cx);
             if (tok == Qlx.THEN)
@@ -3034,7 +3039,7 @@ namespace Pyrrho.Level4
                             var dv = ParseSqlValue(tc.domain);
                             var ds = new string(lxr.input, st, lxr.start - st);
                             tc = tc + (Domain.Default, dv) + (Domain.DefaultString, ds);
-                            cx.db += (tc, cx.db.loadpos);
+                            cx.db += tc;
                             break;
                         }
                     default:
@@ -3201,10 +3206,9 @@ namespace Pyrrho.Level4
             var od = dom;
             if (type != null && Match(Qlx.COLLATE))
                 tc += (Domain.Culture, new CultureInfo(ParseCollate()));
-            if (StartMetadata(Qlx.TYPE))
+            if (StartMetadata(Qlx.TYPE) && cx.NameFor(tc.defpos) is string tn)
             {
                 var md = ParseMetadata(Qlx.TYPE);
-                var tn = cx.NameFor(tc.defpos);
                 var pm = new PMetadata(tn, 0, tc, md, cx.db.nextPos);
                 cx.Add(pm);
                 var oi = tc.infos[cx.role.defpos] ?? new ObInfo(tn);
@@ -3971,7 +3975,7 @@ namespace Pyrrho.Level4
                         + (DBObject.Infos, new BTree<long, ObInfo>(cx.role.defpos, pi)));
                     pr = (Procedure)(cx.Add(pp) ?? pr);
                     pp.dataType = pr.domain;
-                    cx.db += (pr, cx.db.loadpos);
+                    cx.db += pr;
                 }
                 else
                     throw new DBException("42108", n.ToString()).Mix();
@@ -3983,7 +3987,7 @@ namespace Pyrrho.Level4
             {
                 Next();
                 Mustbe(Qlx.Id);
-                cx.db += (pr, cx.db.loadpos);
+                cx.db += pr;
             }
             else if (create == Qlx.ALTER && (StartMetadata(Qlx.FUNCTION) || Match(Qlx.ALTER, Qlx.ADD, Qlx.DROP)))
                 ParseAlterBody(pr);
@@ -4022,7 +4026,7 @@ namespace Pyrrho.Level4
                     cx.parse = op;
                 }
                 if (create == Qlx.CREATE)
-                    cx.db += (pr, cx.db.loadpos);
+                    cx.db += pr;
                 var cix = cx.Ix(pr.defpos);
                 cx.defs += (n, cix);
                 if (pp == null)
@@ -5232,7 +5236,8 @@ namespace Pyrrho.Level4
             cx.parse = ExecuteStatus.Parse;
             cx.parseStart = LexPos().lp;
             var op = cx.parse;
-            var fn = new Ident(cx.NameFor(trig.target), LexPos());
+            var tn = cx.NameFor(trig.target) ?? throw new DBException("42000");
+            var fn = new Ident(tn, LexPos());
             var tb = cx.db.objects[trig.target] as Table
                 ?? throw new PEException("PE1562");
             tb = (Table)cx.Add(tb);
@@ -5265,10 +5270,10 @@ namespace Pyrrho.Level4
                 cx.defs += (trig.newRow, trig.newRow.iix);
             }
             for (var b = trig.dataType.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                if (b.value() is long p && cx.NameFor(p) is string n)
                 {
                     var px = new Iix(fn.iix, p);
-                    cx.defs += (cx.NameFor(p), px, Ident.Idents.Empty);
+                    cx.defs += (n, px, Ident.Idents.Empty);
                 }
             QlValue? when = null;
             Executable? act;

@@ -139,7 +139,7 @@ namespace Pyrrho.Level2
 			return "PTransaction for "+nrecs+" Role="+Pos(ptrole.defpos)
                 +" User="+Pos(ptuser?.defpos ?? -1L)+" Time="+new DateTime(pttime).ToString(cu);
 		}
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (ptrole.defpos!=cx.db.role.defpos)
                 cx.db += (Database.Role,cx.db.objects[ptrole.defpos] as Role??throw new DBException("42105"));
@@ -191,11 +191,11 @@ namespace Pyrrho.Level2
             return "TriggeredAction " + trigger;
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var tg = (Trigger?)cx.db.objects[trigger] ?? throw new PEException("PE1415");
             var ro = (Role?)cx.db.objects[tg.definer] ?? throw new PEException("PE1416");
-            cx.db += (ro, p);
+            cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return null;
@@ -286,7 +286,7 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

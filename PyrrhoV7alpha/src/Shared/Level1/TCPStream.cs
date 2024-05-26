@@ -791,21 +791,21 @@ namespace Pyrrho.Level1
                 int[] flags = new int[m];
                 result.Schema(cx, flags);
                 var j = 0;
-                for (var b=result.representation.First();b is not null;b=b.Next(),j++)
-                {
-                    var n = cx.NameFor(b.key());
-                    PutString(n);
-                    var k = b.value().kind;
-                    switch (k)
+                for (var b = result.representation.First(); b is not null; b = b.Next(), j++)
+                    if (cx.NameFor(b.key()) is string n)
                     {
-                        case Qlx.DOCUMENT:
-                        case Qlx.LEVEL:
-                            n = k.ToString();
-                            break;
+                        PutString(n);
+                        var k = b.value().kind;
+                        switch (k)
+                        {
+                            case Qlx.DOCUMENT:
+                            case Qlx.LEVEL:
+                                n = k.ToString();
+                                break;
+                        }
+                        PutString(n);
+                        PutInt(flags[j]);
                     }
-                    PutString(n);
-                    PutInt(flags[j]);
-                }
             }
             Flush();
         }

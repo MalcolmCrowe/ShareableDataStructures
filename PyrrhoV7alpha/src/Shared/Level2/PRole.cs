@@ -94,7 +94,7 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <returns>the string representation</returns>
 		public override string ToString() { return "PRole "+name; }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             // If this is the first Role to be defined, 
             // it becomes the schema role and also the current role
@@ -118,15 +118,14 @@ namespace Pyrrho.Level2
                           +(DBObject.Infos,os)));
                 }
             }
-            cx.db = cx.db+(nr,p)+(Database.Roles,cx.db.roles+(name,nr.defpos));
+            cx.db = cx.db+nr +(Database.Roles,cx.db.roles+(name,nr.defpos));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             if (first)
             {
                 nr += (DBObject.Definer, nr.defpos);
                 nr += (DBObject.Infos, infos + (nr.defpos, new ObInfo(name, Grant.AllPrivileges)));
-                cx.db = cx.db + (DBObject.Definer, nr.defpos)
-                    + (nr, p);
+                cx.db = cx.db + (DBObject.Definer, nr.defpos) + nr;
             }
             return nr;
         }
@@ -316,10 +315,10 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="p"></param>
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ob = ((DBObject?)cx.db.objects[defpos]) ?? throw new DBException("42000","PMetadata");
-            ob = ob.Add(cx,this, p);
+            ob = ob.Add(cx,this);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return ob;

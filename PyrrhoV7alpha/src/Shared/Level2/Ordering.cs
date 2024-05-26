@@ -125,13 +125,13 @@ namespace Pyrrho.Level2
             return "Ordering for " + domain.name +
                 flags + Pos(funcdefpos);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var dm = domain 
                 + (Domain.OrderFunc, (Procedure?)cx.db.objects[funcdefpos] ?? throw new DBException("42108"))
                 +(Domain._OrderCategory, flags);
             cx.Add(dm);
-            cx.db += (dm, p);
+            cx.db += dm;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return dm;

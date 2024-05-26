@@ -138,8 +138,8 @@ namespace Pyrrho.Level3
         /// If there no users or roles defined in a database, the _system role uid is used
         /// </summary>
         internal static Database _system = Empty;
-        internal readonly long loadpos;
-        public override long lexeroffset => loadpos;
+        internal readonly long length;
+        public override long lexeroffset => length;
         internal const long
             Arriving = -469, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Catalog = -247, // BTree<string,long?> DBObject
@@ -247,7 +247,7 @@ namespace Pyrrho.Level3
                   (Roles,BTree<string,long?>.Empty+(sr.name??"",sr.defpos)+(gu.name??"",gu.defpos)),                
                   (NextStmt,Transaction.Executables))
         {
-            loadpos = 0;
+            length = 0;
         }
         /// <summary>
         /// Each named Database starts off with the _system definitions
@@ -260,36 +260,30 @@ namespace Pyrrho.Level3
             +(NextStmt,Transaction.Executables))
         {
             dbfiles += (n, f);
-            loadpos = 5;
+            length = 5;
         }
-        /// <summary>
-        /// After that all changes to a named database are made using the
-        /// operator+ methods defined below
-        /// </summary>
-        /// <param name="c">The current load position</param>
-        /// <param name="m">All the other properties</param>
-        internal Database(long c, BTree<long,object> m):base(m)
+        internal Database(Database d,long len) :base (d.mem)
         {
-            loadpos = c;
+            length = len;
         }
-        protected virtual Database New(long c, BTree<long,object> m)
+        protected Database(Database d,BTree<long,object> m) :base(m)
         {
-            return new Database(c, m);
+            length = d.length;
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new Database(loadpos, m);
+            return new Database(this,m);
         }
         public static Database operator +(Database d, (long, object) x)
         {
             var (dp, ob) = x;
             if (d.mem[dp] == ob)
                 return d;
-            return d.New(d.loadpos, d.mem + x);
+            return (Database)d.New(d.mem + x);
         }
         public static Database operator -(Database d,long x)
         {
-            return d.New(d.loadpos, d.mem - x);
+            return (Database)d.New(d.mem - x);
         }
         /// <summary>
         /// Default action for adding a DBObject (goes into mem)
@@ -298,25 +292,22 @@ namespace Pyrrho.Level3
         /// <param name="d"></param>
         /// <param name="x"></param>
         /// <returns></returns>
-        public static Database operator +(Database d, (DBObject, long) x)
+        public static Database operator +(Database d, DBObject x)
         {
-            var (ob,curpos) = x;
             var m = d.mem;
-            if (d.mem[ob.defpos] == ob)
+            if (d.mem[x.defpos] == x)
                 return d;
-            m += (ob.defpos, ob);
-            return d.New(curpos,m);
+            m += (x.defpos, x);
+            return (Database)d.New(m);
         }
-        public static Database operator +(Database d, (Level, long) x)
+        public static Database operator +(Database d, (Level,long) x)
         {
-            return d.New(d.loadpos, 
-                d.mem+(Levels,d.levels + (x.Item1, x.Item2))+
+            return (Database)d.New(d.mem+(Levels,d.levels + x)+
                 (LevelUids,d.cache + (x.Item2, x.Item1)));
         }
-        public static Database operator +(Database d,(Role,long) x)
+        public static Database operator +(Database d,Role x)
         {
-            var (ro, p) = x;
-            return d.New(p,d.mem+(ro.defpos,ro)+(Role,ro));
+            return (Database)d.New(d.mem+(x.defpos,x)+(Role,x));
         }
         public static Database operator+(Database d,Domain dm)
         {
@@ -330,10 +321,9 @@ namespace Pyrrho.Level3
                 m += (dm.defpos, dm);
             return (Database)d.New(m);
         }
-
-        internal virtual DBObject? Add(Context cx,Physical ph,long lp)
+        internal virtual DBObject? Add(Context cx,Physical ph)
         {
-            return ph.Install(cx, lp);
+            return ph.Install(cx);
         }
         internal FileStream _File()
         {
@@ -392,7 +382,7 @@ namespace Pyrrho.Level3
             // if not new, this database may be out of date: ensure we get the latest
             // and add the connection for the session
             var r = databases[name];
-            if (r == null || r.loadpos < loadpos)
+            if (r == null || r.length < length)
                 r = this; // this is more recent!
             // ensure a valid user and role combination
             // 1. Default:
@@ -464,7 +454,7 @@ namespace Pyrrho.Level3
                 var cx = new Context(tr);
                 var pu = new PUser(user, tr.nextPos, cx);
                 u = new User(pu, this);
-                tr.Add(cx,pu,loadpos);
+                tr.Add(cx,pu);
                 tr = (Transaction)(cx.db ?? throw new PEException("PE1012"));
             }
             tr = tr + (User, u) + (Role, ro)
@@ -524,6 +514,7 @@ namespace Pyrrho.Level3
                    // if (rdr.context?.db.mem[Log] is BTree<long,Physical.Type> log)
                         rdr.context.db += (Log, rdr.context.db.log + (p.ppos, p.type));
                 }
+                rdr.context.db = new Database(rdr.context.db,df.Length);
             }
             var d = rdr.context?.db ?? throw new PEException("PE1013");
             if (PyrrhoStart.VerboseMode)

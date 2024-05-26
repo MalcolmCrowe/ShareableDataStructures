@@ -42,7 +42,7 @@ namespace Pyrrho.Level2
             throw new NotImplementedException();
         }
 
-        internal override DBObject? Install(Level4.Context cx, long p)
+        internal override DBObject? Install(Level4.Context cx)
         {
             return null;
         }

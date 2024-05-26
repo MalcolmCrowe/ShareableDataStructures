@@ -173,7 +173,7 @@ namespace Pyrrho.Level2
             return new PGraph(this, wr);
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ns = CTree<long, TNode>.Empty;
             for (var b = records.First(); b != null; b = b.Next())
@@ -185,11 +185,11 @@ namespace Pyrrho.Level2
                         ns += (r.defpos, new TNode(nt,t));
                 }
             var g = new Graph(this,cx);
-            cx.db += (g,p);
+            cx.db += g;
             var ro = cx.role;
             ro += (Role.Graphs, ro.graphs + (name, ppos));
-            cx.db += (g, p);
-            cx.db += (ro, p);
+            cx.db += g;
+            cx.db += ro;
             cx.Add(ro);
             cx.Add(g);
             return g;
@@ -265,15 +265,15 @@ namespace Pyrrho.Level2
             return new PGraphType(this, wr);
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ns = CTree<long, TNode>.Empty;
             var g = new GraphType(this, cx);
-            cx.db += (g, p);
+            cx.db += g;
             var ro = cx.role;
             ro += (Role.Graphs, ro.graphs + (name, ppos));
-            cx.db += (g, p);
-            cx.db += (ro, p);
+            cx.db += g;
+            cx.db += ro;
             cx.Add(ro);
             cx.Add(g);
             return g;
@@ -331,13 +331,13 @@ namespace Pyrrho.Level2
             return new PSchema(this, wr);
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var g = new Schema(this,cx);
             var ro = cx.role;
             ro += (Role.Schemas, ro.schemas + (directoryPath, ppos));
-            cx.db += (g, p);
-            cx.db += (ro, p);
+            cx.db += g;
+            cx.db += ro;
             cx.Add(ro);
             cx.Add(g);
             return g;

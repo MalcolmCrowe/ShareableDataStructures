@@ -254,7 +254,7 @@ namespace Pyrrho.Level3
                             t -= c.key();
                 ro += (UnlabelledEdgeTypesInfo, unlabelledEdgeTypesInfo + (b.key(), t));
             }
-            return cx.db + (ro, cx.db.loadpos);
+            return cx.db + ro;
         }
     }
     /// <summary>

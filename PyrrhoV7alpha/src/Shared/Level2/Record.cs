@@ -350,24 +350,29 @@ namespace Pyrrho.Level2
                             && cx.db is Transaction)
                             throw new DBException("23000", "missing foreign key ", k);
                         x += (k, defpos);
-                        cx.db += (x, cx.db.loadpos);
+                        cx.db += x;
                     }
             // If this is a record for an unlabelled node or edge type, check we have a note of the type
-            if (tt is NodeType nt && nt.label.kind == Qlx.Null && nt.name == "")
+            if (tt is NodeType nt)
             {
-                var ps = CTree<long, bool>.Empty;
-                for (var b = nt.representation.First(); b != null; b = b.Next())
-                    ps += (b.key(), true);
-                if (nt is EdgeType en)
+                if (nt.label.kind == Qlx.Null && nt.name == "")
                 {
-                    var e = cx.db.unlabelledEdgeTypes[en.leavingType] ?? BTree<long, BTree<CTree<long, bool>, long?>>.Empty;
-                    var l = e[en.arrivingType] ?? BTree<CTree<long, bool>, long?>.Empty;
-                    cx.db += (Database.UnlabelledEdgeTypes,
-                        cx.db.unlabelledEdgeTypes + (en.leavingType,
-                            e + (en.arrivingType, l + (ps, tt.defpos))));
+                    var ps = CTree<long, bool>.Empty;
+                    for (var b = nt.representation.First(); b != null; b = b.Next())
+                        ps += (b.key(), true);
+                    if (nt is EdgeType en)
+                    {
+                        var e = cx.db.unlabelledEdgeTypes[en.leavingType] ?? BTree<long, BTree<CTree<long, bool>, long?>>.Empty;
+                        var l = e[en.arrivingType] ?? BTree<CTree<long, bool>, long?>.Empty;
+                        cx.db += (Database.UnlabelledEdgeTypes,
+                            cx.db.unlabelledEdgeTypes + (en.leavingType,
+                                e + (en.arrivingType, l + (ps, tt.defpos))));
+                    }
+                    else if (cx.db.unlabelledNodeTypes[ps] is null)
+                        cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (ps, tt.defpos));
                 }
-                else if (cx.db.unlabelledNodeTypes[ps] is null)
-                    cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (ps, tt.defpos));
+                else if (now.vals.Count == 0)
+                    tt = nt + (TrivialRowSet.Singleton, new TRow(nt,now.vals));
             }
             return (Table)cx.Add(tt);
         }
@@ -408,7 +413,7 @@ namespace Pyrrho.Level2
                     tb.Forget(tr, this);
             return base.Commit(wr, tr);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             Table? rt = null;
             for (var b = tabledefpos.First(); b != null; b = b.Next())
@@ -420,7 +425,7 @@ namespace Pyrrho.Level2
                 try
                 {
                     var now = Now(cx);
-                    cx = Add(cx, tb, now, p);
+                    cx = Add(cx, tb, now);
                     tb = (Table?)cx.obs[tb.defpos]??throw new DBException("42105").Add(Qlx.TABLE);
                 }
                 catch (DBException e)
@@ -438,7 +443,7 @@ namespace Pyrrho.Level2
             }
             return rt??throw new PEException("PE00804");
         }
-        Context Add(Context cx,Table tt, TableRow now, long p)
+        Context Add(Context cx,Table tt, TableRow now)
         {
             if (tt.defpos < 0)
                 return cx;
@@ -452,7 +457,7 @@ namespace Pyrrho.Level2
                         if (now.vals[st.idCol] is TypedValue tv)
                             now += (yt.idCol, tv);
                     }
-                    cx = Add(cx, st, now, p);
+                    cx = Add(cx, st, now);
                     subType = st.defpos;
                     if (ot is not null && ot.defpos != st.defpos) //??
                     {
@@ -464,7 +469,7 @@ namespace Pyrrho.Level2
             tt += (Table.LastData, ppos);
             cx.db += tt;
             cx.Add(tt);
-            cx.Install(tt, p);
+            cx.Install(tt);
             return cx;
         }
         internal override void Affected(ref BTree<long, BTree<long, long?>> aff)

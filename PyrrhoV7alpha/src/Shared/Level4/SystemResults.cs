@@ -25,7 +25,7 @@ namespace Pyrrho.Level4
         internal SystemTable(string n) : base(--_uid, _Mem(n))
         {
             var sys = Database._system ?? throw new PEException("PE1013");
-            Database._system = sys + (this, 0) + (TableType.Relocate(_uid), 0);
+            Database._system = sys + this + TableType.Relocate(_uid);
         }
         protected SystemTable(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(string n)
@@ -88,7 +88,7 @@ namespace Pyrrho.Level4
             var d = Database._system??throw new PEException("PE1014");
             var dr = d.role ?? throw new PEException("PE1015");
             var ro = dr + (Role.DBObjects, dr.dbobjects + (name, defpos));
-            d = d + (this, 0) + (ro,-1);
+            d = d + this + ro;
             Database._system = d;
         }
         public SystemTable AddIndex(params string[] k)
@@ -160,7 +160,7 @@ namespace Pyrrho.Level4
             t += (Domain.RowType, t.rowType + defpos);
             t += (Domain.Representation, t.representation + (defpos, dt));
             t += (SystemTable.SysCols, t.sysCols + (defpos, this));
-            Database._system = Database._system + (this, 0)+(t,0);
+            Database._system = Database._system + this + t;
         }
         protected SystemTableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
         public static SystemTableColumn operator+(SystemTableColumn s,(long,object) x)
@@ -7392,7 +7392,7 @@ namespace Pyrrho.Level4
                     new TChar(Uid(e.defpos)),
                     new TChar(Uid(g.defpos)),
                     new TChar(e.name ?? ""),
-                    new TChar(cx.NameFor(tc.defpos)),
+                    new TChar(cx.NameFor(tc.defpos)??""),
                     new TChar(tc.domain.ToString()));
             }
             protected override Cursor? _Previous(Context cx)
@@ -7449,8 +7449,8 @@ namespace Pyrrho.Level4
             {
                 return new TRow(rs,
                     Pos(nt.defpos),
-                    new TChar(cx.NameFor(nt.defpos)),
-                    new TChar((nt.idCol>0)?cx.NameFor(nt.idCol):""));
+                    new TChar(cx.NameFor(nt.defpos) ?? ""),
+                    new TChar(cx.NameFor(nt.idCol)??""));
             }
         }
         static void RoleEdgeTypeResults()
@@ -7505,12 +7505,12 @@ namespace Pyrrho.Level4
             {
                 return new TRow(rs,
                     Pos(nt.defpos),
-                    new TChar(cx.NameFor(nt.defpos)),
-                    new TChar(cx.NameFor(nt.leavingType)),
-                    new TChar(cx.NameFor(nt.arrivingType)),
-                    new TChar((nt.idCol>0)?cx.NameFor(nt.idCol):""),
-                    new TChar(cx.NameFor(nt.leaveCol)),
-                    new TChar(cx.NameFor(nt.arriveCol)));
+                    new TChar(cx.NameFor(nt.defpos)??""),
+                    new TChar(cx.NameFor(nt.leavingType)??""),
+                    new TChar(cx.NameFor(nt.arrivingType)??""),
+                    new TChar((nt.idCol>0)?cx.NameFor(nt.idCol)??"":""),
+                    new TChar(cx.NameFor(nt.leaveCol)??""),
+                    new TChar(cx.NameFor(nt.arriveCol)??""));
             }
         }
         /// <summary>

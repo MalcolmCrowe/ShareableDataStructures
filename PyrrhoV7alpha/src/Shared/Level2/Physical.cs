@@ -104,7 +104,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Install a single Physical. 
         /// </summary>
-        internal abstract DBObject? Install(Context cx, long p);
+        internal abstract DBObject? Install(Context cx);
         internal virtual void OnLoad(Reader rdr)
         { }
         /// <summary>
@@ -131,7 +131,7 @@ namespace Pyrrho.Level2
             var ph = Relocate(wr);
             wr.WriteByte((byte)type);
             ph.Serialise(wr);
-            ph.Install(wr.cx, wr.Length);
+            ph.Install(wr.cx);
             return (tr,ph);
         }
         protected abstract Physical Relocate(Writer wr);
@@ -200,7 +200,7 @@ namespace Pyrrho.Level2
         {
             return "SET Curated";
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             cx.db += (Database.Curated, ppos);
             if (cx.db.mem.Contains(Database.Log))
@@ -263,7 +263,7 @@ namespace Pyrrho.Level2
         {
             return "AlterIndex" + " new primary index " + DBObject.Uid(idindexdefpos);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db.objects[idindexdefpos] is not Level3.Index ux
                 || cx.db.objects[ux.tabledefpos] is not Table ut
@@ -278,11 +278,11 @@ namespace Pyrrho.Level2
             if (ut is NodeType nt && cx.db.objects[ux.keys[0] ?? -1L] is TableColumn nk)
             {
                 var ok = cx.db.objects[nt.idCol] as TableColumn;
-                cx.db += (nk + (TableColumn.GraphFlag, PColumn.GraphFlags.IdCol), p);
+                cx.db += (nk + (TableColumn.GraphFlag, PColumn.GraphFlags.IdCol));
                 if (ok is not null)
-                    cx.db += (ok - TableColumn.GraphFlag, p);
+                    cx.db += (ok - TableColumn.GraphFlag);
                 nt = nt + (NodeType.IdIx, idindexdefpos) + (NodeType.IdCol, nk.defpos);
-                cx.db += (nt, p);
+                cx.db += nt;
                 nt.Refresh(cx);
                 var cd = ok is null || ok.domain.kind!=nk.domain.kind;
                 var us = ut.rindexes;
@@ -333,7 +333,7 @@ namespace Pyrrho.Level2
                                         rx += (Level3.Index.Tree, st);
                                     else
                                         throw new DBException("42105").Add(Qlx.CONSTRAINT_CATALOG);
-                                    cx.db += (rx, p);
+                                    cx.db += rx;
                                 }
                         ut += (Table.RefIndexes, us);
                         ut += (Table.SysRefIndexes, ut.sindexes - rk);
@@ -343,17 +343,17 @@ namespace Pyrrho.Level2
                             for (var c = ks.First(); c != null; c = c.Next())
                                 if (cx.db.objects[c.key()] is TableColumn ec)
                                 {
-                                    cx.db += (ec + (DBObject._Domain, nk.domain), p);
+                                    cx.db += (ec + (DBObject._Domain, nk.domain));
                                     er += (c.key(), nk.domain);
                                 }
                             et += (Domain.Representation, er);
                         }
                         et += (Table.TableRows, rs);
-                        cx.db += (et, p);
+                        cx.db += et;
                     }
-                cx.db += (px, p);
-                cx.db += (ux, p);
-                cx.db += (nt, p);
+                cx.db += px;
+                cx.db += ux;
+                cx.db += nt;
                 return nt; 
             }
             throw new DBException("42105").Add(Qlx.CONSTRAINT_CATALOG);
@@ -423,7 +423,7 @@ namespace Pyrrho.Level2
             return "AlterEdgeType " + DBObject.Uid(edgetype)+ (leaving?" LEAVING ":" ARRIVING ") 
                 + DBObject.Uid(reftype);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db.objects[edgetype] is not Level5.EdgeType et
                 || cx.db.objects[reftype] is not Level5.NodeType nt)
@@ -449,7 +449,7 @@ namespace Pyrrho.Level2
                 et += (Level5.EdgeType.ArrivingType, reftype);
                 et += (Level5.EdgeType.ArriveIx, ip);
             }
-            cx.db += (et, p);
+            cx.db += et;
             cx.Add(et);
             return et;
         }
@@ -515,13 +515,13 @@ namespace Pyrrho.Level2
             return "Versioning for "+DBObject.Uid(perioddefpos);
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db == null || cx.db.mem[perioddefpos] is not PeriodDef pd
             || cx.db.mem[pd.tabledefpos] is not Table tb)
                 return null;
             tb += (Table.SystemPS, pd);
-            cx.db += (tb, p);
+            cx.db += tb;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return tb;
@@ -578,7 +578,7 @@ namespace Pyrrho.Level2
             return null;
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             throw new NotImplementedException();
         }
@@ -628,7 +628,7 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db.objects[obj] is not DBObject ob)
                 throw new DBException("42000","Classify");
@@ -636,9 +636,9 @@ namespace Pyrrho.Level2
                 throw new DBException("42105").Add(Qlx.SECURITY);
             for (var b = cx.db.roles.First(); b != null; b = b.Next())
                 if (b.value() is long bp && cx.db.objects[bp] is Role ro && ob.infos[ro.defpos] is ObInfo oi)
-                    cx.db += (ro + (obj, oi + (DBObject.Classification, classification)), p);
+                    cx.db += ro + (obj, oi + (DBObject.Classification, classification));
             ob = (DBObject)ob.New(ob.mem+ (DBObject.Classification, classification));
-            cx.db += (ob, p);
+            cx.db += ob;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return ob;
@@ -847,7 +847,7 @@ namespace Pyrrho.Level2
                     rq.Headers.Add("If-Match",cu._Rvv(_cx).ToString());
                 else if (_cx.db is not null)
                 {
-                    rq.Headers.Add("If-Match", "W/\"" + _cx.db.loadpos + "\"");
+                    rq.Headers.Add("If-Match", "W/\"" + _cx.db.length + "\"");
                     if (_cx.db.lastModified is DateTime dt)
                     rq.Headers.Add("If-Unmodified-Since",
                         ""+new THttpDate(dt,vi.metadata.Contains(Qlx.MILLI)));
@@ -879,7 +879,7 @@ namespace Pyrrho.Level2
         {
             return this;
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             return null;
         }

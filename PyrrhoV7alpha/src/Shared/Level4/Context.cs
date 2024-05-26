@@ -642,15 +642,13 @@ namespace Pyrrho.Level4
                 Console.WriteLine("AddValue??");
             s.Set(this, tv);
         }
-        internal DBObject? Add(Physical ph, long lp = 0)
+        internal DBObject? Add(Physical ph)
         {
             if (ph == null || db == null)
                 throw new DBException("42105").Add(Qlx.DATABASE);
-            if (lp == 0)
-                lp = db.loadpos;
             if (PyrrhoStart.DebugMode && db is Transaction)
                 Console.WriteLine(ph.ToString());
-            return db.Add(this, ph, lp);
+            return db.Add(this, ph);
         }
         /// <summary>
         /// Add the framing objects without relocation, but taking account of their depths.
@@ -725,9 +723,9 @@ namespace Pyrrho.Level4
         /// Add an object to the database/transaction 
         /// </summary>
         /// <param name="ob"></param>
-        internal void Install(DBObject ob, long p)
+        internal void Install(DBObject ob)
         {
-            db += (ob, p);
+            db += ob;
             Add(ob);
   //          var dm = ob.domain;
  //          if (dm != null && ob.domain.defpos!=ob.defpos && ob.domain.defpos >= 0 
@@ -1044,7 +1042,7 @@ namespace Pyrrho.Level4
             if (was.defpos != now.defpos)
                 done += (was.defpos, now);
             // scan by depth to perform the replacement
-            var ldpos = db.loadpos;
+            var ldpos = db.length;
             var excframing = parse != ExecuteStatus.Compile &&
                 (was.defpos < Transaction.Executables || was.defpos >= Transaction.HeapStart);
             for (var b = depths.First(); b != null; b = b.Next())
@@ -2012,14 +2010,14 @@ namespace Pyrrho.Level4
             return r;
         }
 
-        internal string NameFor(long p)
+        internal string? NameFor(long p)
         {
             var ob = _Ob(p);
             if (ob is null)
-                return ("?dropped");
+                return null;
             return ob.infos[role.defpos]?.name ??
                 (string?)ob.mem[DBObject._Alias] ??
-                (string?)ob.mem[ObInfo.Name] ?? "?";
+                (string?)ob.mem[ObInfo.Name];
         }
         internal string? GName(long? p)
         {
@@ -3056,7 +3054,7 @@ namespace Pyrrho.Level4
         { }
         static BTree<long,object> _Mem(Database d,Rvv rv)
         {
-            var r = BTree<long, object>.Empty +  (AssertMatch, rv) + (HighWaterMark, d.loadpos);
+            var r = BTree<long, object>.Empty +  (AssertMatch, rv) + (HighWaterMark, d.length);
             if (d.lastModified is DateTime dt)
                 r += (AssertUnmodifiedSince, new THttpDate(dt));
             return r;

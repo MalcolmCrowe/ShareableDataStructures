@@ -185,7 +185,6 @@ namespace Pyrrho.Level3
                             ss -= c.key();
                     st += (cx, tc);
                     st += (Under, ss + (tb, true));
-                    cx.db += (st, cx.db.loadpos);
                     cx.db += st;
                 }
             cx.Add(tb);
@@ -263,9 +262,9 @@ namespace Pyrrho.Level3
                 if (cx.db.objects[b.key()] is DBObject ob && !cx.obs.Contains(b.key()))
                     cx.Add(ob);
         }
-        internal override DBObject Add(Context cx, PMetadata pm, long p)
+        internal override DBObject Add(Context cx, PMetadata pm)
         {
-            var ob = (Table)base.Add(cx, pm, p);
+            var ob = (Table)base.Add(cx, pm);
             if (pm.iri != "")
             {
                 var nb = (Table)ob.Relocate(pm.ppos); // make a new subtype
@@ -452,20 +451,20 @@ BTree<string, (int, long?)> ns)
                     if (cx.db.objects[c.key()] is Index ix)
                         ix.Cascade(cx, a, u);
         }
-        internal override Database Drop(Database d, Database nd, long p)
+        internal override Database Drop(Database d, Database nd)
         {
             for (var b = d.roles.First(); b != null; b = b.Next())
                 if (b.value() is long bp && d.objects[bp] is Role ro && infos[bp] is ObInfo oi
                     && oi.name is not null)
                 {
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
-                    nd += (ro, p);
+                    nd += ro;
                 }
-            return base.Drop(d, nd, p);
+            return base.Drop(d, nd);
         }
-        internal override Database DropCheck(long ck, Database nd, long p)
+        internal override Database DropCheck(long ck, Database nd)
         {
-            return nd + (this + (TableChecks, tableChecks - ck),p);
+            return nd + (this + (TableChecks, tableChecks - ck));
         }
         internal virtual Table Base(Context cx)
         {
@@ -559,11 +558,11 @@ BTree<string, (int, long?)> ns)
             }
             return xs;
         }
-        internal Table? DoDel(Context cx, Delete del, long p)
+        internal Table? DoDel(Context cx, Delete del)
         {
             if (cx._Ob(defpos) is not Table a) return null;
             for (var b=a.super.First();b!=null;b=b.Next())
-                (b.key() as Table)?.DoDel(cx, del, p);
+                (b.key() as Table)?.DoDel(cx, del);
             if (a.tableRows[del.delpos] is TableRow delRow)
                 for (var b = indexes.First(); b != null; b = b.Next())
                     for (var c = b.value().First(); c != null; c = c.Next())
@@ -574,14 +573,14 @@ BTree<string, (int, long?)> ns)
                             ix -= (key, delRow.defpos);
                             if (ix.rows == null)
                                 ix += (Index.Tree, new MTree(inf, mt.nullsAndDuplicates, 0));
-                            cx.Install(ix, p);
+                            cx.Install(ix);
                         }
             var tb = a;
             tb -= del.delpos;
-            tb += (LastData, p);
-            cx.Install(tb, p);
+            tb += (LastData, del.ppos);
+            cx.Install(tb);
             if (cx.db.mem.Contains(Database.Log))
-                cx.db += (Database.Log, cx.db.log + (p, del.type));
+                cx.db += (Database.Log, cx.db.log + (del.ppos, del.type));
             return tb;
         }
         /// <summary>
@@ -694,7 +693,7 @@ BTree<string, (int, long?)> ns)
                         var rn = ToCamel(rt.name);
                         for (var i = 0; fields.Contains(rn); i++)
                             rn = ToCamel(rt.name) + i;
-                        var fn = cx.NameFor(rx.keys[0]??-1L);
+                        var fn = cx.NameFor(rx.keys[0]??-1L)??"";
                         fields += (rn, true);
                         sb.Append("  public " + rt.name + "? " + rn
                             + "=> conn?.FindOne<" + rt.name + ">((\""+fn.ToString()+"\"," + sa.ToString() + "));\r\n");

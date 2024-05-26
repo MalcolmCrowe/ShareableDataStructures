@@ -131,7 +131,7 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
             if (dataType.infos[ro.defpos] is ObInfo oi)
@@ -142,10 +142,10 @@ namespace Pyrrho.Level2
             ro = ro + (Role.DBObjects, ro.dbobjects + (name, ppos));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            cx.db += (ro, p);
+            cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(tb, p);
+            cx.Install(tb);
             return tb;
         }
     }
@@ -290,12 +290,12 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override DBObject Install(Context cx, long p)
+        internal override DBObject Install(Context cx)
         {
             if (cx.db.objects[tabledefpos] is not Table tb)
                 throw new PEException("PE1529");
             tb += (Table.Enforcement, enforcement);
-            cx.db += (tb, p);
+            cx.db += tb;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return cx.Add(tb);

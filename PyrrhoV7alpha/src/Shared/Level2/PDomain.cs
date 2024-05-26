@@ -45,7 +45,7 @@ namespace Pyrrho.Level2
         /// <param name="dv">The default value</param>
         /// <param name="sd">The base structure definition if any</param>
         /// <param name="pb">The local database</param>
-        public PDomain(Type t, string nm, Sqlx dt, int dl, int sc, CharSet ch,
+        public PDomain(Type t, string nm, Qlx dt, int dl, int sc, CharSet ch,
             string co, string dv, Domain? sd, long pp, Context cx)
             : base(t, pp, cx, nm, Grant.AllPrivileges)
         {
@@ -53,7 +53,7 @@ namespace Pyrrho.Level2
             domdefpos = pp;
             name = nm;
             domain = new Domain(-1L, dt, BTree<long, object>.Empty
-                + (DBObject._Depth, SqlValue._Depths(element))
+                + (DBObject._Depth, QlValue._Depths(element))
                 + (Domain.Precision, dl) + (Domain.Scale, sc)
                 + (Domain.Charset, ch) + (DBObject.LastChange, pp)
                 + (Domain.Culture, CultureInfo.GetCultureInfo(co))
@@ -61,7 +61,7 @@ namespace Pyrrho.Level2
                 + (ObInfo.Name, nm));
             if (sd is not null)
             {
-                if (dt == Sqlx.ARRAY || dt == Sqlx.MULTISET || dt == Sqlx.SET)
+                if (dt == Qlx.ARRAY || dt == Qlx.MULTISET || dt == Qlx.SET)
                 {
                     element = sd;
                     domain += (Domain.Element, sd.defpos);
@@ -129,7 +129,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr) //LOCKED
 		{
-            if (domain.kind == Sqlx.UNION)
+            if (domain.kind == Qlx.UNION)
                 throw new PEException("PE916");
             wr.PutString(domain.name);
             wr.PutInt((int)domain.kind);
@@ -138,7 +138,7 @@ namespace Pyrrho.Level2
             wr.PutInt((int)domain.charSet);
             wr.PutString(domain.culture.Name);
             wr.PutString(domain.defaultString);
-            if ((domain.kind == Sqlx.ARRAY || domain.kind == Sqlx.MULTISET || domain.kind==Sqlx.SET)
+            if ((domain.kind == Qlx.ARRAY || domain.kind == Qlx.MULTISET || domain.kind==Qlx.SET)
                 && domain.elType is not null)
                 wr.PutLong(wr.cx.db.Find(domain.elType)?.defpos??throw new PEException("PE48802"));
             else
@@ -152,7 +152,7 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             name = rdr.GetString();
-            var kind = (Sqlx)rdr.GetInt();
+            var kind = (Qlx)rdr.GetInt();
             domain = new Domain(ppos,BTree<long, object>.Empty
                 + (ObInfo.Name, name) + (Domain.Kind,kind)
                 + (Domain.Precision, rdr.GetInt())
@@ -161,7 +161,7 @@ namespace Pyrrho.Level2
                 + (Domain.Culture, GetCulture(rdr.GetString())));
             var ds = rdr.GetString();
             if (ds.Length > 0
-                && kind == Sqlx.CHAR && ds[0] != '\'')
+                && kind == Qlx.CHAR && ds[0] != '\'')
             {
                 ds = "'" + ds + "'";
                 domain += (Domain.DefaultString, ds);
@@ -233,13 +233,13 @@ namespace Pyrrho.Level2
         {
             return domain.ToString();       
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
-            var ro = cx.db.role ?? throw new DBException("42105").Add(Sqlx.DOMAIN);
+            var ro = cx.db.role ?? throw new DBException("42105").Add(Qlx.DOMAIN);
             var dt = domain;
             var priv = Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var oi = new ObInfo(domain.name, priv);
-            dt += (DBObject.LastChange, p);
+            dt += (DBObject.LastChange, ppos);
             dt += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
             cx.Add(dt);
             var st = BTree<string, long?>.Empty;
@@ -248,7 +248,7 @@ namespace Pyrrho.Level2
                     st += (n, bp);
             if (domain.name != "")
                 ro = ro + (Role.DBObjects, ro.dbobjects + (domain.name, ppos));
-            cx.db = cx.db + (ro, p) + dt;
+            cx.db = cx.db + ro + dt;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return dt;
@@ -272,7 +272,7 @@ namespace Pyrrho.Level2
         /// <param name="dv">the default value</param>
         /// <param name="pp">the physical position</param>
         /// <param name="cx">the context</param>
-        public PDateType(string nm, Sqlx ki, Sqlx st, Sqlx en, int pr, byte sc, string dv, 
+        public PDateType(string nm, Qlx ki, Qlx st, Qlx en, int pr, byte sc, string dv, 
             long pp, Context cx)
             : base(Type.PDateType,nm,ki,pr,sc,CharSet.UCS,"",dv,
                   null, pp, cx)
@@ -306,37 +306,37 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr)
         {
-            Sqlx start = GetIntervalPart(rdr);
-            Sqlx end = GetIntervalPart(rdr);
+            Qlx start = GetIntervalPart(rdr);
+            Qlx end = GetIntervalPart(rdr);
             base.Deserialise(rdr);
         }
         /// <summary>
         /// Facilitate quick decoding of the interval fields
         /// </summary>
-        internal static Sqlx[] intervalParts = new Sqlx[] { Sqlx.YEAR, Sqlx.MONTH, Sqlx.DAY, Sqlx.HOUR, Sqlx.MINUTE, Sqlx.SECOND };
+        internal static Qlx[] intervalParts = new Qlx[] { Qlx.YEAR, Qlx.MONTH, Qlx.DAY, Qlx.HOUR, Qlx.MINUTE, Qlx.SECOND };
         /// <summary>
         /// helper for encoding interval fields
         /// </summary>
         /// <param name="e">YEAR, MONTH, DAY, HOUR, MINUTE, SECOND</param>
         /// <returns>corresponding integer 0,1,2,3,4,5</returns>
-        internal static int IntervalPart(Sqlx e)
+        internal static int IntervalPart(Qlx e)
         {
             switch (e)
             {
-                case Sqlx.YEAR: return 0;
-                case Sqlx.MONTH: return 1;
-                case Sqlx.DAY: return 2;
-                case Sqlx.HOUR: return 3;
-                case Sqlx.MINUTE: return 4;
-                case Sqlx.SECOND: return 5;
+                case Qlx.YEAR: return 0;
+                case Qlx.MONTH: return 1;
+                case Qlx.DAY: return 2;
+                case Qlx.HOUR: return 3;
+                case Qlx.MINUTE: return 4;
+                case Qlx.SECOND: return 5;
             }
             return -1;
         }
-        static Sqlx GetIntervalPart(Reader rdr)
+        static Qlx GetIntervalPart(Reader rdr)
         {
             int j = rdr.GetInt();
             if (j < 0)
-                return Sqlx.NULL;
+                return Qlx.NULL;
             return intervalParts[j];
         }
         public override string ToString()

@@ -135,7 +135,7 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
             // The definer is the given role
@@ -145,13 +145,13 @@ namespace Pyrrho.Level2
                 Grant.Privilege.GrantInsert |
                 Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
             var ti = new ObInfo(name, priv);
-            var vw = new View(this, cx) + (DBObject.LastChange, p)
+            var vw = new View(this, cx) + (DBObject.LastChange, ppos)
                 + (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ti));
             ro += (Role.DBObjects, ro.dbobjects + (name, ppos));
-            cx.db = cx.db + (ro,p)+ (vw,p);
+            cx.db = cx.db + ro  + vw;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(vw, p);
+            cx.Install(vw);
             return vw;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? t)
@@ -163,7 +163,7 @@ namespace Pyrrho.Level2
             var vw = ((DBObject)(tr?.objects[ppos] ?? throw new DBException("PE2402"))).Relocate(wr.cx);
             vw = (View)vw.New(vw.mem + (DBObject._Framing, pv.framing.Fix(wr.cx)));
             wr.cx.instDFirst = -1;
-            return ((Transaction)(tr + (vw, tr.loadpos)), ph);
+            return (tr + vw, this);
         }
     }
     internal class PRestView : PView
@@ -206,19 +206,19 @@ namespace Pyrrho.Level2
         internal override void OnLoad(Reader rdr)
         {
             var psr = new Parser(rdr.context, viewdef);
-            var m = psr.ParseRowTypeSpec(Sqlx.VIEW).mem - Domain.Under;
+            var m = psr.ParseRowTypeSpec(Qlx.VIEW).mem - Domain.Under;
             var st = psr.cx.db.nextStmt;
             psr.cx.db += (Database.NextStmt, st + 1);
             dataType = new Domain(st, m);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
             var rv = new RestView(this, cx);
             cx._Add(rv);
             ro += (name, rv.defpos);
-            cx.db = cx.db + (ro, p) + (rv, p);
-            cx.Install(rv, p);
+            cx.db = cx.db + ro + rv;
+            cx.Install(rv);
             return rv;
         }
         public override string ToString()

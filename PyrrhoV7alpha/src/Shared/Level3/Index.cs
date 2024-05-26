@@ -259,7 +259,7 @@ namespace Pyrrho.Level3
                 throw new DBException("23002",defpos);
             base._Cascade(cx, a, u);
         }
-        internal override Database Drop(Database db, Database nd, long p)
+        internal override Database Drop(Database db, Database nd)
         {
             if (nd.objects[tabledefpos] is Table tb)
             {
@@ -273,7 +273,7 @@ namespace Pyrrho.Level3
                             xs += (b.key(), b.value() - defpos);
                     }
                 tb += (Table.Indexes, xs);
-                nd += (tb, p);
+                nd += tb;
             }
             if (nd.objects[reftabledefpos] is Table rt)
             {
@@ -283,9 +283,9 @@ namespace Pyrrho.Level3
                 else
                     xs -= tabledefpos;
                 rt += (Table.RefIndexes, xs);
-                nd += (rt, p);
+                nd += rt;
             }    
-            return base.Drop(db, nd, p);
+            return base.Drop(db, nd);
         }
         internal Index AddRows(Table tb,Context cx)
         {

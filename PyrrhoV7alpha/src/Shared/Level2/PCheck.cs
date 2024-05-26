@@ -39,9 +39,9 @@ namespace Pyrrho.Level2
         /// <param name="cs">The constraint as a string</param>
         /// <param name="nst">Start of framing executables</param>
         /// <param name="db">The local database</param>
-        public PCheck(DBObject ob, string nm, SqlValue se, string cs, long nst, long pp, Context cx)
+        public PCheck(DBObject ob, string nm, QlValue se, string cs, long nst, long pp, Context cx)
             : this(Type.PCheck, ob, nm, se, cs, nst, pp, cx) { }
-        protected PCheck(Type tp, DBObject ob, string nm, SqlValue se, string cs, long nst,
+        protected PCheck(Type tp, DBObject ob, string nm, QlValue se, string cs, long nst,
             long pp, Context cx) : base(tp,pp,cx,nm,ob.defpos,Domain.Bool,nst)
 		{
 			ckobjdefpos = ob.defpos;
@@ -135,7 +135,7 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
             var ck = new Check(this, cx.db);
@@ -145,8 +145,8 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             var ob = (DBObject?)cx.db.objects[ck.checkobjpos] ?? throw new PEException("PE1438");
             ob = ob.Add(ck, cx.db);
-            cx.Install(ob, p);
-            cx.Install(ck, p);
+            cx.Install(ob);
+            cx.Install(ck);
             return ob;
         }
         public override (Transaction?,Physical) Commit(Writer wr, Transaction? t)
@@ -159,7 +159,7 @@ namespace Pyrrho.Level2
             var ck = ob + (Check.Condition, se.defpos) + (DBObject._Framing, pc.framing);
             co = co.Add(ck, tr);
             wr.cx.instDFirst = -1;
-            return ((Transaction)(tr + (ck, tr.loadpos)+(co,tr.loadpos)),ph);
+            return (tr + ck + co,ph);
         }
     }
     /// <summary>
@@ -176,7 +176,7 @@ namespace Pyrrho.Level2
         /// <param name="cs">The constraint as a string</param>
         /// <param name="nst">The first possible framing object</param>
         /// <param name="pb">The local database</param>
-        public PCheck2(DBObject ob, DBObject so, string nm, SqlValue se, string cs, long nst, long pp, 
+        public PCheck2(DBObject ob, DBObject so, string nm, QlValue se, string cs, long nst, long pp, 
             Context cx)
             : base(Type.PCheck2,ob,nm,se,cs,nst,pp,cx)
 		{
@@ -232,7 +232,7 @@ namespace Pyrrho.Level2
         /// <param name="ro"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
             var ck = new Check(this, cx.db);
@@ -240,11 +240,11 @@ namespace Pyrrho.Level2
                 new ObInfo(name??"", Grant.Privilege.Execute)));
             if (cx.db.objects[ck.checkobjpos] is not DBObject co)
                 throw new PEException("PE1451");
-            cx.Install(ck, p);
+            cx.Install(ck);
             var nc = co.Add(ck, cx.db);
-            cx.Install(nc, p);
+            cx.Install(nc);
     //        cx.Add(ck.framing);
-            cx.db += (ck, p);
+            cx.db += ck;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return nc;

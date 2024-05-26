@@ -98,18 +98,18 @@ namespace Pyrrho.Level3
                 r += (Condition, ns);
             return r;
         }
-        internal override Database Drop(Database d, Database nd, long p)
+        internal override Database Drop(Database d, Database nd)
         {
             if (nd.objects[checkobjpos] is DBObject ob)
-                nd = ob.DropCheck(defpos, nd, p);
+                nd = ob.DropCheck(defpos, nd);
             for (var b = d.roles.First(); b != null; b = b.Next())
                 if (b.value() is long bp && d.objects[bp] is Role ro 
                     && infos[ro.defpos] is ObInfo oi && oi.name is not null)
                 {
                     ro += (Role.DBObjects, ro.dbobjects - oi.name);
-                    nd += (ro, p);
+                    nd += ro;
                 }
-            return base.Drop(d, nd, p);
+            return base.Drop(d, nd);
         }
         internal override void Note(Context cx, StringBuilder sb, string pre="/// ")
         {

@@ -84,7 +84,7 @@ namespace Pyrrho.Level2
         {
             return "PUser " + name;
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
             var nu = new User(this, cx.db);
@@ -100,7 +100,7 @@ namespace Pyrrho.Level2
                 pr = pr | Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
             var ui = new ObInfo(nu.name??"", pr);
             ro += (nu.defpos, ui);
-            cx.db = cx.db + (nu,p) + (Database.Roles,cx.db.roles+(name,ppos))+(ro,p);
+            cx.db = cx.db + nu + (Database.Roles,cx.db.roles+(name,ppos))+ro;
             cx.db += (Database.Users, cx.db.users + (name, ppos));
             if (cx.db.log!=Common.BTree<long, Type>.Empty)
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
@@ -159,11 +159,11 @@ namespace Pyrrho.Level2
             return sb.ToString();
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var us = cx.db.objects[_user] as User??throw new PEException("PE8200");
             us += (User.Clearance, clearance);
-            cx.db += (us, p);
+            cx.db += us;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Add(us);

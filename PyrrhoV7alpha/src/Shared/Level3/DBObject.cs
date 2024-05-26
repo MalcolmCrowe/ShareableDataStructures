@@ -102,11 +102,6 @@ namespace Pyrrho.Level3
         {
             if (cx.done[defpos] is DBObject rr)
                 return rr;
-            var ldpos = cx.db.loadpos;
-            for (var cc = cx.next; cc != null && cc.db != null; cc = cc.next)
-                ldpos = cc.db.loadpos;
-            if (defpos < ldpos)
-                return this;
             var r = _Replace(cx, was, now);
             cx.done += (defpos, r);
             return r;
@@ -323,14 +318,14 @@ namespace Pyrrho.Level3
         /// <param name="pm"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal virtual DBObject Add(Context cx,PMetadata pm, long p)
+        internal virtual DBObject Add(Context cx,PMetadata pm)
         {
             var m = mem;
             if (infos[cx.role.defpos] is ObInfo oi)
                 m += (Infos, infos + (cx.role.defpos, oi+ (ObInfo._Metadata, pm.detail)));
             m += (LastChange, pm.ppos);
             var r = New(defpos, m);
-            cx.db += (r,p);
+            cx.db += r;
             return cx.Add(r);
         }
         internal virtual BTree<long,SystemFilter> SysFilter(Context cx,BTree<long,SystemFilter> sf)
@@ -390,11 +385,11 @@ namespace Pyrrho.Level3
         {
             return BTree<long, TargetActivation>.Empty;
         }
-        internal virtual Database Drop(Database d, Database nd,long p)
+        internal virtual Database Drop(Database d, Database nd)
         {
             return nd - defpos;
         }
-        internal virtual Database DropCheck(long ck,Database nd,long p)
+        internal virtual Database DropCheck(long ck,Database nd)
         {
             throw new NotImplementedException();
         }
@@ -418,10 +413,9 @@ namespace Pyrrho.Level3
                     return true;
             return false;
         }
-        internal virtual void Modify(Context cx, Modify m, long p)
+        internal virtual void Modify(Context cx, Modify m)
         {
-            var mt = (Method?)cx.obs[m.proc] ?? throw new PEException("PE1006");
-            cx.db += (mt, p);
+            cx.db += cx.obs[m.proc] ?? throw new PEException("PE1006");
         }
         internal virtual (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
         {

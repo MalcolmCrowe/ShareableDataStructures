@@ -239,7 +239,7 @@ namespace Pyrrho.Level3
                 if (cx.db.objects[b.key()] is Check ck)
                     ck.Cascade(cx, a, u);
         }
-        internal override Database Drop(Database d, Database nd,long p)
+        internal override Database Drop(Database d, Database nd)
         {
             if (nd.objects[tabledefpos] is Table tb)
             {
@@ -257,13 +257,13 @@ namespace Pyrrho.Level3
                         r += b.value();
                 tb += (Domain.RowType, r);
                 tb += (Domain.Representation, tb.representation - defpos);
-                nd += (tb, nd.loadpos);
+                nd += tb;
             }
-            return base.Drop(d, nd,p);
+            return base.Drop(d, nd);
         }
-        internal override Database DropCheck(long ck, Database nd,long p)
+        internal override Database DropCheck(long ck, Database nd)
         {
-            return nd + (this + (Checks, checks - ck),p);
+            return nd + (this + (Checks, checks - ck));
         }
         internal override void Set(Context cx, TypedValue v)
         {
@@ -569,7 +569,7 @@ namespace Pyrrho.Level3
                     throw new PEException("PE10703");
                 var dv = dm.representation[p] ?? Domain.Position;
                 if (vs[p] is not TypedValue v)
-                    throw new DBException("22G0Y", cx.NameFor(p));
+                    throw new DBException("22G0Y", cx.NameFor(p)??"");
                 if (v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
                     throw new PEException("PE10704");
             }

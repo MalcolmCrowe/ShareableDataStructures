@@ -66,19 +66,15 @@ namespace Pyrrho.Level3
         /// <param name="t"></param>
         /// <param name="auto"></param>
         internal Transaction(Database db,long t,bool auto) 
-            :base(db.loadpos,db.mem+(NextId,t+1) + (StartTime, DateTime.Now) 
+            :base(db,db.mem+(NextId,t+1) + (StartTime, DateTime.Now) 
             +(AutoCommit,auto))
         {  }
-        protected Transaction(long p, BTree<long, object> m)
-            : base(p, m)
+        protected Transaction(Transaction t, BTree<long, object> m)
+            : base(t, m)
         {  }
         internal override Basis New(BTree<long, object> m)
         {
-            return new Transaction(loadpos, m);
-        }
-        protected override Database New(long c, BTree<long, object> m)
-        {
-            return new Transaction(c, m);
+            return new Transaction(this, m);
         }
         public override Transaction Transact(long t,Connection con,bool? auto=null)
         {
@@ -120,9 +116,13 @@ namespace Pyrrho.Level3
             var m = d.mem;
             if (d.mem[dp] == ob)
                 return d;
-            return new Transaction(d.loadpos, m+x);
+            return new Transaction(d, m+x);
         }
-        internal override DBObject? Add(Context cx,Physical ph, long lp)
+        public static Transaction operator+(Transaction d,DBObject ob)
+        {
+            return d + (ob.defpos, ob);
+        }
+        internal override DBObject? Add(Context cx,Physical ph)
         {
             if (cx.parse != ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Compile && cx.parse!=ExecuteStatus.Graph
                 && cx.parse!=ExecuteStatus.GraphType)
@@ -130,7 +130,7 @@ namespace Pyrrho.Level3
             cx.db += (Physicals,physicals +(ph.ppos, ph));
             if (ph.ppos==cx.db.nextPos)
                 cx.db += (NextPos, ph.ppos + 1);
-            return ph.Install(cx, lp);
+            return ph.Install(cx);
         }
         /// <summary>
         /// We commit unknown users to the database if necessary for audit.
@@ -183,7 +183,7 @@ namespace Pyrrho.Level3
             // Both rdr and wr access the database - not the transaction information
             if (databases[name] is not Database db || dbfiles[name] is not FileStream df)
                 throw new PEException("PE0100");
-            var rdr = new Reader(new Context(db), loadpos);
+            var rdr = new Reader(new Context(db), cx.db.length);
             var wr = new Writer(new Context(db), df);
             wr.cx.newnodes = cx.newnodes;
             wr.cx.nextHeap = cx.nextHeap; // preserve Compiled objects framing
@@ -226,7 +226,7 @@ namespace Pyrrho.Level3
             {
                 if (databases[name] is Database nd && nd != db)// may have moved on 
                     db = nd;
-                rdr = new Reader(new Context(db), ph?.ppos ?? loadpos) { locked = true };
+                rdr = new Reader(new Context(db), ph?.ppos ?? db.length) { locked = true };
                 since = rdr.GetAll(); // resume where we had to stop above, use new file length
                 for (var pb = since.First(); pb != null; pb = pb.Next())
                 {
@@ -305,7 +305,7 @@ namespace Pyrrho.Level3
             }
             wr.PutBuf();
             df.Flush();
-            var r = new Database(wr.Length, wr.cx.db.mem);
+            var r = new Database(wr.cx.db,wr.Length);
             lock (_lock)
                 databases += (name, r - Role - User);
             cx.db = r;

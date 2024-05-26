@@ -65,10 +65,9 @@ namespace Pyrrho.Level3
             sb.Append(" MethodType="); sb.Append(methodType);
             return sb.ToString();
         }
-        internal override void Modify(Context cx, Modify m, long p)
+        internal override void Modify(Context cx, Modify m)
         {
-            cx.db += (this + (Body, m.proc) + (Params, m.parms)
-                    + (_Framing, m.framing), p);
+            cx.db += this + (Body, m.proc) + (Params, m.parms) + (_Framing, m.framing);
         }
         /// <summary>
         /// Execute a Method
@@ -139,7 +138,7 @@ namespace Pyrrho.Level3
                 cx.val = r;
             return cx;
         }
-        internal override Database Drop(Database d, Database nd, long p)
+        internal override Database Drop(Database d, Database nd)
         {
             var udt = udType;
             var oi = BTree<long, ObInfo>.Empty;
@@ -164,7 +163,7 @@ namespace Pyrrho.Level3
             }
             udt += (Infos, oi);
             nd += (udt.defpos, udt);
-            return base.Drop(d, nd, p);
+            return base.Drop(d, nd);
         }
     }
 }

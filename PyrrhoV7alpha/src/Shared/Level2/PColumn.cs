@@ -269,7 +269,7 @@ namespace Pyrrho.Level2
                 sb.Append(" "+DBObject.Uid(toType));
             return sb.ToString();
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             var ro = /* (table is VirtualTable) ? Database._system?.role : */ cx.role;
             if (table == null || dataType == null || ro == null)
@@ -278,7 +278,7 @@ namespace Pyrrho.Level2
             if (cx.db.objects[table.defpos] is Table t && t.dbg>table.dbg)
                 table = t;
             if (dataType.defpos > 0)
-                cx.Install(dataType, p);
+                cx.Install(dataType);
             var tc = new TableColumn(table, this, dataType, ro, cx.user);
             tc += (DBObject._Framing, framing);
             var rp = ro.defpos;
@@ -302,7 +302,7 @@ namespace Pyrrho.Level2
             tc += (TableColumn.Seq, seq);
             cx.db += (tc.defpos, tc);
             table += (DBObject.LastChange, ppos);
-            cx.Install(table, p);
+            cx.Install(table);
             cx.db += (table.defpos, table);
             if (table is UDType ut)
                 for (var b = ut.methods.First(); b != null; b = b.Next())
@@ -324,11 +324,11 @@ namespace Pyrrho.Level2
             if (cx.db.format < 51)
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-                cx.db += (ro, p);
+                cx.db += ro;
             }
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(tc, p);
+            cx.Install(tc);
             cx.obs += (table.defpos, table);
             cx.db += table;
             cx.AddDefs(table);
@@ -667,7 +667,7 @@ namespace Pyrrho.Level2
             return "ColumnPath [" + coldefpos + "]" + path + "(" + domdefpos + ")";
         }
 
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             throw new NotImplementedException();
         }

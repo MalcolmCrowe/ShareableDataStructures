@@ -157,22 +157,22 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject Install(Context cx, long p)
+        internal override DBObject Install(Context cx)
         {
             var ro = cx.db.role;
             var pd = new PeriodDef(ppos, tabledefpos, startcol, endcol,cx.db);
             if (cx.db.objects[tabledefpos] is not Table tb || tb.infos[ro.defpos] is not ObInfo ti)
                 throw new PEException("PE1439");
-            ti += (ObInfo.SchemaKey, p);
+            ti += (ObInfo.SchemaKey, ppos);
             tb += (DBObject.Infos, tb.infos + (ro.defpos,ti));
             var priv = Grant.Privilege.Select | Grant.Privilege.GrantSelect;
             var oc = new ObInfo(periodname, priv);
             pd += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oc));
             ro += (periodname, ppos);
-            cx.db = cx.db + (tb, p) + (pd, p) + (ro, p);
+            cx.db = cx.db + tb + pd + ro;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
-            cx.Install(pd, p);
+            cx.Install(pd);
             return tb;
         }
     }

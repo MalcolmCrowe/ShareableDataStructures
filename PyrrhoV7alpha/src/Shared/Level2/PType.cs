@@ -269,7 +269,7 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        internal override DBObject Install(Context cx, long p)
+        internal override DBObject Install(Context cx)
         {
             var ro = cx.role;
             var un = CTree<Domain, bool>.Empty;
@@ -301,10 +301,11 @@ namespace Pyrrho.Level2
             var ps = CTree<long, bool>.Empty;
             var pn = CTree<string, bool>.Empty;
             for (var b = dataType.representation.First(); b != null; b = b.Next())
-            {
-                ps += (b.key(), true);
-                pn += (cx.NameFor(b.key()), true);
-            }
+                if (cx.NameFor(b.key()) is string n)
+                {
+                    ps += (b.key(), true);
+                    pn += (n, true);
+                }
             ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var ss = CTree<Domain, bool>.Empty;
             var oi = dataType.infos[cx.role.defpos];
@@ -316,7 +317,7 @@ namespace Pyrrho.Level2
                     Grant.Privilege.GrantInsert |
                     Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
                 oi = new ObInfo(name, priv);
-                oi += (ObInfo.SchemaKey, p);
+                oi += (ObInfo.SchemaKey, ppos);
                 var ns = dataType.HierarchyCols(cx);
                 oi += (ObInfo.Names, ns);
             } 
@@ -330,7 +331,7 @@ namespace Pyrrho.Level2
   //                      dataType += (DBObject._Domain, ((UDType)dataType)._PathDomain(cx));
                         tu += (Domain.Subtypes, tu.subtypes + (defpos, true));
                         var tn = tu.infos[cx.role.defpos]?.names ?? BTree<string, (int, long?)>.Empty;
-                        cx.db += (tu, p);
+                        cx.db += tu;
                         for (var c = tu.subtypes.First(); c != null; c = c.Next())
                             if (cx.db.objects[c.key()] is UDType at)
                             {
@@ -353,7 +354,7 @@ namespace Pyrrho.Level2
             cx.Add(dataType);
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
-            cx.db = cx.db + (ro, p) + dataType;
+            cx.db = cx.db + ro + dataType;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             if (dataType is NodeType nt) // or EdgeType

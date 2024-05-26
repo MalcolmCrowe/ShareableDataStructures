@@ -247,7 +247,7 @@ namespace Pyrrho.Level2
                     {
                         x -= (ok, defpos);
                         x += (nk, defpos);
-                        cx.db += (x, cx.db.loadpos);
+                        cx.db += x;
                     }
             return (Table)cx.Add(tt);
         }
@@ -292,7 +292,7 @@ namespace Pyrrho.Level2
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);
         }
-        internal override DBObject? Install(Context cx, long p)
+        internal override DBObject? Install(Context cx)
         {
             if (cx.db != null)
                 for (var b = tabledefpos.First(); b != null; b = b.Next())
@@ -301,7 +301,7 @@ namespace Pyrrho.Level2
                     {
                         var fl = tb.tableRows[defpos] ?? throw new PEException("PE40406");
                         Check(cx);
-                        cx.Install(tb + new TableRow(this, cx, fl, _classification).Check(tb, cx), p);
+                        cx.Install(tb + new TableRow(this, cx, fl, _classification).Check(tb, cx));
                     }
                     if (cx.db.mem.Contains(Database.Log))
                         cx.db += (Database.Log, cx.db.log + (ppos, type));
