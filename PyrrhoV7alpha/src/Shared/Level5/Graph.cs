@@ -3,15 +3,6 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using System.Text;
 using Pyrrho.Level2;
-using System.Net.Http.Headers;
-using System.Security.Cryptography;
-using System.Runtime.CompilerServices;
-using System.Diagnostics.SymbolStore;
-using System.Data.SqlTypes;
-using System.Data;
-using System.ComponentModel.DataAnnotations;
-using System.Xml;
-using System.Reflection.Emit;
 
 namespace Pyrrho.Level5
 {
@@ -150,6 +141,10 @@ namespace Pyrrho.Level5
                         t = c;
                 }
             return t;
+        }
+        internal override CTree<NodeType, bool> _NodeTypes(Context cx)
+        {
+            return new CTree<NodeType, bool>(this, true);
         }
         internal virtual void AddNodeOrEdgeType(Context cx)
         {
@@ -480,10 +475,10 @@ namespace Pyrrho.Level5
         {
             throw new NotImplementedException(); // Node and Edge type do not have a unique base
         }
-        internal override CTree<Domain, bool> OnInsert(Context cx,BTree<long,object>?m=null)
+        internal override CTree<NodeType, bool> OnInsert(Context cx,BTree<long,object>?m=null)
         {
             if (defpos < 0)
-                return CTree<Domain, bool>.Empty;
+                return CTree<NodeType, bool>.Empty;
             var nt = this;
             if (!cx.role.dbobjects.Contains(name))
             {
@@ -499,7 +494,7 @@ namespace Pyrrho.Level5
                     }
             }
             nt = (NodeType)(cx._Ob(nt.defpos) ?? nt);
-            return new CTree<Domain,bool>(nt,true);
+            return new CTree<NodeType,bool>(nt,true);
         }
         internal override CTree<Domain, bool> OnInsert(Context cx, BTree<long,long?>? d,
     long lt = -1L, long at = -1L)
@@ -1557,9 +1552,9 @@ namespace Pyrrho.Level5
             }
             return ds ?? BTree<long, TableRow>.Empty;
         }
-        internal override CTree<Domain, bool> OnInsert(Context cx, BTree<long, object>? m = null)
+        internal override CTree<NodeType, bool> OnInsert(Context cx, BTree<long, object>? m = null)
         {
-            var r = CTree<Domain, bool>.Empty;
+            var r = CTree<NodeType, bool>.Empty;
             var lf = cx.obs[left] as Domain ?? Empty;
             var rg = cx.obs[right] as Domain ?? Empty;
             m ??= BTree<long, object>.Empty;
@@ -1582,10 +1577,9 @@ namespace Pyrrho.Level5
                 Qlx.NODETYPE => (name is string n) ?
                     r + (cx.FindNodeType(n, dc)?.Build(cx, null, m) ?? NodeTypeFor(n, m, cx), true)
                     : r,
-                Qlx.EDGETYPE => (name is string e) ?
-                    r + (cx.FindEdgeType(e, lt, at, dc)?.Build(cx, null, m) ?? EdgeTypeFor(e, m, cx), true)
-                    : r,
-                Qlx.NO => (cx.db.objects[cx.role.dbobjects[name] ?? -1L] is Domain d) ?
+                Qlx.EDGETYPE => (cx.FindEdgeType(name, lt, at, dc, m, CTree<Qlx,TypedValue>.Empty) is CTree<NodeType,bool> rr
+                    && rr.Count>0)? rr : new CTree<NodeType,bool>(EdgeTypeFor(name,m,cx),true),
+                Qlx.NO => (cx.db.objects[cx.role.dbobjects[name] ?? -1L] is NodeType d) ?
                     r + (d, true) : r,
                 _ => r
             };
@@ -1627,31 +1621,27 @@ namespace Pyrrho.Level5
             }
             return nt ?? throw new DBException("42105");
         }
-        static EdgeType EdgeTypeFor(string nm, BTree<long,object> m, Context cx)
+        internal static EdgeType EdgeTypeFor(string nm, BTree<long, object> m, Context cx)
         {
             var un = (CTree<Domain, bool>)(m[Under] ?? CTree<Domain, bool>.Empty);
             var nu = CTree<Domain, bool>.Empty;
             for (var b = un.First(); b != null; b = b.Next())
                 nu += ((b.key() is GqlLabel gl) ? (cx.db.objects[cx.role.dbobjects[gl.name ?? ""] ?? -1L]
-                    as Domain)?? throw new DBException("42107", gl.name ?? "??") : b.key(), true);
+                    as Domain) ?? throw new DBException("42107", gl.name ?? "??") : b.key(), true);
             var lt = (long)(m[EdgeType.LeavingType] ?? -1L);
             var at = (long)(m[EdgeType.ArrivingType] ?? -1L);
-            var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue]??CTree<string,QlValue>.Empty);
-            var et = cx.FindEdgeType(nm, lt, at, dc);
-            if (et is null)
-            {
-                var pt = new PEdgeType(nm, EdgeType, nu, -1L, lt, at, cx.db.nextPos, cx);
-                var ro = cx.role;
-                et = (EdgeType)(cx.Add(pt) ?? throw new DBException("42105"));
-                for (var b = dc?.First(); b != null; b = b.Next())
-                    if (!et.HierarchyCols(cx).Contains(b.key()))
-                    {
-                        var pc = new PColumn3(et, b.key(), -1, b.value().domain, PColumn.GraphFlags.None,
-                            -1L, -1L, cx.db.nextPos, cx);
-                        et = (EdgeType)(cx.Add(pc)??throw new DBException("42105"));
-                    }
-            }
-            return et??throw new DBException("42105");
+            var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue] ?? CTree<string, QlValue>.Empty);
+            var pt = new PEdgeType(nm, EdgeType, nu, -1L, lt, at, cx.db.nextPos, cx);
+            var ro = cx.role;
+            var e = (EdgeType?)cx.Add(pt) ?? throw new DBException("42105");
+            for (var b = dc?.First(); b != null; b = b.Next())
+                if (!e.HierarchyCols(cx).Contains(b.key()))
+                {
+                    var pc = new PColumn3(e, b.key(), -1, b.value().domain, PColumn.GraphFlags.None,
+                        -1L, -1L, cx.db.nextPos, cx);
+                    e = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105"));
+                }
+            return e;
         }
         // in reverse Polish order
         public override string ToString()
@@ -2192,8 +2182,8 @@ namespace Pyrrho.Level5
     internal class JoinedNodeType : NodeType
     {
         internal Qlx op => (Qlx)(mem[Kind] ?? Qlx.AMPERSAND);
-        internal CTree<Domain, bool> nodeTypeFactors =>
-            (CTree<Domain, bool>)(mem[UnionOf] ?? CTree<Domain, bool>.Empty);
+        internal CTree<NodeType, bool> nodeTypeFactors =>
+            (CTree<NodeType, bool>)(mem[UnionOf] ?? CTree<NodeType, bool>.Empty);
         internal JoinedNodeType(long dp, string nm, UDType dt, BTree<long,object> m, Context cx) 
             : base(dp, nm, dt, m, cx)
         {
@@ -2206,6 +2196,14 @@ namespace Pyrrho.Level5
         }
         public JoinedNodeType(long dp, BTree<long, object> m) : base(dp, m)
         { }
+        public static JoinedNodeType operator+(JoinedNodeType nt,(long,object)x)
+        {
+            return (JoinedNodeType)nt.New(nt.mem + x);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new JoinedNodeType(defpos,m);
+        }
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             return base._Replace(cx, so, sv);
@@ -2274,9 +2272,15 @@ namespace Pyrrho.Level5
         {
             return base._PathDomain(cx);
         }
+        internal override CTree<NodeType, bool> _NodeTypes(Context cx)
+        {
+            return nodeTypeFactors;
+        }
         public override string ToString()
         {
-            return base.ToString();
+            var sb = new StringBuilder("JoinedNodeType");
+            sb.Append(base.ToString());
+            return sb.ToString();
         } 
     }
     /// <summary>

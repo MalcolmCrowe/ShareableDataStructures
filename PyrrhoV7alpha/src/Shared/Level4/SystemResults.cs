@@ -7017,8 +7017,8 @@ namespace Pyrrho.Level4
                 var tn = 0; // node count
                 var te = 0; // edge count
                 var ps = CTree<long, Domain>.Empty; // properties
-                var ls = CTree<Domain, bool>.Empty; // labels
-                var ll = CTree<CTree<Domain, bool>,bool>.Empty; // label sets
+                var ls = CTree<NodeType, bool>.Empty; // labels
+                var ll = CTree<CTree<NodeType, bool>,bool>.Empty; // label sets
                 for (var b = ro.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p && p >= 0 && cx.db.objects[p] is NodeType t)
                     {
@@ -7109,9 +7109,9 @@ namespace Pyrrho.Level4
             readonly DBObject _g;
             readonly ABookmark<long,bool> _mbmk;
             readonly NodeType _nt;
-            readonly ABookmark<Domain, bool> _bmk;
+            readonly ABookmark<NodeType, bool> _bmk;
             public RoleGraphLabelBookmark(Context cx, SystemRowSet r, int pos,
-                ABookmark<long, object> obmk, ABookmark<long,bool> mbmk, ABookmark<Domain, bool> bmk, 
+                ABookmark<long, object> obmk, ABookmark<long,bool> mbmk, ABookmark<NodeType, bool> bmk, 
                 DBObject g, NodeType nt, string lb)
                 : base(cx, r, pos, nt.defpos, nt.defpos, _Value(r, g, nt, lb))
             {

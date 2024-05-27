@@ -1839,7 +1839,10 @@ namespace Pyrrho.Level4
             cx.DecSD(null,null,lxr.tgs);
             svg += r;
             if (an != null)
+            {
                 svg += ahead;
+                r = an;
+            }
             lxr.tgs = og;
             return (r, svg);
         }

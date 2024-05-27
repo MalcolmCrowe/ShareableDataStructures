@@ -1975,14 +1975,30 @@ namespace Pyrrho.Level4
                 pn += (b.key(), true);
             return db.objects[role.unlabelledNodeTypesInfo[pn] ?? -1L] as NodeType;
         }
-        internal EdgeType? FindEdgeType(string nm, long lt, long at, CTree<string, QlValue> dc)
+        internal CTree<NodeType,bool> FindEdgeType(string nm, long lt, long at, CTree<string, QlValue> dc,
+            BTree<long,object> m, CTree<Qlx,TypedValue> md)
         {
-            if (nm != "")
-                return db.objects[role.edgeTypes[nm]?[lt]?[at] ?? -1L] as EdgeType;
+            var r = CTree<NodeType, bool>.Empty;
+            if (nm != "" && role.edgeTypes[nm] is BTree<long,BTree<long,long?>> el) 
+            {
+                if (_Ob(el[lt]?[at] ?? -1) is EdgeType et)
+                    return r + (et.Build(this,null,m,md), true);
+                var ln = _Ob(lt)?._NodeTypes(this) ?? CTree<NodeType,bool>.Empty;
+                var an = _Ob(at)?._NodeTypes(this) ?? CTree<NodeType, bool>.Empty;
+                for (var b = ln.First(); b != null; b = b.Next())
+                    if (el[b.key().defpos] is BTree<long, long?> ea)
+                        for (var c = an.First(); c != null; c = c.Next())
+                            if (_Ob(ea[c.key().defpos] ?? -1L) is EdgeType em)
+                                r += (em.Build(this,null,m,md), true);
+                if (r!=CTree<NodeType,bool>.Empty)
+                    return r;
+            }
             var pn = CTree<string, bool>.Empty;
             for (var b = dc.First(); b != null; b = b.Next())
                 pn += (b.key(), true);
-            return db.objects[role.unlabelledEdgeTypesInfo[lt]?[at]?[pn] ?? -1L] as EdgeType;
+            if (db.objects[role.unlabelledEdgeTypesInfo[lt]?[at]?[pn] ?? -1L] is EdgeType ut)
+                r +=(ut.Build(this,null,m,md), true);
+            return r;
         }
         internal CList<Domain> Signature(Procedure proc)
         {
