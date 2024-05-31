@@ -2681,6 +2681,8 @@ namespace Pyrrho.Level4
                 var nrest = sce is not RestRowSet && sce is not RestRowSetUsing;
                 if (nrest)
                     for (var rb = sce.First(cx); rb != null; rb = rb.Next(cx))
+                    {
+                        cx.values += (defpos, rb);
                         if (r.groupings.Count == 0)
                             for (var b0 = ags.First(); b0 != null; b0 = b0.Next())
                             {
@@ -2699,6 +2701,7 @@ namespace Pyrrho.Level4
                                         if (cx.obs[b1.key()] is SqlFunction sf1)
                                             sf1.AddIn(key, cx);
                                 }
+                    }
                 var rws = CList<TRow>.Empty;
                 var fd = cx.funcs[defpos];
                 for (var b = fd?.First(); b != null; b = b.Next())

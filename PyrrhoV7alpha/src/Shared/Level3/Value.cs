@@ -1669,7 +1669,7 @@ namespace Pyrrho.Level3
                 && tt.tableRow.vals[p] is TypedValue nv)
                 return nv;
             var tv = cx.values[from];
-            if (tv is TRow tr) return tr.values[target]??TNull.Value;
+            if (tv is TRow tr) return tr.values[target]??tr.values[defpos]??TNull.Value;
             if (tv is TNode tn && tn.dataType.infos[cx.role.defpos] is ObInfo ni
                 && ni.names[name??"?"].Item2 is long dp)
                 return tn.tableRow.vals[dp] ?? TNull.Value;
