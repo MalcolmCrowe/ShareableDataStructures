@@ -500,13 +500,34 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 _ => false
             };
         }
-        internal NodeType? ForExtra(Context cx,BTree<long,object>? m=null)
+        internal NodeType? ForExtra(Context cx, BTree<long, object>? m = null)
         {
             m ??= BTree<long, object>.Empty;
             var dc = (CTree<string, QlValue>?)m[GqlNode.DocValue];
             var op = (Qlx?)m[SqlValueExpr.Op];
+            var oi = OnInsert(cx, m);
+            return (oi.Count == 1 || dc is null || dc.Count == 0 || op == Qlx.COLON) ? oi.First()?.key() as NodeType : null;
+        }
+        /// <summary>
+        /// AllowExtra is supposed to compute whether it is possible to add properties to a node or edge. 
+        /// We want to prevent this if the target has an & label (when we would not know which nodetype to alter), 
+        /// or if the target has committed rows.
+        /// It is fine if there are no extra properties to be added.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="m"></param>
+        /// <returns>The nodetype for receiving extra properties</returns>
+        internal NodeType? AllowExtra(Context cx,BTree<long,object>? m=null)
+        {
+            m ??= BTree<long, object>.Empty;
+            var dc = (CTree<string, QlValue>?)m[GqlNode.DocValue]??CTree<string,QlValue>.Empty;
             var oi = OnInsert(cx,m);
-            return (oi.Count == 1 || dc is null || dc.Count==0 || op==Qlx.COLON) ? oi.First()?.key() as NodeType : null;
+            if (oi.Count != 1)
+                return null;
+            var nt = cx.db.objects[oi.First()?.key()?.defpos ?? -1L] as NodeType;
+            if (dc.Count>0 && nt?.tableRows.First()?.key() is long p && p < Transaction.TransPos)
+                return null;
+            return nt;
         }
         internal Domain SourceRow(Context cx,long dp)
         {
@@ -4364,9 +4385,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             return sv?.infos[cx.role.defpos]?.name
                 ?? sv?.alias ?? (string?)sv?.mem[ObInfo.Name] ?? ("Col" + i);
         }
-        internal virtual CTree<Domain, bool> OnInsert(Context cx, BTree<long,object>? m= null)
+        internal virtual CTree<NodeType, bool> OnInsert(Context cx, BTree<long,object>? m= null)
         {
-            var r = CTree<Domain, bool>.Empty;
+            var r = CTree<NodeType, bool>.Empty;
             var tv = _Eval(cx);
             if (tv is TTypeSpec ts && cx._Ob(ts._dataType.defpos) is NodeType n)
                 r += (n, true);
@@ -5360,7 +5381,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             var sb = new StringBuilder(Uid(defpos));
             sb.Append(' '); sb.Append(base.ToString());
             var cm = "";
-            if (mem.Contains(Under))
+            if (super.Count>0)
             {
                 sb.Append(" Under=");
                 for (var b = super.First(); b != null; b = b.Next())

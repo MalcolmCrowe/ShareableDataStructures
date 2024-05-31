@@ -192,7 +192,6 @@ namespace Pyrrho.Level2
                 m += (Domain.Under, under);
             }
             oi += (ObInfo.Names, ns);
-            m += (NodeType._Names, nn);
             m += (DBObject.Infos, new BTree<long, ObInfo>(rdr.context.role.defpos, oi));
             dataType = k switch
             {

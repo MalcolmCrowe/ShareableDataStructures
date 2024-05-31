@@ -222,7 +222,7 @@ namespace Pyrrho.Level3
             return (dp==defpos)?this:New(dp, mem);
         }
         /// <summary>
-        /// Adjust compiled DBObject (calls _Relocate)
+        /// Adjust compiled DBObject
         /// </summary>
         /// <param name="wr"></param>
         /// <returns></returns>
@@ -235,7 +235,7 @@ namespace Pyrrho.Level3
             }
             if (cx.done[defpos] is DBObject rr)
                 return rr;
-            var r = (DBObject)New(_Fix(cx,mem));
+            var r = New(cx.Fix(defpos),_Fix(cx,mem));
             cx.Add(r);
             cx.done += (defpos, r);
             return r;
@@ -615,6 +615,10 @@ namespace Pyrrho.Level3
             var ci = ob.infos[cx.role.defpos] ?? ob.infos[definer] ??
                 ob.infos[Database.Guest] ?? throw new DBException("42105").Add(Qlx.OBJECT);
             return ci.name??"??";
+        }
+        internal virtual CTree<NodeType,bool> _NodeTypes(Context cx)
+        {
+            return CTree<NodeType,bool>.Empty;
         }
         internal virtual void Note(Context cx,StringBuilder sb,string target="C#")
         {  }

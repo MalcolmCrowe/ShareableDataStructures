@@ -4209,6 +4209,8 @@ namespace Pyrrho.Level3
                             }
                             else
                                 bn = g.Eval(cx) as TNode;
+                            if (atSchemaLevel)
+                                ed?.InsertSchema(cx);
                         }
                 }
             return cx;
@@ -4226,6 +4228,8 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            if (atSchemaLevel)
+                sb.Append(" SCHEMA");
             string cm;
             sb.Append('['); sb.Append(graphExps);sb.Append(']');
             if (stms!=BList<long?>.Empty)

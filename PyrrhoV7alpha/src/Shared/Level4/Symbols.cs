@@ -846,7 +846,13 @@ namespace Pyrrho.Level4
                         return tok = Qlx.ARROWL;
                     }
                     return tok = Qlx.LSS;
-                case '=': Advance(); return tok = Qlx.EQL;
+                case '=': 
+                    if (Advance()=='>')
+                    {
+                        Advance();
+                        return Qlx.DOUBLEARROW;
+                    }
+                    return tok = Qlx.EQL;
                 case '>':
                     if (Advance() == '=')
                     {

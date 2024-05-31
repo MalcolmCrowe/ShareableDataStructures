@@ -58,14 +58,11 @@ namespace Pyrrho.Level5
         internal const long
             IdCol = -472,  // long TableColumn (defining position used if not specified)
             IdColDomain = -493, // Domain (by default is Int)
-            IdIx = -436,    // long Index (defining position used if not specified)
-            _Names = -145; // CTree<string,long> TableColumn definer's field names
+            IdIx = -436;    // long Index (defining position used if not specified)
         internal Domain idColDomain => (Domain)(mem[IdColDomain] ?? Int);
         internal Domain label => 
             (Domain)(mem[GqlNode._Label] ?? GqlLabel.Empty);
         internal TRow? singleton => (TRow?)mem[TrivialRowSet.Singleton];
-        internal CTree<string, long> names => 
-            (CTree<string, long>)(mem[_Names] ?? CTree<string, long>.Empty);
         internal NodeType(Qlx t) : base(t)
         { }
         public NodeType(long dp, BTree<long, object> m) : base(dp, m)
@@ -109,7 +106,6 @@ namespace Pyrrho.Level5
             }
             oi += (ObInfo.Names, ns);
             r += (_Domain, new Domain(cx, rs, rt, new BTree<long, ObInfo>(cx.role.defpos, oi)));
-            r += (_Names, nn);
             return r;
         }
         internal TableRow? Get(Context cx, TypedValue? id)
@@ -181,6 +177,12 @@ namespace Pyrrho.Level5
                 if (cx.NameFor(b.key()) is string n)
                     pn += (n, true);
             return cx.role.unlabelledNodeTypesInfo[pn] is long q && q < Transaction.Analysing;
+        }
+        internal override TypedValue _Eval(Context cx)
+        {
+            if (singleton is TRow && tableRows.First()?.value() is TableRow tr)
+                return new TNode(this, tr);
+            return base._Eval(cx);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -787,7 +789,7 @@ namespace Pyrrho.Level5
             };
             var ns = ut.infos[cx.role.defpos]?.names;
             var cd = se ? new TSet(sd).dataType : sd;
-            if (id is null && cp == IdCol && (ns?["ID"].Item2??ut.names["ID"]) is long p 
+            if (id is null && cp == IdCol && ns?["ID"].Item2 is long p 
                 && cx._Ob(p) is TableColumn)
             {
                 id = "ID";
@@ -795,7 +797,7 @@ namespace Pyrrho.Level5
             }
             if (id is not null)
             {
-                if ((ns?.Contains(id)==true || ut.names.Contains(id)) && (ns?[id].Item2??ut.names[id]) is long pp)
+                if (ns?.Contains(id)==true && ns?[id].Item2 is long pp)
                 {
                     pc = (PColumn3?)((Transaction)cx.db).physicals[pp];
                     tc = (TableColumn?)(cx._Ob(pp));
@@ -1415,9 +1417,6 @@ namespace Pyrrho.Level5
                 var c = label.CompareTo(that.label);
                 if (c != 0)
                     return c;
-                c = names.CompareTo(that.names);
-                if (c != 0)
-                    return c;
             }
             return base.CompareTo(obj);
         }
@@ -1577,10 +1576,12 @@ namespace Pyrrho.Level5
                 Qlx.NODETYPE => (name is string n) ?
                     r + (cx.FindNodeType(n, dc)?.Build(cx, null, m) ?? NodeTypeFor(n, m, cx), true)
                     : r,
-                Qlx.EDGETYPE => (cx.FindEdgeType(name, lt, at, dc, m, CTree<Qlx,TypedValue>.Empty) is CTree<NodeType,bool> rr
-                    && rr.Count>0)? rr : new CTree<NodeType,bool>(EdgeTypeFor(name,m,cx),true),
+                Qlx.EDGETYPE => (cx.FindEdgeType(name, lt, at, dc, m, CTree<Qlx, TypedValue>.Empty) is CTree<NodeType, bool> rr
+                    && rr.Count > 0) ? rr : new CTree<NodeType, bool>(EdgeTypeFor(name, m, cx), true),
                 Qlx.NO => (cx.db.objects[cx.role.dbobjects[name] ?? -1L] is NodeType d) ?
                     r + (d, true) : r,
+                Qlx.DOUBLEARROW => (lf is null || rg is null) ? r
+                : (cx.db.objects[Math.Min(lf.defpos, rg.defpos)] is NodeType tt) ? (r + (tt, true)) : r,
                 _ => r
             };
         }
@@ -1743,12 +1744,16 @@ namespace Pyrrho.Level5
             if (cx._Ob(et.leavingType) is NodeType el && cx._Ob(et.arrivingType) is NodeType ea)
             {
                 var ll = nl.label.OnInsert(cx,nl.mem);
-                if (nl is GqlNode sl && cx.binding[sl.defpos] is TNode ln)
+                if (nl is GqlReference hr && cx.db.objects[hr.refersTo] is NodeType hl)
+                    ll += (hl, true);
+                else if (nl is GqlNode sl && cx.binding[sl.defpos] is TNode ln)
                     for (var b = ln.tableRow.tabledefpos.First(); b != null; b = b.Next())
                         if (cx.obs[b.key()] is NodeType nt)
                             ll += (nt, true);
                 var al = na.label.OnInsert(cx,na.mem);
-                if (na is GqlNode sa && cx.binding[sa.defpos] is TNode an)
+                if (na is GqlReference hs && cx.db.objects[hs.refersTo] is NodeType ha)
+                    al += (ha, true);
+                else if (na is GqlNode sa && cx.binding[sa.defpos] is TNode an)
                     for (var b = an.tableRow.tabledefpos.First(); b != null; b = b.Next())
                         if (cx.obs[b.key()] is NodeType nt)
                             al += (nt, true);

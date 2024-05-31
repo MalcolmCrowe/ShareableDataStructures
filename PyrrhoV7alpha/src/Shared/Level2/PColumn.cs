@@ -319,8 +319,6 @@ namespace Pyrrho.Level2
                 }
                 nt.AddNodeOrEdgeType(cx);
             }
-            if (table is NodeType nn && oi.name is string cn)
-                table += (NodeType._Names, nn.names + (cn, defpos));
             if (cx.db.format < 51)
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

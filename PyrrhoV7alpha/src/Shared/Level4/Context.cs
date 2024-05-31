@@ -34,11 +34,10 @@ namespace Pyrrho.Level4
     /// the current ReadConstraint and ETag, and these changes must be placed somewhere. The Context is the simplest.
     /// 
     /// So Context is mutable: but places we have the separate Contexts are important. 
-    ///     1. During the UnLex relocations, with _Relocate(cx,nc) nc is the new context containing the Unlexed objects
-    ///     2, The first step in Commit is to create Reader and a Writer based on the Database and not the Transaction
+    ///     1. The first step in Commit is to create Reader and a Writer based on the Database and not the Transaction
     ///     Then wr.cx.db is extended by the committed objects from the Transaction (see Physical.Commit)
-    ///     3. During Parsing, the parsing context contains the evolving Transaction (i.e. cx.db is tr)
-    ///     4. During Execution we can have temporary Contexts/Activations for doing aggregations, triggers,
+    ///     2. During Parsing, the parsing context contains the evolving Transaction (i.e. cx.db is tr)
+    ///     3. During Execution we can have temporary Contexts/Activations for doing aggregations, triggers,
     ///     recursion and exception handling
     /// </summary>
     internal class Context
@@ -1714,8 +1713,9 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="was">A TableColumn uid</param>
         /// <param name="now">A TableColumn uid guaranteed less than was</param>
-        internal void MergeColumn(long was, long now)
+        internal bool MergeColumn(long was, long now)
         {
+            var od = db;
             for (var b = db.objects.PositionAt(0L); b != null; b = b.Next())
                 if (b.value() is Domain d && d.kind!=Qlx.Null)
                 {
@@ -1730,6 +1730,7 @@ namespace Pyrrho.Level4
                     if (nb != ob)
                         db += (b.key(), nb);
                 }
+            return db != od;
         }
         internal void AddDefs(Domain dm)
         {

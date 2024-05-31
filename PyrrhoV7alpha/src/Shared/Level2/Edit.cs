@@ -259,9 +259,10 @@ namespace Pyrrho.Level2
             var r = (Domain)base.Install(cx);
             if (dataType is not Table st)
                 throw new PEException("PE408205");
+            var oi = dataType.infos[cx.role.defpos] ?? new ObInfo(name, Grant.AllPrivileges);
             // To make things easier we consider the merging of columns in two stages,
             // first deal with where our new columns match columns in the hierarchy
-            if (dataType.infos[cx.role.defpos] is ObInfo oi && prev.infos[cx.role.defpos] is ObInfo pi)
+            if (prev.infos[cx.role.defpos] is ObInfo pi)
                 for (var b = oi.names.First(); b != null; b = b.Next())
                     if (b.value().Item2 is long np && !prev.representation.Contains(np) // new name
                         && hierCols[b.key()].Item2 is long ep  // in hierarchy
@@ -290,12 +291,14 @@ namespace Pyrrho.Level2
                         }
                     // under and dataType may have changed
                     dataType = (UDType)(cx.db.objects[dataType.defpos] ?? Domain.TypeSpec);
+                    oi = dataType.infos[cx.role.defpos]??oi;
                     var ps = ((UDType)dataType).HierarchyRepresentation(cx);
                     var rt = BList<long?>.Empty;
                     for (var b = ps.First(); b != null; b = b.Next())
                         rt += b.key();
- //                   dataType += (DBObject._Domain, ((Table)dataType)._PathDomain(cx));
-                    var un = (UDType)(cx.db.objects[uD.defpos] ?? throw new DBException("PE40802"));
+                    var uP = cx.uids[uD.defpos] ?? uD.defpos; // just in case
+                    var un = (UDType)(cx.db.objects[uP] ?? throw new DBException("PE40802"));
+                    var ui = un.infos[cx.role.defpos]?? new ObInfo(un.name,Grant.AllPrivileges);
                     var no = un.rowType == BList<long?>.Empty;
                     if (no)
                     {
@@ -311,6 +314,7 @@ namespace Pyrrho.Level2
                             nu += (Domain.Representation,
                                 new CTree<long, Domain>(tn.idCol, tn.representation[tn.idCol] ?? Domain.Position));
                             nu += (NodeType.IdCol, tn.idCol);
+                            nu += (DBObject.Infos, nu.infos+(cx.role.defpos,ui+(ObInfo.Names,ui.names+oi.names)));
                             var xi = (Level3.Index)(cx.Add(new Level3.Index(ppos + 1, nx.mem)));
                             nu += (NodeType.IdIx, xi.defpos);
                             cx.Add(nu);
@@ -330,6 +334,7 @@ namespace Pyrrho.Level2
                             eu += (Domain.Representation,
         new CTree<long, Domain>(te.leaveCol, te.representation[te.leaveCol] ?? Domain.Position));
                             eu += (EdgeType.LeaveCol, te.leaveCol);
+                            eu += (DBObject.Infos, eu.infos+(cx.role.defpos, ui + (ObInfo.Names, ui.names + oi.names)));
                             cx.Add(eu);
                             cx.Add(xl);
                             cx.db += eu;
@@ -345,6 +350,7 @@ namespace Pyrrho.Level2
                             ev += (Domain.Representation,
         new CTree<long, Domain>(tf.arriveCol, tf.representation[tf.arriveCol] ?? Domain.Position));
                             ev += (EdgeType.ArriveCol, tf.arriveCol);
+                            ev += (DBObject.Infos, ev.infos+(cx.role.defpos, ui + (ObInfo.Names, ui.names + oi.names)));
                             cx.Add(ev);
                             cx.Add(xa);
                             cx.db += ev;
@@ -383,7 +389,7 @@ namespace Pyrrho.Level2
             var sb = new StringBuilder("EditType " + name + "[" + DBObject.Uid(prev.defpos) + "]");
             var cm = " Under: [";
             for (var b = under.First(); b != null; b = b.Next())
-            { sb.Append(cm); cm = ","; sb.Append(b.key().ToString()); }
+            { sb.Append(cm); cm = ","; sb.Append(b.key().name); }
             if (cm == ",")
                 sb.Append(']');
             return sb.ToString();

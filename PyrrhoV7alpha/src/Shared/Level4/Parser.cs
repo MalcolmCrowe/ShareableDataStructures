@@ -1535,14 +1535,14 @@ namespace Pyrrho.Level4
         /// </summary>
         internal Executable ParseInsertGraph()
         {
-            // New nodes without Id keys should be assigned cx.db.nextPos.ToString(), and this is fixed
-            // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
-            var ge = ParseInsertGraphList();
             var sch = false;
             if (Match(Qlx.SCHEMA))
             {
                 sch = true; Next();
             }
+            // New nodes without Id keys should be assigned cx.db.nextPos.ToString(), and this is fixed
+            // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
+            var ge = ParseInsertGraphList();
             var st = BList<long?>.Empty;
             var cs = (GraphInsertStatement)cx.Add(new GraphInsertStatement(cx.GetUid(), sch, ge, st));
             if (cx.parse == ExecuteStatus.Obey)
@@ -1695,7 +1695,7 @@ namespace Pyrrho.Level4
         {
             var svgs = CList<CList<GqlNode>>.Empty;
             // the current token is LPAREN
-            while (tok == Qlx.LPAREN)
+            while (tok == Qlx.LPAREN || tok==Qlx.LBRACK)
             {
                 svgs += ParseInsertGraphStep();
                 if (tok == Qlx.COMMA)
@@ -1706,7 +1706,7 @@ namespace Pyrrho.Level4
         CList<GqlNode> ParseInsertGraphStep()
         {
             cx.IncSD(new Ident(this));
-            // the current token is LPAREN
+            // the current token is LPAREN or LBRACK
             var svg = CList<GqlNode>.Empty;
             (var n, svg) = ParseInsertGraphItem(svg);
             while (tok == Qlx.RARROW || tok == Qlx.ARROWBASE)
@@ -1743,11 +1743,11 @@ namespace Pyrrho.Level4
             var og = lxr.tgs;
             lxr.tgs = CTree<long, TGParam>.Empty;
             var ro = cx.role;
-            var ab = tok; // LPAREN, ARROWBASE or RARROW
+            var ab = tok; // LPAREN, LBRACK, ARROWBASE or RARROW
             var pi = new Ident(this);
             if (tok == Qlx.Id)
                 Next();
-            Mustbe(Qlx.LPAREN, Qlx.ARROWBASE, Qlx.RARROW);
+            Mustbe(Qlx.LPAREN, Qlx.LBRACK, Qlx.ARROWBASE, Qlx.RARROW);
             var bound = false;
             var b = new Ident(this);
             var nb = b;
@@ -1818,14 +1818,18 @@ namespace Pyrrho.Level4
                 (an, ahead) = ParseInsertGraphItem(ahead);
             }
             else
-                Mustbe(Qlx.RPAREN);
+                Mustbe(Qlx.RPAREN,Qlx.RBRACK);
             var m = BTree<long, object>.Empty + (GqlNode._Label, lb) + (SqlValueExpr.Op,tk);
             if (cx.obs[id] is GqlNode r)
                 r = new GqlReference(lp, r);
+            else if (lb.defpos >= 0 && lb.rowType == BList<long?>.Empty && lb is NodeType zt)
+                r = new GqlReference(lp, zt);
             else
-            r = ab switch
+                r = ab switch
             {
                 Qlx.LPAREN => new GqlNode(nb, BList<Ident>.Empty, cx, id, dc, lxr.tgs, dm, m),
+                Qlx.LBRACK => new GqlEdge(nb, BList<Ident>.Empty, cx, Qlx.Null, -1L, 
+                -1L, -1L, dc, lxr.tgs, dm, m),
                 Qlx.ARROWBASE => new GqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
                 ln?.defpos ?? -1L, an?.defpos ?? -1L, dc, lxr.tgs, dm, m),
                 Qlx.RARROW => new GqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
@@ -2049,11 +2053,13 @@ namespace Pyrrho.Level4
                 left = new GqlLabel(lp, Qlx.EXCLAMATION, -1L, left.defpos);
                 cx.Add(left);
             }
-            while (Match(Qlx.VBAR,Qlx.COLON,Qlx.AMPERSAND))
+            while (Match(Qlx.VBAR,Qlx.COLON,Qlx.AMPERSAND,Qlx.DOUBLEARROW))
             {
                 lp = lxr.Position;
                 var op = tok;
                 Next();
+                if (Match(Qlx.COLON))
+                    Next();
                 var right = ParseLabelExpression(kind,lt,at);
                 cx.Add(right);
                 left = new GqlLabel(lp, op, left.defpos, right.defpos); // leave name empty for now
@@ -2614,7 +2620,6 @@ namespace Pyrrho.Level4
             if (m.Contains(Qlx.NODETYPE) || ll?.Length*al?.Length>1)
             {
                 var nt = new NodeType(typename.iix.dp, dt.mem + (Domain.Kind, Qlx.NODETYPE));
-                nt += (NodeType._Names, nn);
                 nt = nt.FixNodeType(cx, typename);
                 // Process ls and m 
                 dt = nt.Build(cx, null, new BTree<long, object>(Domain.UnionOf, nt.label.OnInsert(cx))+(GqlNode.DocValue,ls), m);

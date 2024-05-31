@@ -11,6 +11,7 @@ using System.Data.Common;
 using System;
 using System.Reflection.Emit;
 using System.Data.SqlTypes;
+using System.Numerics;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -10901,7 +10902,7 @@ cx.obs[high] is not QlValue hi)
             Defs = -367,        // Ident.Idents
             DocValue = -477,    // CTree<string,QlValue> 
             IdValue = -480,     // long             QlValue of Int
-            _Label = -360,      // Domain
+            _Label = -360,      // Domain (GqlLabel is a subclass of Domain and deals with label sets etc)
             DefsStore = -366,    // BTree<int,(long,Ident.Idents)>  
             State = -245;       // CTree<long,TGParam> tgs in this GqlNode  (always empty for GraphInsertStatement)
         public CTree<string, QlValue> docValue => (CTree<string,QlValue>)(mem[DocValue]??CTree<string,QlValue>.Empty);
@@ -10932,8 +10933,8 @@ cx.obs[high] is not QlValue hi)
             m += (State, tgs);
             m += (Defs, cx.defs);
             m += (DefsStore, cx.defsStore);
-            if (dm is not null && dm.defpos>0)// && !m.Contains(LabelSet))
-                m += (_Label, cx.Add(new GqlLabel(cx.GetUid(),dm.name,Qlx.NODETYPE,cx)));
+            if (!m.Contains(_Label) && dm is not null && dm.defpos>0) // otherwise leave it unlabelled
+                m += (_Label, dm); // an explicit NodeType
             return m;
         }
         static NodeType _Type(Context cx,CTree<string,QlValue> d,BTree<long,object>? m)
@@ -11303,6 +11304,19 @@ cx.obs[high] is not QlValue hi)
                     r += (ob.defpos, v);
             return r;
         }
+        internal virtual NodeType? InsertSchema(Context cx)
+        {
+            var ns = infos[cx.role.defpos]?.names;
+            var tb = domain as NodeType;
+            for (var b=docValue.First();b!=null;b=b.Next())
+                if (b.value() is QlValue qv && ns?.Contains(b.key()) == false 
+                    && tb is not null && tb.defpos>0)
+                {
+                    var pc = new PColumn(Physical.Type.PColumn, tb, b.key(), -1, qv.domain, cx.db.nextPos, cx);
+                    tb = (NodeType?)cx.Add(pc);
+                }
+            return tb;
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -11357,6 +11371,8 @@ cx.obs[high] is not QlValue hi)
         internal long refersTo => (long)(mem[RefersTo] ?? -1L);
         internal GqlReference(long dp, GqlNode n)
             : this(dp, n.mem + (RefersTo, n.defpos)) { }
+        internal GqlReference(long dp, NodeType nt)
+            : this(dp, nt.mem + (RefersTo, nt.defpos) + (_Domain,nt)) { }
         protected GqlReference(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override TypedValue _Eval(Context cx)
         {
@@ -11387,11 +11403,31 @@ cx.obs[high] is not QlValue hi)
         public Qlx direction => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.NO); // ARROWBASE or ARROW
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, Qlx t, long i, long l, long a,
             CTree<string,QlValue> d, CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
-            : base(nm, ch, cx, i, d, tgs,dm??Domain.EdgeType, (m??BTree<long,object>.Empty)
-                  +(LeavingValue,l)+(ArrivingValue,a)+(SqlValueExpr.Op,t))
+            : base(nm, ch, cx, i, d, tgs,dm??Domain.EdgeType, _Mem(cx,d,tgs,dm,m,i,l,a,t))
         { }
         protected GqlEdge(long dp, BTree<long, object> m) : base(dp, m)
         { }
+        static BTree<long,object> _Mem(Context cx,CTree<string,QlValue> d,
+             CTree<long, TGParam> tgs, NodeType? dm , BTree<long,object>?m, long i,long l,long a, Qlx t)
+        {
+            m = m ?? BTree<long, object>.Empty;
+            if (i > 0)
+                m += (IdValue, i);
+            m += (DocValue, d);
+            m += (State, tgs);
+            m += (Defs, cx.defs);
+            m += (DefsStore, cx.defsStore);
+            if (!m.Contains(_Label) && dm is not null && dm.defpos > 0) // otherwise leave it unlabelled
+                m += (_Label, dm); // an explicit NodeType
+            if (i > 0)
+                m += (IdValue, i);
+            if (l > 0)
+                m += (LeavingValue, l);
+            if (a > 0)
+                m += (ArrivingValue, a);
+            m += (SqlValueExpr.Op, t);
+            return m;
+        }
         public static GqlEdge operator+(GqlEdge e,(long,object)x)
         {
             return (GqlEdge)e.New(e.mem + x);
@@ -11458,9 +11494,9 @@ cx.obs[high] is not QlValue hi)
                         be = ne;
                 }
             }
-            if (te is EdgeType)
-                nt = (EdgeType)te;
-            if (tl == CTree<Domain, bool>.Empty && lT is not null && aT is not null)
+            if (te is not null)
+                nt = te;
+            if (tl == CTree<NodeType, bool>.Empty && lT is not null && aT is not null)
             { // unlabelled edges have types determined by their kind and property set
                 var ps = CTree<string, bool>.Empty;
                 var pl = BList<DBObject>.Empty;
@@ -11598,6 +11634,131 @@ cx.obs[high] is not QlValue hi)
                     ls += (aN, (QlValue)cx.Add(ai));
             }
             return ls;
+        }
+        internal override NodeType? InsertSchema(Context cx)
+        {
+            var r = base.InsertSchema(cx) as EdgeType;
+            if (label is GqlLabel lb && lb.kind == Qlx.DOUBLEARROW && lb.AllowExtra(cx, mem) is not null)
+            {
+                var lf = cx.db.objects[lb.left] as EdgeType;
+                var nl = cx.NameFor(lb.left) ?? throw new DBException("42105");
+                var rg = cx.db.objects[lb.right] as EdgeType;
+                var nr = cx.NameFor(lb.right) ?? throw new DBException("42105");
+                if (rg is not null && rg.defpos > 0)
+                {
+                    if (lf is not null && lf.defpos > 0)
+                    {
+                        // both defined: ensure we have => on properties
+                        var li = lf.infos[cx.role.defpos] ?? throw new DBException("42105");
+                        var ln = li.names;
+                        var lt = lf.rowType;
+                        var ls = lf.representation;
+                        var cl = false;
+                        var ri = rg.infos[cx.role.defpos] ?? throw new DBException("42105");
+                        var rn = ri.names;
+                        var ns = ln + rn; // care: this will lose data when keys match
+                        for (var b = ns.First(); b != null; b = b.Next())
+                        {
+                            var k = b.key();
+                            var lc = cx.db.objects[ln[k].Item2 ?? -1L] as TableColumn;
+                            var rc = cx.db.objects[rn[k].Item2 ?? -1L] as TableColumn;
+                            if (lc is not null && rc is not null)
+                                cl = cl || cx.MergeColumn(lc.defpos, rc.defpos);
+                            else if (rc is not null)
+                            {
+                                lt += rc.defpos;
+                                ls += (rc.defpos, rc.domain);
+                                ln += (b.key(), (-1, rc.defpos));
+                                cl = true;
+                            }
+                        }
+                        var xl = cl ? ((EdgeType)cx.Add(lf + (Domain.RowType, lt) + (Domain.Representation, ls)
+                                    + (Infos, lf.infos+(cx.role.defpos,li + (ObInfo.Names, ln))))) : lf;
+                        var pe = new EditType(nl, xl, rg, new CTree<Domain, bool>(rg, true), cx.db.nextPos, cx);
+                        r = (EdgeType)(cx.Add(pe) ?? throw new DBException("42105"));
+                    }
+                    else // rg defined, create lf
+                    {
+                        var li = new ObInfo(nl, Grant.AllPrivileges);
+                        var ln = BTree<string, (int, long?)>.Empty;
+                        var lt = BList<long?>.Empty;
+                        var ls = CTree<long, Domain>.Empty;
+                        var ri = rg.infos[cx.role.defpos] ?? throw new DBException("42105");
+                        for (var b = ri.names.First(); b != null; b = b.Next())
+                        {
+                            var k = b.key();
+                            var rc = cx.db.objects[b.value().Item2 ?? -1L] as TableColumn ?? throw new DBException("42105");
+                            lt += rc.defpos;
+                            ls += (rc.defpos, rc.domain);
+                            ln += (b.key(), (-1, rc.defpos));
+                        }
+                        lf = new EdgeType(cx.GetUid(), nl, rg, BTree<long, object>.Empty, cx);
+                        var pe = new PEdgeType(nl, lf, new CTree<Domain, bool>(rg, true), -1L,
+                            rg.leavingType, rg.arrivingType, cx.db.nextPos, cx);
+                        r = (EdgeType)(cx.Add(pe) ?? throw new DBException("42105"));
+                    }
+                    for (var b = rg.indexes.First(); b != null; b = b.Next())
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                            for (var d = lf.indexes[b.key()]?.First(); d != null; d = d.Next())
+                                if (cx.db.objects[d.key()] is Index lx
+                                && cx.db.objects[c.key()] is Index rx)
+                                    for (var e = lx.rows?.impl?.First(); e != null; e = e.Next())
+                                        if (e.value().ToLong() is long v)
+                                            rx += (new CList<TypedValue>(e.key()), v);    
+                }
+                else
+                {
+                    // lf defined, create a new supertype rg with just the special columns.
+                    // This means reparenting them.
+                    var ri = new ObInfo(nr, Grant.AllPrivileges);
+                    var rn = BTree<string, (int, long?)>.Empty;
+                    var rt = BList<long?>.Empty;
+                    var rs = CTree<long, Domain>.Empty;
+                    var li = lf?.infos[cx.role.defpos] ?? throw new DBException("42105");
+                    var ln = li.names;
+                    var np = cx.db.nextPos;
+                    for (var b = li.names.First(); b != null; b = b.Next())
+                    {
+                        var k = b.key();
+                        var lc = cx.db.objects[b.value().Item2 ?? -1L] as TableColumn ?? throw new DBException("42105");
+                        if (lc.flags == PColumn.GraphFlags.None)
+                            continue;
+                        cx.db += lc + (TableColumn._Table, np);
+                        rt += lc.defpos;
+                        rs += (lc.defpos, lc.domain);
+                        rn += (b.key(), (-1, lc.defpos));
+                    }
+                    rg = new EdgeType(np, nr, lf, BTree<long, object>.Empty, cx);
+                    var pe = new PEdgeType(nr, rg, CTree<Domain, bool>.Empty, -1L,
+                        lf.leavingType, rg.arrivingType, np, cx);
+                    r = (EdgeType)(cx.Add(pe) ?? throw new DBException("42105"));
+                    r = r + (Domain.RowType, rt) + (Domain.Representation, rs)
+                        + (Infos, new BTree<long, ObInfo>(cx.role.defpos, ri + (ObInfo.Names, rn)));
+                    cx.db += r;
+                    for (var b = lf.indexes.First(); b != null; b = b.Next())
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                            if (!rg.indexes.Contains(b.key()) && cx.db.objects[c.key()] is Index x)
+                            {
+                                var px = new PIndex("", rg, b.key(), x.flags, x.refindexdefpos, cx.db.nextPos);
+                                cx.Add(px);
+                                if (cx.db.objects[px.ppos] is Index nx)
+                                    nx.Build(cx);
+                                cx.db += x + (Index.TableDefPos, np);
+                            }
+                    var pu = new EditType(nl, lf, lf, new CTree<Domain, bool>(r, true), cx.db.nextPos, cx);
+                    cx.Add(pu);
+                    for (var b = rg.indexes.First(); b != null; b = b.Next())
+                        for (var c = b.value().First(); c != null; c = c.Next())
+                            if (!lf.indexes.Contains(b.key()) && cx.db.objects[c.key()] is Index x)
+                            {
+                                var px = new PIndex("", lf, b.key(), x.flags, x.refindexdefpos, cx.db.nextPos);
+                                cx.Add(px);
+                                if (cx.db.objects[px.ppos] is Index nx)
+                                    nx.Build(cx);
+                            }
+                }
+            }
+            return r;
         }
         public override string ToString()
         {
