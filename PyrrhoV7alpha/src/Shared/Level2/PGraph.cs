@@ -24,14 +24,16 @@ namespace Pyrrho.Level2
         {
             dm.AddNodeOrEdgeType(cx);
         }
-        internal PNodeType(Type t,string nm, long p, NodeType dm, Context cx)
-            : base(t, nm, dm, dm.super, -1L, p, cx)
-        { }
         protected PNodeType(Type t, string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
-            : base(t,nm,nt,un,ns, pp,cx) { }
+            : base(t,nm,nt,un,ns, pp,cx) 
+        { 
+            nt.AddNodeOrEdgeType(cx);
+        }
         public PNodeType(string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
             : base(Type.PNodeType, nm, nt, un, ns, pp, cx) 
-        { }
+        {
+            nt.AddNodeOrEdgeType(cx);
+        }
         public PNodeType(Reader rdr) : base(Type.PNodeType, rdr) 
         { }
         protected PNodeType(Type t, Reader rdr):base(t, rdr) { }
@@ -65,8 +67,7 @@ namespace Pyrrho.Level2
             nt = nt + (EdgeType.LeavingType, lt) + (EdgeType.ArrivingType, at);
             for (var b = un.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key().defpos] is EdgeType et)
-                    nt = nt + (EdgeType.LeaveIx, et.leaveIx) + (EdgeType.LeaveCol, et.leaveCol)
-                        +(EdgeType.ArriveIx,et.arriveIx)+ (EdgeType.ArriveCol, et.arriveCol);
+                    nt = nt + (EdgeType.LeaveCol, et.leaveCol) + (EdgeType.ArriveCol, et.arriveCol);
             cx.Add(nt);
             dataType = nt;
             nt.AddNodeOrEdgeType(cx);

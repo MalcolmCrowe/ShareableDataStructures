@@ -42,7 +42,7 @@ namespace Pyrrho.Level3
             KeyCols = -320, // CTree<long,bool> TableColumn (over all indexes)
             LastData = -258, // long
             RefIndexes = -250, // CTree<long,CTree<Domain,Domain>> referencing Table,referencing TableColumns,referenced TableColumns
-            SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,bool>>> referencingcol,recpos,recpos used for EdgeTypes
+            SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,bool>>> referencingtable,recpos,recpos used for EdgeTypes
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // CTree<long,bool> Check
             TableRows = -181, // BTree<long,TableRow>
@@ -309,8 +309,8 @@ namespace Pyrrho.Level3
             var ts = ShallowReplace(cx, tableRows, was, now);
             if (ts != tableRows)
             {
-                for (var b = ts.First(); b != null; b = b.Next()) // verify that all tablerows have the right types for all vals
-                    b.value()?.Check(r,cx);
+             //   for (var b = ts.First(); b != null; b = b.Next()) // verify that all tablerows have the right types for all vals
+             //       b.value()?.Check(r,cx);
                 r += (TableRows, ts);
             }
             return r;

@@ -213,12 +213,12 @@ namespace Pyrrho.Level2
                        && now.vals[et.leaveCol] is TInt tl && tl.ToLong() is long li
                        && lo!=li)
                     {
-                        var cl = lt.sindexes[et.leaveCol] ?? CTree<long, CTree<long, bool>>.Empty;
+                        var cl = lt.sindexes[et.defpos] ?? CTree<long, CTree<long, bool>>.Empty;
                         cl -= lo;
                         var cc = cl[li] ?? CTree<long, bool>.Empty;
                         cc += (now.defpos, true);
                         cl += (li, cc);
-                        lt += (Table.SysRefIndexes, lt.sindexes + (et.leaveCol, cl));
+                        lt += (Table.SysRefIndexes, lt.sindexes + (et.defpos, cl));
                         cx.Add(lt);
                         cx.db += lt;
                     }
@@ -227,12 +227,12 @@ namespace Pyrrho.Level2
                         && now.vals[et.arriveCol] is TInt ta && ta.ToLong() is long ai
                         && ao!=ai)
                     {
-                        var ca = at.sindexes[et.arriveCol] ?? CTree<long, CTree<long, bool>>.Empty;
+                        var ca = at.sindexes[et.defpos] ?? CTree<long, CTree<long, bool>>.Empty;
                         ca -= ao;
                         var cc = ca[ai] ?? CTree<long, bool>.Empty;
                         cc += (now.defpos, true);
                         ca += (ai, cc);
-                        at += (Table.SysRefIndexes, at.sindexes + (et.arriveCol, ca));
+                        at += (Table.SysRefIndexes, at.sindexes + (et.defpos, ca));
                         cx.Add(at);
                         cx.db += at;
                     }
@@ -301,7 +301,7 @@ namespace Pyrrho.Level2
                     {
                         var fl = tb.tableRows[defpos] ?? throw new PEException("PE40406");
                         Check(cx);
-                        cx.Install(tb + new TableRow(this, cx, fl, _classification).Check(tb, cx));
+                        cx.Install(tb + new TableRow(this, cx, fl, _classification)); //.Check(tb, cx));
                     }
                     if (cx.db.mem.Contains(Database.Log))
                         cx.db += (Database.Log, cx.db.log + (ppos, type));

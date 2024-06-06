@@ -255,7 +255,7 @@ namespace Pyrrho.Level2
                     wr.cx.db += (tb.defpos, tb + (Table.Indexes, tb.indexes + (x.keys, ct - ppos)));
                 if (reference > 0 && wr.cx.db.objects[x.reftabledefpos] is Table rt)
                     wr.cx.db += (rt.defpos, rt + (Table.RefIndexes, rt.rindexes - ppos)
-                        + (Table.SysRefIndexes, rt.sindexes - (x.keys[0] ?? -1L)));
+                        + (Table.SysRefIndexes, rt.sindexes - x.reftabledefpos));
             }
             return (nt, ph);
         }

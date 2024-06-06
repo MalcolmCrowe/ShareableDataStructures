@@ -336,7 +336,8 @@ namespace Pyrrho.Level2
                                     cx.db += rx;
                                 }
                         ut += (Table.RefIndexes, us);
-                        ut += (Table.SysRefIndexes, ut.sindexes - rk);
+                        if (cx.db.objects[rk] is TableColumn tc)
+                            ut += (Table.SysRefIndexes, ut.sindexes - tc.defpos);
                         if (cd)
                         {
                             var er = et.representation;

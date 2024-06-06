@@ -72,7 +72,7 @@ namespace Pyrrho.Level5
         { }
         static BTree<long, object> _Mem(string nm, UDType dt, BTree<long,object>m, Context cx)
         {
-            var r = m + dt.mem + (Kind, Qlx.NODETYPE);
+            var r = m + dt.mem + (Kind, Qlx.NODETYPE) -EdgeType.LeaveIx - EdgeType.ArriveIx;
             r += (ObInfo.Name, nm);
             var oi = new ObInfo(nm, Grant.AllPrivileges);
             oi += (ObInfo.Name, nm);
@@ -305,6 +305,22 @@ namespace Pyrrho.Level5
                     m += (_Depth, d);
             }
             return (NodeType)et.New(m + x);
+        }
+        internal override Basis ShallowReplace(Context cx, long was, long now)
+        {
+            var r = (NodeType)base.ShallowReplace(cx, was, now);
+            var ch = false;
+            if (idCol == was)
+            {
+                r += (IdCol, now); ch = true;
+            }
+            if (idIx == was)
+            {
+                r += (IdIx, now); ch = true;
+            }
+            if (ch)
+                cx.Add(r);
+            return r;
         }
         internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? r)
         {
@@ -830,7 +846,7 @@ namespace Pyrrho.Level5
                             var dt = (Transaction)cx.db;
                             dt += (Transaction.Physicals, dt.physicals + (pc.defpos, pc));
                             cx.db = dt;
-                            tr += (SysRefIndexes, tr.sindexes + (pc.defpos, CTree<long, CTree<long, bool>>.Empty));
+                            tr += (SysRefIndexes, tr.sindexes + (ut.defpos, CTree<long, CTree<long, bool>>.Empty));
                         }
                         cx.db += tr;
                         cx.Add(tr);
@@ -1566,8 +1582,8 @@ namespace Pyrrho.Level5
                 else
                     rm += (Under, rg.super + (lf, true));
             }
-            var lt = cx.obs[(long)(m[GqlEdge.LeavingValue] ?? -1L)]?.domain.defpos ?? -1L;
-            var at = cx.obs[(long)(m[GqlEdge.ArrivingValue] ?? -1L)]?.domain.defpos ?? -1L;
+            var lt = ((long?)m[EdgeType.LeavingType])??cx.obs[(long)(m[GqlEdge.LeavingValue] ?? -1L)]?.domain.defpos ?? -1L;
+            var at = ((long?)m[EdgeType.ArrivingType])??cx.obs[(long)(m[GqlEdge.ArrivingValue] ?? -1L)]?.domain.defpos ?? -1L;
             m = m + (EdgeType.LeavingType, lt) + (EdgeType.ArrivingType, at);
             var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue] ?? CTree<string, QlValue>.Empty);
             return kind switch
@@ -1619,6 +1635,7 @@ namespace Pyrrho.Level5
                             -1L, -1L, cx.db.nextPos, cx);
                         nt = (NodeType)(cx.Add(pc)??throw new DBException("42105"));
                     }
+                nt = nt.Build(cx, null, m);
             }
             return nt ?? throw new DBException("42105");
         }
@@ -1642,6 +1659,7 @@ namespace Pyrrho.Level5
                         -1L, -1L, cx.db.nextPos, cx);
                     e = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105"));
                 }
+            e = (EdgeType)e.Build(cx, null, m);
             return e;
         }
         // in reverse Polish order
@@ -2030,6 +2048,10 @@ namespace Pyrrho.Level5
                 to += (LeavingType, leavingType);
             if (arrivingType >= 0)
                 to += (ArrivingType, arrivingType);
+            if (leaveIx >=0)
+                to += (LeaveIx, leaveIx);
+            if (arriveIx >= 0)
+                to += (ArriveIx, arriveIx);
             return base.Inherit(to);
         }
         internal override Basis Fix(Context cx)
@@ -2073,6 +2095,38 @@ namespace Pyrrho.Level5
             var ax = cx.Fix(arriveIx);
             if (ax != arriveIx)
                 r += (ArriveIx, ax);
+            return r;
+        }
+        internal override Basis ShallowReplace(Context cx, long was, long now)
+        {
+            var r = (EdgeType)base.ShallowReplace(cx, was, now);
+            var ch = false;
+            if (leavingType==was)
+            {
+                r += (LeavingType, now); ch = true;
+            }
+            if (leaveCol == was)
+            {
+                r += (LeaveCol, now); ch = true;
+            }
+            if (leaveIx == was)
+            {
+                r += (LeaveIx, now); ch = true;
+            }
+            if (arrivingType == was)
+            {
+                r += (ArrivingType, now); ch = true;
+            }
+            if (arriveCol == was)
+            {
+                r += (ArriveCol, now); ch = true;
+            }
+            if (arriveIx == was)
+            {
+                r += (ArriveIx, now); ch = true;
+            }
+            if (ch)
+                cx.Add(r);
             return r;
         }
         public static EdgeType operator +(EdgeType et, (long, object) x)
@@ -2434,6 +2488,12 @@ namespace Pyrrho.Level5
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new Schema(dp, m);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" DirectoryPath: ");sb.Append(directoryPath);
+            return sb.ToString();
         }
     }
     internal class TNode : TypedValue

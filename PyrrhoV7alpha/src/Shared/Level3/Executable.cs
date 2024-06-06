@@ -4431,7 +4431,7 @@ namespace Pyrrho.Level3
             m += (GDefs, gs);
             if (tg is not null)
                 m += (Truncating, tg);
-            var f = (Flags)(m[MatchFlags]??Flags.None);
+            var f = (Flags)(m[MatchFlags] ?? Flags.None);
             for (var b = gs.First(); b != null && f == Flags.None; b = b.Next())
                 if (b.value().value != "")
                     f |= Flags.Bindings;
@@ -4540,7 +4540,7 @@ namespace Pyrrho.Level3
             {
                 _cx.result = ss.union;
                 _cx.Add(su);
-            } 
+            }
             // aggregations
             /*      if (domain is SelectRowSet srs && srs.aggs != CTree<long, bool>.Empty)
                   { // code copied from SelectRowSet.Build
@@ -4857,11 +4857,11 @@ MatchStatement.Step n) : Step(n.ms)
             // everything has been checked
             if (flags == Flags.None)
                 cx.val = TBool.True;
-            if ((flags.HasFlag(Flags.Bindings)||flags.HasFlag(Flags.Schema))
+            if ((flags.HasFlag(Flags.Bindings) || flags.HasFlag(Flags.Schema))
                 && cx.obs[bindings] is BindingRowSet ers)
             {
                 var uid = cx.GetUid();
-                ers += (cx,new TRow(ers, cx.binding));
+                ers += (cx, new TRow(ers, cx.binding));
                 cx.Add(ers);
                 cx.val = TNull.Value;
                 cx.values += cx.binding;
@@ -4869,43 +4869,43 @@ MatchStatement.Step n) : Step(n.ms)
                 if (cx.obs[body] is Executable bd && cx.binding != CTree<long, TypedValue>.Empty)
                 {
                     cx = bd._Obey(cx);
- /*                   if (cx.val is TRow rr)
-                    {
-                        if (domain.defpos != bindings && cx.obs[domain.defpos] is BindingRowSet es)
-                        {
-                            var ur = cx.GetUid();
-                            es += (cx, rr);
-                            cx.obs += (es.defpos, es);
-                        }
-                        if (domain.defpos != bindings && cx.obs[domain.defpos] is SelectRowSet srs)
-                        {
-                            if (srs.aggs != CTree<long, bool>.Empty)
-                            // This code is largely copied from SelectRowSet.Build
-                            {
-                                cx.values += rr.values;
-                                if (!cx.funcs.Contains(defpos))
-                                    cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
-                                if (srs.groupings.Count == 0)
-                                    for (var b0 = srs.aggs.First(); b0 != null; b0 = b0.Next())
-                                    {
-                                        if (cx.obs[b0.key()] is SqlFunction sf0)
-                                            sf0.AddIn(TRow.Empty, cx);
-                                    }
-                                else for (var g = srs.groupings.First(); g != null; g = g.Next())
-                                        if (g.value() is long p && cx.obs[p] is Grouping gg)
-                                        {
-                                            var vals = CTree<long, TypedValue>.Empty;
-                                            for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
-                                                if (gb.value() is long gp && cx.obs[gp] is QlValue v)
-                                                    vals += (gp, v.Eval(cx));
-                                            var key = new TRow(srs.groupCols, vals);
-                                            for (var b1 = srs.aggs.First(); b1 != null; b1 = b1.Next())
-                                                if (cx.obs[b1.key()] is SqlFunction sf1)
-                                                    sf1.AddIn(key, cx);
-                                        }
-                            }
-                        }
-                    } */
+                    /*                   if (cx.val is TRow rr)
+                                       {
+                                           if (domain.defpos != bindings && cx.obs[domain.defpos] is BindingRowSet es)
+                                           {
+                                               var ur = cx.GetUid();
+                                               es += (cx, rr);
+                                               cx.obs += (es.defpos, es);
+                                           }
+                                           if (domain.defpos != bindings && cx.obs[domain.defpos] is SelectRowSet srs)
+                                           {
+                                               if (srs.aggs != CTree<long, bool>.Empty)
+                                               // This code is largely copied from SelectRowSet.Build
+                                               {
+                                                   cx.values += rr.values;
+                                                   if (!cx.funcs.Contains(defpos))
+                                                       cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
+                                                   if (srs.groupings.Count == 0)
+                                                       for (var b0 = srs.aggs.First(); b0 != null; b0 = b0.Next())
+                                                       {
+                                                           if (cx.obs[b0.key()] is SqlFunction sf0)
+                                                               sf0.AddIn(TRow.Empty, cx);
+                                                       }
+                                                   else for (var g = srs.groupings.First(); g != null; g = g.Next())
+                                                           if (g.value() is long p && cx.obs[p] is Grouping gg)
+                                                           {
+                                                               var vals = CTree<long, TypedValue>.Empty;
+                                                               for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
+                                                                   if (gb.value() is long gp && cx.obs[gp] is QlValue v)
+                                                                       vals += (gp, v.Eval(cx));
+                                                               var key = new TRow(srs.groupCols, vals);
+                                                               for (var b1 = srs.aggs.First(); b1 != null; b1 = b1.Next())
+                                                                   if (cx.obs[b1.key()] is SqlFunction sf1)
+                                                                       sf1.AddIn(key, cx);
+                                                           }
+                                               }
+                                           }
+                                       } */
                 }
                 else if (flags == Flags.None)
                     cx.val = TBool.True;
@@ -4966,11 +4966,9 @@ MatchStatement.Step n) : Step(n.ms)
                 else if (pd.dataType is NodeType pg)
                 {
                     for (var b = pg.sindexes.First(); b != null; b = b.Next())
-                        if (cx.db.objects[b.key()] is TableColumn tc && tc.toType == pd.defpos
-                            && tc.flags.HasFlag((xn.tok == Qlx.RARROW) ? PColumn.GraphFlags.ArriveCol : PColumn.GraphFlags.LeaveCol)
-                            && (cx.db.objects[tc.tabledefpos] as EdgeType)?.Schema(cx) is TableRow tq)
+                        if ((cx.db.objects[b.key()] as EdgeType)?.Schema(cx) is TableRow tq)
                             ds += (tq.defpos, tq);
-                    for (var b= pg.rindexes.First();b!=null;b=b.Next())
+                    for (var b = pg.rindexes.First(); b != null; b = b.Next())
                         if ((cx.db.objects[b.key()] as EdgeType)?.Schema(cx) is TableRow tq)
                             ds += (tq.defpos, tq);
                 }
@@ -5024,32 +5022,42 @@ MatchStatement.Step n) : Step(n.ms)
                 // case 2: pn has no primary index: follow the above logic for sysRefIndexes instead
                 var la = truncating.Contains(Domain.EdgeType.defpos) ? truncating[Domain.EdgeType.defpos].Item1 : int.MaxValue;
                 for (var b = pn.sindexes.First(); b != null; b = b.Next())
-                    if (cx._Ob(b.key()) is TableColumn tc
-                        && cx._Ob(tc.tabledefpos) is EdgeType rt
+                    if (cx._Ob(b.key()) is EdgeType rt
                         && (xn.domain.defpos < 0 || xn.domain.defpos == rt.defpos)
-                        && b.value() is CTree<long, CTree<long, bool>> pt) {
+                        && b.value() is CTree<long, CTree<long, bool>> pt)
+                    {
                         if (pd.defpos == pd.dataType.defpos)  // schema flag
                         {
                             ds += (rt.defpos, rt.Schema(cx));
                             continue;
                         }
-                        if (!xn.label.Match(cx,new CTree<long,bool>(rt.defpos,true),Qlx.EDGETYPE))
+                        if (!xn.label.Match(cx, new CTree<long, bool>(rt.defpos, true), Qlx.EDGETYPE))
                             continue;
                         var pv = pd.tableRow.defpos;
-                        if (cx._Ob(tc.toType) is NodeType tt && pd.tableRow.vals[tt.idCol]?.ToLong() is long vp
-                            && vp>0)
-                            pv = vp;
-                        if (pt[pv] is CTree<long, bool> ct)
+                        var rp = (xn.tok == Qlx.ARROWBASE) ? rt.leavingType : rt.arrivingType;
+                        if (cx._Ob(rp) is NodeType tt)
                         {
                             var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
-                            for (var c = ct.First(); c != null && lm-- > 0 && la-- > 0; c = c.Next())
-                                if (rt.tableRows[c.key()] is TableRow tr)
-                                    ds += (tr.defpos, tr);
+                            if (tt.idCol >= 0)
+                            {
+                                if (pd.tableRow.vals[tt.idCol]?.ToLong() is long vp && vp > 0)
+                                    pv = vp;
+                                if (pt[pv] is CTree<long, bool> ct)
+                                    for (var c = ct.First(); c != null && lm-- > 0 && la-- > 0; c = c.Next())
+                                        if (rt.tableRows[c.key()] is TableRow tr)
+                                            ds += (tr.defpos, tr);
+                            }
+                            else
+                            {
+                                for (var c = rt.tableRows.First(); c != null && lm-- > 0 && la-- > 0; c = c.Next())
+                                    if (rt.tableRows[c.key()] is TableRow tr)
+                                        ds += (tr.defpos, tr);
+                            }
                             if (lm <= 0 || la <= 0)
                                 break;
                         }
                     }
-                alldone:;
+            alldone:;
             }
             else // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
                 ds = xn.For(cx, this, xn, ds);

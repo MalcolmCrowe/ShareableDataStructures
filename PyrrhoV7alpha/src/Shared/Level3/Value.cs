@@ -10937,7 +10937,7 @@ cx.obs[high] is not QlValue hi)
                 m += (_Label, dm); // an explicit NodeType
             return m;
         }
-        static NodeType _Type(Context cx,CTree<string,QlValue> d,BTree<long,object>? m)
+        protected static NodeType _Type(Context cx,CTree<string,QlValue> d,BTree<long,object>? m)
         {
             if (m is null)
                 return Domain.NodeType;
@@ -11403,7 +11403,7 @@ cx.obs[high] is not QlValue hi)
         public Qlx direction => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.NO); // ARROWBASE or ARROW
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, Qlx t, long i, long l, long a,
             CTree<string,QlValue> d, CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
-            : base(nm, ch, cx, i, d, tgs,dm??Domain.EdgeType, _Mem(cx,d,tgs,dm,m,i,l,a,t))
+            : base(nm, ch, cx, i, d, tgs,dm??_Type(cx,d,m), _Mem(cx,d,tgs,dm,m,i,l,a,t))
         { }
         protected GqlEdge(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -11674,7 +11674,7 @@ cx.obs[high] is not QlValue hi)
                         }
                         var xl = cl ? ((EdgeType)cx.Add(lf + (Domain.RowType, lt) + (Domain.Representation, ls)
                                     + (Infos, lf.infos+(cx.role.defpos,li + (ObInfo.Names, ln))))) : lf;
-                        var pe = new EditType(nl, xl, rg, new CTree<Domain, bool>(rg, true), cx.db.nextPos, cx);
+                        var pe = new EditType(nl, xl, lf, new CTree<Domain, bool>(rg, true), cx.db.nextPos, cx);
                         r = (EdgeType)(cx.Add(pe) ?? throw new DBException("42105"));
                     }
                     else // rg defined, create lf

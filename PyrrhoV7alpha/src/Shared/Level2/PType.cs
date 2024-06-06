@@ -327,8 +327,10 @@ namespace Pyrrho.Level2
                     {
                         ss -= tu;
                         dataType = tu.Inherit(ut);
-  //                      dataType += (DBObject._Domain, ((UDType)dataType)._PathDomain(cx));
+                        dataType += (Table.TableChecks, ut.tableChecks + tu.tableChecks);
+                        dataType += (Table.Triggers, ut.triggers + tu.triggers);
                         tu += (Domain.Subtypes, tu.subtypes + (defpos, true));
+                        tu += (Table.TableRows, tu.tableRows + ut.tableRows);
                         var tn = tu.infos[cx.role.defpos]?.names ?? BTree<string, (int, long?)>.Empty;
                         cx.db += tu;
                         for (var c = tu.subtypes.First(); c != null; c = c.Next())
@@ -344,7 +346,6 @@ namespace Pyrrho.Level2
                         ss += (tu, true);
                         ons += tn;
                     }
-
             oi += (ObInfo.Names, ons);
             var os = new BTree<long, ObInfo>(Database._system.role.defpos, oi)
                 + (ro.defpos, oi);

@@ -311,11 +311,11 @@ namespace Pyrrho.Level2
                     if (cx._Od(et.leavingType) is NodeType lt
                        && now.vals[et.leaveCol] is TInt tl && tl.ToLong() is long li)
                     {
-                        var cl = lt.sindexes[et.leaveCol] ?? CTree<long, CTree<long, bool>>.Empty;
+                        var cl = lt.sindexes[et.defpos] ?? CTree<long, CTree<long, bool>>.Empty;
                         var cc = cl[li] ?? CTree<long, bool>.Empty;
                         cc += (now.defpos, true);
                         cl += (li, cc);
-                        lt += (Table.SysRefIndexes, lt.sindexes + (et.leaveCol, cl));
+                        lt += (Table.SysRefIndexes, lt.sindexes + (et.defpos, cl));
                         cx.Add(lt);
                         cx.db += lt;
                     }
@@ -326,7 +326,7 @@ namespace Pyrrho.Level2
                         var cc = ca[ai] ?? CTree<long, bool>.Empty;
                         cc += (now.defpos, true);
                         ca += (ai, cc);
-                        at += (Table.SysRefIndexes, at.sindexes + (et.arriveCol, ca));
+                        at += (Table.SysRefIndexes, at.sindexes + (et.defpos, ca));
                         cx.Add(at);
                         cx.db += at;
                     }

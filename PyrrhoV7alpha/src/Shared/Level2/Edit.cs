@@ -144,10 +144,8 @@ namespace Pyrrho.Level2
         /// <param name="sd">The (new) structure definition</param>
         /// <param name="un">The UNDER domain if any</param>
         /// <param name="pp">The ppos for this log record</param>
-        public EditType(string nm, UDType old, Domain sd, CTree<Domain,bool> un, long pp, Context cx)
-            : base(Type.EditType, nm, 
-                  (UDType)old.New(old.defpos,sd.mem), 
-                  un, cx.db.nextStmt, pp, cx)
+        public EditType(string nm, UDType old, UDType sd, CTree<Domain,bool> un, long pp, Context cx)
+            : base(Type.EditType, nm, sd, un, cx.db.nextStmt, pp, cx)
         {
             if (cx.db != null)
                 _defpos = cx.db.Find(old)?.defpos ?? throw new DBException("42000","EditType");
@@ -291,78 +289,84 @@ namespace Pyrrho.Level2
                         }
                     // under and dataType may have changed
                     dataType = (UDType)(cx.db.objects[dataType.defpos] ?? Domain.TypeSpec);
-                    oi = dataType.infos[cx.role.defpos]??oi;
+                    oi = dataType.infos[cx.role.defpos] ?? oi;
                     var ps = ((UDType)dataType).HierarchyRepresentation(cx);
                     var rt = BList<long?>.Empty;
                     for (var b = ps.First(); b != null; b = b.Next())
                         rt += b.key();
                     var uP = cx.uids[uD.defpos] ?? uD.defpos; // just in case
                     var un = (UDType)(cx.db.objects[uP] ?? throw new DBException("PE40802"));
-                    var ui = un.infos[cx.role.defpos]?? new ObInfo(un.name,Grant.AllPrivileges);
+                    var ui = un.infos[cx.role.defpos] ?? new ObInfo(un.name, Grant.AllPrivileges);
                     var no = un.rowType == BList<long?>.Empty;
-                    if (no)
+                    Level3.Index? xx = null;
+                    // special case: if un is a nodetype without an ID column and we have an ID column
+                    if (un is NodeType nu && nu.idCol < 0 && dataType is NodeType tn && tn.idCol > 0)
                     {
-                        // special case: if un is a nodetype without an ID column and we have an ID column
-                        if (un is NodeType nu && nu.idCol < 0 && dataType is NodeType tn && tn.idCol > 0)
-                        {
-                            // this will be okay provided nu has no columns and no rows
-                            if (nu.rowType.Count > 0 || nu.tableRows.Count > 0) 
-                                throw new DBException("42000").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT);
-                            var nx = cx.db.objects[tn.idIx] as Level3.Index ?? throw new PEException("PE40405");
-                            // we get nu to adopt the ID column of nt, and clone the ID index
-                            nu += (Domain.RowType, new BList<long>(tn.idCol));
-                            nu += (Domain.Representation,
-                                new CTree<long, Domain>(tn.idCol, tn.representation[tn.idCol] ?? Domain.Position));
-                            nu += (NodeType.IdCol, tn.idCol);
-                            nu += (DBObject.Infos, nu.infos+(cx.role.defpos,ui+(ObInfo.Names,ui.names+oi.names)));
-                            var xi = (Level3.Index)(cx.Add(new Level3.Index(ppos + 1, nx.mem)));
-                            nu += (NodeType.IdIx, xi.defpos);
-                            cx.Add(nu);
-                            cx.Add(xi);
-                            cx.db += nu;
-                            cx.db += xi;
-                            un = nu;
-                        }
-                        // special case: if un is an edge type without leaving/arriving indexes we clone those of st
-                        if (un is EdgeType eu && eu.leaveIx < 0 && dataType is EdgeType te)
-                        {
-                            var lx = cx.db.objects[st.leaveIx] as Level3.Index ?? throw new DBException("PE40803");
-                            // we get nu to adopt the ID column of nt, and clone the ID index
-                            var xl = (Level3.Index)cx.Add(new Level3.Index(ppos + 2, lx.mem));
-                            eu += (Table.Indexes, un.indexes + (xl.keys, new CTree<long, bool>(xl.defpos, true)));
-                            eu += (Domain.RowType, eu.rowType + te.leaveCol);
-                            eu += (Domain.Representation,
-        new CTree<long, Domain>(te.leaveCol, te.representation[te.leaveCol] ?? Domain.Position));
-                            eu += (EdgeType.LeaveCol, te.leaveCol);
-                            eu += (DBObject.Infos, eu.infos+(cx.role.defpos, ui + (ObInfo.Names, ui.names + oi.names)));
-                            cx.Add(eu);
-                            cx.Add(xl);
-                            cx.db += eu;
-                            cx.db += xl;
-                            un = eu;
-                        }
-                        if (un is EdgeType ev && ev.arriveIx < 0 && dataType is EdgeType tf)
-                        {
-                            var ax = cx.db.objects[st.arriveIx] as Level3.Index ?? throw new PEException("PE40804");
-                            var xa = (Level3.Index)cx.Add(new Level3.Index(ppos + 3, ax.mem));
-                            ev += (Table.Indexes, un.indexes + (xa.keys, new CTree<long, bool>(xa.defpos, true)));
-                            ev += (Domain.RowType, ev.rowType + tf.arriveCol);
-                            ev += (Domain.Representation,
-        new CTree<long, Domain>(tf.arriveCol, tf.representation[tf.arriveCol] ?? Domain.Position));
-                            ev += (EdgeType.ArriveCol, tf.arriveCol);
-                            ev += (DBObject.Infos, ev.infos+(cx.role.defpos, ui + (ObInfo.Names, ui.names + oi.names)));
-                            cx.Add(ev);
-                            cx.Add(xa);
-                            cx.db += ev;
-                            cx.db += xa;
-                            un = ev;
-                        }
+                        // this will be okay provided nu has no columns and no rows
+                        if (nu.rowType.Count > 0 || nu.tableRows.Count > 0)
+                            throw new DBException("42000").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT);
+                        var nx = cx.db.objects[tn.idIx] as Level3.Index ?? throw new PEException("PE40405");
+                        // we get nu to adopt the ID column of nt, and clone the ID index
+                        nu += (Domain.RowType, new BList<long>(tn.idCol));
+                        nu += (Domain.Representation,
+                            new CTree<long, Domain>(tn.idCol, tn.representation[tn.idCol] ?? Domain.Position));
+                        nu += (NodeType.IdCol, tn.idCol);
+                        nu += (DBObject.Infos, nu.infos + (cx.role.defpos, ui + (ObInfo.Names, ui.names + oi.names)));
+                        var xi = (Level3.Index)cx.Add(new Level3.Index(ppos + 1,
+                            nx.mem + (Level3.Index.TableDefPos, un.defpos)));
+                        nu += (NodeType.IdIx, xi.defpos);
+                        cx.Add(nu);
+                        cx.Add(xi);
+                        xx = xi;
+                        cx.db += nu;
+                        cx.db += xi;
+                        un = nu;
                     }
-                    // we need to add our tableRows to under 
-                    if (un is NodeType nt && dataType is Table ns)
+                    // special case: if un is an edge type without leaving/arriving indexes we clone those of st
+                    if (un is EdgeType eu && eu.leaveIx < 0 && dataType is EdgeType te)
+                    {
+                        var lx = cx.db.objects[st.leaveIx] as Level3.Index ?? throw new DBException("PE40803");
+                        var xl = (Level3.Index)cx.Add(new Level3.Index(ppos + 2,
+                            lx.mem + (Level3.Index.TableDefPos, un.defpos)));
+                        eu += (Table.Indexes, un.indexes + (xl.keys, new CTree<long, bool>(xl.defpos, true)));
+                        if (!eu.representation.Contains(te.leaveCol)) 
+                            eu += (Domain.RowType, eu.rowType + te.leaveCol);
+                        eu += (Domain.Representation,eu.representation +
+                                (te.leaveCol, te.representation[te.leaveCol] ?? Domain.Position));
+                        eu += (EdgeType.LeaveCol, te.leaveCol);
+                        eu += (EdgeType.LeaveIx, xl.defpos);
+                        eu += (DBObject.Infos, eu.infos + (cx.role.defpos, ui + (ObInfo.Names, ui.names + oi.names)));
+                        cx.Add(eu);
+                        cx.Add(xl);
+                        xx = xl;
+                        cx.db += eu;
+                        cx.db += xl;
+                        un = eu;
+                    }
+                    if (un is EdgeType ev && ev.arriveIx < 0 && dataType is EdgeType tf)
+                    {
+                        var ax = cx.db.objects[st.arriveIx] as Level3.Index ?? throw new PEException("PE40804");
+                        var xa = (Level3.Index)cx.Add(new Level3.Index(ppos + 3,
+                            ax.mem + (Level3.Index.TableDefPos, un.defpos)));
+                        ev += (Table.Indexes, un.indexes + (xa.keys, new CTree<long, bool>(xa.defpos, true)));
+                        if (!ev.representation.Contains(tf.arriveCol))
+                            ev += (Domain.RowType, ev.rowType + tf.arriveCol);
+                        ev += (Domain.Representation, ev.representation +
+                            (tf.arriveCol, tf.representation[tf.arriveCol] ?? Domain.Position));
+                        ev += (EdgeType.ArriveCol, tf.arriveCol);
+                        ev += (EdgeType.ArriveIx, xa.defpos);
+                        ev += (DBObject.Infos, ev.infos + (cx.role.defpos, ui + (ObInfo.Names, ui.names + oi.names)));
+                        cx.Add(ev);
+                        cx.Add(xa);
+                        xx = xa;
+                        cx.db += ev;
+                        cx.db += xa;
+                        un = ev;
+                    }
+                    // otherwise we need to add tableRows to the new under
+                    if (xx is null && un is NodeType nt && dataType is Table ns)
                     {
                         for (var b = ns.tableRows.First(); b != null; b = b.Next())
-                        {
                             for (var xb = nt.indexes.First(); xb != null; xb = xb.Next())
                                 for (var c = xb.value().First(); c != null; c = c.Next())
                                     if (cx.db.objects[c.key()] is Level3.Index x
@@ -371,13 +375,12 @@ namespace Pyrrho.Level2
                                         x += (k, b.key());
                                         cx.db += (x.defpos, x);
                                     }
-                        }
                         un += (Table.TableRows, nt.tableRows + ns.tableRows);
                         // record that we are a subType of Under
                         un += (Domain.Subtypes, uD.subtypes - ppos + (prev.defpos, true));
                         cx.Add(un);
                         cx.db += un;
-                        dataType += (Domain.Under, under-uD+(un,true));
+                        dataType += (Domain.Under, under - uD + (un, true));
                     }
                 }
             // record our new dataType

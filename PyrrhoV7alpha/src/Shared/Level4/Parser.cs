@@ -1538,14 +1538,17 @@ namespace Pyrrho.Level4
             var sch = false;
             if (Match(Qlx.SCHEMA))
             {
-                sch = true; Next();
+                sch = true; 
+                Next();
+                if (tok == Qlx.DIVIDE)
+                    ParseCreateSchema();
             }
             // New nodes without Id keys should be assigned cx.db.nextPos.ToString(), and this is fixed
             // on Commit, see Record(Record,Writer): the NodeOrEdge flag is added in Record()
-            var ge = ParseInsertGraphList();
+            var ge = ParseInsertGraphList(sch);
             var st = BList<long?>.Empty;
             var cs = (GraphInsertStatement)cx.Add(new GraphInsertStatement(cx.GetUid(), sch, ge, st));
-            if (cx.parse == ExecuteStatus.Obey)
+            if (cx.parse == ExecuteStatus.Obey && ((!sch)||cs.graphExps[0]?[0]?.domain.kind==Qlx.EDGETYPE))
                 cs._Obey(cx);
             if (tok == Qlx.THEN)
             {
@@ -1691,26 +1694,26 @@ namespace Pyrrho.Level4
             // state M9
             return r;
         }
-        CList<CList<GqlNode>> ParseInsertGraphList()
+        CList<CList<GqlNode>> ParseInsertGraphList(bool sch)
         {
             var svgs = CList<CList<GqlNode>>.Empty;
             // the current token is LPAREN
             while (tok == Qlx.LPAREN || tok==Qlx.LBRACK)
             {
-                svgs += ParseInsertGraphStep();
+                svgs += ParseInsertGraphStep(sch);
                 if (tok == Qlx.COMMA)
                     Next();
             };
             return svgs;
         }
-        CList<GqlNode> ParseInsertGraphStep()
+        CList<GqlNode> ParseInsertGraphStep(bool sch)
         {
             cx.IncSD(new Ident(this));
             // the current token is LPAREN or LBRACK
             var svg = CList<GqlNode>.Empty;
-            (var n, svg) = ParseInsertGraphItem(svg);
+            (var n, svg) = ParseInsertGraphItem(svg, sch);
             while (tok == Qlx.RARROW || tok == Qlx.ARROWBASE)
-                (n, svg) = ParseInsertGraphItem(svg, n);
+                (n, svg) = ParseInsertGraphItem(svg, sch, n);
             cx.DecSD();
             return svg;
         }
@@ -1738,7 +1741,7 @@ namespace Pyrrho.Level4
         /// <param name="dt">The standard NODETYPE or EDGETYPE</param>
         /// <param name="ln">The node to attach the new edge</param>
         /// <returns>An GqlNode for the new node or edge and the tree of all the graph fragments</returns>
-        (GqlNode, CList<GqlNode>) ParseInsertGraphItem(CList<GqlNode> svg, GqlNode? ln = null)
+        (GqlNode, CList<GqlNode>) ParseInsertGraphItem(CList<GqlNode> svg, bool sch = false, GqlNode? ln = null)
         {
             var og = lxr.tgs;
             lxr.tgs = CTree<long, TGParam>.Empty;
@@ -1790,7 +1793,7 @@ namespace Pyrrho.Level4
                 Next();
                 while (tok != Qlx.RBRACE)
                 {
-                    var (n, v) = GetDocItem(lp,lb);
+                    var (n, v) = GetDocItem(lp,lb,sch);
                     if (lb.name is not null)
                     {
                         var px = cx.Ix(b.iix.lp, n.iix.dp);
@@ -1815,11 +1818,17 @@ namespace Pyrrho.Level4
             {
                 var ba = (ab == Qlx.ARROWBASE) ? Qlx.ARROW : Qlx.RARROWBASE;
                 Mustbe(ba);
-                (an, ahead) = ParseInsertGraphItem(ahead);
+                (an, ahead) = ParseInsertGraphItem(ahead,sch);
             }
             else
                 Mustbe(Qlx.RPAREN,Qlx.RBRACK);
             var m = BTree<long, object>.Empty + (GqlNode._Label, lb) + (SqlValueExpr.Op,tk);
+            if (ln is not null && an is not null)
+            {
+                m = m + (EdgeType.LeavingType, ln.domain.defpos) + (EdgeType.ArrivingType, an.domain.defpos);
+                if (sch) //??
+                    m = m + (GqlEdge.LeavingValue, ln.defpos) + (GqlEdge.ArrivingValue, an.defpos);
+            }
             if (cx.obs[id] is GqlNode r)
                 r = new GqlReference(lp, r);
             else if (lb.defpos >= 0 && lb.rowType == BList<long?>.Empty && lb is NodeType zt)
@@ -6278,7 +6287,7 @@ namespace Pyrrho.Level4
                 if (Match(Qlx.UNDER))
                 {
                     Next();
-                    var st = tp.super?.First()?.key() ?? throw new PEException("PE92612");
+                    var st = tp.super?.First()?.key() as UDType ?? throw new PEException("PE92612");
                     cx.Add(new EditType(id.ident, tp, st, CTree<Domain,bool>.Empty, cx.db.nextPos, cx));
                 }
                 else
@@ -10589,7 +10598,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="lb">The label for the item</param>
         /// <returns>(ColRef,Value)</returns>
-        (Ident, QlValue) GetDocItem(long pa,Domain lb)
+        (Ident, QlValue) GetDocItem(long pa,Domain lb,bool sch=false)
         {
             Ident k = new(this);
             if (lxr.caseSensitive && k.ident == "id")
@@ -10598,6 +10607,8 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.Id);
             lxr.docValue = true;
             Mustbe(Qlx.COLON);
+            if (sch)
+                return (k, (QlValue)cx.Add(new SqlLiteral(k.iix.dp, ParseDataType())));
             Ident q = new(this);
             lxr.docValue = false;
             var kc = new QlValue(k, BList<Ident>.Empty, cx, Domain.Char);
