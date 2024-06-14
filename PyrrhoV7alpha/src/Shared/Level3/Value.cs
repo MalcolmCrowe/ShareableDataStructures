@@ -11496,7 +11496,7 @@ cx.obs[high] is not QlValue hi)
             }
             if (te is not null)
                 nt = te;
-            if (tl == CTree<NodeType, bool>.Empty && lT is not null && aT is not null)
+            if (tl == CTree<Domain, bool>.Empty && lT is not null && aT is not null)
             { // unlabelled edges have types determined by their kind and property set
                 var ps = CTree<string, bool>.Empty;
                 var pl = BList<DBObject>.Empty;

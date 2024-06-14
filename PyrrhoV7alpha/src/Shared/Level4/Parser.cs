@@ -3,7 +3,10 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.ComponentModel.Design;
+using System.Data.SqlTypes;
+using System.Diagnostics;
 using System.Globalization;
+using System.Reflection.Emit;
 using System.Runtime.ExceptionServices;
 using System.Runtime.Intrinsics.Arm;
 using System.Text;
@@ -1035,7 +1038,7 @@ namespace Pyrrho.Level4
         {
             var ix = iri.LastIndexOf('/');
             if (ix < 0)
-                return ("", iri);
+                return (".", iri);
             return (iri[..ix],iri[(ix + 1)..]);
         }
         void ParseCreateSchema(bool ifnotexists = false)
@@ -1056,7 +1059,8 @@ namespace Pyrrho.Level4
             if (ifnotexists) { Next(); Mustbe(Qlx.NOT); Mustbe(Qlx.EXISTS); }
             var cr = ParseCatalogReference();
             var (sd,nm) = Schema(cr);
-            if (cx._Ob(cx.role.schemas[sd] ?? -1L) is not Schema sc || nm is null || nm == "")
+            if (((sd==".")?Level5.Schema.Empty:cx._Ob(cx.role.schemas[sd] ?? -1L)) is not Schema sc 
+                || nm is null || nm == "")
                 throw new DBException("42000", nm ?? "??").Add(Qlx.CREATE_GRAPH_STATEMENT, new TChar(nm ?? "??"));
             if (cx.role.graphs.Contains(cr.ToString()))
             {
@@ -1107,11 +1111,12 @@ namespace Pyrrho.Level4
             {
                 if (Match(Qlx.PROPERTY))
                     Next();
-                Mustbe(Qlx.GRAPH);
+                if (Match(Qlx.GRAPH))
+                    Next();
                 Mustbe(Qlx.LBRACE);
-                ts += (ParseGraphElementTypeSpec(ts),true);
+                ts += (ParseElementTypeSpec(ts),true);
                 while (tok == Qlx.COMMA)
-                    ts += (ParseGraphElementTypeSpec(ts),true);
+                    ts += (ParseElementTypeSpec(ts),true);
                 Mustbe(Qlx.RBRACE);
             }
             if (tok == Qlx.AS)
@@ -1168,83 +1173,104 @@ namespace Pyrrho.Level4
         CTree<long,bool> ParseNestedGraphTypeSpecification(CTree<long,bool> ts)
         {
             Mustbe(Qlx.LBRACE);
-            ts += (ParseGraphElementTypeSpec(ts), true);
+            ts += (ParseElementTypeSpec(ts), true);
             while (tok == Qlx.COMMA)
             {
                 Next();
-                ts += (ParseGraphElementTypeSpec(ts), true);
+                ts += (ParseElementTypeSpec(ts), true);
             }
             Mustbe(Qlx.RBRACE);
             return ts;
         }
-        long ParseGraphElementTypeSpec(CTree<long,bool> ts)
+        CTree<Qlx, bool> SpecWord(CTree<Qlx,bool> wds, params Qlx[] tks)
         {
-            var edge = false;
-            var und = false;
-            var nss = true;
-            if (Match(Qlx.DIRECTED)) { edge = true; Next(); }
-            else if (Match(Qlx.UNDIRECTED)) { edge = true; und = true; Next(); }
-            if (Match(Qlx.NODE, Qlx.VERTEX)) Next();
-            else if (Match(Qlx.EDGE, Qlx.RELATIONSHIP)) { edge = true; Next(); }
-            else nss = false;
-            if (Match(Qlx.TYPE)) Next();
-            var id = new Ident(this);
-            var ni = id.ident;
-            var idv = false;
-            if (Match(Qlx.Id))
-            {
-                Next();
-                idv = true;
-                if (!nss)
-                    throw new DBException("42000",ni).Add(Qlx.CREATE_GRAPH_STATEMENT,new TChar(ni));
-            }
-            Match(Qlx.CONNECTING); // kludge: prevent the non-reserved word CONNECTING being seen as an Id
-            var al = new Ident(this);
-            if (Match(Qlx.Id))
-                Next();
-            Domain ls = GqlLabel.Empty;
-            var ps = BList<(Ident, Domain)>.Empty;
+            foreach (var b in tks)
+                if (Match(b))
+                {
+                    wds += (b, true);
+                    Next();
+                    break;
+                }
+            return wds;
+        }
+        /// <summary>
+        /// ElementTypeSpecification = 
+        ///   [(NODE|VERTEX) [TYPE] id] * ElementDetails
+        /// | [(DIRECTED | UNDIRECTED) (EDGE|RELATIONSHIP) [TYPE] id] * ElementDetails £ ArcType ElementDetails
+        /// | [(DIRECTED | UNDIRECTED) (EDGE|RELATIONSHIP) [TYPE] id] * ElementDetails  £ EndPointPhrase
+        /// ArcType =
+        ///   ARROWBASE ElementDetails ARROW 
+        /// | RARROW ElementDetails RARROWBASE
+        /// | ARROWBASETILDE ElementDetails RBRACKTILDE
+        /// | ARROWTILDE ElementDetails RARROWTILDE  (Editors note 35)
+        /// EndpointPhrase = CONNECTING LPAREN id (RARROW|TILDE|ARROW|TO) id RPAREN
+        /// At * we must have one of LABEL, LABELS, CONNECTING, COLON, DOUBLEARROW, IMPLIES, LPAREN, LBRACE, AS, COMMA, RBRACE
+        /// At £ we must have one of CONNECTING, ARROWBASE, RARROW, ARROWBASETILDE, AS, COMMA, RBRACE
+        /// At the end we must have COMMA or RBRACE and a node or edge type.
+        /// There are many syntax rules in 18.2 and 18.3 which limit the optionality of these tokens.
+        /// </summary>
+        /// <param name="ts"></param>
+        /// <returns></returns>
+        /// <exception cref="DBException"></exception>
+        long ParseElementTypeSpec(CTree<long,bool> ts)
+        {
+            var wds = CTree<Qlx, bool>.Empty;
             var lp = lxr.Position;
-            if (Match(Qlx.LABEL, Qlx.LABELS, Qlx.COLON, Qlx.IS, Qlx.Id, Qlx.LBRACE))
-                (ls,ni,ps) = ParseElementFiller(id,edge?Qlx.EDGETYPE:Qlx.NODETYPE);
-            if (!idv &&  (ls.kind == Qlx.NODETYPE||ls.kind==Qlx.EDGETYPE) && ls.domain.name is string nm)
-                id = new Ident(nm, id.iix);
-            if (id.ident == "COLON" || id.ident == "COMMA")
-                throw new DBException("42000",al).Add(Qlx.CREATE_GRAPH_STATEMENT,new TChar(al.ident));
-            if (!edge && cx.role.nodeTypes.Contains(id.ident))
-                throw new DBException("42104", id);
-            cx.defs += (new Ident(id.ident, new Iix(id.iix.dp, cx.sD, lxr.Position)), cx.sD);
-            Ident? ai = null;
-            string? an = null;
-            long at = -1L;
-            Ident? li = null;
-            string? ln = null;
-            long lt = -1L;
-            if (edge)
+            var lv = lxr.val;
+            wds = SpecWord(wds, Qlx.NODE, Qlx.VERTEX);
+            wds = SpecWord(wds, Qlx.DIRECTED, Qlx.UNDIRECTED);
+            wds = SpecWord(wds, Qlx.EDGE, Qlx.RELATIONSHIP);
+            wds = SpecWord(wds, Qlx.TYPE);
+            var id = (tok == Qlx.Id) ? new Ident(this) : new Ident("", new Iix(lp));
+            if (tok==Qlx.Id)
+                Next();
+            var (dm,ps) = ElementDetails(id);
+            cx.defs += (new Ident(id.ident, new Iix(id.iix.dp,cx.sD,lxr.Position)),cx.sD);
+            Match(Qlx.CONNECTING, Qlx.ARROWBASE, Qlx.RARROW, Qlx.ARROWBASETILDE);
+            var kind = (wds.Contains(Qlx.DIRECTED) || wds.Contains(Qlx.UNDIRECTED)
+                     || wds.Contains(Qlx.EDGE) || wds.Contains(Qlx.RELATIONSHIP) ||
+                     Match(Qlx.CONNECTING, Qlx.ARROWBASE, Qlx.RARROW, Qlx.ARROWBASETILDE)) ? Qlx.EDGETYPE
+                : Qlx.NODETYPE;
+            if (kind == Qlx.EDGETYPE)
             {
+                Ident? ai = null;
+                string? an = null;
+                Domain? st = null;
+                var sp = BList<(Ident, Domain)>.Empty;
+                Ident? li = null;
+                string? ln = null;
+                Domain? ft = null;
+                var fp = BList<(Ident, Domain)>.Empty;
+                NodeType? lt = null;
+                NodeType? at = null;
+                var al = new Ident(this);
+                if (Match(Qlx.Id))
+                    Next();
                 if (Match(Qlx.CONNECTING))
                 {
                     Next();
                     Mustbe(Qlx.LPAREN);
                     var fi = new Ident(this);
-                    var ft = cx.role.nodeTypes[fi.ident] ?? -1L;
+                    ft = cx.obs[cx.role.nodeTypes[fi.ident] ?? -1L] as NodeType;
                     Mustbe(Qlx.Id);
                     var ar = tok;
                     Next();
                     var se = new Ident(this);
-                    var st = cx.role.nodeTypes[se.ident] ?? -1L;
+                    st = cx.obs[cx.role.nodeTypes[se.ident] ?? -1L] as NodeType;
                     Mustbe(Qlx.Id);
                     switch (ar)
                     {
                         case Qlx.TILDE:
                         case Qlx.TO:
-                            und = true;
+                            wds += (Qlx.UNDIRECTED, true);
                             goto case Qlx.ARROWR;
                         case Qlx.ARROWR:
-                            li = fi; ln = fi.ident; lt = ft; ai = se; an = se.ident; at = st;
+                            li = fi; ln = fi.ident; lt = (NodeType?)ft;
+                            ai = se; an = se.ident; at = (NodeType?)st;
                             break;
                         case Qlx.ARROWL:
-                            li = se; ln = se.ident; lt = st; ai = fi; an = fi.ident; at = ft;
+                            li = se; ln = se.ident; lt = (NodeType?)st;
+                            ai = fi; an = fi.ident; at = (NodeType?)ft;
                             break;
                     }
                     Mustbe(Qlx.RPAREN);
@@ -1257,19 +1283,20 @@ namespace Pyrrho.Level4
                     if (tok == Qlx.Id)
                         Next();
                     else if (Match(Qlx.LABEL, Qlx.LABELS, Qlx.COLON, Qlx.IS, Qlx.Id, Qlx.LBRACE))
-                        (_, fn, _) = ParseElementFiller(fi,Qlx.NODETYPE);
-                    var ft = cx.role.nodeTypes[fn] ?? -1L;
+                        (ft, fp) = ElementDetails(fi);
+                    FindOrCreateElementType(fi, (NodeType)(ft ?? Domain.NodeType), fp);
+                    ft = cx.obs[cx.role.nodeTypes[fn] ?? -1L] as NodeType;
                     Mustbe(Qlx.RPAREN);
                     var fk = tok;
                     Next();
                     Mustbe(Qlx.LPAREN);
                     var mi = new Ident(this);
                     var mn = fi.ident;
+                    dm = Domain.EdgeType;
                     if (tok == Qlx.Id)
                         Next();
                     else if (Match(Qlx.LABEL, Qlx.LABELS, Qlx.COLON, Qlx.IS, Qlx.Id, Qlx.LBRACE))
-                        (_, mn, _) = ParseElementFiller(mi,Qlx.EDGETYPE);
-                    if (mn != ni) throw new DBException("42161", ni, mn);
+                        (dm, ps) = ElementDetails(mi);
                     Mustbe(Qlx.RPAREN);
                     var sk = tok;
                     Next();
@@ -1279,78 +1306,110 @@ namespace Pyrrho.Level4
                     if (tok == Qlx.Id)
                         Next();
                     else if (Match(Qlx.LABEL, Qlx.LABELS, Qlx.COLON, Qlx.IS))
-                        (_, sn, _) = ParseElementFiller(si,Qlx.NODETYPE);
-                    var st = cx.role.nodeTypes[sn] ?? -1L;
+                        (st, sp) = ElementDetails(si);
+                    FindOrCreateElementType(si, st, sp);
+                    st = cx.obs[cx.role.nodeTypes[sn] ?? -1L] as NodeType;
                     Mustbe(Qlx.RPAREN);
                     switch (fk)
                     {
                         case Qlx.ARROWBASETILDE:
-                            und = true;
+                            wds += (Qlx.UNDIRECTED, true);
                             goto case Qlx.ARROWBASE;
                         case Qlx.ARROWBASE:
                             if (sk != Qlx.ARROW) throw new DBException("42161", Qlx.ARROW, sk);
-                            lt = ft; ln = fn; at = st; an = sn;
+                            lt = (NodeType?)ft; ln = fn; at = (NodeType?)st; an = sn;
                             break;
                         case Qlx.RARROW:
                             if (sk != Qlx.RARROWBASE) throw new DBException("42161", Qlx.ARROWBASE, sk);
-                            lt = st; ln = sn; at = ft; an = fn;
+                            lt = (NodeType?)st; ln = sn; at = (NodeType?)ft; an = fn;
                             break;
                     }
                 }
                 ps += (new Ident("LEAVING", new Iix(cx.GetUid())), Domain.Position);
                 ps += (new Ident("ARRIVING", new Iix(cx.GetUid())), Domain.Position);
+                return FindOrCreateElementType(id, dm, ps, lt, at, wds).defpos;
             }
+            return FindOrCreateElementType(id, dm, ps).defpos;
+        }
+        NodeType FindOrCreateElementType(Ident id,Domain? dm,BList<(Ident,Domain)> ps,
+            NodeType? lt=null,NodeType? at=null, CTree<Qlx,bool>? wds=null)
+        {
             var un = CTree<Domain, bool>.Empty;
-            var tp = edge ? new PEdgeType(id.ident, (EdgeType)Domain.EdgeType.Relocate(id.iix.dp), un, -1L, 
-                lt,at, cx.db.nextPos, cx){ leavingType=lt,arrivingType=at }
-                    : new PNodeType(id.ident, (NodeType)Domain.NodeType.Relocate(id.iix.dp), un, -1L, cx.db.nextPos, cx);
-            cx.Add(tp);
-            var ut = (NodeType)tp.dataType;
-            ut += (GqlNode._Label, ls);
-            cx.Add(ut);
-            for (var b=ps.First();b!=null;b=b.Next())
+            if (dm is GqlLabel lb)
+                un = lb.OnInsert(cx);
+            if (un.Count==0 && dm?.defpos >= 0)
+                un += (dm, true);
+            else if (ps.Length > 0) // watch out for existing unlabelled node or edge type
+            {
+                var rt = CTree<long, bool>.Empty;
+                for (var b = ps.First(); b != null; b = b.Next())
+                    rt += (b.value().Item2.defpos, true);
+                var u = cx.db.objects[cx.db.unlabelledNodeTypes[rt] ?? -1L] as NodeType;
+                if (dm is EdgeType && lt is not null && at is not null)
+                    u = cx.db.objects[cx.db.unlabelledEdgeTypes[lt.defpos]?[at.defpos]?[rt] ?? -1L] as EdgeType;
+                if (u is not null) { 
+                    dm = u;
+                    un = new CTree<Domain, bool>(u, true);
+                }
+            }
+            var tp = (lt is not null && at is not null) ? 
+                new PEdgeType(id.ident, (EdgeType)Domain.EdgeType.Relocate(id.iix.dp), un, -1L,
+            lt.defpos, at.defpos, cx.db.nextPos, cx)
+                : new PNodeType(id.ident, (NodeType)Domain.NodeType.Relocate(id.iix.dp), un, -1L, cx.db.nextPos, cx);
+            var ut = (NodeType)(cx.Add(tp)??throw new DBException("42105"));
+            var us = CTree<string, Domain>.Empty;
+            for (var b = dm?.rowType.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value() ?? -1L] is TableColumn tc && cx.NameFor(tc.defpos) is string tn)
+                    us += (tn, tc.domain);
+            for (var b = ps.First(); b != null; b = b.Next())
             {
                 var (cn, cd) = b.value();
+                if (us.Contains(cn.ident))
+                {
+                    if (us[cn.ident]?.CompareTo(cd) == 0)
+                        continue;
+                    throw new DBException("42104", cn);
+                }
                 var pc = new PColumn3(ut, cn.ident, -1, cd, PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx);
-                if (cn.ident=="LEAVING")
+                if (cn.ident == "LEAVING" && lt is not null)
                 {
                     pc.flags = PColumn.GraphFlags.LeaveCol;
-                    pc.toType = lt;
+                    pc.toType = lt.defpos;
                 }
-                if (cn.ident=="ARRIVING")
+                if (cn.ident == "ARRIVING" && at is not null)
                 {
                     pc.flags = PColumn.GraphFlags.ArriveCol;
-                    pc.toType = at;
+                    pc.toType = at.defpos;
                 }
                 cx.Add(pc);
-                if (pc.toType>=0 && cx.db.objects[pc.defpos] is TableColumn tc)
+                if (pc.toType >= 0 && cx.db.objects[pc.defpos] is TableColumn tc)
                 {
                     var px = new PIndex(cn.ident, (Table)tp.dataType,
                         new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(tc), 1),
-                    PIndex.ConstraintType.ForeignKey|PIndex.ConstraintType.CascadeUpdate, -1, cx.db.nextPos);
+                    PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate, -1, cx.db.nextPos);
                     cx.Add(px);
                 }
             }
-            if (und && cx._Ob(ut.defpos) is EdgeType et)
+            if (wds is not null && wds.Contains(Qlx.UNDIRECTED) && cx._Ob(ut.defpos) is EdgeType et)
             {
                 et += (QuantifiedPredicate.Between, true);
                 cx.Add(et);
             }
-            return tp.ppos;
+            return cx.db.objects[ut.defpos] as NodeType ?? throw new DBException("42105");
         }
-        (Domain,string,BList<(Ident,Domain)>) ParseElementFiller(Ident id,Qlx ne)
+        (Domain,BList<(Ident,Domain)>) ElementDetails(Ident id)
         {
             Domain le = GqlLabel.Empty;
-            var s = id.ident;
-            if (tok!=Qlx.LBRACE)
-                le = ParseLabelExpression(ne);
+            if (Match(Qlx.LABEL,Qlx.LABELS,Qlx.COLON,Qlx.DOUBLEARROW,Qlx.IMPLIES))
+                le = ParseLabelExpression(Domain.NodeType);
             var lp = lxr.Position;
             if (Match(Qlx.DOUBLEARROW, Qlx.IMPLIES)) // we prefer DOUBLEARROW to the keyword
             {
                 Next();
-                var lf = ParseLabelExpression(ne);
+                var lf = ParseLabelExpression(Domain.NodeType);
                 cx.Add(lf);
-                le = (Domain)cx.Add(new GqlLabel(lp,Qlx.DOUBLEARROW,le.defpos,lf.defpos));
+                le = (Domain)cx.Add(new GqlLabel(lp,le.defpos,lf.defpos,
+                    new BTree<long,object>(Domain.Kind,Qlx.DOUBLEARROW)));
             }
             var ps = BList<(Ident, Domain)>.Empty;
             if (Match(Qlx.LBRACE))
@@ -1358,6 +1417,8 @@ namespace Pyrrho.Level4
                 Next();
                 var pn = new Ident(this);
                 Mustbe(Qlx.Id);
+                if (Match(Qlx.COLON, Qlx.DOUBLECOLON, Qlx.TYPED)) // allow colon because of JSON option
+                    Next();
                 var dt = ParseDataType();
                 ps += (pn, dt);
                 while (tok == Qlx.COMMA)
@@ -1370,7 +1431,7 @@ namespace Pyrrho.Level4
                 }
                 Mustbe(Qlx.RBRACE);
             }
-            return (le,s,ps);
+            return (le,ps);
         }
  /*       (CTree<long,bool>,string) ParseLabelSet()
         {
@@ -1781,7 +1842,7 @@ namespace Pyrrho.Level4
                 if (bound)
                     throw new DBException("42104", b.ident);
                 Next();
-                lb = ParseLabelExpression((ab == Qlx.LPAREN) ? Qlx.NODETYPE : Qlx.EDGETYPE);
+                lb = ParseLabelExpression((ab == Qlx.LPAREN) ? Domain.NodeType : Domain.EdgeType);
             }
             else if (!bound)
                 throw new DBException("42107", b.ident);
@@ -1931,7 +1992,7 @@ namespace Pyrrho.Level4
                 {
                     lxr.tex = true; // expect a Type
                     Next();
-                    lb = ParseLabelExpression((ab==Qlx.LPAREN)?Qlx.NODETYPE:Qlx.EDGETYPE);
+                    lb = ParseLabelExpression((ab==Qlx.LPAREN)?Domain.NodeType:Domain.EdgeType);
                     if (lxr.tgs[lb.defpos] is TGParam qg)
                         st += (-(int)Qlx.TYPE, qg);
                     // state M28
@@ -2040,9 +2101,8 @@ namespace Pyrrho.Level4
         /// Don't attempt to interpret the labels at this point
         /// (e.g. for Match they may be unbound variables)
         /// </summary>
-        /// <param name="kind">At least we know whether it will be for a Node or an Edge</param>
         /// <returns></returns>
-        Domain ParseLabelExpression(Qlx kind,long? lt = null, long? at = null)
+        Domain ParseLabelExpression(NodeType dm, NodeType? lt = null, NodeType? at = null)
         {
             var lp = lxr.Position;
             var neg = false;
@@ -2054,12 +2114,12 @@ namespace Pyrrho.Level4
             var c1 = new Ident(this);
             Mustbe(Qlx.Id);
             var left = cx.db.objects[cx.role.dbobjects[c1.ident] ?? -1L] as Domain 
-                ?? (Domain)cx.Add(new GqlLabel(c1,cx,kind,lt,at));
+                ?? (Domain)cx.Add(new GqlLabel(c1,cx,lt,at,new BTree<long,object>(Domain.Kind,dm.kind)));
             cx.defs += (c1, c1.iix);
             cx.Add(left);
             if (neg)
             {
-                left = new GqlLabel(lp, Qlx.EXCLAMATION, -1L, left.defpos);
+                left = new GqlLabel(lp, -1L, left.defpos, new BTree<long,object>(Domain.Kind,Qlx.EXCLAMATION));
                 cx.Add(left);
             }
             while (Match(Qlx.VBAR,Qlx.COLON,Qlx.AMPERSAND,Qlx.DOUBLEARROW))
@@ -2069,9 +2129,9 @@ namespace Pyrrho.Level4
                 Next();
                 if (Match(Qlx.COLON))
                     Next();
-                var right = ParseLabelExpression(kind,lt,at);
+                var right = ParseLabelExpression(Domain.NodeType,lt,at);
                 cx.Add(right);
-                left = new GqlLabel(lp, op, left.defpos, right.defpos); // leave name empty for now
+                left = new GqlLabel(lp, left.defpos, right.defpos, new BTree<long,object>(Domain.Kind,op)); // leave name empty for now
                 cx.Add(left);
             }
             return left;
@@ -10606,7 +10666,7 @@ namespace Pyrrho.Level4
             var ip = lxr.Position;
             Mustbe(Qlx.Id);
             lxr.docValue = true;
-            Mustbe(Qlx.COLON);
+            Mustbe(Qlx.COLON,Qlx.DOUBLECOLON,Qlx.TYPED); // GQL extra options
             if (sch)
                 return (k, (QlValue)cx.Add(new SqlLiteral(k.iix.dp, ParseDataType())));
             Ident q = new(this);

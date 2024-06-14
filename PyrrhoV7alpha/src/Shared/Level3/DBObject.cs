@@ -616,9 +616,9 @@ namespace Pyrrho.Level3
                 ob.infos[Database.Guest] ?? throw new DBException("42105").Add(Qlx.OBJECT);
             return ci.name??"??";
         }
-        internal virtual CTree<NodeType,bool> _NodeTypes(Context cx)
+        internal virtual CTree<Domain,bool> _NodeTypes(Context cx)
         {
-            return CTree<NodeType,bool>.Empty;
+            return CTree<Domain,bool>.Empty;
         }
         internal virtual void Note(Context cx,StringBuilder sb,string target="C#")
         {  }

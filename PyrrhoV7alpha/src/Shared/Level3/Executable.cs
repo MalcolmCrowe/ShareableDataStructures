@@ -1,10 +1,4 @@
-using System.Data.SqlTypes;
-using System.Reflection;
-using System.Reflection.Metadata;
-using System.Runtime.Intrinsics.Arm;
-using System.Runtime.Intrinsics.X86;
 using System.Text;
-using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -4185,8 +4179,9 @@ namespace Pyrrho.Level3
                                 ed = (GqlEdge)g;
                             else if (ed is not null && bn is not null && g.Eval(cx) is TNode nn)
                             {
-                                var nm = (ed.label.kind == Qlx.EDGETYPE) ? 
-                                    (ed.label is GqlLabel)?ed.label.name:ed.label.ToString() : "";
+                                var el = cx.obs[ed.label.defpos] as Domain??ed.label;
+                                var nm = (el.kind == Qlx.EDGETYPE) ? 
+                                    (el is GqlLabel)?(el.name??el.domain.name):el.ToString() : "";
                                 var ln = (ed.tok == Qlx.ARROWBASE) ? bn : nn;
                                 var an = (ed.tok == Qlx.ARROWBASE) ? nn : bn;
                                 var pn = CTree<string, bool>.Empty;
@@ -4198,8 +4193,8 @@ namespace Pyrrho.Level3
                                     {
                                         var lk = lb.key();
                                         var ak = ab.key();
-                                        if (nm!="" && cx.db.objects[cx.role.edgeTypes[nm]?[lk]?[ak] ?? -1L] is EdgeType el)
-                                            et = el;
+                                        if (nm!="" && cx.db.objects[cx.role.edgeTypes[nm]?[lk]?[ak] ?? -1L] is EdgeType ev)
+                                            et = ev;
                                         if (nm=="" && cx.db.objects[cx.role.unlabelledEdgeTypesInfo[lk]?[ak]?[pn] ?? -1L] is EdgeType eu)
                                             et = eu;
                                     }

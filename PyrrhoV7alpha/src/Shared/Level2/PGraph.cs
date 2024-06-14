@@ -20,17 +20,17 @@ namespace Pyrrho.Level2
     internal class PNodeType : PType2
     {
         internal PNodeType(string nm,PType pt,NodeType dm,Context cx)
-            :base(Type.PNodeType,nm,dm,dm.super,-1L,pt.ppos,cx)
+            :base(Type.PNodeType,nm,dm+(ObInfo.Name,nm),dm.super,-1L,pt.ppos,cx)
         {
             dm.AddNodeOrEdgeType(cx);
         }
         protected PNodeType(Type t, string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
-            : base(t,nm,nt,un,ns, pp,cx) 
+            : base(t,nm,nt + (ObInfo.Name, nm), un,ns, pp,cx) 
         { 
             nt.AddNodeOrEdgeType(cx);
         }
         public PNodeType(string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
-            : base(Type.PNodeType, nm, nt, un, ns, pp, cx) 
+            : base(Type.PNodeType, nm, nt + (ObInfo.Name, nm), un, ns, pp, cx) 
         {
             nt.AddNodeOrEdgeType(cx);
         }

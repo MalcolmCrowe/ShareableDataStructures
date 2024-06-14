@@ -138,14 +138,14 @@ namespace Pyrrho.Level5
                 }
             return t;
         }
-        internal override CTree<NodeType, bool> _NodeTypes(Context cx)
+        internal override CTree<Domain, bool> _NodeTypes(Context cx)
         {
-            return new CTree<NodeType, bool>(this, true);
+            return new CTree<Domain, bool>(this, true);
         }
         internal virtual void AddNodeOrEdgeType(Context cx)
         {
             var ro = cx.role;
-            var nm = (label.kind == Qlx.Null) ? name : label.name;
+            var nm = (label.kind == Qlx.NO) ? name : label.name;
             if (nm != "")
                 ro += (Role.NodeTypes, ro.nodeTypes + (nm, defpos));
             else
@@ -351,7 +351,7 @@ namespace Pyrrho.Level5
                         if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
                             ds = nt1.For(cx, ms, xn, ds);
                     for (var b = cx.db.unlabelledNodeTypes.First(); b != null; b = b.Next())
-                        if (b.value() is long p2 && cx.db.objects[p2] is NodeType nt2)
+                        if (b.value() is long p2 && p2>=0 && cx.db.objects[p2] is NodeType nt2)
                             ds = nt2.For(cx, ms, xn, ds);
                 }
                 if (kind == Qlx.EDGETYPE) // We are Domain.EDGETYPE itself: do this for all edgetypes in the role
@@ -364,7 +364,7 @@ namespace Pyrrho.Level5
                     for (var b = cx.db.unlabelledEdgeTypes.First(); b != null; b = b.Next())
                         for (var c = b.value().First(); c != null; c = c.Next())
                             for (var d = c.value().First(); d != null; d = d.Next())
-                                if (d.value() is long p2 && cx.db.objects[p2] is EdgeType nt2)
+                                if (d.value() is long p2 && p2>=0 && cx.db.objects[p2] is EdgeType nt2)
                                     ds = nt2.For(cx, ms, xn, ds);
                 }
                 return ds;
@@ -493,10 +493,10 @@ namespace Pyrrho.Level5
         {
             throw new NotImplementedException(); // Node and Edge type do not have a unique base
         }
-        internal override CTree<NodeType, bool> OnInsert(Context cx,BTree<long,object>?m=null)
+        internal override CTree<Domain, bool> OnInsert(Context cx,BTree<long,object>?m=null)
         {
             if (defpos < 0)
-                return CTree<NodeType, bool>.Empty;
+                return CTree<Domain, bool>.Empty;
             var nt = this;
             if (!cx.role.dbobjects.Contains(name))
             {
@@ -512,7 +512,7 @@ namespace Pyrrho.Level5
                     }
             }
             nt = (NodeType)(cx._Ob(nt.defpos) ?? nt);
-            return new CTree<NodeType,bool>(nt,true);
+            return new CTree<Domain,bool>(nt,true);
         }
         internal override CTree<Domain, bool> OnInsert(Context cx, BTree<long,long?>? d,
     long lt = -1L, long at = -1L)
@@ -1475,31 +1475,36 @@ namespace Pyrrho.Level5
         internal static GqlLabel Empty = new GqlLabel();
         internal long left => (long)(mem[QlValue.Left] ?? -1L);
         internal long right => (long)(mem[QlValue.Right] ?? -1L);
-        public GqlLabel(long dp, Qlx op, long lf, long rg, BTree<long, object>? m = null)
-            : base(dp, (m ?? BTree<long, object>.Empty) + (Kind, op) 
+        public GqlLabel(long dp, long lf, long rg, BTree<long, object>? m = null)
+            : base(dp, (m ?? BTree<long, object>.Empty)
                   + (QlValue.Left, lf) + (QlValue.Right, rg) + (_Domain, LabelType))
         { }
-        internal GqlLabel(Ident id, Context cx, Qlx kind, long? lt = null, long? at = null)
-            : this(id.iix.dp, id.ident, kind, cx, lt, at) { }
-        internal GqlLabel(long dp, string nm, Qlx ne, Context cx, long? lt = null, long? at = null)
-            : this(dp, _Mem(cx, nm, ne, lt, at))
+        internal GqlLabel(Ident id, Context cx,NodeType? lt = null, NodeType? at = null, BTree<long,object>? m = null)
+            : this(id.iix.dp, id.ident, cx, lt?.defpos, at?.defpos, m) { }
+        internal GqlLabel(long dp, string nm,  Context cx, long? lt = null, long? at = null, 
+            BTree<long,object>? m=null)
+            : this(dp, _Mem(cx, nm, lt, at, m))
         { }
-        GqlLabel() : this(-1L, Qlx.Null, -1L, -1L) { }
+        GqlLabel() : this(-1L, -1L, -1L) { }
         internal GqlLabel(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long, object> _Mem(Context cx, string id, Qlx ne, long? lt, long? at)
+        static BTree<long, object> _Mem(Context cx, string id, long? lt, long? at, BTree<long,object>?m)
         {
-            var m = BTree<long, object>.Empty + (ObInfo.Name, id) + (_Domain, LabelType)
-                 + (Kind, ne);
+            m ??= BTree<long, object>.Empty;
+            m = m + (ObInfo.Name, id) + (_Domain, LabelType);
             Domain dt = NodeType;
-            if (lt is not null)
+            if (!m.Contains(Kind))
+                m += (Kind, (lt is null || at is null) ? Qlx.NODETYPE : Qlx.EDGETYPE);
+            else if (((Qlx)(m[Kind]??Qlx.NO)) == Qlx.EDGETYPE)
+                dt = EdgeType;
+            if (lt is not null && lt>=0 && at is not null && at>=0)
             {
-                m = m + (GqlEdge.LeavingValue, lt.Value) + (GqlEdge.ArrivingValue, at??-1L);
+                m = m + (GqlEdge.LeavingValue, lt.Value) + (GqlEdge.ArrivingValue, at.Value);
                 dt = EdgeType;
             }
-            var sd = (lt is null) ?
+            var sd = (lt is null || at is null) ?
                 (cx.db.objects[cx.role.nodeTypes[id] ?? -1L] as Domain)
-                : (cx.db.objects[cx.role.edgeTypes[id]?[lt ?? -1L]?[at ?? -1L] ?? -1L] as Domain);
+                : (cx.db.objects[cx.role.edgeTypes[id]?[lt.Value]?[at.Value] ?? -1L] as Domain);
             if (sd is not null)
                 m = m+ (_Domain, sd) + (Kind, sd.kind);
             else
@@ -1559,7 +1564,7 @@ namespace Pyrrho.Level5
                         break;
                     }
                 case Qlx.NODETYPE:
-                case Qlx.Null:
+                case Qlx.NO:
                     {
                         ds = xn.domain.For(cx, ms, xn, null);
                         break;
@@ -1567,9 +1572,9 @@ namespace Pyrrho.Level5
             }
             return ds ?? BTree<long, TableRow>.Empty;
         }
-        internal override CTree<NodeType, bool> OnInsert(Context cx, BTree<long, object>? m = null)
+        internal override CTree<Domain, bool> OnInsert(Context cx, BTree<long, object>? m = null)
         {
-            var r = CTree<NodeType, bool>.Empty;
+           var r = CTree<Domain, bool>.Empty;
             var lf = cx.obs[left] as Domain ?? Empty;
             var rg = cx.obs[right] as Domain ?? Empty;
             m ??= BTree<long, object>.Empty;
@@ -1584,16 +1589,25 @@ namespace Pyrrho.Level5
             }
             var lt = ((long?)m[EdgeType.LeavingType])??cx.obs[(long)(m[GqlEdge.LeavingValue] ?? -1L)]?.domain.defpos ?? -1L;
             var at = ((long?)m[EdgeType.ArrivingType])??cx.obs[(long)(m[GqlEdge.ArrivingValue] ?? -1L)]?.domain.defpos ?? -1L;
-            m = m + (EdgeType.LeavingType, lt) + (EdgeType.ArrivingType, at);
+            var k = kind;
+            if (lt>=0  && at>=0)
+            {
+                m = m + (EdgeType.LeavingType, lt) + (EdgeType.ArrivingType, at);
+                if (k == Qlx.NODETYPE)
+                {
+                    cx.Add(this + (Kind, Qlx.EDGETYPE));
+                    k = Qlx.EDGETYPE;
+                }
+            }
             var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue] ?? CTree<string, QlValue>.Empty);
-            return kind switch
+            return k switch
             {
                 Qlx.AMPERSAND or Qlx.COLON => lf.OnInsert(cx, lm) + rg.OnInsert(cx, rm),
                 Qlx.NODETYPE => (name is string n) ?
                     r + (cx.FindNodeType(n, dc)?.Build(cx, null, m) ?? NodeTypeFor(n, m, cx), true)
                     : r,
-                Qlx.EDGETYPE => (cx.FindEdgeType(name, lt, at, dc, m, CTree<Qlx, TypedValue>.Empty) is CTree<NodeType, bool> rr
-                    && rr.Count > 0) ? rr : new CTree<NodeType, bool>(EdgeTypeFor(name, m, cx), true),
+                Qlx.EDGETYPE => (cx.FindEdgeType(name, lt, at, dc, m, CTree<Qlx, TypedValue>.Empty) is CTree<Domain, bool> rr
+                    && rr.Count > 0) ? rr : new CTree<Domain, bool>(EdgeTypeFor(name, m, cx), true),
                 Qlx.NO => (cx.db.objects[cx.role.dbobjects[name] ?? -1L] is NodeType d) ?
                     r + (d, true) : r,
                 Qlx.DOUBLEARROW => (lf is null || rg is null) ? r
@@ -1607,11 +1621,11 @@ namespace Pyrrho.Level5
             var rg = cx.obs[right] as Domain ?? Empty;
             return kind switch
             {
-                Qlx.NO => ts.Contains(cx.role.dbobjects[domain.name] ?? -1L),
+                Qlx.AMPERSAND or Qlx.COLON => ts.Contains(cx.role.dbobjects[domain.name] ?? -1L),
                 Qlx.NODETYPE or Qlx.EDGETYPE => tk == kind || ts.Contains(domain.defpos),
                 Qlx.VBAR => lf.Match(cx, ts, tk) || rg.Match(cx, ts, tk),
                 Qlx.EXCLAMATION => !lf.Match(cx, ts, tk),
-                Qlx.Null => true,
+                Qlx.NO => true,
                 _ => false
             };
         }
@@ -2241,8 +2255,8 @@ namespace Pyrrho.Level5
     internal class JoinedNodeType : NodeType
     {
         internal Qlx op => (Qlx)(mem[Kind] ?? Qlx.AMPERSAND);
-        internal CTree<NodeType, bool> nodeTypeFactors =>
-            (CTree<NodeType, bool>)(mem[UnionOf] ?? CTree<NodeType, bool>.Empty);
+        internal CTree<Domain, bool> nodeTypeFactors =>
+            (CTree<Domain, bool>)(mem[UnionOf] ?? CTree<Domain, bool>.Empty);
         internal JoinedNodeType(long dp, string nm, UDType dt, BTree<long,object> m, Context cx) 
             : base(dp, nm, dt, m, cx)
         {
@@ -2299,7 +2313,7 @@ namespace Pyrrho.Level5
                 {
                     var np = cx.GetUid();
                     var m = new BTree<long, object>(GqlNode._Label,
-                        cx.Add(new GqlLabel(cx.GetUid(),nt.name,nt.kind,cx)).defpos);
+                        cx.Add(new GqlLabel(cx.GetUid(),nt.name,cx)));
                     var nd = new GqlNode(new Ident(Uid(np), new Iix(np)), CList<Ident>.Empty, cx,
                         -1L, x.docValue, x.state, nt, m);
                     nd.Create(cx, nt, false);
@@ -2331,7 +2345,7 @@ namespace Pyrrho.Level5
         {
             return base._PathDomain(cx);
         }
-        internal override CTree<NodeType, bool> _NodeTypes(Context cx)
+        internal override CTree<Domain, bool> _NodeTypes(Context cx)
         {
             return nodeTypeFactors;
         }
@@ -2466,6 +2480,10 @@ namespace Pyrrho.Level5
             (CTree<long, bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
         internal string directoryPath => 
             (string)(mem[Graph.Iri] ?? "");
+        internal static Schema Empty = new(); 
+        Schema() : base(--_uid,new BTree<long,object>(Infos,
+            new BTree<long,ObInfo>(-502,new ObInfo(".",Grant.AllPrivileges))))
+        { }
         public Schema (PSchema ps,Context cx)
             :base(ps.ppos,_Mem(cx,ps))
         { }

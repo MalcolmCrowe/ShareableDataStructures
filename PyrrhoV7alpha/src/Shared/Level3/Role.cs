@@ -81,7 +81,8 @@ namespace Pyrrho.Level3
         internal BTree<string, long?> graphs =>
             (BTree<string, long?>)(mem[Graphs] ?? BTree<string, long?>.Empty);
         internal BTree<string, long?> schemas =>
-            (BTree<string, long?>)(mem[Schemas] ?? BTree<string, long?>.Empty); public const Grant.Privilege use = Grant.Privilege.UseRole,
+            (BTree<string, long?>)(mem[Schemas] ?? BTree<string, long?>.Empty); 
+        public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         internal long home_graph => (long)(mem[Executable.UseGraph] ?? -1);
         internal long home_schema => (long)(mem[Executable.Schema] ?? -1);

@@ -298,7 +298,7 @@ namespace Pyrrho.Common
         RARROWBASE = 271, // ]- GQL right bracket minus
         RBRACE = 272, // } 
         RBRACK = 273, // ] 
-        RBRACKTILDE = 274, // ]~
+        RBRACKTILDE = 274, // ]~ GQL right brancket tilde
         RDFDATETIME = 275, //
         RDFLITERAL = 276, // 
         RDFTYPE = 277, // Pyrrho 7.0

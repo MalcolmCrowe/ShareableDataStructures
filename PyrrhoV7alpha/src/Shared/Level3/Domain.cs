@@ -4345,6 +4345,12 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             var rt = Context.ShallowReplace(rowType, was, now);
             if (rt != rowType)
                 r += (RowType, rt);
+            var su = cx.ShallowReplace(super, was, now);
+            if (su != super)
+                r += (Under, su);
+            var sb = Context.ShallowReplace(subtypes, was, now);
+            if (sb != subtypes)
+                r += (Subtypes, sb);
             return r;
         }
         internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
@@ -4385,9 +4391,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             return sv?.infos[cx.role.defpos]?.name
                 ?? sv?.alias ?? (string?)sv?.mem[ObInfo.Name] ?? ("Col" + i);
         }
-        internal virtual CTree<NodeType, bool> OnInsert(Context cx, BTree<long,object>? m= null)
+        internal virtual CTree<Domain, bool> OnInsert(Context cx, BTree<long,object>? m= null)
         {
-            var r = CTree<NodeType, bool>.Empty;
+            var r = CTree<Domain, bool>.Empty;
             var tv = _Eval(cx);
             if (tv is TTypeSpec ts && cx._Ob(ts._dataType.defpos) is NodeType n)
                 r += (n, true);
