@@ -172,7 +172,7 @@ namespace Pyrrho.Level4
         }
         internal override string NameFor(Context cx)
         {
-            return name??"?";
+            return name??"";
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -3644,7 +3644,7 @@ namespace Pyrrho.Level4
                 Record d = (Record)ph;
                 return new TRow(res,
                     Pos(d.ppos),
-                    Pos(d.tabledefpos.Last()?.key()??-1L),
+                    Pos(d.tabledefpos),
                     Pos(d.subType),
                     new TChar(d.classification.ToString()));
             }
@@ -3862,7 +3862,7 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(u.ppos),
                     Pos(u.defpos),
-                    Pos(u.tabledefpos.Last()?.key()??-1L),
+                    Pos(u.tabledefpos),
                     Pos(u.subType),
                     new TChar(u.classification.ToString()));
             }
@@ -7037,10 +7037,19 @@ namespace Pyrrho.Level4
                             for (var c = t.tableRows.First(); c != null; c = c.Next())
                             {
                                 var tr = c.value();
-                                if (tr.tabledefpos.Contains(t.defpos))
+                                if (cx.db.objects[tr.tabledefpos] is Table tb)
                                 {
-                                    st += (t.defpos, true);
-                                    te++;
+                                    if (tb.nodeTypes.Count == 0 && tb.defpos == t.defpos)
+                                    {
+                                        st += (t.defpos, true);
+                                        te++;
+                                    }
+                                    else for (var d = tb.nodeTypes.First(); d != null; d = d.Next())
+                                            if (d.key().defpos == t.defpos)
+                                            {
+                                                st += (t.defpos, true);
+                                                te++;
+                                            }
                                 }
                             }
                         }
@@ -7055,10 +7064,19 @@ namespace Pyrrho.Level4
                             for (var c = t.tableRows.First(); c != null; c = c.Next())
                             {
                                 var tr = c.value();
-                                if (tr.tabledefpos.Contains(t.defpos))
+                                if (cx.db.objects[tr.tabledefpos] is Table tb)
                                 {
-                                    st += (t.defpos, true);
-                                    tn++;
+                                    if (tb.defpos==t.defpos)
+                                    {
+                                        st += (t.defpos, true);
+                                        tn++;
+                                    }
+                                    else for (var d = tb.nodeTypes.First();d!=null;d=d.Next())
+                                    if (d.key().defpos==t.defpos)
+                                    {
+                                        st += (t.defpos, true);
+                                        tn++;
+                                    }
                                 }
                             }
                         }

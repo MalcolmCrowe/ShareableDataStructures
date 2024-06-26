@@ -437,7 +437,7 @@ namespace Pyrrho.Level3
     {
         internal readonly long defpos;
         internal readonly long time;
-        internal readonly CTree<long,bool> tabledefpos;
+        internal readonly long tabledefpos; // may be a label set type
         internal readonly long user;
         internal readonly long ppos;
         internal readonly long prev;
@@ -488,13 +488,24 @@ namespace Pyrrho.Level3
             prev = r.prev;
             vals = vs;
         }
+        internal TableRow(TableRow r, long tp, CTree<long, TypedValue> vs)
+        {
+            defpos = r.defpos;
+            time = r.time; user = r.user;
+            tabledefpos = tp;
+            classification = r.classification;
+            ppos = r.ppos;
+            subType = r.subType;
+            prev = r.prev;
+            vals = vs;
+        }
         internal TableRow(long dp,Table tb,Cursor c)
         {
             defpos = dp;
             prev = dp;
             subType = c.dataType.defpos;
             classification = tb.classification;
-            tabledefpos = new CTree<long,bool>(tb.defpos,true);
+            tabledefpos = tb.defpos;
             vals = c.values;
         }
         internal TableRow(long vp,CTree<long,TypedValue>? vs=null)
@@ -505,19 +516,19 @@ namespace Pyrrho.Level3
             defpos = dp;
             time = DateTime.Now.Ticks;
             user = -1L;
-            tabledefpos = new CTree<long,bool>(vp,true);
+            tabledefpos = vp;
             subType = -1L;
             classification = Level.D;
             ppos = dp;
             prev = pp;
             vals = vs;
         }
-        internal TableRow(long dp,long pp,CTree<long,bool>ts,CTree<long,TypedValue> vs)
+        internal TableRow(long dp,long pp,long tp,CTree<long,TypedValue> vs)
         {
             defpos = dp;
             time = DateTime.Now.Ticks;
             user = -1L;
-            tabledefpos = ts;
+            tabledefpos = tp;
             subType = -1L;
             classification = Level.D;
             ppos = dp;
@@ -538,20 +549,6 @@ namespace Pyrrho.Level3
             if (x.vals[was] is TypedValue tv)
                 vals = vals - was + (now, tv);
         }
-
-        public TableRow(TableRow tr, CTree<long, bool> ts)
-        {
-            defpos = tr.defpos;
-            time = DateTime.Now.Ticks;
-            user = -1L;
-            tabledefpos = ts;
-            subType = -1L;
-            classification = Level.D;
-            ppos = tr.ppos;
-            prev = tr.prev;
-            vals = tr.vals;
-        }
-
         public static TableRow operator+(TableRow r,(long,TypedValue)x)
         {
             return new TableRow(r, r.vals + x);
@@ -661,10 +658,8 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            var cm = "";
             sb.Append(" Table=");
-            for (var b = tabledefpos.First(); b != null; b = b.Next())
-            { sb.Append(cm); cm = "&"; sb.Append(DBObject.Uid(b.key())); }
+            sb.Append(DBObject.Uid(tabledefpos));
             sb.Append(" Prev=");sb.Append(DBObject.Uid(prev));
             sb.Append(" Time=");sb.Append(new DateTime(time));
             return sb.ToString();
@@ -672,10 +667,7 @@ namespace Pyrrho.Level3
         public bool Equals(TableRow? other)
         {
             if (other==null) return false;
-            if (tabledefpos.Count != other.tabledefpos.Count) return false;
-            var ob = other.tabledefpos.First();
-            for (var b=tabledefpos.First();ob!=null && b!=null;b=b.Next())
-                if (ob.key()!=b.key()) return false;
+            if (tabledefpos != other.tabledefpos) return false;
             if (defpos > 0 && defpos != other.defpos) return false;
             for (var b = vals.First(); b != null; b = b.Next())
                 if (other.vals[b.key()]?.CompareTo(b.value()) != 0) return false;
@@ -684,9 +676,6 @@ namespace Pyrrho.Level3
 
         internal TableRow Fix(Context cx)
         {
-            var tp = CTree<long, bool>.Empty;
-            for (var b = tabledefpos.First(); b != null; b = b.Next())
-                tp += (cx.Fix(b.key()), true);
             var vs = CTree<long,TypedValue>.Empty;
             for (var b = vals.First(); b != null; b = b.Next())
             {
@@ -700,7 +689,8 @@ namespace Pyrrho.Level3
                 else
                     vs += (nk, b.value().Fix(cx));
             }
-            return new TableRow(cx.Fix(defpos), cx.Fix(ppos), tp, vs);
+            var d = cx.db.objects[cx.Fix(tabledefpos)] as Domain ?? throw new PEException("PE50403");
+            return new TableRow(this, ((Domain)d.Fix(cx)).defpos, vs);
         }
     }
     

@@ -75,15 +75,6 @@ namespace Pyrrho.Level2
             _prev = rdr.Prev(_defpos)??_defpos;
 			base.Deserialise(rdr);
 		}
-        /// <summary>
-        /// Read Check: conflict if affected Physical is updated
-        /// </summary>
-        /// <param name="pos">the position</param>
-        /// <returns>whether a conflict has occurred</returns>
-		public override DBException? ReadCheck(long pos,Physical r,PTransaction ct)
-		{
-			return (pos==defpos)?new DBException("40009", pos,r,ct).Mix() :null;
-		}
         public override long Affects => _defpos;
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
@@ -195,15 +186,6 @@ namespace Pyrrho.Level2
             prev = (Domain)(rdr.context._Ob(_prev)??Domain.Content);
             dataType = prev;
             base.Deserialise(rdr);
-        }
-        /// <summary>
-        /// Read Check: conflict if affected Physical is updated
-        /// </summary>
-        /// <param name="pos">the position</param>
-        /// <returns>whether a conflict has occurred</returns>
-		public override DBException? ReadCheck(long pos, Physical r, PTransaction ct)
-        {
-            return (pos == defpos) ? new DBException("40009", pos, r, ct).Mix() : null;
         }
         public override long Affects => defpos;
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)

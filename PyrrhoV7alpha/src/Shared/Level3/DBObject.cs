@@ -614,7 +614,7 @@ namespace Pyrrho.Level3
                 return s;
             var ci = ob.infos[cx.role.defpos] ?? ob.infos[definer] ??
                 ob.infos[Database.Guest] ?? throw new DBException("42105").Add(Qlx.OBJECT);
-            return ci.name??"??";
+            return ci.name??"";
         }
         internal virtual CTree<Domain,bool> _NodeTypes(Context cx)
         {

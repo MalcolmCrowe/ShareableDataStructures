@@ -1640,7 +1640,7 @@ namespace Pyrrho.Level4
         internal TNode? node(Context cx)
         {
             if (cx.obs[_rowsetpos] is NodeType nt && Rec()?[0] is TableRow tr)
-                return new TNode(cx,nt,tr);
+                return new TNode(cx,tr);
             return null;
         }
         internal string NameFor(Context cx, int i)
@@ -2681,8 +2681,6 @@ namespace Pyrrho.Level4
                 var nrest = sce is not RestRowSet && sce is not RestRowSetUsing;
                 if (nrest)
                     for (var rb = sce.First(cx); rb != null; rb = rb.Next(cx))
-                    {
-                        cx.values += (defpos, rb);
                         if (r.groupings.Count == 0)
                             for (var b0 = ags.First(); b0 != null; b0 = b0.Next())
                             {
@@ -2701,7 +2699,6 @@ namespace Pyrrho.Level4
                                         if (cx.obs[b1.key()] is SqlFunction sf1)
                                             sf1.AddIn(key, cx);
                                 }
-                    }
                 var rws = CList<TRow>.Empty;
                 var fd = cx.funcs[defpos];
                 for (var b = fd?.First(); b != null; b = b.Next())
@@ -3497,27 +3494,27 @@ namespace Pyrrho.Level4
                                 break;
                             }
                     if (t is not null)
-                    for (var bmk = t.PositionAt(key,0);bmk != null;bmk=bmk.Next())
-                    {
-                        var iq = bmk.Value();
-                        if (iq == null || table.tableRows[iq.Value] is not TableRow rec)
-                            continue;
-//#if MANDATORYACCESSCONTROL
-                        if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
-                            && (_cx.db.user==null || (_cx.db.user.defpos != table.definer
-                            && _cx.db.user.defpos != _cx.db.owner
-                            && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))))
-                            continue;
-//#endif
-                        var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
+                        for (var bmk = t.PositionAt(key, 0); bmk != null; bmk = bmk.Next())
+                        {
+                            var iq = bmk.Value();
+                            if (iq == null || table.tableRows[iq.Value] is not TableRow rec)
+                                continue;
+                            //#if MANDATORYACCESSCONTROL
+                            if (rec == null || (table.enforcement.HasFlag(Grant.Privilege.Select)
+                                && (_cx.db.user == null || (_cx.db.user.defpos != table.definer
+                                && _cx.db.user.defpos != _cx.db.owner
+                                && !_cx.db.user.clearance.ClearanceAllows(rec.classification)))))
+                                continue;
+                            //#endif
+                            var rb = new TableCursor(_cx, trs, table, 0, rec, null, bmk, key);
                             if (rb.Matches(_cx))
                             {
                                 table._ReadConstraint(_cx, rb);
                                 var tt = _cx.rdS[table.defpos] ?? CTree<long, bool>.Empty;
-                                _cx.rdS += (table.defpos, tt+(rec.defpos,true));
+                                _cx.rdS += (table.defpos, tt + (rec.defpos, true));
                                 return rb;
                             }
-                    }
+                        }
                 }
                 for (var b = table.tableRows.First(); b != null; b = b.Next())
                 {
@@ -3533,6 +3530,8 @@ namespace Pyrrho.Level4
                     if (rb.Matches(_cx))
                     {
                         table._ReadConstraint(_cx, rb);
+                        var tt = _cx.rdS[table.defpos] ?? CTree<long, bool>.Empty;
+                        _cx.rdS += (table.defpos, tt + (rec.defpos, true));
                         return rb;
                     }
                 }
@@ -5434,13 +5433,19 @@ namespace Pyrrho.Level4
             var dat = BTree<long, TableRow>.Empty;
             var dm = cx._Dom(tt.trig);
             if ((!old) && cx.newTables.Contains(trs.defpos)
-                && cx.newTables[trs.defpos] is BTree<long,TableRow> tda)
+                && cx.newTables[trs.defpos] is BTree<long, TableRow> tda)
                 dat = tda;
             else
                 for (var b = trs.First(cx); b != null; b = b.Next(cx))
-                    for (var c=b.Rec()?.First();c is not null;c=c.Next())
-                        for (var d=c.value().tabledefpos.First();d!=null;d=d.Next())
-                            dat += (d.key(), c.value());
+                    for (var c = b.Rec()?.First(); c is not null; c = c.Next())
+                        if (cx.db.objects[c.value().tabledefpos] is Table tb)
+                        {
+                            if (tb.nodeTypes.Count == 0)
+                                dat += (tb.defpos, c.value());
+                            else
+                                for (var d = tb.nodeTypes.First(); d != null; d = d.Next())
+                                    dat += (d.key().defpos, c.value());
+                        }
             var ma = BTree<long, long?>.Empty;
             var rm = BTree<long, long?>.Empty;
             var rb = trs.rowType.First();
@@ -7150,20 +7155,19 @@ namespace Pyrrho.Level4
                             {
                                 (ph, _) = db._NextPhysical(b.key());
                                 var rc = ph as Record;
-                                if (rc?.tabledefpos.Contains(lrs.targetTable)!=true)
-                                    continue;
-                                for (var c = lrs.rowType.First(); c != null; c = c.Next())
-                                    if (c.value() is long cp)
-                                        switch (c.key())
-                                        {
-                                            case 0: vs += (cp, new TPosition(p)); break;
-                                            case 1: vs += (cp, new TChar("Insert")); break;
-                                            case 2: vs += (cp, new TPosition(rc.defpos)); break;
-                                            case 3: vs += (cp, new TPosition(rc.trans)); break;
-                                            case 4:
-                                                vs += (cp, new TDateTime(new DateTime(rc.time)));
-                                                break;
-                                        }
+                                if (rc?.tabledefpos == lrs.targetTable)
+                                    for (var c = lrs.rowType.First(); c != null; c = c.Next())
+                                        if (c.value() is long cp)
+                                            switch (c.key())
+                                            {
+                                                case 0: vs += (cp, new TPosition(p)); break;
+                                                case 1: vs += (cp, new TChar("Insert")); break;
+                                                case 2: vs += (cp, new TPosition(rc.defpos)); break;
+                                                case 3: vs += (cp, new TPosition(rc.trans)); break;
+                                                case 4:
+                                                    vs += (cp, new TDateTime(new DateTime(rc.time)));
+                                                    break;
+                                            }
                                 return new LogRowsCursor(cx, lrs, pos,
                                     new TRow(lrs, vs));
                             }
@@ -7172,8 +7176,7 @@ namespace Pyrrho.Level4
                             {
                                 (ph, _) = db._NextPhysical(b.key());
                                 var rc = ph as Record;
-                                if (rc?.tabledefpos.Contains(lrs.targetTable)!=true)
-                                    continue;
+                                if (rc?.tabledefpos==lrs.targetTable)
                                 for (var c = lrs.rowType.First(); c != null; c = c.Next())
                                     if (c.value() is long cp)
                                         vs += c.key() switch
@@ -7192,19 +7195,18 @@ namespace Pyrrho.Level4
                         case Physical.Type.Delete1:
                             {
                                 (ph, _) = db._NextPhysical(b.key());
-                                if (ph is not Delete rc || !rc.tabledefpos.Contains(lrs.targetTable))
-                                    continue;
-                                for (var c = lrs.rowType.First(); c != null; c = c.Next())
-                                    if (c.value() is long cp)
-                                        vs += c.key() switch
-                                        {
-                                            0 => (cp, new TPosition(p)),
-                                            1 => (cp, new TChar("Delete")),
-                                            2 => (cp, new TPosition(rc.ppos)),
-                                            3 => (cp, new TPosition(rc.trans)),
-                                            4 => (cp, new TDateTime(new DateTime(rc.time))),
-                                            _ => (cp, TNull.Value),
-                                        };
+                                if (ph is Delete rc && rc.tabledefpos == lrs.targetTable)
+                                    for (var c = lrs.rowType.First(); c != null; c = c.Next())
+                                        if (c.value() is long cp)
+                                            vs += c.key() switch
+                                            {
+                                                0 => (cp, new TPosition(p)),
+                                                1 => (cp, new TChar("Delete")),
+                                                2 => (cp, new TPosition(rc.ppos)),
+                                                3 => (cp, new TPosition(rc.trans)),
+                                                4 => (cp, new TDateTime(new DateTime(rc.time))),
+                                                _ => (cp, TNull.Value),
+                                            };
                                 return new LogRowsCursor(cx, lrs, pos, new TRow(lrs, vs));
                             }
                         case Physical.Type.PTransaction:

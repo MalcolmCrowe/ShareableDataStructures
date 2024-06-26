@@ -196,13 +196,13 @@ namespace Pyrrho.Level3
                 ph = pb.value();
                 if (ph.type == Physical.Type.PTransaction)
                     pt = (PTransaction)ph;
-                for (var b=ph._Table.First();b!=null;b=b.Next())
+                for (var b=(ph.supTables+(ph._table,true)).First();b!=null;b=b.Next())
                 if (cx.rdS[b.key()] is CTree<long, bool> ct)
                 {
                     if (ct.Contains(-1L))
                     {
                         cx.rconflicts++;
-                        throw new DBException("40008", ph._Table);
+                        throw new DBException("40008", ph.supTables);
                     }
                     if (ct.Contains(ph.Affects) && pt is not null && ph.Conflicts(cx.rdC, pt) is Exception e)
                     {
@@ -234,20 +234,20 @@ namespace Pyrrho.Level3
                     PTransaction? pu = null;
                     if (ph.type == Physical.Type.PTransaction)
                         pu = (PTransaction)ph;
-                    for (var b=ph._Table.First();b!=null;b=b.Next())
-                    if (cx.rdS[b.key()] is CTree<long, bool> ct)
-                    {
-                        if (ct.Contains(-1L))
+                    for (var b = ph.supTables.First(); b != null; b = b.Next())
+                        if (cx.rdS[b.key()] is CTree<long, bool> ct)
                         {
-                            cx.rconflicts++;
-                            throw new DBException("4008", ph._Table);
+                            if (ct.Contains(-1L))
+                            {
+                                cx.rconflicts++;
+                                throw new DBException("4008", ph.supTables);
+                            }
+                            if (ct.Contains(ph.Affects) && pu is not null && ph.Conflicts(cx.rdC, pu) is Exception e)
+                            {
+                                cx.rconflicts++;
+                                throw e;
+                            }
                         }
-                        if (ct.Contains(ph.Affects) && pu is not null && ph.Conflicts(cx.rdC, pu) is Exception e)
-                        {
-                            cx.rconflicts++;
-                            throw e;
-                        }
-                    }
                     if (pu is not null)
                         for (var b = tb; b != null; b = b.Next())
                         {

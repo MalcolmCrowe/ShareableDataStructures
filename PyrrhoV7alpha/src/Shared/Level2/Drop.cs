@@ -126,7 +126,7 @@ namespace Pyrrho.Level2
                 case Type.Update2:
                     {
                         var r = (Record)that;
-                        if (r.tabledefpos.Contains(delpos))
+                        if (r.tabledefpos == delpos)
                             return new DBException("40055", delpos, that, ct);
                         for (var b = r.fields.PositionAt(0); b != null; b = b.Next())
                             if (b.key() == delpos)
@@ -136,7 +136,7 @@ namespace Pyrrho.Level2
                 case Type.Delete2:
                 case Type.Delete1:
                 case Type.Delete: 
-                    if (db.GetD(((Delete)that).delpos) is Delete td && td.tabledefpos.Contains(delpos))
+                    if (db.GetD(((Delete)that).delpos) is Delete td && td.tabledefpos == delpos)
                         return new DBException("40057", delpos, that, ct);
                     break;
                 case Type.PColumn3:
@@ -210,16 +210,6 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        /// <summary>
-        /// A ReadCheck will occur on the dropped object
-        /// </summary>
-        /// <param name="pos">the defining position to check</param>
-        /// <returns>whether a conflict has occurred</returns>
-		public override DBException? ReadCheck(long pos,Physical ph,PTransaction ct)
-		{
-			return (pos==delpos)?new DBException("40073",delpos,ph,ct).Mix():null;
-		}
-
         internal override DBObject? Install(Context cx)
         {
             if (cx.db != null && cx.db.objects[delpos] is DBObject ob)

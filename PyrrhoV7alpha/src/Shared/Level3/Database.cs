@@ -144,8 +144,10 @@ namespace Pyrrho.Level3
             Arriving = -469, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Catalog = -247, // BTree<string,long?> DBObject
             Curated = -53, // long
+            EdgeEnds = -238, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType by defpos,leaving,arriving
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
+            JoinedNodeTypes = -430,// BTree<CTree<long,bool>,long?> JoinedNodeType
             KeyLabels = -461, // BTree<CTree<string,bool>,long?> NodeType 
             LastModified = -279, // DateTime
             Leaving = -466, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
@@ -164,8 +166,7 @@ namespace Pyrrho.Level3
             _Schema = -291, // long: the owner role for the database
             Suffixes = -376, // BTree<string,long?> UDT
             Types = -61, // BTree<Domain,long?> should only be used for system types and unnamed types
-            UnlabelledNodeTypes = -237, // BTree<CTree<long,bool>,long?> Unlabelled NodeType by propertyset
-            UnlabelledEdgeTypes = -238, // BTree<long,BTree<long,BTree<CTree<long,bool>,long?>>> Unlabelled EdgeType by propertyset
+            UnlabelledNodeTypes = -237, // BTree<CTree<long,bool>,long?> Unlabelled NodeType and EdgeType by propertyset
             User = -277, // User: always the connection user
             Users = -287; // BTree<string,long?> users defined in the database
         internal virtual long uid => -1;
@@ -200,16 +201,17 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         public CTree<long, string> procedures =>
             (CTree<long, string>?)mem[Procedures] ?? CTree<long, string>.Empty;
+        internal BTree<long, BTree<long, BTree<long, long?>>> edgeEnds =>
+            (BTree<long, BTree<long, BTree<long, long?>>>)(mem[EdgeEnds]
+            ?? BTree<long, BTree<long, BTree<long, long?>>>.Empty);
         internal BTree<CTree<long, bool>, long?> unlabelledNodeTypes =>
     (BTree<CTree<long, bool>, long?>)(mem[UnlabelledNodeTypes] ?? BTree<CTree<long, bool>, long?>.Empty);
-        internal BTree<long, BTree<long, BTree<CTree<long, bool>, long?>>> unlabelledEdgeTypes =>
-            (BTree<long, BTree<long, BTree<CTree<long, bool>, long?>>>)(mem[UnlabelledEdgeTypes]
-            ?? BTree<long, BTree<long, BTree<CTree<long, bool>, long?>>>.Empty);
-
         public BTree<string, long?> prefixes =>
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
+        internal BTree<CTree<long,bool>,long?> joinedNodeTypes =>
+            (BTree<CTree<long,bool>,long?>)(mem[JoinedNodeTypes] ?? BTree<CTree<long,bool>,long?>.Empty);  
         internal static Role schemaRole;
         internal static Role guestRole;
         /// <summary>

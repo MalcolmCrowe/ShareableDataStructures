@@ -58,10 +58,11 @@ namespace Pyrrho.Level3
             EdgeTypes = -128, // BTree<string,BTree<long,BTree<long,long?>>> Labelled EdgeType by name
             Graphs = -357,    // BTree<string,long?> Labelled Graph by name
             NodeTypes = -115, // BTree<string,long?> Labelled NodeType by name
+            PropertyNames = -243, // CTree<string,CTree<long,bool>> Domains by child names
             Procedures = -249, // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
             Schemas = -356,    // BTree<string,long?> Schema by name
-            UnlabelledNodeTypesInfo = -476, //BTree<CTree<string,bool>,long?> NodeType
-            UnlabelledEdgeTypesInfo = -482; //BTree<long,BTree<long,BTree<CTree<string,bool>,long?>>> NodeType, NodeType, EdgeType
+            UnlabelledNodeTypesInfo = -476, //BTree<CTree<string,bool>,long?> NodeType by properties
+            UnlabelledEdgeTypesInfo = -482; //BTree<CTree<string,bool>,long?> EdgeType by properties
         internal BTree<string, long?> dbobjects => 
             (BTree<string, long?>?)mem[DBObjects]??BTree<string,long?>.Empty;
         public new string? name => (string?)mem[ObInfo.Name];
@@ -69,15 +70,17 @@ namespace Pyrrho.Level3
             (BTree<string, BTree<CList<Domain>,long?>>?)mem[Procedures]??BTree<string, BTree<CList<Domain>, long?>>.Empty;
         internal BTree<string,long?> nodeTypes =>
             (BTree<string, long?>)(mem[NodeTypes]??BTree<string,long?>.Empty);
-        internal BTree<string, BTree<long, BTree<long,long?>>> edgeTypes =>
-            (BTree<string, BTree<long, BTree<long,long?>>>)(mem[EdgeTypes] 
-            ?? BTree<string, BTree<long,BTree<long,long?>>>.Empty);
+        internal BTree<string, long?> edgeTypes =>
+            (BTree<string, long?>)(mem[EdgeTypes] ?? BTree<string, long?>.Empty);
         internal BTree<CTree<string, bool>, long?> unlabelledNodeTypesInfo =>
             (BTree<CTree<string, bool>, long?>)(mem[UnlabelledNodeTypesInfo]
             ?? BTree<CTree<string, bool>, long?>.Empty);
-        internal BTree<long, BTree<long, BTree<CTree<string, bool>, long?>>> unlabelledEdgeTypesInfo =>
-            (BTree<long, BTree<long, BTree<CTree<string, bool>, long?>>>)(mem[UnlabelledEdgeTypesInfo]
-            ?? BTree<long, BTree<long, BTree<CTree<string, bool>, long?>>>.Empty);
+        internal BTree<CTree<string, bool>, long?> unlabelledEdgeTypesInfo =>
+            (BTree<CTree<string, bool>, long?>)(mem[UnlabelledEdgeTypesInfo]
+            ?? BTree<CTree<string, bool>, long?>.Empty);
+        internal CTree<string, CTree<long, bool>> propertyNames =>
+            (CTree<string, CTree<long, bool>>)(mem[PropertyNames] 
+            ?? CTree<string, CTree<long, bool>>.Empty);
         internal BTree<string, long?> graphs =>
             (BTree<string, long?>)(mem[Graphs] ?? BTree<string, long?>.Empty);
         internal BTree<string, long?> schemas =>
@@ -192,23 +195,11 @@ namespace Pyrrho.Level3
                 sb.Append(" EdgeTypes:");
                 cm = '(';
                 for (var b = edgeTypes.First(); b != null; b = b.Next())
-                {
-                    sb.Append(cm); cm = ','; sb.Append(b.key());
-                    var cn = '('; 
-                    for (var c = b.value().First(); c != null; c = c.Next())
+                    if (b.value() is long p)
                     {
-                        sb.Append(cn); cn = ','; sb.Append(c.key());
-                        var co = '(';
-                        for (var d = c.value().First(); d != null; d = d.Next())
-                        {
-                            sb.Append(co); co = ',';
-                            sb.Append(d.key()); sb.Append('=');
-                            sb.Append(Uid(d.value()??-1L));
-                        }
-                        if (co != '(') sb.Append(')');
+                        sb.Append(cm); cm = ',';
+                        sb.Append(b.key()); sb.Append(Uid(p));
                     }
-                    if (cn != '(') sb.Append(')');
-                }
                 if (cm != '(') sb.Append(')');
             }
             return sb.ToString();
@@ -226,35 +217,8 @@ namespace Pyrrho.Level3
         {
             var ro = cx.role;
             for (var b = edgeTypes.First(); b != null; b = b.Next())
-            {
-                var t = b.value();
-                for (var c = t.First(); c != null; c = c.Next())
-                {
-                    if (c.key() >= Transaction.TransPos)
-                        t -= c.key();
-                    else if (c.value() is BTree<long, long?> u)
-                    {
-                        for (var d = u.First(); d != null; d = d.Next())
-                            if (d.key() >= Transaction.TransPos)
-                                u -= d.key();
-                        if (u.Count != 0)
-                            t += (c.key(), u);
-                    }
-                }
-                if (t is not null && t != b.value())
-                    ro += (EdgeTypes, ro.edgeTypes + (b.key(), t));
-            }
-            for (var b = unlabelledEdgeTypesInfo.First(); b != null; b = b.Next())
-            {
-                var t = b.value();
-                if (b.key() >= Transaction.TransPos)
-                    ro += (UnlabelledEdgeTypesInfo, unlabelledEdgeTypesInfo - b.key());
-                else
-                    for (var c = t.First(); c != null; c = c.Next())
-                        if (c.key() >= Transaction.TransPos)
-                            t -= c.key();
-                ro += (UnlabelledEdgeTypesInfo, unlabelledEdgeTypesInfo + (b.key(), t));
-            }
+                if (b.value() is long p && p >=Transaction.TransPos) 
+                    ro += (EdgeTypes, ro.edgeTypes + (b.key(), p));
             return cx.db + ro;
         }
     }

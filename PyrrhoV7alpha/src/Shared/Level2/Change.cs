@@ -141,16 +141,6 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
-        /// <summary>
-        /// ReadCheck for change to the affected object
-        /// </summary>
-        /// <param name="pos">The object read</param>
-        /// <returns>Whether a read conflict has occurred</returns>
-		public override DBException? ReadCheck(long pos,Physical r,PTransaction ct)
-		{
-			return (pos==Affects)?new DBException("40005",pos,r,ct).Mix():null;
-		}
-
         internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;

@@ -91,7 +91,6 @@ namespace Pyrrho.Level2
         /// Many Physicals affect another: we expose this in Log tables
         /// </summary>
         public virtual long Affects => ppos;
-        public virtual CTree<long, bool> _Table => CTree<long, bool>.Empty;
         public virtual bool Committed(Writer wr,long pos)
         {
             return (pos < Transaction.TransPos|| pos>=Transaction.Executables) || wr.cx.uids.Contains(pos);
@@ -154,6 +153,9 @@ namespace Pyrrho.Level2
         {
             rdr.Segment(this);
         }
+        public virtual long _table => -1L;
+        public virtual CTree<long,bool> supTables => CTree<long,bool>.Empty;
+        public virtual CTree<long, bool> subTables => CTree<long, bool>.Empty;
         public override string ToString() { return type.ToString(); }
         protected static string Pos(long p)
         {
@@ -163,15 +165,6 @@ namespace Pyrrho.Level2
         /// The previous record affected by this one
         /// </summary>
         public virtual long Previous { get { return -1; } }
-        /// <summary>
-        /// Check a Read constraint: see ReadConstraint
-        /// </summary>
-        /// <param name="pos">a defining position</param>
-        /// <returns>true if we conflict with this</returns>
-        public virtual DBException? ReadCheck(long pos,Physical r,PTransaction ct)
-        {
-            return null;
-        }
         public virtual DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             return null;
@@ -180,8 +173,6 @@ namespace Pyrrho.Level2
         {
             return null;
         }
-        internal virtual void Affected(ref BTree<long,BTree<long,long?>> aff)
-        { }
     }
     internal class Curated : Physical
     {
@@ -336,8 +327,13 @@ namespace Pyrrho.Level2
                                     cx.db += rx;
                                 }
                         ut += (Table.RefIndexes, us);
+                        var sx = ut.sindexes;
                         if (cx.db.objects[rk] is TableColumn tc)
-                            ut += (Table.SysRefIndexes, ut.sindexes - tc.defpos);
+                            for (var d = ut.sindexes.First();d!=null;d=d.Next())
+                                if (d.value().Contains(tc.defpos))
+                                    sx += (d.key(),d.value()- tc.defpos);
+                        if (sx != ut.sindexes)
+                            ut += (Table.SysRefIndexes, sx);
                         if (cd)
                         {
                             var er = et.representation;

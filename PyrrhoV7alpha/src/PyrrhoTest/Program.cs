@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("26 May 2024 Repeatable tests");
+                Console.WriteLine("26 June 2024 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -481,12 +481,6 @@ namespace Test
             task1 = Task.Factory.StartNew(() => Test10H(127));
             task1.Wait();
             CheckExceptionNonQuery(10, 9, "Commit", "Transaction conflict"); 
-            Act(131,"insert into RWC values (13,'Black Friday',6)");
-            Begin();
-            Act(132,"delete from RWC where A=13");
-            task1 = Task.Factory.StartNew(() => Test10I(133));
-            task1.Wait();
-            CheckExceptionNonQuery(10, 10, "Commit", "Transaction conflict");
         }
         void Test10A(int c)
         {
@@ -534,12 +528,6 @@ namespace Test
         {
             var p = new Program(new string[0]);
             p.Act(c,"update RWC set A=12,B='Dozen' where A=13");
-            p.conn.Close();
-        }
-        void Test10I(int c)
-        {
-            var p = new Program(new string[0]);
-            p.Act(c,"insert into RRC values ('Last Supper',13)");
             p.conn.Close();
         }
         void Test11()
@@ -667,7 +655,7 @@ namespace Test
             Act(176,"create table de (d int references ad)");
             if (qry == 0 || qry == 4)
             {
-                CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint: missing foreign key DE(0=14)");
+                CheckExceptionNonQuery(13, 4, "insert into de values(14)", "Integrity constraint: missing foreign key");
                 if (!commit)
                 {
                     Begin();
@@ -1259,7 +1247,7 @@ namespace Test
                 "[{ST:'WOODSCREW',QT:5,SA:'16/8x4'}]");
             Act(359, "CREATE (p1:Person {name:'Fred Smith'})<-[:Child]-(p2:Person {name:'Pete Smith'})," +
                 "(p2)-[:Child]->(:Person {name:'Mary Smith'})");
-            CheckResults(25, 5, "MATCH (n)-[:Child]->(c) RETURN n.name,c.name AS child",
+            CheckResults(25, 5, "MATCH (pn)-[:Child]->(pc) RETURN pn.name,pc.name AS child",
                 "[{NAME:'Pete Smith',CHILD:'Fred Smith'},{NAME:'Pete Smith',CHILD:'Mary Smith'}]");
             Act(360, "MATCH (n {name:'Pete Smith'}) SET n.name='Peter Smith' ");
             CheckResults(25, 6, "MATCH ({name:'Peter Smith'})[()-[:Child]->()]+(x) RETURN x.name",

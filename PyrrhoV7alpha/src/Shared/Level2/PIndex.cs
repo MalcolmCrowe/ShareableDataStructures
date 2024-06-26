@@ -255,7 +255,7 @@ namespace Pyrrho.Level2
                     wr.cx.db += (tb.defpos, tb + (Table.Indexes, tb.indexes + (x.keys, ct - ppos)));
                 if (reference > 0 && wr.cx.db.objects[x.reftabledefpos] is Table rt)
                     wr.cx.db += (rt.defpos, rt + (Table.RefIndexes, rt.rindexes - ppos)
-                        + (Table.SysRefIndexes, rt.sindexes - x.reftabledefpos));
+                                 + (Table.SysRefIndexes, rt.sindexes - x.reftabledefpos));
             }
             return (nt, ph);
         }
@@ -533,7 +533,7 @@ namespace Pyrrho.Level2
                 case Type.Delete2:
                     {
                         var x = (Level3.Index?)db.objects[index]??throw new PEException("PE1412");
-                        var dl = (Delete)that; if (dl.tabledefpos.Contains(x.tabledefpos))
+                        var dl = (Delete)that; if (dl.tabledefpos == x.tabledefpos)
                             return new DBException("40077", index, that, ct);
                         break;
                     }
@@ -542,7 +542,7 @@ namespace Pyrrho.Level2
                 case Type.Update2:
                     {
                         var x = (Level3.Index?)db.objects[index] ?? throw new PEException("PE1412");
-                        var up = (Update)that; if (up.tabledefpos.Contains(x.tabledefpos))
+                        var up = (Update)that; if (up.tabledefpos == x.tabledefpos)
                             return new DBException("40077", index, that, ct);
                         break;
                     }

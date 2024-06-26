@@ -27,7 +27,8 @@ namespace Pyrrho.Level2
         protected PNodeType(Type t, string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
             : base(t,nm,nt + (ObInfo.Name, nm), un,ns, pp,cx) 
         { 
-            nt.AddNodeOrEdgeType(cx);
+            if (nt is not EdgeType)
+                nt.AddNodeOrEdgeType(cx);
         }
         public PNodeType(string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
             : base(Type.PNodeType, nm, nt + (ObInfo.Name, nm), un, ns, pp, cx) 
@@ -144,7 +145,7 @@ namespace Pyrrho.Level2
                 if (rdr.context.db.objects[rdr.GetLong()] is not NodeType tb || tb.tableRows[p] is not TableRow tr)
                     Console.WriteLine("Warning: bad Graph record list");
                 else
-                    records += (p, new TNode(tb,tr));
+                    records += (p, new TNode(rdr.context,tr));
             }
             base.Deserialise(rdr);
         }
@@ -181,9 +182,10 @@ namespace Pyrrho.Level2
                 if (cx.db.objects[b.key()] is Record r)
                 {
                     var t = new TableRow(r, cx);
-                    for (var c = r.tabledefpos.First(); c != null; c = c.Next())
-                     if (cx.db.objects[c.key()] is NodeType nt)
-                        ns += (r.defpos, new TNode(nt,t));
+                    if (cx.db.objects[r.tabledefpos] is NodeType nt)
+                        ns += (r.defpos, new TNode(cx,t));
+                    for (var c = (r as Record4)?.extraTables.First(); c != null; c = c.Next())
+                        ns += (c.key(), new TNode(cx, t));
                 }
             var g = new Graph(this,cx);
             cx.db += g;
@@ -204,7 +206,7 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             var sb = new StringBuilder("PGraph ");
-            sb.Append(iri); sb.Append('/'); sb.Append(name);
+            sb.Append(iri);
             var cm = " [";
             for (var b = types.First(); b != null; b = b.Next())
             {

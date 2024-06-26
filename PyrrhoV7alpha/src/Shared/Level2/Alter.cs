@@ -1,4 +1,3 @@
-using System;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -250,15 +249,6 @@ namespace Pyrrho.Level2
 		{ 
 			return "Alter3 TableColumn  ["+defpos+"] "+base.ToString(); 
 		}
-        /// <summary>
-        /// ReadCheck is used by ReadConstraint
-        /// </summary>
-        /// <param name="pos">A Position to check</param>
-        /// <returns>Whether read conflict has occurred</returns>
-		public override DBException? ReadCheck(long pos,Physical r,PTransaction ct)
-		{
-			return (pos==defpos)?new DBException("40078",pos,r,ct).Mix() :null;
-		}
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             if (table == null)
@@ -304,7 +294,7 @@ namespace Pyrrho.Level2
                 case Type.Record:
                     {
                         var r = (Record)that;
-                        if (r.tabledefpos.Contains(table.defpos) && r.fields.Contains(defpos)) 
+                        if (r.tabledefpos==table.defpos && r.fields.Contains(defpos)) 
                             return new DBException("40079", ppos, that, ct);
                         break;
                     }
@@ -313,7 +303,7 @@ namespace Pyrrho.Level2
                 case Type.Update:
                     {
                         var r = (Update)that;
-                        if (r.tabledefpos.Contains(table.defpos) && r.fields.Contains(defpos))
+                        if (r.tabledefpos == table.defpos && r.fields.Contains(defpos))
                             return new DBException("40080", ppos, that, ct);
                         break;
                     }

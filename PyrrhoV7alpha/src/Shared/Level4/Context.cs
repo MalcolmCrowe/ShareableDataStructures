@@ -530,6 +530,12 @@ namespace Pyrrho.Level4
             defsStore += (sD, (id.iix.lp, defs));
             lexical = id.iix.lp;
         }
+        internal void DecSDClear()
+        {
+            if (sD == 0)
+                return;
+            defsStore -= sD - 1;
+        }
         /// <summary>
         /// Deal with end-of-Scope things 
         /// </summary>
@@ -942,6 +948,7 @@ namespace Pyrrho.Level4
                     Grouping.Members => _DepthTVX((CTree<long, int>)o, d),
                     ObInfo.Names => _DepthTsPil((BTree<string, (int, long?)>)o, d),
                     RestView.NamesMap => _DepthTVX((CTree<long, string>)o, d),
+                    Domain.NodeTypes => _DepthTDb((CTree<Domain, bool>)o, d),
                     JoinRowSet.OnCond => _DepthTVV((BTree<long, long?>)o, d),
                     FetchStatement.Outs => _DepthBV((BList<long?>)o, d),
                     PreparedStatement.QMarks => _DepthBV((BList<long?>)o, d),
@@ -1114,6 +1121,13 @@ namespace Pyrrho.Level4
         {
             return (done[p] is DBObject ob) ? ob.defpos : p;
         }
+        internal long ReplacedNT(long p)
+        {
+            if (done[p] is NodeType nd) return nd.defpos;
+            if (db.objects[p] is NodeType nt && nt.nodeTypes != CTree<Domain, bool>.Empty)
+                return FindOrCreate(ReplacedTDb(nt.nodeTypes)).defpos;
+            return p;
+        }
         internal BTree<K, long?> Replaced<K>(BTree<K, long?> ms) where K : IComparable
         {
             var r = BTree<K, long?>.Empty;
@@ -1206,8 +1220,8 @@ namespace Pyrrho.Level4
             {
                 var k = b.key();
                 var tr = b.value();
-                var ts = ReplacedTlb(tr.tabledefpos);
-                var nr = new TableRow(tr,ts); 
+                var np = ReplacedNT(tr.tabledefpos);
+                var nr = new TableRow(tr,np,ReplacedTlV(tr.vals)); 
                 ch = b.value() != nr;
                 r += (k, nr);
             }
@@ -1705,8 +1719,19 @@ namespace Pyrrho.Level4
                     break;
             }
  //           if (!db.objects.Contains(r))
- //               r = -L;
+ //               r = -1L;
             return r;
+        }
+        internal long FixNT(long p)
+        {
+            if (db.objects[p] is NodeType nt && nt.nodeTypes.Count!=0 && !done.Contains(nt.defpos))
+            {
+                var ns = FixTDb(nt.nodeTypes);
+                if (ns != nt.nodeTypes)
+                    done += (nt.defpos,
+                        new NodeType(nt.defpos, new BTree<long, object>(Domain.Kind, nt.kind) + (Domain.NodeTypes, ns)));
+            }
+            return Fix(p);
         }
         /// <summary>
         /// As a result of Alter Type we need to merge two TableColumns. We can't use the Replace machinery
@@ -1961,7 +1986,7 @@ namespace Pyrrho.Level4
         {
             var rp = -1L;
             int n = 0;
-            for (var b = role.unlabelledEdgeTypesInfo?[lt]?[at]?.First(); b != null; b = b.Next())
+            for (var b = role.unlabelledEdgeTypesInfo.First(); b != null; b = b.Next())
             {
                 var nn = 0;
                 for (var c = b.key().First(); c != null; c = c.Next())
@@ -1974,6 +1999,50 @@ namespace Pyrrho.Level4
             }
             return rp;
         }
+        internal NodeType FindOrCreate(CTree<Domain,bool>ts)
+        {
+            var kind = ts.First()?.key()?.kind ?? Qlx.NODETYPE;
+            var u = new NodeType(-1L, BTree<long, object>.Empty + (Domain.Kind, kind) + (Domain.NodeTypes, ts));
+            if (db.objects[db.types[u] ?? -1L] is NodeType nt)
+                return nt;
+            var nst = db.nextStmt;
+            u = (NodeType)u.Relocate(nst);
+            db += (Database.NextStmt, nst + 1);
+            db += (Database.Types, db.types + (u, nst));
+            return u;
+        }
+        internal NodeType FindOrCreate(CTree<long, bool> ts)
+        {
+            var kind = Qlx.NODETYPE;
+            var ds = CTree<Domain,bool>.Empty;
+            for (var b = ts.First(); b != null; b = b.Next())
+                if (db.objects[b.key()] is NodeType n)
+                {
+                    ds += (n, true);
+                    kind = n.kind;
+                }
+            var u = new NodeType(-1L, BTree<long, object>.Empty + (Domain.Kind, kind) + (Domain.NodeTypes, ds));
+            if (db.objects[db.types[u] ?? -1L] is NodeType nt)
+                return nt;
+            var nst = db.nextStmt;
+            u = (NodeType)u.Relocate(nst);
+            db += (Database.NextStmt, nst + 1);
+            db += (Database.Types, db.types + (u, nst));
+            return u;
+        }
+        internal NodeType? Find(CTree<Domain, bool> ts)
+        {
+            var kind = ts.First()?.key()?.kind ?? Qlx.NODETYPE;
+            var u = new NodeType(-1L, BTree<long, object>.Empty + (Domain.Kind, kind) + (Domain.NodeTypes, ts));
+            return db.objects[db.types[u] ?? -1L] as NodeType;
+        }
+        internal CTree<Domain, bool> NodeTypes(long dp)
+        {
+            var d = db.objects[dp] as NodeType ?? throw new PEException("PE50401");
+            if (d.nodeTypes.Count > 1)
+                return d.nodeTypes;
+            return new CTree<Domain, bool>(d, true);
+        }
         internal NodeType? FindNodeType(string nm,CTree<string,QlValue> dc)
         {
             if (nm != "")
@@ -1983,28 +2052,29 @@ namespace Pyrrho.Level4
                 pn += (b.key(), true);
             return db.objects[role.unlabelledNodeTypesInfo[pn] ?? -1L] as NodeType;
         }
-        internal CTree<Domain,bool> FindEdgeType(string nm, long lt, long at, CTree<string, QlValue> dc,
+        internal CTree<Domain,bool> FindEdgeType(string nm, long lc, long ac, CTree<string, QlValue> dc,
             BTree<long,object> m, CTree<Qlx,TypedValue> md)
         {
             var r = CTree<Domain, bool>.Empty;
-            if (nm != "" && role.edgeTypes[nm] is BTree<long,BTree<long,long?>> el) 
+            if (nm != "" && role.edgeTypes[nm] is long el) 
             {
-                if (_Ob(el[lt]?[at] ?? -1) is EdgeType et)
+                if (db.edgeEnds[el]==null && db.objects[el] is EdgeType ee)
+                {
+                    ee += (EdgeType.LeaveCol, lc);
+                    ee += (EdgeType.ArriveCol, ac);
+                    db += (Database.EdgeEnds, db.edgeEnds + (el, 
+                        new BTree<long,BTree<long,long?>>(lc,new BTree<long,long?>(ac,el))));
+                    return new CTree<Domain,bool>(ee,true);
+                }
+                if (db.objects[db.edgeEnds[el]?[lc]?[ac] ?? -1] is EdgeType et)
                     return r + (et.Build(this,null,m,md), true);
-                var ln = _Ob(lt)?._NodeTypes(this) ?? CTree<Domain,bool>.Empty;
-                var an = _Ob(at)?._NodeTypes(this) ?? CTree<Domain, bool>.Empty;
-                for (var b = ln.First(); b != null; b = b.Next())
-                    if (el[b.key().defpos] is BTree<long, long?> ea)
-                        for (var c = an.First(); c != null; c = c.Next())
-                            if (_Ob(ea[c.key().defpos] ?? -1L) is EdgeType em)
-                                r += (em.Build(this,null,m,md), true);
                 if (r!=CTree<Domain,bool>.Empty)
                     return r;
             }
             var pn = CTree<string, bool>.Empty;
             for (var b = dc.First(); b != null; b = b.Next())
                 pn += (b.key(), true);
-            if (db.objects[role.unlabelledEdgeTypesInfo[lt]?[at]?[pn] ?? -1L] is EdgeType ut && ut.name==nm)
+            if (db.objects[role.unlabelledEdgeTypesInfo[pn] ?? -1L] is EdgeType ut && ut.name==nm) 
                 r +=(ut.Build(this,null,m,md), true);
             return r;
         }
@@ -2718,9 +2788,9 @@ namespace Pyrrho.Level4
         {
             dm = db.objects[dm?.defpos ?? -1L] as Domain;
             if (dm is EdgeType et && et.tableRows[lI] is TableRow tr)
-                return new TEdge(et,tr);
+                return new TEdge(this,tr);
             if (dm is NodeType nt && nt.tableRows[lI] is TableRow tn)
-                return new TNode(nt, tn);
+                return new TNode(this, tn);
             return TNull.Value;
         }
     }

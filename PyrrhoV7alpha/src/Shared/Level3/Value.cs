@@ -7168,13 +7168,19 @@ namespace Pyrrho.Level3
                         var cm = "";
                         if (tr?.subType >= 0 && cx.NameFor(tr.subType) is string ns)
                             sb.Append(ns.Trim(':'));
-                        else
-                            for (var b = tr?.tabledefpos.First(); b != null; b = b.Next())
-                                if (cx.NameFor(b.key()) is string nk)
+                        else if (tr is not null && cx.db.objects[tr.tabledefpos] is Table tb)
+                        {
+                            if (tb.nodeTypes.Count==0 && tb.NameFor(cx) is string nm)
+                            {
+                                sb.Append(cm); sb.Append(nm.Trim(':'));
+                            } else
+                            for (var b = tb.nodeTypes.First(); b != null; b = b.Next())
+                                if (b.key().NameFor(cx) is string nk)
                                 {
                                     sb.Append(cm); cm = "&";
                                     sb.Append(nk.Trim(':'));
                                 }
+                        }
                         return new TChar(sb.ToString());
                     }
                 case Qlx.SQRT:
@@ -10943,6 +10949,12 @@ cx.obs[high] is not QlValue hi)
                 return Domain.NodeType;
             return (m[_Label] as Domain)?.ForExtra(cx,m+(DocValue,d))?? Domain.NodeType;
         }
+        internal override string NameFor(Context cx)
+        {
+            if (name == "COLON" && label.defpos>=0)
+                return label.NameFor(cx);
+            return base.NameFor(cx);
+        }
         public static GqlNode operator +(GqlNode n, (long, object) x)
         {
             return (GqlNode)n.New(n.mem + x);
@@ -11016,7 +11028,7 @@ cx.obs[high] is not QlValue hi)
                 }
                 // JoinedNodeType is not committed to the database: it is a syntactic device leading to Record4 creation
                 NodeType jt = new JoinedNodeType(cx.GetUid(), sb.ToString(), Domain.NodeType, 
-                    new BTree<long,object>(Domain.UnionOf,tl), cx);
+                    new BTree<long,object>(Domain.NodeTypes,tl), cx);
                 return jt;
             }
             else
@@ -11154,7 +11166,7 @@ cx.obs[high] is not QlValue hi)
                                     && cx.db.objects[rr.dbobjects[nt.name ?? "_"] ?? -1L] is NodeType ot)
                     nt = ot;
                 else
-                    nt = nt.Build(cx, this, new BTree<long, object>(Domain.UnionOf, label.OnInsert(cx, mem)));
+                    nt = nt.Build(cx, this, new BTree<long, object>(Domain.NodeTypes, label.OnInsert(cx, mem)));
                 if (nt is JoinedNodeType) // JoinedNodeType will have done everything
                     return this;
             }
@@ -11396,7 +11408,7 @@ cx.obs[high] is not QlValue hi)
     internal class GqlEdge : GqlNode
     {
         internal const long
-            ArrivingValue = -479,  // long     QlValue
+            ArrivingValue = -479,  // long QlValue
             LeavingValue = -478;   // long QlValue
         public long arrivingValue => (long)(mem[ArrivingValue]??-1L);
         public long leavingValue => (long)(mem[LeavingValue]??-1L);
@@ -11466,7 +11478,7 @@ cx.obs[high] is not QlValue hi)
             //var aN = aT?.name;
             // a label with at least one char QlValue must be here
             // evaluate them all as TTypeSpec or TChar
-            if (cx.db.objects[cx.role.edgeTypes[label.name ?? ""]?[lT?.defpos ?? -1L]?[aT?.defpos ?? -1L] ?? -1L] is EdgeType ee)
+            if (cx.db.objects[cx.role.edgeTypes[label.name ?? ""] ?? -1L] is EdgeType ee)
                 return ee;
             var tl = nd.label.OnInsert(cx, nd.mem);
             EdgeType? nt = null; // the node type of this node when we find it or construct it
@@ -11506,10 +11518,10 @@ cx.obs[high] is not QlValue hi)
                         ps += (b.key(), true);
                         pl += s;
                     }
-                if (nd.label.name != "" && cx.role.edgeTypes[nd.label.name]?[lT.defpos]?[aT.defpos] is long q
-                    && cx.db.objects[q] is EdgeType nv)
+                if (nd.label.name != "" && cx.role.edgeTypes[nd.label.name] is long q
+                    && cx.db.objects[cx.db.edgeEnds[q]?[lT.defpos]?[aT.defpos]??-1L] is EdgeType nv)
                     nt = nv;
-                else if (nd.label.name == "" && cx.role.unlabelledEdgeTypesInfo[lT.defpos]?[aT.defpos]?[ps] is long p
+                else if (nd.label.name == "" && cx.role.unlabelledEdgeTypesInfo[ps] is long p
                     && cx.db.objects[p] is EdgeType nu)
                     nt = nu;
                 else
@@ -11542,7 +11554,7 @@ cx.obs[high] is not QlValue hi)
             if (be is not null)
             {
                 be = (EdgeType)(cx.db.objects[be.defpos] ?? throw new PEException("PE060701"));
-                var bt = be.Build(cx, this, new BTree<long, object>(Domain.UnionOf, tl), md);
+                var bt = be.Build(cx, this, new BTree<long, object>(Domain.NodeTypes, tl), md);
                 if (bt is not null)
                 {
                     if (bt.defpos == nt?.defpos)

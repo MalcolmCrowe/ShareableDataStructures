@@ -33,19 +33,21 @@ namespace Pyrrho.Level2
         /// <param name="fl">The changed fields and values</param>
         /// <param name="u">The new record position</param>
         /// <param name="db">The transaction</param>
-        public Update(TableRow old, CTree<long,bool> tb, CTree<long, TypedValue> fl, long pp, 
+        public Update(TableRow old, long tb, CTree<long, TypedValue> fl, long pp, 
             Context cx)
             : this(Type.Update, old, tb, fl, pp, cx)
         { }
-        protected Update(Type t, TableRow old, CTree<long,bool> tb,CTree<long,TypedValue> fl, 
+        protected Update(Type t, TableRow old, long tb, CTree<long, TypedValue> fl,
             long pp, Context cx)
-            : base(t,tb,fl,pp,cx)
+            : base(t, tb, fl, pp, cx)
         {
             _defpos = old.defpos;
             prevrec = old;
-            if (t!=Type.Update1)
+            if (t != Type.Update1)
                 _classification = old.classification;
             prev = old.ppos;
+            if (cx.db.objects[tb] is Table ta)
+                sbT = ta.subtypes;
         }
         public Update(Reader rdr) : base(Type.Update, rdr) { }
         protected Update(Type t, Reader rdr) : base(t, rdr) 
@@ -86,7 +88,7 @@ namespace Pyrrho.Level2
                 case Type.Drop:
                     {
                         var d = (Drop)that;
-                        if (tabledefpos.Contains(d.delpos))
+                        if (tabledefpos == d.delpos)
                             return new DBException("40010", tabledefpos, that, ct);
                         for (var b = fields.PositionAt(0); b != null; b = b.Next())
                             if (b.key() == d.delpos)
@@ -100,9 +102,8 @@ namespace Pyrrho.Level2
                         var de = (Delete)that;
                         if (de.delpos == defpos)
                             return new DBException("40029", defpos, that, ct);
-                        for (var c = tabledefpos.First();c!=null;c=c.Next())
-                        for (var b = de.deC[c.key()]?.First();b is not null;b=b.Next())
-                        if (db.objects[c.key()] is Table tb && tb.FindIndex(db, b.key())?[0] is Level3.Index x
+                        for (var b = de.deC[tabledefpos]?.First();b is not null;b=b.Next())
+                        if (db.objects[tabledefpos] is Table tb && tb.FindIndex(db, b.key())?[0] is Level3.Index x
                             && x.MakeKey(fields) is CList<TypedValue> pk && x.rows?.Contains(pk)==true)
                                 return new DBException("40085", de.delpos);
                         break;
@@ -112,15 +113,13 @@ namespace Pyrrho.Level2
                 case Type.Update:
                     {
                         var u = (Update)that;
-                        for (var c = tabledefpos.First();c!=null;c=c.Next())
-                        for (var b = u.riC[c.key()]?.First(); b != null; b = b.Next())
+                        for (var b = u.riC[tabledefpos]?.First(); b != null; b = b.Next())
                             if (u.prevrec is TableRow pr && 
                                 pr.MakeKey(b.value().rowType) is CList<TypedValue> pk &&
                                 pk.CompareTo(MakeKey(b.key().rowType)) == 0 )
                                 // conflict if our old values are referenced by a new foreign key
                                     throw new DBException("40014", u.prevrec.ToString());
-                        for (var c=u.tabledefpos.First();c!=null; c=c.Next())
-                        if (db.objects[c.key()] is Table tb)
+                        if (db.objects[u.tabledefpos] is Table tb)
                         for (var b = tb.indexes.First(); b != null; b = b.Next())
                          if (tb.FindIndex(db, b.key())?[0] is Level3.Index x && 
                                     db.objects[x.refindexdefpos] is Level3.Index rx)
@@ -138,21 +137,25 @@ namespace Pyrrho.Level2
                         return null; // do not call the base
                     }
                 case Type.Alter3:
-                    if (((Alter3)that).table is Table t3 && tabledefpos.Contains(t3.defpos))
+                    if (((Alter3)that).table is Table t3 && tabledefpos==t3.defpos)
                         return new DBException("40080", defpos, that, ct);
                     break;
                 case Type.Alter2:
-                    if (((Alter2)that).table is Table t2 && tabledefpos.Contains(t2.defpos))
+                    if (((Alter2)that).table is Table t2 && tabledefpos == t2.defpos)
                         return new DBException("40080", defpos, that, ct);
                     break;
                 case Type.Alter:
-                    if (((Alter)that).table is Table t && tabledefpos.Contains(t.defpos))
+                    if (((Alter)that).table is Table t && tabledefpos == t.defpos)
                         return new DBException("40080", defpos, that, ct);
                     break;
+                case Type.EditType:
+                        if (((EditType)that).defpos == tabledefpos)
+                            return new DBException("40025", tabledefpos, that, ct);
+                        break;
                 case Type.PColumn3:
                 case Type.PColumn2:
                 case Type.PColumn:
-                    if (((PColumn)that).table is Table tc && tabledefpos.Contains(tc.defpos))
+                    if (((PColumn)that).table is Table tc && tabledefpos == tc.defpos)
                         return new DBException("40045", defpos, that, ct);
                     break;
 
@@ -168,35 +171,39 @@ namespace Pyrrho.Level2
         }
         protected override TableRow Now(Context cx)
         {
-            for (var b = tabledefpos.First(); b != null; b = b.Next())
-                if (cx._Ob(b.key()) is Table tb && tb.tableRows[defpos] is TableRow tr)
-                {
-                    prevrec = tr;
-                    break;
-                }
+            if (cx._Ob(tabledefpos) is Table tb && tb.tableRows[defpos] is TableRow tr)
+                prevrec = tr;
             if (prevrec is null)
                 throw new PEException("PE00809");
             Check(cx);
-            return new TableRow(this,cx,prevrec);
+            return new TableRow(this, cx, prevrec);
         }
         internal override void Check(Context cx)
         {
-            for (var c = tabledefpos.First(); c != null; c = c.Next())
-                if (cx._Ob(c.key()) is Table tb)
+            if (cx._Ob(tabledefpos) is Table tb)
+            {
+                for (var b = tb.First(); b != null; b = b.Next())
                 {
-        //            var dm = tb._PathDomain(cx);
-                    for (var b = tb.First(); b != null; b = b.Next())
+                    if (b.value() is not long p || tb.representation[p] is not Domain dv)
+                        throw new PEException("PE10701");
+                    if (fields[p] is TypedValue v
+                        && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
                     {
-                        if (b.value() is not long p || tb.representation[p] is not Domain dv)
-                            throw new PEException("PE10701");
-                        if (fields[p] is TypedValue v
-                            && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
-                        {
-                            var nv = dv.Coerce(cx, v);
-                            fields += (p, nv);
-                        }
+                        var nv = dv.Coerce(cx, v);
+                        fields += (p, nv);
                     }
                 }
+            }
+        }
+        internal override Context Add(Context cx, Table tt, TableRow now)
+        {
+            if (tt.defpos < 0)
+                return cx;
+            cx = _Add(cx, tt, now);
+            for (var b = subTables.First(); b != null; b = b.Next())   // update subtypes
+                if (cx.db.objects[b.key()] is Table ta)
+                    cx = _Add(cx, ta, now);
+            return cx;
         }
         internal override Table AddRow(Table tt, TableRow now, Context cx)
         {
@@ -213,12 +220,11 @@ namespace Pyrrho.Level2
                        && now.vals[et.leaveCol] is TInt tl && tl.ToLong() is long li
                        && lo!=li)
                     {
-                        var cl = lt.sindexes[et.defpos] ?? CTree<long, CTree<long, bool>>.Empty;
-                        cl -= lo;
-                        var cc = cl[li] ?? CTree<long, bool>.Empty;
+                        var cn = (lt.sindexes-lo)[li] ?? CTree<long, CTree<long, bool>>.Empty;
+                        var cc = cn[et.leaveCol] ?? CTree<long, bool>.Empty;
                         cc += (now.defpos, true);
-                        cl += (li, cc);
-                        lt += (Table.SysRefIndexes, lt.sindexes + (et.defpos, cl));
+                        cn += (et.leaveCol, cc);
+                        lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
                         cx.Add(lt);
                         cx.db += lt;
                     }
@@ -227,12 +233,11 @@ namespace Pyrrho.Level2
                         && now.vals[et.arriveCol] is TInt ta && ta.ToLong() is long ai
                         && ao!=ai)
                     {
-                        var ca = at.sindexes[et.defpos] ?? CTree<long, CTree<long, bool>>.Empty;
-                        ca -= ao;
-                        var cc = ca[ai] ?? CTree<long, bool>.Empty;
+                        var cn = (at.sindexes-ao)[ai] ?? CTree<long, CTree<long, bool>>.Empty;
+                        var cc = cn[et.arriveCol] ?? CTree<long, bool>.Empty;
                         cc += (now.defpos, true);
-                        ca += (ai, cc);
-                        at += (Table.SysRefIndexes, at.sindexes + (et.defpos, ca));
+                        cn += (et.arriveCol, cc);
+                        at += (Table.SysRefIndexes, at.sindexes + (ai, cn));
                         cx.Add(at);
                         cx.db += at;
                     }
@@ -249,6 +254,15 @@ namespace Pyrrho.Level2
                         x += (nk, defpos);
                         cx.db += x;
                     }
+            for (var b = subTables.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Table tb && tb.tableRows.Contains(prev))
+                {
+                    if (prev != defpos)
+                        tb -= prev;
+                    tb += now;
+                    cx.Add(tb);
+                    cx.db += tb;
+                }
             return (Table)cx.Add(tt);
         }
         public override long Affects => _defpos;
@@ -260,7 +274,7 @@ namespace Pyrrho.Level2
     }
     internal class Update1 : Update
     {
-        public Update1(TableRow old, CTree<long,bool> tb, CTree<long, TypedValue> fl, Level lv, 
+        public Update1(TableRow old, long tb, CTree<long, TypedValue> fl, Level lv, 
             long pp, Context cx) 
             : base(Type.Update1,old, tb, fl, pp, cx)
         {
@@ -268,7 +282,7 @@ namespace Pyrrho.Level2
                 throw new DBException("42105").Add(Qlx.USER);
             _classification = lv;
         }
-        protected Update1(Type t, TableRow old, CTree<long, bool> tb, CTree<long, TypedValue> fl, Level lv,
+        protected Update1(Type t, TableRow old, long tb, CTree<long, TypedValue> fl, Level lv,
             long pp, Context cx)
             :base(t,old,tb,fl,pp,cx) 
         {
@@ -292,58 +306,9 @@ namespace Pyrrho.Level2
             _classification = Level.DeserialiseLevel(rdr);
             base.Deserialise(rdr);
         }
-        internal override DBObject? Install(Context cx)
-        {
-            if (cx.db != null)
-                for (var b = tabledefpos.First(); b != null; b = b.Next())
-                {
-                    if (cx.db.objects[b.key()] is Table tb)
-                    {
-                        var fl = tb.tableRows[defpos] ?? throw new PEException("PE40406");
-                        Check(cx);
-                        cx.Install(tb + new TableRow(this, cx, fl, _classification)); //.Check(tb, cx));
-                    }
-                    if (cx.db.mem.Contains(Database.Log))
-                        cx.db += (Database.Log, cx.db.log + (ppos, type));
-                }
-            return null;
-        }
         public override void Serialise(Writer wr)
         {
             Level.SerialiseLevel(wr,_classification);
-            base.Serialise(wr);
-        }
-    }
-    internal class Update2 : Update1
-    {
-        public Update2(Reader rdr) : base(Type.Update2,rdr)
-        { }
-
-        public Update2(TableRow old, CTree<long, bool> tb, CTree<long, TypedValue> fl, Level lv, long pp, Context cx) 
-            : base(Type.Update2, old, tb, fl, lv, pp, cx)
-        { }
-
-        protected Update2(Update1 x, Writer wr) : base(x, wr)
-        { }
-
-        protected override Physical Relocate(Writer wr)
-        {
-            return new Update2(this, wr);
-        }
-
-        public override void Deserialise(Reader rdr)
-        {
-            var n = rdr.GetInt();
-            for (var i = 0; i < n; i++)
-                tabledefpos += (rdr.GetLong(), true);
-            base.Deserialise(rdr);
-        }
-        public override void Serialise(Writer wr)
-        {
-            var n = (int)tabledefpos.Count - 1;
-            wr.PutInt(n);
-            for (var b = tabledefpos.First(); b != null && n-- > 0; b = b.Next())
-                wr.PutLong(b.key());
             base.Serialise(wr);
         }
     }

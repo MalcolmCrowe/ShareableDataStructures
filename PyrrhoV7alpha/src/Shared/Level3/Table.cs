@@ -42,7 +42,7 @@ namespace Pyrrho.Level3
             KeyCols = -320, // CTree<long,bool> TableColumn (over all indexes)
             LastData = -258, // long
             RefIndexes = -250, // CTree<long,CTree<Domain,Domain>> referencing Table,referencing TableColumns,referenced TableColumns
-            SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,bool>>> referencingtable,recpos,recpos used for EdgeTypes
+            SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,CTree<long,bool>>>> nodeTable,node, edgeColumn,edge 
             SystemPS = -265, //long (system-period specification)
             TableChecks = -266, // CTree<long,bool> Check
             TableRows = -181, // BTree<long,TableRow>
@@ -150,13 +150,6 @@ namespace Pyrrho.Level3
                         cx.db += st;
                         cx.obs += (st.defpos,st);
                     }
-                if (cx.db.objects[tb.leavingType] is NodeType lt
-                        && lt.FindPrimaryIndex(cx) is null)
-                {
-                    lt += (SysRefIndexes, lt.sindexes + (tc.defpos, CTree<long, CTree<long, bool>>.Empty));
-                    cx.Add(lt);
-                    cx.db += lt;
-                }
             }
             if (tc.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
             {
@@ -168,13 +161,6 @@ namespace Pyrrho.Level3
                         cx.db += st;
                         cx.obs += (st.defpos, st);
                     }
-                if (cx.db.objects[tb.arrivingType] is NodeType at
-                        && at.FindPrimaryIndex(cx) is null)
-                {
-                    at += (SysRefIndexes, at.sindexes + (tc.defpos, CTree<long, CTree<long, bool>>.Empty));
-                    cx.Add(at);
-                    cx.db += at;
-                }
             }
             for (var b = tb.subtypes.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is Table st)
@@ -246,15 +232,6 @@ namespace Pyrrho.Level3
         {
             return New(defpos,mem+(TableChecks,tableChecks+(ck.defpos,true)));
         }
-        /// <summary>
-        /// One of our records is being Committed: 
-        /// It is about to be installed somewhere else, so
-        /// forget about it in edgetype info.
-        /// </summary>
-        /// <param name="db"></param>
-        /// <param name="r"></param>
-        internal virtual void Forget(Database db,Record r)
-        { }
         internal override void _Add(Context cx)
         {
             base._Add(cx);
@@ -341,11 +318,21 @@ namespace Pyrrho.Level3
         static CTree<long, CTree<long, CTree<long,bool>>> ShallowReplace(Context cx, CTree<long, CTree<long, CTree<long,bool>>> rs, long was, long now)
         {
             for (var b = rs.First(); b != null; b = b.Next())
-                if (b.key() == was)
+            {
+                var ch = false;
+                if (b.value() is CTree<long, CTree<long, bool>> t)
                 {
-                    rs -= was;
-                    rs += (now, b.value());
+                    for (var c = t.First(); c != null; c = c.Next())
+                        if (c.key() == was)
+                        {
+                            t -= was;
+                            t += (now, c.value());
+                            ch = true;
+                        }
+                    if (ch)
+                        rs += (b.key(), t);
                 }
+            }
             return rs;
         }
         static CTree<Domain,Domain> ShallowReplace(Context cx,CTree<Domain,Domain> rx,long was,long now)
@@ -430,7 +417,10 @@ BTree<string, (int, long?)> ns)
             var nc = cx.FixTlb(tableChecks);
             if (nc != tableChecks)
                 r += (TableChecks, nc);
-            var nw = cx.FixTlR(tableRows);
+            var nw = tableRows;
+            for (var b = nw.First(); b != null; b = b.Next())
+                if (cx.uids.Contains(b.key()))
+                    nw -= b.key();
             if (nw != tableRows)
                 r += (TableRows, nw);
             var nt = cx.FixTTElb(triggers);
@@ -544,25 +534,11 @@ BTree<string, (int, long?)> ns)
                 return true;
             return base.Denied(cx, priv);
         }
-        internal CTree<Domain, CTree<long,bool>> IIndexes(Context cx,BTree<long, long?> sim)
-        {
-            var xs = CTree<Domain, CTree<long, bool>>.Empty;
-            for (var b = indexes.First(); b != null; b = b.Next())
-            {
-                var bs = BList<DBObject>.Empty;
-                for (var c = b.key().First(); c != null; c = c.Next())
-                    if (c.value() is long p && cx._Ob(sim[p]??-1L) is Domain tp)
-                        bs += tp;
-                var k = (Domain)cx.Add(new Domain(-1L,cx,Qlx.ROW,bs,bs.Length));
-                xs += (k, b.value());
-            }
-            return xs;
-        }
-        internal Table? DoDel(Context cx, Delete del)
+        internal Table? Delete(Context cx, Delete del)
         {
             if (cx._Ob(defpos) is not Table a) return null;
             for (var b=a.super.First();b!=null;b=b.Next())
-                (b.key() as Table)?.DoDel(cx, del);
+                (b.key() as Table)?.Delete(cx, del);
             if (a.tableRows[del.delpos] is TableRow delRow)
                 for (var b = indexes.First(); b != null; b = b.Next())
                     for (var c = b.value().First(); c != null; c = c.Next())
@@ -581,6 +557,30 @@ BTree<string, (int, long?)> ns)
             cx.Install(tb);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (del.ppos, del.type));
+            return tb;
+        }
+        internal Table? SubDel(Context cx, Delete del)
+        {
+            if (tableRows[del.delpos] is not TableRow delRow)
+                return this;
+            for (var b = indexes.First(); b != null; b = b.Next())
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.key()] is Index ix &&
+                        ix.rows is MTree mt && ix.rows.info is Domain inf &&
+                        delRow.MakeKey(ix) is CList<TypedValue> key)
+                    {
+                        ix -= (key, delRow.defpos);
+                        if (ix.rows == null)
+                            ix += (Index.Tree, new MTree(inf, mt.nullsAndDuplicates, 0));
+                        cx.Install(ix);
+                    }
+            var tb = this;
+            tb -= del.delpos;
+            tb += (LastData, del.ppos);
+            cx.Install(tb);
+            for (var b = subtypes.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is Table t)
+                    t.SubDel(cx, del);
             return tb;
         }
         /// <summary>

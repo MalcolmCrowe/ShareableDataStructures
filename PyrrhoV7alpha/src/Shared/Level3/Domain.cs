@@ -61,6 +61,7 @@ namespace Pyrrho.Level3
             End = -78, // Qlx (interval part) (D)
             Kind = -80, // Qlx
             Nodes = -260, // CTree<long,bool> GqlNode used for Match Return
+            NodeTypes = -471, // CTree<Domain,bool> NodeType
             NotNull = -81, // bool
             NullsFirst = -82, // bool (C)
             _OrderCategory = -83, // OrderCategory
@@ -70,7 +71,7 @@ namespace Pyrrho.Level3
             RowType = -187,  // BList<long?> 
             Scale = -88, // int (D)
             Start = -89, // Qlx (D)
-            Subtypes = -155, // CTree<long,bool> Domain
+            Subtypes = -155, // CTree<long,bool> Domain direct subtypes
             SuperShape = -318, // bool
             TrueRowSet = -437,// RowSet
             Under = -90, // CTree<Domain,bool> direct supertypes (GQL)
@@ -193,6 +194,8 @@ namespace Pyrrho.Level3
         public CTree<long, bool> aggs =>
             (CTree<long, bool>?)mem[Aggs] ?? CTree<long, bool>.Empty;
         public CTree<long, bool> nodes => (CTree<long, bool>)(mem[Nodes] ?? CTree<long, bool>.Empty);
+        internal CTree<Domain, bool> nodeTypes =>
+            (CTree<Domain, bool>)(mem[NodeTypes] ?? CTree<Domain, bool>.Empty);
         public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory] ?? OrderCategory.None);
         public CTree<Domain, bool> unionOf =>
             (CTree<Domain, bool>?)mem[UnionOf] ?? CTree<Domain, bool>.Empty;
@@ -1046,7 +1049,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 return true;
             if (CompareTo(dt)==0) // the Equal case
                 return true;
-            // Now consider subtypes
+
+                // Now consider subtypes
             if (sensitive != dt.sensitive)
                 return false;
             if (dt == null)
@@ -1060,6 +1064,16 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     if (b.key() is Domain dm && !dt.unionOf.Contains(dm))
                         return false;
                 return true;
+            }
+            if (nodeTypes.Count != dt.nodeTypes.Count)
+                return false;
+            for (var b = nodeTypes.First(); b != null; b = b.Next())
+            {
+                var found = false;
+                for (var c = dt.nodeTypes.First(); (!found) && c != null; c = c.Next())
+                    found = b.key().EqualOrStrongSubtypeOf(c.key());
+                if (!found)
+                    return false;
             }
             if (dt.kind==Qlx.UNION)
             {
@@ -1402,9 +1416,13 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 case Qlx.UNION:
                 case Qlx.TABLE:
                 case Qlx.ROW:
+                    return Context.Compare(rowType, that.rowType);
                 case Qlx.NODETYPE:
                 case Qlx.EDGETYPE:
-                    return Context.Compare(rowType, that.rowType);
+                    c = nodeTypes.CompareTo(that.nodeTypes);
+                    if (c != 0)
+                        return c;
+                    goto case Qlx.TABLE;
                 case Qlx.TYPE:
                     if (name is string nm)
                         return nm.CompareTo(that.name);
@@ -1782,6 +1800,11 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if ((dt.kind == Qlx.TABLE || dt.kind == Qlx.ROW) && dt.rowType.Length == 1
                 && CanTakeValueOf(dt.representation[dt.rowType[0]??-1L]??Null))
                 return true;
+            if (dt.EqualOrStrongSubtypeOf(this))
+                return true;
+            for (var b=nodeTypes.First();b!=null;b=b.Next())
+                if (dt.CanTakeValueOf(b.key()))
+                    return true;
             if (kind == Qlx.UNION && dt.kind==Qlx.UNION)
             {
                 for (var b = unionOf.First(); b != null; b = b.Next())
@@ -4219,6 +4242,12 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 if (et != elType)
                     r += (Element, et);
             }
+            if (nodeTypes.Count>0)
+            {
+                var ns = cx.FixTDb(nodeTypes);
+                if (ns != nodeTypes)
+                    r += (NodeTypes, ns);
+            }
             if (rowType.Count > 0)
             {
                 var nt = cx.FixLl(rowType);
@@ -4384,6 +4413,14 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 return (new BList<DBObject>(r), m);
             }
             return (new BList<DBObject>(this), m);
+        }
+        internal CTree<Domain,bool> Supertypes(Context cx)
+        {
+            var r = CTree<Domain, bool>.Empty;
+            for (var b = super.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key().defpos] is Domain d && !r.Contains(d))
+                    r += d.Supertypes(cx);
+            return r;
         }
         public static string NameFor(Context cx, long p, int i)
         {
@@ -5303,9 +5340,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
             var r = base._Fix(cx,m);
-    /*        var ns = cx.FixTDb(super);
-            if (super != ns && ns is not null)
-                r += (Under, ns); */
             var ns = CTree<Domain,bool>.Empty;
             for (var b = super.First(); b != null; b = b.Next())
                 if (cx.db.objects[cx.Fix(b.key().defpos)] is Domain d)
