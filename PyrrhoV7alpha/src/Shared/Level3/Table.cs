@@ -325,8 +325,9 @@ namespace Pyrrho.Level3
                     for (var c = t.First(); c != null; c = c.Next())
                         if (c.key() == was)
                         {
+                            var tn = t[now] ?? CTree<long, bool>.Empty;
                             t -= was;
-                            t += (now, c.value());
+                            t += (now, tn + c.value());
                             ch = true;
                         }
                     if (ch)

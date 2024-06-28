@@ -3897,7 +3897,7 @@ namespace Pyrrho.Level3
         public override Context _Obey(Context cx)
         {
             var n = cx.obs[what]?.Eval(cx) as TNode??throw new DBException("22004");
-            cx.Add(new Delete(cx, n.tableRow, cx.db.nextPos));
+            cx.Add(new Delete1(n.tableRow, cx.db.nextPos, cx));
             return cx;
         }
     }
@@ -4962,7 +4962,7 @@ MatchStatement.Step n) : Step(n.ms)
                             ds += (tq.defpos, tq);
                 }
             }
-            else if (pd is not null && pd.dataType is NodeType pn) // an edge attached to the TNode pd
+            else if (pd is not null && pd.dataType is NodeType pn && pn is not EdgeType) // an edge attached to the TNode pd
             {
                 var ctr = CTree<Domain, int>.Empty;
                 var tg = truncating != CTree<long, (int, Domain)>.Empty;
@@ -5139,22 +5139,24 @@ MatchStatement.Step n) : Step(n.ms)
                                 ((bn.xn.tok == Qlx.ARROWBASE) ? et.leavingType : et.arrivingType) != pd.dataType.defpos)
                                 continue;
                             cx.binding += (bn.xn.defpos, new TRow(dm, tr.vals));
-                            dn = new TNode(cx, tr);
+                            dn = dm.Node(cx, tr);
                             goto next;
                         }
                     goto backtrack;
                 }
                 else
                 {
-                    var ts = CTree<long,bool>.Empty;
-                    var dx = bn.xn.domain;
-                    var pt = (pd as TEdge)?.dataType as EdgeType;
-                    var et = (pt is null) ? dx 
-                        : cx.db.objects[(tok == Qlx.ARROWBASE) ? pt.arrivingType : pt.leavingType]?? dx;
-                    dn = (dx.kind==Qlx.EDGETYPE) ? new TEdge(cx, tr) : new TNode(cx, tr);
+                    /*                    var ts = CTree<long,bool>.Empty;
+                                        var dx = bn.xn.domain;
+                                        var pt = pd?.dataType;
+                                        var et = (pt is EdgeType qt)? (cx.db.objects[(tok == Qlx.ARROWBASE) ? qt.arrivingType : qt.leavingType])
+                                            : dx;
+                                        dn = (?.Node(cx, tr)??throw new PEException("PE90501");*/
+                    var dt = cx.db.objects[tr.tabledefpos] as NodeType;
+                    dn = (dt is EdgeType et) ? new TEdge(cx, tr) : new TNode(cx, tr);
                     if (bn.alt.mode == Qlx.TRAIL && dn is TEdge && pa?.Contains(dn) == true)
                         goto backtrack;
-                    if (bn.alt.mode == Qlx.ACYCLIC && pa?.Contains(dn) == true)
+                    if (bn.alt.mode == Qlx.ACYCLIC && dn is TNode && pa?.Contains(dn) == true)
                         goto backtrack;
                     if ((bn.alt.mode == Qlx.SHORTEST || bn.alt.mode == Qlx.SHORTESTPATH)
                             && !Shortest(bn, cx))
@@ -5266,14 +5268,14 @@ MatchStatement.Step n) : Step(n.ms)
                                 {
                                     var te = cx.GType(nt.leavingType);
                                     var er = te?.Get(cx, dn.tableRow.vals[nt.leaveCol] as TInt);
-                                    tv = (te is null || er is null) ? TNull.Value : new TNode(cx, er);
+                                    tv = (te is null || er is null) ? TNull.Value : te.Node(cx, er);
                                     break;
                                 }
                             case -(int)Qlx.ARROW:
                                 {
                                     var te = cx.GType(nt.arrivingType);
                                     var er = te?.Get(cx, dn.tableRow.vals[nt.arriveCol] as TInt);
-                                    tv = (te is null || er is null) ? TNull.Value : new TNode(cx, er);
+                                    tv = (te is null || er is null) ? TNull.Value : te.Node(cx, er);
                                     break;
                                 }
                             case -(int)Qlx.TYPE: tv = new TChar(nt.name); break;

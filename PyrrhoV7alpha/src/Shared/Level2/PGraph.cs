@@ -145,7 +145,7 @@ namespace Pyrrho.Level2
                 if (rdr.context.db.objects[rdr.GetLong()] is not NodeType tb || tb.tableRows[p] is not TableRow tr)
                     Console.WriteLine("Warning: bad Graph record list");
                 else
-                    records += (p, new TNode(rdr.context,tr));
+                    records += (p, tb.Node(rdr.context,tr));
             }
             base.Deserialise(rdr);
         }
@@ -183,9 +183,13 @@ namespace Pyrrho.Level2
                 {
                     var t = new TableRow(r, cx);
                     if (cx.db.objects[r.tabledefpos] is NodeType nt)
-                        ns += (r.defpos, new TNode(cx,t));
-                    for (var c = (r as Record4)?.extraTables.First(); c != null; c = c.Next())
-                        ns += (c.key(), new TNode(cx, t));
+                    {
+                        if (nt is JoinedNodeType)
+                            for (var c = (r as Record4)?.extraTables.First(); c != null; c = c.Next())
+                                ns += (c.key(), new TNode(cx, t));
+                        else
+                            ns += (r.defpos, nt.Node(cx, t));
+                    }
                 }
             var g = new Graph(this,cx);
             cx.db += g;
@@ -240,11 +244,18 @@ namespace Pyrrho.Level2
         public PGraphType(PGraphType x, Writer wr) : base(x, wr)
         {
             iri = x.iri;
+            name = x.name;
             types = wr.cx.Fix(x.types);
         }
         public override void Deserialise(Reader rdr)
         {
             iri = rdr.GetString();
+            var ix = iri.LastIndexOf('/');
+            if (ix >= 0)
+            {
+                name = iri[(ix + 1)..];
+                iri = iri[0..ix];
+            }
             var n = rdr.GetInt();
             for (var i = 0; i < n; i++)
                 types += (rdr.GetLong(), true);
@@ -252,6 +263,14 @@ namespace Pyrrho.Level2
         }
         public override void Serialise(Writer wr)
         {
+            var nm = iri;
+            if (name != "")
+            {
+                if (!iri.EndsWith("/"))
+                    nm = iri + "/" + name;
+                else
+                    nm = iri + name;
+            }
             wr.PutString(iri);
             wr.PutInt((int)types.Count);
             for (var b = types.First(); b != null; b = b.Next())

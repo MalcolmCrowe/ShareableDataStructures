@@ -31,6 +31,7 @@ namespace Pyrrho.Level2
         /// The defining position of the table or JoinedNodeType
         /// </summary>
         public long tabledefpos;
+        internal CTree<long, bool> extraTables = CTree<long, bool>.Empty;
         public bool nodeOrEdge = false; // set in constructor
         /// <summary>
         /// The tree of field ids and values for this record
@@ -210,7 +211,7 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information</param>
         internal virtual void PutFields(Writer wr)  //LOCKED
         {
-            var cs = ColsFrom(wr.cx, new CTree<long,bool>(tabledefpos,true), CTree<long, Domain>.Empty);
+            var cs = ColsFrom(wr.cx, extraTables+(tabledefpos,true), CTree<long, Domain>.Empty);
             wr.PutLong(fields.Count);
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
                 if (cs[d.key()] is Domain ndt && d.value() is TypedValue o)
@@ -632,7 +633,6 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class Record4 : Record3
     {
-        internal CTree<long,bool> extraTables = CTree<long,bool>.Empty;
         public Record4(CTree<long,bool> tbs, CTree<long, TypedValue> fl, long st, 
             Level lv, long pp, Context cx) 
             : base(Type.Record4, tbs.First()?.key()??throw new PEException("PE50405"), 
@@ -642,8 +642,9 @@ namespace Pyrrho.Level2
         }
         public Record4(Reader rdr) : base(Type.Record4,rdr)
         { }
-        protected Record4(Record3 x, Writer wr) : base(x, wr)
+        protected Record4(Record4 x, Writer wr) : base(x, wr)
         {
+            extraTables = wr.cx.FixTlb(x.extraTables);
         }
         protected override Physical Relocate(Writer wr)
         {

@@ -124,7 +124,7 @@ namespace Pyrrho.Level2
         internal long _defpos;
         internal override long defpos => _defpos;
         public Domain prev = Domain.Null;
-        readonly BTree<string, (int,long?)> hierCols;
+        public BTree<string, (int,long?)> hierCols = BTree<string,(int,long?)>.Empty;
         internal long _prev;
         /// <summary>
         /// Constructor: an Edit request from the Parser.
@@ -150,9 +150,7 @@ namespace Pyrrho.Level2
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
 		public EditType(Reader rdr) : base(Type.EditType, rdr) 
-        {
-            hierCols = (prev as UDType)?.HierarchyCols(rdr.context)??BTree<string,(int, long?)>.Empty;
-        }
+        {  }
         protected EditType(EditType x, Writer wr) : base(x, wr)
         {
             _defpos = wr.cx.Fix(x._defpos);
@@ -185,7 +183,10 @@ namespace Pyrrho.Level2
             _prev = rdr.Prev(_defpos) ?? _defpos;
             prev = (Domain)(rdr.context._Ob(_prev)??Domain.Content);
             dataType = prev;
+            hierCols = prev.HierarchyCols(rdr.context);
             base.Deserialise(rdr);
+            dataType = ((Table)prev)._PathDomain(rdr.context);
+            rdr.context.db += dataType;
         }
         public override long Affects => defpos;
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -236,9 +237,16 @@ namespace Pyrrho.Level2
         internal override DBObject Install(Context cx)
         {
             var fix = CTree<long, bool>.Empty;
-            var r = (Domain)base.Install(cx);
+            var r = base.Install(cx);
             if (dataType is not Table st)
                 throw new PEException("PE408205");
+            // If there is a new under for our columns, update them
+            if (cx.db.objects[_defpos] is Table tg)
+                for (var b = tg.representation?.First(); b != null; b = b.Next())
+                    if (cx.db.objects[b.key()] is TableColumn tc && tc.tabledefpos == _defpos)
+                        for (var c = under.First(); c != null; c = c.Next())
+                            if (c.key().defpos > tc.defpos)
+                                cx.db += (tc + (TableColumn._Table, c.key().defpos));
             var oi = dataType.infos[cx.role.defpos] ?? new ObInfo(name, Grant.AllPrivileges);
             // To make things easier we consider the merging of columns in two stages,
             // first deal with where our new columns match columns in the hierarchy
@@ -271,6 +279,12 @@ namespace Pyrrho.Level2
                         }
                     // under and dataType may have changed
                     dataType = (UDType)(cx.db.objects[dataType.defpos] ?? Domain.TypeSpec);
+                    if (uD is EdgeType gu && cx.db.objects[_defpos] is EdgeType ge)
+                    {
+                        var eo = cx.db.edgeEnds[gu.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
+                        var ee = cx.db.edgeEnds[ge.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
+                        cx.db += (Database.EdgeEnds, cx.db.edgeEnds + (uD.defpos, eo + ee));
+                    }
                     oi = dataType.infos[cx.role.defpos] ?? oi;
                     var ps = ((UDType)dataType).HierarchyRepresentation(cx);
                     var rt = BList<long?>.Empty;
@@ -365,6 +379,15 @@ namespace Pyrrho.Level2
                         dataType += (Domain.Under, under - uD + (un, true));
                     }
                 }
+            if (cx.db.objects[_defpos] is EdgeType th && th.leaveCol >= 0 && th.arriveCol >= 0 && under.First()?.key() is EdgeType u)
+            {
+                var ee1 = cx.db.edgeEnds[th.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
+                var ee2 = ee1[th.leaveCol] ?? BTree<long, long?>.Empty;
+                cx.db += (u + (EdgeType.LeaveCol, th.leaveCol) + (EdgeType.ArriveCol, th.arriveCol) +
+                    (Table.TableRows,u.tableRows + th.tableRows));
+                cx.db += (Database.EdgeEnds, cx.db.edgeEnds +
+                    (u.defpos, ee1 + (th.leaveCol, ee2 + (th.arriveCol, u.defpos))));
+            }
             // record our new dataType
             cx.db += (dataType.defpos, dataType);
             return dataType;

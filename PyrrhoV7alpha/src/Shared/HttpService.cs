@@ -5,8 +5,8 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
-// NB: this file contains some code derived from W3Schools (c) 1999-2024 Refsnes Data under fair use
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// NB: this file contains some code derived from W3Schools (c) 1999-2023 Refsnes Data under fair use
 // (As an alternative, use windows.alert line commented out below and change
 // TNode.Summary() in Graph.cs to use \\n instead of <br/>)
 //
@@ -234,7 +234,7 @@ namespace Pyrrho
     /// </summary>
     internal class HtmlWebOutput : PyrrhoWebOutput
     {
-        CTree<Sqlx,TypedValue> chartType = CTree<Sqlx,TypedValue>.Empty;
+        CTree<Qlx,TypedValue> chartType = CTree<Qlx,TypedValue>.Empty;
         long xcol= 0;
         long ycol = 0;
         long ccol = 0;
@@ -263,7 +263,7 @@ namespace Pyrrho
             var fm = rs as TableRowSet ?? cx.obs[rs.source] as TableRowSet;
             var om = tr.objects[fm?.target??-1L] as DBObject;
             var psr = new Parser(cx, query);
-            chartType = psr.ParseMetadata(Sqlx.TABLE);
+            chartType = psr.ParseMetadata(Qlx.TABLE);
             var mi = om?.infos[tr.role.defpos];
             if (mi is not null && om is not null && om.defpos > 0)
             {
@@ -272,38 +272,38 @@ namespace Pyrrho
                     sbuild.Append(mi.description);
             }
             var oi = fm?.rowType;
-            if (chartType != CTree<Sqlx, TypedValue>.Empty && !chartType.Contains(Sqlx.NODE))
+            if (chartType != CTree<Qlx, TypedValue>.Empty && !chartType.Contains(Qlx.NODE))
             {
                 for (var co = oi?.First(); co != null; co = co.Next())
                     if (co.value() is long p)
                     {
                         var cp = (cx.obs[p] is SqlCopy sc) ? sc.copyFrom : p;
                         var ci = cx._Ob(cp)?.infos[cx.role.defpos];
-                        if ((chartType[Sqlx.X] is TChar xc && xc.value == ci?.name)
-                            || ci?.metadata.Contains(Sqlx.X) == true)
+                        if ((chartType[Qlx.X] is TChar xc && xc.value == ci?.name)
+                            || ci?.metadata.Contains(Qlx.X) == true)
                         {
                             xcol = p;
                             xdesc = ci.description;
                         }
-                        if ((chartType[Sqlx.Y] is TChar yc && yc.value == ci?.name)
-                            || ci?.metadata.Contains(Sqlx.Y) == true)
+                        if ((chartType[Qlx.Y] is TChar yc && yc.value == ci?.name)
+                            || ci?.metadata.Contains(Qlx.Y) == true)
                         {
                             ycol = p;
                             ydesc = ci.description;
                         }
-                        if (chartType.Contains(Sqlx.CAPTION))
+                        if (chartType.Contains(Qlx.CAPTION))
                             ccol = cp;
                     }
                 if ((xcol == 0) && (ycol == 0))
-                    chartType = CTree<Sqlx, TypedValue>.Empty;
+                    chartType = CTree<Qlx, TypedValue>.Empty;
             }
-            if (chartType != CTree<Sqlx, TypedValue>.Empty)
+            if (chartType != CTree<Qlx, TypedValue>.Empty)
             {
                 var wd = 210;
-                if (chartType.Contains(Sqlx.LEGEND))
+                if (chartType.Contains(Qlx.LEGEND))
                     wd = 310;
                 var hd = 210;
-                if (chartType.Contains(Sqlx.NODE))
+                if (chartType.Contains(Qlx.NODE))
                 {
                     wd = 2010; hd = 1810;
                     sbuild.Append("<canvas id=\"myCanvas\" width=\"" + wd + "\" height=\"" + hd +"\""
@@ -338,11 +338,11 @@ namespace Pyrrho
         public override void PutRow(Context _cx, Cursor e)
         {
             var dt = e.dataType;
-            if (chartType.Contains(Sqlx.NODE) 
+            if (chartType.Contains(Qlx.NODE) 
                 && e is TableRowSet.TableCursor tc && tc._rec is TableRow tr
                 && tc._table is NodeType nt)
             {
-                var (li,ts) = NodeType.NodeTable(_cx, new Level5.TNode(_cx, nt, tr));
+                var (li,ts) = NodeType.NodeTable(_cx, nt.Node(_cx, tr));
                 var bl = CTree<int,NodeType>.Empty;
                 for (var b = ts.First(); b != null; b = b.Next())
                     bl += (b.value(),b.key());
@@ -364,7 +364,7 @@ namespace Pyrrho
                         comma = ",\r\n";
                     }
             } else
-            if (chartType!=CTree<Sqlx,TypedValue>.Empty)
+            if (chartType!=CTree<Qlx,TypedValue>.Empty)
             {
                 sbuild.Append(comma+"[");
                 var rc = e[xcol];
@@ -372,7 +372,7 @@ namespace Pyrrho
                 if (rc != null)
                 {
                     s+= GetVal(rc);
-                    if (rc.dataType.kind == Sqlx.CHAR)
+                    if (rc.dataType.kind == Qlx.CHAR)
                         s = "\"" + s + "\"";
                 }
                 sbuild.Append(s + "," + GetVal(e[ycol]));
@@ -397,12 +397,12 @@ namespace Pyrrho
         }
         public override void Footer()
         {
-            if (chartType.Contains(Sqlx.NODE))
+            if (chartType.Contains(Qlx.NODE))
             {
                 GraphModelSupport();
                 return;
             }
-            if (chartType!=CTree<Sqlx,TypedValue>.Empty)
+            if (chartType!=CTree<Qlx,TypedValue>.Empty)
             {
                 sbuild.Append("     ];           var pt = obs[0];\r\n");
                 sbuild.Append("    // first find obs window\r\n");
@@ -419,7 +419,7 @@ namespace Pyrrho
                 sbuild.Append("    }\r\n");
                 sbuild.Append("    // next sort out axes\r\n");
                 sbuild.Append("    var xd = axisd(minX, maxX);\r\n");
-                if (chartType.Contains(Sqlx.HISTOGRAM))
+                if (chartType.Contains(Qlx.HISTOGRAM))
                 {
                     sbuild.Append("    minY=0; \r\n");
                 }
@@ -428,13 +428,13 @@ namespace Pyrrho
                 sbuild.Append("    maxY = yd*Math.round(maxY*1.0/yd+1.5);\r\n");
                 sbuild.Append("    var wid = canvas.width - 40;\r\n");
                 sbuild.Append("    var hig = canvas.height - 30;\r\n"); 
-                if (chartType!=CTree<Sqlx,TypedValue>.Empty)
+                if (chartType!=CTree<Qlx,TypedValue>.Empty)
                 {
                     sbuild.Append("    var scx = (maxX == minX) ? 1 : wid / (maxX - minX);\r\n");
                     sbuild.Append("    var scy = (maxY == minY) ? 1 : hig / (maxY - minY);\r\n");
                     sbuild.Append("    var colours = new Array();\r\n");
                 }
-                if (chartType.Contains(Sqlx.HISTOGRAM))
+                if (chartType.Contains(Qlx.HISTOGRAM))
                 {
                         sbuild.Append("    pickColours(obs.length); drawAxes();\r\n");
                         sbuild.Append("    drawYmarks(); drawHistogram(); \r\n");
@@ -446,7 +446,7 @@ namespace Pyrrho
                         sbuild.Append("         ctx.fillRect(30+w/2+i*w+i*w,trY(pt[1]),w,170-trY(pt[1]));\r\n");
                         sbuild.Append("        }\r\n"); 
                         sbuild.Append("     }\r\n");
-              //          if (chartType.Has(Sqlx.LEGEND))
+              //          if (chartType.Has(Qlx.LEGEND))
               //          {
                             sbuild.Append("    drawXCaptions();\r\n");
                             sbuild.Append("    function drawXCaptions() {\r\n");
@@ -457,7 +457,7 @@ namespace Pyrrho
                             sbuild.Append("       }\r\n");
                             sbuild.Append("    }\r\n");
                //         }
-                } else if (chartType.Contains(Sqlx.LINE))
+                } else if (chartType.Contains(Qlx.LINE))
                 {
                         sbuild.Append("    drawAxes();drawYmarks(); drawXmarks(); drawLineGraph();\r\n");
                         sbuild.Append("    function drawLineGraph() {\r\n");
@@ -465,7 +465,7 @@ namespace Pyrrho
                         sbuild.Append("      pt = obs[0];\r\n");
                         sbuild.Append("      ctx.beginPath();\r\n");
                         sbuild.Append("      ctx.moveTo(trX(pt[0]), trY(pt[1]));\r\n");
-                        if (chartType.Contains(Sqlx.LEGEND))
+                        if (chartType.Contains(Qlx.LEGEND))
                         {
                             sbuild.Append("      if (pt.length > 2)\r\n");
                             sbuild.Append("        ctx.fillText(pt[2], trX(pt[0]), trY(pt[1]));\r\n");
@@ -473,7 +473,7 @@ namespace Pyrrho
                         sbuild.Append("      for (i = 1; i < obs.length; i++) {\r\n");
                         sbuild.Append("        pt = obs[i];\r\n");
                         sbuild.Append("        ctx.lineTo(trX(pt[0]), trY(pt[1]));\r\n");
-                        if (chartType.Contains(Sqlx.LEGEND))
+                        if (chartType.Contains(Qlx.LEGEND))
                         {
                             sbuild.Append("        if (pt.length > 2)\r\n");
                             sbuild.Append("            ctx.fillText(pt[2], trX(pt[0]), trY(pt[1]));\r\n");
@@ -482,7 +482,7 @@ namespace Pyrrho
                         sbuild.Append("     ctx.lineWidth = 1.5;\r\n");
                         sbuild.Append("     ctx.stroke();\r\n");
                         sbuild.Append("    }\r\n");
-                } else if (chartType.Contains(Sqlx.POINTS))
+                } else if (chartType.Contains(Qlx.POINTS))
                 {
                         sbuild.Append("    drawAxes(); drawYmarks(); drawXmarks(); drawPoints();\r\n");
                         sbuild.Append("    function drawPoints() {\r\n");
@@ -490,14 +490,14 @@ namespace Pyrrho
                         sbuild.Append("         pt = obs[i];\r\n");
                         sbuild.Append("         ctx.fillStyle=\"red\";\r\n");
                         sbuild.Append("         ctx.fillRect(trX(pt[0])-1,trY(pt[1])-1,3,3);\r\n");
-                        if (chartType.Contains(Sqlx.LEGEND))
+                        if (chartType.Contains(Qlx.LEGEND))
                         {
                             sbuild.Append("         ctx.fillStyle=\"black\";\r\n");
                             sbuild.Append("         ctx.fillText(pt[2],trX(pt[0])-1,trY(pt[1])-8);\r\n");
                         }
                         sbuild.Append("       }\r\n");
                         sbuild.Append("    }\r\n");
-                } else if(chartType.Contains(Sqlx.PIE))
+                } else if(chartType.Contains(Qlx.PIE))
                 {
                         sbuild.Append("    pickColours(obs.length); drawPie(); \r\n");
                         sbuild.Append("    function drawPie() {\r\n");
@@ -512,7 +512,7 @@ namespace Pyrrho
                         sbuild.Append("         ctx.fillStyle=colours[i];\r\n");
                         sbuild.Append("         ctx.fill();\r\n");
                         sbuild.Append("         var m = (ang+nang)/2;\r\n");
-                        if (chartType.Contains(Sqlx.LEGEND))
+                        if (chartType.Contains(Qlx.LEGEND))
                         {
                             sbuild.Append("         ctx.fillStyle = \"black\";\r\n");
                             sbuild.Append("         ctx.fillText(pt[2],80+50*Math.cos(m),100+50*Math.sin(m));\r\n");
@@ -521,7 +521,7 @@ namespace Pyrrho
                         sbuild.Append("        }\r\n");
                         sbuild.Append("      }\r\n");
                 }
-                if(chartType.Contains(Sqlx.LEGEND))
+                if(chartType.Contains(Qlx.LEGEND))
                 {
                     sbuild.Append("    drawLegend();\r\n");
                     sbuild.Append("    function drawLegend() {\r\n");
@@ -534,7 +534,7 @@ namespace Pyrrho
                     sbuild.Append("        }\r\n");
                     sbuild.Append("      }\r\n");               
                 }
-                if (chartType!=CTree<Sqlx,TypedValue>.Empty && !chartType.Contains(Sqlx.PIE))
+                if (chartType!=CTree<Qlx,TypedValue>.Empty && !chartType.Contains(Qlx.PIE))
                 {
                     sbuild.Append("    function drawAxes() {\r\n");
                     sbuild.Append("      ctx.beginPath();\r\n");
@@ -560,7 +560,7 @@ namespace Pyrrho
                     sbuild.Append("        ctx.fillText(Math.round(v), 15, y);\r\n");
                     sbuild.Append("    }\r\n");
                 }
-                if(chartType.Contains(Sqlx.POINTS)||chartType.Contains(Sqlx.LINE))
+                if(chartType.Contains(Qlx.POINTS)||chartType.Contains(Qlx.LINE))
                 {
                     sbuild.Append("    function drawXmarks() {\r\n");
                     sbuild.Append("    // draw axis marks\r\n");
@@ -688,7 +688,7 @@ namespace Pyrrho
             sbuild.Append("    function hideModal() {document.getElementById(\"modalBox\").style.display=\"none\"; }\r\n");
             sbuild.Append(" </script>");
             sbuild.Append("<!--  The following code is almost entirely pasted from w3schools.com \r\n");
-            sbuild.Append("    and is (c)1999-2024 Refsnes Data. Its use in Pyrrho is covered by Fair Use\r\n");
+            sbuild.Append("    and is (c)1999-2023 Refsnes Data. Its use in Pyrrho is covered by Fair Use\r\n");
             sbuild.Append("    since Pyrrho is a free-to-use-and-copy research project\r\n");
             sbuild.Append("    If you copy code from here you should ensure that your use is also fair -->\r\n");
             sbuild.Append("<style>\r\nbody {font-family: Arial, Helvetica, sans-serif;}\r\n\r\n");
@@ -768,7 +768,7 @@ namespace Pyrrho
             var rt = e.columns;
             var doc = TDocument.Null;
             for (var b = rt.First(); b != null && b.key()<rs.display; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is SqlValue ci && e[ci.defpos] is TypedValue tv)
+                if (b.value() is long p && cx.obs[p] is QlValue ci && e[ci.defpos] is TypedValue tv)
                 {
                     var n = ci.alias ?? ci.NameFor(cx);
                     if (n == "")

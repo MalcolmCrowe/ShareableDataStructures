@@ -2784,13 +2784,13 @@ namespace Pyrrho.Level4
             }
             return t;
         }
-        internal TypedValue? Node(Domain? dm,long lI)
+        internal TypedValue? Node(Domain? dm, long lI)
         {
             dm = db.objects[dm?.defpos ?? -1L] as Domain;
             if (dm is EdgeType et && et.tableRows[lI] is TableRow tr)
-                return new TEdge(this,tr);
+                return et.Node(this, tr);
             if (dm is NodeType nt && nt.tableRows[lI] is TableRow tn)
-                return new TNode(this, tn);
+                return nt.Node(this, tn);
             return TNull.Value;
         }
     }

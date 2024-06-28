@@ -857,9 +857,9 @@ namespace Pyrrho.Level1
                 var sb = new StringBuilder();
                 var cm = "";
                 for (var b = rec.First(); b != null; b = b.Next())
-                    for (var c = b.value().tabledefpos.First(); c != null; c = c.Next())
-                        if (cx._Ob(c.key()) is DBObject ob && ob.infos[ro.defpos] is ObInfo md &&
-                                md.metadata.Contains(Qlx.ENTITY))
+                    if (cx.db.objects[b.value().tabledefpos] is Domain rd) {
+                        if (rd.nodeTypes.Count==0 && rd.infos[ro.defpos] is ObInfo od &&
+                            od.metadata.Contains(Qlx.ENTITY))
                         {
                             var tr = b.value();
                             sb.Append(cm); cm = ",";
@@ -870,6 +870,21 @@ namespace Pyrrho.Level1
                             sb.Append('/');
                             sb.Append(tr.ppos);
                         }
+                        for (var c = rd?.nodeTypes.First();
+                            c != null; c = c.Next())
+                            if (c.key() is DBObject ob && ob.infos[ro.defpos] is ObInfo md &&
+                                    md.metadata.Contains(Qlx.ENTITY))
+                            {
+                                var tr = b.value();
+                                sb.Append(cm); cm = ",";
+                                sb.Append('/');
+                                sb.Append(tr.tabledefpos);
+                                sb.Append('/');
+                                sb.Append(tr.defpos);
+                                sb.Append('/');
+                                sb.Append(tr.ppos);
+                            }
+                    }
                 rc = sb.ToString();
             }
             return (rb._Rvv(cx).ToString(),rc);
