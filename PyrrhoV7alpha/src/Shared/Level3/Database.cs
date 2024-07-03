@@ -147,7 +147,7 @@ namespace Pyrrho.Level3
             EdgeEnds = -238, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType by defpos,leaving,arriving
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
-            JoinedNodeTypes = -430,// BTree<CTree<long,bool>,long?> JoinedNodeType
+            JoinedNodes = -430,// CTree<long,CTree<Domain,bool>> JoinedNodeType
             KeyLabels = -461, // BTree<CTree<string,bool>,long?> NodeType 
             LastModified = -279, // DateTime
             Leaving = -466, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
@@ -210,8 +210,8 @@ namespace Pyrrho.Level3
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
-        internal BTree<CTree<long,bool>,long?> joinedNodeTypes =>
-            (BTree<CTree<long,bool>,long?>)(mem[JoinedNodeTypes] ?? BTree<CTree<long,bool>,long?>.Empty);  
+        internal CTree<long,CTree<Domain,bool>> joinedNodes =>
+            (CTree<long, CTree<Domain, bool>>)(mem[JoinedNodes] ?? CTree<long, CTree<Domain, bool>>.Empty);  
         internal static Role schemaRole;
         internal static Role guestRole;
         /// <summary>

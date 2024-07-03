@@ -11261,41 +11261,39 @@ cx.obs[high] is not QlValue hi)
             if (cx.binding[idValue] is TNode ni && ni.id.CompareTo(n.id)!=0)
                 return false;
             cx.values += n.tableRow.vals;
-            if (n.dataType.infos[cx.role.defpos] is ObInfo oi)
-            {
-                for (var b = docValue?.First(); b != null; b = b.Next())
-                    if (b.key() is string k)
+            var ns = n.Names(cx);
+            for (var b = docValue?.First(); b != null; b = b.Next())
+                if (b.key() is string k)
+                {
+                    if (!ns.Contains(k))
+                        return false;
+                    if (ns[k].Item2 is long e && !n.tableRow.vals.Contains(e))
+                        return false;
+                    if (b.value().Eval(cx) is TypedValue xv && xv is not TArray)
                     {
-                        if (!oi.names.Contains(k))
-                            return false;
-                        if (oi.names[k].Item2 is long e && !n.tableRow.vals.Contains(e))
-                            return false;
-                        if (b.value().Eval(cx) is TypedValue xv && xv is not TArray)
+                        if (xv is TGParam tg)
                         {
-                            if (xv is TGParam tg)
-                            {
-                                if (state.Contains(tg.uid) || cx.binding[tg.uid] is not TypedValue vv)
-                                    continue;
-                                xv = vv;
-                            }
-                            switch (k)
-                            {
-                                //          case "ID":
-                                //          case "LEAVING":
-                                //          case "ARRIVING":  // no need
-                                //              break;
-                                case "SPECIFICTYPE":
-                                    if (!n.dataType.Match(xv.ToString()))
-                                        return false;
-                                    break;
-                                default:
-                                    if (oi.names[k].Item2 is long d && xv.CompareTo(n.tableRow.vals[d]) != 0)
-                                        return false;
-                                    break;
-                            }
+                            if (state.Contains(tg.uid) || cx.binding[tg.uid] is not TypedValue vv)
+                                continue;
+                            xv = vv;
+                        }
+                        switch (k)
+                        {
+                            //          case "ID":
+                            //          case "LEAVING":
+                            //          case "ARRIVING":  // no need
+                            //              break;
+                            case "SPECIFICTYPE":
+                                if (!n.dataType.Match(xv.ToString()))
+                                    return false;
+                                break;
+                            default:
+                                if (ns[k].Item2 is long d && xv.CompareTo(n.tableRow.vals[d]) != 0)
+                                    return false;
+                                break;
                         }
                     }
-            }
+                }
             for (var b = search.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is QlValue se)
                 {

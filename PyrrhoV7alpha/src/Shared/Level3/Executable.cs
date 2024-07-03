@@ -1,4 +1,5 @@
 using System.Text;
+using System.Text.Json.Serialization.Metadata;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -4939,8 +4940,16 @@ MatchStatement.Step n) : Step(n.ms)
                 ds += (xn.defpos, pd.tableRow);
             //    else if (xn.Eval(cx) is TNode nn)
             //        ds += (xn.defpos, nn.tableRow);
-            else
-            if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos
+            else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj)
+            {
+                for (var b = dj.First(); b != null; b = b.Next())
+                    if (b.key() is EdgeType je  && ((tok == Qlx.ARROWBASE) ?
+                        (cx.db.objects[je.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[je.arriveCol] as TInt)
+                      : (cx.db.objects[je.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[je.leaveCol] as TInt))// this node will match with xn
+                                       is TableRow jn)
+                        ds += (jn.defpos, jn);
+            } 
+            else if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos
                 && ((tok == Qlx.ARROWBASE) ?
                 (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
                 : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
@@ -5010,11 +5019,11 @@ MatchStatement.Step n) : Step(n.ms)
                     }
                 // case 2: pn has no primary index: follow the above logic for sysRefIndexes instead
                 var la = truncating.Contains(Domain.EdgeType.defpos) ? truncating[Domain.EdgeType.defpos].Item1 : int.MaxValue;
-                for (var b = pn.sindexes[pd.id.ToLong()??-1L]?.First(); b != null; b = b.Next())
+                for (var b = pn.sindexes[pd.id.ToLong() ?? -1L]?.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is TableColumn cc
                         && cx.db.objects[cc.tabledefpos] is EdgeType rt
                         && rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
-                        && (ne=="" || nx=="" || ne==nx)
+                        && (ne == "" || nx == "" || ne == nx)
                         && b.value() is CTree<long, bool> pt)
                         for (var c = pt.First(); c != null; c = c.Next())
                         {
@@ -5040,7 +5049,7 @@ MatchStatement.Step n) : Step(n.ms)
                                        && dt.tableRows[c.key()] is TableRow dr && lm-- > 0 && la-- > 0)
                                         ds += (dr.defpos, dr);
                         }
-            alldone:;
+                    alldone:;
             }
             else // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
                 ds = xn.For(cx, this, xn, ds);
@@ -5125,6 +5134,7 @@ MatchStatement.Step n) : Step(n.ms)
             var ot = pa;
             TNode? dn = null;
             var ns = bn.nodes;
+            ABookmark<Domain, bool>? db = null;
             while (ns is not null)
             {
                 step = ++_step;
@@ -5146,29 +5156,40 @@ MatchStatement.Step n) : Step(n.ms)
                 }
                 else
                 {
-                    /*                    var ts = CTree<long,bool>.Empty;
-                                        var dx = bn.xn.domain;
-                                        var pt = pd?.dataType;
-                                        var et = (pt is EdgeType qt)? (cx.db.objects[(tok == Qlx.ARROWBASE) ? qt.arrivingType : qt.leavingType])
-                                            : dx;
-                                        dn = (?.Node(cx, tr)??throw new PEException("PE90501");*/
-                    var dt = cx.db.objects[tr.tabledefpos] as NodeType;
-                    dn = (dt is EdgeType et) ? new TEdge(cx, tr) : new TNode(cx, tr);
+                    var dt = cx.db.objects[tr.tabledefpos] as NodeType??throw new PEException("PE70704");
+                    db = cx.db.joinedNodes[tr.defpos]?.First();
+                    var oc = cx.binding;
+                LoopB:
+                    if (db?.key() is NodeType dj)
+                        dt = dj;
+                    dn = dt.Node(cx, tr);
+                    if (dn?.tableRow is TableRow rw && rw.tabledefpos != dt.defpos
+                        && cx.db.joinedNodes[tr.defpos]?.Contains(dt) == true)
+                        dn = new TNode(cx,new TableRow(rw.defpos, rw.ppos, dt.defpos, rw.vals));
+                    if (dn is null)
+                        goto another;
                     if (bn.alt.mode == Qlx.TRAIL && dn is TEdge && pa?.Contains(dn) == true)
-                        goto backtrack;
+                        goto another;
                     if (bn.alt.mode == Qlx.ACYCLIC && dn is TNode && pa?.Contains(dn) == true)
-                        goto backtrack;
+                        goto another;
                     if ((bn.alt.mode == Qlx.SHORTEST || bn.alt.mode == Qlx.SHORTESTPATH)
                             && !Shortest(bn, cx))
-                        goto backtrack;
+                        goto another;
                     if (pa is not null && dn != pd)
                         cx.paths += (bn.alt.defpos, pa + (cx,dn));
                     DoBindings(cx, bn.alt.defpos, bn.xn, dn);
                     if (!bn.xn.CheckProps(cx, dn))
-                        goto backtrack;
+                        goto another;
                     if (dn is TEdge de && pd is not null
                         && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
-                        goto backtrack;
+                        goto another;
+                    goto next;
+                another:
+                    db = db?.Next();
+                    cx.binding = oc;
+                    if (db!= null)
+                        goto LoopB;
+                    goto backtrack;
                 }
             next:
                 bn.next.Next(cx, null, (tok == Qlx.WITH) ? Qlx.Null : tok, bn.xn, dn);
@@ -5278,7 +5299,11 @@ MatchStatement.Step n) : Step(n.ms)
                                     tv = (te is null || er is null) ? TNull.Value : te.Node(cx, er);
                                     break;
                                 }
-                            case -(int)Qlx.TYPE: tv = new TChar(nt.name); break;
+                            case -(int)Qlx.TYPE: //tv = new TChar(nt.name); break;
+                                {
+                                    tv = new TChar(SubType(cx, nt, dn).name);
+                                    break;
+                                }
                         }
                         if (tv != TNull.Value && !cx.role.dbobjects.Contains(tg.value))
                         {
@@ -5294,6 +5319,13 @@ MatchStatement.Step n) : Step(n.ms)
                 }
                 cx.binding = bi;
             }
+        }
+        static NodeType SubType(Context cx,NodeType nt,TNode dn)
+        {
+            for (var b = nt.subtypes.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is NodeType st && st.tableRows.Contains(dn.defpos))
+                    return SubType(cx, st, dn);
+            return nt;
         }
         // implement an algorithn for SHORTEST
         bool Shortest(Step st,Context cx)

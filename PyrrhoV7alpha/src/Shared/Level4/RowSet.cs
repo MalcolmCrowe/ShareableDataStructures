@@ -83,7 +83,6 @@ namespace Pyrrho.Level4
             SIMap = -214, // BTree<long,long?> TableColumn,QlValue
             _Scalar = -206, // bool
             _Source = -151, // long RowSet
-            Static = -152, // RowSet (defpos for STATIC)
             Stem = -211, // CTree<long,bool> RowSet 
             Target = -153, // long (a table or view for simple IDU ops)
             _Where = -190, // CTree<long,bool> Boolean conditions to be imposed by this query

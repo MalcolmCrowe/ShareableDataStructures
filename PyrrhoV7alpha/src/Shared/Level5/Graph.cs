@@ -120,7 +120,7 @@ namespace Pyrrho.Level5
             if (id is null)
                 return null;
             if (Get(cx, id) is TableRow rt)
-                return rt;
+                return new TableRow(rt.defpos,rt.ppos,defpos,rt.vals);
             for (var t = super.First(); t != null; t = t.Next())
                 if (t.key() is NodeType nt && nt.Get(cx, id) is TableRow tr)
                     return tr;
@@ -191,6 +191,10 @@ namespace Pyrrho.Level5
                         return ub.SuperWith(cx, p);
                 }
             return null;
+        }
+        internal virtual TNode Node(Context cx, TableRow r)
+        {
+            return new TNode(cx, r);
         }
         internal CTree<long,bool> Props()
         {
@@ -372,12 +376,15 @@ namespace Pyrrho.Level5
             if (label != GqlLabel.Empty)
                 return label.For(cx, ms, xn, ds);
             ds ??= BTree<long, TableRow>.Empty;
+            for (var b = cx.db.joinedNodes.First(); b != null; b = b.Next())
+                if (b.value().Contains(this) && tableRows[b.key()] is TableRow tr)
+                    ds += (cx.GetUid(),new TableRow(tr.defpos, tr.ppos, defpos, tr.vals));
             if (defpos < 0)
             {
                 if (kind == Qlx.NODETYPE) // We are Domain.NODETYPE itself: do this for all nodetypes in the role
                 {
                     for (var b = cx.db.role.nodeTypes.First(); b != null; b = b.Next())
-                        if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
+                        if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1 && nt1.kind==kind)
                             ds = nt1.For(cx, ms, xn, ds);
                     for (var b = cx.db.unlabelledNodeTypes.First(); b != null; b = b.Next())
                         if (b.value() is long p2 && p2>=0 && cx.db.objects[p2] is NodeType nt2)
@@ -386,7 +393,7 @@ namespace Pyrrho.Level5
                 if (kind == Qlx.EDGETYPE) // We are Domain.EDGETYPE itself: do this for all edgetypes in the role
                 {
                     for (var b = cx.db.role.edgeTypes.First(); b != null; b = b.Next())
-                        if (b.value() is long p1 && cx.db.objects[p1] is NodeType nt1)
+                        if (b.value() is long p1 && cx.db.objects[p1] is EdgeType nt1)
                             ds = nt1.For(cx, ms, xn, ds);
                     for (var b = cx.db.edgeEnds.First(); b != null; b = b.Next())
                         for (var c = b.value().First(); c != null; c = c.Next())
@@ -2022,6 +2029,10 @@ namespace Pyrrho.Level5
             }
             return et ?? throw new DBException("42105");
         }
+        internal override TNode Node(Context cx, TableRow r)
+        {
+            return new TEdge(cx, r);
+        }
         internal override Table _PathDomain(Context cx)
         {
             var rt = rowType;
@@ -2362,6 +2373,12 @@ namespace Pyrrho.Level5
         {
             return nodeTypes;
         }
+        internal override TNode Node(Context cx, TableRow r)
+        {
+            if (cx.db.joinedNodes.Contains(r.defpos))
+                return new TJoinedNode(cx, r);
+            return base.Node(cx, r);
+        }
         public override string ToString()
         {
             var sb = new StringBuilder("JoinedNodeType");
@@ -2623,6 +2640,10 @@ namespace Pyrrho.Level5
             if (obj is not TNode that) return 1;
             return tableRow.defpos.CompareTo(that.tableRow.defpos);
         }
+        internal virtual BTree<string,(int,long?)> Names(Context cx)
+        {
+            return dataType.infos[cx.role.defpos]?.names ?? BTree<string, (int, long?)>.Empty;
+        }
         public override string ToString()
         {
             return "TNode "+DBObject.Uid(defpos)+"["+ DBObject.Uid(dataType.defpos)+"]";
@@ -2637,6 +2658,23 @@ namespace Pyrrho.Level5
         public override string ToString()
         {
             return "TEdge " + DBObject.Uid(defpos) + "[" + DBObject.Uid(dataType.defpos) + "]";
+        }
+    }
+    internal class TJoinedNode : TNode
+    {
+        public CTree<Domain, bool>? nodeTypes => (dataType as JoinedNodeType)?.nodeTypes; 
+        internal TJoinedNode(Context cx,TableRow tr) : base(cx, tr) { }
+        internal override BTree<string, (int, long?)> Names(Context cx)
+        {
+            var r = BTree<string, (int, long?)>.Empty;
+            for (var b = cx.db.joinedNodes[defpos]?.First(); b != null; b = b.Next())
+                if (b.key() is NodeType nt && nt.infos[cx.role.defpos] is ObInfo oi)
+                    r += oi.names;
+            return r;
+        }
+        public override string ToString()
+        {
+            return "TJoinedNode " + DBObject.Uid(defpos) + "[" + dataType + "]";
         }
     }
     /// <summary>

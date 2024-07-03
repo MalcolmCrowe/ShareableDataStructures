@@ -439,6 +439,7 @@ namespace Pyrrho.Level2
                 }
                 else if (now.vals.Count == 0)
                     tt = nt + (TrivialRowSet.Singleton, new TRow(nt, now.vals));
+                cx.db += tt;
             }
             return (Table)cx.Add(tt);
         }
@@ -650,13 +651,24 @@ namespace Pyrrho.Level2
         {
             return new Record4(this,wr);
         }
-        internal override Table AddRow(Table tt, TableRow now, Context cx)
+        internal override DBObject? Install(Context cx)
         {
-            var r = tt;
-            for (var b = supTables.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key()] is Table t)
-                    r = base.AddRow(t, now, cx);
-            return r;
+            Table? r = null;
+            var ts = extraTables + (tabledefpos, true);
+            var jt = CTree<Domain, bool>.Empty;
+            for (var b = ts.First(); b != null; b = b.Next())
+            {
+                if (cx._Ob(b.key()) is not Table tb || tb.infos[tb.definer] is not ObInfo oi)
+                    throw new PEException("PE0301");
+                var now = Now(cx);
+                cx = Add(cx, tb, now);
+                jt += (tb, true);
+                r = tb;
+            }
+            cx.db += (Database.JoinedNodes, cx.db.joinedNodes + (defpos, jt));
+            if (cx.db.mem.Contains(Database.Log))
+                cx.db += (Database.Log, cx.db.log + (ppos, type));
+            return r ?? throw new PEException("PE0302");
         }
         public override void Deserialise(Reader rdr)
         {
