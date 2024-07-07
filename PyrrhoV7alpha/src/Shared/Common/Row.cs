@@ -1228,6 +1228,14 @@ namespace Pyrrho.Common
                 dt.representation + (k, new Domain(-1L,Qlx.ARRAY, v.dataType)), dt.rowType + k)),
                 p.values + (k, v));
         }
+        internal bool HasNode(TNode n)
+        {
+            if (values[0] is TArray ta)
+                for (var i = 0; i < ta.Length; i++)
+                    if (ta[i] is TNode x && x.defpos == n.defpos)
+                        return true;
+            return false;
+        }
         internal override TypedValue this[int i] => ((TArray)this[0L])?[i]??TNull.Value;
         public override string ToString()
         {

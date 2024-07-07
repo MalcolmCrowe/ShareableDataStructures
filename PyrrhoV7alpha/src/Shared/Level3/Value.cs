@@ -1664,7 +1664,7 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue _Eval(Context cx)
         {
-            if (cx.values[target] is TNode tt &&
+            if ((cx.values[target]??cx.binding[target]) is TNode tt &&
                 tt.dataType.infos[cx.role.defpos]?.names[name ?? ""].Item2 is long p
                 && tt.tableRow.vals[p] is TypedValue nv)
                 return nv;

@@ -5130,6 +5130,7 @@ MatchStatement.Step n) : Step(n.ms)
         {
             int step;
             var ob = cx.binding;
+            var ov = cx.values;
             var pa = cx.paths[bn.alt.defpos];
             var ot = pa;
             TNode? dn = null;
@@ -5168,9 +5169,9 @@ MatchStatement.Step n) : Step(n.ms)
                         dn = new TNode(cx,new TableRow(rw.defpos, rw.ppos, dt.defpos, rw.vals));
                     if (dn is null)
                         goto another;
-                    if (bn.alt.mode == Qlx.TRAIL && dn is TEdge && pa?.Contains(dn) == true)
+                    if (bn.alt.mode == Qlx.TRAIL && dn is TEdge && pa?.HasNode(dn) == true)
                         goto another;
-                    if (bn.alt.mode == Qlx.ACYCLIC && dn is TNode && pa?.Contains(dn) == true)
+                    if (bn.alt.mode == Qlx.ACYCLIC && dn is TNode && pa?.HasNode(dn) == true)
                         goto another;
                     if ((bn.alt.mode == Qlx.SHORTEST || bn.alt.mode == Qlx.SHORTESTPATH)
                             && !Shortest(bn, cx))
@@ -5201,6 +5202,7 @@ MatchStatement.Step n) : Step(n.ms)
             }
             if (ot is not null)
                 cx.paths += (bn.alt.defpos,ot);
+            cx.values = ov;
             cx.binding = ob;
         }
         static TPath PathInit(Context cx, TPath pa, ABookmark<int, long?> ma, int d)

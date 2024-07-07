@@ -386,7 +386,7 @@ namespace Pyrrho.Level4
                 case Qlx.RETURN:
                     if (procbody)
                         return ParseReturn(xp); // some GQL TBD
-                    goto case Qlx.SELECT;
+                    return ParseCursorSpecification(xp,true);
                 case Qlx.REVOKE: return ParseRevoke();
                 case Qlx.ROLLBACK:
                     Next();
@@ -1842,7 +1842,8 @@ namespace Pyrrho.Level4
                         {
                             gp = new TGParam(gp.uid, gp.value, Domain.PathType, TGParam.Type.Path, dp);
                             lxr.tgs += (pi.iix.dp, gp);
-                            cx.Add(new QlValue(pi, BList<Ident>.Empty, cx, Domain.PathType));
+                            cx.Add(new QlValue(pi, BList<Ident>.Empty, cx, Domain.PathType)
+                                +(DBObject._From,dp));
                             cx.defs += (pi, cx.sD);
                         }
                         Mustbe(Qlx.EQL);
@@ -7351,13 +7352,17 @@ namespace Pyrrho.Level4
         }
         internal RowSet _ParseCursorSpecification(Domain xp, bool ambient = false)
         {
-            if ((!ambient)) // can't test for prevtok==SELECT here!
+            var inced = false;
+            if (!ambient) // can't test for prevtok==SELECT here!
+            {
+                inced = true;
                 cx.IncSD(new Ident(this));
+            }
             RowSet qe;
             qe = ParseRowSetSpec(xp, ambient);
             cx.result = qe.defpos;
             cx.Add(qe);
-            if (!ambient)
+            if (inced)
                 cx.DecSD();
             return qe;
         }
@@ -7630,9 +7635,13 @@ namespace Pyrrho.Level4
 		RowSet ParseQuerySpecification(Domain xp, bool ambient = false)
         {
             var id = new Ident(this);
+            var inced = false;
             Mustbe(Qlx.SELECT, Qlx.RETURN);
-            if ((!ambient)&&lxr.prevtok==Qlx.SELECT)
+            if ((!ambient) && lxr.prevtok == Qlx.SELECT)
+            {
                 cx.IncSD(id);
+                inced = true;
+            }
             var d = ParseDistinctClause();
             var dm = ParseSelectList(id.iix.dp, xp);
             cx.Add(dm);
@@ -7642,7 +7651,7 @@ namespace Pyrrho.Level4
                 Next();
                 Mustbe(Qlx.UPDATE);
             }
-            if (!ambient)
+            if (inced)
                 cx.DecSD(dm, te);
             te = (SelectRowSet?)cx.obs[te.defpos] ?? throw new PEException("PE1967");
             if (d)

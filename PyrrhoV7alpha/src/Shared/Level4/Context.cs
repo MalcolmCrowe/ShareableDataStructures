@@ -198,7 +198,8 @@ namespace Pyrrho.Level4
                 var ix = b.value();
                 if (_Ob(ix.dp) is DBObject ob)
                 {
-                    if (ix.sd < sD && (ob is SqlReview||ob.GetType().Name=="QlValue")) // an undefined identifier from a lower level
+                    if (ix.sd < sD && (ob is SqlReview||
+                        (ob.GetType().Name=="QlValue"&&ob.domain.kind!=Qlx.PATH))) // an undefined identifier from a lower level
                         return (null, n);
                     (r, s) = ob._Lookup(lp, this, n.ident, n.sub, rr);
                     if (r!=ob && r is SqlField)

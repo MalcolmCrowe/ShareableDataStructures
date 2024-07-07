@@ -255,6 +255,8 @@ namespace Pyrrho.Level3
         }
         internal virtual DBObject AddFrom(Context cx, long q)
         {
+            if (from >= 0)
+                return this;
             return cx.Add(this + (_From, q));
         }
         internal CTree<long, TypedValue> Frame(CTree<long, TypedValue> vs)

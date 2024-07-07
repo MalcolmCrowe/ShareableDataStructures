@@ -400,6 +400,7 @@ namespace Pyrrho.Level4
                     && t != Qlx.NUMERIC && t != Qlx.PASSWORD)
                     AddResWd(t);
             AddResWd(Qlx.SET);
+            AddResWd(Qlx.TIMESTAMP);
         }
         static void AddResWd(Qlx t)
         {
