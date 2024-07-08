@@ -431,7 +431,7 @@ namespace Pyrrho.Level3
                 switch (method)
                 {
                     case "POST":
-                        new Parser(cx).ParseSql(sdata);
+                        new Parser(cx).ParseQl(sdata);
                         break;
                 }
             }

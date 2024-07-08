@@ -800,7 +800,9 @@ namespace Pyrrho.Common
             var (cx, i, v) = x;
             if (ar.dataType.elType is not Domain dt)
                 goto bad;
-            if (v is TChar tc 
+            if (dt.kind == Qlx.CHAR && v.dataType.kind!=Qlx.CHAR)
+                v = new TChar(v.ToString());
+            else if (v is TChar tc 
                 && (cx.db.objects[cx.role.dbobjects[tc.value] ?? -1L]as Domain)?.EqualOrStrongSubtypeOf(dt)!=true)
                 goto bad;
             if (v.dataType.EqualOrStrongSubtypeOf(dt))

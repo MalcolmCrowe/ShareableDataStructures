@@ -4478,6 +4478,10 @@ namespace Pyrrho.Level3
         {
             return new MatchStatement(dp, m);
         }
+        public bool Done(Context cx)
+        {
+            return size >= 0 && cx.obs[bindings] is BindingRowSet se && se.rows.Count >= size;
+        }
         /// <summary>
         /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.
         /// The match graphs and the set of TGParams are in this MatchStatement.
@@ -4681,7 +4685,7 @@ namespace Pyrrho.Level3
         /// GraphStep contains the remaining alternative matchexpressions in the MatchStatement.
         /// A GraphStep precedes the final EndStep, but there may be others?
         /// </summary>
-        internal class GraphStep(ABookmark<int, long?>? graphs, MatchStatement.Step n) : Step(n.ms)
+        internal class GraphStep(ABookmark<int, long?>? graphs, Step n) : Step(n.ms)
         {
             internal readonly ABookmark<int, long?>? matchAlts = graphs; // the current place in the MatchStatement
             readonly Step next = n; // the continuation
@@ -4692,7 +4696,7 @@ namespace Pyrrho.Level3
             /// </summary>
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd)
             {
-                if (cx.obs[matchAlts?.value() ?? -1L] is GqlMatch sm)
+                if ((!ms.Done(cx)) && cx.obs[matchAlts?.value() ?? -1L] is GqlMatch sm)
                 {
                     for (var b = sm.matchAlts.First(); b != null; b = b.Next())
                         if (cx.obs[b.value() ?? -1L] is GqlMatchAlt sa)
@@ -4702,7 +4706,7 @@ namespace Pyrrho.Level3
                                 new GraphStep(matchAlts?.Next(), next)), Qlx.Null, null, null);
                         }
                 }
-                else
+                else 
                     next.Next(cx, cn, tok, px, pd);
             }
             public override Step? Cont => next;
@@ -4731,7 +4735,7 @@ namespace Pyrrho.Level3
             /// </summary>
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? pg, TNode? pd)
             {
-                if (matches != null)
+                if ((!ms.Done(cx)) && matches != null)
                     ms.ExpNode(cx, new ExpStep(alt, matches, cn ?? next), tok, pg, pd);
                 else
                     next.Next(cx, null, Qlx.WITH, pg, pd);
@@ -4765,6 +4769,11 @@ namespace Pyrrho.Level3
             /// </summary>
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd)
             {
+                if (ms.Done(cx))
+                {
+                    next.Next(cx, cn, tok, px, pd);
+                    return;
+                }
                 var i = im + 1;
                 // this is where we need to promote the local bindings to arrays
                 var ls = CTree<long, TGParam>.Empty;
@@ -4801,8 +4810,8 @@ namespace Pyrrho.Level3
         /// NodeStep receives a list of possible database nodes from ExpNode, and
         /// checks these one by one.
         /// </summary>
-        internal class NodeStep(GqlMatchAlt sa, GqlNode x, ABookmark<long, TableRow>? no,
-MatchStatement.Step n) : Step(n.ms)
+        internal class NodeStep(GqlMatchAlt sa, GqlNode x, ABookmark<long, TableRow>? no,Step n) 
+            : Step(n.ms)
         {
             public GqlMatchAlt alt = sa;
             public ABookmark<long, TableRow>? nodes = no;
@@ -4984,8 +4993,8 @@ MatchStatement.Step n) : Step(n.ms)
                             ds += (rt.defpos, rt.Schema(cx));
                             continue;
                         }
-                        //          if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
-                        //              continue;
+                        if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
+                                continue;
                         var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
                         var ic = (xn.tok == Qlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
                         var xp = (xn.tok == Qlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;
@@ -5054,7 +5063,7 @@ MatchStatement.Step n) : Step(n.ms)
             else // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
                 ds = xn.For(cx, this, xn, ds);
             var df = ds.First();
-            if (df != null)
+            if (df != null && !Done(cx))
                 DbNode(cx, new NodeStep(be.alt, xn, df, new ExpStep(be.alt, be.matches?.Next(), be.next)),
                      (xn is GqlEdge && xn is not GqlPath) ? xn.tok : tok, pd);
         }
@@ -5198,6 +5207,8 @@ MatchStatement.Step n) : Step(n.ms)
                 if (ot is not null)
                     cx.paths += (bn.alt.defpos, ot);
                 cx.binding = ob; // unbind all the bindings from this recursion step
+                if (Done(cx))
+                    break;
                 ns = ns?.Next();
             }
             if (ot is not null)

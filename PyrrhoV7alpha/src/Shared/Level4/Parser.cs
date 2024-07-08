@@ -240,11 +240,11 @@ namespace Pyrrho.Level4
                 cx.db += (Database.NextId, cx.db.nextId + sql.Length);
             return cx.db;
         }
-        public Database ParseSql(string sql)
+        public Database ParseQl(string ql)
         {
             if (PyrrhoStart.ShowPlan)
-                Console.WriteLine(sql);
-            lxr = new Lexer(cx, sql, cx.db.lexeroffset);
+                Console.WriteLine(ql);
+            lxr = new Lexer(cx, ql, cx.db.lexeroffset);
             tok = lxr.tok;
             do
             {
@@ -254,7 +254,7 @@ namespace Pyrrho.Level4
                     Next();
             } while (tok != Qlx.EOF);
             if (LexDp() > Transaction.TransPos)  // if sce is uncommitted, we need to make space above nextIid
-                cx.db += (Database.NextId, cx.db.nextId + sql.Length);
+                cx.db += (Database.NextId, cx.db.nextId + ql.Length);
             return cx.db;
         }
         /// <summary>
@@ -2360,6 +2360,7 @@ namespace Pyrrho.Level4
             long e = -1L;
             var pe = -1L;
             Domain rd = Domain.Row + (Domain.Nodes, xs);
+            Match(Qlx.FETCH);
             if (tok != Qlx.EOF && tok != Qlx.END && tok != Qlx.RPAREN)
             {
                 var op = cx.parse;
@@ -2370,6 +2371,8 @@ namespace Pyrrho.Level4
                     if (xe is SelectStatement ss && cx.obs[ss.union] is RowSet su)
                     {
                         cx.Add(su + (RowSet._Source, ers.defpos));
+                        if (su is RowSetSection sc)
+                            m += (RowSetSection.Size, sc.size);
                         pe = xe.defpos;
                     }
                     else
@@ -7369,7 +7372,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Start the parse for a QueryExpression (called from View)
         /// </summary>
-        /// <param name="sql">The sql string</param>
+        /// <param name="sql">The ql string</param>
         /// <param name="xp">The expected result type</param>
         /// <returns>a RowSet</returns>
 		public RowSet ParseQueryExpression(Ident sql, Domain xp)
@@ -8673,7 +8676,7 @@ namespace Pyrrho.Level4
         /// An SQL insert statement
         /// </summary>
         /// <param name="cx">the context</param>
-        /// <param name="sql">the sql</param>
+        /// <param name="sql">the ql</param>
         /// <returns>the SqlInsert</returns>
         internal void ParseSqlInsert(string sql)
         {
@@ -8806,7 +8809,7 @@ namespace Pyrrho.Level4
         /// the update statement
         /// </summary>
         /// <param name="cx">the context</param>
-        /// <param name="sql">the sql</param>
+        /// <param name="sql">the ql</param>
         /// <returns>the updatesearch</returns>
         internal Context ParseSqlUpdate(Context cx, string sql)
         {
@@ -9557,7 +9560,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="t">the expected obs type</param>
         /// <param name="wfok">whether a window function is allowed</param>
-        /// <returns>the sql value</returns>
+        /// <returns>the ql value</returns>
         internal QlValue ParseSqlValueItem(Domain xp, bool wfok)
         {
             QlValue r;
@@ -10891,7 +10894,7 @@ namespace Pyrrho.Level4
                 var vv = new SqlField(q.iix.dp,q.ident,-1,-1L,kc.domain,pa);
                 cx.Add(vv);
                 cx.defs+=(q.ident, q.iix, Ident.Idents.Empty);
-                lxr.tgs += (q.iix.dp, new TGParam(q.iix.dp,q.ident,kc.domain,TGParam.Type.Value,pa));
+                lxr.tgs += (q.iix.dp, new TGParam(q.iix.dp,q.ident,kc.domain,lxr.tgg|TGParam.Type.Value,pa));
             }
             var dm = Domain.Content;
             if (lxr.tgg.HasFlag(TGParam.Type.Group))

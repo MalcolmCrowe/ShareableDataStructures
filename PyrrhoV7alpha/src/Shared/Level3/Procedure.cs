@@ -101,6 +101,8 @@ namespace Pyrrho.Level3
                     act.values += (p, acts[b.key()]);
             cx = bd._Obey(act);
             var r = act.Ret();
+            if (r == TBool.True && ((TArray?)cx.paths[0x7000000000000000]?.values[0])?.Length > 3)
+                ;
             if (r is TList)
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
