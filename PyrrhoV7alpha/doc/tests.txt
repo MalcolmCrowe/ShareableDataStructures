@@ -296,10 +296,10 @@ commit
 11:
 create table cs(b int not null,c int default 4,d int generated always as b+c)
 insert into cs(c) values(5)
- -> Null value not allowed in column B
+ -> Null value not allowed
 insert into cs(b) values(3)
 insert into cs values(1,2,3)
- -> Attempt to assign to a non-updatable column
+ -> Record data, field unassignable
 select * from cs
 12:
 create table sce(a int,b char)
@@ -776,11 +776,10 @@ select * from ww
 ->[{E:3,D:'B',K:4,F:'Tri'},{E:6,D:'B',K:4,F:'Six'},{E:4,D:'B',K:4,F:'Vier'},{E:6,D:'B',K:4,F:'Sechs'},
 {E:9,D:'B',K:4,F:'Nine'},{E:5,D:'C',K:1,F:'Five'},{E:4,D:'C',K:1,F:'Four'},{E:8,D:'C',K:1,F:'Eight'}]
 25:
-create type student as (name char,matric char) nodetype
+create type person as (name string) nodetype
+create type student under person as (matric string)
 insert into student values ('Fred','22/456')
-create type person as(name char) nodetype
-alter type student set under person
-create type staff under person as (title char)
+create type staff under person as (title string)
 insert into staff values ('Anne','Prof')
 select *,specifictype() from person
 create type married edgetype(bride=person,groom=person)

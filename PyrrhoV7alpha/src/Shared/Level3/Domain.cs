@@ -4356,7 +4356,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             if (defpos < -1L || kind==Qlx.Null)
                 return this;
-            var r = this;
+            var r = (Domain)base.ShallowReplace(cx,was,now);
             var ag = Context.ShallowReplace(aggs, was, now);
             if (ag != aggs)
                 r += (Aggs, ag);

@@ -4845,9 +4845,9 @@ namespace Pyrrho.Level4
             }
             var dm = new Domain(-1L,cx,Qlx.TABLE,rs,r);
             var ls = new LetStatement(lp.dp, new BTree<long, object>(RowSet.Assig,sg)+(DBObject._Domain,dm));
-            var es = ParseStatement(Domain.Content);
+     /*       var es = ParseStatement(Domain.Content);
             cx.Add(es);
-            ls += (Procedure.Body, es.defpos);
+            ls += (Procedure.Body, es.defpos); */
             cx.Add(ls);
             if (cx.parse == ExecuteStatus.Obey)
                 cx = ls._Obey(cx);
@@ -5010,7 +5010,10 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.IF);
             var ife = new IfThenElse(lp, se, th, ei, el);
             cx = old;
-            return (Executable)cx.Add(ife);
+            var r = (Executable)cx.Add(ife);
+            if (cx.parse == ExecuteStatus.Obey)
+                r.Obey(cx);
+            return r;
         }
         /// <summary>
 		/// Statements = 	Statement { ';' Statement } .

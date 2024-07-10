@@ -81,7 +81,15 @@ namespace Pyrrho.Level3
                 cx.schema = sc;
             if (cx.db.objects[graph] is Graph g)
                 cx.graph = g;
-            return _Obey(cx);
+            if (cx is Activation ax)
+                return _Obey(ax);
+            else
+            {
+                var a = new Activation(cx,"");
+                var r = _Obey(a);
+                cx = a.SlideDown();
+                return r;
+            }
         }
         /// <summary>
         /// _Obey the Executable for the given Activation.

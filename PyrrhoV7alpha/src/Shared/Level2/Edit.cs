@@ -243,10 +243,12 @@ namespace Pyrrho.Level2
             // If there is a new under for our columns, update them
             if (cx.db.objects[_defpos] is Table tg)
                 for (var b = tg.representation?.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is TableColumn tc && tc.tabledefpos == _defpos)
+                    if (cx.db.objects[b.key()] is TableColumn tc && tc.NameFor(cx) is string n)
                         for (var c = under.First(); c != null; c = c.Next())
-                            if (c.key().defpos > tc.defpos)
-                                cx.db += (tc + (TableColumn._Table, c.key().defpos));
+                            if (cx.db.objects[c.key().defpos] is Table gu 
+                                && ((gu.infos[cx.role.defpos] is ObInfo ui && ui.names.Contains(n))
+                                || tc.flags!=PColumn.GraphFlags.None))
+                                cx.db += (tc + (TableColumn._Table, gu.defpos));
             var oi = dataType.infos[cx.role.defpos] ?? new ObInfo(name, Grant.AllPrivileges);
             // To make things easier we consider the merging of columns in two stages,
             // first deal with where our new columns match columns in the hierarchy
@@ -383,6 +385,7 @@ namespace Pyrrho.Level2
             {
                 var ee1 = cx.db.edgeEnds[th.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
                 var ee2 = ee1[th.leaveCol] ?? BTree<long, long?>.Empty;
+                u = (EdgeType)(cx.db.objects[u.defpos]??throw new PEException("PE30901"));
                 cx.db += (u + (EdgeType.LeaveCol, th.leaveCol) + (EdgeType.ArriveCol, th.arriveCol) +
                     (Table.TableRows,u.tableRows + th.tableRows));
                 cx.db += (Database.EdgeEnds, cx.db.edgeEnds +
