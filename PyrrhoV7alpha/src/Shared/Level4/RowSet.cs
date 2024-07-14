@@ -1791,6 +1791,14 @@ namespace Pyrrho.Level4
             cx.Add(sr);
             return sr;
         }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new BindingRowSet(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new BindingRowSet(dp, m);
+        }
         /// <summary>
         /// Ensure the BindingRowSet has bindings for nb
         /// </summary>
@@ -2263,12 +2271,15 @@ namespace Pyrrho.Level4
         {
             m ??= BTree<long,object>.Empty;
             var gr = (long)(m[Group]??-1L);
-            var groups = (GroupSpecification?)cx.obs[gr];
-            var gs = BList<long?>.Empty;
-            for (var b = groups?.sets.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is Grouping g)
-                gs = r._Info(cx, g, gs);
-            m += (Groupings, gs);
+            if (gr >= 0)
+            {
+                var groups = (GroupSpecification)(cx.obs[gr] ?? throw new PEException("PE90501"));
+                var gs = BList<long?>.Empty;
+                for (var b = groups?.sets.First(); b != null; b = b.Next())
+                    if (b.value() is long p && cx.obs[p] is Grouping g)
+                        gs = r._Info(cx, g, gs);
+                m += (Groupings, gs);
+            }
             var os = (Domain)(m[OrdSpec] ?? Row);
             var di = (bool)(m[Distinct] ?? false);
             if (os.CompareTo(r.rowOrder) != 0 || di != r.distinct)
@@ -2418,16 +2429,19 @@ namespace Pyrrho.Level4
             }
             var am = BTree<long, object>.Empty;
             var gr = (long)(mm[Group] ?? -1L);
-            var groups = (GroupSpecification?)cx.obs[gr];
-            var gs = groupings;
-            for (var b = groups?.sets.First(); b != null; b = b.Next())
-                if (b.value() is long p && cx.obs[p] is Grouping g)
-                    gs = _Info(cx, g, gs);
-            if (gs != groupings)
+            if (gr >= 0)
             {
-                am += (Groupings, gs);
-                am += (GroupCols, cx.GroupCols(gs, this));
-                am += (Group, gr);
+                var groups = (GroupSpecification?)cx.obs[gr];
+                var gs = groupings;
+                for (var b = groups?.sets.First(); b != null; b = b.Next())
+                    if (b.value() is long p && cx.obs[p] is Grouping g)
+                        gs = _Info(cx, g, gs);
+                if (gs != groupings)
+                {
+                    am += (Groupings, gs);
+                    am += (GroupCols, cx.GroupCols(gs, this));
+                    am += (Group, gr);
+                }
             }
             if (mm[Aggs] is CTree<long, bool> t)
                 am += (Aggs, aggs + t);

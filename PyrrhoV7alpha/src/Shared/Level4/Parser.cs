@@ -1818,6 +1818,7 @@ namespace Pyrrho.Level4
                 Qlx.SHORTESTPATH, Qlx.SHORTEST, Qlx.ALL, Qlx.ANY))
             {
                 // state M11
+                cx.IncSD(new Ident(this)); // ident part if possibly unhelpful
                 var dp = cx.GetUid();
                 var alts = BList<long?>.Empty;
                 var mo = Qlx.NONE;
@@ -1845,6 +1846,7 @@ namespace Pyrrho.Level4
                             cx.Add(new QlValue(pi, BList<Ident>.Empty, cx, Domain.PathType)
                                 +(DBObject._From,dp));
                             cx.defs += (pi, cx.sD);
+                            cx.locals += (pi.iix.dp, true);
                         }
                         Mustbe(Qlx.EQL);
                     }
@@ -1867,6 +1869,7 @@ namespace Pyrrho.Level4
                 }
                 // state M17
                 svgs += cx.Add(new GqlMatch(cx, alts)).defpos;
+                cx.DecSD();
                 if (tok == Qlx.COMMA)
                     Next();
                 // goto state M11
@@ -1983,8 +1986,8 @@ namespace Pyrrho.Level4
             if (tok == Qlx.Id)
                 Next();
             Mustbe(Qlx.LPAREN, Qlx.LBRACK, Qlx.ARROWBASE, Qlx.RARROW);
-            var bound = false;
             var b = new Ident(this);
+            var bound = cx.locals.Contains(cx.defs[b].dp);
             var nb = b;
             long id = -1L;
             var lp = lxr.Position;
@@ -2110,6 +2113,7 @@ namespace Pyrrho.Level4
             var st = CTree<long, TGParam>.Empty; // for match
             var ab = tok; // LPAREN, ARROWBASE, RARROW, LBRACK
             lxr.tga = f;
+            cx.IncSD(new Ident(this)); // ident part is possibly unhelpful
      //       lxr.tgt = BTree<string,(int,long?)>.Empty;
             var pgg = lxr.tgg;
             var og = lxr.tgs;
@@ -2151,6 +2155,7 @@ namespace Pyrrho.Level4
                     if (ix == Iix.None)
                     {
                         id = lp;
+                        cx.locals += (b.iix.dp, true);
                         cx.defs += (b, b.iix);
                     }
                     else
@@ -2163,7 +2168,10 @@ namespace Pyrrho.Level4
                 {
                     lxr.tex = true; // expect a Type
                     Next();
-                    lb = ParseLabelExpression((ab==Qlx.LPAREN)?Domain.NodeType:Domain.EdgeType);
+                    var s = cx.defs[b];
+                    lb = ParseLabelExpression((ab==Qlx.LPAREN)?Domain.NodeType:Domain.EdgeType,b.ident);
+                    if (cx.locals.Contains(b.iix.dp)) // yuk
+                        cx.defs += (b, s);
                     if (lxr.tgs[lb.defpos] is TGParam qg)
                         st += (-(int)Qlx.TYPE, qg);
                     // state M28
@@ -2211,8 +2219,8 @@ namespace Pyrrho.Level4
                 if (tok == Qlx.WHERE)
                 {
                     var cd = cx.defs;
-                    if (dm is not null)
-                        cx.AddDefs(dm);
+             //       if (dm is not null)
+             //           cx.AddDefs(dm);
                     var ot = lxr.tgs;
                     var od = dm ?? Domain.NodeType;
                     cx.Add(new GqlNode(b, BList<Ident>.Empty, cx, -1L, CTree<string, QlValue>.Empty,
@@ -2251,6 +2259,7 @@ namespace Pyrrho.Level4
                     r += (RowSet._Where, wh);
             }
             cx.Add(r);
+            cx.DecSD();
             // state M32
             if (Match(Qlx.LPAREN, Qlx.ARROWBASE, Qlx.RARROW, Qlx.LBRACK))
                 (an, ahead, tgs) = ParseMatchExp(ahead, pi, tgs, f, b);
@@ -2265,6 +2274,7 @@ namespace Pyrrho.Level4
                 cx.defs += (b, new Iix(id));
             svg += r.defpos;
             svg += ahead;
+            cx.DecSD();
             lxr.tgs = og;
             return (r, svg, tgs);
         }
@@ -2273,7 +2283,7 @@ namespace Pyrrho.Level4
         /// (e.g. for Match they may be unbound variables)
         /// </summary>
         /// <returns></returns>
-        Domain ParseLabelExpression(NodeType dm, NodeType? lt = null, NodeType? at = null)
+        Domain ParseLabelExpression(NodeType dm, string? a=null, NodeType? lt = null, NodeType? at = null)
         {
             var lp = lxr.Position;
             var neg = false;
@@ -2289,6 +2299,7 @@ namespace Pyrrho.Level4
             var left = cx.db.objects[cx.role.dbobjects[c1.ident] ?? -1L] as Domain 
                 ?? (Domain)cx.Add(new GqlLabel(c1,cx,lt,at,new BTree<long,object>(Domain.Kind,dm.kind)));
             cx.defs += (c1, c1.iix);
+            cx.AddDefs(c1,left.rowType,a);
             cx.Add(left);
             if (neg)
             {
@@ -2302,7 +2313,7 @@ namespace Pyrrho.Level4
                 Next();
                 if (Match(Qlx.COLON))
                     Next();
-                var right = ParseLabelExpression(Domain.NodeType,lt,at);
+                var right = ParseLabelExpression(Domain.NodeType,c1.ident,lt,at);
                 cx.Add(right);
                 left = new GqlLabel(lp, left.defpos, right.defpos, new BTree<long,object>(Domain.Kind,op)); // leave name empty for now
                 cx.Add(left);
@@ -2320,8 +2331,10 @@ namespace Pyrrho.Level4
         {
             var olddefs = cx.defs; // we will remove any defs introduced by the Match below
                                    // while allowing existing defs to be updated by the Match parser
+            var oldlocals = cx.locals;
             var flags = MatchStatement.Flags.None;
             Next();
+            cx.IncSD(new Ident(this)); // TBD: the ident part is possibly unhelpful
             if (tok == Qlx.SCHEMA)
             {
                 flags |= MatchStatement.Flags.Schema;
@@ -2339,14 +2352,14 @@ namespace Pyrrho.Level4
             lxr.tgs = CTree<long, TGParam>.Empty;
             lxr.ParsingMatch = true;
             var (tgs, svgs) = ParseSqlMatchList();
-                    var xs = CTree<long,bool>.Empty;
-                    for (var b = svgs.First(); b != null; b = b.Next())
-                        if (cx.obs[b.value() ?? -1] is GqlMatch ss)
-                            for (var c = ss.matchAlts.First(); c != null; c = c.Next())
-                                if (cx.obs[c.value() ?? -1L] is GqlMatchAlt sa)
-                                    for (var dd = sa.matchExps.First(); dd != null; dd = dd.Next())
-                                        if (dd.value() is long ep)
-                                            xs += (ep,true); 
+            var xs = CTree<long, bool>.Empty;
+            for (var b = svgs.First(); b != null; b = b.Next())
+                if (cx.obs[b.value() ?? -1] is GqlMatch ss)
+                    for (var c = ss.matchAlts.First(); c != null; c = c.Next())
+                        if (cx.obs[c.value() ?? -1L] is GqlMatchAlt sa)
+                            for (var dd = sa.matchExps.First(); dd != null; dd = dd.Next())
+                                if (dd.value() is long ep)
+                                    xs += (ep, true);
             // state M18
             lxr.ParsingMatch = false;
             var (ers, ns) = BindingTable(cx, tgs);
@@ -2388,8 +2401,8 @@ namespace Pyrrho.Level4
                     m += (RowSetSection.Size, FetchFirstClause());
                 if (cx.obs[cx.lastret] is ReturnStatement rs && cx.obs[rs.ret]?.domain is Domain d && d != Domain.Null)
                 {
-                    RowSet es = (RowSet)(cx.obs[(long)(rs.mem[SqlInsert.Value] ?? -1L)] ?? 
-                        throw new DBException("42000").Add(Qlx.MATCH_STATEMENT,new TChar("Return")));
+                    RowSet es = (RowSet)(cx.obs[(long)(rs.mem[SqlInsert.Value] ?? -1L)] ??
+                        throw new DBException("42000").Add(Qlx.MATCH_STATEMENT, new TChar("Return")));
                     m += (DBObject._Domain, es);
                     cx.result = es.defpos;
                 }
@@ -2400,11 +2413,13 @@ namespace Pyrrho.Level4
             cx.Add(ers);
             cx.result = ers.defpos;
             var ms = new MatchStatement(cx, tg, tgs, svgs, m, pe, e);
+            cx.DecSD();
             if (cx.parse == ExecuteStatus.Obey)
                 ms._Obey(cx);
             for (var b = cx.defs.First(); b != null; b = b.Next())
                 if (!olddefs.Contains(b.key()))
                     cx.defs -= b.key();
+            cx.locals = oldlocals;
             return ms;
         }
         internal static (BindingRowSet, BTree<string, (int, long?)>) BindingTable(Context cx, CTree<long, TGParam> gs)
@@ -5198,10 +5213,10 @@ namespace Pyrrho.Level4
                 cx.Add(pf);
                 return cx.Add(pc);
             }
-            if (pa is QlValue sv && sv.domain.infos[cx.role.defpos] is ObInfo si && sub is not null
-                && si.names[sub.ident].Item2 is long sp && cx.db.objects[sp] is TableColumn tc1)
+            if (pa is QlValue sv && sv.domain.infos[cx.role.defpos] is ObInfo si && ic.sub is not null
+                && si.names[ic.sub.ident].Item2 is long sp && cx.db.objects[sp] is TableColumn tc1)
             {
-                var co = new SqlCopy(sub.iix.dp, cx, sub.ident, sv.defpos, tc1);
+                var co = new SqlCopy(ic.sub.iix.dp, cx, ic.sub.ident, sv.defpos, tc1);
                 var nc = new SqlValueExpr(ic.iix.dp, cx, Qlx.DOT, sv, co, Qlx.NO);
                 cx.Add(co);
                 return cx.Add(nc);
@@ -5211,6 +5226,8 @@ namespace Pyrrho.Level4
                 var co = new SqlField(sub.iix.dp, sub.ident, -1, sv1.defpos, Domain.Content, sv1.defpos);
                 return cx.Add(co);
             }
+            if (cx.locals.Contains(ic.iix.dp)) // a binding or local variable
+                return new QlValue(ic.iix.dp, cx.obs[ic.iix.dp]?.mem??BTree<long,object>.Empty+(ObInfo.Name,ic.ident));
             // if sub is non-zero there is a new chain to construct
             var nm = len - m;
             DBObject ob;
@@ -10848,8 +10865,14 @@ namespace Pyrrho.Level4
         (Ident, QlValue) GetDocItem(long pa,Domain lb,bool sch=false)
         {
             Ident k = new(this);
+            var ns = lb.infos[cx.role.defpos]?.names??BTree<string,(int,long?)>.Empty;
             if (lxr.caseSensitive && k.ident == "id")
                 k = new Ident("ID", k.iix);
+            if (!cx.defs.Contains(k.ident))
+            {
+                cx.locals += (k.iix.dp, true);
+                cx.defs += (k, k.iix);
+            }
             var ip = lxr.Position;
             Mustbe(Qlx.Id);
             lxr.docValue = true;
@@ -10857,6 +10880,11 @@ namespace Pyrrho.Level4
             if (sch)
                 return (k, (QlValue)cx.Add(new SqlLiteral(k.iix.dp, ParseDataType())));
             Ident q = new(this);
+            if (tok == Qlx.Id && !cx.defs.Contains(q.ident))
+            {
+                cx.locals += (q.iix.dp, true);
+                cx.defs += (q, q.iix);
+            }
             lxr.docValue = false;
             var kc = new QlValue(k, BList<Ident>.Empty, cx, Domain.Char);
             var eq = (lxr.val is TChar ec) ? ec.value : q.ident;
@@ -10899,9 +10927,9 @@ namespace Pyrrho.Level4
                 cx.defs+=(q.ident, q.iix, Ident.Idents.Empty);
                 lxr.tgs += (q.iix.dp, new TGParam(q.iix.dp,q.ident,kc.domain,lxr.tgg|TGParam.Type.Value,pa));
             }
-            var dm = Domain.Content;
-            if (lxr.tgg.HasFlag(TGParam.Type.Group))
-                dm = new Domain(-1L, Qlx.ARRAY, dm);
+            var dm = lb.representation[ns[k.ident].Item2??-1L]??Domain.Content;
+      //      if (lxr.tgg.HasFlag(TGParam.Type.Group))
+      //          dm = new Domain(-1L, Qlx.ARRAY, dm);
             var va = ParseSqlValue(dm);
             return (k,(QlValue)cx.Add(va));
         }

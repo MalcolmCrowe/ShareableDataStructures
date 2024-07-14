@@ -1,3 +1,4 @@
+using System.Data.SqlTypes;
 using System.Net;
 using System.Security.AccessControl;
 using System.Text;
@@ -607,7 +608,9 @@ namespace Pyrrho.Level4
                     var (px, cs) = t[sd];
                     if ((bs.Contains(n) || obs[px.dp] is GqlNode) && !role.dbobjects.Contains(n)) // an object name is not a binding variable or a forward ref
                             ldefs += (n, new Iix(px.lp, px.sd - 1, px.dp), cs);
-                    if (cs != null && cs != Ident.Idents.Empty    // re-enter forward references to be resolved at a lower level
+                    if (locals.Contains(px.dp)) // an object name is not a binding variable or a forward ref
+                        ldefs += (n, new Iix(px.lp, px.sd - 1, px.dp), cs);
+                    if (cs != Ident.Idents.Empty    // re-enter forward references to be resolved at a lower level
                         && obs[px.dp] is ForwardReference fr)
                     {
                         for (var c = cs.First(); c != null; c = c.Next())
@@ -620,7 +623,7 @@ namespace Pyrrho.Level4
                                 Add(fr);
                             }
                         ldefs += (n, new Iix(px.lp, px.sd - 1, px.dp), cs);
-                    }
+                    } 
                 }
             }
             if (ldefs.Count != 0)
@@ -1854,7 +1857,7 @@ namespace Pyrrho.Level4
                     var iq = new Ident(id, ic);
                     defs += (iq, ic.iix);
                     defs += (ic, ic.iix);
-                    if (ia != null)
+                    if (ia != null && !locals.Contains(ic.iix.dp))
                         defs += (new Ident(ia, ic), ic.iix);
                 }
         }

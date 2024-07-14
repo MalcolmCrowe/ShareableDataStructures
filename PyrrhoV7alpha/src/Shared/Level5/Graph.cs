@@ -342,16 +342,11 @@ namespace Pyrrho.Level5
         internal override Basis ShallowReplace(Context cx, long was, long now)
         {
             var r = (NodeType)base.ShallowReplace(cx, was, now);
-            var ch = false;
             if (idCol == was)
-            {
-                r += (IdCol, now); ch = true;
-            }
+                r += (IdCol, now); 
             if (idIx == was)
-            {
-                r += (IdIx, now); ch = true;
-            }
-            if (ch)
+                r += (IdIx, now);
+            if (r.dbg!=dbg)
                 cx.Add(r);
             return r;
         }
