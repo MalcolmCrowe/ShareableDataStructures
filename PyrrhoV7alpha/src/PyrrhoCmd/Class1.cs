@@ -358,10 +358,10 @@ namespace PyrrhoCmd
                 // support multiline SQL statements for people who don't like wraparound
                 if (str[0] == '[')
                 {
-                    bk++;
-                    for (; ; )
+                    for (;; )
                     {
-                        for (var i = 1; i < str.Length; i++)
+                        bk = 0;
+                        for (var i = 0; i < str.Length; i++)
                             if (str[i] == '[')
                                 bk++;
                             else if (str[i] == ']')

@@ -274,6 +274,15 @@ namespace Pyrrho
             }
             return r;
         }
+        public PyrrhoReader Call(string name, Document doc)
+        {
+            var nd = new Document();
+            nd.fields.Add(new KeyValuePair<string, object>("proc", name));
+            nd.fields.Add(new KeyValuePair<string, object>("params", doc));
+            var cmd = CreateCommand();
+            cmd.CommandText = nd.ToString();
+            return cmd.ExecuteReader();
+        }
         /// <summary>
         /// Utility function for splitting up the connection string
         /// </summary>
@@ -553,8 +562,13 @@ namespace Pyrrho
         {
             warnings.Clear();
             var proto = (Responses)stream.ReadByte();
-            while (proto == Responses.Warning || proto == Responses.AskClient)
+            while (proto == Responses.Warning || proto == Responses.AskClient || proto==Responses.Continue)
             {
+                if (proto == Responses.Continue)
+                {
+                    proto = (Responses)stream.ReadByte();
+                    continue;
+                }
                 var sig = GetString();
                 if (proto==Responses.Warning)
                     warnings.Add(new DatabaseError(sig, GetStrings()));
@@ -726,12 +740,6 @@ namespace Pyrrho
             PutString(nm);
             PutString(sql);
             Receive();
-        }
-        // This is for handling edge conflicts: rename edge e to n
-        // if source node type is s and destination nmode type is d
-        public void Prepare(string e,string s, string d, string n)
-        {
-            Prepare(e + "(" + s + "," + d + ")", n);
         }
         public void ChangeDatabase(string databaseName)
         {

@@ -249,8 +249,7 @@ namespace Pyrrho.Level3
         public BTree<string, BTree<CList<Domain>, long?>> methodInfos =>
             (BTree<string, BTree<CList<Domain>, long?>>?)mem[MethodInfos] 
             ?? BTree<string, BTree<CList<Domain>, long?>>.Empty;
-        public CTree<Qlx, TypedValue> metadata =>
-            (CTree<Qlx, TypedValue>?)mem[_Metadata] ?? CTree<Qlx, TypedValue>.Empty;
+        public TMetadata metadata => (TMetadata?)mem[_Metadata] ?? TMetadata.Empty;
         public string? name => (string?)mem[Name] ?? "";
         internal BTree<string,(int,long?)> names =>
             (BTree<string, (int,long?)>?)mem[Names]??BTree<string,(int, long?)>.Empty;
@@ -295,7 +294,7 @@ namespace Pyrrho.Level3
         {
             return new ObInfo(m);
         }
-        internal static string Metadata(CTree<Qlx,TypedValue> md,string description="")
+        internal static string Metadata(TMetadata md,string description="")
         {
             var sb = new StringBuilder();
             var cm = "";
@@ -416,7 +415,7 @@ namespace Pyrrho.Level3
                 r += (Names, ns);
             return r;
         }
-        static CTree<Qlx,TypedValue> ShallowReplace(Context cx,CTree<Qlx,TypedValue> md,long was, long now)
+        static TMetadata ShallowReplace(Context cx,TMetadata md,long was, long now)
         {
             for (var b=md.First();b!=null;b=b.Next())
                 if (b.value() is TypedValue v)

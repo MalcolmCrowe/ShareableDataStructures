@@ -242,7 +242,7 @@ namespace Pyrrho.Level3
         internal override DBObject Add(Context cx, PMetadata pm)
         {
             var ob = (Table)base.Add(cx, pm);
-            if (pm.iri != "")
+            if (pm.iri != "" && pm.iri!=" Null")
             {
                 var nb = (Table)ob.Relocate(pm.ppos); // make a new subtype
                 if (nb is EdgeType ne && nb.defpos != defpos)

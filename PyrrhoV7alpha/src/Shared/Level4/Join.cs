@@ -234,7 +234,7 @@ namespace Pyrrho.Level4
                             + (ri, mr + (le, true));
                         var mm = Math.Min(le, ri);
                         if (cx.NameFor(le) is string li && cx.NameFor(ri) == li &&
-                            cx.defs[li] is BTree<int, (Iix, Ident.Idents)> td)
+                            cx.defs[li] is BTree<long, (Iix, Ident.Idents)> td)
                         {
                             var (ix, ids) = td[cx.sD];
                             Iix nx = new (ix.lp, ix.sd, mm);
@@ -402,7 +402,7 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Apply(BTree<long, object> mm,Context cx,BTree<long,object>? m=null)
         {
-            if (cx.undefined != CTree<long, int>.Empty)
+            if (cx.undefined != CTree<long, long>.Empty)
             {
                 cx.Later(defpos, mm);
                 return this;

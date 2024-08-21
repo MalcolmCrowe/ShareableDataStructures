@@ -54,7 +54,7 @@ namespace Pyrrho.Level3
         internal long left => (long)(mem[Left]??-1L);
         internal long right => (long)(mem[Right]??-1L);
         internal long sub => (long)(mem[Sub]??-1L);
-        internal int selectDepth => (int)(mem[SelectDepth] ?? -1);
+        internal long selectDepth => (long)(mem[SelectDepth] ?? -1L);
         public new string? name => (string?)mem[ObInfo.Name];
         internal virtual long target => defpos;
         internal bool scalar => (bool)(mem[RowSet._Scalar]??(domain.kind!=Qlx.TABLE && domain.kind!=Qlx.CONTENT
@@ -820,7 +820,7 @@ namespace Pyrrho.Level3
                 r += s.Operands(cx);
             return r;
         }
-        internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? r)
+        internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? r)
         {
             if (n?.ident is string s && domain.infos[cx.role.defpos] is ObInfo oi
                 && domain is UDType
@@ -829,7 +829,7 @@ namespace Pyrrho.Level3
                 var f = new SqlField(lp, s, sq, defpos, domain.representation[p] ?? Domain.Content, p);
                 return (cx.Add(f), n.sub); 
             }
-            return base._Lookup(lp, cx, nm, n, r);
+            return base._Lookup(lp, cx, ic, n, r);
         }
         internal override DBObject New(long dp, BTree<long, object>m)
         {
@@ -1150,13 +1150,14 @@ namespace Pyrrho.Level3
         public BList<(long, long)> cases =>
             (BList<(long,long)>?)mem[Cases] ?? BList<(long, long)>.Empty;
         public long caseElse => (long)(mem[CaseElse] ?? -1L);
-        internal SqlCaseSimple(long dp, Context cx, Domain dm, QlValue vl, BList<(long, long)> cs, long el)
-            : base(dp, _Mem(cx, dm, vl, cs, el))
+        internal SqlCaseSimple(long dp, Context cx, Domain dm, QlValue vl, BList<(long, long)> cs, long el,
+            long fr = -1L)
+            : base(dp, _Mem(cx, dm, vl, cs, el, fr))
         {
             cx.Add(this);
         }
         protected SqlCaseSimple(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long, object> _Mem(Context cx, Domain dm, QlValue vl, BList<(long, long)> cs, long el)
+        static BTree<long, object> _Mem(Context cx, Domain dm, QlValue vl, BList<(long, long)> cs, long el, long fr)
         {
             var r = cx.DoDepth(new BTree<long,object>(_Domain,dm) + (SqlFunction._Val, vl.defpos) 
                 + (Cases, cs) + (CaseElse, el));
@@ -1173,7 +1174,7 @@ namespace Pyrrho.Level3
                 d = Math.Max(e.depth + 1,d);
             }
             d = cx._DepthBPVV(cs, d);
-            return r + (_Depth,d);
+            return r + (_Depth,d) + (_From,fr);
         }
         public static SqlCaseSimple operator +(SqlCaseSimple et, (Context ,long, object) x)
         {
@@ -1277,6 +1278,30 @@ namespace Pyrrho.Level3
             cx.values = oc;
             return e;
         }
+        internal override BTree<long, Register> AddIn(Context cx, Cursor rb, BTree<long, Register> tg)
+        {
+            if (cx.obs[val] is QlValue v) tg = v.AddIn(cx, rb, tg);
+            for (var b = cases.First(); b is not null; b = b.Next())
+            {
+                var (w, r) = b.value();
+                if (cx.obs[w] is QlValue wv) tg = wv.AddIn(cx, rb, tg);
+                if (cx.obs[r] is QlValue rv) tg = rv.AddIn(cx, rb, tg);
+            }
+            if (cx.obs[caseElse] is QlValue c) tg = c.AddIn(cx, rb, tg);
+            return tg;
+        }
+        internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
+        {
+            if (cx.obs[val] is QlValue v) tg = v.StartCounter(cx, rs, tg);
+            for (var b = cases.First(); b is not null; b = b.Next())
+            {
+                var (w, r) = b.value();
+                if (cx.obs[w] is QlValue wv) tg = wv.StartCounter(cx, rs, tg);
+                if (cx.obs[r] is QlValue rv) tg = rv.StartCounter(cx, rs, tg);
+            }
+            if (cx.obs[caseElse] is QlValue c) tg = c.StartCounter(cx, rs, tg);
+            return tg;
+        }
         internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
         {
             BList<DBObject>? ls;
@@ -1326,7 +1351,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
             {
-                r = new SqlCaseSimple(defpos, cx, domain, v, css, ce.defpos);
+                r = new SqlCaseSimple(defpos, cx, domain, v, css, ce.defpos, from);
                 cx.Replace(this, r);
             }
             return (new BList<DBObject>(r), m);
@@ -2495,8 +2520,8 @@ namespace Pyrrho.Level3
                 case Qlx.DOT:
                     {
                         var ol = cx.obs[left] as QlValue;
-                        if (ol is GqlNode && cx.values[right] is TypedValue dv && dv != TNull.Value)
-                            return dv;
+                 //       if (ol is GqlNode && cx.values[right] is TypedValue dv && dv != TNull.Value)
+                 //           return dv;
                         TypedValue a = ol?.Eval(cx) ?? TNull.Value;
                         if (a == TNull.Value)
                             return v;
@@ -10920,25 +10945,49 @@ cx.obs[high] is not QlValue hi)
             (CTree<long, TGParam>)(mem[State] ?? CTree<long, TGParam>.Empty);
         public Qlx tok => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.Null);
         public Ident.Idents defs => (Ident.Idents)(mem[Defs] ?? Ident.Idents.Empty);
-        public BTree<int,(long,Ident.Idents)> defsStore => 
-            (BTree<int,(long,Ident.Idents)>)(mem[DefsStore] ?? BTree<int,(long,Ident.Idents)>.Empty);
+        public BTree<long,(long,Ident.Idents)> defsStore => 
+            (BTree<long,(long,Ident.Idents)>)(mem[DefsStore] ?? BTree<long,(long,Ident.Idents)>.Empty);
         public GqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<string, QlValue> d,
             CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
-            : base(nm, nm, ch, cx, dm ?? _Type(cx,d,m), _Mem(i, d, tgs, dm, cx, m))
-        { }
+            : base(nm, nm, ch, cx, dm ?? _Type(cx,d,m), _Mem(nm, i, d, tgs, dm, cx, m))
+        {
+            if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg)
+                for (var b = cx.defs[tg.value]?.First();b!=null;b=b.Next())
+                    if (b.key() is long p && p<Transaction.Analysing)
+                    {
+                        var (x, ds) = b.value();
+                        if (cx.locals.Contains(x.dp))
+                            cx.defs += (tg.value, new Iix(x.lp,nm.iix.dp,x.dp),ds);
+                    }
+        }
         protected GqlNode(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long, object> _Mem(long i, CTree<string, QlValue> d, CTree<long, TGParam> tgs,
-            NodeType? dm, Context cx,BTree<long, object>? m)
+        static BTree<long, object> _Mem(Ident nm, long i, CTree<string, QlValue> d, CTree<long, TGParam> tgs,
+            NodeType? dm, Context cx, BTree<long, object>? m)
         {
             m ??= BTree<long, object>.Empty;
             if (i > 0)
+            {
+                if (i >= Transaction.Analysing && i < Transaction.Executables
+                    && cx.defs[nm.ident]?[cx.sD].Item1 is Iix ix)
+                    i = ix.dp;
                 m += (IdValue, i);
+            }
             if (d is not null)
                 m += (DocValue, d);
-            m += (State, tgs);
+            var ng = CTree<long, TGParam>.Empty;
+            for (var b = tgs.First(); b != null; b = b.Next())
+                if (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables)
+                {
+                    if (b.value() is TGParam tg && cx.defs[tg.value]?[cx.sD].Item1 is Iix ix)
+                        ng += (ix.dp, tg);
+                    else
+                        ng += (b.key(), b.value());
+                }
+            m += (State, ng);
             m += (Defs, cx.defs);
             m += (DefsStore, cx.defsStore);
+
             if (!m.Contains(_Label) && dm is not null && dm.defpos>0) // otherwise leave it unlabelled
                 m += (_Label, dm); // an explicit NodeType
             return m;
@@ -10954,6 +11003,18 @@ cx.obs[high] is not QlValue hi)
             if (name == "COLON" && label.defpos>=0)
                 return label.NameFor(cx);
             return base.NameFor(cx);
+        }
+        internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? r)
+        {
+            if (n is not null && domain.infos[cx.role.defpos] is ObInfo si && ic.sub is not null
+                && si.names[n.ident].Item2 is long sp && cx.db.objects[sp] is TableColumn tc1)
+            {
+                var co = new SqlCopy(n.iix.dp, cx, n.ident, defpos, tc1);
+                var nc = new SqlValueExpr(ic.iix.dp, cx, Qlx.DOT, this, co, Qlx.NO);
+                cx.Add(co);
+                return (cx.Add(nc),n.sub);
+            }
+            return base._Lookup(lp, cx, ic, n, r);
         }
         public static GqlNode operator +(GqlNode n, (long, object) x)
         {
@@ -11177,7 +11238,7 @@ cx.obs[high] is not QlValue hi)
             var ls = docValue;
             ls = nd._AddEnds(cx, ls);
             TNode? tn = null;
-            if (nt.defpos > 0 && cx.parse!=ExecuteStatus.GraphType)
+            if (nt.defpos > 0 && !cx.parse.HasFlag(ExecuteStatus.GraphType))
             {
                 var vp = cx.GetUid();
                 var ts = new TableRowSet(cx.GetUid(), cx, nt.defpos);
@@ -11413,24 +11474,45 @@ cx.obs[high] is not QlValue hi)
         public Qlx direction => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.NO); // ARROWBASE or ARROW
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, Qlx t, long i, long l, long a,
             CTree<string,QlValue> d, CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
-            : base(nm, ch, cx, i, d, tgs,dm??_Type(cx,d,m), _Mem(cx,d,tgs,dm,m,i,l,a,t))
-        { }
+            : base(nm, ch, cx, i, d, tgs,dm??_Type(cx,d,m), _Mem(cx,d,tgs,dm,m,nm,i,l,a,t))
+        {
+            if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg)
+                for (var b = cx.defs[tg.value]?.First(); b != null; b = b.Next())
+                    if (b.key() is long p && p < Transaction.Analysing)
+                    {
+                        var (x, ds) = b.value();
+                        if (cx.locals.Contains(x.dp))
+                            cx.defs += (tg.value, new Iix(x.lp, nm.iix.dp, x.dp), ds);
+                    }
+        }
         protected GqlEdge(long dp, BTree<long, object> m) : base(dp, m)
         { }
         static BTree<long,object> _Mem(Context cx,CTree<string,QlValue> d,
-             CTree<long, TGParam> tgs, NodeType? dm , BTree<long,object>?m, long i,long l,long a, Qlx t)
+             CTree<long, TGParam> tgs, NodeType? dm , BTree<long,object>?m, Ident nm, long i,long l,long a, Qlx t)
         {
-            m = m ?? BTree<long, object>.Empty;
+            m ??= BTree<long, object>.Empty;
             if (i > 0)
+            {
+                if (i >= Transaction.Analysing && i < Transaction.Executables
+                    && cx.defs[nm.ident]?[cx.sD].Item1 is Iix ix)
+                    i = ix.dp;
                 m += (IdValue, i);
+            }
             m += (DocValue, d);
-            m += (State, tgs);
+            var ng = CTree<long, TGParam>.Empty;
+            for (var b = tgs.First(); b != null; b = b.Next())
+                if (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables)
+                {
+                    if (b.value() is TGParam tg && cx.defs[tg.value]?[cx.sD].Item1 is Iix ix)
+                        ng += (ix.dp, tg);
+                    else
+                        ng += (b.key(), b.value());
+                }
+            m += (State, ng);
             m += (Defs, cx.defs);
             m += (DefsStore, cx.defsStore);
             if (!m.Contains(_Label) && dm is not null && dm.defpos > 0) // otherwise leave it unlabelled
                 m += (_Label, dm); // an explicit NodeType
-            if (i > 0)
-                m += (IdValue, i);
             if (l > 0)
                 m += (LeavingValue, l);
             if (a > 0)
@@ -11480,7 +11562,7 @@ cx.obs[high] is not QlValue hi)
                 return ee;
             var tl = nd.label.OnInsert(cx, nd.mem);
             EdgeType? nt = null; // the node type of this node when we find it or construct it
-            var md = CTree<Qlx, TypedValue>.Empty; // some of what we will find on this search
+            var md = TMetadata.Empty; // some of what we will find on this search
                                                    // Begin to think about the names of special properties for the node we are building
                                                    //string? sd = null;
                                                    //var il = "LEAVING";
@@ -11575,27 +11657,6 @@ cx.obs[high] is not QlValue hi)
                 throw new DBException("42000", "_EdgeType").Add(Qlx.INSERT_STATEMENT, new TChar(name ?? "??"));
             return nt;
         }
-        static void CheckType(Context cx, string? n, long? t, NodeType gt, long lx, bool lv)
-        {
-            NodeType ut = (cx.db.objects[lx] is Index nx
-                && cx.db.objects[nx.refindexdefpos] is Index rx
-                && cx.db.objects[rx.tabledefpos] is NodeType ut0) ? ut0
-                :  (cx.db.objects[t??-1L] as NodeType ?? throw new PEException("PE408010"));
-            if (t == null)
-                throw new DBException("42133", n ?? "??");
-            if (t == ut.defpos)
-                return;
-            if (((cx.values[t ?? -1L] as TNode)?.dataType ?? cx.db.objects[t ?? -1L]) is not NodeType at)
-                throw new DBException("42105").Add(Qlx.NODETYPE);
-            if (at.EqualOrStrongSubtypeOf(ut))
-            {
-                if ((lv?ut.leavingType:ut.arrivingType)!=gt.defpos)
-                    cx.Add(new AlterEdgeType(lv, ut.defpos, gt.defpos, cx.db.nextPos));
-                return;
-            }
-            var ct = ut.LowestCommonSuper(at) as NodeType?? throw new DBException("22G0K");
-            cx.Add(new AlterEdgeType(lv, ct.defpos, gt.defpos, cx.db.nextPos));
-        }
         internal override GqlNode Add(Context cx, GqlNode? an, CTree<long, TGParam> tgs)
         {
             if (an is null)
@@ -11605,12 +11666,12 @@ cx.obs[high] is not QlValue hi)
             if (an.state[an.defpos] is TGParam lg)
                 if (direction == Qlx.ARROWBASE)
                 {
-                    tgs += (-(int)Qlx.ARROW, lg);
+                    tgs += (-(long)Qlx.ARROW, lg);
                     r += (ArrivingValue, an.defpos);
                 }
                 else
                 {
-                    tgs += (-(int)Qlx.RARROWBASE, lg);
+                    tgs += (-(long)Qlx.RARROWBASE, lg);
                     r += (LeavingValue, an.defpos);
                 }
             r += (State, tgs);
@@ -11831,13 +11892,13 @@ cx.obs[high] is not QlValue hi)
             if (an?.state[an.defpos] is TGParam lg)
                 if (direction == Qlx.ARROWBASE)
                 {
-                    tgs += (-(int)Qlx.ARROW, lg);
+                    tgs += (-(long)Qlx.ARROW, lg);
                     if (last is not null)
                         cx.Add(last+(ArrivingValue, an.defpos));
                 }
                 else
                 {
-                    tgs += (-(int)Qlx.RARROWBASE, lg);
+                    tgs += (-(long)Qlx.RARROWBASE, lg);
                     if (last is not null)
                         cx.Add(last+(LeavingValue, an.defpos));
                 }

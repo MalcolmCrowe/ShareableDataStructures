@@ -17,12 +17,17 @@ using Pyrrho.Level5;
  
 namespace Pyrrho
 {
-	/// <summary>
-	/// Provides a simple HTTP1.1-like interface to Pyrrho DBMS
-	/// compatible with web browsers:
-	/// </summary>
-	internal class HttpService
-	{
+    /// <summary>
+    /// Provides a simple HTTP1.1-like interface to Pyrrho DBMS
+    /// compatible with web browsers:
+    /// </summary>
+    /// <remarks>
+    /// constructor: set up the host and port for the HttpService
+    /// </remarks>
+    /// <param name="sv">the host name (default "127.0.0.1")</param>
+    /// <param name="p">the port (default 8080)</param>
+    internal class HttpService(string h, int p, int s)
+    {
         /// <summary>
         /// the listener (usually port 8133 and 8180)
         /// </summary>
@@ -30,30 +35,20 @@ namespace Pyrrho
         /// <summary>
         /// the host name
         /// </summary>
-        readonly string host;
+        readonly string host = h;
         /// <summary>
         /// the port for HTTP
         /// </summary>
-		readonly int port;
+		readonly int port = p;
         /// <summary>
         /// The port for HTTPS
         /// </summary>
-        readonly int sport;
-        /// <summary>
-        /// constructor: set up the host and port for the HttpService
-        /// </summary>
-        /// <param name="sv">the host name (default "127.0.0.1")</param>
-        /// <param name="p">the port (default 8080)</param>
-		public HttpService(string h,int p,int s)
-		{
-            host = h;
-			port = p;
-            sport = s;
-		}
+        readonly int sport = s;
+
         /// <summary>
         /// the main service loop for the HttpService
         /// </summary>
-		public void Run()
+        public void Run()
 		{
 			try 
 			{
@@ -84,10 +79,14 @@ namespace Pyrrho
     /// <summary>
     /// A base class for the responses from HttpService
     /// </summary>
-    internal abstract class PyrrhoWebOutput
+    /// <remarks>
+    /// Constructor for the web oputput class
+    /// </remarks>
+    /// <param name="s">the output stream</param>
+    internal abstract class PyrrhoWebOutput(Transaction d, StringBuilder s)
     {
-        public Transaction db;
-        public StringBuilder sbuild;
+        public Transaction db = d;
+        public StringBuilder sbuild = s;
         /// <summary>
         /// A Filter property
         /// </summary>
@@ -96,15 +95,7 @@ namespace Pyrrho
             get { return ""; }
             set { }
         }
-        /// <summary>
-        /// Constructor for the web oputput class
-        /// </summary>
-        /// <param name="s">the output stream</param>
-        protected PyrrhoWebOutput(Transaction d,StringBuilder s)
-        {
-            sbuild = s;
-            db = d;
-        }
+
         /// <summary>
         /// Send results to the client using the PyrrhoWebOutput mechanisms
         /// </summary>
@@ -184,15 +175,12 @@ namespace Pyrrho
     /// <summary>
     /// Plain text page output class
     /// </summary>
-    internal class SqlWebOutput : PyrrhoWebOutput
+    /// <remarks>
+    /// simple constructor
+    /// </remarks>
+    /// <param name="s"></param>
+    internal class SqlWebOutput(Transaction d, StringBuilder s) : PyrrhoWebOutput(d,s)
     {
-        /// <summary>
-        /// simple constructor
-        /// </summary>
-        /// <param name="s"></param>
-        public SqlWebOutput(Transaction d,StringBuilder s)
-            : base(d,s)
-        { }
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
             string dn, string etags)
         {
@@ -232,23 +220,21 @@ namespace Pyrrho
     /// <summary>
     /// HTML page output class
     /// </summary>
-    internal class HtmlWebOutput : PyrrhoWebOutput
+    /// <remarks>
+    /// simple constructor
+    /// </remarks>
+    /// <param name="s"></param>
+    internal class HtmlWebOutput(Transaction d, StringBuilder s, string qry) : PyrrhoWebOutput(d, s)
     {
-        CTree<Qlx,TypedValue> chartType = CTree<Qlx,TypedValue>.Empty;
+        TMetadata chartType = TMetadata.Empty;
         long xcol= 0;
         long ycol = 0;
         long ccol = 0;
         string xdesc = "";
         string ydesc = "";
         string comma = "";
-        readonly string query = "";
-        /// <summary>
-        /// simple constructor
-        /// </summary>
-        /// <param name="s"></param>
-        public HtmlWebOutput(Transaction d, StringBuilder s, string qry)
-            : base(d, s)
-        { query = qry; }
+        readonly string query = qry;
+
         public override void Header(HttpListenerResponse hrs, Transaction tr,
             Context cx,string dn,string etags)
         {
@@ -272,7 +258,7 @@ namespace Pyrrho
                     sbuild.Append(mi.description);
             }
             var oi = fm?.rowType;
-            if (chartType != CTree<Qlx, TypedValue>.Empty && !chartType.Contains(Qlx.NODE))
+            if (chartType != TMetadata.Empty && !chartType.Contains(Qlx.NODE))
             {
                 for (var co = oi?.First(); co != null; co = co.Next())
                     if (co.value() is long p)
@@ -295,9 +281,9 @@ namespace Pyrrho
                             ccol = cp;
                     }
                 if ((xcol == 0) && (ycol == 0))
-                    chartType = CTree<Qlx, TypedValue>.Empty;
+                    chartType = TMetadata.Empty;
             }
-            if (chartType != CTree<Qlx, TypedValue>.Empty)
+            if (chartType != TMetadata.Empty)
             {
                 var wd = 210;
                 if (chartType.Contains(Qlx.LEGEND))
@@ -360,11 +346,11 @@ namespace Pyrrho
                     {
                         sbuild.Append(comma + "[");
                         sbuild.Append(ni.ToString());
-                        sbuild.Append("]");
+                        sbuild.Append(']');
                         comma = ",\r\n";
                     }
             } else
-            if (chartType!=CTree<Qlx,TypedValue>.Empty)
+            if (chartType!=TMetadata.Empty)
             {
                 sbuild.Append(comma+"[");
                 var rc = e[xcol];
@@ -402,7 +388,7 @@ namespace Pyrrho
                 GraphModelSupport();
                 return;
             }
-            if (chartType!=CTree<Qlx,TypedValue>.Empty)
+            if (chartType!=TMetadata.Empty)
             {
                 sbuild.Append("     ];           var pt = obs[0];\r\n");
                 sbuild.Append("    // first find obs window\r\n");
@@ -428,7 +414,7 @@ namespace Pyrrho
                 sbuild.Append("    maxY = yd*Math.round(maxY*1.0/yd+1.5);\r\n");
                 sbuild.Append("    var wid = canvas.width - 40;\r\n");
                 sbuild.Append("    var hig = canvas.height - 30;\r\n"); 
-                if (chartType!=CTree<Qlx,TypedValue>.Empty)
+                if (chartType!=TMetadata.Empty)
                 {
                     sbuild.Append("    var scx = (maxX == minX) ? 1 : wid / (maxX - minX);\r\n");
                     sbuild.Append("    var scy = (maxY == minY) ? 1 : hig / (maxY - minY);\r\n");
@@ -534,7 +520,7 @@ namespace Pyrrho
                     sbuild.Append("        }\r\n");
                     sbuild.Append("      }\r\n");               
                 }
-                if (chartType!=CTree<Qlx,TypedValue>.Empty && !chartType.Contains(Qlx.PIE))
+                if (chartType!=TMetadata.Empty && !chartType.Contains(Qlx.PIE))
                 {
                     sbuild.Append("    function drawAxes() {\r\n");
                     sbuild.Append("      ctx.beginPath();\r\n");
@@ -737,11 +723,10 @@ namespace Pyrrho
             sbuild.Append("</body></html>\r\n"); 
         }
     }
-    internal class JsonWebOutput : PyrrhoWebOutput
+    internal class JsonWebOutput(Transaction db, StringBuilder s) : PyrrhoWebOutput(db, s)
     {
         string cm = "";
-        public JsonWebOutput(Transaction db, StringBuilder s) : base(db, s)
-        { }
+
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
             string dn,string etags)
         {
@@ -791,18 +776,14 @@ namespace Pyrrho
     /// <summary>
     /// XML output class
     /// </summary>
-    internal class XmlWebOutput : PyrrhoWebOutput
+    /// <remarks>
+    /// a simple constructor
+    /// </remarks>
+    /// <param name="s"></param>
+    internal class XmlWebOutput(Transaction db, StringBuilder s, string rn) : PyrrhoWebOutput(db,s)
     {
-        public string rootName;
-        /// <summary>
-        /// a simple constructor
-        /// </summary>
-        /// <param name="s"></param>
-        public XmlWebOutput(Transaction db,StringBuilder s,string rn)
-            : base(db,s)
-        {
-            rootName = rn;
-        }
+        public string rootName = rn;
+
         public override void Header(HttpListenerResponse rs, Transaction tr, Context cx, 
             string dn, string etags)
         {
@@ -829,31 +810,24 @@ namespace Pyrrho
     /// <summary>
     /// The HttpServer class
     /// </summary>
-	internal class HttpServer 
-	{
+    /// <remarks>
+    /// constructor
+    /// </remarks>
+    internal class HttpServer(HttpListenerContext h)
+    {
         /// <summary>
         /// The HttpContext
         /// </summary>
-        protected HttpListenerContext client;
+        protected HttpListenerContext client = h;
 //        readonly string agent;
         protected PyrrhoWebOutput? woutput;
-        readonly StringBuilder sbuild;
+        readonly StringBuilder sbuild = new();
         /// <summary>
         /// the database path
         /// </summary>
-        readonly string path;
+        readonly string path = h.Request.RawUrl ?? "";
 
-        /// <summary>
-        /// constructor
-        /// </summary>
-		public HttpServer(HttpListenerContext h)
-		{
-            client = h;
-            path = h.Request.RawUrl ?? "";
-//            agent = h.Request.UserAgent ?? "";
-            sbuild = new StringBuilder();
-		}
-         internal void Server()
+        internal void Server()
         {
             woutput = null;
             try

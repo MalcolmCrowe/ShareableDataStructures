@@ -141,11 +141,11 @@ namespace Pyrrho.Level3
         {
             return domain.defaultValue;
         }
-        internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? p)
+        internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? p)
         {
             if (cx._Ob(defpos) is not DBObject ob)
                 throw new DBException("42105").Add(Qlx.COLUMN);
-            QlValue r = new SqlCopy(lp, cx, nm, p?.defpos??-1L, ob) + (_Domain, domain);
+            QlValue r = new SqlCopy(lp, cx, ic.ident, p?.defpos??-1L, ob) + (_Domain, domain);
             cx.Add(r);
             return (r, n);
         }

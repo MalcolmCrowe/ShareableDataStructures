@@ -80,6 +80,7 @@ namespace Pyrrho.Level4
             }
             next.val = val;
             next.nextHeap = nextHeap;
+            next.result = result;
             if (next.next is Context nx)
                 nx.lastret = next.lastret;
             if (db != next.db)
@@ -144,6 +145,14 @@ namespace Pyrrho.Level4
             if (rdt is not null)
                 return new TRow(rdt,values);
             return base.Ret();
+        }
+        internal override Context SlideDown()
+        {
+            if (next is Context nx && proc?.framing?.obs is BTree<long, DBObject> os)
+                for (var b = os.First(); b!= null; b = b.Next())
+                    if (b.value() is DBObject ob)
+                        nx.obs += (b.key(), ob);
+            return base.SlideDown();
         }
     }
     internal class TargetActivation : Activation
@@ -596,6 +605,8 @@ namespace Pyrrho.Level4
                         for (var b = casc.First(); b != null; b = b.Next())
                             if (b.value() is TableActivation ct)
                                 rc.Cascade(ct);
+                        if (parse.HasFlag(ExecuteStatus.Detach))
+                            rc.Cascade(this);
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns - rc.defpos);

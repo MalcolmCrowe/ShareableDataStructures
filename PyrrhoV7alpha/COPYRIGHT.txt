@@ -18,9 +18,9 @@ use of this software. This does not affect your statutory rights under
 applicable law.
 
 This is version 7.09(alpha) of the DBMS, compiled for .NET 8.0.
-It passes tests 1 to 25 of the PyrrhoTest program (10 July 2024), 
+It passes tests 1 to 25 of the PyrrhoTest program (20 August 2024), 
 and should run on Windows, Linux, and MacOS with Mono.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-14 July 2024
+21 August 2024

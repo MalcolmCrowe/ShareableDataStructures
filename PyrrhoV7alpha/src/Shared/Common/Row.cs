@@ -175,7 +175,7 @@ namespace Pyrrho.Common
                 var v = (value < 0) ? -value : value;
                 while (v>0)
                 {
-                    v = v >> 1;
+                    v >>= 1;
                     n++;
                 }
             }
@@ -369,10 +369,6 @@ namespace Pyrrho.Common
         internal TReal(Domain dt, Numeric n) : base(dt) { nvalue = n; }
         internal TReal(double d) : this(Domain.Real, d) { }
         internal TReal(Numeric n) : this(Domain.Real, n) { }
-        TReal(Domain dt, double d, Numeric n) : base(dt)
-        {
-            dvalue = d; nvalue = n;
-        }
         internal override TypedValue Next()
         {
             if (!double.IsNaN(dvalue))
@@ -420,10 +416,10 @@ namespace Pyrrho.Common
         }
     }
     // shareable
-    internal class TQParam : TypedValue
+    internal class TQParam(Domain dt, Iix id) : TypedValue(dt)
     {
-        internal readonly Iix qid;
-        public TQParam(Domain dt,Iix id) :base(dt) { qid = id; }
+        internal readonly Iix qid = id;
+
         internal override TypedValue Fix(Context cx)
         {
             var id = cx.Fix(qid);
@@ -467,7 +463,7 @@ namespace Pyrrho.Common
                 throw new DBException("22000",dataType);
             if (ts.Count == 1)
                 return ts[0].Coerce(cx,value);
-            return new TUnion(Domain.UnionType(lp,ts.ToArray()),value);
+            return new TUnion(Domain.UnionType(lp, [.. ts]),value);
         }
     }
     // shareable
@@ -742,8 +738,7 @@ namespace Pyrrho.Common
         internal TypedValue this[int i] => list.PositionAt(i)?.value()??TNull.Value;
         public override int CompareTo(object? obj)
         {
-            var that = obj as TList;
-            if (that is null)
+            if (obj is not TList that)
                 return 1;
             var tb = that.list.First();
             var b = list.First();
@@ -945,13 +940,23 @@ namespace Pyrrho.Common
         }
     }
     // shareable: no mutators
-    internal sealed class TMetadata : TypedValue
+    internal sealed class TMetadata(CTree<Qlx, TypedValue> m) : TypedValue(Domain.Metadata)
     {
-        readonly CTree<Qlx, TypedValue> md;
-        public TMetadata(CTree<Qlx,TypedValue>? m=null) : base(Domain.Metadata)
+        readonly CTree<Qlx, TypedValue> md = m;
+        internal static TMetadata Empty = new();
+        TMetadata() : this(CTree<Qlx, TypedValue>.Empty){ }
+
+        public static TMetadata operator+(TMetadata m, (Qlx,TypedValue) x)
         {
-            md = m ?? CTree<Qlx,TypedValue>.Empty;
+            return new(m.md + x);
         }
+        public static TMetadata operator +(TMetadata m1, TMetadata m2)
+        {
+            return new(m1.md + m2.md);
+        }
+        public TypedValue this[Qlx x] => md[x]??TNull.Value;
+        public ABookmark<Qlx,TypedValue>?  First() => md.First();
+        public bool Contains(Qlx x) => md.Contains(x);
         public override string ToString()
         {
             if (md == CTree<Qlx, TypedValue>.Empty)

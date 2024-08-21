@@ -3917,6 +3917,7 @@ namespace Pyrrho.Level3
     internal class QuerySearch : Executable
     {
         internal long source => (long)(mem[RowSet._Source] ?? -1L);
+        internal bool detach => mem.Contains(Index.IndexConstraint);
         /// <summary>
         /// Constructor: a DELETE or UPDATE statement from the parser
         /// </summary>
@@ -3979,6 +3980,8 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx)
         {
+            if (detach)
+                cx.parse |= ExecuteStatus.Detach;
             if (cx.obs[source] is RowSet tg)
             {
                 var ts = BTree<long, TargetActivation>.Empty;
@@ -4387,7 +4390,7 @@ namespace Pyrrho.Level3
             GDefs = -210,   // CTree<long,TGParam>
             MatchFlags = -496, // Bindings=1,Body=2,Return=4,Schema=8
             MatchList = -491, // BList<long?> GqlMatchAlt
-            Truncating = -492; // BTree<long,(int,Domain)> EdgeType (or 0L)
+            Truncating = -492; // BTree<long,(long,long)> EdgeType (or 0L), lm QlValue, ord QlValue
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
         internal BList<long?> matchList =>
@@ -4396,8 +4399,8 @@ namespace Pyrrho.Level3
             (CTree<long, bool>)(mem[RowSet._Where] ?? CTree<long, bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
         internal BList<long?> then => (BList<long?>)(mem[IfThenElse.Then] ?? BList<long?>.Empty);
-        internal BTree<long, (int, Domain)> truncating =>
-            (BTree<long, (int, Domain)>)(mem[Truncating] ?? BTree<long, (int, Domain)>.Empty);
+        internal BTree<long, (long, long)> truncating =>
+            (BTree<long, (long, long)>)(mem[Truncating] ?? BTree<long, (long, long)>.Empty);
         internal Domain sort => (Domain?)mem[RowSet.RowOrder] ?? Domain.Null;
         internal int size => (int?)mem[RowSetSection.Size] ?? -1;
         internal long ret => (long)(mem[ReturnStatement.Ret] ?? -1L);
@@ -4407,13 +4410,17 @@ namespace Pyrrho.Level3
         [Flags]
         internal enum Flags { None = 0, Bindings = 1, Body = 2, Return = 4, Schema = 8 }
         internal Flags flags => (Flags)(mem[MatchFlags] ?? Flags.None);
-        public MatchStatement(Context cx, BTree<long, (int, Domain)>? tg, CTree<long, TGParam> gs, BList<long?> ge,
+        /// <summary>
+        /// This private field is modified only at the start of _Obey
+        /// </summary>
+        BTree<long,(int,Domain)> truncator = BTree<long,(int,Domain)>.Empty;
+        public MatchStatement(Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, BList<long?> ge,
             BTree<long, object> m, long st, long re)
             : this(cx.GetUid(), cx, tg, gs, ge, m, st, re)
         {
             cx.Add(this);
         }
-        MatchStatement(long dp, Context cx, BTree<long, (int, Domain)>? tg, CTree<long, TGParam> gs, BList<long?> ge,
+        MatchStatement(long dp, Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, BList<long?> ge,
     BTree<long, object> m, long st, long re)
             : base(dp, _Mem(dp, cx, m, tg, gs, ge, st, re) + (Procedure.Body, st))
         {
@@ -4421,7 +4428,7 @@ namespace Pyrrho.Level3
         }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
-        static BTree<long, object> _Mem(long dp, Context cx, BTree<long, object> m, BTree<long, (int, Domain)>? tg,
+        static BTree<long, object> _Mem(long dp, Context cx, BTree<long, object> m, BTree<long, (long, long)>? tg,
             CTree<long, TGParam> gs, BList<long?> ge, long st, long re)
         {
             for (var b = gs.First(); b != null; b = b.Next())
@@ -4517,6 +4524,29 @@ namespace Pyrrho.Level3
                 binding = _cx.binding,
                 result = domain.defpos
             };
+            // Parse any truncating expressions
+            for (var b = truncating.First(); b != null; b = b.Next())
+            {
+                var (i, d) = b.value();
+                var lm = (cx.obs[i] as QlValue)?.Eval(_cx) as TInt;
+                var qs = (cx.obs[d] as QlValue)?.Eval(_cx) as TChar;
+                if (lm is null || qs is null) throw new PEException("PE60801");
+                var il = lm.ToInt() ?? throw new PEException("PE60802");
+                var pd = new Parser(_cx, qs.ToString());
+                if (_cx.db.objects[b.key()] is NodeType nt)
+                    pd.cx.AddDefs(nt);
+                var rt = BList<DBObject>.Empty;
+                while (pd.tok == Qlx.Id)
+                {
+                    rt += cx._Ob(pd.ParseOrderItem(false)) ?? SqlNull.Value;
+                    if (pd.tok == Qlx.COMMA)
+                        pd.Next();
+                    else
+                        break;
+                }
+                var od = (rt.Length == 0) ? Domain.Content : new Domain(cx.GetUid(), cx, Qlx.ROW, rt, rt.Length);
+                truncator += (b.key(), (il, od));
+            }
             var pre = ((Transaction)cx.db).physicals.Count;
             _step = 0;
             var gf = matchList.First();
@@ -4991,7 +5021,7 @@ namespace Pyrrho.Level3
             else if (pd is not null && pd.dataType is NodeType pn && pn is not EdgeType) // an edge attached to the TNode pd
             {
                 var ctr = CTree<Domain, int>.Empty;
-                var tg = truncating != CTree<long, (int, Domain)>.Empty;
+                var tg = truncator != CTree<long, (int, Domain)>.Empty;
                 // case 1: pn has a primary index
                 for (var b = pn.rindexes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is EdgeType rt)
@@ -5003,7 +5033,7 @@ namespace Pyrrho.Level3
                         }
                         if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
                                 continue;
-                        var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
+                        var lm = truncator.Contains(rt.defpos) ? truncator[rt.defpos].Item1 : int.MaxValue;
                         var ic = (xn.tok == Qlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
                         var xp = (xn.tok == Qlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;
                         for (var g = b.value().First(); g != null; g = g.Next())
@@ -5013,7 +5043,7 @@ namespace Pyrrho.Level3
                                 && pd.tableRow.vals[pn.idCol] is TInt ti
                                 && rx.rows?.impl?[ti] is TPartial tp)
                                 {
-                                    if (lm < tp.value.Count && truncating[rt.defpos].Item2 is Domain dm
+                                    if (lm < tp.value.Count && truncator[rt.defpos].Item2 is Domain dm
                                         && dm.Length > 0)
                                         ds = Trunc(ds, rt, tp.value, lm, dm);
                                     else
@@ -5035,7 +5065,7 @@ namespace Pyrrho.Level3
                             }
                     }
                 // case 2: pn has no primary index: follow the above logic for sysRefIndexes instead
-                var la = truncating.Contains(Domain.EdgeType.defpos) ? truncating[Domain.EdgeType.defpos].Item1 : int.MaxValue;
+                var la = truncator.Contains(Domain.EdgeType.defpos) ? truncator[Domain.EdgeType.defpos].Item1 : int.MaxValue;
                 for (var b = pn.sindexes[pd.id.ToLong() ?? -1L]?.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is TableColumn cc
                         && cx.db.objects[cc.tabledefpos] is EdgeType rt
@@ -5044,7 +5074,7 @@ namespace Pyrrho.Level3
                         && b.value() is CTree<long, bool> pt)
                         for (var c = pt.First(); c != null; c = c.Next())
                         {
-                            var lm = truncating.Contains(rt.defpos) ? truncating[rt.defpos].Item1 : int.MaxValue;
+                            var lm = truncator.Contains(rt.defpos) ? truncator[rt.defpos].Item1 : int.MaxValue;
                             if (pd.defpos == pd.dataType.defpos && lm-- > 0 && la-- > 0)  // schema flag
                             {
                                 ds += (rt.defpos, rt.Schema(cx));
@@ -5111,14 +5141,14 @@ namespace Pyrrho.Level3
         {
             if (Trunc1(ctr, rt))
                 return true;
-            if (truncating.Contains(Domain.EdgeType.defpos) 
-                && (ctr[Domain.EdgeType]>= truncating[Domain.EdgeType.defpos].Item1))
+            if (truncator.Contains(Domain.EdgeType.defpos) 
+                && (ctr[Domain.EdgeType]>= truncator[Domain.EdgeType.defpos].Item1))
                     return true;
             return false;
         }
         bool Trunc1(CTree<Domain,int> ctr,Table st)
         {
-            if (truncating.Contains(st.defpos) && ctr[st] >= truncating[st.defpos].Item1)
+            if (truncator.Contains(st.defpos) && ctr[st] >= truncator[st.defpos].Item1)
                 return true;
             for (var b = st.super.First(); b != null; b = b.Next())
                 if (b.key() is Table t)
@@ -5127,8 +5157,8 @@ namespace Pyrrho.Level3
         }
         bool AllTrunc(CTree<Domain, int> ctr)
         {
-            if (truncating.Contains(Domain.EdgeType.defpos)
-                && (ctr[Domain.EdgeType] >= truncating[Domain.EdgeType.defpos].Item1))
+            if (truncator.Contains(Domain.EdgeType.defpos)
+                && (ctr[Domain.EdgeType] >= truncator[Domain.EdgeType.defpos].Item1))
                 return true;
             return false;
         }
@@ -5305,24 +5335,32 @@ namespace Pyrrho.Level3
                    {
                         switch (b.key())
                         {
-                            case -(int)Qlx.Id: tv = dn; break;
-                            case -(int)Qlx.RARROW:
+                            case -(long)Qlx.Id: tv = dn; break;
+                            case -(long)Qlx.RARROW:
                                 {
                                     var te = cx.GType(nt.leavingType);
                                     var er = te?.Get(cx, dn.tableRow.vals[nt.leaveCol] as TInt);
                                     tv = (te is null || er is null) ? TNull.Value : te.Node(cx, er);
                                     break;
                                 }
-                            case -(int)Qlx.ARROW:
+                            case -(long)Qlx.ARROW:
                                 {
                                     var te = cx.GType(nt.arrivingType);
                                     var er = te?.Get(cx, dn.tableRow.vals[nt.arriveCol] as TInt);
                                     tv = (te is null || er is null) ? TNull.Value : te.Node(cx, er);
                                     break;
                                 }
-                            case -(int)Qlx.TYPE: //tv = new TChar(nt.name); break;
+                            case -(long)Qlx.TYPE: //tv = new TChar(nt.name); break;
                                 {
                                     tv = new TChar(SubType(cx, nt, dn).name);
+                                    break;
+                                }
+                            default:
+                                {
+                                    if (tg.type.HasFlag(TGParam.Type.Type))
+                                        tv = new TChar(SubType(cx, nt, dn).name); 
+                                    else if (b.key() == xn.defpos)
+                                        tv = dn;
                                     break;
                                 }
                         }
@@ -5381,7 +5419,7 @@ namespace Pyrrho.Level3
         }
         protected override DBObject _Replace(Context cx, DBObject was, DBObject now)
         {
-            var r = (SqlValueExpr)base._Replace(cx, was, now);
+            var r = (MatchStatement)base._Replace(cx, was, now);
             var ch = false;
             var ls = BList<long?>.Empty;
             for (var b=matchList.First();b!=null;b=b.Next())
@@ -5392,7 +5430,7 @@ namespace Pyrrho.Level3
                         ch = true;
                     ls += a.defpos;
                 }
-            var tg = BTree<long, (int, Domain)>.Empty;
+            var tg = BTree<long, (long, long)>.Empty;
             for (var b=truncating.First();b!=null;b=b.Next())
             {
                 var (i, d) = b.value();
@@ -5400,9 +5438,7 @@ namespace Pyrrho.Level3
                 long nk = k;
                 if (cx.obs[k] is EdgeType)
                     nk = cx.done[k]?.defpos ?? k;
-                var nd = cx.done[d.defpos] as Domain?? d;
-                if (k != nk || d.defpos != nd.defpos)
-                    ch = true;
+                var nd = cx.Replaced(d);
                 tg += (k, (i, d));
             }
             return ch?cx.Add(r+(MatchList,ls)):r;

@@ -1,0 +1,27 @@
+insert into person values ~c:\LDBC\sf1\sf1\snapshot\Person.csv
+insert into account values ~c:\LDBC\sf1\sf1\snapshot\Account.csv
+insert into company values ~c:\LDBC\sf1\sf1\snapshot\Company.csv
+insert into loan values ~c:\LDBC\sf1\sf1\snapshot\Loan.csv
+insert into medium values ~c:\LDBC\sf1\sf1\snapshot\Medium.csv
+insert into "2986" (leaving,arriving,createTime,organization) values ~c:\LDBC\sf1\sf1\snapshot\PersonApplyLoan.csv
+insert into "3449" (leaving,arriving,createTime,relationship) values ~C:\LDBC\sf1\sf1\snapshot\PersonGuaranteePerson.csv
+insert into "2532" (leaving,arriving,ratio,createTime) values ~c:\LDBC\sf1\sf1\snapshot\PersonInvestCompany.csv
+insert into "4344" own(leaving,arriving,createTime) values ~c:\LDBC\sf1\sf1\snapshot\PersonOwnAccount.csv
+insert into repay(leaving,arriving,amount,createTime) values ~c:\LDBC\sf1\sf1\snapshot\AccountRepayLoan.csv
+insert into transfer(leaving,arriving,amount,createTime,orderNumber,comment,payType,goodsType) values ~c:\LDBC\sf1\sf1\snapshot\AccountTransferAccount.csv
+insert into withdraw(leaving,arriving,amount,createTime) values ~c:\LDBC\sf1\sf1\snapshot\AccountWithdrawAccount.csv
+insert into "3193"(leaving,arriving,createtime,organization) values ~c:\LDBC\sf1\sf1\snapshot\CompanyApplyLoan.csv
+insert into "4080"(leaving,arriving,createTime,relationship) values ~c:\LDBC\sf1\sf1\snapshot\CompanyGuaranteeCompany.csv
+insert into "2734"(leaving,arriving,ratio,createTime) values ~c:\LDBC\sf1\sf1\snapshot\CompanyInvestCompany.csv
+insert into "4516"(leaving,arriving,createTime) values ~c:\LDBC\sf1\sf1\snapshot\CompanyOwnAccount.csv
+insert into deposit(leaving,arriving,amount,createTime) values ~c:\LDBC\sf1\sf1\snapshot\LoanDepositAccount.csv
+insert into signin(leaving,arriving,createTime,location) values ~c:\LDBC\sf1\sf1\snapshot\MediumSignInAccount.csv
+
+
+
+
+
+
+
+
+						

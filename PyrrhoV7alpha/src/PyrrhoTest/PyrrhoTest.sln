@@ -3,9 +3,9 @@ Microsoft Visual Studio Solution File, Format Version 12.00
 # Visual Studio Version 17
 VisualStudioVersion = 17.4.33213.308
 MinimumVisualStudioVersion = 10.0.40219.1
-Project("{FAE04EC0-301F-11D3-BF4B-00C04F79EFBC}") = "PyrrhoTest", "PyrrhoTest.csproj", "{35884F58-FB2C-48A4-B41D-7E17B85201CB}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PyrrhoTest", "PyrrhoTest.csproj", "{35884F58-FB2C-48A4-B41D-7E17B85201CB}"
 EndProject
-Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PyrrhoLink", "..\..\Shared\PyrrhoLink\PyrrhoLink.csproj", "{1C0283C7-C13E-4360-B0A8-0F74DCEAC2BD}"
+Project("{9A19103F-16F7-4668-BE54-9A1E7A4F7556}") = "PyrrhoLink", "..\..\PyrrhoLink\PyrrhoLink.csproj", "{4CB2FF3A-FF5A-4FF7-A20C-DBD07C7C8CC7}"
 EndProject
 Global
 	GlobalSection(SolutionConfigurationPlatforms) = preSolution
@@ -17,10 +17,10 @@ Global
 		{35884F58-FB2C-48A4-B41D-7E17B85201CB}.Debug|Any CPU.Build.0 = Debug|Any CPU
 		{35884F58-FB2C-48A4-B41D-7E17B85201CB}.Release|Any CPU.ActiveCfg = Release|Any CPU
 		{35884F58-FB2C-48A4-B41D-7E17B85201CB}.Release|Any CPU.Build.0 = Release|Any CPU
-		{1C0283C7-C13E-4360-B0A8-0F74DCEAC2BD}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
-		{1C0283C7-C13E-4360-B0A8-0F74DCEAC2BD}.Debug|Any CPU.Build.0 = Debug|Any CPU
-		{1C0283C7-C13E-4360-B0A8-0F74DCEAC2BD}.Release|Any CPU.ActiveCfg = Release|Any CPU
-		{1C0283C7-C13E-4360-B0A8-0F74DCEAC2BD}.Release|Any CPU.Build.0 = Release|Any CPU
+		{4CB2FF3A-FF5A-4FF7-A20C-DBD07C7C8CC7}.Debug|Any CPU.ActiveCfg = Debug|Any CPU
+		{4CB2FF3A-FF5A-4FF7-A20C-DBD07C7C8CC7}.Debug|Any CPU.Build.0 = Debug|Any CPU
+		{4CB2FF3A-FF5A-4FF7-A20C-DBD07C7C8CC7}.Release|Any CPU.ActiveCfg = Release|Any CPU
+		{4CB2FF3A-FF5A-4FF7-A20C-DBD07C7C8CC7}.Release|Any CPU.Build.0 = Release|Any CPU
 	EndGlobalSection
 	GlobalSection(SolutionProperties) = preSolution
 		HideSolutionNode = FALSE

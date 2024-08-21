@@ -197,6 +197,7 @@ namespace Pyrrho.Level3
         internal CTree<Domain, bool> nodeTypes =>
             (CTree<Domain, bool>)(mem[NodeTypes] ?? CTree<Domain, bool>.Empty);
         public OrderCategory orderflags => (OrderCategory)(mem[_OrderCategory] ?? OrderCategory.None);
+        public TGParam.Type mod => (TGParam.Type)(mem[SqlFunction.Mod] ?? TGParam.Type.None);
         public CTree<Domain, bool> unionOf =>
             (CTree<Domain, bool>?)mem[UnionOf] ?? CTree<Domain, bool>.Empty;
         internal Domain(Context cx, CTree<long, Domain> rs, BList<long?> rt, BTree<long, ObInfo> ii)
@@ -1914,8 +1915,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (kind == Qlx.DOCUMENT)
                 return new TDocument(s);
             if (kind== Qlx.METADATA)
-                return new TMetadata(new Parser(Database._system,new Connection())
-                    .ParseMetadata(s,(int)off,Qlx.VIEW));
+                return new Parser(Database._system,new Connection()).ParseMetadata(s,(int)off,Qlx.VIEW);
             return Parse(new Scanner(off,s.ToCharArray(), 0, cx));
         }
         public CTree<long, TypedValue> Parse(Context cx, string s)
@@ -2415,7 +2415,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             while (lx.pos < lx.len)
                             {
                                 var s = lx.NonWhite();
-                                if (s.ToUpperInvariant().CompareTo("REFERENCES") == 0)
+                                if (StringComparer.CurrentCultureIgnoreCase.Compare(s,"REFERENCES") == 0)
                                     rfseen = true;
                                 else if (rfseen)
                                     rfs +=(s, true);
@@ -2428,7 +2428,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         return null;
                     }
             }
-            if (lx.pos + 4 < lx.len && new string(lx.input, start, 4).ToLowerInvariant() == "null")
+            if (lx.pos + 4 < lx.len 
+                && StringComparer.CurrentCultureIgnoreCase.Compare(new string(lx.input, start, 4),"null")==0)
             {
                 for (int i = 0; i < 4; i++)
                     lx.Advance();

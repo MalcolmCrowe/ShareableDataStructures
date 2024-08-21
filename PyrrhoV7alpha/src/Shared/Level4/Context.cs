@@ -79,14 +79,14 @@ namespace Pyrrho.Level4
         /// Left-to-right accumulation of definitions during a parse: accessed only by RowSet
         /// </summary>
         internal Ident.Idents defs = Ident.Idents.Empty;
-        internal BTree<int, (long, Ident.Idents)> defsStore = BTree<int, (long, Ident.Idents)>.Empty; // saved defs for previous level
-        internal int sD => (int)defsStore.Count; // see IncSD() and DecSD() below
+        internal BTree<long, (long, Ident.Idents)> defsStore = BTree<long, (long, Ident.Idents)>.Empty; // saved defs for previous level
+        internal long sD => defsStore.Count; // see IncSD() and DecSD() below
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal long lexical = 0L; // current select block, set in incSD()
         internal Graph? graph = null; // current graph, set by USE
         internal Schema? schema = null; // current schema, set by AT
         public BTree<long, bool> locals = BTree<long, bool>.Empty; // for binding table, activation locals
-        internal CTree<long, int> undefined = CTree<long, int>.Empty;
+        internal CTree<long, long> undefined = CTree<long, long>.Empty;
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long?> uids = BTree<long, long?>.Empty;
         internal long result = -1L,lastret = -1L; // usually an ExplicitRowSet (binding table)
@@ -169,6 +169,8 @@ namespace Pyrrho.Level4
             cursors = cx.cursors;
             val = cx.val;
             parent = cx.parent; // for triggers
+            if (cx.parse.HasFlag(ExecuteStatus.Detach))
+                parse = cx.parse;
             rdC = cx.rdC;
             nid = cx.nid;
             restRowSets = cx.restRowSets;
@@ -182,7 +184,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// This Lookup is from the ParseVarOrColumn above.
         /// If the selectdepth has changed it is unlikely to be the right identification,
-        /// so leave it to resolved later.
+        /// so leave it to resolve later.
         /// </summary>
         /// <param name="lp"></param>
         /// <param name="n"></param>
@@ -200,16 +202,20 @@ namespace Pyrrho.Level4
                 if (_Ob(ix.dp) is DBObject ob)
                 {
                     if (ix.sd < sD && (ob is SqlReview||
-                        (ob.GetType().Name=="QlValue"&&ob.domain.kind!=Qlx.PATH))) // an undefined identifier from a lower level
+                        (ob.GetType().Name=="QlValue" && (!parse.HasFlag(ExecuteStatus.Graph))
+                            &&ob.domain.kind!=Qlx.PATH))) // an undefined identifier from a lower level
                         return (null, n);
-                    (r, s) = ob._Lookup(lp, this, n.ident, n.sub, rr);
-                    if (r!=ob && r is SqlField)
+                    (r, s) = ob._Lookup(lp, this, n, n.sub, rr);
+                    if (r!=ob && (r is SqlField||(r is SqlValueExpr se && se.op==Qlx.DOT)))
                     {
-                        undefined -= n.iix.dp;
-                        undefined -= lp;
-                        return (r, s);
+                        if (s is null)
+                        {
+                            undefined -= n.iix.dp;
+                            undefined -= lp;
+                        }
+                        break;
                     }
-                    (r,s) = ob._Lookup(lp, this, n.ident, sub, rr);
+                    (r,s) = ob._Lookup(lp, this, n, sub, rr);
                     lp = GetUid();
                     if (sub!=null)
                         n = sub;
@@ -312,6 +318,7 @@ namespace Pyrrho.Level4
             {
                 case ExecuteStatus.Parse:
                 case ExecuteStatus.Compile:
+                case ExecuteStatus.Compile | ExecuteStatus.Graph:
                     {
                         var r = db.nextStmt;
                         db += (Database.NextStmt, r + 1);
@@ -329,46 +336,39 @@ namespace Pyrrho.Level4
         {
             if (db == null)
                 return -1L;
-            switch (parse)
+            if (parse.HasFlag(ExecuteStatus.Parse) || parse.HasFlag(ExecuteStatus.Compile))
             {
-                case ExecuteStatus.Parse:
-                case ExecuteStatus.Compile:
-                    {
-                        var r = db.nextStmt;
-                        db += (Database.NextStmt, r + 1);
-                        return r;
-                    }
-                default:
-                    return nextHeap++;
+                var r = db.nextStmt;
+                db += (Database.NextStmt, r + 1);
+                return r;
             }
+            else
+                return nextHeap++;
         }
         internal long GetUid(int n)
         {
             long r;
             if (db == null)
                 return -1L;
-            switch (parse)
+            if (parse.HasFlag(ExecuteStatus.Parse) || parse.HasFlag(ExecuteStatus.Compile))
             {
-                case ExecuteStatus.Parse:
-                case ExecuteStatus.Compile:
-                    r = db.nextStmt;
-                    db += (Database.NextStmt, r + n);
-                    return r;
-                default:
-                    r = nextHeap;
-                    nextHeap += n;
-                    return r;
+                r = db.nextStmt;
+                db += (Database.NextStmt, r + n);
+                return r;
+            }
+            else
+            {
+                r = nextHeap;
+                nextHeap += n;
+                return r;
             }
         }
         internal long GetPrevUid()
         {
             if (db == null)
                 return -1L;
-            return parse switch
-            {
-                ExecuteStatus.Parse or ExecuteStatus.Compile => db.nextStmt - 1,
-                _ => nextHeap - 1,
-            };
+            return (parse.HasFlag(ExecuteStatus.Parse) || parse.HasFlag(ExecuteStatus.Compile))?
+                db.nextStmt - 1:  nextHeap - 1;
         }
         internal string NewNode(long pp, string v)
         {
@@ -591,7 +591,7 @@ namespace Pyrrho.Level4
                     }
                     // export the current level to the next one down
                     if (sd > 2 && uv.defpos < Transaction.Executables && defs.Contains(n))
-                        if (defs[n] is BTree<int, (Iix, Ident.Idents)> x && uv.name != null)
+                        if (defs[n] is BTree<long, (Iix, Ident.Idents)> x && uv.name != null)
                             if (x.Contains(sd))
                             {
                                 var tx = x[sd].Item1;
@@ -603,7 +603,7 @@ namespace Pyrrho.Level4
             for (var b = defs.First(); b != null; b = b.Next())
             {
                 var n = b.key();
-                if (defs[n] is BTree<int, (Iix, Ident.Idents)> t && t.Contains(sd))// there is an entry for n at the current level
+                if (defs[n] is BTree<long, (Iix, Ident.Idents)> t && t.Contains(sd))// there is an entry for n at the current level
                 {
                     var (px, cs) = t[sd];
                     if ((bs.Contains(n) || obs[px.dp] is GqlNode) && !role.dbobjects.Contains(n)) // an object name is not a binding variable or a forward ref
@@ -614,7 +614,7 @@ namespace Pyrrho.Level4
                         && obs[px.dp] is ForwardReference fr)
                     {
                         for (var c = cs.First(); c != null; c = c.Next())
-                            if (c.value() is BTree<int, (Iix, Ident.Idents)> x && x.Contains(sd))
+                            if (c.value() is BTree<long, (Iix, Ident.Idents)> x && x.Contains(sd))
                             {
                                 var cn = c.key();
                                 var (cx, cc) = x[sd];
@@ -1027,7 +1027,7 @@ namespace Pyrrho.Level4
         }
         internal void NowTry()
         {
-            if (replacing || undefined != CTree<long, int>.Empty)
+            if (replacing || undefined != CTree<long, long>.Empty)
                 return;
             for (var b = forApply.First(); b != null; b = b.Next())
             {
@@ -1053,7 +1053,7 @@ namespace Pyrrho.Level4
                 done += (was.defpos, now);
             // scan by depth to perform the replacement
             var ldpos = db.length;
-            var excframing = parse != ExecuteStatus.Compile &&
+            var excframing = parse.HasFlag(ExecuteStatus.Compile) &&
                 (was.defpos < Transaction.Executables || was.defpos >= Transaction.HeapStart);
             for (var b = depths.First(); b != null; b = b.Next())
                 if (b.value() is ObTree bv)
@@ -1698,29 +1698,26 @@ namespace Pyrrho.Level4
                 return dp;
             // See notes in SourceIntro 3.4.2
             var r = dp;
-            switch (parse)
+            if (parse.HasFlag(ExecuteStatus.Graph) || parse.HasFlag(ExecuteStatus.GraphType)
+                || parse.HasFlag(ExecuteStatus.Obey))
             {
-                case ExecuteStatus.Parse:
-                case ExecuteStatus.Compile:
-                case ExecuteStatus.Prepare:
-                    if (instDFirst > 0 && dp > instSFirst
-                            && dp <= instSLast)
-                    {
-                        r = dp - instSFirst + instDFirst;
-                        if (r >= db.nextStmt)
-                            db += (Database.NextStmt, r + 1);
-                    } else
-                        r = done[dp]?.defpos ?? dp;
-                    break;
-                case ExecuteStatus.Graph:
-                case ExecuteStatus.GraphType:
-                case ExecuteStatus.Obey:
-                    if (instDFirst > 0 && dp > instSFirst
+                if (instDFirst > 0 && dp > instSFirst
+                    && dp <= instSLast)
+                    r = dp - instSFirst + instDFirst;
+                if (r >= nextHeap)
+                    nextHeap = r + 1;
+            }
+            else
+            {
+                if (instDFirst > 0 && dp > instSFirst
                         && dp <= instSLast)
-                        r = dp - instSFirst + instDFirst;
-                    if (r >= nextHeap)
-                        nextHeap = r + 1;
-                    break;
+                {
+                    r = dp - instSFirst + instDFirst;
+                    if (r >= db.nextStmt)
+                        db += (Database.NextStmt, r + 1);
+                }
+                else
+                    r = done[dp]?.defpos ?? dp;
             }
  //           if (!db.objects.Contains(r))
  //               r = -1L;
@@ -1909,8 +1906,8 @@ namespace Pyrrho.Level4
                 {
                     for (var b = ids.First(); b != null; b = b.Next())
                     {
-                        if (b.value() is BTree<int, (Iix, Ident.Idents)> bt
-                            && bt.Last() is ABookmark<int, (Iix, Ident.Idents)> ab
+                        if (b.value() is BTree<long, (Iix, Ident.Idents)> bt
+                            && bt.Last() is ABookmark<long, (Iix, Ident.Idents)> ab
                             && _Ob(ab.value().Item1.dp) is QlValue ov)
                         if (rs.names[b.key()].Item2 is long p && _Ob(p) is Domain nb)
                                 ov.Define(this, p, rs, nb);
@@ -1923,8 +1920,8 @@ namespace Pyrrho.Level4
                 if (obs[ix.dp] is ForwardReference)
 
                     for (var b = ids.First(); b != null; b = b.Next())
-                        if (b.value() is BTree<int, (Iix, Ident.Idents)> bt
-                            && bt.Last() is ABookmark<int, (Iix, Ident.Idents)> ab
+                        if (b.value() is BTree<long, (Iix, Ident.Idents)> bt
+                            && bt.Last() is ABookmark<long, (Iix, Ident.Idents)> ab
                             && _Ob(ab.value().Item1.dp) is QlValue ov &&
                             rs.names[b.key()].Item2 is long p && _Ob(p) is Domain nb)
                             ov.Define(this, p, rs, nb);
@@ -2057,7 +2054,7 @@ namespace Pyrrho.Level4
             return db.objects[role.unlabelledNodeTypesInfo[pn] ?? -1L] as NodeType;
         }
         internal CTree<Domain,bool> FindEdgeType(string nm, long lc, long ac, CTree<string, QlValue> dc,
-            BTree<long,object> m, CTree<Qlx,TypedValue> md)
+            BTree<long,object> m, TMetadata md)
         {
             var r = CTree<Domain, bool>.Empty;
             if (nm != "" && role.edgeTypes[nm] is long el) 
@@ -2784,7 +2781,7 @@ namespace Pyrrho.Level4
                 var r = b.value();
                 var nr = r.Fix(this);
                 if (nk>0 && !r.Equals(nr))
-                    t = t + (nk, nr);
+                    t += (nk, nr);
             }
             return t;
         }

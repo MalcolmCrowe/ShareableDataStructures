@@ -110,7 +110,7 @@ namespace Pyrrho.Level3
         {
             return this;
         }
-        internal virtual (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? r)
+        internal virtual (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? r)
         {
             return (this, n);
         }
@@ -778,7 +778,7 @@ namespace Pyrrho.Level3
             var rs = cx.obs[f] as RowSet;
             for (var b = rs?.rowType.First(); b != null; b = b.Next())
                 if (cx.obs[b.value() ?? -1L] is QlValue sv && sv.name == name && name is not null
-                    && cx.defs[name] is BTree<int, (Iix, Ident.Idents)> t)
+                    && cx.defs[name] is BTree<long, (Iix, Ident.Idents)> t)
                 {
                     var si = sv.domain.infos[cx.role.defpos];
                     var (ix, ds) = t[cx.sD - 1];

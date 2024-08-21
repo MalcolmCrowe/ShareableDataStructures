@@ -375,7 +375,7 @@ namespace Pyrrho.Common
         /// <returns>The new Bucket</returns>
         protected virtual Inner<K,V> SplitGtr()
         {
-            return new Inner<K,V>(gtr.TopHalf(), total, slots, 0, count - 1, new KeyValuePair<K,Bucket<K,V>>[] { gtr.LowHalf() }, 0, 0);
+            return new Inner<K,V>(gtr.TopHalf(), total, slots, 0, count - 1, [gtr.LowHalf()], 0, 0);
         }
         /// <summary>
         /// Very internal: add a tree of slots using a weak type

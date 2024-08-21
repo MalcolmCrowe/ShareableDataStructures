@@ -124,7 +124,7 @@ namespace Pyrrho.Level4
             ?? rsTargets.First()?.key() ?? -1L); // for safety
         internal BTree<long, long?> rsTargets =>
             (BTree<long, long?>?)mem[RSTargets] ?? BTree<long, long?>.Empty;
-        internal int selectDepth => (int)(mem[QlValue.SelectDepth] ?? -1);
+        internal long selectDepth => (long)(mem[QlValue.SelectDepth] ?? -1L);
         internal long source => (long)(mem[_Source] ??  -1L);
         internal bool distinct => (bool)(mem[Distinct] ?? false);
         internal CTree<UpdateAssignment, bool> assig =>
@@ -306,14 +306,14 @@ namespace Pyrrho.Level4
                     r += rs._ProcSources(cx);
             return r;
         }
-        internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, string nm, Ident? n, DBObject? r)
+        internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? r)
         {
             if (cx._Dom(defpos) is not Domain dm)
                 throw new DBException("42105").Add(Qlx.DOMAIN);
             for (var b = dm.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && dm.representation[p] is DBObject co && n is not null)
                 {
-                    if (co.NameFor(cx) == nm && n is not null)
+                    if (co.NameFor(cx) == ic.ident && n is not null)
                     {
                         var ob = new QlValue(n, BList<Ident>.Empty, cx, dm.representation[co.defpos] ?? Content,
                             new BTree<long, object>(_From, defpos));
@@ -323,7 +323,7 @@ namespace Pyrrho.Level4
                     if (co is UDType ut && ut.infos[cx.role.defpos] is ObInfo ui && n is not null
                         && cx.db.objects[ui.names[n.ident].Item2 ?? -1L] is DBObject so)
                     {
-                        var ob = new SqlField(lp, nm + "." + n.ToString(), -1, p, 
+                        var ob = new SqlField(lp, ic.ident + "." + n.ToString(), -1, p, 
                             ut.representation[so.defpos]??Content, so.defpos);
                         cx.DefineForward(n.ident);
                         cx.undefined -= lp;
@@ -331,7 +331,7 @@ namespace Pyrrho.Level4
                         return (ob, n.sub);
                     }
                 }
-            return base._Lookup(lp, cx, nm, n, r);
+            return base._Lookup(lp, cx, ic, n, r);
         }
         internal virtual RowSet Sort(Context cx,Domain os,bool dct)
         {
@@ -370,7 +370,7 @@ namespace Pyrrho.Level4
             }
             if (mm == BTree<long, object>.Empty)
                 return (RowSet)New(m);
-            if (cx.undefined != CTree<long, int>.Empty)
+            if (cx.undefined != CTree<long, long>.Empty)
             {
                 cx.Later(defpos, mm);
                 return this;
@@ -2134,7 +2134,7 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Apply(BTree<long,object> mm,Context cx,BTree<long,object>?m=null)
         {
-            if (cx.undefined != CTree<long, int>.Empty)
+            if (cx.undefined != CTree<long, long>.Empty)
             {
                 cx.Later(defpos, mm);
                 return this;
@@ -2422,7 +2422,7 @@ namespace Pyrrho.Level4
         internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long, object>? m = null)
         {
             var rt = this;
-            if (cx.undefined != CTree<long, int>.Empty)
+            if (cx.undefined != CTree<long, long>.Empty)
             {
                 cx.Later(defpos, mm);
                 return this;
@@ -3131,7 +3131,7 @@ namespace Pyrrho.Level4
         {
             if (mm == BTree<long, object>.Empty)
                 return this;
-            if (cx.undefined!=CTree<long,int>.Empty)
+            if (cx.undefined!=CTree<long,long>.Empty)
             {
                 cx.Later(defpos, mm);
                 return this;
@@ -3922,7 +3922,7 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Apply(BTree<long,object> mm, Context cx, BTree<long,object>?m=null)
         {
-            if (cx.undefined != CTree<long, int>.Empty)
+            if (cx.undefined != CTree<long, long>.Empty)
             {
                 cx.Later(defpos, mm);
                 return this;
@@ -6158,7 +6158,7 @@ namespace Pyrrho.Level4
             var mu = vi?.metadata.Contains(Qlx.URL) == true;
             if (mu)
             {
-                if (url == "" || url == null)
+                if (url == "" || url == null || url==" Null")
                     url = vi?.metadata[Qlx.URL]?.ToString();
                 sql.Append(url);
                 for (var b = matches.First(); b != null; b = b.Next())
@@ -6175,9 +6175,9 @@ namespace Pyrrho.Level4
             }
             else
             {
-                if (url == "" || url == null)
+                if (url == "" || url == null || url==" Null")
                     url = vi?.metadata[Qlx.DESC]?.ToString() ?? cx.url;
-                if (url == null)
+                if (url == null || url==" Null")
                     return (null, null);
                 ss = url.Split('/');
                 if (ss.Length <= 5)
@@ -6210,7 +6210,7 @@ namespace Pyrrho.Level4
         /// <returns></returns>
         internal override RowSet Apply(BTree<long, object> mm, Context cx, BTree<long, object>? m = null)
         {
-            if (cx.undefined != CTree<long, int>.Empty)
+            if (cx.undefined != CTree<long, long>.Empty)
             {
                 cx.Later(defpos, mm);
                 return this;

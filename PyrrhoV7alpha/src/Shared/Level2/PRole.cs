@@ -141,7 +141,7 @@ namespace Pyrrho.Level2
          /// </summary>
         public long seq = -1L; // backward compatibility
         public long defpos;
-        public CTree<Qlx,TypedValue> detail = CTree<Qlx,TypedValue>.Empty;
+        public TMetadata detail = TMetadata.Empty;
         public string iri = "";
         public long refpos = -1L;
         public long flags = 0L;
@@ -151,9 +151,9 @@ namespace Pyrrho.Level2
             if (!Committed(wr,refpos)) return refpos;
             return -1;
         }
-        public PMetadata(string nm, long sq, DBObject ob, CTree<Qlx,TypedValue> md, long pp)
+        public PMetadata(string nm, long sq, DBObject ob, TMetadata md, long pp)
             : this(Type.Metadata, nm, sq, ob, md, pp) { }
-        public PMetadata(Type t,string nm,long sq,DBObject ob, CTree<Qlx,TypedValue> md,long pp)
+        public PMetadata(Type t,string nm,long sq,DBObject ob, TMetadata md,long pp)
             :base(t,pp)
         { 
             name = nm;
@@ -266,7 +266,7 @@ namespace Pyrrho.Level2
                 }
             return sb.ToString();
         }
-        internal static long Flags(CTree<Qlx,TypedValue> md)
+        internal static long Flags(TMetadata md)
         {
             return 0L;
         }
@@ -274,7 +274,7 @@ namespace Pyrrho.Level2
         {
             return detail.ToString();
         }
-        internal CTree<Qlx,TypedValue> Metadata()
+        internal TMetadata Metadata()
         {
             return detail;
         }
@@ -334,7 +334,7 @@ namespace Pyrrho.Level2
         /// <param name="sq">The column seq no for a view column</param>
         /// <param name="ob">the DBObject</param>
         /// <param name="db">The physical database</param>
-        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, CTree<Qlx,TypedValue> md, long pp)
+        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, TMetadata md, long pp)
          : base(tp, nm, sq, ob, md, pp)
         {
         }
@@ -387,7 +387,7 @@ namespace Pyrrho.Level2
         /// <param name="ob">the DBObject</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-        public PMetadata3(string nm, long sq, DBObject ob, CTree<Qlx,TypedValue> md, long pp)
+        public PMetadata3(string nm, long sq, DBObject ob, TMetadata md, long pp)
             : base(Type.Metadata3, nm, sq, ob, md, pp)
         {  }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }

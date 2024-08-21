@@ -124,8 +124,7 @@ namespace Pyrrho.Level3
         }
         internal override DBObject? Add(Context cx,Physical ph)
         {
-            if (cx.parse != ExecuteStatus.Obey && cx.parse!=ExecuteStatus.Compile && cx.parse!=ExecuteStatus.Graph
-                && cx.parse!=ExecuteStatus.GraphType)
+            if (cx.parse == ExecuteStatus.Parse || cx.parse==ExecuteStatus.Prepare)
                 return null;
             cx.db += (Physicals,physicals +(ph.ppos, ph));
             if (ph.ppos==cx.db.nextPos)
@@ -274,7 +273,7 @@ namespace Pyrrho.Level3
                 cx.parse = ExecuteStatus.Commit;
                 var (tr, _) = pt.Commit(wr, this);
                 var os = BTree<long, Physical>.Empty;
-                cx.undefined = CTree<long, int>.Empty;
+                cx.undefined = CTree<long, long>.Empty;
                 for (var b = physicals.First(); b != null; b = b.Next())
                 {
                     var p = b.value();
@@ -357,7 +356,8 @@ namespace Pyrrho.Level3
                         ex.Add(s.key(), v.Eval(cx));
                 throw ex;
             }
-            cx.result = -1L;
+            cx.result = ac.result;
+            cx.obs = ac.obs;
             if (cx != ac)
             {
                 cx.db = ac.db;

@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("26 June 2024 Repeatable tests");
+                Console.WriteLine("20 August 2024 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -481,6 +481,12 @@ namespace Test
             task1 = Task.Factory.StartNew(() => Test10H(127));
             task1.Wait();
             CheckExceptionNonQuery(10, 9, "Commit", "Transaction conflict"); 
+            Act(131,"insert into RWC values (13,'Black Friday',6)");
+            Begin();
+            Act(132,"delete from RWC where A=13");
+            task1 = Task.Factory.StartNew(() => Test10I(133));
+            task1.Wait();
+            CheckExceptionNonQuery(10, 10, "Commit", "Transaction conflict");
         }
         void Test10A(int c)
         {
@@ -528,6 +534,12 @@ namespace Test
         {
             var p = new Program(new string[0]);
             p.Act(c,"update RWC set A=12,B='Dozen' where A=13");
+            p.conn.Close();
+        }
+        void Test10I(int c)
+        {
+            var p = new Program(new string[0]);
+            p.Act(c,"insert into RRC values ('Last Supper',13)");
             p.conn.Close();
         }
         void Test11()
@@ -1222,12 +1234,11 @@ namespace Test
                 return;
             testing = 25;
             Begin();
-            Act(348, "create type student as (name char,matric char) nodetype");
-            Act(349, "insert into student(name,matric) values ('Fred','22/456')");
-            Act(350, "create type person as (name char) nodetype");
-            Act(351, "alter type student set under person");
-            Act(352, "create type staff under person as (title char)");
-            Act(353, "insert into staff (name,title) values ('Anne','Prof')");
+            Act(348, "create type person as (name string) nodetype");
+            Act(349, "create type student under person as (matric string)");
+            Act(350, "insert into student values ('Fred','22/456')");
+            Act(352, "create type staff under person as (title string)");
+            Act(353, "insert into staff values ('Anne','Prof')");
             CheckResults(25,1, "select *,specifictype() from person",
                 "[{NAME:'Fred',SPECIFICTYPE:'STUDENT'},{NAME:'Anne',SPECIFICTYPE:'STAFF'}]");
             Act(354, "create type married edgetype(bride=person,groom=person)");
@@ -1247,7 +1258,7 @@ namespace Test
                 "[{ST:'WOODSCREW',QT:5,SA:'16/8x4'}]");
             Act(359, "CREATE (p1:Person {name:'Fred Smith'})<-[:Child]-(p2:Person {name:'Pete Smith'})," +
                 "(p2)-[:Child]->(:Person {name:'Mary Smith'})");
-            CheckResults(25, 5, "MATCH (pn)-[:Child]->(pc) RETURN pn.name,pc.name AS child",
+            CheckResults(25, 5, "MATCH (n)-[:Child]->(c) RETURN n.name,c.name AS child",
                 "[{NAME:'Pete Smith',CHILD:'Fred Smith'},{NAME:'Pete Smith',CHILD:'Mary Smith'}]");
             Act(360, "MATCH (n {name:'Pete Smith'}) SET n.name='Peter Smith' ");
             CheckResults(25, 6, "MATCH ({name:'Peter Smith'})[()-[:Child]->()]+(x) RETURN x.name",
