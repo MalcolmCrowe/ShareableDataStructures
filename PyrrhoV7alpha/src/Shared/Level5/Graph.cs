@@ -369,11 +369,12 @@ namespace Pyrrho.Level5
         }
         internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, GqlNode xn, BTree<long, TableRow>? ds)
         {
-            if (label != GqlLabel.Empty)
-                return label.For(cx, ms, xn, ds);
+            var th = (NodeType)(cx.db.objects[defpos]??throw new PEException("PE50001"));
+            if (th.label != GqlLabel.Empty)
+                return th.label.For(cx, ms, xn, ds);
             ds ??= BTree<long, TableRow>.Empty;
             for (var b = cx.db.joinedNodes.First(); b != null; b = b.Next())
-                if (b.value().Contains(this) && tableRows[b.key()] is TableRow tr)
+                if (b.value().Contains(this) && th.tableRows[b.key()] is TableRow tr)
                     ds += (cx.GetUid(),new TableRow(tr.defpos, tr.ppos, defpos, tr.vals));
             if (defpos < 0)
             {
@@ -401,8 +402,8 @@ namespace Pyrrho.Level5
             }
             if (!ms.flags.HasFlag(MatchStatement.Flags.Schema))
             {
-                var cl = xn.EvalProps(cx, this);
-                if (FindPrimaryIndex(cx) is Level3.Index px
+                var cl = xn.EvalProps(cx, th);
+                if (th.FindPrimaryIndex(cx) is Level3.Index px
                     && px.MakeKey(cl) is CList<TypedValue> pk
                     && tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)
                     return ds + (tr0.defpos, tr0);
@@ -410,16 +411,16 @@ namespace Pyrrho.Level5
                     for (var d = c.value().First(); d != null; d = d.Next())
                         if (cx.db.objects[d.key()] is Level3.Index x
                             && x.MakeKey(cl) is CList<TypedValue> xk
-                            && tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)
+                            && th.tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)
                             return ds + (tr.defpos, tr);
                 // let DbNode check any given properties match
                 var lm = ms.truncating.Contains(defpos) ? ms.truncating[defpos].Item1 : int.MaxValue;
                 var la = ms.truncating.Contains(EdgeType.defpos) ? ms.truncating[EdgeType.defpos].Item1 : int.MaxValue;
-                for (var b = tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
+                for (var b = th.tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
                     if (b.value() is TableRow tr)
                         ds += (tr.defpos, tr);
             } else  // schema flag
-                ds += (defpos, Schema(cx));
+                ds += (defpos, th.Schema(cx));
             return ds;
         }
         /// <summary>
@@ -1625,7 +1626,7 @@ namespace Pyrrho.Level5
             var lt = ((long?)m[EdgeType.LeaveCol]) ?? cx.obs[(long)(m[GqlEdge.LeavingValue] ?? -1L)]?.defpos ?? -1L;
             var at = ((long?)m[EdgeType.ArriveCol]) ?? cx.obs[(long)(m[GqlEdge.ArrivingValue] ?? -1L)]?.defpos ?? -1L;
             var k = kind;
-            if (lt>=0 && at>=0)
+            if (lt >= 0 && at >= 0)
             { // lt and at may be GqlNodes for now: will be fixed in Build
                 m = m + (EdgeType.LeaveCol, lt) + (EdgeType.ArriveCol, at);
                 if (k == Qlx.NODETYPE)
@@ -1634,6 +1635,8 @@ namespace Pyrrho.Level5
                     k = Qlx.EDGETYPE;
                 }
             }
+            else if (k == Qlx.EDGETYPE)
+                k = Qlx.COLON;
             var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue] ?? CTree<string, QlValue>.Empty);
             return k switch
             {
@@ -1673,7 +1676,7 @@ namespace Pyrrho.Level5
                    as Domain)?? throw new DBException("42107", gl.name ?? "??") : b.key(), true);
             var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue]??CTree<string,QlValue>.Empty);
             var nt = cx.FindNodeType(nm, dc);
-            if (nt is null)
+            if (nt is null || nt.defpos<0)
             {
                 var pt = new PNodeType(nm, NodeType, nu, -1L, cx.db.nextPos, cx);
                 nt = (NodeType)(cx.Add(pt) ?? throw new DBException("42105"));
@@ -1810,7 +1813,7 @@ namespace Pyrrho.Level5
                 throw new PEException("PE60904");
             if (cx._Ob(et.leavingType) is NodeType el && cx._Ob(et.arrivingType) is NodeType ea)
             {
-                var ll = nl.label.OnInsert(cx,nl.mem);
+                var ll = nl.label.OnInsert(cx, nl.mem) + nl.domain.FindType(cx,nl.docValue);
                 if (nl is GqlReference hr && cx.db.objects[hr.refersTo] is NodeType hl)
                     ll += (hl, true);
                 else if (nl is GqlNode sl && cx.binding[sl.defpos] is TNode ln)
@@ -1822,7 +1825,7 @@ namespace Pyrrho.Level5
                             if (b.key() is NodeType nt)
                                 ll += (nt, true);
                 }
-                var al = na.label.OnInsert(cx,na.mem);
+                var al = na.label.OnInsert(cx,na.mem) + na.domain.FindType(cx, na.docValue);
                 if (na is GqlReference hs && cx.db.objects[hs.refersTo] is NodeType ha)
                     al += (ha, true);
                 else if (na is GqlNode sa && cx.binding[sa.defpos] is TNode an)

@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Globalization;
+using System.Net.NetworkInformation;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -1981,7 +1982,7 @@ namespace Pyrrho.Level4
                         Next();
                         if (lxr.tgs[pi.iix.lp] is TGParam gp)
                         {
-                            gp = new TGParam(gp.uid, gp.value, Domain.PathType, TGParam.Type.Path, dp);
+                            gp = new TGParam(pi.iix.dp, gp.value, Domain.PathType, TGParam.Type.Path, dp);
                             lxr.tgs += (pi.iix.dp, gp);
                             cx.Add(new QlValue(pi, BList<Ident>.Empty, cx, Domain.PathType)
                                 +(DBObject._From,dp));
@@ -2105,7 +2106,6 @@ namespace Pyrrho.Level4
         /// Label: ':' (id|Value){(':'|'&')(id|Value)}. // in this version that is the limit of complexity
         /// </summary>
         /// <param name="svg">The graph fragments so far</param>
-        /// <param name="dt">The standard NODETYPE or EDGETYPE</param>
         /// <param name="ln">The node to attach the new edge</param>
         /// <returns>An GqlNode for the new node or edge and the tree of all the graph fragments</returns>
         (GqlNode, CList<GqlNode>) ParseInsertGraphItem(CList<GqlNode> svg, bool sch = false, GqlNode? ln = null)
@@ -2123,7 +2123,9 @@ namespace Pyrrho.Level4
             var nb = b;
             long id = -1L;
             var lp = lxr.Position;
-            NodeType? dm = null;
+            GqlNode? nd = null;
+            Domain? dm = ab switch
+            { Qlx.LPAREN or Qlx.RARROW => Domain.NodeType, Qlx.LBRACK => Domain.EdgeType, _ => null };
             if (tok == Qlx.Id)
             {
                 if (cx.role.dbobjects.Contains(b.ident))
@@ -2138,6 +2140,7 @@ namespace Pyrrho.Level4
                 {
                     id = ix.dp;
                     bound = true;
+                    nd = cx.obs[id] as GqlNode ?? throw new PEException("PE80201");
                 }
                 Next();
             }
@@ -2160,13 +2163,13 @@ namespace Pyrrho.Level4
                 Next();
                 while (tok != Qlx.RBRACE)
                 {
-                    var (n, v) = GetDocItem(lp,lb,sch);
+                    var (n, v) = GetDocItem(lp, lb, sch);
                     if (lb.name is not null)
                     {
                         var px = cx.Ix(b.iix.lp, n.iix.dp);
                         var lx = cx.Ix(lb.defpos, n.iix.dp);
-                        var ic = new Ident(n.ident,px,null);
-                        var it = new Ident(lb.name,lx,null);
+                        var ic = new Ident(n.ident, px, null);
+                        var it = new Ident(lb.name, lx, null);
                         var iq = new Ident(b, ic);
                         var iu = new Ident(it, ic);
                         cx.defs += (iu, ic.iix);
@@ -2178,7 +2181,11 @@ namespace Pyrrho.Level4
                         Next();
                 }
                 Mustbe(Qlx.RBRACE);
-            }
+                if (dm?.FindType(cx, dc) is CTree<Domain,bool> du && du.Count==1 && du.First()?.key() is Domain cd)
+                    dm = cd;
+            } else 
+                if (dm is not null && nd?.FindType(cx, dm) is NodeType rt)
+                dm = rt;
             GqlNode? an = null;
             var ahead = CList<GqlNode>.Empty;
             if (ln is not null)
@@ -2197,7 +2204,7 @@ namespace Pyrrho.Level4
                     m = m + (GqlEdge.LeavingValue, ln.defpos) + (GqlEdge.ArrivingValue, an.defpos);
             }
             if (cx.obs[id] is GqlNode r)
-                r = new GqlReference(lp, r);
+                r = new GqlReference(lp, (dm is null)?r:r + (DBObject._Domain,dm));
             else if (lb.defpos >= 0 && lb.rowType == BList<long?>.Empty && lb is NodeType zt)
                 r = new GqlReference(lp, zt);
             else
@@ -2328,7 +2335,7 @@ namespace Pyrrho.Level4
                             nd = new Domain(-1L, Qlx.ARRAY, dm);
                             pg |= TGParam.Type.Group;
                         }
-                        lxr.tgs += (lp, new TGParam(lp, ig.value, nd, pg, f));
+                        lxr.tgs += (lp, new TGParam(ig.uid, ig.value, nd, pg, f));
                     }
                 }
                 // state M29
@@ -4527,6 +4534,7 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.Id);
             var p = new FormalParameter(n.iix.dp, pmode, n.ident, ParseDataType(n))
                 + (DBObject._From, pn.iix.dp);
+
             cx.Add(p);
             if (xp == null) // prepare to parse a body
                 cx.defs += (new Ident(pn, n), pn.iix);

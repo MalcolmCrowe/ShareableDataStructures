@@ -114,6 +114,7 @@ namespace Pyrrho.Level2
             var psr = new Parser(rdr.context, source);
             nst = psr.cx.db.nextStmt;
             psr.cx.obs = ObTree.Empty;
+            psr.cx.depths = BTree<int,ObTree>.Empty;
             // instantiate everything we may need
             var odt = pr.udType;
             pr.Instance(psr.LexPos().dp, psr.cx);

@@ -838,9 +838,6 @@ namespace Pyrrho.Level3
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m) 
         {
             var r = base._Fix(cx,m);
-            // This exception is a hack: if copyFrom is in this range,
-            // it must be a virtual column (eg for RestView).
-            // Making a special VirtualColumn class would not make the code any more readable
             if (copyFrom < Transaction.Executables || copyFrom >= Transaction.HeapStart)
             {
                 var nc = cx.Fix(copyFrom);
@@ -10948,8 +10945,8 @@ cx.obs[high] is not QlValue hi)
         public BTree<long,(long,Ident.Idents)> defsStore => 
             (BTree<long,(long,Ident.Idents)>)(mem[DefsStore] ?? BTree<long,(long,Ident.Idents)>.Empty);
         public GqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<string, QlValue> d,
-            CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
-            : base(nm, nm, ch, cx, dm ?? _Type(cx,d,m), _Mem(nm, i, d, tgs, dm, cx, m))
+            CTree<long, TGParam> tgs, Domain? dm = null, BTree<long, object>? m = null)
+            : base(nm, nm, ch, cx, _Type(dm,cx,d,m), _Mem(nm, i, d, tgs, dm, cx, m))
         {
             if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg)
                 for (var b = cx.defs[tg.value]?.First();b!=null;b=b.Next())
@@ -10963,12 +10960,12 @@ cx.obs[high] is not QlValue hi)
         protected GqlNode(long dp, BTree<long, object> m) : base(dp, m)
         { }
         static BTree<long, object> _Mem(Ident nm, long i, CTree<string, QlValue> d, CTree<long, TGParam> tgs,
-            NodeType? dm, Context cx, BTree<long, object>? m)
+            Domain? dm, Context cx, BTree<long, object>? m)
         {
             m ??= BTree<long, object>.Empty;
             if (i > 0)
             {
-                if (i >= Transaction.Analysing && i < Transaction.Executables
+                if ((cx.parse.HasFlag(ExecuteStatus.Compile) || (i >= Transaction.Analysing && i < Transaction.Executables))
                     && cx.defs[nm.ident]?[cx.sD].Item1 is Iix ix)
                     i = ix.dp;
                 m += (IdValue, i);
@@ -10977,7 +10974,7 @@ cx.obs[high] is not QlValue hi)
                 m += (DocValue, d);
             var ng = CTree<long, TGParam>.Empty;
             for (var b = tgs.First(); b != null; b = b.Next())
-                if (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables)
+                if (cx.parse.HasFlag(ExecuteStatus.Compile) || (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables))
                 {
                     if (b.value() is TGParam tg && cx.defs[tg.value]?[cx.sD].Item1 is Iix ix)
                         ng += (ix.dp, tg);
@@ -10987,15 +10984,21 @@ cx.obs[high] is not QlValue hi)
             m += (State, ng);
             m += (Defs, cx.defs);
             m += (DefsStore, cx.defsStore);
-
             if (!m.Contains(_Label) && dm is not null && dm.defpos>0) // otherwise leave it unlabelled
                 m += (_Label, dm); // an explicit NodeType
             return m;
         }
-        protected static NodeType _Type(Context cx,CTree<string,QlValue> d,BTree<long,object>? m)
+        protected static NodeType _Type(Domain? dm,Context cx,CTree<string,QlValue> d,BTree<long,object>? m,
+            long l= -1L,long a= -1L)
         {
+            if (dm is NodeType nt && dm.defpos >= 0)
+                return nt;
             if (m is null)
                 return Domain.NodeType;
+            if (l >= 0)
+                m += (GqlEdge.LeavingValue, l);
+            if (a >= 0)
+                m += (GqlEdge.ArrivingValue, a);
             return (m[_Label] as Domain)?.ForExtra(cx,m+(DocValue,d))?? Domain.NodeType;
         }
         internal override string NameFor(Context cx)
@@ -11027,6 +11030,26 @@ cx.obs[high] is not QlValue hi)
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new GqlNode(dp, m);
+        }
+        internal override Domain FindType(Context cx, Domain dt)
+        {
+            if (domain.defpos >= 0)
+                return domain;
+            if (dt.defpos >= 0)
+                return dt;
+            var du = CTree<Domain, bool>.Empty;
+            var nd = dt;
+            for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value()??-1L] is NodeType bt && bt.infos[cx.role.defpos] is ObInfo ti)
+                {
+                    for (var c = docValue.First(); c != null; c = c.Next())
+                        if (!ti.names.Contains(c.key()))
+                            goto noMatch;
+                    du += (bt,true);
+                    nd = bt;
+                noMatch:;
+                }
+            return (du.Count<=1)?nd:new Domain(-1L,Qlx.UNION,du);
         }
         internal override TypedValue _Eval(Context cx)
         {
@@ -11222,7 +11245,7 @@ cx.obs[high] is not QlValue hi)
                 cx.defs = defs;
                 cx.defsStore = defsStore;
                 if (nt.defpos >= 0 && nt.defpos < Transaction.Analysing)
-                    nt = nt.Check(cx, this, allowExtras);
+                    nt = nt.Check(cx, nd, allowExtras);
                 else if (cx.db.objects[cx.role.defpos] is Role rr
                                     && cx.db.objects[rr.dbobjects[nt.name ?? "_"] ?? -1L] is NodeType ot)
                     nt = ot;
@@ -11449,6 +11472,25 @@ cx.obs[high] is not QlValue hi)
         {
             return cx.obs[refersTo]?._Eval(cx)??TNull.Value;
         }
+        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = (NullPredicate)base._Replace(cx, so, sv);
+            var vl = cx.ObReplace(refersTo, so, sv);
+            if (vl !=refersTo)
+                r += (cx, RefersTo, vl);
+            return r;
+        }
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
+        {
+            var r = base._Fix(cx, m);
+            if (refersTo < Transaction.Executables || refersTo >= Transaction.HeapStart)
+            {
+                var nc = cx.Fix(refersTo);
+                if (nc != refersTo)
+                    r += (RefersTo, nc);
+            }
+            return r;
+        }
         internal override string ToString(string sg, Remotes rf, BList<long?> cs, CTree<long, string> ns, Context cx)
         {
             var sb = new StringBuilder(GetType().Name);
@@ -11473,8 +11515,8 @@ cx.obs[high] is not QlValue hi)
         public long leavingValue => (long)(mem[LeavingValue]??-1L);
         public Qlx direction => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.NO); // ARROWBASE or ARROW
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, Qlx t, long i, long l, long a,
-            CTree<string,QlValue> d, CTree<long, TGParam> tgs, NodeType? dm = null, BTree<long, object>? m = null)
-            : base(nm, ch, cx, i, d, tgs,dm??_Type(cx,d,m), _Mem(cx,d,tgs,dm,m,nm,i,l,a,t))
+            CTree<string,QlValue> d, CTree<long, TGParam> tgs, Domain? dm = null, BTree<long, object>? m = null)
+            : base(nm, ch, cx, i, d, tgs,_Type(dm,cx,d,m,l,a), _Mem(cx,d,tgs,dm,m,nm,i,l,a,t))
         {
             if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg)
                 for (var b = cx.defs[tg.value]?.First(); b != null; b = b.Next())
@@ -11488,12 +11530,13 @@ cx.obs[high] is not QlValue hi)
         protected GqlEdge(long dp, BTree<long, object> m) : base(dp, m)
         { }
         static BTree<long,object> _Mem(Context cx,CTree<string,QlValue> d,
-             CTree<long, TGParam> tgs, NodeType? dm , BTree<long,object>?m, Ident nm, long i,long l,long a, Qlx t)
+             CTree<long, TGParam> tgs, Domain? dm , BTree<long,object>?m, Ident nm, long i,long l,long a, Qlx t)
         {
             m ??= BTree<long, object>.Empty;
             if (i > 0)
             {
-                if (i >= Transaction.Analysing && i < Transaction.Executables
+                if ((cx.parse.HasFlag(ExecuteStatus.Compile)
+                        ||(i >= Transaction.Analysing && i < Transaction.Executables))
                     && cx.defs[nm.ident]?[cx.sD].Item1 is Iix ix)
                     i = ix.dp;
                 m += (IdValue, i);
@@ -11501,7 +11544,8 @@ cx.obs[high] is not QlValue hi)
             m += (DocValue, d);
             var ng = CTree<long, TGParam>.Empty;
             for (var b = tgs.First(); b != null; b = b.Next())
-                if (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables)
+                if (cx.parse.HasFlag(ExecuteStatus.Compile) 
+                    || (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables))
                 {
                     if (b.value() is TGParam tg && cx.defs[tg.value]?[cx.sD].Item1 is Iix ix)
                         ng += (ix.dp, tg);

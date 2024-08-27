@@ -553,7 +553,7 @@ namespace Pyrrho.Level3
             var vb = (QlValue)(cx.obs[vbl] ?? throw new PEException("PE1101"));
             TypedValue tv = cx.obs[init]?.Eval(cx)??vb.domain.defaultValue;
             a.locals += (defpos, true); // local variables need special handling
-            cx.AddValue(vb, tv); // We expect a==cx, but if not, tv will be copied to a later
+            cx.AddValue(vb, tv); // We expect a==ac, but if not, tv will be copied to a later
             return cx;
         }
         internal override CTree<long, bool> Needs(Context context, long rs)
@@ -4166,7 +4166,7 @@ namespace Pyrrho.Level3
         }
         /// <summary>
         /// GraphInsertStatement contains a CTree of GqlNode in lexical sequence.
-        /// In _Obey() we ensure that cx.values has a corresponding sequence of TNode.
+        /// In _Obey() we ensure that ac.values has a corresponding sequence of TNode.
         /// We create whatever nodee, edges, nodetypes, edgetypes are needed.
         /// </summary>
         /// <param name="cx">the context</param>
@@ -4500,7 +4500,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.
         /// The match graphs and the set of TGParams are in this MatchStatement.
-        /// The database graph is in cx.db.graphs and cx.db.nodeids.
+        /// The database graph is in ac.db.graphs and ac.db.nodeids.
         /// The handling of a binding variable x defined within a path pattern is quite tricky: 
         /// during the path matching process x stands for a simple value 
         /// (a single node, or an expression evalated from its properties),
@@ -4509,155 +4509,83 @@ namespace Pyrrho.Level3
         /// for the current binding set.
         /// Accordingly, the MatchStatement defines such x as array types, except within the body of DbNode.
         /// At the end of a pattern, in PathStep, we change the binding to contain the array values instead,
-        /// getting the values for earlier pattern matching from cx.paths.
+        /// getting the values for earlier pattern matching from ac.paths.
         /// This means if ps is a PathStep, the datatype of the binding associated with x will change in ps.Next
         /// from (T) to (T array) for all non-path x named in xn.state for some xn in ps.sp.pattern.
         /// </summary>
         /// <param name="cx">The context</param>
         /// <returns></returns>
-        public override Context _Obey(Context _cx)
+        public override Context _Obey(Context cx)
         {
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
-            var cx = new Context(_cx)
+            var ac
+                = new Activation(cx,"Match")
             {
-                binding = _cx.binding,
+                binding = cx.binding,
                 result = domain.defpos
             };
             // Parse any truncating expressions
             for (var b = truncating.First(); b != null; b = b.Next())
             {
                 var (i, d) = b.value();
-                var lm = (cx.obs[i] as QlValue)?.Eval(_cx) as TInt;
-                var qs = (cx.obs[d] as QlValue)?.Eval(_cx) as TChar;
+                var lm = (ac.obs[i] as QlValue)?.Eval(cx) as TInt;
+                var qs = (ac.obs[d] as QlValue)?.Eval(cx) as TChar;
                 if (lm is null || qs is null) throw new PEException("PE60801");
                 var il = lm.ToInt() ?? throw new PEException("PE60802");
-                var pd = new Parser(_cx, qs.ToString());
-                if (_cx.db.objects[b.key()] is NodeType nt)
+                var pd = new Parser(cx, qs.ToString());
+                if (cx.db.objects[b.key()] is NodeType nt)
                     pd.cx.AddDefs(nt);
                 var rt = BList<DBObject>.Empty;
                 while (pd.tok == Qlx.Id)
                 {
-                    rt += cx._Ob(pd.ParseOrderItem(false)) ?? SqlNull.Value;
+                    rt += ac._Ob(pd.ParseOrderItem(false)) ?? SqlNull.Value;
                     if (pd.tok == Qlx.COMMA)
                         pd.Next();
                     else
                         break;
                 }
-                var od = (rt.Length == 0) ? Domain.Content : new Domain(cx.GetUid(), cx, Qlx.ROW, rt, rt.Length);
+                var od = (rt.Length == 0) ? Domain.Content : new Domain(ac.GetUid(), ac, Qlx.ROW, rt, rt.Length);
                 truncator += (b.key(), (il, od));
             }
-            var pre = ((Transaction)cx.db).physicals.Count;
+            var pre = ((Transaction)ac.db).physicals.Count;
             _step = 0;
             var gf = matchList.First();
-            if (cx.obs[gf?.value() ?? -1L] is GqlMatch sm)
+            if (ac.obs[gf?.value() ?? -1L] is GqlMatch sm)
                 for (var b = sm.matchAlts.First(); b != null; b = b.Next())
-                    if (cx.obs[b.value() ?? -1L] is GqlMatchAlt sa)
+                    if (ac.obs[b.value() ?? -1L] is GqlMatchAlt sa)
                     {
-                        cx.paths += (sa.defpos, new TPath(sa.defpos, cx));
+                        ac.paths += (sa.defpos, new TPath(sa.defpos, ac));
                         var xf = sa.matchExps.First();
                         if (gf is not null && xf is not null)
-                            ExpNode(cx, new ExpStep(sa, xf, new GraphStep(gf.Next(), new EndStep(this))), Qlx.Null,null, null);
+                            ExpNode(ac, new ExpStep(sa, xf, new GraphStep(gf.Next(), new EndStep(this))), Qlx.Null,null, null);
                     }
 
-            if (((Transaction)cx.db).physicals.Count == pre)
+            if (((Transaction)ac.db).physicals.Count == pre)
             {
-                _cx.result = bindings;
-                if (cx.obs[bindings] is RowSet rs)
-                    _cx.Add(rs);
+                cx.result = bindings;
+                if (ac.obs[bindings] is RowSet rs)
+                    cx.Add(rs);
             }
             else
-                _cx.result = -1L;
-            if (cx.obs[body] is SelectStatement ss && cx.obs[ss.union] is RowSet su)
+                cx.result = -1L;
+            if (ac.obs[body] is SelectStatement ss && ac.obs[ss.union] is RowSet su)
             {
-                _cx.result = ss.union;
-                _cx.Add(su);
+                cx.result = ss.union;
+                cx.Add(su);
             }
-            // aggregations
-            /*      if (domain is SelectRowSet srs && srs.aggs != CTree<long, bool>.Empty)
-                  { // code copied from SelectRowSet.Build
-                      var rws = CList<TRow>.Empty;
-                      var re = (ReturnStatement?)cx.obs[ret];
-                      var fd = cx.funcs[re?.ret ?? -1L];
-                      for (var b = fd?.First(); b != null; b = b.Next())
-                          if (b.value() != BTree<long, Register>.Empty)
-                          {
-                              // Remember the aggregating SqlValues are probably not just aggregation SqlFunctions
-                              // Seed the keys in cx.values
-                              var vs = b.key().values;
-                              cx.values += vs;
-                              for (var d = srs.matching.First(); d != null; d = d.Next())
-                                  if (cx.values[d.key()] is TypedValue v)
-                                      for (var c = d.value().First(); c != null; c = c.Next())
-                                          if (!vs.Contains(c.key()))
-                                              vs += (c.key(), v);
-                              // and the aggregate function accumulated values
-                              for (var c = srs.aggs.First(); c != null; c = c.Next())
-                                  if (cx.obs[c.key()] is QlValue v)
-                                  {
-                                      if (v is SqlFunction fr && fr.op == Qlx.RESTRICT)
-                                          cx.values += (fr.val, fr.Eval(cx));
-                                      else
-                                          cx.values += (v.defpos, v.Eval(cx));
-                                  }
-                              // compute the aggregation expressions from these seeds
-                              for (var c = srs.rowType.First(); c != null; c = c.Next())
-                                  if (c.value() is long p && cx.obs[p] is QlValue sv
-                                      && sv.IsAggregation(cx, srs.aggs) != CTree<long, bool>.Empty)
-                                      vs += (sv.defpos, sv.Eval(cx));
-                              // add in any exposed RESTRICT values
-                              for (var c = srs.aggs.First(); c != null; c = c.Next())
-                                  if (cx.obs[c.key()] is SqlFunction fr && fr.op == Qlx.RESTRICT)
-                                      vs += (fr.val, fr.Eval(cx));
-                              // for the having calculation to work we must ensure that
-                              // having uses the uids that are in aggs
-                              for (var h = srs.having.First(); h != null; h = h.Next())
-                                  if (cx.obs[h.key()]?.Eval(cx) != TBool.True)
-                                      goto skip;
-                              rws += new TRow(srs, vs);
-                          skip:;
-                          }
-                      if (rws == CList<TRow>.Empty)
-                          rws += new TRow(srs, CTree<long, TypedValue>.Empty);
-                      cx.Add((RowSet)srs.New(srs.mem + (RowSet._Rows, rws) + (RowSet._Built, true) + (MatchFlags, true)
-                          - Index.Tree + (RowSet.Groupings, srs.groupings)));
-                      cx.result = srs.defpos;
-                  }
-                  if (cx.obs[cx.result] is RowSet rs)
-                  {
-                      if (mem[RowSet.RowOrder] is Domain ord)
-                      {
-                          _cx.Add(rs);
-                          rs = rs.Sort(_cx, ord, false);
-                      }
-                      if (mem[RowSetSection.Size] is int ct)
-                      {
-                          _cx.Add(rs);
-                          rs = new RowSetSection(_cx, rs, 0, ct);
-                      }
-                      _cx.result = rs.defpos;
-                      _cx.obs += (_cx.result, rs);
-                  }
-                  var aff = cx.db.AffCount(cx);
-                  if (aff > 0)
-                      _cx.result = -1L;
-                  else if (gDefs == CTree<long, TGParam>.Empty)
-                      _cx.result = TrueRowSet.OK(_cx).defpos;
-                  else if (cx.obs[_cx.result] is RowSet rrs)
-                      _cx.obs += (_cx.result, rrs);
-            */
             if (then != BList<long?>.Empty)
             {
-                var ac = new Activation(cx, "" + defpos);
-                ac.result = _cx.result;
-                ObeyList(then, ac);
-                ac.SlideDown();
-                cx.values += ac.values;
-                cx.db = ac.db;
+                var ta = new Activation(ac, "" + defpos);
+                ta.result = cx.result;
+                ObeyList(then, ta);
+                ta.SlideDown();
+                ac.values += ta.values;
+                ac.db = ta.db;
             }
-            cx.SlideDown();
-            _cx.db = cx.db;
-            return _cx;
+            ac.SlideDown();
+            cx.db = ac.db;
+            return cx;
         }
         /// <summary>
         /// The Match implementation uses continuations as in Scheme or Haskell.
@@ -4906,43 +4834,8 @@ namespace Pyrrho.Level3
                 if (cx.obs[body] is Executable bd && cx.binding != CTree<long, TypedValue>.Empty)
                 {
                     cx = bd._Obey(cx);
-                    /*                   if (cx.val is TRow rr)
-                                       {
-                                           if (domain.defpos != bindings && cx.obs[domain.defpos] is BindingRowSet es)
-                                           {
-                                               var ur = cx.GetUid();
-                                               es += (cx, rr);
-                                               cx.obs += (es.defpos, es);
-                                           }
-                                           if (domain.defpos != bindings && cx.obs[domain.defpos] is SelectRowSet srs)
-                                           {
-                                               if (srs.aggs != CTree<long, bool>.Empty)
-                                               // This code is largely copied from SelectRowSet.Build
-                                               {
-                                                   cx.values += rr.values;
-                                                   if (!cx.funcs.Contains(defpos))
-                                                       cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
-                                                   if (srs.groupings.Count == 0)
-                                                       for (var b0 = srs.aggs.First(); b0 != null; b0 = b0.Next())
-                                                       {
-                                                           if (cx.obs[b0.key()] is SqlFunction sf0)
-                                                               sf0.AddIn(TRow.Empty, cx);
-                                                       }
-                                                   else for (var g = srs.groupings.First(); g != null; g = g.Next())
-                                                           if (g.value() is long p && cx.obs[p] is Grouping gg)
-                                                           {
-                                                               var vals = CTree<long, TypedValue>.Empty;
-                                                               for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
-                                                                   if (gb.value() is long gp && cx.obs[gp] is QlValue v)
-                                                                       vals += (gp, v.Eval(cx));
-                                                               var key = new TRow(srs.groupCols, vals);
-                                                               for (var b1 = srs.aggs.First(); b1 != null; b1 = b1.Next())
-                                                                   if (cx.obs[b1.key()] is SqlFunction sf1)
-                                                                       sf1.AddIn(key, cx);
-                                                           }
-                                               }
-                                           }
-                                       } */
+                    if (bd is SelectStatement ss)
+                        ro = ss.union;
                 }
                 else if (flags == Flags.None)
                     cx.val = TBool.True;
@@ -4985,7 +4878,7 @@ namespace Pyrrho.Level3
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             if (tok == Qlx.WITH && pd is not null)
                 ds += (xn.defpos, pd.tableRow);
-            //    else if (xn.Eval(cx) is TNode nn)
+            //    else if (xn.Eval(ac) is TNode nn)
             //        ds += (xn.defpos, nn.tableRow);
             else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj)
             {

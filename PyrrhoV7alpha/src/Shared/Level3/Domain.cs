@@ -217,7 +217,7 @@ namespace Pyrrho.Level3
         {
             cx.Add(this);
         }
-        // A union of standard types
+        // A union of types
         public Domain(long dp, Qlx t, CTree<Domain, bool> u)
             : this(dp, BTree<long, object>.Empty + (Kind, t) + (UnionOf, u))
         {
@@ -3467,6 +3467,23 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     break;
             }
             throw new DBException("22G03", this, ob?.ToString()??"??").ISO();
+        }
+        internal CTree<Domain,bool> FindType(Context cx, CTree<string, QlValue> dc)
+        {
+            var r = this;
+            var du = CTree<Domain, bool>.Empty;
+            for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value() ?? -1L] is NodeType nt && CanTakeValueOf(nt)
+                    && nt.infos[cx.role.defpos] is ObInfo ti)
+                {
+                    for (var c = dc.First(); c != null; c = c.Next())
+                        if (!ti.names.Contains(c.key()))
+                            goto NoMatch;
+                    du += (nt, true);
+                    r = nt;
+                NoMatch:;
+                }
+            return du;
         }
         /// <summary>
         /// The System.Type corresponding to a SqlDataType

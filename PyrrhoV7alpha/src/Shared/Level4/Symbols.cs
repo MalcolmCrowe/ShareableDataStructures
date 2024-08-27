@@ -65,6 +65,8 @@ namespace Pyrrho.Level4
             var lx = psr.lxr;
             iix = psr.LexPos();
             ident = ((lx.tok == Qlx.Id) ? lx.val?.ToString() : lx.tok.ToString()) ?? (DBObject.Uid(iix.dp));
+            if (lx.tgs[iix.lp] is TGParam gp)
+                lx.tgs += (iix.lp, new TGParam(iix.dp, gp.value, gp.dataType, gp.type, gp.from));
             sub = null;
         }
         internal Ident(Ident lf, Ident sb)

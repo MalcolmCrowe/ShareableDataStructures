@@ -150,6 +150,8 @@ namespace Pyrrho.Level2
                 return;
             var psr = new Parser(rdr.context, source);
             psr.cx.defs = Ident.Idents.Empty;
+            psr.cx.obs = ObTree.Empty;
+            psr.cx.depths = BTree<int, ObTree>.Empty;
             var n = new Ident(name, new Iix(ppos));
             var (rt, dt) = psr.ParseProcedureHeading(n);
             psr.cx._Add(dt);

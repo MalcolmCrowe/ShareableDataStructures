@@ -670,7 +670,8 @@ namespace Pyrrho.Level3
         internal ObTree(Bucket<long, DBObject> b) : base(b) { }
         public static ObTree operator +(ObTree tree, (long, DBObject) v)
         {
-            return (ObTree)tree.Add(v.Item1, v.Item2);
+            var (p, x) = v;
+            return (p==-1L)?tree:(ObTree)tree.Add(p, x);
         }
         public static ObTree operator +(ObTree tree, BTree<long, DBObject> a)
         {

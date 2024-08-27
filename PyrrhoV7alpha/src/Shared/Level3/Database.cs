@@ -497,6 +497,8 @@ namespace Pyrrho.Level3
             {
                 for (int counter = 0; ; counter++)
                 {
+                    rdr.context.obs = ObTree.Empty;
+                    rdr.context.defs = Ident.Idents.Empty;
                     p = rdr.Create();
                     if (p is EndOfFile)
                         break;
