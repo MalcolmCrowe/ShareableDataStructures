@@ -2214,9 +2214,11 @@ namespace Pyrrho.Level4
                 Qlx.LBRACK => new GqlEdge(nb, BList<Ident>.Empty, cx, Qlx.Null, -1L, 
                 -1L, -1L, dc, lxr.tgs, dm, m),
                 Qlx.ARROWBASE => new GqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
-                ln?.defpos ?? -1L, an?.defpos ?? -1L, dc, lxr.tgs, dm, m),
+                ((ln is GqlReference lr)?lr.id?.iix.dp:ln?.defpos) ?? -1L, 
+                ((an is GqlReference ar)?ar.id?.iix.dp:an?.defpos) ?? -1L, dc, lxr.tgs, dm, m),
                 Qlx.RARROW => new GqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
-                an?.defpos ?? -1L, ln?.defpos ?? -1L, dc, lxr.tgs, dm, m),
+                ((an is GqlReference ar) ? ar.id?.iix.dp : an?.defpos) ?? -1L, 
+                ((ln is GqlReference lr) ? lr.id?.iix.dp : ln?.defpos) ?? -1L, dc, lxr.tgs, dm, m),
                 _ => throw new DBException("42000", ab).Add(Qlx.INSERT_STATEMENT,new TChar(ab.ToString()))
             };
             if (wh is not null)

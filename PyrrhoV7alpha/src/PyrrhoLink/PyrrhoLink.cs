@@ -1507,7 +1507,7 @@ namespace Pyrrho
             if (p != Responses.Schema)
             {
                 c.conn.ReleaseExecution();
-                return null;
+                return new DummyReader(new PyrrhoTable("Dummy"));
             }
             var ncols = c.conn.GetInt();
             if (ncols == 0)
@@ -1524,7 +1524,7 @@ namespace Pyrrho
         {
             var p = c.conn.Receive();
             if (p != Responses.Schema)
-                return null;
+                return new DummyReader(t);
             var ncols = c.conn.GetInt();
             if (ncols == 0)
                 return null;
@@ -1649,7 +1649,7 @@ namespace Pyrrho
             return true;
         }
 
-        public bool Read()
+        public virtual bool Read()
         {
             cmd.CheckThread();
             if (local != null)
@@ -1894,6 +1894,16 @@ namespace Pyrrho
         public PyrrhoReader(PyrrhoTable t)
             : base(t)
         {
+        }
+    }
+    public class DummyReader : PyrrhoReader
+    {
+        public DummyReader(PyrrhoTable t) : base(t)
+        {
+        }
+        public override bool Read()
+        {
+            return false;
         }
     }
     public class CellValue

@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "Validation": {
+      "commandName": "Project",
+      "commandLineArgs": "sf1.20230605"
+    }
+  }
+}
