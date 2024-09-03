@@ -4,6 +4,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Text;
 using System.Xml;
+using static Pyrrho.Level4.Context;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -46,6 +47,17 @@ namespace Pyrrho.Level4
     /// </summary>
     internal abstract class RowSet : Domain
     {
+        /// <summary>
+        /// ResultType: (None,General, Empty, Aggregation, Scalar). 
+        /// The different shapes of the current table depend on the syntactically-defined 
+        /// numbers of rows or columns: The number of rows is 0 for an empty result, 
+        /// is always 1 for an ungrouped aggregation. 
+        /// The number of columns is 0 if the statement merely tests 
+        /// whether an operation succeeds (i.e. no exceptions), and 
+        /// is 1 for a scalar result 
+        /// (e.g. null, true or false, or some other single value of a known type).
+        /// </summary>
+        public enum ResultType { None, General, Empty, Aggregation, Scalar };
         internal readonly static BTree<long, object> E = BTree<long, object>.Empty;
         [Flags]
         internal enum Assertions { None=0,
@@ -59,6 +71,7 @@ namespace Pyrrho.Level4
             Ambient = -175, // CTree<long,bool> QlValue for RestView support
             Asserts = -212, // Assertions
             Assig = -174, // CTree<UpdateAssignment,bool> 
+            Builder = -152, // long Executable
             _Built = -402, // bool
             _CountStar = -281, // long 
             _Data = -368, // long RowSet
@@ -81,8 +94,10 @@ namespace Pyrrho.Level4
             RowOrder = -404, // Domain
             RSTargets = -197, // BTree<long,long?> Table TableRowSet 
             SIMap = -214, // BTree<long,long?> TableColumn,QlValue
+            _Result = -143, // ResultType
             _Scalar = -206, // bool
             _Source = -151, // long RowSet
+            Stability = -144, // CTree<long,CTree<long,TypedValue>> QlValue QlValue
             Stem = -211, // CTree<long,bool> RowSet 
             Target = -153, // long (a table or view for simple IDU ops)
             _Where = -190, // CTree<long,bool> Boolean conditions to be imposed by this query
@@ -127,6 +142,19 @@ namespace Pyrrho.Level4
         internal long selectDepth => (long)(mem[QlValue.SelectDepth] ?? -1L);
         internal long source => (long)(mem[_Source] ??  -1L);
         internal bool distinct => (bool)(mem[Distinct] ?? false);
+        internal ResultType resultType => (ResultType)(mem[_Result] ?? ResultType.None);
+        /// <summary>
+        /// Stability: The current table may be a constant, or may depend on one or more parameters. 
+        /// If a parameter changes, the value of the current table needs to be recalculated. 
+        /// This is done by cx.bindings: long->(long->TypedValue) in which for an expression E, 
+        /// E.defpos maps to the set of parameters it depends on, with their latest values. 
+        /// If the mapping long->TypedValue is empty, the binding is a constant for the transaction 
+        /// (e.g. depends only on the contents of tables at transaction start): 
+        /// if the TypedValue is not null, and changes, E should be recalculated. 
+        /// If stability is not specified, the rowset must be recomputed on each reference.
+        /// </summary>
+        internal CTree<long, CTree<long, TypedValue>> stability =>
+            (CTree<long, CTree<long, TypedValue>>)(mem[Stability] ?? CTree<long, CTree<long, TypedValue>>.Empty);
         internal CTree<UpdateAssignment, bool> assig =>
             (CTree<UpdateAssignment, bool>?)mem[Assig]
             ?? CTree<UpdateAssignment, bool>.Empty;
@@ -146,6 +174,7 @@ namespace Pyrrho.Level4
         internal BList<long?> groupings =>
             (BList<long?>?)mem[Groupings] ?? BList<long?>.Empty;
         internal Domain groupCols => (Domain)(mem[GroupCols]??Null);
+        internal long builder => (long)(mem[Builder]??-1L);
         /// <summary>
         /// The having clause
         /// </summary>
@@ -845,6 +874,8 @@ namespace Pyrrho.Level4
         }
         internal virtual RowSet Build(Context cx)
         {
+            if (cx.obs[builder] is Executable xe)
+                xe._Obey(cx);
             if (Built(cx))
                 return this;
             var r = (RowSet)New(mem + (_Built, true));
@@ -3290,10 +3321,15 @@ namespace Pyrrho.Level4
         }
         internal override bool Knows(Context cx, long rp, bool ambient=false)
         {
+            if (cx.obs[rp] is SqlFunction sf && 
+                (sf.op==Qlx.POSITION || sf.op==Qlx.SECURITY || sf.op == Qlx.SPECIFICTYPE))
+                    return true;
             if (cx.obs[from] is SelectRowSet ss && cx.obs[ss.valueSelect] is QlValue svs && cx.obs[svs.from] is RowSet es)
                 for (var b = es.Sources(cx).First(); b != null; b = b.Next())
                     if ((cx.obs[b.key()] as Domain)?.representation.Contains(rp)==true)
                         return true;
+            if (cx.obs[rp]?.from is long fp && cx.obs[fp] is SqlCopy sp && sp.from == defpos)
+                return true;
             return base.Knows(cx, rp, ambient);
         }
         protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)

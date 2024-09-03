@@ -236,9 +236,9 @@ namespace Pyrrho.Level4
                     var ix = Iix.None;
                     Idents ids = Empty;
                     var s = this[ic.ident] ?? BTree<long, (Iix, Idents)>.Empty;
-                    for (var sd = ic.iix.sd;ix == Iix.None && sd>=0;sd--)
+                    for (var sd = ic.iix.sd; ix == Iix.None && sd >= 0; sd--)
                         if (s.Contains(sd))
-                           (ix, ids) = s[sd];
+                            (ix, ids) = s[sd];
                     if (ids != Empty && ic.sub != null && d > 1 && ids.Contains(ic.sub.ident))
                         return ids[(ic.sub, d - 1, bc + ix)];
                     return (bc + ix, ids, ic.sub);

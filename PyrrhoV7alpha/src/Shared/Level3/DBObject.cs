@@ -38,7 +38,7 @@ namespace Pyrrho.Level3
             _Depth = -66,  // int (computed on cx.Add())
             _Domain = -192, // Domain 
             _Framing = -167, // Framing
-            _From = -306, // long From
+            _From = -306, // long RowSet (or maybe an edge connector SqlCopy)
             _Ident = -409, // Ident (used in ForwardReference, SqlReview, and RowSet)
             Infos = -126, // BTree<long,ObInfo> Role
             LastChange = -68, // long (formerly called Ppos)

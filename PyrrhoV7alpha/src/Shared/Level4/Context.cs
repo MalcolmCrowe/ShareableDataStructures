@@ -54,6 +54,8 @@ namespace Pyrrho.Level4
         public BTree<long, Cursor> cursors = BTree<long, Cursor>.Empty;
         internal CTree<long, bool> restRowSets = CTree<long, bool>.Empty;
         public long nextHeap = -1L, parseStart = -1L;
+        internal long result = -1L,lastret = -1L; // usually an ExplicitRowSet (binding table)
+        internal CTree<long, TypedValue> values = CTree<long, TypedValue>.Empty;
         public TypedValue val = TNull.Value;
         internal Database db = Database.Empty;
         internal Connection conn;
@@ -67,7 +69,6 @@ namespace Pyrrho.Level4
         internal long instSFirst = -1L; // first uid in framing
         internal long instSLast = -1L; // last uid in framing
         internal BTree<int, ObTree> depths = BTree<int, ObTree>.Empty;
-        internal CTree<long, TypedValue> values = CTree<long, TypedValue>.Empty;
         internal CTree<long, CTree<long, bool>> forReview = CTree<long, CTree<long, bool>>.Empty; // QlValue,RowSet
         internal BTree<long, BList<BTree<long, object>>> forApply = BTree<long, BList<BTree<long, object>>>.Empty;// RowSet, props
         internal CTree<long, Domain> groupCols = CTree<long, Domain>.Empty; // Domain; GroupCols for a Domain with Aggs
@@ -85,11 +86,11 @@ namespace Pyrrho.Level4
         internal long lexical = 0L; // current select block, set in incSD()
         internal Graph? graph = null; // current graph, set by USE
         internal Schema? schema = null; // current schema, set by AT
-        public BTree<long, bool> locals = BTree<long, bool>.Empty; // for binding table, activation locals
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
+        // bindings, and (possibly empty) dependencies
+        public BTree<long, CTree<long,TypedValue>> bindings = BTree<long, CTree<long,TypedValue>>.Empty;
         // UnHeap things for Procedure, Trigger, and Constraint bodies
         internal BTree<long, long?> uids = BTree<long, long?>.Empty;
-        internal long result = -1L,lastret = -1L; // usually an ExplicitRowSet (binding table)
         /// <summary>
         /// Used in Replace cascade
         /// </summary>
@@ -117,7 +118,7 @@ namespace Pyrrho.Level4
         internal CTree<long, bool> rdC = CTree<long, bool>.Empty; // read TableColumns defpos
         internal CTree<long, CTree<long, bool>> rdS = CTree<long, CTree<long, bool>>.Empty; // specific read TableRow defpos
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
-        internal CTree<long, TypedValue> binding = CTree<long, TypedValue>.Empty; // bound TGParams
+        internal CTree<long, TypedValue> binding = CTree<long, TypedValue>.Empty;
         internal BTree<long, long?> newnodes = BTree<long, long?>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
@@ -608,7 +609,7 @@ namespace Pyrrho.Level4
                     var (px, cs) = t[sd];
                     if ((bs.Contains(n) || obs[px.dp] is GqlNode) && !role.dbobjects.Contains(n)) // an object name is not a binding variable or a forward ref
                             ldefs += (n, new Iix(px.lp, px.sd - 1, px.dp), cs);
-                    if (locals.Contains(px.dp)) // an object name is not a binding variable or a forward ref
+                    if (bindings.Contains(px.dp)) // an object name is not a binding variable or a forward ref
                         ldefs += (n, new Iix(px.lp, px.sd - 1, px.dp), cs);
                     if (cs != Ident.Idents.Empty    // re-enter forward references to be resolved at a lower level
                         && obs[px.dp] is ForwardReference fr)
@@ -1850,11 +1851,29 @@ namespace Pyrrho.Level4
                         :ob.infos[role.defpos]?.name;
                     if (n == null)
                         continue;
+                    // For GQL follow connectors to their destinations in forward references
+                    if (defs[n]?.Contains(sD)==true 
+                        && defs[n]?[sD].Item1.dp is long fp && obs[fp] is ForwardReference fr
+                        && ob is SqlCopy sc && db.objects[sc.copyFrom] is TableColumn tc
+                        && db.objects[tc.toType] is NodeType nt && nt.infos[role.defpos] is ObInfo ni
+                        && ni.name is string nn)
+                    {
+                        AddDefs(new Ident(nn, new Iix(nt.defpos)), nt.rowType);
+                        undefined -= fp;
+                        obs += (fp,sc.AddFrom(this,id.iix.dp));
+                        for (var c = fr.subs.First(); c != null; c = c.Next())
+                            if (obs[c.key()] is SqlReview sr && sr.id?.sub?.ident is string fn
+                                && db.objects[ni.names[fn].Item2 ?? -1L] is TableColumn fc)
+                            {
+                                undefined -= sr.defpos;
+                                Add(new SqlCopy(sr.defpos, this,fn,sc.defpos,fc.defpos)); // from is special case
+                            }
+                    }
                     var ic = new Ident(n, px);
                     var iq = new Ident(id, ic);
                     defs += (iq, ic.iix);
                     defs += (ic, ic.iix);
-                    if (ia != null && !locals.Contains(ic.iix.dp))
+                    if (ia != null && !bindings.Contains(ic.iix.dp))
                         defs += (new Ident(ia, ic), ic.iix);
                 }
         }

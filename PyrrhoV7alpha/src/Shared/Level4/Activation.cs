@@ -75,7 +75,7 @@ namespace Pyrrho.Level4
             for (var b = values.PositionAt(0); b != null; b = b.Next())
             {
                 var k = b.key();
-                if (!locals.Contains(k) && values[k] is TypedValue v)
+                if (!bindings.Contains(k) && values[k] is TypedValue v)
                     next.values += (k, v);
             }
             next.val = val;
@@ -115,7 +115,7 @@ namespace Pyrrho.Level4
         }
         internal override Context FindCx(long c)
         {
-            if (locals.Contains(c))
+            if (bindings.Contains(c))
                 return this;
             return next?.FindCx(c) ?? throw new PEException("PE556");
         }
@@ -131,13 +131,13 @@ namespace Pyrrho.Level4
             proc = p;
             for (var b = p.ins.First(); b != null; b = b.Next())
                 if (b.value() is long c)
-                    locals += (c, true);
+                    bindings += (c, CTree<long, TypedValue>.Empty);
             if (p is Method mt)
             {
                 cmt = mt;
                 for (var b = mt.udType.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long c)
-                        locals += (c, true);
+                        bindings += (c, CTree<long, TypedValue>.Empty);
             }
         }
         internal override TypedValue Ret()

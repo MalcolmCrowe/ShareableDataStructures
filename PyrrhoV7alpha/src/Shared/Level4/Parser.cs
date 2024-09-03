@@ -1987,7 +1987,7 @@ namespace Pyrrho.Level4
                             cx.Add(new QlValue(pi, BList<Ident>.Empty, cx, Domain.PathType)
                                 +(DBObject._From,dp));
                             cx.defs += (pi, cx.sD);
-                            cx.locals += (pi.iix.dp, true);
+                            cx.bindings += (pi.iix.dp, CTree<long, TypedValue>.Empty);
                             tgs = lxr.tgs;
                         }
                         Mustbe(Qlx.EQL);
@@ -2119,7 +2119,7 @@ namespace Pyrrho.Level4
                 Next();
             Mustbe(Qlx.LPAREN, Qlx.LBRACK, Qlx.ARROWBASE, Qlx.RARROW);
             var b = new Ident(this);
-            var bound = cx.locals.Contains(cx.defs[b].dp);
+            var bound = cx.bindings.Contains(cx.defs[b].dp);
             var nb = b;
             long id = -1L;
             var lp = lxr.Position;
@@ -2296,7 +2296,7 @@ namespace Pyrrho.Level4
                     if (ix == Iix.None)
                     {
                         id = lp;
-                        cx.locals += (b.iix.dp, true);
+                        cx.bindings += (b.iix.dp, CTree<long, TypedValue>.Empty);
                         cx.defs += (b, b.iix);
                     }
                     else
@@ -2311,7 +2311,7 @@ namespace Pyrrho.Level4
                     Next();
                     var s = cx.defs[b];
                     lb = ParseLabelExpression((ab==Qlx.LPAREN)?Domain.NodeType:Domain.EdgeType,b.ident);
-                    if (cx.locals.Contains(b.iix.dp)) // yuk
+                    if (cx.bindings.Contains(b.iix.dp)) // yuk
                         cx.defs += (b, s);
                     if (lxr.tgs[lb.defpos] is TGParam qg)
                         st += (-(int)Qlx.TYPE, qg);
@@ -2434,7 +2434,7 @@ namespace Pyrrho.Level4
             var left = cx.db.objects[cx.role.dbobjects[c1.ident] ?? -1L] as Domain 
                 ?? (Domain)cx.Add(new GqlLabel(c1,cx,lt,at,new BTree<long,object>(Domain.Kind,dm.kind)));
             if (left is GqlLabel)
-                cx.locals += (c1.iix.dp, true);
+                cx.bindings += (c1.iix.dp, CTree<long, TypedValue>.Empty);
             cx.defs += (c1, c1.iix);
             cx.AddDefs(c1,left.rowType,a);
             cx.Add(left);
@@ -2468,7 +2468,7 @@ namespace Pyrrho.Level4
         {
             var olddefs = cx.defs; // we will remove any defs introduced by the Match below
                                    // while allowing existing defs to be updated by the Match parser
-            var oldlocals = cx.locals;
+            var oldlocals = cx.bindings;
             var flags = MatchStatement.Flags.None;
             Next();
             if (tok == Qlx.SCHEMA)
@@ -2558,7 +2558,7 @@ namespace Pyrrho.Level4
             for (var b = cx.defs.First(); b != null; b = b.Next())
                 if (!olddefs.Contains(b.key()))
                     cx.defs -= b.key();
-            cx.locals = oldlocals;
+            cx.bindings = oldlocals;
             return ms;
         }
         internal static (BindingRowSet, BTree<string, (int, long?)>) BindingTable(Context cx, CTree<long, TGParam> gs)
@@ -5293,7 +5293,7 @@ namespace Pyrrho.Level4
             var ob = Identify(ic, il, xp);
             if (ob is not QlValue)
             {
-                if (cx.locals.Contains(ob.defpos))
+                if (cx.bindings.Contains(ob.defpos))
                     ob = new SqlCopy(ic.iix.dp, cx, ic.ident, -1L, ob.defpos);
                 else
                     throw new DBException("42112", ic.ident);
@@ -5362,7 +5362,7 @@ namespace Pyrrho.Level4
                 var co = new SqlField(sub.iix.dp, sub.ident, -1, sv1.defpos, Domain.Content, sv1.defpos);
                 return cx.Add(co);
             }
-            if (cx.locals.Contains(ic.iix.dp)) // a binding or local variable
+            if (cx.bindings.Contains(ic.iix.dp)) // a binding or local variable
                 return new QlValue(ic.iix.dp, cx.obs[ic.iix.dp]?.mem??BTree<long,object>.Empty+(ObInfo.Name,ic.ident));
             // if sub is non-zero there is a new chain to construct
             var nm = len - m;
@@ -5392,7 +5392,7 @@ namespace Pyrrho.Level4
                         else
                         {
                             ob = cx.Add(new QlValue(c, il, cx, Domain.Null));
-                            cx.locals += (c.iix.dp, true);
+                            cx.bindings += (c.iix.dp, CTree<long, TypedValue>.Empty);
                         }
                         pa = ob;
                     }
@@ -9211,9 +9211,9 @@ namespace Pyrrho.Level4
             }
             if (Match(Qlx.MATCH,Qlx.WITH))
             {
-                ParseMatchStatement();
+                var ms = ParseMatchStatement();
                 var rs = cx.obs[cx.result] as RowSet ?? new TrivialRowSet(cx, Domain.Bool);
-                return (QlValue)cx.Add(new SqlValueSelect(cx.GetUid(), cx, rs, xp));
+                return (QlValue)cx.Add(new SqlValueSelect(cx.GetUid(), cx, rs, xp, ms));
             }
             if (Match(Qlx.TABLE))
                 Next();
@@ -9913,6 +9913,18 @@ namespace Pyrrho.Level4
                             Mustbe(Qlx.RPAREN);
                             return (QlValue)cx.Add(new SqlValueSelect(cx.GetUid(),
                                 cx, (RowSet)(cx.obs[cs] ?? throw new PEException("PE2010")), xp));
+                        }
+                        if (tok==Qlx.MATCH)
+                        {
+                            var ms = (MatchStatement)ParseMatchStatement();
+                            Mustbe(Qlx.RPAREN);
+                            if (cx.obs[ms.body] is SelectStatement ss)
+                            {
+                                cx.Add(ss + (RowSet.Builder, ms.defpos));
+                                return (QlValue)cx.Add(new SqlValueSelect(cx.GetUid(),
+                                    cx, (RowSet)(cx.obs[ss.union] ?? throw new DBException("42000")), xp, ms));
+                            }
+                            throw new DBException("42000");
                         }
                         Domain et = Domain.Null;
                         switch (xp.kind)
@@ -10916,7 +10928,7 @@ namespace Pyrrho.Level4
             var id = new Ident(this);
             Mustbe(Qlx.Id);
             Mustbe(Qlx.LPAREN);
-            var ps = ParseSqlValueList(Domain.Content);
+            var ps = (tok==Qlx.RPAREN)?BList<long?>.Empty:ParseSqlValueList(Domain.Content);
             var a = cx.Signature(ps);
             Mustbe(Qlx.RPAREN);
             if (cx.role.procedures[id.ident]?[a] is not long pp ||
@@ -11024,7 +11036,7 @@ namespace Pyrrho.Level4
                 k = new Ident("ID", k.iix);
             if (!cx.defs.Contains(k.ident))
             {
-                cx.locals += (k.iix.dp, true);
+                cx.bindings += (k.iix.dp, CTree<long, TypedValue>.Empty);
                 cx.defs += (k, k.iix);
             }
             var ip = lxr.Position;
@@ -11036,7 +11048,7 @@ namespace Pyrrho.Level4
             Ident q = new(lxr.val.ToString(),new Iix(lxr.Position,pa,cx.GetUid())); // capture instance reference
             if (tok == Qlx.Id && !cx.defs.Contains(q.ident))
             {
-                cx.locals += (q.iix.dp, true);
+                cx.bindings += (q.iix.dp, CTree<long, TypedValue>.Empty);
                 cx.defs += (q, q.iix);
             }
             lxr.docValue = false;

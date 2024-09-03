@@ -1,5 +1,6 @@
 using System.Globalization;
 using System.Text;
+using System.Transactions;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -2816,6 +2817,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         TypedValue Check(TypedValue v)
         {
+            if (this is SelectRowSet rs && rs.aggs!=CTree<long,bool>.Empty && rs.group<0L
+                && rs.Length == 1 && rs.representation[rs[0]??-1L]?.kind == v.dataType.kind)
+                return v;
             if (defpos>=0 && kind!=Qlx.PATH && v!=TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(this))
                    throw new PEException("PE10702");
             return v;

@@ -552,7 +552,7 @@ namespace Pyrrho.Level3
             a.exec = this;
             var vb = (QlValue)(cx.obs[vbl] ?? throw new PEException("PE1101"));
             TypedValue tv = cx.obs[init]?.Eval(cx)??vb.domain.defaultValue;
-            a.locals += (defpos, true); // local variables need special handling
+            a.bindings += (defpos, CTree<long,TypedValue>.Empty); // local variables need special handling
             cx.AddValue(vb, tv); // We expect a==ac, but if not, tv will be copied to a later
             return cx;
         }

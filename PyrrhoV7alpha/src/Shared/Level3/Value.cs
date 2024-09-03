@@ -852,7 +852,7 @@ namespace Pyrrho.Level3
             if (defpos >= Transaction.Executables && defpos < Transaction.HeapStart)
                 for (var c = cx; c != null; c = c.next)
                 {
-                    if (from==-1L || (c is CalledActivation ca && ca.locals.Contains(copyFrom)))
+                    if (from==-1L || (c is CalledActivation ca && ca.bindings.Contains(copyFrom)))
                         return cx.values[copyFrom] ?? dv;
                     if (c is TriggerActivation ta && ta.trigTarget?[defpos] is long cp
                             && ta._trs?.targetTrans[cp] is long fp
@@ -865,7 +865,8 @@ namespace Pyrrho.Level3
             { 
                 if (tv is TRow rw)
                     return rw[copyFrom] ?? dv;
-                if (tv is TInt ti && sc.domain is NodeType nt && nt.tableRows[ti.value] is TableRow tr)
+                if (tv is TInt ti && cx.obs[sc.copyFrom] is TableColumn tc
+                    && cx.db.objects[tc.toType] is NodeType nt && nt.tableRows[ti.ToInt()??-1L] is TableRow tr)
                     return tr.vals[copyFrom] ?? dv;
             }
             return cx.values[defpos] ?? cx.values[copyFrom] ?? dv;
@@ -5098,7 +5099,7 @@ namespace Pyrrho.Level3
         /// the subquery
         /// </summary>
         public long expr =>(long)(mem[Expr]??-1L);
-        public SqlValueSelect(long dp,Context cx,RowSet r,Domain xp)
+        public SqlValueSelect(long dp,Context cx,RowSet r,Domain xp,Executable? pv = null)
             : base(dp, new BTree<long,object>(_Domain,r) + (Domain.Aggs,r.aggs)
                   + (Expr, r.defpos) + (RowSet._Scalar,xp.kind!=Qlx.TABLE)
                   + (_Depth,Math.Max(r.depth+1,xp.depth+1)))
@@ -10953,7 +10954,7 @@ cx.obs[high] is not QlValue hi)
                     if (b.key() is long p && p<Transaction.Analysing)
                     {
                         var (x, ds) = b.value();
-                        if (cx.locals.Contains(x.dp))
+                        if (cx.bindings.Contains(x.dp))
                             cx.defs += (tg.value, new Iix(x.lp,nm.iix.dp,x.dp),ds);
                     }
         }
@@ -11030,6 +11031,13 @@ cx.obs[high] is not QlValue hi)
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new GqlNode(dp, m);
+        }
+        internal override bool isConstant(Context cx)
+        {
+            for (var b = docValue.First(); b != null; b = b.Next())
+                if (b.value() is QlValue v && !v.isConstant(cx))
+                    return false;
+            return true;
         }
         internal override Domain FindType(Context cx, Domain dt)
         {
@@ -11523,7 +11531,7 @@ cx.obs[high] is not QlValue hi)
                     if (b.key() is long p && p < Transaction.Analysing)
                     {
                         var (x, ds) = b.value();
-                        if (cx.locals.Contains(x.dp))
+                        if (cx.bindings.Contains(x.dp))
                             cx.defs += (tg.value, new Iix(x.lp, nm.iix.dp, x.dp), ds);
                     }
         }
