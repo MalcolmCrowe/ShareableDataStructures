@@ -5873,7 +5873,7 @@ namespace Pyrrho.Level3
                     if (cx.role is not null && infos[cx.role.defpos] is ObInfo oi 
                         && cx._Ob(procdefpos) is Procedure pr)
                     { // we need the names
-                        var p = oi.methodInfos[mc.name]?[cx.Signature(pr)] ?? -1L;
+                        var p = oi.methodInfos[mc.name]?[cx.db.Signature(pr)] ?? -1L;
                         mc = mc + (cx, Var, ov.defpos) + (cx, ProcDefPos, p);
                         return (new BList<DBObject>(cx.Add(mc)),m);
                     }
@@ -6657,6 +6657,7 @@ namespace Pyrrho.Level3
                 case Qlx.TRANSLATE: return Domain.Char;
                 case Qlx.TYPE_URI: return Domain.Char;
                 case Qlx.TRIM: return Domain.Char;
+                case Qlx.UNNEST: return Domain.TableType;
                 case Qlx.UPPER: return Domain.Char;
                 case Qlx.USER: return Domain.Char;
                 case Qlx.VERSIONING:
@@ -7313,6 +7314,15 @@ namespace Pyrrho.Level3
                         if (a is not TNode n)
                             return TNull.Value;
                         return new TTypeSpec(n.dataType);
+                    }
+                case Qlx.UNNEST:
+                    {
+                        var ta = cx.obs[val]?.Eval(cx) as TArray;
+                        var r = new TSet(ta?.dataType.elType ?? Domain.Content);
+                        for (var i = 0; i < (ta?.Length??0); i++)
+                            if (ta?[i] is TypedValue x)
+                                r.Add(x);
+                        return r;
                     }
                 case Qlx.UPPER:
                     {
@@ -11077,8 +11087,7 @@ cx.obs[high] is not QlValue hi)
         {
             return (GqlNode)cx.Add(this + (State, tgs + state));
         }
-        internal virtual NodeType
-            _NodeType(Context cx, NodeType dt, bool allowExtras = true)
+        internal virtual Domain _NodeType(Context cx, NodeType dt, bool allowExtras = true)
         {
             var nd = this;
             if (dt.name==label.name)
@@ -11241,7 +11250,7 @@ cx.obs[high] is not QlValue hi)
             var ods = cx.defsStore;
             if (allowExtras)
             {
-                nt = _NodeType(cx, dt, allowExtras);
+                nt = (NodeType)_NodeType(cx, dt, allowExtras);
                 if (nt != nd.domain)
                 {
                     nd += (_Domain, nt);
@@ -11588,7 +11597,7 @@ cx.obs[high] is not QlValue hi)
         {
             return 1;
         }
-        internal override NodeType _NodeType(Context cx, NodeType dt, bool allowExtras = true)
+        internal override Domain _NodeType(Context cx, NodeType dt, bool allowExtras = true)
         {
             var nd = this;
             //  nd for an edge will have a specific leavingnode and a specific arrivingnode 
@@ -11610,8 +11619,18 @@ cx.obs[high] is not QlValue hi)
             //var aN = aT?.name;
             // a label with at least one char QlValue must be here
             // evaluate them all as TTypeSpec or TChar
-            if (cx.db.objects[cx.role.edgeTypes[label.name ?? ""] ?? -1L] is EdgeType ee)
-                return ee;
+            if (cx.db.objects[cx.role.edgeTypes[label.name ?? ""] ?? -1L] is Domain ed)
+            {
+                if (lT is null || aT is null)
+                    throw new DBException("22G0W", label.name??"");
+                if (ed is EdgeType ef && ef.leavingType == lT.defpos && ef.arrivingType == aT.defpos)
+                    return ed;
+                if (ed.kind != Qlx.UNION) throw new PEException("PE20903");
+                for (var c = ed.unionOf.First(); c != null; c = c.Next())
+                    if (cx.db.objects[c.key().defpos] is EdgeType ee
+                        && ee.leavingType == lT.defpos && ee.arrivingType == aT.defpos)
+                        return ee;
+            }
             var tl = nd.label.OnInsert(cx, nd.mem);
             EdgeType? nt = null; // the node type of this node when we find it or construct it
             var md = TMetadata.Empty; // some of what we will find on this search
@@ -11650,9 +11669,18 @@ cx.obs[high] is not QlValue hi)
                         ps += (b.key(), true);
                         pl += s;
                     }
-                if (nd.label.name != "" && cx.role.edgeTypes[nd.label.name] is long q
-                    && cx.db.objects[cx.db.edgeEnds[q]?[lT.defpos]?[aT.defpos]??-1L] is EdgeType nv)
-                    nt = nv;
+                if (nd.label.name != "" && cx.role.edgeTypes[nd.label.name] is long q)
+                {
+                    if (cx.db.objects[q] is EdgeType nv && nv.leavingType == lT.defpos && nv.arrivingType == aT.defpos)
+                        nt = nv;
+                    else if (cx.db.objects[q] is Domain de && de.kind == Qlx.UNION)
+                    {
+                        for (var c = de.unionOf.First(); nt is null && c != null; c = c.Next())
+                            if (cx.db.objects[c.key().defpos] is EdgeType ee
+                                && ee.leavingType == lT.defpos && ee.arrivingType == aT.defpos)
+                                nt = ee;
+                    } else throw new PEException("PE20904");
+                }
                 else if (nd.label.name == "" && cx.role.unlabelledEdgeTypesInfo[ps] is long p
                     && cx.db.objects[p] is EdgeType nu)
                     nt = nu;

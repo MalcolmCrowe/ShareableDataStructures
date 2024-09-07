@@ -390,13 +390,15 @@ namespace Pyrrho.Level5
                 if (kind == Qlx.EDGETYPE) // We are Domain.EDGETYPE itself: do this for all edgetypes in the role
                 {
                     for (var b = cx.db.role.edgeTypes.First(); b != null; b = b.Next())
-                        if (b.value() is long p1 && cx.db.objects[p1] is EdgeType nt1)
-                            ds = nt1.For(cx, ms, xn, ds);
-                    for (var b = cx.db.edgeEnds.First(); b != null; b = b.Next())
-                        for (var c = b.value().First(); c != null; c = c.Next())
-                            for (var d = c.value().First(); d != null; d = d.Next())
-                                if (d.value() is long p2 && p2>=0 && cx.db.objects[p2] is EdgeType nt2)
-                                    ds = nt2.For(cx, ms, xn, ds);
+                        if (b.value() is long p1 && cx.db.objects[p1] is Domain ed)
+                        {
+                            if (ed is EdgeType nt1)
+                                ds = nt1.For(cx, ms, xn, ds);
+                            else if (ed.kind == Qlx.UNION)
+                                for (var c = ed.unionOf.First(); c != null; c = c.Next())
+                                    if (cx.db.objects[c.key().defpos] is EdgeType ef)
+                                        ds = ef.For(cx, ms, xn, ds);
+                        }
                 }
                 return ds;
             }
@@ -610,7 +612,7 @@ namespace Pyrrho.Level5
                         else if (ud.name!=name)
                             st += (ud, true);
                     }
-                if (this is EdgeType et && cx.db.objects[cx.role.edgeTypes[tn]??-1L] is null)
+                if (this is EdgeType et)
                 {
                     if (md?[Qlx.RARROW] is TChar lv && cx.role.dbobjects[lv.value] is long lp)
                         lt = lp;
@@ -1537,6 +1539,13 @@ namespace Pyrrho.Level5
             var sd = (lt is null || at is null) ?
                 (cx.db.objects[cx.role.nodeTypes[id] ?? -1L] as Domain)
                 : (cx.db.objects[cx.role.edgeTypes[id]?? -1L] as Domain);
+            if (sd is EdgeType se && (se.leavingType != lt || se.arrivingType != at))
+                sd = null;
+            if (sd?.kind == Qlx.UNION)
+                for (var c = sd.unionOf.First(); sd is null && c != null; c = c.Next())
+                    if (cx.db.objects[c.key().defpos] is EdgeType sf
+                        && sf.leavingType == lt && sf.arrivingType == at)
+                        sd = sf;
             if (sd is not null)
                 m = m+ (_Domain, sd) + (Kind, sd.kind);
             else
@@ -1623,8 +1632,8 @@ namespace Pyrrho.Level5
                 else
                     rm += (Under, rg.super + (lf, true));
             }
-            var lt = ((long?)m[EdgeType.LeaveCol]) ?? cx.obs[(long)(m[GqlEdge.LeavingValue] ?? -1L)]?.defpos ?? -1L;
-            var at = ((long?)m[EdgeType.ArriveCol]) ?? cx.obs[(long)(m[GqlEdge.ArrivingValue] ?? -1L)]?.defpos ?? -1L;
+            var lt = ((long?)m[EdgeType.LeavingType]) ?? cx.obs[(long)(m[GqlEdge.LeavingValue] ?? -1L)]?.domain.defpos ?? -1L;
+            var at = ((long?)m[EdgeType.ArrivingType]) ?? cx.obs[(long)(m[GqlEdge.ArrivingValue] ?? -1L)]?.domain.defpos ?? -1L;
             var k = kind;
             if (lt >= 0 && at >= 0)
             { // lt and at may be GqlNodes for now: will be fixed in Build
@@ -1870,18 +1879,28 @@ namespace Pyrrho.Level5
         internal override void AddNodeOrEdgeType(Context cx)
         {
             var ro = cx.role;
-            var p = defpos;
-            var nm = (label.kind==Qlx.Null)?name:label.name;
+            var nm = name??label.name;
             if (nm != "")
             {
                 var ep = ro.edgeTypes[nm];
-                if (ep is null)
+                var ed = cx._Ob(ep ?? -1L) as Domain;
+                if (ep is null || ed?.kind==Qlx.NODETYPE) // second term here is for Metadata.EdgeType
                 {
-                    ro += (Role.EdgeTypes, (nm, defpos));
+                    ro += (Role.EdgeTypes, ro.edgeTypes+(nm, defpos));
                     cx.db += ro;
                 }
-                else
-                    p = ep.Value;
+                else if (ed is not null && ed.defpos!=defpos)
+                {
+                    if (ed.kind == Qlx.EDGETYPE)
+                        ed = (Domain)cx.Add(UnionType(ed.defpos+1L, ed, this));
+                    else if (ed.kind == Qlx.UNION)
+                        ed = (Domain)cx.Add(new Domain(ed.defpos, Qlx.UNION, ed.unionOf + ((Domain)this, true)));
+                    else throw new PEException("PE20901");
+                    ro += (Role.EdgeTypes, ro.edgeTypes+(nm, ed.defpos));
+                    ro += (Role.DBObjects, ro.dbobjects + (nm, ed.defpos));
+                    cx.db += ed;
+                    cx.db += ro;
+                }
             }
             else
             {
@@ -1893,10 +1912,22 @@ namespace Pyrrho.Level5
                         ps += (b.key(), true);
                         pn += (n, true);
                     }
-                if (!ro.unlabelledNodeTypesInfo.Contains(pn))
+                var ud = cx.db.objects[ro.unlabelledEdgeTypesInfo[pn] ?? -1L] as Domain;
+                if (ud is null)
                 {
                     ro += (Role.UnlabelledNodeTypesInfo, ro.unlabelledNodeTypesInfo + (pn, defpos));
                     cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (ps, defpos));
+                    cx.db += ro;
+                } else
+                {
+                    if (ud.kind == Qlx.EDGETYPE)
+                        ud = (Domain)cx.Add(UnionType(cx.GetUid(), ud, this));
+                    else if (ud.kind == Qlx.UNION)
+                        ud = (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.UNION, ud.unionOf + (this, true)));
+                    else throw new PEException("PE20901");
+                    ro += (Role.UnlabelledNodeTypesInfo, ro.unlabelledNodeTypesInfo + (pn, ud.defpos));
+                    cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (ps, ud.defpos));
+                    cx.db += ro;
                 }
             }
             cx.db += (Database.Role, cx.db.objects[cx.role.defpos]??throw new DBException("42105"));
@@ -1905,7 +1936,19 @@ namespace Pyrrho.Level5
         internal override bool HaveNodeOrEdgeType(Context cx)
         {
             if (name != "")
-                return cx.role.edgeTypes.Contains(name);
+            {
+                if (cx.role.edgeTypes[name] is long ep && cx.db.objects[ep] is Domain d)
+                {
+                    if (d is EdgeType et && et.leavingType == leavingType && et.arrivingType == arrivingType)
+                        return true;
+                    if (d.kind == Qlx.UNION)
+                        for (var c = d.unionOf.First(); c != null; c = c.Next())
+                            if (cx.db.objects[c.key().defpos] is EdgeType ee
+                                && ee.leavingType == leavingType && ee.arrivingType == arrivingType)
+                                return true;
+                }
+                return false;
+            }
             var pn = CTree<string, bool>.Empty;
             for (var b = representation.First(); b != null; b = b.Next())
                 if (cx.NameFor(b.key()) is string n)
@@ -1935,7 +1978,21 @@ namespace Pyrrho.Level5
             {
                 if (oi.name!="")
                 {
-                    ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, defpos));
+                    if (cx.role.edgeTypes[oi.name] is long ep && cx.db.objects[ep] is Domain ed)
+                    {
+                        if (ed.kind==Qlx.UNION)
+                        {
+                            var ev = cx.Add(new Domain(ep, Qlx.UNION, ed.unionOf + (this, true)));
+                            ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, ev.defpos));
+                        }    
+                        if (ed is EdgeType ee && (ee.leavingType!=leavingType || ee.arrivingType!=arrivingType))
+                        {
+                            var eu = cx.Add(UnionType(cx.GetUid(), ee, this));
+                            ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, eu.defpos));
+                        }
+                    } 
+                    else
+                        ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, defpos));
                     cx.db += ro; 
                 }
            }
@@ -2107,7 +2164,7 @@ namespace Pyrrho.Level5
         {
             var r = New(cx.Fix(defpos), _Fix(cx, mem));
             var ro = cx.role;
-            cx.db += ro + (Role.EdgeTypes, ro.edgeTypes + (name, cx.Fix(defpos)));
+      //      cx.db += ro + (Role.EdgeTypes, ro.edgeTypes + (name, cx.Fix(defpos)));
             if (cx.db.objects.Contains(defpos))
                 cx.db += this;
             if (defpos != -1L)
@@ -2693,8 +2750,8 @@ namespace Pyrrho.Level5
         {
             if (type == Type.Node && cx.db.objects[cx.role.nodeTypes[value] ?? -1L] is NodeType nt)
                 return nt;
-            if (type == Type.Edge && cx.role.edgeTypes.Contains(value))
-                return Domain.EdgeType;
+            if (type == Type.Edge && cx.db.objects[cx.role.edgeTypes[value]??-1L] is Domain d)
+                return d as EdgeType??Domain.EdgeType;
             return null;
         }
         public override string ToString() 

@@ -169,7 +169,7 @@ namespace Pyrrho.Level2
                 udt.infos[cx.role.defpos] is not ObInfo ui)
                 throw new PEException("PE0611");
             var um = ui.methodInfos;
-            var sig = cx.Signature(mt);
+            var sig = cx.db.Signature(mt);
             var om = um[name] ?? BTree<CList<Domain>, long?>.Empty;
             um += (name, om+(sig, mt.defpos));
             ui += (ObInfo.MethodInfos, um);

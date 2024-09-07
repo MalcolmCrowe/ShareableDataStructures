@@ -720,7 +720,7 @@ namespace Pyrrho.Level2
             {
                 sb.Append('['); sb.Append(DBObject.Uid(dataType.defpos)); sb.Append(']');
             }
-            if (dataType.Length == 0)
+            if (dataType.Length == 0 && dataType.kind!=Qlx.EDGETYPE)
             { sb.Append(' '); sb.Append(dataType.kind); }
             return sb.ToString();
         }

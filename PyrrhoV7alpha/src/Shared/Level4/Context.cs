@@ -2072,24 +2072,22 @@ namespace Pyrrho.Level4
                 pn += (b.key(), true);
             return db.objects[role.unlabelledNodeTypesInfo[pn] ?? -1L] as NodeType;
         }
-        internal CTree<Domain,bool> FindEdgeType(string nm, long lc, long ac, CTree<string, QlValue> dc,
+        internal CTree<Domain,bool> FindEdgeType(string nm, long lt, long at, CTree<string, QlValue> dc,
             BTree<long,object> m, TMetadata md)
         {
             var r = CTree<Domain, bool>.Empty;
             if (nm != "" && role.edgeTypes[nm] is long el) 
             {
-                if (db.edgeEnds[el]==null && db.objects[el] is EdgeType ee)
-                {
-                    ee += (EdgeType.LeaveCol, lc);
-                    ee += (EdgeType.ArriveCol, ac);
-                    db += (Database.EdgeEnds, db.edgeEnds + (el, 
-                        new BTree<long,BTree<long,long?>>(lc,new BTree<long,long?>(ac,el))));
-                    return new CTree<Domain,bool>(ee,true);
-                }
-                if (db.objects[db.edgeEnds[el]?[lc]?[ac] ?? -1] is EdgeType et)
-                    return r + (et.Build(this,null,m,md), true);
-                if (r!=CTree<Domain,bool>.Empty)
-                    return r;
+                EdgeType? et = null;
+                if (db.objects[el] is EdgeType ee
+                    && ee.leavingType == lt && ee.arrivingType == at)
+                    et = ee;
+                if (db.objects[el] is Domain eu && eu.kind == Qlx.UNION)
+                    for (var c = eu.unionOf.First(); et is null && c != null; c = c.Next())
+                        if (db.objects[c.key().defpos] is EdgeType ef
+                            && ef.leavingType == lt && ef.arrivingType == at)
+                            et = ef;
+                return r + (et.Build(this,null,m,md), true);
             }
             var pn = CTree<string, bool>.Empty;
             for (var b = dc.First(); b != null; b = b.Next())
@@ -2098,32 +2096,6 @@ namespace Pyrrho.Level4
                 r +=(ut.Build(this,null,m,md), true);
             return r;
         }
-        internal CList<Domain> Signature(Procedure proc)
-        {
-            var r = CList<Domain>.Empty;
-            Add(proc.framing);
-            for (var b = proc.ins.First(); b != null; b = b.Next())
-                if (b.value() is long p && _Dom(p) is Domain d)
-                    r += d;
-            return r;
-        }
-        internal CList<Domain> Signature(BList<long?> ins)
-        {
-            var r = CList<Domain>.Empty;
-            for (var b = ins.First(); b != null; b = b.Next())
-                if (b.value() is long p && _Dom(p) is Domain d)
-                    r += d;
-            return r;
-        }
-        internal static CList<Domain> Signature(Domain ins)
-        {
-            var r = CList<Domain>.Empty;
-            for (var b = ins.First(); b != null; b = b.Next())
-                if (b.value() is long p)
-                    r += ins.representation[p] ?? throw new PEException("PE0098");
-            return r;
-        }
-
         internal string? NameFor(long p)
         {
             var ob = _Ob(p);

@@ -4200,8 +4200,24 @@ namespace Pyrrho.Level3
                                 for (var pb = ed.docValue.First(); pb != null; pb = pb.Next())
                                     pn += (pb.key(), true);
                                 EdgeType? et = null;
-                                if (nm != "" && cx.db.objects[cx.role.edgeTypes[nm] ?? -1L] is EdgeType ev)
-                                    et = ev;
+                                if (nm != "" && cx.db.objects[cx.role.edgeTypes[nm] ?? -1L] is Domain ew)
+                                {
+                                    if (ew is EdgeType ev)
+                                        et = ev;
+                                    else if (ew.kind == Qlx.UNION)
+                                    {
+                                        for (var c = ew.unionOf.First(); c != null; c = c.Next())
+                                            if (cx.obs[c.key().defpos] is EdgeType ex 
+                                                && ln.dataType.defpos==ex.leavingType && an.dataType.defpos==ex.arrivingType)
+                                            {
+                                                et = ex;
+                                                goto found;
+                                            }
+                                        throw new DBException("22G0W", nm);
+                                    }
+                                    else throw new PEException("PE20902");
+                                    found:;
+                                }
                                 if (nm == "" && cx.db.objects[cx.role.unlabelledEdgeTypesInfo[pn] ?? -1L] is EdgeType eu)
                                     et = eu;
                                 if (et is null)
@@ -4975,19 +4991,8 @@ namespace Pyrrho.Level3
                             }
                             if (!xn.label.Match(cx, new CTree<long, bool>(rt.defpos, true), Qlx.EDGETYPE))
                                 continue;
-                            if (xn.tok == Qlx.ARROWBASE)
-                                for (var d = cx.db.edgeEnds[rt.defpos]?[cc.defpos]?.First(); d != null; d = d.Next())
-                                    if (cx.db.objects[d.key()] is TableColumn ec
-                                       && cx.db.objects[ec.tabledefpos] is NodeType dt
-                                       && dt.tableRows[c.key()] is TableRow dr && lm-- > 0 && la-- > 0)
-                                        ds += (dr.defpos, dr);
-                            if (xn.tok == Qlx.RARROW)
-                                for (var d = cx.db.edgeEnds[rt.defpos]?.First(); d != null; d = d.Next())
-                                    if (cx.db.objects[d.key()] is TableColumn ec
-                                        && d.value().Contains(cc.defpos)
-                                       && cx.db.objects[ec.tabledefpos] is NodeType dt
-                                       && dt.tableRows[c.key()] is TableRow dr && lm-- > 0 && la-- > 0)
-                                        ds += (dr.defpos, dr);
+                            if (rt.tableRows[c.key()] is TableRow dr && lm-- > 0 && la-- > 0)
+                                ds += (dr.defpos, dr);
                         }
                     alldone:;
             }

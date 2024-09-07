@@ -55,7 +55,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
-            EdgeTypes = -128, // BTree<string,BTree<long,BTree<long,long?>>> Labelled EdgeType by name
+            EdgeTypes = -128, // BTree<string,long?>> Labelled EdgeType/Union by name
             Graphs = -357,    // BTree<string,long?> Labelled Graph by name
             NodeTypes = -115, // BTree<string,long?> Labelled NodeType by name
             PropertyNames = -243, // CTree<string,CTree<long,bool>> Domains by child names
@@ -70,6 +70,9 @@ namespace Pyrrho.Level3
             (BTree<string, BTree<CList<Domain>,long?>>?)mem[Procedures]??BTree<string, BTree<CList<Domain>, long?>>.Empty;
         internal BTree<string,long?> nodeTypes =>
             (BTree<string, long?>)(mem[NodeTypes]??BTree<string,long?>.Empty);
+        /// <summary>
+        /// edgeTypes[name] gives the defining position of single EdgeType or a UNION of edgetypes
+        /// </summary>
         internal BTree<string, long?> edgeTypes =>
             (BTree<string, long?>)(mem[EdgeTypes] ?? BTree<string, long?>.Empty);
         internal BTree<CTree<string, bool>, long?> unlabelledNodeTypesInfo =>
@@ -211,15 +214,6 @@ namespace Pyrrho.Level3
         internal override DBObject New(long dp, BTree<long, object>m)
         {
             return new Role(dp, m);
-        }
-        // we should only need to worry about EdgeTypes and UnlabeledEdgeTypesInfo
-        internal Database Purge(Context cx)
-        {
-            var ro = cx.role;
-            for (var b = edgeTypes.First(); b != null; b = b.Next())
-                if (b.value() is long p && p >=Transaction.TransPos) 
-                    ro += (EdgeTypes, ro.edgeTypes + (b.key(), p));
-            return cx.db + ro;
         }
     }
     /// <summary>

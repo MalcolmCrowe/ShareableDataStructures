@@ -74,7 +74,21 @@ namespace Pyrrho.Level3
         }
         internal override Database Drop(Database d, Database nd)
         {
-            nd += (Database.Procedures, d.procedures - defpos);
+            nd += (Database.Procedures, nd.procedures - defpos); 
+            var a = nd.Signature(this);
+            if (infos[d.role.defpos]?.name is string nm
+                && d.role.procedures[nm] is BTree<CList<Domain>, long?> ds)
+            {
+                var ns = ds - a;
+                var np = nd.role.procedures;
+                if (ns == BTree<CList<Domain>, long?>.Empty)
+                    np -= nm;
+                else
+                    np += (nm, ns);
+                var nr = nd.role + (Role.Procedures, np);
+                nd += (nr.defpos, nr);
+                nd += (Database.Role, nr);
+            }
             return base.Drop(d, nd);
         }
         /// <summary>

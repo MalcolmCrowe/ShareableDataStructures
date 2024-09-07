@@ -184,7 +184,7 @@ namespace Pyrrho.Level2
             {
                 var nm = proc.infos[proc.definer]?.name??"";
                 var ps = rg.procedures[nm]??BTree<CList<Domain>,long?>.Empty;
-                ps += (cx.Signature(proc), obj);
+                ps += (cx.db.Signature(proc), obj);
                 rg += (Role.Procedures, rg.procedures+(nm,ps));
                 cx.db += (grantee, rg);
             }

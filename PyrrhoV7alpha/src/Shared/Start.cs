@@ -410,7 +410,9 @@ namespace Pyrrho
                                     throw new DBException("2E202").Mix();
                                 nextCol = 0; // discard anything left over from ReaderData
                                 var cmd = tcp.GetString();
-                                db = db.Transact(db.nextId, conn);
+                                var tr = db.Transact(db.nextId, conn);
+                                var pl = tr.physicals.Count;
+                                db = tr;
                                 cx = new (db, cx??throw new PEException("PE1400"));
                                 //           Console.WriteLine(cmd);
                                 db = new Parser(cx).ParseSql(cmd, Domain.TableType);
@@ -418,7 +420,11 @@ namespace Pyrrho
                                 cx.done = ObTree.Empty;
                                 var tn = DateTime.Now.Ticks;
                                 tcp.PutWarnings(cx);
-                                if (cx.result > 0L)
+                                // ignore ad hoc domains if no other Physicals
+                                for (var b = ((Transaction)db).physicals.PositionAt(pl); b != null; b = b.Next())
+                                    if (b.value() is PDomain)
+                                        pl++;
+                                if (cx.result > 0L && ((Transaction)db).physicals.Count<=pl)
                                 {
                                     tcp.PutSchema(cx);
                                     rb = null;
@@ -1514,7 +1520,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(03 Sept 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(07 Sept 2024)", "http://www.pyrrhodb.com"
         ];
 	}
 }

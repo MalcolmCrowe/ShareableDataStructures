@@ -421,21 +421,6 @@ namespace Pyrrho.Level2
                         ps += (b.key(), true);
                     if (cx.db.unlabelledNodeTypes[ps] is null && ps.Count>0)
                         cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (ps, tt.defpos));
-                    if (nt is EdgeType en && cx.db.objects[cx.db.unlabelledNodeTypes[ps] ?? -1L] is EdgeType eo)
-                    {
-                        var l = cx.db.edgeEnds[eo.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
-                        var a = l[en.leaveCol] ?? BTree<long, long?>.Empty;
-                        cx.db += (Database.EdgeEnds, cx.db.edgeEnds + (en.defpos,
-                                l + (en.leaveCol, a + (en.arriveCol, nt.defpos))));
-                    }
-                }
-                else if (nt is EdgeType en)
-                {
-                    var eo = (cx.db.objects[cx.role.nodeTypes[nt.name] ?? -1L] as EdgeType) ?? en;
-                    var l = cx.db.edgeEnds[eo.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
-                    var a = l[en.leaveCol] ?? BTree<long, long?>.Empty;
-                    cx.db += (Database.EdgeEnds, cx.db.edgeEnds + (eo.defpos,
-                            l + (en.leaveCol, a + (en.arriveCol, nt.defpos))));
                 }
                 else if (now.vals.Count == 0)
                     tt = nt + (TrivialRowSet.Singleton, new TRow(nt, now.vals));

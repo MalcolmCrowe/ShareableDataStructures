@@ -191,7 +191,7 @@ namespace Pyrrho.Level2
                 + (DBObject.Owner, cx.user??User.None) +(DBObject._Domain,dataType)
                 + (DBObject.Infos,new BTree<long,ObInfo>(cx.role.defpos,oi)));
             var ps = ro.procedures??BTree<string,BTree<CList<Domain>,long?>>.Empty;
-            var pn = (ps[name]??BTree<CList<Domain>,long?>.Empty) + (cx.Signature(pr),defpos);
+            var pn = (ps[name]??BTree<CList<Domain>,long?>.Empty) + (cx.db.Signature(pr),defpos);
             ro += (Role.Procedures, ps + (name, pn));
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

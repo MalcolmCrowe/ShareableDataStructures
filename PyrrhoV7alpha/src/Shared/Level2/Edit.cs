@@ -281,12 +281,6 @@ namespace Pyrrho.Level2
                         }
                     // under and dataType may have changed
                     dataType = (UDType)(cx.db.objects[dataType.defpos] ?? Domain.TypeSpec);
-                    if (uD is EdgeType gu && cx.db.objects[_defpos] is EdgeType ge)
-                    {
-                        var eo = cx.db.edgeEnds[gu.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
-                        var ee = cx.db.edgeEnds[ge.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
-                        cx.db += (Database.EdgeEnds, cx.db.edgeEnds + (uD.defpos, eo + ee));
-                    }
                     oi = dataType.infos[cx.role.defpos] ?? oi;
                     var ps = ((UDType)dataType).HierarchyRepresentation(cx);
                     var rt = BList<long?>.Empty;
@@ -327,9 +321,9 @@ namespace Pyrrho.Level2
                         var xl = (Level3.Index)cx.Add(new Level3.Index(ppos + 2,
                             lx.mem + (Level3.Index.TableDefPos, un.defpos)));
                         eu += (Table.Indexes, un.indexes + (xl.keys, new CTree<long, bool>(xl.defpos, true)));
-                        if (!eu.representation.Contains(te.leaveCol)) 
+                        if (!eu.representation.Contains(te.leaveCol))
                             eu += (Domain.RowType, eu.rowType + te.leaveCol);
-                        eu += (Domain.Representation,eu.representation +
+                        eu += (Domain.Representation, eu.representation +
                                 (te.leaveCol, te.representation[te.leaveCol] ?? Domain.Position));
                         eu += (EdgeType.LeaveCol, te.leaveCol);
                         eu += (EdgeType.LeaveIx, xl.defpos);
@@ -381,16 +375,6 @@ namespace Pyrrho.Level2
                         dataType += (Domain.Under, under - uD + (un, true));
                     }
                 }
-            if (cx.db.objects[_defpos] is EdgeType th && th.leaveCol >= 0 && th.arriveCol >= 0 && under.First()?.key() is EdgeType u)
-            {
-                var ee1 = cx.db.edgeEnds[th.defpos] ?? BTree<long, BTree<long, long?>>.Empty;
-                var ee2 = ee1[th.leaveCol] ?? BTree<long, long?>.Empty;
-                u = (EdgeType)(cx.db.objects[u.defpos]??throw new PEException("PE30901"));
-                cx.db += (u + (EdgeType.LeaveCol, th.leaveCol) + (EdgeType.ArriveCol, th.arriveCol) +
-                    (Table.TableRows,u.tableRows + th.tableRows));
-                cx.db += (Database.EdgeEnds, cx.db.edgeEnds +
-                    (u.defpos, ee1 + (th.leaveCol, ee2 + (th.arriveCol, u.defpos))));
-            }
             // record our new dataType
             cx.db += (dataType.defpos, dataType);
             return dataType;

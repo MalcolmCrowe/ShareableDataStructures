@@ -742,6 +742,15 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             }
             if (notNull)
                 sb.Append(" NOT NULL");
+            if (unionOf.Count > 0)
+            {
+                var cm = " of [";
+                for (var b = unionOf.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ","; sb.Append(Uid(b.key().defpos));
+                }
+                sb.Append(']');
+            }
             return sb.ToString();
         }
         internal static Qlx Equivalent(Qlx kind)
@@ -1378,6 +1387,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (obj == null)
                 return 1;
             var that = (Domain)obj;
+            if (defpos > 0 && that.defpos > 0 && defpos != that.defpos)
+                return defpos.CompareTo(that.defpos);
             var c = kind.CompareTo(that.kind);
             if (c != 0)
                 return c;

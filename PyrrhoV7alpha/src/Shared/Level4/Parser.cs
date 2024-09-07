@@ -1567,9 +1567,20 @@ namespace Pyrrho.Level4
                 && cx.db.objects[np] is NodeType nt)
             {
                 if (lt is null && at is null) return nt;
-                var e = (EdgeType)nt;
-                if (cx.db.objects[cx.db.edgeEnds[e.defpos]?[lt?.defpos ?? -1L]?[at?.defpos ?? -1L]??-1L] is EdgeType er)
-                    return er;
+                goto Define;
+            }
+            if (rp.Count == 0 && un.Count == 0 && ((ix != Iix.None) ? ix.dp : cx.role.edgeTypes[id.ident]) is long pe
+    && cx.db.objects[pe] is Domain pd)
+            {
+                if (pd is EdgeType pf && pf.leavingType == lt?.defpos && pf.arrivingType == at?.defpos) return pf;
+                EdgeType? te = null;
+                if (pd.kind == Qlx.UNION)
+                    for (var c = pd.unionOf.First(); te is null && c != null; c = c.Next())
+                        if (cx.db.objects[c.key().defpos] is EdgeType tf
+                            && tf.leavingType == lt?.defpos && tf.arrivingType == at?.defpos)
+                            te = tf;
+                if (te is not null)
+                    return te;
                 goto Define;
             }
             if (rp.Count == 0 && un.Count > 1L)
@@ -1725,12 +1736,12 @@ namespace Pyrrho.Level4
                 return (n, la, BList<(Ident, Domain)>.Empty);
             Domain le = GqlLabel.Empty;
             if (Match(Qlx.LABEL,Qlx.LABELS,Qlx.COLON,Qlx.DOUBLEARROW,Qlx.IMPLIES))
-                le = ParseLabelExpression(xp);
+                le = ParseNodeLabelExpression(xp);
             var lp = lxr.Position;
             if (Match(Qlx.DOUBLEARROW, Qlx.IMPLIES)) // we prefer DOUBLEARROW to the keyword
             {
                 Next();
-                var lf = ParseLabelExpression(xp);
+                var lf = ParseNodeLabelExpression(xp);
                 cx.Add(lf);
                 le = (Domain)cx.Add(new GqlLabel(lp,le.defpos,lf.defpos,
                     new BTree<long,object>(Domain.Kind,Qlx.DOUBLEARROW)));
@@ -2032,11 +2043,12 @@ namespace Pyrrho.Level4
             {
                 // state M3
                 var k = Domain.EdgeType.defpos;
+                Domain? et = null;
                 if (tok == Qlx.Id)
                 {
                     var ei = lxr.val.ToString();
                     Next();
-                    var et = cx.db.objects[cx.role.dbobjects[ei] ?? -1L] as EdgeType
+                    et = cx.db.objects[cx.role.dbobjects[ei] ?? -1L] as Domain
                         ?? throw new DBException("42161", Qlx.EDGETYPE);
                     cx.AddDefs(et);
                     k = et.defpos;
@@ -2051,7 +2063,11 @@ namespace Pyrrho.Level4
                 // state M7
                 Mustbe(Qlx.EQL);
                 var lm = cx.Add(ParseSqlValue(Domain.Int)).defpos;
-                r += (k, (lm, ot));
+                if (et?.kind == Qlx.UNION)
+                    for (var b = et.unionOf.First(); b != null; b = b.Next())
+                        r += (b.key().defpos, (lm, ot));
+                else
+                    r += (k, (lm, ot));
                 if (tok == Qlx.COMMA)
                     Next();
                 else
@@ -2148,10 +2164,11 @@ namespace Pyrrho.Level4
             Qlx tk = tok;
             if (tok == Qlx.COLON)
             {
-                if (bound)
+                if (bound && b.ident!="COLON")
                     throw new DBException("42104", b.ident);
                 Next();
-                lb = ParseLabelExpression((ab == Qlx.LPAREN) ? Domain.NodeType : Domain.EdgeType);
+                lb = ParseNodeLabelExpression((ab == Qlx.LPAREN) ? Domain.NodeType : Domain.EdgeType,
+                    b.ident,(NodeType?)((ab==Qlx.LPAREN)?null:ln?.domain));
             }
             else if (!bound)
                 throw new DBException("42107", b.ident);
@@ -2310,7 +2327,7 @@ namespace Pyrrho.Level4
                     lxr.tex = true; // expect a Type
                     Next();
                     var s = cx.defs[b];
-                    lb = ParseLabelExpression((ab==Qlx.LPAREN)?Domain.NodeType:Domain.EdgeType,b.ident);
+                    lb = ParseNodeLabelExpression((ab==Qlx.LPAREN)?Domain.NodeType:Domain.EdgeType,b.ident);
                     if (cx.bindings.Contains(b.iix.dp)) // yuk
                         cx.defs += (b, s);
                     if (lxr.tgs[lb.defpos] is TGParam qg)
@@ -2418,7 +2435,7 @@ namespace Pyrrho.Level4
             lxr.tgs = og;
             return (r, svg, tgs);
         }
-        Domain ParseLabelExpression(NodeType dm, string? a=null, NodeType? lt = null, NodeType? at = null)
+        Domain ParseNodeLabelExpression(NodeType dm, string? a=null, NodeType? lt = null, NodeType? at = null)
         {
             var lp = lxr.Position;
             var neg = false;
@@ -2431,8 +2448,26 @@ namespace Pyrrho.Level4
                 Next();
             var c1 = new Ident(this);
             Mustbe(Qlx.Id);
-            var left = cx.db.objects[cx.role.dbobjects[c1.ident] ?? -1L] as Domain 
+            var left = cx._Ob(cx.role.dbobjects[c1.ident] ?? -1L) as Domain 
                 ?? (Domain)cx.Add(new GqlLabel(c1,cx,lt,at,new BTree<long,object>(Domain.Kind,dm.kind)));
+            if (left.kind==Qlx.UNION && (lt is not null || at is not null))
+            {
+                var un = CTree<Domain, bool>.Empty;
+                EdgeType? ee = null;
+                for (var b = left.unionOf.First(); b != null; b = b.Next())
+                    if (b.key() is EdgeType e
+                        && ((e.leavingType == lt?.defpos && at is null)
+                        || (e.arrivingType == at?.defpos && lt is null)
+                        || (e.leavingType == lt?.defpos && e.arrivingType == at?.defpos)))
+                    {
+                        ee = e;
+                        un += (e, true);
+                    }
+                if (un.Count == 1 && ee is not null)
+                    left = ee;
+                else if (un.Count < left.unionOf.Count)
+                    left = (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.UNION, un));
+            }
             if (left is GqlLabel)
                 cx.bindings += (c1.iix.dp, CTree<long, TypedValue>.Empty);
             cx.defs += (c1, c1.iix);
@@ -2450,7 +2485,7 @@ namespace Pyrrho.Level4
                 Next();
                 if (Match(Qlx.COLON))
                     Next();
-                var right = ParseLabelExpression(Domain.NodeType,c1.ident,lt,at);
+                var right = ParseNodeLabelExpression(Domain.NodeType,c1.ident,lt,at);
                 cx.Add(right);
                 left = new GqlLabel(lp, left.defpos, right.defpos, new BTree<long,object>(Domain.Kind,op)); // leave name empty for now
                 cx.Add(left);
@@ -3044,14 +3079,22 @@ namespace Pyrrho.Level4
                             var av = cx.role.dbobjects[an.ToString()]??Domain.NodeType.defpos;
                             dt = odt;
                             // try to find a specific edgeType for this combination
-                            var d = cx.db.objects[cx.role.edgeTypes[typename.ident]??-1L] as EdgeType;
-                            if (cx.db.objects[cx.db.edgeEnds[d?.defpos??-1L]?[lv]?[av]??-1L] is not EdgeType et)
+                            var d = cx.db.objects[cx.role.edgeTypes[typename.ident]??-1L] as Domain;
+                            EdgeType? et = null;
+                            if (d is EdgeType de && de.leavingType == lv && de.arrivingType == av)
+                                et = de;
+                            if (d?.kind == Qlx.UNION)
+                                for (var c = d.unionOf.First(); et is null && c != null; c = c.Next())
+                                    if (cx.db.objects[c.key().defpos] is EdgeType df
+                                        && df.leavingType == lv && df.arrivingType == av)
+                                        et = df;
+                            if (et is null)
                             {
                                 var pe = new PEdgeType(typename.ident, Domain.EdgeType, un, -1L, lv, av, np, cx);
                                 pt = pe;
                                 et = new EdgeType(np, typename.ident, dt, new BTree<long, object>(Domain.Under, un), cx, m);
                                 pt.dataType = et;
-                            }
+                            } 
                             et = et.FixEdgeType(cx,pt);
                             dt = et.Build(cx, null, new BTree<long,object>(Domain.NodeTypes,et.label.OnInsert(cx))
                                 +(GqlNode.DocValue, ls)+(EdgeType.LeavingType,lv)+(EdgeType.ArrivingType,av), m);
@@ -3140,7 +3183,7 @@ namespace Pyrrho.Level4
                 throw new DBException("42000", "Method def");
             var ut = mn.type;
             var oi = ut.infos[cx.role.defpos];
-            var meth = cx.db.objects[oi?.methodInfos[nm.ident]?[Context.Signature(mn.ins)] ?? -1L] as Method ??
+            var meth = cx.db.objects[oi?.methodInfos[nm.ident]?[Database.Signature(mn.ins)] ?? -1L] as Method ??
     throw new DBException("42132", nm.ToString(), oi?.name ?? "??").Mix();
             var lp = LexPos();
             int st = lxr.start;
@@ -4227,7 +4270,7 @@ namespace Pyrrho.Level4
                 {
                     var ic = new Ident(this);
                     Next();
-                    var pr = cx.GetProcedure(LexPos().dp, ic.ident, Context.Signature(refs))
+                    var pr = cx.GetProcedure(LexPos().dp, ic.ident, Database.Signature(refs))
                         ?? throw new DBException("42108", ic.ident);
                     afn = "\"" + pr.defpos + "\"";
                 }
@@ -4361,7 +4404,7 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.Id);
             int st = lxr.start;
             var ps = ParseParameters(n);
-            var a = Context.Signature(ps);
+            var a = Database.Signature(ps);
             var pi = new ObInfo(n.ident,
                 Grant.Privilege.Owner | Grant.Privilege.Execute | Grant.Privilege.GrantExecute);
             var rdt = func ? ParseReturnsClause(n) : Domain.Null;
@@ -4798,7 +4841,7 @@ namespace Pyrrho.Level4
                 cp = LexPos();
                 var ps = ParseSqlValueList(Domain.Content);
                 Mustbe(Qlx.RPAREN);
-                var a = cx.Signature(ps);
+                var a = cx.db.Signature(cx,ps);
                 var pr = cx.GetProcedure(cp.dp, sc.ident, a) ??
                     throw new DBException("42108", sc.ident);
                 var c = new SqlProcedureCall(cp.dp, cx, pr, ps);
@@ -5065,7 +5108,7 @@ namespace Pyrrho.Level4
             Next();
             Ident c = new(DBObject.Uid(lp), cx.Ix(lp));
             var d = 1; // depth
-            if (tok != Qlx.SELECT)
+            if (tok != Qlx.SELECT) // GQL for statement
             {
                 c = new Ident(this);
                 Mustbe(Qlx.Id);
@@ -5263,7 +5306,7 @@ namespace Pyrrho.Level4
                 if (tok != Qlx.RPAREN)
                     ps = ParseSqlValueList(Domain.Content);
                 Mustbe(Qlx.RPAREN);
-                var n = cx.Signature(ps);
+                var n = cx.db.Signature(cx,ps);
                 if (ic.Length == 0 || ic[ic.Length - 1] is not Ident pn)
                     throw new DBException("42000", "Signature");
                 if (ic.Length == 1)
@@ -5276,7 +5319,7 @@ namespace Pyrrho.Level4
                         var oi = ut.infos[cx.role.defpos];
                         if (cx.db.objects[oi?.methodInfos[pn.ident]?[n] ?? -1L] is Method me)
                             return (QlValue)cx.Add(new SqlConstructor(lp.dp, cx, me, ps));
-                        if (Context.CanCall(cx.Signature(ut.rowType), n) || ttok != Qlx.Id || ut.rowType == BList<long?>.Empty)
+                        if (Context.CanCall(cx.db.Signature(cx,ut.rowType), n) || ttok != Qlx.Id || ut.rowType == BList<long?>.Empty)
                             return (QlValue)cx.Add(new SqlDefaultConstructor(pn.iix.dp, cx, ut, ps));
                     }
                     if (pr == null)
@@ -6695,7 +6738,7 @@ namespace Pyrrho.Level4
                     {
                         MethodName mn = ParseMethod(Domain.Null);
                         if (mn.name is not Ident nm
-                            || cx.db.objects[oi?.methodInfos?[nm.ident]?[Context.Signature(mn.ins)] ?? -1L] is not Method mt)
+                            || cx.db.objects[oi?.methodInfos?[nm.ident]?[Database.Signature(mn.ins)] ?? -1L] is not Method mt)
                             throw new DBException("42133", tp).Mix().
                                 Add(Qlx.TYPE, new TChar(tp.name));
                         ParseDropAction();
@@ -6875,7 +6918,7 @@ namespace Pyrrho.Level4
         {
             return Match(Qlx.COLLECT, Qlx.CURRENT, Qlx.DESCRIBE, Qlx.ELEMENT, Qlx.ELEMENTID, Qlx.EVERY,
     Qlx.EXTRACT, Qlx.FIRST_VALUE, Qlx.FUSION, Qlx.GROUPING, Qlx.HTTP, Qlx.ID,
-    Qlx.LABELS, Qlx.LAST_VALUE, Qlx.LAST_DATA, Qlx.PARTITION,
+    Qlx.LABELS, Qlx.LAST_VALUE, Qlx.LAST_DATA, Qlx.PARTITION, Qlx.UNNEST,
     Qlx.CHAR_LENGTH, Qlx.WITHIN, Qlx.POSITION, Qlx.ROW_NUMBER, Qlx.SOME,
     Qlx.SPECIFICTYPE, Qlx.SUBSTRING, Qlx.COLLECT, Qlx.INTERSECTION, Qlx.ROWS,
 
@@ -8227,7 +8270,7 @@ namespace Pyrrho.Level4
                     }
                 Next();
                 Mustbe(Qlx.RPAREN); // another: see above
-                var proc = cx.GetProcedure(LexPos().dp, n.ident, cx.Signature(r))
+                var proc = cx.GetProcedure(LexPos().dp, n.ident, cx.db.Signature(cx, r))
                     ?? throw new DBException("42108", n.ident);
                 ParseCorrelation(proc.domain);
                 var ca = new SqlProcedureCall(cp.dp, cx, proc, r);
@@ -9440,7 +9483,7 @@ namespace Pyrrho.Level4
                         var ut = left.domain; // care, the methodInfos may be missing some later methods
                         if (cx.db.objects[ut.defpos] is not Domain u || u.infos[cx.role.defpos] is not ObInfo oi)
                             throw new DBException("42105").Add(Qlx.TYPE);
-                        var ar = cx.Signature(ps);
+                        var ar = cx.db.Signature(cx,ps);
                         var pr = cx.db.objects[oi.methodInfos[n.ident]?[ar] ?? -1L] as Method
                             ?? throw new DBException("42173", n);
                         left = new SqlMethodCall(lp.dp, cx, pr, ps, left);
@@ -9770,7 +9813,7 @@ namespace Pyrrho.Level4
                     Mustbe(Qlx.LPAREN);
                     var ps = ParseSqlValueList(xp);
                     Mustbe(Qlx.RPAREN);
-                    var n = cx.Signature(ps);
+                    var n = cx.db.Signature(cx,ps);
                     var m = cx.db.objects[oi.methodInfos[name.ident]?[n] ?? -1L] as Method
                         ?? throw new DBException("42132", name.ident, ut.name).Mix();
                     if (m.methodType != PMethod.MethodType.Static)
@@ -10004,7 +10047,7 @@ namespace Pyrrho.Level4
                             throw new DBException("42142").Mix();
                         Mustbe(Qlx.LPAREN);
                         var ps = ParseSqlValueList(ut);
-                        var n = cx.Signature(ps);
+                        var n = cx.db.Signature(cx, ps);
                         Mustbe(Qlx.RPAREN);
                         if (cx.db.objects[oi.methodInfos[o.ident]?[n] ?? -1L] is not Method m)
                         {
@@ -10728,6 +10771,7 @@ namespace Pyrrho.Level4
                         break;
                     }
                 case Qlx.TYPE: goto case Qlx.ELEMENTID;
+                case Qlx.UNNEST: goto case Qlx.CARDINALITY;
                 case Qlx.UPPER: goto case Qlx.SUBSTRING;
 #if OLAP
                 case Sqlx.VAR_POP: goto case Sqlx.COUNT;
@@ -10909,7 +10953,7 @@ namespace Pyrrho.Level4
                 Next();
                 ps = ParseSqlValueList(Domain.Content);
             }
-            var arity = cx.Signature(ps);
+            var arity = cx.db.Signature(cx,ps);
             Mustbe(Qlx.RPAREN);
             var pp = cx.role.procedures[n.ident]?[arity] ?? -1;
             var pr = cx.db.objects[pp] as Procedure
@@ -10929,7 +10973,7 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.Id);
             Mustbe(Qlx.LPAREN);
             var ps = (tok==Qlx.RPAREN)?BList<long?>.Empty:ParseSqlValueList(Domain.Content);
-            var a = cx.Signature(ps);
+            var a = cx.db.Signature(cx, ps);
             Mustbe(Qlx.RPAREN);
             if (cx.role.procedures[id.ident]?[a] is not long pp ||
                 cx.db.objects[pp] is not Procedure pr)

@@ -146,7 +146,6 @@ namespace Pyrrho.Level3
             Arriving = -469, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Catalog = -247, // BTree<string,long?> DBObject
             Curated = -53, // long
-            EdgeEnds = -238, // BTree<long,BTree<long,BTree<long,long?>>> EdgeType by defpos,leaving,arriving
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
             JoinedNodes = -430,// CTree<long,CTree<Domain,bool>> JoinedNodeType
@@ -203,9 +202,6 @@ namespace Pyrrho.Level3
         public BTree<long, object> objects => mem;
         public CTree<long, string> procedures =>
             (CTree<long, string>?)mem[Procedures] ?? CTree<long, string>.Empty;
-        internal BTree<long, BTree<long, BTree<long, long?>>> edgeEnds =>
-            (BTree<long, BTree<long, BTree<long, long?>>>)(mem[EdgeEnds]
-            ?? BTree<long, BTree<long, BTree<long, long?>>>.Empty);
         internal BTree<CTree<long, bool>, long?> unlabelledNodeTypes =>
     (BTree<CTree<long, bool>, long?>)(mem[UnlabelledNodeTypes] ?? BTree<CTree<long, bool>, long?>.Empty);
         public BTree<string, long?> prefixes =>
@@ -468,6 +464,30 @@ namespace Pyrrho.Level3
         public DBObject? GetObject(string n,Role r)
         {
             return r.dbobjects.Contains(n)? objects[r.dbobjects[n]??-1L] as DBObject : null;
+        }
+        internal CList<Domain> Signature(Procedure proc)
+        {
+            var r = CList<Domain>.Empty;
+            for (var b = proc.ins.First(); b != null; b = b.Next())
+                if (b.value() is long p && proc.framing.obs[p] is DBObject ob)
+                    r += ob.domain;
+            return r;
+        }
+        internal CList<Domain> Signature(Context cx,BList<long?> ins)
+        {
+            var r = CList<Domain>.Empty;
+            for (var b = ins.First(); b != null; b = b.Next())
+                if (b.value() is long p && cx._Ob(p) is DBObject ob)
+                    r += ob.domain;
+            return r;
+        }
+        internal static CList<Domain> Signature(Domain ins)
+        {
+            var r = CList<Domain>.Empty;
+            for (var b = ins.First(); b != null; b = b.Next())
+                if (b.value() is long p)
+                    r += ins.representation[p] ?? throw new PEException("PE0098");
+            return r;
         }
         public Procedure? GetProcedure(string n,CList<Domain> a)
         {
