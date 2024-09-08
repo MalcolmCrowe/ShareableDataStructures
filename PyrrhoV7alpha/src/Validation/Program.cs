@@ -16,11 +16,11 @@ namespace Validation
             var s = pms.ReadToEnd();
             var pma = new DocArray(s);
             pms.Close();
-            foreach (var doc in pma.items)
+            var steps = 0;
+            foreach (Document doc in pma.items)
             {
-                var test = ((Document)pma.items[0]);
-                var operation = (Document)test.fields[0].Value;
-                var step = (Document)test.fields[0].Value;
+                var operation = (Document)doc.fields[0].Value;
+                var step = (Document)doc.fields[0].Value;
                 var name = step.fields[0].Key;
                 var ps = (Document)step.fields[0].Value;
                 var sb = new StringBuilder();
@@ -35,10 +35,14 @@ namespace Validation
                 {
                     sb.Append(cm); cm = ',';
                     var v = field.Value;
-                    if ((field.Key == "time" || field.Key == "startTime" || field.Key == "endTime")
+                    if (v is string vs)
+                        v = "\'"+vs+"\'";
+                    else if ((field.Key == "time" || field.Key == "startTime" || field.Key == "endTime")
                         && v is long ep)
                         v = FixTime(ep);
                     sb.Append(v.ToString());
+                    if (v is decimal vd && !vd.ToString().Contains('.'))
+                        sb.Append(".0");
                 }
                 sb.Append(')');
                 var cmd = conn.CreateCommand();
@@ -53,8 +57,7 @@ namespace Validation
                     res.items.Add(rr);
                 }
                 rdr.Close();
-                var pr = step.fields[1].Value;
-                if (pr is DocArray pd)
+                if (step.fields.Count>1 && step.fields[1].Value is DocArray pd)
                 {
                     if (pd.items.Count != res.items.Count)
                         Console.WriteLine("Wrong number of items");
@@ -62,6 +65,9 @@ namespace Validation
                         if (res.items[i].ToString() != pd.items[i].ToString())
                             Console.WriteLine("Items do not match");
                 }
+                steps++;
+                if (steps % 100 == 0)
+                    Console.WriteLine(steps);
             }
             Console.WriteLine("Done");
             Console.ReadLine();
