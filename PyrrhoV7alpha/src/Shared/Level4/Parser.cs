@@ -2222,7 +2222,8 @@ namespace Pyrrho.Level4
             }
             if (cx.obs[id] is GqlNode r)
                 r = new GqlReference(lp, (dm is null)?r:r + (DBObject._Domain,dm));
-            else if (lb.defpos >= 0 && lb.rowType == BList<long?>.Empty && lb is NodeType zt)
+            else if (lb.defpos >= 0 && lb.rowType == BList<long?>.Empty && lb is NodeType zt
+                && (zt.kind!=Qlx.EDGETYPE || dc.Count==0L))
                 r = new GqlReference(lp, zt);
             else
                 r = ab switch
