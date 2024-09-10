@@ -1597,6 +1597,8 @@ namespace Pyrrho
 
         public void Close()
         {
+            if (cmd is null)
+                return;
             cmd.CheckThread();
             if (active)
             {

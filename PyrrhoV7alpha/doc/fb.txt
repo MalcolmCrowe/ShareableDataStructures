@@ -306,20 +306,26 @@ or p.x[cardinality(p)-1].createTime<createtime)]->()]+(src))
 end if]
 [CREATE PROCEDURE ReadWrite2(srcId int, dstId int, time1 timestamp, 
 amt decimal, amountThreshold decimal, startTime timestamp, endTime timestamp, ratioThreshold decimal, truncationLimit int, truncationOrder string)
- if exists (MATCH
-truncating (transfer (truncationOrder)=truncationLimit)
-(:Account)-[:transfer{amount:amtIn} 
-where createTime <startTime and createTime >endTime
-      ]->(m:Account where id=srcId or id=dstId)
+MATCH (src:Account{id:srcId,isBlocked:false}),
+(dst:Account{id:dstId,	isBlocked:false})
+ if exists(MATCH
+  truncating (transfer (truncationOrder)=truncationLimit)
+  (:Account)-[:transfer{amount:amtIn} 
+where createTime <startTime and createTime >endTime]->(src)
 -[:transfer{amount:amtOut} 
 where createTime <startTime and createTime >endTime]-> (:Account)
-return nullif (sum(amtOut)=0 or sum(amtIn)/sum(amtOut)<=ratioThreshold, true) group by m)
-    then 
-       MATCH (src:Account{id:srcId}) set src.isBlocked = true; 
-       MATCH (dst:Account{id:dstId}) set dst.isBlocked=true
-    else
-	  CREATE(:Account{id:srcId})-[:transfer{createTime:time1,amount:amt}]->(:Account{id:dstId})
-    end if]
+  return sum(amtOut)<>0 and sum(amtIn)/sum(amtOut)>ratioThreshold) 
+| (:Account)-[:transfer{amount:amtIn} 
+where createTime <startTime and createTime >endTime]->(dst)
+-[:transfer{amount:amtOut} 
+where createTime <startTime and createTime >endTime]-> (:Account)
+  return sum(amtOut)<>0 and sum(amtIn)/sum(amtOut)>ratioThreshold)
+ then 
+       set src.isBlocked = true; 
+       set dst.isBlocked = true
+ else
+	  CREATE(src)-[:transfer{createTime:time1,amount:amt}]->(dst)
+ end if]
 [CREATE PROCEDURE ReadWrite3(srcId int, dstId int, time timestamp, threshold decimal, startTime timestamp, endTime timestamp, truncationLimit int, truncationOrder string) 
 MATCH(src:Person{id:srcId,isBlocked:false}), 
 (dst:Person{id:dstId,isBlocked:false})

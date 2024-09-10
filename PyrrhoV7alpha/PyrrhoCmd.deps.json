@@ -16,7 +16,10 @@
       },
       "PyrrhoLink/1.0.0": {
         "runtime": {
-          "PyrrhoLink.dll": {}
+          "PyrrhoLink.dll": {
+            "assemblyVersion": "1.0.0",
+            "fileVersion": "1.0.0.0"
+          }
         }
       }
     }

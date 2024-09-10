@@ -324,7 +324,7 @@ namespace Pyrrho.Level4
                             for (var d = ts.matches.First(); d != null; d = d.Next())
                                 if (obs[d.key()] is SqlCopy sc && xm[sc.copyFrom] is long xp)
                                     fl += (xp, d.value());
-                            var rf = new TableRowSet(ts.defpos, this, b.key());
+                            var rf = new TableRowSet(GetUid(), this, b.key());
                             if (fl != CTree<long, TypedValue>.Empty)
                                 rf += (cx, RowSet.Filter, fl);
                             Add(rx);

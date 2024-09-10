@@ -650,6 +650,10 @@ namespace Pyrrho.Level3
                 r += (AssignmentStatement.Val, vl);
             return r;
         }
+        internal override QlValue Having(Context c, Domain dm)
+        {
+            return this;
+        }
         internal override bool KnownBy(Context cx, RowSet q, bool ambient=false)
         {
             return true;
