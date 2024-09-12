@@ -9,9 +9,9 @@ namespace Validation
         static void Main(string[] args)
         {
             var inf = args[0].Split(".");
+            var offset = int.Parse(args[1]);
             var conn = new PyrrhoConnect("Files=sf1");// + inf[0]);
             conn.Open();
-            var tr = conn.BeginTransaction();
             var pms = new StreamReader(args[0]);
             var s = pms.ReadToEnd();
             var pma = new DocArray(s);
@@ -20,9 +20,9 @@ namespace Validation
             foreach (Document doc in pma.items)
             {
                 var operation = (Document)doc.fields[0].Value;
-                var step = (Document)doc.fields[0].Value;
-                var name = step.fields[0].Key;
-                var ps = (Document)step.fields[0].Value;
+                var result = doc.fields[1].Value as DocArray;
+                var name = operation.fields[0].Key;
+                var ps = (Document)operation.fields[0].Value;
                 var sb = new StringBuilder();
                 if (name is string ns)
                 {
@@ -36,15 +36,22 @@ namespace Validation
                     sb.Append(cm); cm = ',';
                     var v = field.Value;
                     if (v is string vs)
-                        v = "\'"+vs+"\'";
+                        v = "\'"+vs.Replace("'","''")+"\'";
                     else if ((field.Key == "time" || field.Key == "startTime" || field.Key == "endTime")
                         && v is long ep)
                         v = FixTime(ep);
                     sb.Append(v.ToString());
-                    if (v is decimal vd && !vd.ToString().Contains('.'))
+                    if (v is double vd && !vd.ToString().Contains('.'))
+                        sb.Append(".0");
+                    if (v is decimal ve && !ve.ToString().Contains('.'))
                         sb.Append(".0");
                 }
                 sb.Append(')');
+                if (steps<offset)
+                {
+                    steps++;
+                    continue;
+                }
                 var cmd = conn.CreateCommand();
                 cmd.CommandText = sb.ToString();
                 var rdr = cmd.ExecuteReader();
@@ -57,24 +64,27 @@ namespace Validation
                     res.items.Add(rr);
                 }
                 rdr.Close();
-                if (step.fields.Count>1 && step.fields[1].Value is DocArray pd)
+                if (result is not null)
                 {
-                    if (pd.items.Count != res.items.Count)
+                    if (result.items.Count != res.items.Count)
                         Console.WriteLine("Wrong number of items");
-                    for (var i = 0; i < res.items.Count && i < pd.items.Count; i++)
-                        if (res.items[i].ToString() != pd.items[i].ToString())
+                    for (var i = 0; i < res.items.Count && i < result.items.Count; i++)
+                        if (res.items[i].ToString() != result.items[i].ToString())
                             Console.WriteLine("Items do not match");
                 }
                 steps++;
                 if (steps % 100 == 0)
-                    Console.WriteLine(steps);
+                {
+                    var sw = new StringBuilder();
+                    sw.Append(steps); sw.Append(' '); sw.Append(DateTime.Now);
+                    Console.WriteLine(sw.ToString());
+                }
             }
             Console.WriteLine("Done");
             Console.ReadLine();
             return;
         bad: Console.WriteLine("Error");
             Console.ReadLine();
-
         }
         static DocArray GetExecuteDoc(PyrrhoConnect conn, string cmd, Document doc)
         {
@@ -106,8 +116,8 @@ namespace Validation
             var ts = d0.Add(new TimeSpan(t * 10000));
             var sb = new StringBuilder("timestamp'");
             sb.Append(ts.Year);sb.Append('-');AddTime(sb,ts.Month);sb.Append('-');
-            sb.Append(ts.Day);sb.Append(' ');AddTime(sb,ts.Hour);sb.Append(':');
-            sb.Append(ts.Minute);sb.Append(":");AddTime(sb, ts.Second);
+            AddTime(sb,ts.Day);sb.Append(' ');AddTime(sb,ts.Hour);sb.Append(':');
+            AddTime(sb,ts.Minute);sb.Append(":");AddTime(sb, ts.Second);
             sb.Append('.');sb.Append(ts.Microsecond);
             sb.Append('\'');
             return sb.ToString();

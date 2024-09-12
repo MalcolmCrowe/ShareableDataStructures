@@ -314,7 +314,6 @@ MATCH (src:Account{id:srcId,isBlocked:false}),
 where createTime>startTime and createTime<endTime]->(src)
 -[:transfer{amount:amtOut} 
 where createTime>startTime and createTime<endTime]-> (:Account)
-  return sum(amtOut)<>0 and sum(amtIn)/sum(amtOut)>ratioThreshold) 
 | (:Account)-[:transfer{amount:amtIn} 
 where createTime>startTime and createTime<endTime]->(dst)
 -[:transfer{amount:amtOut} 
