@@ -239,7 +239,7 @@ RETURN mid,collect(dst) group by mid]
 CREATE (:Company{id:id1,name:name1,isBlocked:block1, createTime:current_time})]
 [CREATE PROCEDURE Write3 (id1 int, type1 string, block1 boolean) 
 CREATE (:Medium{id:id1,type:type1,isBlocked:block1, createTime:current_time })]
-[CREATE PROCEDURE Write4 (id1 int, accountId1 id, time1 timestamp, type1 string, blocked boolean) 
+[CREATE PROCEDURE Write4 (id1 int, accountId1 int, time1 timestamp, type1 string, blocked boolean) 
 MATCH (p:Person{id:id1}) 
 CREATE (p)-[:own]->
 (:Account {id:accountid1, 
