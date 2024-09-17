@@ -187,7 +187,7 @@ namespace Pyrrho.Level3
                 return count!=0;
             if (h is TSet ts)
             {
-                for (var b = ts.First(); b != null; b = b.Next())
+                for (var b = ts._First(); b != null; b = b.Next())
                     if (b.Value() is TypedValue e && !Contains(k-ff+(ff,e), ff))
                         return false;
                 return true;

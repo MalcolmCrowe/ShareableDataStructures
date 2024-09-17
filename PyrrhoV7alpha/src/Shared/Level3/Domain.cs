@@ -1497,9 +1497,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (b == TNull.Value)
                 return (nulls == Qlx.FIRST) ? -1 : 1;
             if (a is TSet ax && b is not TSet && ax.Cardinality() == 1)
-                a = ax.First()?.Value()??TNull.Value;
+                a = ax._First()?.Value()??TNull.Value;
             if (b is TSet ay && a is not TSet && ay.Cardinality() == 1)
-                b = ay.First()?.Value() ?? TNull.Value;
+                b = ay._First()?.Value() ?? TNull.Value;
             int c=0;
             if (orderflags != OrderCategory.None && orderflags != OrderCategory.Primitive
                 && orderFunc is not null)
@@ -2871,9 +2871,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (v.dataType is UDType ut && CanTakeValueOf(ut) && v is TSubType ts)
                 return Check(ts.value);
             if (v.dataType.kind == Qlx.SET && ((TSet)v).Cardinality() == 1)
-                return ((TSet)v).First()?.Value() ?? TNull.Value;
+                return ((TSet)v)._First()?.Value() ?? TNull.Value;
             if (v.dataType.kind == Qlx.MULTISET && ((TMultiset)v).Cardinality() == 1)
-                return Check(((TMultiset)v).First()?.Value() ?? TNull.Value);
+                return Check(((TMultiset)v)._First()?.Value() ?? TNull.Value);
             //          if (v.dataType.name == name)
             var kn = Equivalent(kind);
             if (kn == Qlx.UNION)

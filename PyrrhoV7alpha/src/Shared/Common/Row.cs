@@ -85,6 +85,22 @@ namespace Pyrrho.Common
         {
             return 1;
         }
+        internal virtual TypedValue First()
+        {
+            return this;
+        }
+        internal virtual TypedValue Last()
+        {
+            return this;
+        }
+        internal virtual TypedValue Max()
+        {
+            return this;
+        }
+        internal virtual TypedValue Min()
+        {
+            return this;
+        }
         internal virtual bool Contains(TypedValue e)
         { return false; }
         internal virtual TypedValue Fix(Context cx)
@@ -716,6 +732,14 @@ namespace Pyrrho.Common
         {
             return Length;
         }
+        internal override TypedValue First()
+        {
+            return list.First()?.value()??TNull.Value;
+        }
+        internal override TypedValue Last()
+        {
+            return list.Last()?.value() ?? TNull.Value;
+        }
         internal override bool Contains(TypedValue e)
         {
             if (dataType.elType is null || !dataType.elType.CanTakeValueOf(e.dataType))
@@ -808,6 +832,32 @@ namespace Pyrrho.Common
         internal override int Cardinality()
         {
             return Length;
+        }
+        internal override TypedValue First()
+        {
+            return array.First()?.value() ?? TNull.Value;
+        }
+        internal override TypedValue Last()
+        {
+            return array.Last()?.value() ?? TNull.Value;
+        }
+        internal override TypedValue Max()
+        {
+            TypedValue t = TNull.Value;
+            for (var i = 0; i < Length; i++)
+                if (this[i] is TypedValue v)
+                if (t == TNull.Value || t.CompareTo(v) < 0)
+                    t = v;
+            return t;
+        }
+        internal override TypedValue Min()
+        {
+            TypedValue t = TNull.Value;
+            for (var i = 0; i < Length; i++)
+                if (this[i] is TypedValue v)
+                    if (t == TNull.Value || t.CompareTo(v) > 0)
+                        t = v;
+            return t;
         }
         internal virtual TypedValue? this[int n] => array[n];
         internal override bool Contains(TypedValue e)
@@ -955,7 +1005,7 @@ namespace Pyrrho.Common
             return new(m1.md + m2.md);
         }
         public TypedValue this[Qlx x] => md[x]??TNull.Value;
-        public ABookmark<Qlx,TypedValue>?  First() => md.First();
+        public new ABookmark<Qlx,TypedValue>?  First() => md.First();
         public bool Contains(Qlx x) => md.Contains(x);
         public override string ToString()
         {
@@ -1304,12 +1354,12 @@ namespace Pyrrho.Common
         {
             return tree.Contains(a);
         }
-        internal SetBookmark? First()
+        internal SetBookmark? _First()
         {
             var tf = tree.First();
             return (tf == null) ? null : new SetBookmark(this, 0, tf);
         }
-        internal SetBookmark? Last()
+        internal SetBookmark? _Last()
         {
             var tl = tree.Last();
             return (tl == null) ? null : new SetBookmark(this, (int)tree.Count, tl);
@@ -1504,6 +1554,14 @@ namespace Pyrrho.Common
             var nc = count + n;
             return new TMultiset(dataType, nt, nc);
         }
+        internal override TypedValue First()
+        {
+            return tree.First()?.key()??TNull.Value;
+        }
+        internal override TypedValue Last()
+        {
+            return tree.Last()?.key() ?? TNull.Value;
+        }
         /// <summary>
         /// Mutator: Add object a
         /// </summary>
@@ -1521,12 +1579,12 @@ namespace Pyrrho.Common
         {
             return tree.Contains(a);
         }
-        internal MultisetBookmark? First()
+        internal MultisetBookmark? _First()
         {
             var tf = tree.First();
             return (tf==null)?null:new MultisetBookmark(this,0,tf);
         }
-        internal MultisetBookmark? Last()
+        internal MultisetBookmark? _Last()
         {
             var tl = tree.Last();
             return (tl==null)?null:new MultisetBookmark(this, count-1, tl);

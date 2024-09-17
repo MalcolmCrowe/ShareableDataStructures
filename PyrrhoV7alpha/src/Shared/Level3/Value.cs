@@ -1206,6 +1206,21 @@ namespace Pyrrho.Level3
         {
             return new SqlCaseSimple(defpos,m);
         }
+        internal override CTree<long, bool> IsAggregation(Context cx, CTree<long, bool> ags)
+        {
+            
+            for (var b=cases.First();b!=null;b=b.Next())
+            {
+                var (cp, vp) = b.value();
+                if (cx.obs[cp] is QlValue c)
+                    ags = c.IsAggregation(cx, ags);
+                if (cx.obs[vp] is QlValue v)
+                    ags = v.IsAggregation(cx, ags);
+            }
+            if (cx.obs[caseElse] is QlValue e)
+                ags = e.IsAggregation(cx, ags);
+            return ags;
+        }
         internal override CTree<long, bool> Needs(Context cx)
         {
             var r = CTree<long, bool>.Empty;
@@ -1469,6 +1484,20 @@ namespace Pyrrho.Level3
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlCaseSearch(defpos, m);
+        }
+        internal override CTree<long, bool> IsAggregation(Context cx, CTree<long, bool> ags)
+        {
+            for (var b = cases.First(); b != null; b = b.Next())
+            {
+                var (cp, vp) = b.value();
+                if (cx.obs[cp] is QlValue c)
+                    ags = c.IsAggregation(cx, ags);
+                if (cx.obs[vp] is QlValue v)
+                    ags = v.IsAggregation(cx, ags);
+            }
+            if (cx.obs[caseElse] is QlValue e)
+                ags = e.IsAggregation(cx, ags);
+            return ags;
         }
         internal override CTree<long, bool> Needs(Context cx)
         {
@@ -2281,7 +2310,6 @@ namespace Pyrrho.Level3
                         dm = (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.ARRAY, tl.elType??Domain.Content)); break;
                     }
                 case Qlx.SET: dm = dl ?? Domain.Content; break; // JavaScript
-                case Qlx.SHORTESTPATH: dm = Domain.Array; break; // Neo4j
                 case Qlx.TIMES:
                     {
                         if (dl.kind == Qlx.NUMERIC || dr.kind == Qlx.NUMERIC)
@@ -7526,8 +7554,8 @@ namespace Pyrrho.Level3
                 case Qlx.AVG:
                         if (v == null)
                             break;
-                    fc.count++;
-                    goto case Qlx.SUM;
+                        fc.count += v.Cardinality();
+                        goto case Qlx.SUM;
                 case Qlx.ANY:
                     {
                         if (window >= 0)
@@ -7540,25 +7568,17 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.COLLECT:
                     {
-                        if (vl is null)
+                        if (vl is null || v is TNull)
                             break;
-                        if (v != TNull.Value)
-                        {
-                            fc.mset ??= new TMultiset(v.dataType);
-                            fc.mset = fc.mset.Add(v);
-                        }
+                        fc.mset ??= new TMultiset(v.dataType);
+                        fc.mset = fc.mset.Add(v);
                         break;
                     }
                 case Qlx.COUNT:
-                    {
-                        if (mod == Qlx.TIMES)
-                        {
-                            fc.count++;
-                            break;
-                        }
-                        if (v != TNull.Value)
-                            fc.count++;
-                    }
+                    if (mod == Qlx.TIMES && v == TNull.Value)
+                        fc.count++;
+                    else
+                        fc.count += v.Cardinality();
                     break;
                 case Qlx.EVERY:
                     {
@@ -7569,7 +7589,7 @@ namespace Pyrrho.Level3
                 case Qlx.FIRST:
                     {
                         if (cx.obs[val] != null && fc.acc == null)
-                            fc.acc = v;
+                            fc.acc = v.First();
                         break;
                     }
                 case Qlx.FUSION:
@@ -7596,19 +7616,19 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.LAST:
                     {
-                        fc.acc = v;
+                        fc.acc = v.Last();
                         break;
                     }
                 case Qlx.MAX:
                     {
                         if (v != TNull.Value && (fc.acc == null || fc.acc.CompareTo(v) < 0))
-                            fc.acc = v;
+                            fc.acc = v.Max();
                         break;
                     }
                 case Qlx.MIN:
                     {
                         if (v != TNull.Value && (fc.acc == null || fc.acc.CompareTo(v) > 0))
-                            fc.acc = v;
+                            fc.acc = v.Min();
                         break;
                     }
                 case Qlx.RESTRICT:
@@ -7638,29 +7658,61 @@ namespace Pyrrho.Level3
                         }
                         switch (fc.sumType.kind)
                         {
+                            case Qlx.ARRAY:
+                                {
+                                    if (fc.sumType.kind == Qlx.CONTENT && fc.sumType.elType is not null)
+                                        fc.sumType = fc.sumType.elType;
+                                    for (var i = 0; i < v.Cardinality(); i++)
+                                        if (v[i] is TInteger iv)
+                                        {
+                                            fc.sumType = Domain.Int;
+                                            fc.sumInteger = (fc.sumInteger is Integer os) ?
+                                                os + iv.ivalue : iv.ivalue;
+                                        }
+                                        else if (v[i] is TInt vc)
+                                        {
+                                            fc.sumType = Domain.Int;
+                                            fc.sumLong += vc.value;
+                                        }
+                                        else if (v[i] is TReal rv)
+                                        {
+                                            fc.sumType = Domain.Real;
+                                            fc.sum1 += rv.dvalue;
+                                        }
+                                        else if (v[i] is TNumeric nv)
+                                        {
+                                            fc.sumType = Domain._Numeric;
+                                            fc.sumDecimal = (fc.sumDecimal is Numeric od) ?
+                                                od + nv.value : nv.value;
+                                            break;
+                                        }
+                                    break;
+                                }
                             case Qlx.CONTENT:
-                                if (v is TInteger iv)
                                 {
-                                    fc.sumType = Domain.Int;
-                                    fc.sumInteger = iv.ivalue;
+                                    if (v is TInteger iv)
+                                    {
+                                        fc.sumType = Domain.Int;
+                                        fc.sumInteger = iv.ivalue;
+                                    }
+                                    else if (v is TInt vc)
+                                    {
+                                        fc.sumType = Domain.Int;
+                                        fc.sumLong = vc.value;
+                                    }
+                                    else if (v is TReal rv)
+                                    {
+                                        fc.sumType = Domain.Real;
+                                        fc.sum1 = rv.dvalue;
+                                    }
+                                    else if (v is TNumeric nv)
+                                    {
+                                        fc.sumType = Domain._Numeric;
+                                        fc.sumDecimal = nv.value;
+                                    }
+                                    else
+                                        throw new DBException("22000", domain.kind);
                                 }
-                                else if (v is TInt vc)
-                                {
-                                    fc.sumType = Domain.Int;
-                                    fc.sumLong = vc.value;
-                                }
-                                else if (v is TReal rv)
-                                {
-                                    fc.sumType = Domain.Real;
-                                    fc.sum1 = rv.dvalue;
-                                }
-                                else if (v is TNumeric nv)
-                                {
-                                    fc.sumType = Domain._Numeric;
-                                    fc.sumDecimal = nv.value;
-                                }
-                                else
-                                    throw new DBException("22000", domain.kind);
                                 break;
                             case Qlx.INTEGER:
                                 if (v is TInteger vn)
@@ -11622,7 +11674,7 @@ cx.obs[high] is not QlValue hi)
             if (cx.db.objects[cx.role.edgeTypes[label.name ?? ""] ?? -1L] is Domain ed)
             {
                 if (lT is null || aT is null)
-                    throw new DBException("22G0W", label.name??"");
+                    throw new DBException("22G0W", label.name ?? "");
                 if (ed is EdgeType ef && ef.leavingType == lT.defpos && ef.arrivingType == aT.defpos)
                     return ed;
                 if (ed.kind != Qlx.UNION) throw new PEException("PE20903");
@@ -11634,15 +11686,15 @@ cx.obs[high] is not QlValue hi)
             var tl = nd.label.OnInsert(cx, nd.mem);
             EdgeType? nt = null; // the node type of this node when we find it or construct it
             var md = TMetadata.Empty; // some of what we will find on this search
-                                                   // Begin to think about the names of special properties for the node we are building
-                                                   //string? sd = null;
-                                                   //var il = "LEAVING";
-                                                   //var ia = "ARRIVING";
-                                                   // it may be that all node/edge types for all parts of the label exist already
-                                                   // certainly the predecessor of an existing node must exist.
-                                                   // if the last one is undefined we will build it using the given property tree
-                                                   // (if it is defined we may add properties to it)
-                                                   // if types earlier in the label are undefined we will create them here
+                                      // Begin to think about the names of special properties for the node we are building
+                                      //string? sd = null;
+                                      //var il = "LEAVING";
+                                      //var ia = "ARRIVING";
+                                      // it may be that all node/edge types for all parts of the label exist already
+                                      // certainly the predecessor of an existing node must exist.
+                                      // if the last one is undefined we will build it using the given property tree
+                                      // (if it is defined we may add properties to it)
+                                      // if types earlier in the label are undefined we will create them here
             var dc = CTree<long, bool>.Empty;
             // if existing components are related, the top and bottom types found 
             EdgeType? te = null;
@@ -11679,11 +11731,20 @@ cx.obs[high] is not QlValue hi)
                             if (cx.db.objects[c.key().defpos] is EdgeType ee
                                 && ee.leavingType == lT.defpos && ee.arrivingType == aT.defpos)
                                 nt = ee;
-                    } else throw new PEException("PE20904");
+                    }
+                    else throw new PEException("PE20904");
                 }
                 else if (nd.label.name == "" && cx.role.unlabelledEdgeTypesInfo[ps] is long p
-                    && cx.db.objects[p] is EdgeType nu)
-                    nt = nu;
+                    && cx.db.objects[p] is EdgeType un)
+                    nt = un;
+                if (nd.label is Domain nu && nu.kind == Qlx.UNION && lT is not null && aT is not null)
+                {
+                    nt = null;
+                    for (var nb = nu.unionOf.First(); nt is null && nb != null; nb = nb.Next())
+                        if (cx.db.objects[nb.key().defpos] is EdgeType xe
+                            && xe.leavingType == lT.defpos && xe.arrivingType == aT.defpos)
+                            nt = xe;
+                }
                 else
                 {
                     var un = (cx.db.objects[cx.UnlabelledEdgeSuper(lT.defpos, aT.defpos, ps)] is Domain st) ?
@@ -11713,7 +11774,7 @@ cx.obs[high] is not QlValue hi)
             }
             if (be is not null)
             {
-                be = (EdgeType)(cx.db.objects[be.defpos] ?? throw new PEException("PE060701"));
+                be = (EdgeType)(cx.db.objects[be?.defpos ?? -1L] ?? throw new PEException("PE060701"));
                 var bt = be.Build(cx, this, new BTree<long, object>(Domain.NodeTypes, tl), md);
                 if (bt is not null)
                 {
@@ -11727,12 +11788,6 @@ cx.obs[high] is not QlValue hi)
                 nt = (EdgeType)be.Inherit(nt);
                 nt = (EdgeType)cx.Add(nt);
             }
-  /*          if (nt is not null)
-            {
-                nt += (_Domain, nt._PathDomain(cx));
-                nt = (EdgeType)cx.Add(nt);
-                cx.db += nt;
-            } */
             if (nt is null)
                 throw new DBException("42000", "_EdgeType").Add(Qlx.INSERT_STATEMENT, new TChar(name ?? "??"));
             return nt;

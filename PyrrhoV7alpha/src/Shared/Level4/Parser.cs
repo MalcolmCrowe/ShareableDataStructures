@@ -1958,7 +1958,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// Match: MatchMode  [id'='] MatchNode {'|'Match }.
-        /// MatchMode: [TRAIL|ACYCLIC|SIMPLE][SHORTEST|SHORTESTPATH|ALL|ANY].
+        /// MatchMode: [TRAIL|ACYCLIC|SIMPLE][SHORTEST|LONGEST|ALL|ANY].
         /// </summary>
         /// <returns></returns>
         (CTree<long, TGParam>, BList<long?>) ParseGqlMatchList()
@@ -1968,7 +1968,7 @@ namespace Pyrrho.Level4
             var tgs = CTree<long, TGParam>.Empty;
             Ident? pi = null;
             while (Match(Qlx.LPAREN, Qlx.USING, Qlx.TRAIL, Qlx.ACYCLIC, Qlx.SIMPLE,
-                Qlx.SHORTESTPATH, Qlx.SHORTEST, Qlx.ALL, Qlx.ANY))
+                Qlx.LONGEST, Qlx.SHORTEST, Qlx.ALL, Qlx.ANY))
             {
                 // state M11
                 var dp = cx.GetUid();
@@ -1982,7 +1982,7 @@ namespace Pyrrho.Level4
                         mo = tok;
                         Next();
                     }
-                    if (Match(Qlx.SHORTEST, Qlx.SHORTESTPATH, Qlx.ALL, Qlx.ANY))
+                    if (Match(Qlx.SHORTEST, Qlx.LONGEST, Qlx.ALL, Qlx.ANY))
                     {
                         sh = tok;
                         Next();
@@ -2198,7 +2198,7 @@ namespace Pyrrho.Level4
                         Next();
                 }
                 Mustbe(Qlx.RBRACE);
-                if (dm?.FindType(cx, dc) is CTree<Domain,bool> du && du.Count==1 && du.First()?.key() is Domain cd)
+                if (lb == GqlLabel.Empty && dm?.FindType(cx, dc) is CTree<Domain,bool> du && du.Count==1 && du.First()?.key() is Domain cd)
                     dm = cd;
             } else 
                 if (dm is not null && nd?.FindType(cx, dm) is NodeType rt)

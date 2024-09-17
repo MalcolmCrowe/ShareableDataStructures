@@ -435,7 +435,7 @@ namespace Pyrrho.Level2
         }
         internal virtual void Check(Context cx)
         {
-            if (cx._Ob(tabledefpos) is not Table tb) throw new DBException("42105").Add(Qlx.CONSTRAINT);
+            if (cx.db.objects[tabledefpos] is not Table tb) throw new DBException("42105").Add(Qlx.CONSTRAINT);
             //       var dm = tb._PathDomain(cx);
             for (var c = tb.First(); c != null; c = c.Next())
             {
@@ -450,7 +450,7 @@ namespace Pyrrho.Level2
         }
         internal override DBObject? Install(Context cx)
         {
-            if (cx._Ob(tabledefpos) is not Table tb || tb.infos[tb.definer] is not ObInfo oi)
+            if (cx.db.objects[tabledefpos] is not Table tb || tb.infos[tb.definer] is not ObInfo oi)
                 throw new PEException("PE0301");
             var ost = subType;
             var tp = tabledefpos;

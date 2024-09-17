@@ -3086,7 +3086,7 @@ namespace Pyrrho.Level4
         static BTree<long,object> _Mem(long dp, Context cx, long t, BTree<long,object>? m)
         {
             m ??= BTree<long, object>.Empty;
-            if (cx.db.objects[t] is not Table tb) 
+            if (cx._Ob(t) is not Table tb) 
                 throw new DBException("42105").Add(Qlx.TABLE);
             cx._Add(tb);
             cx.Add(tb.framing);
@@ -4254,12 +4254,12 @@ namespace Pyrrho.Level4
         protected override Cursor? _First(Context cx)
         {
             var a = (TSet?)mem[SqlLiteral._Val];
-            return (a == null) ? null : SetCursor.New(cx, this, a, a?.First());
+            return (a == null) ? null : SetCursor.New(cx, this, a, a?._First());
         }
         protected override Cursor? _Last(Context cx)
         {
             var a = (TSet?)mem[SqlLiteral._Val];
-            return (a == null) ? null : SetCursor.New(cx, this, a, a?.Last());
+            return (a == null) ? null : SetCursor.New(cx, this, a, a?._Last());
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4342,12 +4342,12 @@ namespace Pyrrho.Level4
         protected override Cursor? _First(Context cx)
         {
             var a = (TMultiset?)mem[SqlLiteral._Val];
-            return (a==null)?null:MultisetCursor.New(cx, this, a, a?.First());
+            return (a==null)?null:MultisetCursor.New(cx, this, a, a?._First());
         }
         protected override Cursor? _Last(Context cx)
         {
             var a = (TMultiset?)mem[SqlLiteral._Val];
-            return (a==null)?null:MultisetCursor.New(cx, this, a, a?.Last());
+            return (a==null)?null:MultisetCursor.New(cx, this, a, a?._Last());
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4995,7 +4995,7 @@ namespace Pyrrho.Level4
             var t = tr.objects[ta] as Table;
             if (t == null || t.Denied(cx, Grant.Privilege.Insert))
                 throw new DBException("42105").Add(Qlx.INSERT, new TChar(t?.infos[cx.role.defpos]?.name ?? "??"));
-            if (cx._Ob(ta) is not Domain da)
+            if (cx.db.objects[ta] is not Domain da)
                 throw new DBException("42105").Add(Qlx.TABLE);
             m += ts.mem;
             m += (_Data, data.defpos);

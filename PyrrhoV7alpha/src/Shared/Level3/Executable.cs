@@ -4540,11 +4540,11 @@ namespace Pyrrho.Level3
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
             var ac
-                = new Activation(cx,"Match")
-            {
-                binding = cx.binding,
-                result = domain.defpos
-            };
+                = new Activation(cx, "Match")
+                {
+                    binding = cx.binding,
+                    result = domain.defpos
+                };
             // Parse any truncating expressions
             for (var b = truncating.First(); b != null; b = b.Next())
             {
@@ -4578,22 +4578,32 @@ namespace Pyrrho.Level3
                         ac.paths += (sa.defpos, new TPath(sa.defpos, ac));
                         var xf = sa.matchExps.First();
                         if (gf is not null && xf is not null)
-                            ExpNode(ac, new ExpStep(sa, xf, new GraphStep(gf.Next(), new EndStep(this))), Qlx.Null,null, null);
+                            ExpNode(ac, new ExpStep(sa, xf, new GraphStep(gf.Next(), new EndStep(this))), Qlx.Null, null, null);
                     }
-
-            if (((Transaction)ac.db).physicals.Count == pre)
-            {
-                cx.result = bindings;
-                if (ac.obs[bindings] is RowSet rs)
-                    cx.Add(rs);
-            }
-            else
-                cx.result = -1L;
             if (ac.obs[body] is SelectStatement ss && ac.obs[ss.union] is RowSet su)
             {
-                cx.result = ss.union;
-                cx.Add(su);
+                ac.result = ss.union;
+                ac.Add(su);
             }
+            if (ac.obs[ac.result] is RowSet rs)
+            {
+                if (mem[RowSet.RowOrder] is Domain ord)
+                {
+                    cx.Add(rs);
+                    rs = rs.Sort(cx, ord, false);
+                }
+                if (mem[RowSetSection.Size] is int ct)
+                {
+                    cx.Add(rs);
+                    rs = new RowSetSection(cx, rs, 0, ct);
+                }
+                ac.result = rs.defpos;
+                ac.obs += (ac.result, rs);
+            } 
+            else if (gDefs == CTree<long, TGParam>.Empty)
+                cx.result = TrueRowSet.OK(cx).defpos;
+            else if (cx.obs[cx.result] is RowSet rrs)
+                cx.obs += (cx.result, rrs); 
             if (then != BList<long?>.Empty)
             {
                 var ta = new Activation(ac, "" + defpos);
@@ -4605,6 +4615,11 @@ namespace Pyrrho.Level3
             }
             ac.SlideDown();
             cx.db = ac.db;
+            if (ac.obs[bindings] is RowSet bs)
+                cx.obs += (bindings, bs);
+            var aff = ac.db.AffCount(ac);
+            if (aff > 0)
+                cx.result = -1L;            
             return cx;
         }
         /// <summary>
@@ -4688,6 +4703,7 @@ namespace Pyrrho.Level3
                         if (cx.obs[b.value() ?? -1L] is GqlMatchAlt sa)
                         {
                             cx.paths += (sa.defpos, new TPath(sa.defpos, cx));
+                            cx.binding -= sa.pathId;
                             ms.ExpNode(cx, new ExpStep(sa, sa.matchExps.First(),
                                 new GraphStep(matchAlts?.Next(), next)), Qlx.Null, null, null);
                         }
@@ -4846,7 +4862,8 @@ namespace Pyrrho.Level3
                 && cx.obs[bindings] is BindingRowSet ers)
             {
                 var uid = cx.GetUid();
-                ers += (cx, new TRow(ers, cx.binding));
+                var rr = new TRow(ers, cx.binding);
+                ers += (cx, rr);
                 cx.Add(ers);
                 cx.val = TNull.Value;
                 cx.values += cx.binding;
@@ -4857,7 +4874,7 @@ namespace Pyrrho.Level3
                     if (bd is SelectStatement ss)
                         ro = ss.union;
                 }
-                else if (flags == Flags.None)
+                if (flags == Flags.None)
                     cx.val = TBool.True;
                 cx.result = ro;
             }
@@ -4891,6 +4908,7 @@ namespace Pyrrho.Level3
                 var pa = cx.paths[be.alt.defpos] ?? new TPath(be.alt.defpos, cx);
                 pa = PathInit(cx, pa, ma, 0);
                 cx.paths += (pa.matchAlt, pa);
+                cx.binding -= be.alt.pathId;
                 PathNode(cx, new PathStep(be.alt, sp, 0, gp,
                     new ExpStep(be.alt, be.matches?.Next(), be.next)), pd);
             }
@@ -5122,11 +5140,15 @@ namespace Pyrrho.Level3
                         goto another;
                     if (bn.alt.mode == Qlx.ACYCLIC && dn is TNode && pa?.HasNode(dn) == true)
                         goto another;
-                    if ((bn.alt.mode == Qlx.SHORTEST || bn.alt.mode == Qlx.SHORTESTPATH)
-                            && !Shortest(bn, cx))
+                    if (bn.alt.mode == Qlx.SHORTEST && !Shortest(bn, cx))
+                        goto another;
+                    if (bn.alt.mode == Qlx.LONGEST && !Longest(bn, cx))
                         goto another;
                     if (pa is not null && dn != pd)
-                        cx.paths += (bn.alt.defpos, pa + (cx,dn));
+                    {
+                        cx.paths += (bn.alt.defpos, pa + (cx, dn));
+                        cx.binding += (bn.alt.pathId, pa[0L]);
+                    }
                     DoBindings(cx, bn.alt.defpos, bn.xn, dn);
                     if (!bn.xn.CheckProps(cx, dn))
                         goto another;
@@ -5145,14 +5167,20 @@ namespace Pyrrho.Level3
                 bn.next.Next(cx, null, (tok == Qlx.WITH) ? Qlx.Null : tok, bn.xn, dn);
             backtrack:
                 if (ot is not null)
+                {
                     cx.paths += (bn.alt.defpos, ot);
+                    cx.binding += (bn.alt.pathId, ot[0]);
+                }
                 cx.binding = ob; // unbind all the bindings from this recursion step
                 if (Done(cx))
                     break;
                 ns = ns?.Next();
             }
             if (ot is not null)
-                cx.paths += (bn.alt.defpos,ot);
+            {
+                cx.paths += (bn.alt.defpos, ot);
+                cx.binding += (bn.alt.pathId, ot[0]);
+            }
             cx.values = ov;
             cx.binding = ob;
         }
@@ -5195,11 +5223,14 @@ namespace Pyrrho.Level3
             if (cx.obs[fn.value() ?? -1L] is GqlNode xn && bp.sp is GqlPath sp
                 && (bp.im < sp.quantifier.Item2 || sp.quantifier.Item2<0))
                 ExpNode(cx, new ExpStep(bp.alt,fn.Next(), bp), xn.tok, bp.xn, dn); // use ordinary ExpNode for the internal pattern
-                                                                // dn must be an edge
-                                                                // and xn must be an GqlEdge
-        backtrack:
+                                                                                   // dn must be an edge
+                                                                                   // and xn must be an GqlEdge
+            backtrack:
             if (ot is not null)
-                cx.paths += (bp.alt.defpos,ot);
+            {
+                cx.paths += (bp.alt.defpos, ot);
+                cx.binding += (bp.alt.pathId, ot[0]);
+            }
             cx.binding = ob; // unbind all the bindings from this recursion step
         }
         /// <summary>
@@ -5299,7 +5330,7 @@ namespace Pyrrho.Level3
                     break;
                 }
             if (cx.obs[gb?.value() ?? -1L] is GqlMatchAlt sm
-                   && (sm.mode == Qlx.SHORTEST || sm.mode == Qlx.SHORTESTPATH)
+                   && (sm.mode == Qlx.SHORTEST || sm.mode==Qlx.LONGEST)
                    && sm.pathId >= 0
                    && cx.obs[cx.result] is ExplicitRowSet ers)
             {
@@ -5312,6 +5343,36 @@ namespace Pyrrho.Level3
                 if (op.Length > cp.Length)
                 {
                     ers += (ExplicitRowSet.ExplRows, rws - (ers.Length-1));
+                    cx.Add(ers);
+                    return true;
+                }
+                return false;
+            }
+            return true;
+        }
+        bool Longest(Step st, Context cx)
+        {
+            ABookmark<int, long?>? gb = null;
+            for (var s = st; s != null; s = s.Cont)
+                if (s is GraphStep gs)
+                {
+                    gb = gs.matchAlts?.Previous() ?? gs.ms.matchList.Last();
+                    break;
+                }
+            if (cx.obs[gb?.value() ?? -1L] is GqlMatchAlt sm
+                   && (sm.mode == Qlx.LONGEST)
+                   && sm.pathId >= 0
+                   && cx.obs[cx.result] is ExplicitRowSet ers)
+            {
+                var rws = ers.explRows;
+                if (rws.Length == 0) return true;
+                var (ol, ov) = rws[ers.Length - 1];
+                var cp = cx.paths[defpos] ?? throw new PEException("PE030803");
+                if (ov[sm.pathId] is not TList op)
+                    return true; // ??
+                if (op.Length < cp.Length)
+                {
+                    ers += (ExplicitRowSet.ExplRows, rws - (ers.Length - 1));
                     cx.Add(ers);
                     return true;
                 }
