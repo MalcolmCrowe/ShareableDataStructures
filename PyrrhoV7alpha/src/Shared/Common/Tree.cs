@@ -440,7 +440,7 @@ namespace Pyrrho.Common
             if (stk ==null) // following Create or Reset
             {
                 // if Tree is empty return null
-                if (tree==null || tree.root == null)
+                if (tree==null || tree.root == null || tree.Count==0L)
                     return null;
                 // The first entry is root.slots[0] or below
                 stk = new ABookmark<K, V>(tree.root, 0, null);

@@ -187,7 +187,10 @@ namespace Pyrrho
         /// <returns></returns>
         public C FindOne<C>(params (string,IComparable)[] w) where C : new()
         {
-            return FindWith<C>(w)[0];
+            var a = FindWith<C>(w);
+            if (a.Length == 0)
+                throw new Pyrrho.DatabaseError("02000");
+            return a[0];
         }
         public C[] FindWith<C>(params (string,IComparable)[] w) where C : new()
         {
@@ -1584,6 +1587,8 @@ namespace Pyrrho
         {
             get
             {
+                if (cmd is null)
+                    return !active;
                 cmd.CheckThread();
                 return (!active) || cmd.conn.stream == null;
             }
@@ -1789,8 +1794,8 @@ namespace Pyrrho
         {
             get
             {
-                cmd.CheckThread();
-                return row.Length;
+                cmd?.CheckThread();
+                return row?.Length??0;
             }
         }
 

@@ -263,7 +263,7 @@ namespace Pyrrho
                 for (var co = oi?.First(); co != null; co = co.Next())
                     if (co.value() is long p)
                     {
-                        var cp = (cx.obs[p] is SqlCopy sc) ? sc.copyFrom : p;
+                        var cp = (cx.obs[p] is QlInstance sc) ? sc.sPos : p;
                         var ci = cx._Ob(cp)?.infos[cx.role.defpos];
                         if ((chartType[Qlx.X] is TChar xc && xc.value == ci?.name)
                             || ci?.metadata.Contains(Qlx.X) == true)
@@ -844,7 +844,7 @@ namespace Pyrrho
                 }
                 if (path.Length <= 2)
                     return;
-                var dbn = new Ident(pathbits[1], Iix.None);
+                var dbn = new Ident(pathbits[1], -1L);
                 if (dbn.ident.EndsWith("favicon.ico"))
                     return;
                 if (dbn.ident.EndsWith(".htm"))

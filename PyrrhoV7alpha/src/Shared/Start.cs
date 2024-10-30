@@ -180,7 +180,7 @@ namespace Pyrrho
                                 var cmd = tcp.GetString();
                                 db = db.Transact(db.nextId, conn);
                                 long t = 0;
-                                cx = new Context(db, cx??throw new PEException("PE1400"));
+                                cx = new Context(db, cx??throw new PEException("PE14001"));
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = (Transaction)db;
                                 cx.done = ObTree.Empty;
@@ -200,7 +200,7 @@ namespace Pyrrho
                                 var cmd = tcp.GetString();
                                 db = db.Transact(db.nextId, conn);
                                 long t = 0;
-                                cx = new Context(db, cx ?? throw new PEException("PE1400"));
+                                cx = new Context(db, cx ?? throw new PEException("PE14002"));
                                 var ts = db.length;
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 cx.db = db;
@@ -241,7 +241,7 @@ namespace Pyrrho
                                 if (db is not Transaction)
                                     throw new DBException("25000").Mix();
                                 var tr = db;
-                                db = db.Commit(cx ?? throw new PEException("PE1400"));
+                                db = db.Commit(cx ?? throw new PEException("PE14003"));
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("Commit Transaction " + tr.uid);
                                 tcp.PutWarnings(cx);
@@ -256,7 +256,7 @@ namespace Pyrrho
                                 if (db is not Transaction)
                                     throw new DBException("25000").Mix();
                                 var tr = db;
-                                db = db.Commit(cx ?? throw new PEException("PE1400"));
+                                db = db.Commit(cx ?? throw new PEException("PE14004"));
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("Commit Transaction " + tr.uid);
                                 tcp.PutWarnings(cx);
@@ -350,7 +350,7 @@ namespace Pyrrho
                                     throw new DBException("33000", nm);
                                 var cmp = sb.ToString();
                                 db = db.Transact(db.nextId, conn);
-                                cx = new Context(db, cx ?? throw new PEException("PE1400"));
+                                cx = new Context(db, cx ?? throw new PEException("PE14005"));
                                 db = new Parser(cx).ParseSql(ps, cmp);
                                 cx.db = db;
                                 cx.done = ObTree.Empty;
@@ -387,7 +387,7 @@ namespace Pyrrho
                                 var cmp = sb.ToString();
                                 db = db.Transact(db.nextId, conn);
                                 var ts = db.length;
-                                cx = new(db, cx ?? throw new PEException("PE1400"));
+                                cx = new(db, cx ?? throw new PEException("PE14006"));
                                 db = new Parser(cx).ParseSql(ps, cmp);
                                 cx.db = (Transaction)db;
                                 cx.done = ObTree.Empty;
@@ -413,7 +413,7 @@ namespace Pyrrho
                                 var tr = db.Transact(db.nextId, conn);
                                 var pl = tr.physicals.Count;
                                 db = tr;
-                                cx = new (db, cx??throw new PEException("PE1400"));
+                                cx = new (db, cx??throw new PEException("PE14007"));
                                 //           Console.WriteLine(cmd);
                                 db = new Parser(cx).ParseSql(cmd, Domain.TableType);
                                 cx.db = db;
@@ -455,7 +455,7 @@ namespace Pyrrho
                                 nextCol = 0; // discard anything left over from ReaderData
                                 var cmd = tcp.GetString();
                                 db = db.Transact(db.nextId, conn);
-                                cx = new(db, cx ?? throw new PEException("PE1400"));
+                                cx = new(db, cx ?? throw new PEException("PE14008"));
                                 //           Console.WriteLine(cmd);
                                 db = new Parser(cx).ParseSql(cmd, Domain.TableType);
                                 cx.db = db;
@@ -496,7 +496,7 @@ namespace Pyrrho
                                 string[] path = tcp.GetString().Split('/');
                                 var tr = db.Transact(db.nextId, conn);
                                 db = tr;
-                                cx = new(db, cx??throw new PEException("PE1400")) { versioned = true };
+                                cx = new(db, cx??throw new PEException("PE14009")) { versioned = true };
                                 tr.Execute(cx, k, "GET", db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
                                 if (cx.result > 0)
@@ -517,7 +517,7 @@ namespace Pyrrho
                                 string[] path = tcp.GetString().Split('/');
                                 var tr = db.Transact(db.nextId, conn);
                                 db = tr;
-                                cx = new Context(db, cx??throw new PEException("PE1400"));
+                                cx = new Context(db, cx??throw new PEException("PE14010"));
                                 tr.Execute(cx, 0L, "GET",  db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
                                 if (cx.obs[cx.result] is RowSet rs)
@@ -538,7 +538,7 @@ namespace Pyrrho
                                 string tname = tcp.GetString();
                                 db = db.Transact(db.nextId, conn);
                                 var tr = (Transaction)db;
-                                tcp.PutWarnings(cx ?? throw new PEException("PE1400"));
+                                tcp.PutWarnings(cx ?? throw new PEException("PE14011"));
                                 if (cx.GetObject(tname) is not Table tb)
                                 {
                                     rb = null;
@@ -556,7 +556,7 @@ namespace Pyrrho
                                 if (k == 0) k = 1; // someone chancing it?
                                 var s = tcp.GetString();
                                 db = db.Transact(db.nextId, conn);
-                                cx = new (db, cx ?? throw new PEException("PE1400"));
+                                cx = new (db, cx ?? throw new PEException("PE14012"));
                                 if (PyrrhoStart.DebugMode)
                                     Console.WriteLine("POST " + s);
                                 var ss = s.Split('/');
@@ -565,7 +565,7 @@ namespace Pyrrho
                                 var t = long.Parse(ss[1]);
                                 var tb = (Table?)db.objects[t]??throw new DBException("42105").Add(Qlx.TABLE);
                                 var ti = tb.infos[db.role.defpos];
-                                var f = new TableRowSet(1L, cx, t);
+                                var f = new TableRowSet(1L, cx, t, 0L);
                                 BTree<long, TargetActivation>? ans = null;
                                 CTree<long, TypedValue> old=CTree<long,TypedValue>.Empty, vs;
                                 vs = f.Parse(cx, ss[2]);
@@ -644,7 +644,7 @@ namespace Pyrrho
                                 if (tb == null)
                                     throw new DBException("42105").Add(Qlx.TABLE);
                                 var ti = tb.infos[ro.defpos];
-                                var f = new TableRowSet(1L, cx, t);
+                                var f = new TableRowSet(1L, cx, t, 0L);
                                 BTree<long, TargetActivation>? ans = null;
                                 CTree<long, TypedValue>? old = null, vs = null;
                                 if (long.TryParse(ss[2], out long dp) && long.TryParse(ss[3], out long pp)
@@ -733,7 +733,7 @@ namespace Pyrrho
                                 if (tb == null || ro == null)
                                     throw new DBException("42105").Add(Qlx.TABLE);
                                 var ti = tb.infos[ro.defpos];
-                                var f = new TableRowSet(1L, cx, t);
+                                var f = new TableRowSet(1L, cx, t, 0L);
                                 BTree<long, TargetActivation>? ans = null;
                                 if (long.TryParse(ss[2], out long dp) 
                                     && long.TryParse(ss[3], out long pp)
@@ -775,7 +775,7 @@ namespace Pyrrho
                             {
                                 var tr = db.Transact(db.nextId, conn);
                                 db = tr;
-                                cx = new(db, cx??throw new PEException("PE1400"));
+                                cx = new(db, cx??throw new PEException("PE14013"));
                                 var vb = tcp.GetString();
                                 var url = tcp.GetString();
                                 var jo = tcp.GetString();
@@ -798,7 +798,7 @@ namespace Pyrrho
                                     var d = tcp.GetLong();
                                     var o = tcp.GetLong();
                                 }
-                                db = db.Commit(cx ?? throw new PEException("PE1400"));
+                                db = db.Commit(cx ?? throw new PEException("PE14014"));
                                 tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReport);
                                 PutReport(cx);
@@ -816,7 +816,7 @@ namespace Pyrrho
                                     var d = tcp.GetLong();
                                     var o = tcp.GetLong();
                                 }
-                                db = db.Commit(cx ?? throw new PEException("PE1400"));
+                                db = db.Commit(cx ?? throw new PEException("PE14015"));
                                 tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReport);
                                 tcp.PutInt(db.AffCount(cx));
@@ -836,7 +836,7 @@ namespace Pyrrho
                                     var d = tcp.GetLong();
                                     var o = tcp.GetLong();
                                 }
-                                db = db.Commit(cx ?? throw new PEException("PE1400"));
+                                db = db.Commit(cx ?? throw new PEException("PE14016"));
                                 tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReportTrace);
                                 tcp.PutLong(ts);
@@ -857,7 +857,7 @@ namespace Pyrrho
                                     var d = tcp.GetLong();
                                     var o = tcp.GetLong();
                                 }
-                                db = db.Commit(cx ?? throw new PEException("PE1400"));
+                                db = db.Commit(cx ?? throw new PEException("PE14017"));
                                 tcp.PutWarnings(cx);
                                 tcp.Write(Responses.TransactionReportTrace);
                                 tcp.PutInt(db.AffCount(cx));
@@ -896,7 +896,7 @@ namespace Pyrrho
                                     || db.objects[tp] is not SystemTable st)
                                     throw new DBException("42105").Add(Qlx.ROLE);
                                 tcp.Write(Responses.GraphInfo);
-                                for (var b = new SystemRowSet(cx, st).First(cx); b != null; b = b.Next(cx))
+                                for (var b = new SystemRowSet(cx, st, 0L).First(cx); b != null; b = b.Next(cx))
                                 {
                                     tcp.PutString(b[0].ToString());
                                     tcp.PutInt(b[1].ToInt()?? 0);
@@ -1278,14 +1278,14 @@ namespace Pyrrho
         int MultisetLength(Context cx, TMultiset m)
         {
             int len = 4 + StringLength("MULTISET") + TypeLength(m.dataType.elType ?? Domain.Content);
-            for (var e = m.First(); e != null; e = e.Next())
+            for (var e = m._First(); e != null; e = e.Next())
                 len += 1 + DataLength(cx, e.Value());
             return len;
         }
         int SetLength(Context cx,TSet s)
         {
             int len = 4 + StringLength("SET") + TypeLength(s.dataType.elType ?? Domain.Content);
-            for (var e = s.First(); e != null; e = e.Next())
+            for (var e = s._First(); e != null; e = e.Next())
                 len += 1 + DataLength(cx, e.Value());
             return len;
         }
@@ -1520,7 +1520,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(26 Sept 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(30 Oct 2024)", "http://www.pyrrhodb.com"
         ];
 	}
 }

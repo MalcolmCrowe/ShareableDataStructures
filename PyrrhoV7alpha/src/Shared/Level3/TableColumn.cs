@@ -57,9 +57,9 @@ namespace Pyrrho.Level3
         /// <param name="tb">The Table</param>
         /// <param name="c">The PColumn def</param>
         /// <param name="dt">the obs type</param>
-        public TableColumn(Table tb, PColumn c, Domain dt,Role ro,User? us)
-            : base(c.defpos, _TableColumn(c,dt)+(_Table, tb.defpos) + (LastChange, c.ppos)
-                     + (Owner, us?.defpos ?? -501L)) 
+        public TableColumn(Table tb, PColumn c, Domain dt,Context cx)
+            : base(c.defpos, _TableColumn(c,dt,cx)+(_Table, tb.defpos) + (LastChange, c.ppos)
+                     + (Owner, cx.user?.defpos ?? -501L)) 
         {  }
         protected TableColumn(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TableColumn operator +(TableColumn et, (long, object) x)
@@ -96,17 +96,19 @@ namespace Pyrrho.Level3
             }
             return (TableColumn)e.New(m + (p, o));
         }
-        static BTree<long,object> _TableColumn(PColumn c,Domain dt)
+        static BTree<long,object> _TableColumn(PColumn c,Domain dt,Context cx)
         {
             var r = BTree<long, object>.Empty + (Definer, c.definer)
                 + (Owner, c.owner) + (Infos, c.infos) + (Seq, c.seq)
                 + (_Domain, dt) + (LastChange, c.ppos);
+            if (dt.infos[cx.role.defpos] is ObInfo oi)
+                r = r + (ObInfo._Names, oi.names) + (ObInfo.Defs, oi.defs);
             if (c.notNull || dt.notNull)
                 r += (Domain.NotNull, true);
             if (c.generated != GenerationRule.None)
                 r += (Generated, c.generated);
             if (c.dfs != "")
-                r = r + (Domain.DefaultString, c.dfs);
+                r += (Domain.DefaultString, c.dfs);
             if (dt.sensitive)
                 r += (Sensitive, true);
             if (c.dv != TNull.Value)
@@ -129,7 +131,7 @@ namespace Pyrrho.Level3
         {
             return new TableColumn(dp, m);
         }
-        internal override DBObject Instance(long lp,Context cx, BList<Ident>?cs=null)
+        internal override DBObject Instance(long lp,Context cx, RowSet? ur=null)
         {
             var r = base.Instance(lp, cx);
             for (var b = checks.First(); b != null; b = b.Next())
@@ -145,7 +147,7 @@ namespace Pyrrho.Level3
         {
             if (cx._Ob(defpos) is not DBObject ob)
                 throw new DBException("42105").Add(Qlx.COLUMN);
-            QlValue r = new SqlCopy(lp, cx, ic.ident, p?.defpos??-1L, ob) + (_Domain, domain);
+            QlValue r = new QlInstance(new Ident(ic.ident,lp), cx, p?.defpos??-1L, ob) + (_Domain, domain);
             cx.Add(r);
             return (r, n);
         }
@@ -170,7 +172,7 @@ namespace Pyrrho.Level3
         {
             return new TableColumn(defpos,mem+(Checks,checks+(ck.defpos,true)));
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (TableColumn)base._Replace(cx, so, sv);
             if (generated.exp != -1L)
@@ -197,10 +199,9 @@ namespace Pyrrho.Level3
         internal void ColumnCheck(Transaction tr, bool reverse)
         {
             var cx = new Context(tr);
-            var tb = tr.objects[tabledefpos] as Table;
-            if (tb == null || cx.role==null)
+            if (tr.objects[tabledefpos] is not Table tb || cx.role == null)
                 return;
-            var fm = tb.RowSets(new Ident("", cx.Ix(tr.uid)),new Context(tr),tb,tr.uid);
+            var fm = tb.RowSets(new Ident("", tr.uid),new Context(tr),tb,tr.uid,0L);
             for (var rb = fm.First(cx);
                 rb != null; rb = rb.Next(cx))
             {
@@ -213,6 +214,17 @@ namespace Pyrrho.Level3
                         .Add(Qlx.COLUMN_NAME, new TChar(ti.name ?? "?"));
             }
         }
+        internal override DBObject Apply(Context cx, Domain tb)
+        {
+            cx.Add(framing);
+            var f = ObTree.Empty;
+            if (cx.obs[generated.exp] is QlValue ex)
+                f = ex._Apply(cx, tb, f);
+            for (var b = checks.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is QlValue se)
+                    f = se._Apply(cx, tb, f);
+            return cx.Add(this + (_Framing, framing+(Framing.Obs,f)));
+        }
         /// <summary>
         /// Accessor: Check a new column check constraint
         /// </summary>
@@ -222,7 +234,7 @@ namespace Pyrrho.Level3
         {
             var cx = new Context(tr);
             if (tr.objects[tabledefpos] is Table tb && cx.obs[c.search] is QlValue sch &&
-                tb.RowSets(new Ident("", cx.Ix(tr.uid)), cx, tb, tr.uid)
+                tb.RowSets(new Ident("", tr.uid), cx, tb, tr.uid,0L)
                 .Apply(cx, BTree<long, object>.Empty + (RowSet._Where, sch.Disjoin(cx))) is RowSet nf &&
                 nf.First(cx) != null && cx.role != null &&
                 cx._Ob(tabledefpos) is DBObject t && t.infos[cx.role.defpos] is ObInfo ti && 
@@ -417,7 +429,7 @@ namespace Pyrrho.Level3
         /// <param name="i">An index into this path</param>
         /// <param name="v">the new value</param>
         /// <returns>the updated Document</returns>
-        TypedValue Set(TDocument d, string[] ss, int i, TypedValue v)
+        TDocument Set(TDocument d, string[] ss, int i, TypedValue v)
         {
             var s = ss[i];
             if (i < ss.Length - 1 && d[s] is TDocument tv)
@@ -694,16 +706,10 @@ namespace Pyrrho.Level3
         }
     }
     
-    internal class RemoteTableRow : TableRow 
+    internal class RemoteTableRow(long dp, CTree<long, TypedValue> v, string u, RestRowSet r) : TableRow(r.target,v+(DBObject.Defpos,new TInt(dp))) 
     {
-        internal readonly string url;
-        internal readonly RestRowSet rrs;
-        public RemoteTableRow(long dp,CTree<long,TypedValue> v,string u,RestRowSet r) 
-            : base(r.target,v+(DBObject.Defpos,new TInt(dp)))
-        {
-            url = u;
-            rrs = r;
-        }
+        internal readonly string url = u;
+        internal readonly RestRowSet rrs = r;
     }
     internal class PeriodDef : TableColumn
     {

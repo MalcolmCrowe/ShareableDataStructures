@@ -34,7 +34,8 @@ namespace Pyrrho.Level3
                   + (ObInfo.Name,pv.name) + (Definer,pv.definer)
                   +(Owner,pv.owner)+(Infos,pv.infos)+(_Framing,pv.framing)
                   + (ViewDef,pv.viewdef) + (ViewResult,pv.framing.result)
-                  + (LastChange, pv.ppos) + (Owner, cx.user?.defpos??-501L))
+                  + (LastChange, pv.ppos) + (Owner, cx.user?.defpos??-501L)
+                  + (ObInfo._Names, pv.infos[cx.role.defpos]?.names??Names.Empty))
         { }
         protected View(long dp, BTree<long, object> m) : base(dp, m) { }
         public static View operator+(View v,(long,object)x)
@@ -82,7 +83,7 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="f"></param>
         /// <returns></returns>
-        internal override DBObject Instance(long lp, Context cx, BList<Ident>? cs = null)
+        internal override DBObject Instance(long lp, Context cx, RowSet? us = null)
         {
             var od = cx.done;
             cx.done = ObTree.Empty;
@@ -95,45 +96,30 @@ namespace Pyrrho.Level3
             cx.Add((Framing)framing.Fix(cx)); // need virtual columns
             var ns = cx.Fix(st);
             var dt = (Domain)Fix(cx);
-            var vi = (View)Relocate(ni) + (ViewResult, ns) + (_From,lp);
+            var vi = (View)Relocate(ni) + (ViewResult,ns) + (_From,lp);
             vi = (View)vi.Fix(cx);
             cx.Add(vi);
-            var vn = new Ident(vi.NameFor(cx), cx.Ix(vi.defpos));
-            var ods = cx.defs;
-            cx.AddDefs(vn, vi,alias);
-            var ids = cx.defs[vn.ident]?[cx.sD].Item2;
+            var vn = new Ident(vi.NameFor(cx), vi.defpos);
+            var ods = cx.names;
+            var ids = vi.domain.infos[cx.role.defpos]?.names??Names.Empty;
             cx.done = ObTree.Empty;
             for (var b = ids?.First(); b != null; b = b.Next())
             {
                 var c = b.key(); // a view column id
-                var vx = b.value()[cx.sD].Item1;
-                var qx = ods[(c, cx.sD)].Item1; // a reference in q to this
-                if (vx == qx || qx==Iix.None)
+                var vx = b.value() ?? -1L;
+                var qx = ods[c]; // a reference in q to this
+                if (vx == qx || qx<0)
                     continue;
-                if (qx.dp >= 0 && 
-                    (qx.sd == vx.sd || qx.sd==vx.sd-1) &&  // substitute the references for the instance columns
-                        cx.obs[qx.dp] is QlValue ov &&
-                        cx.obs[vx.dp] is QlValue tv)
+                if (qx >= 0 && cx.obs[qx] is QlValue ov && cx.obs[vx] is QlValue tv)
                 {
-                    var nv = (QlValue)tv.Relocate(qx.dp);
+                    var nv = (QlValue)tv.Relocate(qx);
                     cx.Replace(ov, nv);
                     cx.Replace(tv, nv);
-                    cx.undefined -= qx.dp;
+                    cx.undefined -= qx;
                     cx.NowTry();
                 }
-                if (!cx.obs.Contains(qx.dp))
-                    cx.uids += (qx.dp, vx.dp);
-            }
-            for (var b = cs?.First(); b != null; b = b.Next())
-            {
-                var iv = b.value();
-                if (cx.defs.Contains(iv.ident) && cx.defs[iv.ident]?[cx.sD].Item1.dp is long sp &&
-                    cx.obs[cx.uids[sp] ?? sp] is QlValue so)
-                {
-                    cx.Replace(so, (SqlCopy)so.Relocate(iv.iix.dp));
-                    if (!cx.obs.Contains(sp))
-                        cx.uids += (sp, iv.iix.dp);
-                }
+                if (!cx.obs.Contains(qx))
+                    cx.uids += (qx, vx);
             }
             cx.instDFirst = -1L;
             if (cx.db != null && framing.obs.Last()?.key() is long t)
@@ -147,9 +133,8 @@ namespace Pyrrho.Level3
                     cx.db += (Database.NextStmt, t + 1);
             }
             vi = (View)(cx.obs[vi.defpos]??throw new DBException("PE030601"));
-    //        cx.defs = on;
             cx.done = od;
-            return vi.RowSets(vn, cx, dt,lp);
+            return vi.RowSets(vn, cx, dt,lp, 0L);
         }
         /// <summary>
         /// Triggered on the complete set if a view is referenced.
@@ -165,8 +150,8 @@ namespace Pyrrho.Level3
         /// and keep track of keys. Then perform the join with the target instead.
         /// </summary>
         /// <param name="cx"></param>
-        internal override RowSet RowSets(Ident vn,Context cx,Domain q,long fm,
-            Grant.Privilege pr=Grant.Privilege.Select, string? a=null)
+        internal override RowSet RowSets(Ident vn,Context cx,Domain q,long fm,long ap,
+            Grant.Privilege pr=Grant.Privilege.Select, string? a=null, TableRowSet? ur = null)
         {
             var ts = (RowSet?)cx.obs[result] ?? throw new DBException("42105").Add(Qlx.VIEW);
             var m = new BTree<long, object>(ObInfo.Name, vn.ident);
@@ -276,7 +261,7 @@ namespace Pyrrho.Level3
                 {
                     if (tn == "[]")
                         tn = "_T" + i + "[]";
-                    if (n.EndsWith("("))
+                    if (n.EndsWith('('))
                         n = "_F" + i;
                 }
                 ob.FieldType(cx,sb);
@@ -321,7 +306,7 @@ namespace Pyrrho.Level3
                     {
            //             if (tn == "[]")
            //                 tn = "_T" + i + "[]";
-                        if (n.EndsWith("("))
+                        if (n.EndsWith('('))
                             n = "_F" + i;
                     }
                     sb.Append("  self." + n + " = " + cd.defaultValue + "\r\n");
@@ -391,8 +376,6 @@ namespace Pyrrho.Level3
             UsingTable = -372; // long Table
         internal string? mime => (string?)mem[Mime];
         internal long usingTable => (long)(mem[UsingTable]??-1L);
-        internal BTree<string,(int,long?)> names =>
-            (BTree<string, (int, long?)>)(mem[ObInfo.Names] ?? BTree<string, (int, long?)>.Empty);
         internal CTree<long, string> namesMap =>
             (CTree<long, string>?)mem[NamesMap] ?? CTree<long, string>.Empty;
         /// <summary>
@@ -406,7 +389,7 @@ namespace Pyrrho.Level3
             pv.dataType.mem + (UsingTable, pv.usingTable) 
             + (ViewDef, pv.viewdef) + (_Depth,pv.dataType.depth+1)
             + (NamesMap, (CTree<long, string>)(pv.dataType.mem[NamesMap]??CTree<long,string>.Empty))
-            + (ObInfo.Names, (BTree<string, (int,long?)>)(pv.dataType.mem[ObInfo.Names]??BTree<string,(int, long?)>.Empty))
+            + (ObInfo._Names, (Names)(pv.dataType.mem[ObInfo._Names]??Names.Empty))
             +(Infos,new BTree<long,ObInfo>(cx.role.defpos,new ObInfo(pv.name,Grant.AllPrivileges))))
         { }
         internal RestView(long dp, BTree<long, object> m) : base(dp, m) 
@@ -475,17 +458,21 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="cs">The insert columns if provided</param>
         /// <returns>A RestRowSet or RestRowSetUsing</returns>
-        internal override DBObject Instance(long lp, Context cx, BList<Ident>? cs = null)
+        internal override DBObject Instance(long lp, Context cx, RowSet? ur = null)
         {
             // set up instancing parameters
-            var vn = new Ident(name, new Iix(lp,cx.sD,cx.GetUid()));
+            var vn = new Ident(name, cx.GetUid());
             cx.instDFirst = (cx.parse == ExecuteStatus.Obey) ? cx.nextHeap : cx.db.nextStmt;
             cx.instSFirst = (representation.First()?.key() ?? 0L) - 1;
             cx.instSLast = representation.Last()?.key() ?? -1L;
             // construct our instanced virtual columns, and the instanced domain
             var rt = BList<long?>.Empty;
             var rs = CTree<long, Domain>.Empty;
-            var ns = BTree<string, (int,long?)>.Empty;
+            var ns = ur?.names??Names.Empty;
+            var un = Names.Empty;
+            for (var b = cx.undefined.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is SqlReview sr)
+                    un += (sr.NameFor(cx), sr.defpos);
             var nm = CTree<long, string>.Empty;
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long k)
@@ -493,69 +480,69 @@ namespace Pyrrho.Level3
                     var nk = cx.Fix(k);
                     var n = namesMap[k] ?? "";
                     var dm = representation[k] ?? Null;
+                    if (un[n] is long up && up!=-1L)
+                    {
+                        nk = up;
+                        cx.undefined -= up;
+                    } 
+                    var sv = cx.obs[ns[n]] as QlValue??
+                        (QlValue)cx.Add(new QlValue(new Ident(n, nk),BList<Ident>.Empty, cx, dm));
+                    nk = sv.defpos;
                     rs += (nk, dm);
                     rt += nk;
                     nm += (nk, n);
-                    ns += (n, (b.key(),nk));
-                    var id = new Ident(n, new Iix(nk,cx.sD,nk));
-                    var sv = new QlValue(id,BList<Ident>.Empty, cx, dm);
+                    ns += (n, nk);
                     cx.Add(sv);
-                    cx.defs += (new Ident(vn, id), vn.iix);
                 }
-            var nd = new Domain(cx.GetUid(), cx, Qlx.TABLE, rs, rt, rt.Length);
+            cx.names += ns;
+            var nd = (rt.Length==0)?TableType:new Domain(cx.GetUid(), cx, Qlx.TABLE, rs, rt, rt.Length);
             var oi = infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.VIEW);
             var rv = new RestView(cx.GetUid(), nd.mem + (UsingTable, usingTable)
-                + (NamesMap, nm) + (ObInfo.Names, ns) +(ViewDef,viewDef)
+                + (NamesMap, nm) + (ObInfo._Names, ns) +(ViewDef,viewDef)
                 + (_Depth,nd.depth+1)
                 + (Infos, new BTree<long, ObInfo>(cx.role.defpos,oi
-                    + (ObInfo._Metadata,oi.metadata)+ (ObInfo.Names, ns))));
+                    + (ObInfo._Metadata,oi.metadata)+ (ObInfo._Names, ns))));
             rv = (RestView)cx.Add(rv);
-            cx.AddDefs(vn, nd);
-            var r = rv.RowSets(vn, cx, nd, lp);
-            if (r is RestRowSetUsing rsu && cx.obs[rsu.usingTableRowSet] is TableRowSet utr)
-                for (var b = utr.rowType.First(); b != null; b = b.Next())
+            var r = rv.RowSets(vn, cx, nd, lp, 0L, Grant.AllPrivileges, null, (TableRowSet?)ur);
+            if (ur is not null)
+                for (var b = ur.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.obs[p] is QlValue sv && sv.name is string sn
-                        && cx.defs[sn]?[cx.sD].Item1?.dp is long q && cx.obs[q] is QlValue sq
-                        && sv.dbg!=sq.dbg)
+                        && cx.obs[cx.names[sn]] is QlValue sq && sv.dbg!=sq.dbg)
                         cx.Replace(sv, sq);
             cx.result = r.defpos;
             return cx.Add(r);
         }
-        internal override RowSet RowSets(Ident id,Context cx, Domain d, long fm,
-            Grant.Privilege pr=Grant.Privilege.Select,string? a=null) 
+        internal override RowSet RowSets(Ident id,Context cx, Domain d, long fm, long ap,
+            Grant.Privilege pr=Grant.Privilege.Select,string? a=null, TableRowSet? ur=null) 
         {
-            var ix = id.iix; // new Iix(id.iix, cx.GetUid());
             var ods = cx.defs;
-            var rrs = new RestRowSet(ix, cx, this, d);
+            var rrs = new RestRowSet(id.uid, cx, this, d);
             InstanceRowSet irs = rrs;
-            if (usingTable>=0)
+            if (ur is not null)
             {
-                var ur = new TableRowSet(cx.GetUid(), cx, usingTable);
-                var ids = ods[id.ident]?[cx.sD].Item2;
                 cx.done = ObTree.Empty;
-                for (var b = ids?.First(); b != null; b = b.Next())
+                for (var b = rrs.names.First(); b != null; b = b.Next())
                 {
                     var c = b.key(); // a view column id
-                    var qx = b.value()[cx.sD].Item1;
-                    var vx = cx.defs[(c, cx.sD)].Item1; // a reference in q to this
-                    if (vx == qx || qx == Iix.None)
+                    var qx = b.value()??-1L;
+                    var vx = cx.names[c]; // a reference in q to this
+                    if (vx == qx || qx <0)
                         continue;
-                    if (qx.dp >= 0 && qx.dp!=vx.dp && qx.sd >= vx.sd &&  // substitute the references for the instance columns
-                            cx.obs[qx.dp] is QlValue ov &&
-                            cx.obs[vx.dp] is QlValue tv)
+                    if (vx > 0 && qx > 0 && qx!=vx &&  // substitute the references for the instance columns
+                            cx.obs[qx] is QlValue ov &&
+                            cx.obs[vx] is QlValue tv)
                     {
-                        var nv = tv.Relocate(qx.dp);
+                        var nv = tv.Relocate(qx);
                         cx.Replace(ov, nv);
                         cx.Replace(tv, nv);
-                        cx.undefined -= qx.dp;
+                        cx.undefined -= qx;
                         cx.NowTry();
                     }
-                    if (!cx.obs.Contains(qx.dp))
-                        cx.uids += (qx.dp, vx.dp);
+                    if (!cx.obs.Contains(qx))
+                        cx.uids += (qx, vx);
                 }
-                ur = (TableRowSet)(cx.obs[ur.defpos] ?? throw new DBException("42000","RestView"));
-                irs = new RestRowSetUsing(cx.GetIid(), cx, this, rrs, ur);
-            }
+                irs = new RestRowSetUsing(cx.GetUid(), cx, this, rrs, ur);
+            } 
             var m = irs.mem;
             var rt = irs.rsTargets;
             var mg = CTree<long, CTree<long, bool>>.Empty; // matching columns
@@ -569,7 +556,7 @@ namespace Pyrrho.Level3
             if (irs.keys != Row)
                 m += (Index.Keys, irs.keys);
             irs = (InstanceRowSet)irs.Apply(m, cx); 
-            cx.UpdateDefs(id, irs, a);
+        //    cx.UpdateDefs(id, irs, a);
             return (RowSet)(cx.obs[irs.defpos]??throw new PEException("PE70303"));
         } 
         internal override void _ReadConstraint(Context cx, TableRowSet.TableCursor cu)

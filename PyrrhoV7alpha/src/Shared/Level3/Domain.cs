@@ -88,7 +88,7 @@ namespace Pyrrho.Level3
     Document, DocArray, ObjectId, JavaScript, ArgList, // Pyrrho 5.1
     TableType, Row, Delta, Position,
     Metadata, HttpDate, Star, // Pyrrho v7
-    _Rvv, GraphSpec, PathType, LabelType; // Rvv is V7 validator type
+    _Rvv, GraphSpec, PathType, LabelType, Comparable; // Rvv is V7 validator type
         internal static UDType TypeSpec;
         internal static NodeType NodeType,NodeSchema;
         internal static EdgeType EdgeType,EdgeSchema;
@@ -139,6 +139,7 @@ namespace Pyrrho.Level3
             UnionNumeric = UnionType(--_uid, Int, _Numeric, Real);
             UnionDate = UnionType(--_uid, Date, Timespan, Timestamp, Interval);
             UnionDateNumeric = UnionType(--_uid, Date, Timespan, Timestamp, Interval, Int, _Numeric, Real);
+            Comparable = UnionType(--_uid, Date, Timespan, Timestamp, Interval, Int, _Numeric, Real, Char);
             Exception = new StandardDataType(Qlx.HANDLER);
             Period = new StandardDataType(Qlx.PERIOD);
             Document = new StandardDataType(Qlx.DOCUMENT); // Pyrrho 5.1
@@ -202,7 +203,9 @@ namespace Pyrrho.Level3
         public CTree<Domain, bool> unionOf =>
             (CTree<Domain, bool>?)mem[UnionOf] ?? CTree<Domain, bool>.Empty;
         internal Domain(Context cx, CTree<long, Domain> rs, BList<long?> rt, BTree<long, ObInfo> ii)
-            : this(-1L, _Mem(cx, Qlx.TABLE, rs, rt, rt.Length) + (Infos, ii)) { }
+            : this(-1L, _Mem(cx, Qlx.TABLE, rs, rt, rt.Length) + (Infos, ii)
+                  + (ObInfo._Names, ii[cx.role.defpos]?.names??Names.Empty)
+                  + (ObInfo._Metadata, ii[cx.role.defpos]?.metadata??TMetadata.Empty)) { }
         internal Domain(long dp, Context cx, Qlx t, CTree<long, Domain> rs, BList<long?> rt, int ds = 0)
             : this(dp, _Mem(cx, t, rs, rt, ds))
         {
@@ -251,16 +254,19 @@ namespace Pyrrho.Level3
             var rs = CTree<long, Domain>.Empty;
             var cs = BList<long?>.Empty;
             var ag = CTree<long, bool>.Empty;
+            var ns = Names.Empty;
             for (var b = vs.First(); b != null; b = b.Next())
             {
                 var v = b.value();
                 rs += (v.defpos, v.domain);
                 cs += v.defpos;
+                if (v.name is string s && s != "")
+                    ns += (s, v.defpos);
                 if (v is QlValue sv)
                     ag += sv.IsAggregation(cx, CTree<long, bool>.Empty);
             }
             var m = BTree<long, object>.Empty + (Representation, rs) + (RowType, cs)
-                + (Aggs, ag) + (Kind, t)
+                + (Aggs, ag) + (Kind, t) + (ObInfo._Names,ns)
                 + (Default, For(t).defaultValue);
             if (ds != 0)
                 m += (Display, ds);
@@ -304,7 +310,7 @@ namespace Pyrrho.Level3
                         return this;
             return dt;
         }
-        internal override DBObject Instance(long lp, Context cx, BList<Ident>? cs = null)
+        internal override DBObject Instance(long lp, Context cx, RowSet? ur = null)
         {
             var r = base.Instance(lp, cx);
             for (var b = constraints.First(); b != null; b = b.Next())
@@ -377,27 +383,27 @@ namespace Pyrrho.Level3
                 m = m + (RowType, rt) + (Display,ds);
             return (Domain)d.New(m);
         }
-        internal virtual (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, BTree<string, (int, long?)>)
+        internal virtual (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, Names, BTree<long,Names>)
 ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr,
- BTree<string, (int, long?)> ns)
+ Names ns, BTree<long,Names> ds, long ap)
         {
-            for (var b=super.First();b!=null;b=b.Next())
+            for (var b = super.First(); b != null; b = b.Next())
                 if (b.key() is Table st)
-                    (rt, rs, sr, tr, ns) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns);
-            var j = 0;
+                    (rt, rs, sr, tr, ns, ds) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns, ds, ap);
             for (var b = rowType.First(); b != null; b = b.Next())
-                if (b.value() is long p && (cx.obs[p]??representation[p]) is QlValue tc)
+                if (b.value() is long p && (cx.obs[p] ?? representation[p]) is QlValue tc)
                 {
-                    var nc = new SqlCopy(cx.GetUid(), cx, tc.name??tc.NameFor(cx), dp, tc,
-                        BTree<long, object>.Empty + (QlValue.SelectDepth, cx.sD));
-                    nc = (SqlCopy)cx.Add(nc);
-                    rt = Add(rt, -1, nc.defpos, tc.defpos);
-                    sr = Add(sr, -1, tc.defpos, tc.defpos);
+                    var nc = new QlInstance(cx.GetUid(), cx, tc.name ?? tc.NameFor(cx), dp, tc,
+                        BTree<long, object>.Empty);
+                    nc = (QlInstance)cx.Add(nc);
+                    rt += nc.defpos;
+                    sr += tc.defpos;
                     rs += (nc.defpos, nc.domain);
                     tr += (tc.defpos, nc.defpos);
-                    ns += (nc.alias ?? nc.name ?? "", (j++, nc.defpos));
+                    ds += (tc.defpos,tc.domain.names);
+                    ns += (nc.alias ?? nc.name ?? "", nc.defpos);
                 }
-            return (rt, rs, sr, tr, ns);
+            return (rt, rs, sr, tr, ns, ds);
         }
         internal virtual (Table, BList<long?>, CTree<long, Domain>)
             ColsFrom(Context cx,BList<long?> rt, CTree<long, Domain> rs)
@@ -413,43 +419,11 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 }
             return (new Table(-1L,cx,rs,rt,rt.Length), rt, rs);
         }
-        /// <summary>
-        /// We take a lot of trouble to ensure Id, LEAVING and ARRIVING are in positions 0,1,2
-        /// </summary>
-        /// <param name="a">Current rowType</param>
-        /// <param name="k">A suggested seq position</param>
-        /// <param name="v">The value to insert</param>
-        /// <param name="p">The tablecolumn (might not be the same as v)</param>
-        /// <returns></returns>
-        internal virtual BList<long?> Add(BList<long?> a, int k, long v, long p)
-        {
-            while (k > a.Length)
-                a += -1L;
-            if (k < 0 || k==a.Length)
-                return a + v;
-            var r = BList<long?>.Empty;
-            var was = -1L;
-            for (var b = a.First(); b != null; b = b.Next())
-            {
-                var w = b.value() ?? -1L;
-                if (b.key() == k)
-                {
-                    r += v;
-                    if (w != v && w >= 0L)
-                        was = w;
-                }
-                else if (w>=0)
-                    r += w;
-            }
-            if (was >= 0L)
-                r += was;
-            return r;
-        }
-        internal BTree<string, (int, long?)> HierarchyCols(Context cx)
+        internal Names HierarchyCols(Context cx)
         {
             var t = cx._Ob(defpos)??this;
             if (t is not UDType a)
-                return BTree<string, (int, long?)>.Empty;
+                return Names.Empty;
             var r = a.AllSubTypeCols(cx);
             for (var b = a.super.First(); b != null; b = b.Next())
                 if (b.key() is UDType ut)
@@ -479,7 +453,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 return p; 
             Physical pp;
             pp = new PDomain(this, wr.Length, wr.cx);
-            (_,pp) = pp.Commit(wr, tr);
+            pp = pp._Commit(wr, tr);
             return pp.ppos;
         }
         internal virtual CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> s)
@@ -510,7 +484,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             m ??= BTree<long, object>.Empty;
             var dc = (CTree<string, QlValue>?)m[GqlNode.DocValue];
             var op = (Qlx?)m[SqlValueExpr.Op];
-            var oi = OnInsert(cx, m);
+            var oi = OnInsert(cx, defpos, m);
             return (oi.Count == 1 || dc is null || dc.Count == 0 || op == Qlx.COLON) ? oi.First()?.key() as NodeType : null;
         }
         /// <summary>
@@ -526,7 +500,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             m ??= BTree<long, object>.Empty;
             var dc = (CTree<string, QlValue>?)m[GqlNode.DocValue]??CTree<string,QlValue>.Empty;
-            var oi = OnInsert(cx,m);
+            var oi = OnInsert(cx,defpos,m);
             if (oi.Count != 1)
                 return null;
             var nt = cx.db.objects[oi.First()?.key()?.defpos ?? -1L] as NodeType;
@@ -553,7 +527,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             var rt = BList<long?>.Empty;
             for (var b = rs.First(); b != null; b = b.Next())
                 rt += b.key();
-            return new Domain(-1L, cx, Qlx.ROW, rs, rt);
+            return (rt.Length==0)?Row:new Domain(-1L, cx, Qlx.ROW, rs, rt);
         }
         internal virtual void Show(StringBuilder sb)
         {
@@ -613,7 +587,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (mem.Contains(Element))
             { sb.Append(" elType="); sb.Append(elType); }
             if (mem.Contains(End)) { sb.Append(" End="); sb.Append(end); }
-            // if (mem.Contains(Names)) { sb.Append(' '); sb.Append(names); } done in Columns
+            // if (mem.Contains(Names)) { sb.Append(' '); sb.Append(nms); } done in Columns
             if (mem.Contains(_OrderCategory) && orderflags != OrderCategory.None
                 && orderflags!=OrderCategory.Primitive)
             { sb.Append(' '); sb.Append(orderflags); }
@@ -938,7 +912,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                 vs += (cp, cdt.Get(log, rdr, pp));
                             }
                         }
-                        return new TRow(new Domain(rdr.context.GetUid(),rdr.context,Qlx.ROW,dt,rt), vs);
+                        return (vs.Count==0L||rt.Length==0)?TNull.Value:
+                            new TRow(new Domain(rdr.context.GetUid(),rdr.context,Qlx.ROW,dt,rt), vs);
                     }
                 case Qlx.NODETYPE:
                 case Qlx.EDGETYPE:
@@ -1145,7 +1120,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     case Qlx.INTERVAL: wr.WriteByte((byte)DataType.Interval); break;
                     case Qlx.TYPE:
                         wr.WriteByte((byte)DataType.DomainRef);
-                        var nd = (Domain?)wr.cx.db.objects[defpos]??Content; // without names
+                        var nd = (Domain?)wr.cx.db.objects[defpos]??Content; // without nms
                         wr.PutLong(wr.cx.db.Find(nd)?.defpos ??Content.defpos); break;
                     case Qlx.REF:
                     case Qlx.ROW: wr.WriteByte((byte)DataType.Row); break;
@@ -1384,9 +1359,11 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         public virtual int CompareTo(object? obj)
         {
-            if (obj == null)
+            if (obj is null)
                 return 1;
             var that = (Domain)obj;
+            if (obj.GetType() == typeof (Domain) && that.GetType() != typeof(Domain))
+                return -1;
             var c = kind.CompareTo(that.kind);
             if (c != 0)
                 return c;
@@ -1495,9 +1472,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (b == TNull.Value)
                 return (nulls == Qlx.FIRST) ? -1 : 1;
             if (a is TSet ax && b is not TSet && ax.Cardinality() == 1)
-                a = ax.First()?.Value()??TNull.Value;
+                a = ax._First()?.Value()??TNull.Value;
             if (b is TSet ay && a is not TSet && ay.Cardinality() == 1)
-                b = ay.First()?.Value() ?? TNull.Value;
+                b = ay._First()?.Value() ?? TNull.Value;
             int c=0;
             if (orderflags != OrderCategory.None && orderflags != OrderCategory.Primitive
                 && orderFunc is not null)
@@ -2294,7 +2271,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         {
                             if (lx._cx == null)
                                 throw new PEException("PE3042");
-                            //if (names.Length > 0)
+                            //if (nms.Length > 0)
                             //    throw new DBException("2200N");
                             //tolerate named columns in SQL version
                             //mixture of named and unnamed columns is not supported
@@ -2307,25 +2284,25 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                             if (lx.ch == '[')
                                 goto case Qlx.TABLE;
                             var cols = CTree<long, TypedValue>.Empty;
-                            var names = BTree<string, long?>.Empty;
+                  //          var nms = BTree<string, long?>.Empty;
                             var b = rowType.First();
                             for (; b != null; b = b.Next())
                                 if (b.value() is long p && representation[p] is Domain dm)
-                                {
-                                    if (lx._cx.obs[p] is QlValue sv && sv.name is string nm)
-                                    {
-                                        names += (nm, p);
-                                        if (sv.alias != null && sv.alias != "")
-                                            names += (sv.alias, p);
-                                    }
-                                    else
-                                    {
-                                        var co = lx._cx.NameFor(p); ;
+                    //            {
+                    //                if (lx._cx.obs[p] is QlValue sv && sv.name is string nm)
+                    //                {
+                    //                    nms += (nm, p);
+                    //                    if (sv.alias != null && sv.alias != "")
+                    //                        nms += (sv.alias, p);
+                    //                }
+                    //                else
+                    //                {
+                    //                    var co = lx._cx.NameFor(p); ;
                                         cols += (p, dm.defaultValue);
-                                        if (co != null)
-                                            names += (co, p);
-                                    }
-                                }
+                    //                    if (co != null)
+                    //                        nms += (co, p);
+                    //                }
+                    //            }
                             b = rowType.First();
                             bool namedOk = true;
                             bool unnamedOk = true;
@@ -2355,9 +2332,10 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                                             return new DBException("22208").Mix()
                                                 .Add(Qlx.COLUMN_NAME, new TChar(n));
                                         unnamedOk = false;
-                                        if (names[n] is long np && np != p)
+                                        var nms = infos[definer]?.names;
+                                        if (nms?[n] is long np && np != p)
                                             p = np;
-                                        if (names[n.ToUpper()] is long mp && mp != p)
+                                        if (nms?[n.ToUpper()] is long mp && mp != p)
                                             p = mp;
                                     }
                                     lx.White();
@@ -2869,9 +2847,9 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (v.dataType is UDType ut && CanTakeValueOf(ut) && v is TSubType ts)
                 return Check(ts.value);
             if (v.dataType.kind == Qlx.SET && ((TSet)v).Cardinality() == 1)
-                return ((TSet)v).First()?.Value() ?? TNull.Value;
+                return ((TSet)v)._First()?.Value() ?? TNull.Value;
             if (v.dataType.kind == Qlx.MULTISET && ((TMultiset)v).Cardinality() == 1)
-                return Check(((TMultiset)v).First()?.Value() ?? TNull.Value);
+                return Check(((TMultiset)v)._First()?.Value() ?? TNull.Value);
             //          if (v.dataType.name == name)
             var kn = Equivalent(kind);
             if (kn == Qlx.UNION)
@@ -3688,7 +3666,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         /// <summary>
         /// Set up a CultureInfo given a collation or culture name.
-        /// We support the names specified in the SQL2003 standard, together
+        /// We support the nms specified in the SQL2003 standard, together
         /// with the cultures supported by .NET
         /// </summary>
         /// <param name="n">The name of a collation or culture</param>
@@ -4295,7 +4273,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 r += (Default, defaultValue.Fix(cx));
             return r;
         }
-        protected override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
         {
             var r = (Domain)base._Replace(cx, was, now);
             var ch = false;
@@ -4413,8 +4391,11 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 r += (Subtypes, sb);
             return r;
         }
-        internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
+        internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, RowSet sr, 
+            BTree<long, object> m, long ap)
         {
+            if (defpos < ap)
+                throw new PEException("PE50722");
             var cs = BList<long?>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var ch = false;
@@ -4423,17 +4404,17 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             for (var b = First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v)
                 {
-                    (ls, m) = v.Resolve(cx, f, m);
-                    if (ls[0] is QlValue nv)
+                    if (p > ap)
                     {
-                        if (nv.defpos != v.defpos)
+                        (ls, m) = v.Resolve(cx, sr, m, ap);
+                        if (ls[0] is QlValue nv && nv.defpos != v.defpos)
                         {
                             ch = true; v = nv;
                             de = Math.Max(de, Math.Max(nv.depth, nv.depth) + 1);
                         }
-                        cs += v.defpos;
-                        rs += (v.defpos, v.domain);
                     }
+                    cs += v.defpos;
+                    rs += (v.defpos, v.domain);
                 }
             if (ch)
             {
@@ -4459,7 +4440,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             return sv?.infos[cx.role.defpos]?.name
                 ?? sv?.alias ?? (string?)sv?.mem[ObInfo.Name] ?? ("Col" + i);
         }
-        internal virtual CTree<Domain, bool> OnInsert(Context cx, BTree<long,object>? m= null)
+        internal virtual CTree<Domain, bool> OnInsert(Context cx, long _ap, BTree<long,object>? m= null)
         {
             var r = CTree<Domain, bool>.Empty;
             var tv = _Eval(cx);
@@ -4673,6 +4654,18 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             var tv = base.Coerce(cx, v);
             tv = tv.Check(this);
             return tv;
+        }
+        public override int CompareTo(object? obj)
+        {
+            if (obj is not ConstrainedStandardType t)
+                return 1;
+            var c = bitLength.CompareTo(t.bitLength);
+            if (c != 0)
+                return c;
+            c = expBits.CompareTo(t.expBits);
+            if (c != 0)
+                return c;
+            return base.CompareTo(obj);
         }
         public override string ToString()
         {
@@ -5145,7 +5138,14 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         public readonly static string DATETIME = xsd + "dateTime";
         public readonly static string DATE = xsd + "date";
     }
-
+    /// <summary>
+    /// UDType invariants:
+    /// For any UDType t, t.rowType includes all columns of all supertypes of t
+    /// but need not include all columns of subtypes. 
+    /// If a subtype s of t contains a tableRow r, r is also a tablerow of t.
+    /// This means that if similarly named columns exist in two direct or indirect subtypes
+    /// one of these columns must be equal to or a subtype of the other.
+    /// </summary>
     internal class UDType : Table
     {
         internal const long
@@ -5207,34 +5207,6 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 ne.Fix(cx);
             return (UDType?)cx.Add(new PType(pn.ident, dt, un, -1L, dp, cx));
         }
-        internal Ident.Idents Defs(Context cx)
-        {
-            var lp = cx.GetUid();
-            var ids = Ident.Idents.Empty;
-            var ix = cx.Ix(defpos);
-            for (var b = representation.First(); b != null; b = b.Next())
-            {
-                var dm = b.value();
-                var cds = Ident.Idents.Empty;
-                if (dm is UDType u)
-                    cds = u.Defs(cx);
-                var p = b.key();
-                var c = (TableColumn?)cx.db.objects[p]??throw new PEException("PE1559");
-                cx.Add(c);
-                var px = cx.Ix(p);
-                var cn = c.NameFor(cx);
-                cx.defs += (cn, px, cds);
-                ids += (cn, px, cds);
-            }
-            cx.defs += (name, ix, ids);
-            for (var b = methods.First();b is not null;b=b.Next())
-            {
-                var mp = b.key();
-                var me = (Method?)cx.db.objects[mp]??throw new PEException("PE1560");
-                me.Instance(lp, cx, null);
-            }
-            return ids;
-        }
         internal override DBObject Add(Context cx, PMetadata pm)
         {
             var r = base.Add(cx,pm);
@@ -5291,7 +5263,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     {
                         ii += (su.defpos, pi);
                         if (ui is not null)
-                            ui += (ObInfo.Names, pi.names);
+                            ui += (ObInfo._Names, pi.names);
                     }
                 }
             if (ui is not null)
@@ -5318,29 +5290,29 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             return null;
         }
         /// <summary>
-        ///  We go to a lot of trouble to ensure that columns all have different names 
+        ///  We go to a lot of trouble to ensure that columns all have different nms 
         ///  in any UDType subType/superType hierarchy. We use MergeColumn
         ///  whenever necessary to ensure this.
         /// </summary>
         /// <param name="cx"></param>
         /// <returns>a tree of all columns in subtypes with their defining type</returns>
-        internal BTree<string,(int,long?)> AllSubTypeCols(Context cx)
+        internal Names AllSubTypeCols(Context cx)
         {
-            var r = BTree<string, (int, long?)>.Empty;
+            var r = Names.Empty;
             var t = (cx._Ob(defpos) ?? this) as Domain;
             for (var b = subtypes.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is UDType u)
                     r += u.AllSubTypeCols(cx); 
             for (var b = t?.rowType.First(); b != null; b = b.Next())// top levels overwrite lower
                 if (cx._Ob(b.value() ?? -1L) is TableColumn tc)
-                    r += (tc.NameFor(cx), (tc.seq, tc.defpos));
+                    r += (tc.NameFor(cx), tc.defpos);
             return r; 
         }
         internal CTree<long,Domain> HierarchyRepresentation(Context cx)
         {
             var r = CTree<long, Domain>.Empty;
             for (var b = HierarchyCols(cx).First(); b != null; b = b.Next())
-                if (cx._Ob(b.value().Item2 ?? -1L) is DBObject o)
+                if (cx._Ob(b.value()??-1L) is DBObject o)
                     r += (o.defpos, o.domain);
             return r;
         }
@@ -5361,7 +5333,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             return base.HasValue(cx, v);
         }
 
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (UDType)base._Replace(cx, so,sv);
             if (cx.ReplacedTDb(super) is CTree<Domain,bool> und && und != super)
@@ -5375,7 +5347,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             for (var b = super.First(); b != null; b = b.Next())
                 if (cx.db.objects[cx.Fix(b.key().defpos)] is Domain d)
                     ns += (d, true); 
-            r += (Under, ns); 
+            if (ns.Count>0)
+                r += (Under, ns); 
             var nu = cx.FixTlb(subtypes);
             if (nu != subtypes)
                 r = cx.Add(r, Subtypes, nu);

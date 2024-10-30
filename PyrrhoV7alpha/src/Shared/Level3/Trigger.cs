@@ -1,3 +1,4 @@
+using System.Security.Cryptography;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -68,13 +69,13 @@ namespace Pyrrho.Level3
         {
             var r = new BTree<long, object>(_Domain, p.dataType);
             if (p.oldTable != null)
-                r += (OldTable, p.oldTable.iix.dp);
+                r += (OldTable, p.oldTable.uid);
             if (p.newTable != null)
-                r += (NewTable, p.newTable.iix.dp);
+                r += (NewTable, p.newTable.uid);
             if (p.oldRow != null)
-                r += (OldRow, p.oldRow.iix.dp);
+                r += (OldRow, p.oldRow.uid);
             if (p.newRow != null)
-                r += (NewRow, p.newRow.iix.dp);
+                r += (NewRow, p.newRow.uid);
             if (p.cols != null)
                 r += (UpdateCols, p.cols);
             return r;
@@ -149,7 +150,7 @@ namespace Pyrrho.Level3
         {
             return (dp == defpos) ? this : new Trigger(dp, mem);
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (Trigger)base._Replace(cx, so, sv);
             if (table == so.defpos)
@@ -236,10 +237,21 @@ namespace Pyrrho.Level3
         internal bool old => (bool)(mem[Old]??false);
  //       internal long trig => (long)mem[Trig];
         internal TransitionTable(Ident ic, bool old, Context cx, RowSet fm, Trigger tg)
-                : base(ic.iix.dp, BTree<long, object>.Empty + (_Domain, fm) 
+                : base(ic.uid, BTree<long, object>.Empty + (RowType, fm.rowType) 
                       + (ObInfo.Name, ic.ident)
                   + (Target, fm.target) + (Old, old) + (Trig, tg.defpos))
-        { }
+        {
+            var ns = fm.names;
+            if (ns.Count==0L) // belt and braces
+            {
+                for (var b = fm.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p && cx.NameFor(p) is string nm)
+                        ns += (nm, p);
+                cx.Add(fm + (ObInfo._Names, ns));
+            }
+            cx.defs += (ic.uid, ns);
+            cx.Add(ic.ident,fm);
+        }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TransitionTable operator +(TransitionTable et, (long, object) x)
         {

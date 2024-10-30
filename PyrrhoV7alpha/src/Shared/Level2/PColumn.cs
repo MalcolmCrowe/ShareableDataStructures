@@ -3,6 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using Pyrrho.Level5;
+using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -11,15 +12,15 @@ using Pyrrho.Level5;
 // You can view and test this code
 // You may incorporate any part of this code in other software if its origin 
 // and authorship is suitably acknowledged.
- 
+
 namespace Pyrrho.Level2
 {
 	/// <summary>
 	/// A PColumn belongs to a PTable and has a name, a sequence no, and a domain
-	/// Both domains and TableColumns have check constraints, defaults and collates
+	/// Both domains and TableColumns have check constraints, defaults, orderings and collates
 	/// Though this seems redundant it is asking for trouble not to respect this SQL convention
 	/// in the database structures. 
-    /// (Domain defaults are widely used, but Domain programmable constraints are not currenmtly needed.)
+    /// (Domain defaults are widely used, but Domain programmable constraints are not currently needed.)
 	/// Columns may have a notNull constraint and integrity, uniqueness and referential constraints, 
     /// and their Framing contains code to implement generation rules and check constraints.
     /// Obsolete: see PColumn2, PColumn3
@@ -73,7 +74,7 @@ namespace Pyrrho.Level2
             Context cx) : base(t,pp,cx,nm,dm,-1L)
 		{
 			table = pr;
-			seq = sq;
+			seq = (sq<0)?pr.Length:sq;
             tabledefpos = pr.defpos;
             dataType = dm;
             domdefpos = dm.defpos;
@@ -146,6 +147,12 @@ namespace Pyrrho.Level2
                     }
                 if (rx != tb.rindexes)
                     tb += (Table.RefIndexes, rx);
+                if (tb.infos[tb.definer] is ObInfo ti && ti._Fix(wr.cx) is ObInfo ni && ni.dbg != ti.dbg)
+                {
+                    tb += (DBObject.Infos, tb.infos + (tb.definer, ni));
+                    tb += (ObInfo._Names, ni.names);
+                    tb += (ObInfo._Metadata, ni.metadata);
+                }
                 var sx = wr.cx.FixTlTlTlb(tb.sindexes);
                 if (sx != tb.sindexes)
                     tb += (Table.SysRefIndexes, sx);
@@ -279,7 +286,7 @@ namespace Pyrrho.Level2
                 table = t;
             if (dataType.defpos > 0)
                 cx.Install(dataType);
-            var tc = new TableColumn(table, this, dataType, ro, cx.user);
+            var tc = new TableColumn(table, this, dataType, cx);
             tc += (DBObject._Framing, framing);
             var rp = ro.defpos;
             var oi = table.infos[rp];
@@ -291,15 +298,18 @@ namespace Pyrrho.Level2
             cx.Add(tc);
             if (table.defpos < 0)
                 throw new DBException("42105").Add(Qlx.COLUMN_NAME);
-            seq = (tc.flags==GraphFlags.None) ? -1:tc.seq;
+      //      seq = (tc.flags==GraphFlags.None) ? -1:tc.seq;
             if (name == "ID" && table is NodeType)
                 table += (NodeType.IdCol, defpos);
             var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME);
-            ti += (ObInfo.Names, ti.names + (name, (seq,ppos)));
+            ti += (ObInfo._Names, ti.names + (name, ppos));
+            if (dataType.infos[cx.role.defpos]?.names is Names ss && ss!=Names.Empty)
+                ti += (ObInfo.Defs, ti.defs + (tc.defpos, ss));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
             table += (cx, tc); // this is where the NodeType stuff happens
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME));
             tc += (TableColumn.Seq, seq);
+            tc = (TableColumn)tc.Apply(cx, table);
             cx.db += (tc.defpos, tc);
             table += (DBObject.LastChange, ppos);
             cx.Install(table);
@@ -420,7 +430,7 @@ namespace Pyrrho.Level2
         /// <param name="buf">the buffer</param>
         public override void Deserialise(Reader rdr) 
 		{
-            var dfsrc = new Ident(rdr.GetString(), rdr.context.Ix(ppos + 1));
+            var dfsrc = new Ident(rdr.GetString(),ppos + 1);
             dfs = dfsrc.ident;
             notNull = (rdr.GetInt() > 0);
 			var gn = (Generation)rdr.GetInt();
@@ -447,10 +457,20 @@ namespace Pyrrho.Level2
                 && rdr.context.db.objects[table?.defpos ?? -1L] is Table tb)
             {
                 table = tb;
-                var psr = new Parser(rdr, new Ident(dfs, rdr.context.Ix(ppos + 1))); // calls ForConstraintParse
+                var psr = new Parser(rdr, new Ident(dfs, ppos + 1)); // calls ForConstraintParse
+                var cx = psr.cx;
+                cx.names = cx.anames;
                 var op = rdr.context.parse;
-                rdr.context.parse = ExecuteStatus.Compile;
+                psr.cx.parse = ExecuteStatus.Compile;
                 var nst = psr.cx.db.nextStmt;
+                for (var b = tb.rowType.First(); b != null; b = b.Next())
+                    if (b.value() is long p && cx.db.objects[p] is TableColumn tc)
+                    {
+                        var nm = tc.NameFor(cx)??"";
+                        var rv = new QlInstance(cx.GetUid(), cx, nm, -1L, tc.defpos);
+                        cx.Add(rv);
+                        cx.Add(nm, rv);
+                    }
                 var sv = psr.ParseSqlValue(dataType);
                 psr.cx.Add(sv);
                 generated += (GenerationRule.GenExp, sv.defpos);
@@ -494,7 +514,8 @@ namespace Pyrrho.Level2
         public PColumn3(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
             string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge,
                         GraphFlags gf, long ix, long tp, long pp, Context cx)
-            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, us, ua, nn, ge, gf, ix, tp, pp, cx)
+            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, 
+                  us, ua, nn, ge, gf, ix, tp, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -511,7 +532,7 @@ namespace Pyrrho.Level2
         protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ds, 
             TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
             GenerationRule ge, GraphFlags gf, long ix, long tp, long pp, Context cx)
-            : base(t, pr, nm, sq, dm, ds, dv, nn, ge, pp, cx)
+            : base(t, pr, nm, (sq<0)?pr.Length:sq, dm, ds, dv, nn, ge, pp, cx)
         {
             upd = ua;
             ups = us;

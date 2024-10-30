@@ -829,8 +829,8 @@ namespace Pyrrho.Level1
             int m = dt.Length;
             PutInt(m);
             for (var j = 0; j < m; j++)
-                if (cx.db.objects[dt[j]??-1L] is SqlCopy sc 
-                    && cx.db.objects[sc.copyFrom] is TableColumn dn)
+                if (cx.db.objects[dt[j]??-1L] is QlInstance sc 
+                    && cx.db.objects[sc.sPos] is TableColumn dn)
                 {
                     var n = sc.NameFor(cx);
                     PutString(n);

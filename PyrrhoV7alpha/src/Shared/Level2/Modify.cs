@@ -104,7 +104,7 @@ namespace Pyrrho.Level2
 		{
 			modifydefpos = rdr.GetLong();
 			name = rdr.GetString();
-			source = new Ident(rdr.GetString(), rdr.context.Ix(ppos + 1));
+			source = new Ident(rdr.GetString(), ppos + 1);
 			base.Deserialise(rdr);
 		}
         internal override void OnLoad(Reader rdr)
@@ -112,28 +112,35 @@ namespace Pyrrho.Level2
             if (rdr.context.db.objects[modifydefpos] is not Method pr || source==null)
                 throw new DBException("3E006");
             var psr = new Parser(rdr.context, source);
-            nst = psr.cx.db.nextStmt;
-            psr.cx.obs = ObTree.Empty;
-            psr.cx.depths = BTree<int,ObTree>.Empty;
+            var cx = psr.cx;
+            nst = cx.db.nextStmt;
+            cx.obs = ObTree.Empty;
+            cx.depths = BTree<int,ObTree>.Empty;
             // instantiate everything we may need
             var odt = pr.udType;
-            pr.Instance(psr.LexPos().dp, psr.cx);
-            odt.Instance(psr.LexPos().dp,psr.cx);
+            cx.AddDefs(odt);
+            if (odt.infos[cx.role.defpos] is ObInfo ti)
+                cx.Add(ti.names);
+            pr.Instance(psr.LexDp(), psr.cx);
+            odt.Instance(psr.LexDp(),psr.cx);
             for (var b = pr.ins.First(); b != null; b = b.Next())
                 if (b.value() is long k)
                 {
                     if (psr.cx.obs[k] is not FormalParameter p || p.name == null)
                         throw new DBException("3E006");
-                    var ip = rdr.context.Ix(p.defpos);
-                    psr.cx.defs += (new Ident(p.name, ip), ip);
+                    psr.cx.Add(p.name, p);
                 }
-            psr.cx.Install(pr);
-            odt.Defs(psr.cx);
+            cx.Install(pr);
             // and parse the body
             if (psr.ParseStatement(pr.domain,true) is not Executable bd)
                 throw new PEException("PE1978");
+            for (var b = cx.undefined.First(); b != null; b = b.Next())
+                if (b.key() is long k && cx.obs[k] is SqlCall uo)
+                    uo.Resolve(cx);
+            if (cx.undefined.Count != 0L)
+                throw new PEException("PE60901");
             proc = bd.defpos;
-            framing = new Framing(psr.cx,nst);
+            framing = new Framing(cx,nst);
             framing += (Framing.Obs, pr.framing.obs + framing.obs);
             pr += (Procedure.Body, proc);
             pr += (DBObject._Framing,framing);

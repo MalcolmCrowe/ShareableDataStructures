@@ -85,20 +85,21 @@ namespace Pyrrho.Level4
             var lc = CTree<long,bool>.Empty; // left columns to rename (true) or drop (false)
             var rc = CTree<long,bool>.Empty; // right columns to rename (true) or drop (false)
             for (var b = lr.names.First(); b != null; b = b.Next())
-                if (b.value().Item2 is long lk)
+                if (b.value() is long lp)
                 {
                     var n = b.key();
-                    ns += (lk, n);
-                    if (rr.names[b.key()].Item2 is long rk)
+                    var rk = rr.names[n];
+                    ns += (lp, n);
+                    if (rk!=-1L)
                     {
-                        cm += (n, (lk, rk));
-                        lc += (lk, true);
+                        cm += (n, (lp, rk));
+                        lc += (lp, true);
                         rc += (rk, true);
-                    }
+                    } 
                 }
             for (var b = rr.names.First(); b != null; b = b.Next())
-                if (b.value().Item2 is long p)
-                ns += (p, b.key());
+                if (b.value() is long rp)
+                    ns += (rp, b.key());
             // Step 2: consider NATURAL and USING
             if (cm!=CTree<string,(long,long)>.Empty)
             {
@@ -132,7 +133,7 @@ namespace Pyrrho.Level4
             var ls = BList<string>.Empty;
             var rs = BList<string>.Empty;
             var lm = BTree<string, QlValue>.Empty;
-            var nn = BTree<string, (int,long?)>.Empty;
+            var nn = Names.Empty;
             var cs = BList<long?>.Empty;
             var fs = BList<long?>.Empty;
             var re = CTree<long, Domain>.Empty;
@@ -145,7 +146,7 @@ namespace Pyrrho.Level4
                     if (((!lc.Contains(sv.defpos)) || lc[sv.defpos]) && !cm.Contains(n))
                     {
                         ls += n;
-                        nn += (n, (b.key(),sv.defpos));
+                        nn += (n, sv.defpos);
                         cs += sv.defpos;
                     }
                     else if (cm.Contains(n))
@@ -156,11 +157,11 @@ namespace Pyrrho.Level4
                             var nl = sv + (_Alias, ln);
                             cx.Replace(sv, nl);
                             ls += ln;
-                            nn += (ln, (b.key(), sv.defpos));
+                            nn += (ln, sv.defpos);
                         }
                         else
                         {
-                            nn += (n, (b.key(), sv.defpos));
+                            nn += (n, sv.defpos);
                             ls += n;
                         }
                         cs += sv.defpos;
@@ -177,7 +178,7 @@ namespace Pyrrho.Level4
                     if (((!rc.Contains(rv.defpos)) || rc[rv.defpos]) && !cm.Contains(n))
                     {
                         rs += n;
-                        nn += (n, (b.key(), rv.defpos));
+                        nn += (n, rv.defpos);
                         cs += rv.defpos;
                     }
                     else if (cm.Contains(n))
@@ -188,11 +189,11 @@ namespace Pyrrho.Level4
                             var nr = rv + (_Alias, rn);
                             cx.Replace(rv, nr);
                             rs += rn;
-                            nn += (rn, (b.key(), rv.defpos));
+                            nn += (rn, rv.defpos);
                         }
                         else
                         {
-                            nn += (n, (b.key(), rv.defpos));
+                            nn += (n, rv.defpos);
                             rs += n;
                         }
                         cs += rv.defpos;
@@ -200,11 +201,12 @@ namespace Pyrrho.Level4
                     else
                         fs += rv.defpos;
                 }
+
             var ds = cs.Length;
             // add the dropped columns after the display in case they are referenced in where conditions
             for (var b = fs.First(); b != null; b = b.Next())
                 cs += b.value();
-            m += (ObInfo.Names, nn);
+            m += (ObInfo._Names, nn);
             m += (RowType, cs);
             m += (Representation, re);
             m += (Display, ds);
@@ -233,13 +235,9 @@ namespace Pyrrho.Level4
                         ma = ma + (le, ml + (ri, true))
                             + (ri, mr + (le, true));
                         var mm = Math.Min(le, ri);
-                        if (cx.NameFor(le) is string li && cx.NameFor(ri) == li &&
-                            cx.defs[li] is BTree<long, (Iix, Ident.Idents)> td)
-                        {
-                            var (ix, ids) = td[cx.sD];
-                            Iix nx = new (ix.lp, ix.sd, mm);
-                            cx.defs = new Ident.Idents(cx.defs + (li, td + (cx.sD, (nx, ids ?? Ident.Idents.Empty))));
-                        }
+                        if (cx.NameFor(le) is string li && cx.NameFor(ri) == li
+                            && cx._Ob(mm) is DBObject mo)
+                            cx.Add(li, mo);
                     }
                 lr = lr.Sort(cx, lo, false);
                 rr = rr.Sort(cx, ro, false);
@@ -368,7 +366,7 @@ namespace Pyrrho.Level4
                 r += (ps, cr);
             return r;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (JoinRowSet)base._Replace(cx, so, sv);
             var jc = joinCond;

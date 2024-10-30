@@ -131,9 +131,9 @@ namespace Pyrrho.Level3
             var ns = oi.names;
             tc += (TableColumn.Seq, tb.Length);
             if (ci.name != null)
-                ns += (ci.name, (tb.Length, tc.defpos));
+                ns += (ci.name,tc.defpos);
             cx.Add(tc);
-            oi += (ObInfo.Names, ns);
+            oi += (ObInfo._Names, ns);
             if (!tb.representation.Contains(tc.defpos))
             {
                 tb += (RowType, tb.rowType + tc.defpos);
@@ -359,41 +359,66 @@ namespace Pyrrho.Level3
             }
             return ts;
         }
-        internal override (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, BTree<string, (int, long?)>)
-ColsFrom(Context cx, long dp,
-BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr,
-BTree<string, (int, long?)> ns)
+       internal override (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, Names, BTree<long,Names>)
+ColsFrom(Context cx, long dp,BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, 
+           BTree<long, long?> tr, Names ns, BTree<long,Names> ds, long ap)
         {
             for (var b=super.First();b!=null;b=b.Next())
                 if (b.key() is Table st)
-                    (rt, rs, sr, tr, ns) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns);
+                    (rt, rs, sr, tr, ns, ds) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns, ds, ap);
             var j = 0;
             for (var b = rowType.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.value()??-1L] is TableColumn tc && !tr.Contains(tc.defpos))
+                if (cx._Ob(b.value() ?? -1L) is DBObject ob && !tr.Contains(ob.defpos))
                 {
-                    var nc = new SqlCopy(cx.GetUid(), cx, tc.NameFor(cx), dp, tc,
-                        BTree<long, object>.Empty + (QlValue.SelectDepth, cx.sD));
-                    var cd = representation[tc.defpos]??Content;
-                    if (cd != Content)
-                        cd = (Domain)cd.Instance(dp, cx, null);
-                    nc = (SqlCopy)cx.Add(nc+(_Domain,cd));
-                    var sq = (tc.flags == PColumn.GraphFlags.None)?-1: tc.seq; 
-                    rt = Add(rt, sq, nc.defpos, tc.defpos);
-                    sr = Add(sr, sq, tc.defpos, tc.defpos);
-                    rs += (nc.defpos, cd);
-                    tr += (tc.defpos, nc.defpos);
-                    ns += (nc.alias ?? nc.name ?? "", (j++, nc.defpos));
-                } else if (cx.obs[b.value()??-1L] is SqlElement se)
-                {
-                    rt += se.defpos;
-                    sr += se.defpos;
-                    rs += (se.defpos, se.domain);
-                    tr += (se.defpos, se.defpos);
-                    ns += (se.name ?? ("Col" + j), (j, se.defpos));
+                    var nm = ob.NameFor(cx);
+                    var nn = nm ?? ob.alias;
+                    var rv = cx._Ob(cx.names[nn ?? ""]) as SqlReview;
+                    var m = rv?.mem??BTree<long, object>.Empty;
+                    if (ob is TableColumn tc)
+                    {
+                        m += (_Domain, tc.domain);
+                        var qv = new QlInstance(rv?.defpos??cx.GetUid(), cx, nm??"", dp, tc,m);
+                        rt += qv.defpos;
+                        sr += ob.defpos;
+                        rs += (qv.defpos, qv.domain);
+                        tr += (tc.defpos, qv.defpos);
+                        ds += (tc.defpos, tc.domain.names);
+                        ob = qv;
+                        if (rv is not null)
+                        {
+                            cx.undefined -= rv.defpos;
+                            cx.Replace(rv, qv);
+                            cx.NowTry();
+                        }
+                        else
+                            cx.Add(qv);
+                    }
+                    else if (ob is QlInstance sv)
+                    {
+                        rt += ob.defpos;
+                        sr += sv.sPos;
+                        tr += (sv.sPos, sv.defpos);
+                        rs += (sv.defpos, sv.domain);
+                    }
+                    else
+                    {
+                        rt += ob.defpos;
+                        sr += ob.defpos;
+                        rs += (ob.defpos, ob.domain);
+                        tr += (ob.defpos, ob.defpos);
+                        ns += (nn ?? ("Col" + j), ob.defpos);
+                    }
                     j++;
+                    if (nm != null && ob is QlValue)
+                    {
+                        ns += (nm, ob.defpos);
+                        cx.Add(nm, ob);
+                    }
+         //           else
+         //               throw new DBException("42105");
                 }
-            return (rt, rs, sr, tr, ns);
-        }
+            return (rt, rs, sr, tr, ns, ds);
+        } 
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
             var r = base._Fix(cx,m);
@@ -512,16 +537,15 @@ BTree<string, (int, long?)> ns)
                             r += x;
             return (r == BList<Index>.Empty) ? null : r.ToArray();
         }
-        internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm, 
-            Grant.Privilege pr=Grant.Privilege.Select,string? a=null)
+        internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm, long ap,
+            Grant.Privilege pr=Grant.Privilege.Select, string? a=null, TableRowSet? ur = null)
         {
-            cx.AddDefs(id, this, a);
             cx.Add(this);
             cx.Add(framing);
             var m = mem + (_From, fm) + (_Ident,id);
             if (a != null)
                 m += (_Alias, a);
-            var rowSet = (RowSet)cx._Add(new TableRowSet(id.iix.dp, cx, defpos,m));
+            var rowSet = (RowSet)cx._Add(new TableRowSet(id.uid, cx, defpos, ap, m));
 //#if MANDATORYACCESSCONTROL
             Audit(cx, rowSet);
 //#endif

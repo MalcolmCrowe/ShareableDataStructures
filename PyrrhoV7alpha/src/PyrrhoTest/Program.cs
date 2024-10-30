@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("20 August 2024 Repeatable tests");
+                Console.WriteLine("22 October 2024 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -1273,7 +1273,7 @@ namespace Test
             Act(363, "MATCH (nm:Person {name:'Joe Hill'})-[mr { since:1995}]->() "
                 +"BEGIN nm.born = 1962; mr.since = 1996 END");
             CheckResults(25, 9, "MATCH (n:Person)-[:married{since:dt}]->() RETURN n.name,dt", 
-                "[{N.NAME:'Emil',DT:2000},{N.NAME:'Joe Hill',DT:1996}]");
+                "[{NAME:'Emil',DT:2000},{NAME:'Joe Hill',DT:1996}]");
             Act(364, "MATCH (ee:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),"
                 +"(ee)-[:owns]->(d),(d)-[:owned_by]->(ee)");
             Act(365, "MATCH (dg:Dog {name: 'Rex'})-[ro:owned_by]->() DELETE ro;");

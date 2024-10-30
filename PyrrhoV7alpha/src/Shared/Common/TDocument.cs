@@ -75,7 +75,7 @@ namespace Pyrrho.Common
             content = c;
             names = ns;
         }
-        internal ABookmark<int,(string,TypedValue)>? First()
+        internal new ABookmark<int,(string,TypedValue)>? First()
         {
             return content?.First();
         }
@@ -300,7 +300,7 @@ namespace Pyrrho.Common
         internal TDocument Add(string n, TypedValue tv)
         {
             if (names.Contains(n))
-                return new TDocument(new CList<(string,TypedValue)>(content,names[n],(n,tv)),
+                return new TDocument(new CList<(string, TypedValue)>(content, names[n], (n, tv)),
                     names);
             return new TDocument(content + (n, tv), names+(n,(int)names.Count));
         }
@@ -308,8 +308,9 @@ namespace Pyrrho.Common
         {
             get
             {
-                return (n == null)? this: 
-                    names.Contains(n)? content[names[n]].Item2 :TNull.Value;
+               if (n == null) return this;
+               var nk = names[n];
+               return (nk>=0L)?content[nk].Item2 :TNull.Value;
             }
         }
         internal bool GetBool(string n, bool def)
@@ -588,7 +589,7 @@ namespace Pyrrho.Common
                         i += 4;
                         var s = Encoding.UTF8.GetString(b, i, n - 1);
                         i += n;
-                        var ix = s.IndexOf(".");
+                        var ix = s.IndexOf('.');
                         if (ix < 0)
                             tv = (nm, new TInteger(Integer.Parse(s)));
                         else
@@ -663,7 +664,7 @@ namespace Pyrrho.Common
         internal static byte[] GetBytes(TypedValue v)
         {
             if (v == TNull.Value)
-                return Array.Empty<byte>();
+                return [];
             switch (v.dataType.kind)
             {
                 case Qlx.REAL:
@@ -700,7 +701,7 @@ namespace Pyrrho.Common
                         }
                         r.Add(0);
                         SetLength(r);
-                        return r.ToArray();
+                        return [.. r];
                     }
                 case Qlx.BLOB:
                     {
@@ -711,7 +712,7 @@ namespace Pyrrho.Common
                         return r;
                     }
                 case Qlx.BOOLEAN:
-                    return new byte[] { (byte)((v.ToBool() == false)?0:1) };
+                    return [(byte)((v.ToBool() == false)?0:1)];
                 case Qlx.TIMESTAMP:
                     return BitConverter.GetBytes(v.ToLong()??-1L);
                 case Qlx.NUMERIC:
@@ -726,7 +727,7 @@ namespace Pyrrho.Common
                     }
                     return BitConverter.GetBytes(v.ToInt()??0);
             }
-            return Array.Empty<byte>();
+            return [];
         }
         static byte[] ToBytes(string s)
         {
@@ -784,7 +785,7 @@ namespace Pyrrho.Common
             }
             r.Add(0);
             SetLength(r);
-            return r.ToArray();
+            return [.. r];
         }
 
         static bool IsZero((string,TypedValue) fv)
@@ -1132,7 +1133,7 @@ namespace Pyrrho.Common
             TDocument.SetLength(r);
             if (nbytes == 0)
                 nbytes = r.Count;
-            return r.ToArray();
+            return [.. r];
         }
     }
 }

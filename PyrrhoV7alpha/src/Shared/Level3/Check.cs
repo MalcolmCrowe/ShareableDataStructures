@@ -98,6 +98,18 @@ namespace Pyrrho.Level3
                 r += (Condition, ns);
             return r;
         }
+        internal override DBObject Apply(Context cx, Domain dm)
+        {
+            cx.Add(framing);
+            var f = ObTree.Empty;
+            if (cx.obs[search] is QlValue se)
+                f = se._Apply(cx, dm, f);
+            var r = this + (_Framing, framing + (Framing.Obs, f));
+            cx.Add(r);
+            cx.Add(r.framing);
+            cx.db += r;
+            return r;
+        }
         internal override Database Drop(Database d, Database nd)
         {
             if (nd.objects[checkobjpos] is DBObject ob)

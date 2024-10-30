@@ -230,11 +230,12 @@ namespace Pyrrho.Level3
     {
         internal const long
             _Metadata = -254, // CTree<Qlx,TypedValue>
+            Defs = -367,        // BTree<long,Names> DBObject  
             Description = -67, // string
             Inverts = -353, // long Procedure
             MethodInfos = -252, // BTree<string, BTree<CList<Domain>,long?>> Method
             Name = -50, // string
-            Names = -282, // BTree<string,(int,long?)> TableColumn (SqlValues in RowSet)
+            _Names = -282, // Names TableColumn (SqlValues in RowSet)
             SchemaKey = -286, // long (highwatermark for schema changes)
             Privilege = -253; // Grant.Privilege
         public string description => mem[Description]?.ToString() ?? "";
@@ -245,8 +246,10 @@ namespace Pyrrho.Level3
             ?? BTree<string, BTree<CList<Domain>, long?>>.Empty;
         public TMetadata metadata => (TMetadata?)mem[_Metadata] ?? TMetadata.Empty;
         public string? name => (string?)mem[Name] ?? "";
-        internal BTree<string,(int,long?)> names =>
-            (BTree<string, (int,long?)>?)mem[Names]??BTree<string,(int, long?)>.Empty;
+        internal Names names =>
+            (Names)(mem[_Names]??Names.Empty);
+        internal BTree<long,Names> defs =>
+                        (BTree<long, Names>)(mem[Defs] ?? BTree<long, Names>.Empty);
         internal long schemaKey => (long)(mem[SchemaKey] ?? -1L);
         /// <summary>
         /// ObInfo for Table, TableColumn, Procedure etc have role-specific RowType in domains
@@ -282,7 +285,7 @@ namespace Pyrrho.Level3
         }
         public static ObInfo operator +(ObInfo d, ObInfo s)
         {
-            return d + (Names, d.names + s.names);
+            return d + (_Names, d.names + s.names);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -384,19 +387,23 @@ namespace Pyrrho.Level3
             var ni = cx.Fix(inverts);
             if (ni!=inverts)
                 r += (Inverts, ni);
-            var ns = BTree<string, (int,long?)>.Empty;
+            var ns = Names.Empty;
             var ch = false;
             for (var b = names.First(); b != null; b = b.Next())
-                if (b.value().Item2 is long p)
+                if (b.value() is long p)
                 {
                     p = cx.Fix(p);
-                    if (p != b.value().Item2)
+                    if (p != b.value())
                         ch = true;
-                    ns += (b.key(), (b.value().Item1, p));
+                    ns += (b.key(), p);
                 }
             if (ch)
-                r += (Names, ns);
+                r += (_Names, ns);
             return r;
+        }
+        internal ObInfo _Fix(Context cx)
+        {
+            return new ObInfo(_Fix(cx, mem));
         }
         internal override Basis ShallowReplace(Context cx, long was, long now)
         {
@@ -406,7 +413,7 @@ namespace Pyrrho.Level3
                 r += (_Metadata, md);
             var ns = ShallowReplace(cx, names, was, now);
             if (ns != names)
-                r += (Names, ns);
+                r += (_Names, ns);
             return r;
         }
         static TMetadata ShallowReplace(Context cx,TMetadata md,long was, long now)
@@ -420,13 +427,12 @@ namespace Pyrrho.Level3
                 }
             return md;
         }
-        static BTree<string,(int,long?)>ShallowReplace(Context cx,BTree<string,(int,long?)> ns, long was, long now)
+        static Names ShallowReplace(Context cx,Names ns, long was, long now)
         {
             for (var b = ns.First(); b != null; b = b.Next())
             {
-                var (i, p) = b.value();
-                if (p!=null && p.Value==was)
-                    ns += (b.key(), (i,now));
+                if (b.value()==was)
+                    ns += (b.key(),now);
             }
             return ns;
         }

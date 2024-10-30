@@ -124,7 +124,8 @@ namespace Pyrrho.Level2
                 if ((pd<Transaction.Analysing||pd>=Transaction.Executables) && Committed(wr,pd))
                     break;
                 // commit the dependent physical and update wr relocation info
-                tr.physicals[pd]?.Commit(wr,tr);
+                if (pd>0)
+                    tr.physicals[pd]?.Commit(wr,tr);
                 // and try again
             }
             var ph = Relocate(wr);
@@ -132,6 +133,13 @@ namespace Pyrrho.Level2
             ph.Serialise(wr);
             ph.Install(wr.cx);
             return (tr,ph);
+        }
+        internal Physical _Commit(Writer wr,Transaction tr)
+        {
+            wr.WriteByte((byte)type);
+            Serialise(wr);
+            Install(wr.cx);
+            return this;
         }
         protected abstract Physical Relocate(Writer wr);
         /// <summary>

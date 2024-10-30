@@ -155,7 +155,7 @@ namespace Pyrrho.Level3
         {
             return new WindowSpecification(dp, m);
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (WindowSpecification)base._Replace(cx, so, sv);
             var d = depth;
@@ -207,12 +207,12 @@ namespace Pyrrho.Level3
             var r = base.QParams(cx).mem;
             var h = high?.distance;
             if (h is TQParam tq)
-                h = cx.values[tq.qid.dp];
+                h = cx.values[tq.qid];
             if (h is not null && h != high?.distance)
                 r += (High, h);
             var w = low?.distance;
             if (w is TQParam tr)
-                w = cx.values[tr.qid.dp];
+                w = cx.values[tr.qid];
             if (w is not null && w != low?.distance)
                 r += (Low, w);
             return new WindowSpecification(defpos,r);
@@ -237,32 +237,35 @@ namespace Pyrrho.Level3
             if (exclude != Qlx.Null) { sb.Append(" Exclude "); sb.Append(exclude); }
             return sb.ToString();
         }
-        internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
+        internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, RowSet sr, 
+            BTree<long, object> m, long ap)
         {
+            if (defpos < ap)
+                throw new PEException("PE50724");
             BList<DBObject> ls;
             var ch = false;
             var mm = mem;
-            if (partition!=Row)
+            if (partition!=Row && partition.defpos>ap)
             {
-                (ls, m) = partition.Resolve(cx, f, m);
+                (ls, m) = partition.Resolve(cx, sr, m, ap);
                 if (ls[0] is Domain np && np!=partition)
                 {
                     ch = true; 
                     mm += (PartitionType, np);
                 }
             }
-            if (order!=Row)
+            if (order!=Row && order.defpos>ap)
             {
-                (ls, m) = order.Resolve(cx, f, m);
+                (ls, m) = order.Resolve(cx, sr, m, ap);
                 if (ls[0] is Domain nd && nd != order)
                 {
                     ch = true; 
                     mm += (Order, nd);
                 }
             }
-            if (cx.obs[query] is RowSet rs )
+            if (cx.obs[query] is RowSet rs && query>ap)
             {
-                (ls, m) = rs.Resolve(cx, f, m);
+                (ls, m) = rs.Resolve(cx, sr, m, ap);
                 if (ls[0] is Domain nr && nr.defpos != rs.defpos)
                 {
                     ch = true;

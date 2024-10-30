@@ -432,9 +432,9 @@ namespace Pyrrho.Common
         }
     }
     // shareable
-    internal class TQParam(Domain dt, Iix id) : TypedValue(dt)
+    internal class TQParam(Domain dt, long id) : TypedValue(dt)
     {
-        internal readonly Iix qid = id;
+        internal readonly long qid = id;
 
         internal override TypedValue Fix(Context cx)
         {
@@ -445,7 +445,7 @@ namespace Pyrrho.Common
         }
         public override string ToString()
         {
-            return "?" + DBObject.Uid(qid.dp);
+            return "?" + DBObject.Uid(qid);
         }
     }
     

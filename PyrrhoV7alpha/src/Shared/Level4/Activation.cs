@@ -302,12 +302,11 @@ namespace Pyrrho.Level4
                         if (c.value() is long p && cx.obs[p] is QlValue sc 
                             && sc.infos[role.defpos] is ObInfo ci)
                         {
-                            sc = new SqlCopy(GetUid(), cx, ci?.name ?? sc?.alias ?? sc?.name ?? "", cp, p);
+                            sc = new QlInstance(GetUid(), cx, ci?.name ?? sc?.alias ?? sc?.name ?? "", cp, p);
                             Add(sc);
                             vs += sc;
                             tr += (p, sc.defpos);
                         }
-                    var cd = new Domain(GetUid(), cx, Qlx.TABLE, vs); //?? where should this be used?
                     for (var c = b.value()?.First(); c != null; c = c.Next())
                         if (c.value() is Domain xk && table.FindIndex(db, xk)?[0] is Level3.Index x)
                         {
@@ -322,16 +321,16 @@ namespace Pyrrho.Level4
                                 if (rb.value() is long rp && pb.value() is long pp)
                                 xm += (rp, pp);
                             for (var d = ts.matches.First(); d != null; d = d.Next())
-                                if (obs[d.key()] is SqlCopy sc && xm[sc.copyFrom] is long xp)
+                                if (obs[d.key()] is QlInstance sc && xm[sc.sPos] is long xp)
                                     fl += (xp, d.value());
-                            var rf = new TableRowSet(GetUid(), this, b.key());
+                            var rf = new TableRowSet(GetUid(), this, b.key(), 0L);
                             if (fl != CTree<long, TypedValue>.Empty)
                                 rf += (cx, RowSet.Filter, fl);
                             Add(rx);
                             Add(rt);
                             for (var xb = rf.rowType.First(); xb != null; xb = xb.Next())
-                                if (xb.value() is long xp && obs[xp] is SqlCopy xc 
-                                    && db.objects[xc.copyFrom] is TableColumn tc)
+                                if (xb.value() is long xp && obs[xp] is QlInstance xc 
+                                    && db.objects[xc.sPos] is TableColumn tc)
                                     Add(tc);
                             if ((obs[rf.data] ?? obs[rf.defpos]) is RowSet da)
                             {
@@ -416,17 +415,17 @@ namespace Pyrrho.Level4
                         var vb = cx.obs[ua.vbl];
                         if (vb is SqlSecurity)
                             security = cx.obs[ua.val] as QlValue;
-                        else if (ts.representation.Contains(ua.vbl)==true)
+                        else if (ts.iSMap[ua.vbl] is long vp)
                         {
                             if (vb as QlValue == null)
                                 throw new DBException("22G0X");
-                            while (vb is SqlCopy sc && db.objects[sc.copyFrom] is DBObject oc) // Views have indirection here
+                            while (vb is QlInstance sc && db.objects[sc.sPos] is DBObject oc) // Views have indirection here
                                 vb = oc;
                             if (vb is TableColumn tc && tc.generated.gen != Generation.No)
                                 throw new DBException("22G0X", vb.NameFor(this)).Mix();
                             if (vb.Denied(cx, Grant.Privilege.Update))
                                 throw new DBException("42105").Add(Qlx.UPDATE, new TChar(vb.NameFor(this)));
-                            updates += (vb.defpos, ua);
+                            updates += (vp, ua);
                         }
                     }
                     //  Values in a row can be modified in 3 ways:
@@ -692,10 +691,10 @@ namespace Pyrrho.Level4
                         throw new DBException("42105").Add(Qlx.UPDATE, new TChar(NameFor(ts.target)??""));
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
                     if (cx.obs[ass.key().vbl] is QlValue c){
-                        if (c is not SqlCopy && c.GetType().Name!="QlValue")
+                        if (c is not QlInstance && c.GetType().Name!="QlValue")
                             throw new DBException("22G0X");
                         DBObject oc = c;
-                        while (oc is SqlCopy sc && cx.obs[sc.copyFrom] is DBObject co) // Views have indirection here
+                        while (oc is QlInstance sc && cx.obs[sc.sPos] is DBObject co) // Views have indirection here
                             oc = co;
                         if (c.Denied(cx, Grant.Privilege.Update))
                             throw new DBException("42105").Add(Qlx.COLUMN, new TChar(c.name??""));
@@ -732,8 +731,8 @@ namespace Pyrrho.Level4
                                     && mb.Value() is long pv)
                             {
                                 var rc = tb.tableRows[pv];
-                                var sc = (SqlCopy?)obs[ru.urlCol];
-                                u = rc?.vals[sc?.copyFrom ?? -1L];
+                                var sc = (QlInstance?)obs[ru.urlCol];
+                                u = rc?.vals[sc?.sPos ?? -1L];
                             }
                     if (u == null || u == TNull.Value)
                         return;
@@ -860,10 +859,10 @@ namespace Pyrrho.Level4
                         throw new DBException("42105").Add(Qlx.VIEW, new TChar(_vw.NameFor(cx)));
                     for (var ass = _rr.assig.First(); ass != null; ass = ass.Next())
                     if (cx.obs[ass.key().vbl] is QlValue c){
-                        if (c is not SqlCopy && c.GetType().Name!="QlValue")
+                        if (c is not QlInstance && c.GetType().Name!="QlValue")
                             throw new DBException("22G0X");
                         DBObject oc = c;
-                        while (oc is SqlCopy sc && cx.obs[sc.copyFrom] is DBObject oo) // Views have indirection here
+                        while (oc is QlInstance sc && cx.obs[sc.sPos] is DBObject oo) // Views have indirection here
                             oc = oo;
                         if (oc is TableColumn tc && tc.generated != GenerationRule.None)
                             throw cx.db.Exception("22G0X", c.NameFor(cx)).Mix();

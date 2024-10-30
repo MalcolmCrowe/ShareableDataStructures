@@ -173,7 +173,7 @@ namespace Pyrrho.Level2
             wr.PutIdent(oldTable);
             wr.PutIdent(newTable);
             if (src != null)
-                src = new Ident(src.ident, wr.cx.Ix(wr.Length));
+                src = new Ident(src.ident, wr.Length);
             src = wr.PutIdent(src);
             base.Serialise(wr);
         }
@@ -202,7 +202,7 @@ namespace Pyrrho.Level2
         {
             if (rdr.context.db.objects[target] is not DBObject ob || src==null)
                 return;
-            var psr = new Parser(rdr,new Ident(src.ident, rdr.context.Ix(ppos + 1)));
+            var psr = new Parser(rdr,new Ident(src.ident, ppos + 1));
             def = psr.ParseTriggerDefinition(this);
         }
         /// <summary>
@@ -214,7 +214,7 @@ namespace Pyrrho.Level2
             var sb = new System.Text.StringBuilder();
             sb.Append("Trigger ");
             sb.Append(name);
-            sb.Append(" ");
+            sb.Append(' ');
             sb.Append(tgtype.ToString());
             if (cols != null)
             {
@@ -224,7 +224,7 @@ namespace Pyrrho.Level2
                     sb.Append(cm); cm = ",";
                     sb.Append(DBObject.Uid(p));
                 }
-                sb.Append(")");
+                sb.Append(')');
             }
             sb.Append(" on ");
             sb.Append(Pos(target));
@@ -240,9 +240,9 @@ namespace Pyrrho.Level2
         {
             if (v == null || v=="")
                 return;
-            sb.Append(",");
+            sb.Append(',');
             sb.Append(v);
-            sb.Append("=");
+            sb.Append('=');
             sb.Append(c);
         }
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
@@ -284,9 +284,9 @@ namespace Pyrrho.Level2
             var (tr, ph) = base.Commit(wr, t);
             var pt = (PTrigger)ph;
             var tg = (DBObject)(tr?.objects[defpos] ?? throw new PEException("PE2101"));
-            var m = tg.mem + (DBObject._Framing, pt.framing) + (Trigger.OldRow, pt.oldRow?.iix.dp ?? -1L)
-                + (Trigger.NewRow, pt.newRow?.iix.dp ?? -1) + (Trigger.OldTable, pt.oldTable?.iix.dp ?? -1)
-                + (Trigger.NewTable, pt.newTable?.iix.dp ?? -1L);
+            var m = tg.mem + (DBObject._Framing, pt.framing) + (Trigger.OldRow, pt.oldRow?.uid ?? -1L)
+                + (Trigger.NewRow, pt.newRow?.uid ?? -1L) + (Trigger.OldTable, pt.oldTable?.uid ?? -1L)
+                + (Trigger.NewTable, pt.newTable?.uid ?? -1L);
             tg = (Trigger)tg.New(m);
             var co = (DBObject)(tr.objects[target] ?? throw new PEException("PE2102"));
             co = co.AddTrigger((Trigger)tg);

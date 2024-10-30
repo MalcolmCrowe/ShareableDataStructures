@@ -105,7 +105,7 @@ namespace Pyrrho.Level2
 			arity = rb.GetInt();
             if (type==Type.PProcedure2)
                 rb.GetLong();
-            source = new Ident(rb.GetString(), rb.context.Ix(ppos + 1));
+            source = new Ident(rb.GetString(), ppos + 1);
 			base.Deserialise(rb);
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
@@ -149,10 +149,11 @@ namespace Pyrrho.Level2
             if (source == null)
                 return;
             var psr = new Parser(rdr.context, source);
-            psr.cx.defs = Ident.Idents.Empty;
+            psr.cx.defs = BTree<long,Names>.Empty;
+            psr.cx.names = rdr.context.anames;
             psr.cx.obs = ObTree.Empty;
             psr.cx.depths = BTree<int, ObTree>.Empty;
-            var n = new Ident(name, new Iix(ppos));
+            var n = new Ident(name, ppos);
             var (rt, dt) = psr.ParseProcedureHeading(n);
             psr.cx._Add(dt);
             parameters = rt;
@@ -160,11 +161,13 @@ namespace Pyrrho.Level2
             framing = new Framing(psr.cx,nst); // heading only
             var pr = (Procedure?)Install(psr.cx);
             if (pr is not null)
-            {
+            { 
                 psr.cx.AddParams(pr);
+                psr.cx.anames += (n.ident, ppos);
+                rdr.context.defs += (ppos, pr.names);
                 rdr.context.Add(pr);
             }
-            psr.LexPos(); //synchronise with CREATE
+            psr.LexDp(); //synchronise with CREATE
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
             if (psr.tok != Qlx.EOF && psr.ParseStatement(dt,true) is Executable bd)
@@ -180,11 +183,11 @@ namespace Pyrrho.Level2
                 throw new DBException("42108", name);
             var oi = new ObInfo(name,
                 Grant.Privilege.Execute | Grant.Privilege.GrantExecute);
-            var ns = BTree<string, (int, long?)>.Empty;
+            var ns = Names.Empty;
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long q && framing.obs[q] is QlValue v &&  v.name is string n)
-                    ns += (n, (b.key(), q));
-            oi += (ObInfo.Names, ns);
+                    ns += (n, q);
+            oi += (ObInfo._Names, ns);
             var pr = new Procedure(this, 
                 BTree<long, object>.Empty + (DBObject.Definer, ro.defpos)
                 + (DBObject._Framing, framing) + (Procedure.Body, proc)

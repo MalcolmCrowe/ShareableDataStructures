@@ -41,21 +41,29 @@ namespace Pyrrho.Level2
                 ne.Fix(cx);
             var rt = BList<long?>.Empty;
             var rs = CTree<long,Domain>.Empty;
+            var cs = CTree<string,long>.Empty;
             for (var b = un.First(); b != null; b = b.Next())
                 if (b.key() is Table sp)
                     for (var c = sp.rowType.First(); c != null; c = c.Next())
                         if (cx.db.objects[c.value() ?? -1L] is TableColumn tc
+                            && tc.NameFor(cx) is string cn
                             && !rs.Contains(tc.defpos))
                         {
+                            cs += (cn, tc.defpos);
                             rt += tc.defpos;
                             rs += (tc.defpos, tc.domain);
-                        } 
-            for (var b=dm1.rowType.First(); b != null;b=b.Next())
+                        }
+            for (var b = dm1.rowType.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.value() ?? -1L] is TableColumn tc
+                    && tc.NameFor(cx) is string cn
                     && !rs.Contains(tc.defpos))
                 {
-                    rt += tc.defpos;
-                    rs += (tc.defpos, tc.domain);
+                    if (cs[cn] is long mp && cx.db.objects[mp] is TableColumn mc)
+                        cx.MergeColumn(tc.defpos, mp);
+                    else {
+                        rt += tc.defpos;
+                        rs += (tc.defpos, tc.domain);
+                    } 
                 }
             dataType = dm1 + (ObInfo.Name, nm) + (Domain.RowType,rt) + (Domain.Representation,rs);
             under = un;
@@ -157,12 +165,12 @@ namespace Pyrrho.Level2
             var st = rdr.GetLong(); // a relic of the past
             var dt = dataType;
             m = m + (Domain.Representation, dt.representation) + (Domain.RowType, dt.rowType);
-            var nn = CTree<string, long>.Empty;
-            var ns = BTree<string, (int, long?)>.Empty;
+            var nn = Names.Empty;
+            var ns = Names.Empty;
             for (var b = dt.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && rdr.context.NameFor(p) is string n)
                 {
-                    ns += (n, (b.key(), p));
+                    ns += (n, p);
                     nn += (n, p);
                 }
             m = m + (ObInfo.Name, name) + (Domain.Kind, k);
@@ -174,12 +182,12 @@ namespace Pyrrho.Level2
                 var ui = un1.infos[rdr.context.role.defpos];
                 var rs = dt.representation;
                 for (var b = ui?.names.First(); b != null; b = b.Next())
-                    if (ns[b.key()].Item2 is long p && p > dt.defpos)
+                    if (ns[b.key()] is long p && p > dt.defpos)
                     {
                         rs -= p;
                         ns -= b.key();
                     }
-                var tr = BTree<int, long?>.Empty;
+                var tr = BList<long?>.Empty;
                 for (var b = ns.First(); b != null; b = b.Next())
                     tr += b.value();
                 var nrt = BList<long?>.Empty;
@@ -191,7 +199,7 @@ namespace Pyrrho.Level2
                 m += (Domain.RowType, nrt);
                 m += (Domain.Under, under);
             }
-            oi += (ObInfo.Names, ns);
+            oi += (ObInfo._Names, ns);
             m += (DBObject.Infos, new BTree<long, ObInfo>(rdr.context.role.defpos, oi));
             dataType = k switch
             {
@@ -281,21 +289,22 @@ namespace Pyrrho.Level2
                         ?? throw new PEException("PE070405");
                     un += (so, true);
                 }
-            if (un.CompareTo(dataType.super)!=0)
+            if (un.CompareTo(dataType.super) != 0)
             {
                 dataType += (Domain.Under, un);
                 under = un;
             }
-            var st = CTree<long,bool>.Empty;
+            var st = CTree<long, bool>.Empty;
             for (var b = dataType.subtypes?.First(); b != null; b = b.Next())
-                if (cx.obs[b.key()] is UDType so){
+                if (cx.obs[b.key()] is UDType so)
+                {
                     if (so.defpos >= Transaction.Analysing
                     && so.defpos < Transaction.Executables)
                         so = cx.db.objects[cx.role.dbobjects[so.name ?? ""] ?? -1L] as NodeType
                         ?? throw new PEException("PE070405");
                     st += (so.defpos, true);
                 }
-            if (st.CompareTo(dataType.subtypes)!=0)
+            if (st.CompareTo(dataType.subtypes) != 0)
                 dataType += (Domain.Subtypes, st);
             var ps = CTree<long, bool>.Empty;
             var pn = CTree<string, bool>.Empty;
@@ -308,7 +317,7 @@ namespace Pyrrho.Level2
             ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var ss = CTree<Domain, bool>.Empty;
             var oi = dataType.infos[cx.role.defpos];
-            if (oi is null || oi.name != name || oi.names == BTree<string, (int, long?)>.Empty)
+            if (oi is null || oi.name != name || oi.names == Names.Empty)
             {
                 var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
                     Grant.Privilege.Update | Grant.Privilege.Delete |
@@ -318,8 +327,8 @@ namespace Pyrrho.Level2
                 oi = new ObInfo(name, priv);
                 oi += (ObInfo.SchemaKey, ppos);
                 var ns = dataType.HierarchyCols(cx);
-                oi += (ObInfo.Names, ns);
-            } 
+                oi += (ObInfo._Names, ns);
+            }
             var ons = oi.names;
             if (dataType is UDType ut)
                 for (var b = ut.super.First(); b != null; b = b.Next())
@@ -331,7 +340,7 @@ namespace Pyrrho.Level2
                         dataType += (Table.Triggers, ut.triggers + tu.triggers);
                         tu += (Domain.Subtypes, tu.subtypes + (defpos, true));
                         tu += (Table.TableRows, tu.tableRows + ut.tableRows);
-                        var tn = tu.infos[cx.role.defpos]?.names ?? BTree<string, (int, long?)>.Empty;
+                        var tn = tu.infos[cx.role.defpos]?.names ?? Names.Empty;
                         cx.db += tu;
                         for (var c = tu.subtypes.First(); c != null; c = c.Next())
                             if (cx.db.objects[c.key()] is UDType at)
@@ -346,10 +355,11 @@ namespace Pyrrho.Level2
                         ss += (tu, true);
                         ons += tn;
                     }
-            oi += (ObInfo.Names, ons);
+            oi += (ObInfo._Names, ons); 
             var os = new BTree<long, ObInfo>(Database._system.role.defpos, oi)
                 + (ro.defpos, oi);
-            dataType += (Domain.Under, ss);
+            if (ss?.Count > 0L)
+                dataType += (Domain.Under, ss);
             dataType = dataType + (DBObject.Infos, os) + (DBObject.Definer, cx.role.defpos);
             cx.Add(dataType);
             if (cx.db.format < 51)
@@ -370,7 +380,7 @@ namespace Pyrrho.Level2
                 nt.AddNodeOrEdgeType(cx);
                 cx.Add(nt);
             }
-            dataType =  (Domain)dataType.Fix(cx);
+            dataType = (Domain)dataType.Fix(cx);
             return dataType;
         }
     }

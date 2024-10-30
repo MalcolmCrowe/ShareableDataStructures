@@ -518,7 +518,9 @@ namespace Pyrrho.Level3
                 for (int counter = 0; ; counter++)
                 {
                     rdr.context.obs = ObTree.Empty;
-                    rdr.context.defs = Ident.Idents.Empty;
+                    rdr.context.depths = BTree<int, ObTree>.Empty;
+                    rdr.context.defs = BTree<long,Names>.Empty;
+                    rdr.context.names = Names.Empty;
                     p = rdr.Create();
                     if (p is EndOfFile)
                         break;

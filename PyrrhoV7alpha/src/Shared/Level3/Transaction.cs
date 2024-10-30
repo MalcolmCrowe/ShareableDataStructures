@@ -392,7 +392,7 @@ namespace Pyrrho.Level3
                 {
                     if (sk != 0L && ti.schemaKey > sk)
                         throw new DBException("2E307", ti.name);
-                    fm = tb.RowSets(new Ident(ti.name, cx.GetIid()), cx, tb, cx.GetPrevUid());
+                    fm = tb.RowSets(new Ident(ti.name, cx.GetUid()), cx, tb, cx.GetPrevUid(), 0L);
                     j++;
                 }
                 switch (method)
@@ -478,12 +478,12 @@ namespace Pyrrho.Level3
                     {
                         var tbs = cp[(6 + off)..];
                         tbs = WebUtility.UrlDecode(tbs);
-                        var tbn = new Ident(tbs, cx.GetIid());
+                        var tbn = new Ident(tbs, cx.GetUid());
                         if(cx.db==null || cx.db.role==null 
                             ||objects[cx.db.role.dbobjects[tbn.ident]??-1L] is not Table tb)
                             throw new DBException("42107", tbn).Mix();
-                        f ??= tb.RowSets(tbn,cx,tb,tbn.iix.dp);
-                        var lp = cx.Ix(uid + 6 + off);
+                        f ??= tb.RowSets(tbn,cx,tb,tbn.uid, 0L);
+                        var lp = uid + 6 + off;
                         break;
                     }
                 case "procedure":
@@ -537,9 +537,9 @@ namespace Pyrrho.Level3
 #endif
                         if (f == null)
                             throw new DBException("42000", ks).ISO();
-                        string[] sk = Array.Empty<string>();
+                        string[] sk = [];
                         if (ks.Contains("={") || ks[0] == '{')
-                            sk = new string[] { ks };
+                            sk = [ks];
                         else
                             sk = ks.Split(',');
                         var n = sk.Length;
@@ -547,13 +547,13 @@ namespace Pyrrho.Level3
                         var wt = CTree<long, bool>.Empty;
                         for (var si = 0; si < n; si++)
                         {
-                            var v = psr.ParseSqlValue(new Ident(sk[si], cx.GetIid()), Domain.Bool);
-                            var ls = v.Resolve(cx, f.defpos, BTree<long, object>.Empty).Item1;
+                            var v = psr.ParseSqlValue(new Ident(sk[si], cx.GetUid()), Domain.Bool);
+                            var ls = v.Resolve(cx, f, BTree<long, object>.Empty,0L).Item1;
                             for (var c = ls.First(); c != null; c = c.Next())
                                 if (c.value() is QlValue cv)
                                     wt += cv.Disjoin(cx);
                         }
-                        cx.Add(f + (cx,RowSet._Where,wt));
+                        f = (RowSet)cx.Add(f + (cx,RowSet._Where,wt));
                         break;
                     }
                 case "distinct":
@@ -737,8 +737,8 @@ namespace Pyrrho.Level3
                     if (cx.obs[cc] is QlValue sv && sv.name != null)
                     {
                         n = sv.name;
-                        if (sv is SqlCopy sc && ix != null)
-                            isk = ix.keys.rowType.Has(sc.copyFrom);
+                        if (sv is QlInstance sc && ix != null)
+                            isk = ix.keys.rowType.Has(sc.sPos);
                     }
                     else if (cx._Ob(cc) is DBObject oc && oc.infos[cx.role.defpos] is ObInfo ci && ci.name != null)
                         n = ci.name;

@@ -38,7 +38,7 @@ namespace Pyrrho.Level3
             _Depth = -66,  // int (computed on cx.Add())
             _Domain = -192, // Domain 
             _Framing = -167, // Framing
-            _From = -306, // long RowSet (or maybe an edge connector SqlCopy)
+            _From = -306, // long RowSet (or maybe an edge connector QlInstance)
             _Ident = -409, // Ident (used in ForwardReference, SqlReview, and RowSet)
             Infos = -126, // BTree<long,ObInfo> Role
             LastChange = -68, // long (formerly called Ppos)
@@ -66,6 +66,8 @@ namespace Pyrrho.Level3
     (BTree<long, ObInfo>?)mem[Infos] ?? BTree<long, ObInfo>.Empty;
         internal long from => (long)(mem[_From] ?? -1L);
         internal string name => (string)(mem[ObInfo.Name] ?? "");
+        public Names names => (Names)(mem[ObInfo._Names] ?? Names.Empty);
+        public TMetadata metadata => (TMetadata)(mem[ObInfo._Metadata] ?? TMetadata.Empty);
         internal BList<Ident>? chain => (BList<Ident>?)mem[Chain];
         public virtual Domain domain => (Domain)(mem[_Domain] ?? Domain.Null);
         /// <summary>
@@ -106,7 +108,7 @@ namespace Pyrrho.Level3
             cx.done += (defpos, r);
             return r;
         }
-        protected virtual DBObject _Replace(Context cx, DBObject was, DBObject now)
+        internal virtual DBObject _Replace(Context cx, DBObject was, DBObject now)
         {
             return this;
         }
@@ -259,12 +261,20 @@ namespace Pyrrho.Level3
                 return this;
             return cx.Add(this + (_From, q));
         }
+        internal virtual DBObject Apply(Context cx,Domain dm)
+        {
+            throw new NotImplementedException();
+        }
+        internal virtual ObTree _Apply(Context cx,DBObject ob,ObTree f)
+        { 
+            throw new NotImplementedException(); 
+        }
         internal CTree<long, TypedValue> Frame(CTree<long, TypedValue> vs)
         {
             var map = BTree<long, long?>.Empty;
             for (var b = framing.obs.First(); b != null; b = b.Next())
-                if (b.value() is SqlCopy sc)
-                    map += (sc.copyFrom, sc.defpos);
+                if (b.value() is QlInstance sc)
+                    map += (sc.sPos, sc.defpos);
             var r = CTree<long, TypedValue>.Empty;
             for (var b = vs.First(); b != null; b = b.Next())
                 if (map[b.key()] is long s && b.value() is TypedValue v)
@@ -324,7 +334,11 @@ namespace Pyrrho.Level3
         {
             var m = mem;
             if (infos[cx.role.defpos] is ObInfo oi)
-                m += (Infos, infos + (cx.role.defpos, oi+ (ObInfo._Metadata, pm.detail)));
+            {
+                var om = oi.metadata + pm.detail;
+                m += (Infos, infos + (cx.role.defpos, oi+(ObInfo._Metadata,om)));
+                m += (ObInfo._Metadata, om);
+            }
             m += (LastChange, pm.ppos);
             var r = New(defpos, m);
             cx.db += r;
@@ -419,7 +433,19 @@ namespace Pyrrho.Level3
         {
             cx.db += cx.obs[m.proc] ?? throw new PEException("PE1006");
         }
-        internal virtual (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
+        /// <summary>
+        /// Some QlValues such as SqlReview, ForwardReference, SqlStar, SqlMethodCall
+        /// need to be resolved during parsing. This method does this as soon as
+        /// a potential receiving object rs is being constructed by the parser.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="sr">The source rowset for rs</param>
+        /// <param name="m">Proposed details for rs, may be updated</param>
+        /// <param name="ap">Proposed defpos of rs</param>
+        /// <returns>a list of candidate objects to replace this, and an update to m</returns>
+        /// <exception cref="NotImplementedException">Implementation is by subclasses</exception>
+        internal virtual (BList<DBObject>,BTree<long,object>) Resolve(Context cx, RowSet sr,
+            BTree<long,object>m, long ap)
         {
             throw new NotImplementedException();
         }
@@ -500,18 +526,17 @@ namespace Pyrrho.Level3
         {
             throw new PEException("PE481");
         }
-        internal virtual RowSet RowSets(Ident id,Context cx, Domain q, long fm, 
-            Grant.Privilege pr=Grant.Privilege.Select,string? a=null)
+        internal virtual RowSet RowSets(Ident id,Context cx, Domain q, long fm, long ap, 
+            Grant.Privilege pr=Grant.Privilege.Select,string? a=null,TableRowSet? ur = null)
         {
-            return new TrivialRowSet(id.iix.dp, cx, new TRow(q, cx.values),a);
+            return new TrivialRowSet(id.uid, cx, new TRow(q, cx.values),a);
         }
         /// <summary>
         /// Creates new instances of objects in framing lists.
-        /// Label instances of framing objects with instanceOf (see Context.Add) 
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
-        internal virtual DBObject Instance(long lp,Context cx,BList<Ident>?cs=null)
+        internal virtual DBObject Instance(long lp,Context cx,RowSet? us = null)
         {
             cx.Add(framing);
             return this;
@@ -627,21 +652,13 @@ namespace Pyrrho.Level3
         internal int? IdPos(BList<Ident> ids)
         {
             for (var b = ids.First(); b != null; b = b.Next())
-                if (b.value().iix.lp == defpos)
+                if (b.value().uid == defpos)
                     return b.key();
             return null;
         }
         internal virtual bool Verify(Context cx)
         {
-            if (defpos < Transaction.Analysing || defpos>= Transaction.HeapStart)
-                return true;
-            if (GetType().Name!="QlValue" && from < 0)
-                return false;
-            if (chain is null || chain==BList<Ident>.Empty)
-                return true;
-            if (chain.Count == 1L && chain[0]?.iix.dp == defpos)
-                return true;
-            return false;
+            return true;
         }
         public override string ToString()
         {
@@ -736,6 +753,88 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+    internal class Names : BTree<string,long?>
+    {
+        public new readonly static Names Empty = new();
+        internal Names() : base(null) { }
+        internal Names(string k, long? v) : base(k, v) { }
+        internal Names(Bucket<string, long?> b) : base(b) { }
+        public static Names operator +(Names tree, (string, long) v)
+        {
+            var (p, x) = v;
+            return (p=="" || p is null) ? tree : (Names)tree.Add(p, x);
+        }
+        public static Names operator +(Names tree, Names a)
+        {
+            return (Names)tree.Add(a);
+        }
+        public static Names operator -(Names tree, string k)
+        {
+            return (Names)tree.Remove(k);
+        }
+        public static Names operator-(Names a,Names b)
+        {
+            for (var c = b.First(); c != null; c = c.Next())
+                a -= c.key();
+            return a;
+        }
+        public new long this[string n] => base[n]??-1L;
+        
+        protected override ATree<string, long?> Add(string k, long? v)
+        {
+            if (root is not null && Contains(k))
+                return new Names(root.Update(this, k, v));
+            return Insert(k, v);
+        }
+        public override ATree<string, long?> Add(ATree<string, long?> a)
+        {
+            var tree = this;
+            for (var b = a?.First(); b != null; b = b.Next())
+                tree = (Names)tree.Add(b.key(), b.value());
+            return tree;
+        }
+        protected override ATree<string, long?> Insert(string k, long? v) // this does not contain k
+        {
+            if (root == null || root.total == 0)  // empty BTree
+                return new Names(k, v);
+            if (root.count == Size)
+                return new Names(root.Split()).Add(k, v);
+            return new Names(root.Add(this, k, v));
+        }
+        internal override ATree<string, long?> Update(string k, long? v) // this Contains k
+        {
+            if (root == null || !Contains(k))
+                throw new Exception("PE01");
+            return new Names(root.Update(this, k, v));
+        }
+
+        internal override ATree<string, long?> Remove(string k)
+        {
+            if (root == null || !Contains(k))
+                return this;
+            var b = root.Remove(this, k);
+            return (b == null) ? Empty : new Names(b);
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder();
+            var cm = "(";
+            for (var b = First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var v = b.value();
+                if (k is not null)
+                {
+                    sb.Append(cm); cm = ", ";
+                    sb.Append(k); sb.Append('=');
+                    sb.Append(DBObject.Uid(v??-1L));
+                }
+            }
+            if (cm != "(")
+                sb.Append(')');
+            return sb.ToString();
+        }
+    }
     internal class ForwardReference : DBObject
     {
         internal const long
@@ -751,7 +850,7 @@ namespace Pyrrho.Level3
         /// <param name="dr">Definer</param>
         /// <param name="m">Other properties, e.g. domain, depth</param>
         public ForwardReference(Ident n, BList<Ident> ch, Context cx)
-            : base(n.iix.lp, n.iix.dp, cx.Name(n,ch))
+            : base(n.uid,cx.Name(n,ch))
         {
             cx.Add(this);
             cx.undefined += (defpos,cx.sD);
@@ -774,34 +873,32 @@ namespace Pyrrho.Level3
         {
             return new ForwardReference(dp,m);
         }
-        internal override (BList<DBObject>, BTree<long, object>) Resolve(Context cx, long f, BTree<long, object> m)
+        /// <summary>
+        /// A ForwardReference U is always a structured reference, 
+        /// and the call of resolve occurs when a potential receiving object rs is to be
+        /// constructed by the parser. 
+        /// We have called U.Resolve because U is potentially referenced in the query rs.
+        /// Resolution of U itself will orhpan this.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="sr">The source rowset for rs</param>
+        /// <param name="m">Proposed details for rs, may be updated</param>
+        /// <param name="ap">Proposed defpos of rs</param>
+        /// <returns>an empty list as no candidate objects will replace U, and an update to m</returns>
+        internal override (BList<DBObject>, BTree<long,object>) Resolve(Context cx, RowSet sr, 
+            BTree<long,object> m, long ap)
         {
-            var rs = cx.obs[f] as RowSet;
-            for (var b = rs?.rowType.First(); b != null; b = b.Next())
-                if (cx.obs[b.value() ?? -1L] is QlValue sv && sv.name == name && name is not null
-                    && cx.defs[name] is BTree<long, (Iix, Ident.Idents)> t)
-                {
-                    var si = sv.domain.infos[cx.role.defpos];
-                    var (ix, ds) = t[cx.sD - 1];
-                    cx.undefined -= defpos;
-                    cx.defs += (name, new Iix(ix, sv.defpos), ds);
-                    for (var c = ds.First(); c != null; c = c.Next())
-                        if (cx.obs[c.value()[cx.sD - 1].Item1.dp] is QlValue sc && sc.name == c.key())
-                        {
-                            cx.undefined -= sc.defpos;
-                            if (si is not null)
-                                sc = new SqlCopy(sc.defpos, cx, sc.name, defpos,
-                                    cx.db.objects[si.names[c.key()].Item2 ?? -1L] as DBObject);
-                            else
-                                sc = new SqlField(sc.defpos, sc.name, -1, defpos, Domain.Content, defpos);
-                            sv = new SqlValueExpr(defpos, cx, Qlx.DOT, sv, sc, Qlx.NO);
-                            cx.Add(sv);
-                            cx.Replace(sc, sv);
-                            cx.Add(sc);
-                            break;
-                        }
-                }
-            return (BList<DBObject>.Empty, m);
+            // If rs.name or rs.alias matches this (U), we can consider resolving all U's descendants: 
+            // they should be references to columns of rs.
+            // It is possible that sr itself will define this: but in this case
+            // we do NOT replace this with sr, instead the references to U will be orphaned. 
+            if (name == sr.name || name == sr.alias)
+            {
+                for (var b = domain.rowType.First(); b != null; b = b.Next())
+                    if (cx.obs[b.value() ?? -1L] is DBObject c && c.defpos>ap)
+                        (_, m) = c.Resolve(cx, sr, m, ap); // will test if c.defpos>rs.defpos
+            }
+            return (BList<DBObject>.Empty,m);
         }
         internal override bool Verify(Context cx)
         {

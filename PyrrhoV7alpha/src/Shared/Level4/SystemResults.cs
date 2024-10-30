@@ -52,17 +52,18 @@ namespace Pyrrho.Level4
         public static SystemTable operator+(SystemTable s,SystemTableColumn c)
         {
             var oi = s.infos[s.role]??throw new PEException("PE010100");
-            oi += (ObInfo.Names, oi.names+(c.name,(c.seq,c.defpos)));
+            oi += (ObInfo._Names, oi.names+(c.name,c.defpos));
             return s + (SysCols, s.sysCols + (c.defpos, c)) + (Infos, s.infos+(s.role,oi))
                 + (InstanceRowSet.SRowType, s.sRowType + c.defpos)
                 + (RowType, s.rowType + c.defpos)
                 + (Representation, s.representation+(c.defpos,c.domain));
              //   + (TableCols, s.tableCols + (c.defpos, c.domain));
         }
-        internal override (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, BTree<string, (int, long?)>)
-         ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr, BTree<string, (int, long?)> ns)
+        internal override (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, Names, BTree<long,Names>)
+         ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr, 
+            Names ns, BTree<long,Names> ds, long ap)
         {
-            return (rowType, representation, rowType, tr, ns);
+            return (rowType, representation, rowType, tr, ns, ds);
         }
         /// <summary>
         /// Accessor: Check object permissions
@@ -125,10 +126,10 @@ namespace Pyrrho.Level4
                 throw new DBException("42105").Add(Qlx.SYSTEM);
             return name;
         }
-        internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm,
-            Grant.Privilege pr = Grant.Privilege.Select, string? a=null)
+        internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm, long ap,
+            Grant.Privilege pr = Grant.Privilege.Select, string? a=null,TableRowSet? ur = null)
         {
-            var r = new SystemRowSet(cx, this, null)+(_From,fm)+(_Ident,id);
+            var r = new SystemRowSet(cx, this, ap, null)+(_From,fm)+(_Ident,id);
             if (a != null)
                 r += (_Alias, a);
             return r;
@@ -197,21 +198,17 @@ namespace Pyrrho.Level4
         }
     }
     
-    internal class SystemIndex : Level3.Index
-    {
-        public SystemIndex(long tb,Domain ks) 
-            : base(--_uid,BTree<long, object>.Empty+(IndexConstraint,PIndex.ConstraintType.Unique)
+    internal class SystemIndex(long tb, Domain ks) : Level3.Index(--_uid,BTree<long, object>.Empty+(IndexConstraint,PIndex.ConstraintType.Unique)
                   +(Keys,ks)+(TableDefPos,tb))
-        { }
-    }
-    
-    internal class SystemFilter
     {
-        public readonly long col;
-        public readonly TypedValue val1,val2;
-        public readonly Qlx op1,op2; // EQL, GTR etc
-        public SystemFilter(long c,Qlx o,TypedValue v,Qlx o2=Qlx.NO,TypedValue? v2=null) 
-        { col = c; op1 = o; op2 = o2;  val1 = v; val2 = v2??TNull.Value; }
+    }
+
+    internal class SystemFilter(long c, Qlx o, TypedValue v, Qlx o2 = Qlx.NO, TypedValue? v2 = null)
+    {
+        public readonly long col = c;
+        public readonly TypedValue val1 = v, val2 = v2 ?? TNull.Value;
+        public readonly Qlx op1 = o, op2 = o2; // EQL, GTR etc
+
         internal TypedValue? Start(Context cx,SystemRowSet rs,string s,int i,bool desc)
         {
             var sf = rs.sysFilt;
@@ -290,8 +287,8 @@ namespace Pyrrho.Level4
         /// Context is provided to be informed about the rowset.
         /// </summary>
         /// <param name="f">the from part</param>
-        internal SystemRowSet(Context cx, SystemTable f, CTree<long, bool>? w = null)
-            : base(cx.GetUid(), cx, f.defpos, _Mem(cx, f, w, null))
+        internal SystemRowSet(Context cx, SystemTable f, long ap, CTree<long, bool>? w = null)
+            : base(cx.GetUid(), cx, f.defpos, ap, _Mem(cx, f, w, null))
         { }
         internal SystemRowSet(long dp,Context cx, SystemTable f, CTree<long, bool>? w, BTree<long, object>? m)
             : base(dp,_Mem(cx, f, w, m))
@@ -334,8 +331,8 @@ namespace Pyrrho.Level4
             var r = (m ?? BTree<long, object>.Empty) + (SRowType, f.rowType) + (SysTable, f) + (SysFilt, sf);
             if (w is not null)
                 r  += (_Where,w);
-            if (f.infos[cx.role.defpos]?.names is BTree<string, (int, long?)> ns)
-                r += (ObInfo.Names, ns);
+            if (f.infos[cx.role.defpos]?.names is Names ns)
+                r += (ObInfo._Names, ns);
             if (sx != null)
                 r += (SysIx, sx);
             return r;
@@ -620,22 +617,18 @@ namespace Pyrrho.Level4
         /// A bookmark for a system table
         /// 
         /// </summary>
-        internal abstract class SystemBookmark : Cursor
+        /// <remarks>
+        /// base constructor for the system enumerator
+        /// </remarks>
+        /// <param name="r">the rowset</param>
+        internal abstract class SystemBookmark(Context cx, SystemRowSet r, int pos, long dpos, long pp,
+            TRow rw) : Cursor(cx, r, pos, new BTree<long,(long,long)>(r.defpos,(dpos,pp)), rw)
         {
             /// <summary>
             /// the system rowset
             /// </summary>
-            public readonly SystemRowSet res;
-            /// <summary>
-            /// base constructor for the system enumerator
-            /// </summary>
-            /// <param name="r">the rowset</param>
-            protected SystemBookmark(Context cx, SystemRowSet r, int pos, long dpos,long pp,
-                TRow rw)
-                : base(cx, r, pos, new BTree<long,(long,long)>(r.defpos,(dpos,pp)), rw)
-            {
-                res = r;
-            }
+            public readonly SystemRowSet res = r;
+
             protected static TypedValue Pos(long? p)
             {
                 return new TPosition(p??-1L);
@@ -689,24 +682,18 @@ namespace Pyrrho.Level4
                 return true;
             }
         }
-         /// <summary>
+        /// <summary>
         /// A base class for enumerating log tables
         /// </summary>
-        internal abstract class LogSystemBookmark : SystemBookmark
+        /// <remarks>
+        /// Construct the LogSystemBookmark
+        /// </remarks>
+        /// <param name="r">the rowset</param>
+        internal abstract class LogSystemBookmark(Context _cx, SystemRowSet r, int pos,
+            Physical p, long pp, TRow rw) : SystemBookmark(_cx,r,pos,p.ppos,p.ppos,rw)
         {
-            internal readonly Physical ph;
-            internal readonly long nextpos;
-            /// <summary>
-            /// Construct the LogSystemBookmark
-            /// </summary>
-            /// <param name="r">the rowset</param>
-            protected LogSystemBookmark(Context _cx,SystemRowSet r, int pos, 
-                Physical p,long pp,TRow rw) 
-                : base(_cx,r,pos,p.ppos,p.ppos,rw)
-            {
-                ph = p;
-                nextpos = pp;
-            }
+            internal readonly Physical ph = p;
+            internal readonly long nextpos = pp;
         }
         /// <summary>
         /// Set up the Log$ table
@@ -4217,14 +4204,10 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Timestamp", Timestamp,0);
             t.Add();
         }
-        internal class SysAuditBookmark : SystemBookmark
+        internal class SysAuditBookmark(Context _cx, SystemRowSet res, SystemRowSet.LogBookmark b, int pos) : SystemBookmark(_cx,res,pos,b.ph.ppos,0,_Value(res,b.ph))
         {
-            public readonly LogBookmark _bmk;
-            public SysAuditBookmark(Context _cx, SystemRowSet res, LogBookmark b,int pos)
-                :base(_cx,res,pos,b.ph.ppos,0,_Value(res,b.ph))
-            {
-                _bmk = b;
-            }
+            public readonly LogBookmark _bmk = b;
+
             internal static SysAuditBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var bmk = LogBookmark.New(_cx,res);bmk is not null;bmk=bmk.Next(_cx) as LogBookmark)
@@ -4296,17 +4279,13 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "Key", Char,0);
             t.Add();
         }
-        internal class SysAuditKeyBookmark : SystemBookmark
+        internal class SysAuditKeyBookmark(Context _cx, SystemRowSet res, SystemRowSet.LogBookmark bmk,
+            ABookmark<long, string> _in, int ix, int pos) : SystemBookmark(_cx, res, pos, bmk.ph.ppos, 0, _Value(res, bmk.ph, _in, ix))
         {
-            public readonly LogBookmark _bmk;
-            public readonly ABookmark<long, string> _inner;
-            public readonly int _ix;
-            public SysAuditKeyBookmark(Context _cx, SystemRowSet res, LogBookmark bmk,
-                ABookmark<long, string> _in, int ix, int pos)
-                : base(_cx, res, pos, bmk.ph.ppos, 0, _Value(res, bmk.ph, _in, ix))
-            {
-                _bmk = bmk; _inner = _in; _ix = ix;
-            }
+            public readonly LogBookmark _bmk = bmk;
+            public readonly ABookmark<long, string> _inner = _in;
+            public readonly int _ix = ix;
+
             internal static SysAuditKeyBookmark? New(Context _cx, SystemRowSet res)
             {
                 for (var bmk = LogBookmark.New(_cx, res); bmk != null;
@@ -5213,16 +5192,16 @@ namespace Pyrrho.Level4
             /// Enumerators for implementation
             /// </summary>
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<string, (int,long?)> _inner;
+            readonly ABookmark<string,long?>? _inner;
             /// <summary>
             /// create the Sys$Column enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<string,(int,long?)> inner)
-                : base(_cx,res, pos, inner.value().Item2??-1L,((DBObject)outer.value()).lastChange,
-                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value().Item2??-1L,
-                          _cx._Dom(inner.value().Item2??-1L) ?? throw new PEException("PE0485")))
+                ABookmark<string,long?> inner)
+                : base(_cx,res, pos, inner.value()??-1L,((DBObject)outer.value()).lastChange,
+                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value()??-1L,
+                          _cx._Dom(inner.value()??-1L) ?? throw new PEException("PE0485")))
             {
                 _outer = outer;
                 _inner = inner;
@@ -5386,16 +5365,16 @@ namespace Pyrrho.Level4
             /// 3 enumerators for implementation!
             /// </summary>
             readonly ABookmark<long,bool> _inner;
-            readonly ABookmark<string, (int,long?)> _middle;
+            readonly ABookmark<string,long?> _middle;
             readonly ABookmark<long,object> _outer;
             /// <summary>
             /// create the Sys$ColumnCheck enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnCheckBookmark(Context cx, SystemRowSet res,int pos,ABookmark<long,object>outer,
-                ABookmark<string,(int,long?)> middle,ABookmark<long,bool> inner)
+                ABookmark<string,long?> middle,ABookmark<long,bool> inner)
                 : base(cx,res,pos,inner.key(),((DBObject?)cx.db.objects[inner.key()])?.lastChange??-1L,
-                      _Value(cx,res,outer.value(),middle.value().Item2 ??-1L,inner.key()))
+                      _Value(cx,res,outer.value(),middle.value()??-1L,inner.key()))
             {
                 _outer = outer;
                 _middle = middle;
@@ -5410,7 +5389,7 @@ namespace Pyrrho.Level4
                     if (outer.value() is Table tb && tb.infos[ro.defpos] is ObInfo oi)
                         for (var middle = oi.names.First(); middle != null;
                                 middle = middle.Next())
-                        if (middle.value().Item2 is long p && cx.db.objects[p] is TableColumn tc
+                        if (middle.value() is long p && cx.db.objects[p] is TableColumn tc
                                 && tc.infos[ro.defpos] is not null)
                                 for (var inner = tc.checks.First(); inner != null;
                                         inner = inner.Next())
@@ -5461,7 +5440,7 @@ namespace Pyrrho.Level4
                         continue;
                     }
                     if (middle != null && (middle = middle.Next()) != null)
-                        if (middle.value().Item2 is long p && _cx.db.objects[p] is TableColumn tc &&
+                        if (middle.value() is long p && _cx.db.objects[p] is TableColumn tc &&
                             tc.infos[ro.defpos] is not null)
                         {
                             inner = tc.checks.First();
@@ -6852,14 +6831,10 @@ namespace Pyrrho.Level4
             t += new SystemTableColumn(t, "Owner", Int, 0);
             t.Add();
         }
-        internal class RoleGraphCatalogBookmark : SystemBookmark
+        internal class RoleGraphCatalogBookmark(Context cx, SystemRowSet r, int pos, ABookmark<string, long?> bmk, DBObject ob) : SystemBookmark(cx, r, pos, ob.defpos,ob.defpos,_Value(r,bmk,ob))
         {
-            readonly ABookmark<string,long?> _bmk;
-            public RoleGraphCatalogBookmark(Context cx, SystemRowSet r, int pos, ABookmark<string,long?> bmk, DBObject ob) 
-                : base(cx, r, pos, ob.defpos,ob.defpos,_Value(r,bmk,ob))
-            {
-                _bmk = bmk;
-            }
+            readonly ABookmark<string,long?> _bmk = bmk;
+
             internal static RoleGraphCatalogBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.catalog.First(); b != null; b = b.Next())
@@ -6907,19 +6882,13 @@ namespace Pyrrho.Level4
             t += new SystemTableColumn(t, "Owner", Int, 0);
             t.Add();
         }
-        internal class RoleGraphEdgeTypeBookmark : SystemBookmark
+        internal class RoleGraphEdgeTypeBookmark(Context cx, SystemRowSet r, int pos,
+            ABookmark<long, object> obmk, ABookmark<long, bool> bmk, DBObject g, EdgeType e) : SystemBookmark(cx, r, pos, e.defpos, e.defpos, _Value(r,g,e))
         {
-            readonly ABookmark<long, object> _obmk;
-            readonly DBObject _g;
-            readonly ABookmark<long, bool> _bmk;
-            public RoleGraphEdgeTypeBookmark(Context cx, SystemRowSet r, int pos, 
-                ABookmark<long,object> obmk,ABookmark<long, bool> bmk, DBObject g,EdgeType e)
-                : base(cx, r, pos, e.defpos, e.defpos, _Value(r,g,e))
-            {
-                _obmk = obmk;
-                _g = g;
-                _bmk = bmk;
-            }
+            readonly ABookmark<long, object> _obmk = obmk;
+            readonly DBObject _g = g;
+            readonly ABookmark<long, bool> _bmk = bmk;
+
             internal static RoleGraphEdgeTypeBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
@@ -7001,8 +6970,7 @@ namespace Pyrrho.Level4
         internal class RoleGraphInfoBookmark : SystemBookmark
         {
             readonly BTree<string, int> _values;
-            static readonly string[] effects = new string[] 
-                {"schemas","directories","graphs","graph-types","nodes","edges","properties","labels","label-sets" };
+            static readonly string[] effects = ["schemas","directories","graphs","graph-types","nodes","edges","properties","labels","label-sets"];
             RoleGraphInfoBookmark(Context cx,SystemRowSet r,int pos, BTree<string,int> v)
                 :base(cx,r,pos,pos,pos,_Value(r,v,pos))
             {
@@ -7022,7 +6990,7 @@ namespace Pyrrho.Level4
                 for (var b = ro.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p && p >= 0 && cx.db.objects[p] is NodeType t)
                     {
-                        var ts = t.label.OnInsert(cx);
+                        var ts = t.label.OnInsert(cx,0L);
                         ls += ts;
                         ll += (ts, true);
                         ps += t.representation;
@@ -7121,24 +7089,16 @@ namespace Pyrrho.Level4
             t += new SystemTableColumn(t, "Label", Char, 0);
             t.Add();
         }
-        internal class RoleGraphLabelBookmark : SystemBookmark
+        internal class RoleGraphLabelBookmark(Context cx, SystemRowSet r, int pos,
+            ABookmark<long, object> obmk, ABookmark<long, bool> mbmk, ABookmark<Domain, bool> bmk,
+            DBObject g, NodeType nt, string lb) : SystemBookmark(cx, r, pos, nt.defpos, nt.defpos, _Value(r, g, nt, lb))
         {
-            readonly ABookmark<long, object> _obmk;
-            readonly DBObject _g;
-            readonly ABookmark<long,bool> _mbmk;
-            readonly NodeType _nt;
-            readonly ABookmark<Domain, bool> _bmk;
-            public RoleGraphLabelBookmark(Context cx, SystemRowSet r, int pos,
-                ABookmark<long, object> obmk, ABookmark<long,bool> mbmk, ABookmark<Domain, bool> bmk, 
-                DBObject g, NodeType nt, string lb)
-                : base(cx, r, pos, nt.defpos, nt.defpos, _Value(r, g, nt, lb))
-            {
-                _obmk = obmk;
-                _mbmk = mbmk;
-                _g = g;
-                _nt = nt;
-                _bmk = bmk;
-            }
+            readonly ABookmark<long, object> _obmk = obmk;
+            readonly DBObject _g = g;
+            readonly ABookmark<long,bool> _mbmk = mbmk;
+            readonly NodeType _nt = nt;
+            readonly ABookmark<Domain, bool> _bmk = bmk;
+
             internal static RoleGraphLabelBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
@@ -7146,7 +7106,7 @@ namespace Pyrrho.Level4
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is NodeType e)
-                                for (var d = e.label.OnInsert(cx).First(); d != null; d = d.Next())
+                                for (var d = e.label.OnInsert(cx,0L).First(); d != null; d = d.Next())
                                     if (d.key() is NodeType f)
                                     {
                                         var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, g, e, f.name);
@@ -7158,7 +7118,7 @@ namespace Pyrrho.Level4
                         for (var c = gt.constraints.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is NodeType e)
-                                for (var d = e.label.OnInsert(cx).First(); d != null; d = d.Next())
+                                for (var d = e.label.OnInsert(cx,0L).First(); d != null; d = d.Next())
                                     if (d.key() is NodeType f)
                                     {
                                         var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, gt, e, f.name);
@@ -7188,7 +7148,7 @@ namespace Pyrrho.Level4
                         if (cx.obs[mbmk.key()] is NodeType n)
                         {
                             nt = n;
-                            bmk = n.label.OnInsert(cx).First();
+                            bmk = n.label.OnInsert(cx,0L).First();
                             goto next;
                         }
                     for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
@@ -7236,19 +7196,13 @@ namespace Pyrrho.Level4
             t += new SystemTableColumn(t, "Owner", Int, 0);
             t.Add();
         }
-        internal class RoleGraphNodeTypeBookmark : SystemBookmark
+        internal class RoleGraphNodeTypeBookmark(Context cx, SystemRowSet r, int pos,
+            ABookmark<long, object> obmk, ABookmark<long, bool> bmk, Graph g, NodeType e) : SystemBookmark(cx, r, pos, e.defpos, e.defpos, _Value(r, g, e))
         {
-            readonly ABookmark<long, object> _obmk;
-            readonly Graph _g;
-            readonly ABookmark<long, bool> _bmk;
-            public RoleGraphNodeTypeBookmark(Context cx, SystemRowSet r, int pos,
-                ABookmark<long, object> obmk, ABookmark<long, bool> bmk, Graph g, NodeType e)
-                : base(cx, r, pos, e.defpos, e.defpos, _Value(r, g, e))
-            {
-                _obmk = obmk;
-                _g = g;
-                _bmk = bmk;
-            }
+            readonly ABookmark<long, object> _obmk = obmk;
+            readonly Graph _g = g;
+            readonly ABookmark<long, bool> _bmk = bmk;
+
             internal static RoleGraphNodeTypeBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
@@ -7312,24 +7266,16 @@ namespace Pyrrho.Level4
             t += new SystemTableColumn(t, "ValueType", Char, 0);
             t.Add();
         }
-        internal class RoleGraphPropertyBookmark : SystemBookmark
+        internal class RoleGraphPropertyBookmark(Context cx, SystemRowSet r, int pos,
+            ABookmark<long, object> obmk, ABookmark<long, bool> mbmk, ABookmark<int, long?> bmk,
+            DBObject g, NodeType nt, TableColumn tc) : SystemBookmark(cx, r, pos, nt.defpos, nt.defpos, _Value(cx, r, g, nt, tc))
         {
-            readonly ABookmark<long, object> _obmk;
-            readonly DBObject _g;
-            readonly ABookmark<long, bool> _mbmk;
-            readonly NodeType _nt;
-            readonly ABookmark<int,long?> _bmk;
-            public RoleGraphPropertyBookmark(Context cx, SystemRowSet r, int pos,
-                ABookmark<long, object> obmk, ABookmark<long, bool> mbmk, ABookmark<int,long?> bmk,
-                DBObject g, NodeType nt, TableColumn tc)
-                : base(cx, r, pos, nt.defpos, nt.defpos, _Value(cx, r, g, nt, tc))
-            {
-                _obmk = obmk;
-                _mbmk = mbmk;
-                _g = g;
-                _nt = nt;
-                _bmk = bmk;
-            }
+            readonly ABookmark<long, object> _obmk = obmk;
+            readonly DBObject _g = g;
+            readonly ABookmark<long, bool> _mbmk = mbmk;
+            readonly NodeType _nt = nt;
+            readonly ABookmark<int,long?> _bmk = bmk;
+
             internal static RoleGraphPropertyBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())

@@ -47,7 +47,7 @@ namespace Pyrrho.Level4
     internal class TablePeriodDefinition
     {
         public Qlx pkind = Qlx.SYSTEM_TIME;
-        public Ident periodname = new ("SYSTEM_TIME", Iix.None);
+        public Ident periodname = new ("SYSTEM_TIME",-1L);
         public Ident? col1 = null;
         public Ident? col2 = null;
     }

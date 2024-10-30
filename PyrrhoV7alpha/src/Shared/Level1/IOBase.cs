@@ -56,10 +56,9 @@ namespace Pyrrho.Level2
             throw new NotImplementedException();
         }
     }
-    class Box 
+    class Box(byte[] c)
     {   
-        public byte[] cont;
-        public Box(byte[] c) { cont = c;  }
+        public byte[] cont = c;
     }
     public class Writer : IOBase
     {
@@ -140,7 +139,7 @@ namespace Pyrrho.Level2
                 PutString("");
                 return null;
             }
-            var r = new Ident(id.ident, cx.Ix(Length));
+            var r = new Ident(id.ident, Length);
             PutString(id.ident);
             return r;
         }
@@ -377,7 +376,7 @@ namespace Pyrrho.Level2
         }
         internal Ident? GetIdent()
         {
-            var p = context.GetIid();
+            var p = context.GetUid();
             var s = GetString();
             return (s == "") ? null : new Ident(s, p);
         }

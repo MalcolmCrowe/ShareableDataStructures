@@ -196,7 +196,7 @@ namespace Pyrrho.Level2
                     rt += cp;
                     rs += (cp, rdr.context._Dom(cp) ?? Domain.Null); // for Log$ may be historical
                 }
-                columns = new Domain(-1L, rdr.context, Qlx.ROW, rs, rt);
+                columns = (rt.Length==0)?Domain.Row:new Domain(-1L, rdr.context, Qlx.ROW, rs, rt);
             }
             flags = (ConstraintType)rdr.GetInt();
             reference = rdr.GetLong();

@@ -60,7 +60,7 @@ namespace Pyrrho.Level2
             if (table.infos[ro.defpos] is not ObInfo ti)
                 throw new PEException("PE47120");
             ti += (ObInfo.SchemaKey, ppos);
-            var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
+            var tc = new TableColumn(table, this, dataType, cx);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(name, priv);
@@ -132,7 +132,7 @@ namespace Pyrrho.Level2
             if (table.infos[ro.defpos] is not ObInfo ti)
                 throw new PEException("PE427121");
             ti += (ObInfo.SchemaKey, ppos);
-            var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
+            var tc = new TableColumn(table, this, dataType, cx);
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);
             var ci = new ObInfo(name, priv);
@@ -223,7 +223,7 @@ namespace Pyrrho.Level2
             if (table.infos[ro.defpos] is not ObInfo ti)
                 throw new PEException("PE47122");
             ti += (ObInfo.SchemaKey, ppos);
-            var tc = new TableColumn(table, this, dataType, cx.role, cx.user);
+            var tc = new TableColumn(table, this, dataType, cx);
             cx.db += dataType;
             // the given role is the definer
             var priv = ti.priv & ~(Grant.Privilege.Delete | Grant.Privilege.GrantDelete);

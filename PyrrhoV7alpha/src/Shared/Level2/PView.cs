@@ -82,13 +82,14 @@ namespace Pyrrho.Level2
             if (viewdef == "")
                 return;
             var psr = new Parser(rdr,
-                new Ident(viewdef, rdr.context.Ix(ppos + 2)));
+                new Ident(viewdef, ppos + 2));
             psr.Next(); psr.Next();  // VIEW name
             nst = psr.cx.db.nextStmt;
-            var un = psr.ParseViewDefinition(name) ?? throw new PEException("0035");
+            var vw = psr.ParseViewDefinition(name,ppos+1) ?? throw new PEException("0035");
             //       var cs = psr.ParseCursorSpecification(Domain.TableType);
-            dataType = un;
-            psr.cx.result = un.defpos;
+            dataType = vw.domain;
+            infos = vw.infos;
+            psr.cx.result = vw.result;
             framing = new Framing(psr.cx, nst);
         }
         internal virtual BTree<long, object> _Dom(Context cx, BTree<long, object>? m)
@@ -139,14 +140,14 @@ namespace Pyrrho.Level2
         {
             var ro = cx.role;
             // The definer is the given role
-            var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
-                Grant.Privilege.Update | Grant.Privilege.Delete | 
-                Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
-                Grant.Privilege.GrantInsert |
-                Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            var ti = new ObInfo(name, priv);
-            var vw = new View(this, cx) + (DBObject.LastChange, ppos)
-                + (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ti));
+            //           var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
+            //               Grant.Privilege.Update | Grant.Privilege.Delete | 
+            //               Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
+            //               Grant.Privilege.GrantInsert |
+            //               Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
+            //           var ti = new ObInfo(name, priv);
+            var vw = new View(this, cx) + (DBObject.LastChange, ppos);
+            //    + (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ti));
             ro += (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + ro  + vw;
             if (cx.db.mem.Contains(Database.Log))

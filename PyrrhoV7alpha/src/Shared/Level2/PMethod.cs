@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using System.Data.Common;
+using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -110,6 +111,13 @@ namespace Pyrrho.Level2
             base.Deserialise(rd);
             if (methodType == MethodType.Constructor)
                 dataType = udt;
+        }
+        internal override void OnLoad(Reader rdr)
+        {
+            if (udt is null)
+                throw new PEException("PE42126");
+            rdr.context.AddDefs(udt);
+            base.OnLoad(rdr);
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {

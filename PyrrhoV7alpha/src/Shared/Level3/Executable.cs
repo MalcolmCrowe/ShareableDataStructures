@@ -42,7 +42,7 @@ namespace Pyrrho.Level3
         internal long result => (long)(mem[Result] ?? -1L);
         internal long schema => (long)(mem[Schema] ?? -1L);
         internal long graph => (long)(mem[UseGraph]??-1L);
-        internal static Executable None = new Executable();
+        internal static Executable None = new();
         Executable() : base(--_uid, BTree<long, object>.Empty) { }
         internal Executable(long dp, BTree<long, object>? m=null) 
             : base(dp, m??BTree<long, object>.Empty) { }
@@ -247,7 +247,7 @@ namespace Pyrrho.Level3
         {
             return cx.obs[union]?.Calls(defpos, cx)??false;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SelectStatement)base._Replace(cx, so, sv);
             var nu = ((RowSet?)cx.obs[union])?.Replace(cx, so, sv)?.defpos;
@@ -354,7 +354,7 @@ namespace Pyrrho.Level3
             cx.db = act.db;
             return act.SlideDown();
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (CompoundStatement)base._Replace(cx, so, sv);
             var ns = cx.ReplacedLl(stms);
@@ -445,7 +445,7 @@ namespace Pyrrho.Level3
                 return cx;
             return ((Executable)target.Instance(defpos,cx))._Obey(cx);
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (PreparedStatement)base._Replace(cx, so, sv);
             var nq = cx.ReplacedLl(qMarks);
@@ -560,7 +560,7 @@ namespace Pyrrho.Level3
         {
             return CTree<long, bool>.Empty;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (LocalVariableDec)base._Replace(cx, so, sv);
             var ni = ((QlValue?)cx.obs[init])?.Replace(cx,so,sv)?.defpos ;
@@ -771,7 +771,7 @@ namespace Pyrrho.Level3
                 cx.AddValue(cu, cu.Eval(cx));
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (CursorDeclaration)base._Replace(cx, so, sv);
             var nc = cx.obs[cs]?.Replace(cx, so, sv)?.defpos;
@@ -882,7 +882,7 @@ namespace Pyrrho.Level3
         {
             return cx.obs[action]?.Calls(defpos, cx)??false;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (HandlerStatement)base._Replace(cx, so, sv);
             var na = ((Executable?)cx.obs[action])?.Replace(cx, so, sv)?.defpos;
@@ -1163,14 +1163,14 @@ namespace Pyrrho.Level3
             if (cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
             {
                 if (vb is SqlValueExpr se && se.op == Qlx.DOT && cx._Ob(se.left)?.Eval(cx) is TNode tl
-                    && cx._Ob(se.right) is SqlCopy sc && tl.dataType is Table st 
-                    && st.representation[sc.copyFrom] is Domain cd
+                    && cx._Ob(se.right) is QlInstance sc && tl.dataType is Table st 
+                    && st.representation[sc.sPos] is Domain cd
                     && cd.Coerce(cx, tv) is TypedValue v1)
-                    cx.Add(new Update(tl.tableRow, st.defpos, new CTree<long, TypedValue>(sc.copyFrom, v1),
+                    cx.Add(new Update(tl.tableRow, st.defpos, new CTree<long, TypedValue>(sc.sPos, v1),
                         cx.db.nextPos, cx));
                 else if (vb is SqlField sf && cx._Ob(sf.from)?.Eval(cx) is TNode nf
                     && nf.dataType is Table tf && tf._PathDomain(cx).infos[cx.role.defpos] is ObInfo fi
-                    && cx._Ob(fi.names[sf.name ?? "?"].Item2 ?? -1L) is TableColumn tc
+                    && cx._Ob(fi.names[sf.name??""]) is TableColumn tc
                     && tc.domain.Coerce(cx, tv) is TypedValue v3)
                     cx.Add(new Update(nf.tableRow, tf.defpos, new CTree<long, TypedValue>(tc.defpos, v3),
                         cx.db.nextPos, cx));
@@ -1179,7 +1179,7 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (AssignmentStatement)base._Replace(cx, so, sv);
             var nb = cx.obs[vbl]?.Replace(cx, so, sv)?.defpos;
@@ -1238,10 +1238,10 @@ namespace Pyrrho.Level3
             var r = new BTree<long, object>(Rhs, rg.defpos);
             var ls = BList<long?>.Empty;
             for (var b = lh.First(); b != null; b = b.Next())
-                if (b.value() is Ident id && cx.obs[id.iix.dp] is QlValue v
+                if (b.value() is Ident id && cx.obs[id.uid] is QlValue v
                             && v.domain is Domain vd)
                 {
-                    dm = dm.Constrain(cx, id.iix.lp, vd);
+                    dm = dm.Constrain(cx, id.uid, vd);
                     ls += v.defpos;
                 }
             return r +(List,ls)+(LhsType,rg);
@@ -1322,7 +1322,7 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (MultipleAssignment)base._Replace(cx, so, sv);
             var nd = (Domain)lhsType.Replace(cx, so, sv);
@@ -1484,7 +1484,7 @@ namespace Pyrrho.Level3
             cx.lastret = defpos;
             return cx;
 		}
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (ReturnStatement)base._Replace(cx, so, sv);
             var nr = ((QlValue?)cx.obs[ret])?.Replace(cx, so, sv)?.defpos;
@@ -1619,7 +1619,7 @@ namespace Pyrrho.Level3
                     return ObeyList(w.stms, cx);
             return ObeyList(els, cx);
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SimpleCaseStatement)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[operand])?.Replace(cx, so, sv)?.defpos;
@@ -1758,7 +1758,7 @@ namespace Pyrrho.Level3
                         return ObeyList(w.stms, cx);
 			return ObeyList(els,cx);
 		}
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SearchedCaseStatement)base._Replace(cx, so, sv);
             var nw = cx.ReplacedLl(whens);
@@ -1882,7 +1882,7 @@ namespace Pyrrho.Level3
             a.val = TBool.False;
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (WhenPart)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[cond])?.Replace(cx, so, sv)?.defpos;
@@ -2022,7 +2022,7 @@ namespace Pyrrho.Level3
                     return ObeyList(f.then, cx);
             return ObeyList(els, cx);
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (IfThenElse)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
@@ -2244,7 +2244,7 @@ namespace Pyrrho.Level3
         {
             return Calls(what,defpos,cx) || (cx.obs[search]?.Calls(defpos, cx)??false);
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (WhileStatement)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
@@ -2367,7 +2367,7 @@ namespace Pyrrho.Level3
             cx = act.SlideDown(); 
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (RepeatStatement)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
@@ -2552,7 +2552,7 @@ namespace Pyrrho.Level3
             }
             return act.SlideDown();
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (LoopStatement)base._Replace(cx, so, sv);
             var nw = cx.ReplacedLl(stms);
@@ -2594,7 +2594,6 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx)
         {
-            var vs = CTree<long, TypedValue>.Empty;
             var ls = cx._Ob(list) as SqlValueArray??throw new DBException("PE10601");
             var vb = cx._Ob(vbl) as QlValue ?? throw new DBException("PE10602");
             var dl = cx._Ob(ls.domain.defpos) as Domain ?? throw new DBException("PE10603");
@@ -2608,11 +2607,11 @@ namespace Pyrrho.Level3
             {
                 rt += col; rs += (col,Domain.Int);
             }
-            var rd = new Domain(-1L, cx, Qlx.TABLE, rs, rt);
+            var rd = (rt.Length==0)?Domain.TableType:new Domain(-1L, cx, Qlx.TABLE, rs, rt);
             var bs = BindingRowSet.Get(cx, new TRow(rd, fe));
             for (var i = 0; i < (vl?.Length ?? 0); i++)
             {
-                vs = new CTree<long, TypedValue>(vbl, vl?[i]??TNull.Value);
+                var vs = new CTree<long, TypedValue>(vbl, vl?[i]??TNull.Value);
                 switch(op)
                 {
                     case Qlx.ORDINALITY: vs += (col, new TInt(i + 1)); break; 
@@ -2746,7 +2745,7 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (ForSelectStatement)base._Replace(cx, so, sv);
             var no = ((RowSet?)cx.obs[sel])?.Replace(cx, so, sv)?.defpos;
@@ -2847,7 +2846,7 @@ namespace Pyrrho.Level3
         {
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (OpenStatement)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[cursor])?.Replace(cx, so, sv)?.defpos;
@@ -2937,7 +2936,7 @@ namespace Pyrrho.Level3
             cx.Add(new EmptyRowSet(defpos,cx,Domain.Null));
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (CloseStatement)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[cursor])?.Replace(cx, so, sv)?.defpos;
@@ -3101,7 +3100,7 @@ namespace Pyrrho.Level3
             }
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (FetchStatement)base._Replace(cx, so, sv);
             var nc = ((QlValue?)cx.obs[cursor])?.Replace(cx, so, sv)?.defpos;
@@ -3219,7 +3218,7 @@ namespace Pyrrho.Level3
             var a = proc?.Exec(ac, sc.parms) ?? cx;
             return a.SlideDown();
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (CallStatement)base._Replace(cx, so, sv);
             var ca = cx.ObReplace(call, so, sv);
@@ -3392,7 +3391,7 @@ namespace Pyrrho.Level3
                     e.info += (x.key(), cx.obs[p]?.Eval(cx) ?? TNull.Value);
             throw e;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SignalStatement)base._Replace(cx, so, sv);
             var sl = BTree<Qlx, long?>.Empty;
@@ -3607,7 +3606,7 @@ namespace Pyrrho.Level3
                 cx.AddValue(s, v);
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (GetDiagnostics)base._Replace(cx, so, sv);
             var ls = CTree<long, Qlx>.Empty;
@@ -3728,7 +3727,7 @@ namespace Pyrrho.Level3
                 a.NoData();
             return cx;
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SelectSingle)base._Replace(cx, so, sv);
             var no = cx.ReplacedLl(outs);
@@ -3823,7 +3822,7 @@ namespace Pyrrho.Level3
             }
             return (SqlInsert)e.New(m + (p, o));
         }
-        protected override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SqlInsert)base._Replace(cx, so, sv);
             var tg = cx.ObReplace(source, so, sv);
@@ -4185,14 +4184,14 @@ namespace Pyrrho.Level3
                     for (var gb = ge.First(); gb != null; gb = gb.Next())
                         if (gb.value() is GqlNode nd && nd is not GqlEdge && nd is not GqlReference
                             && cx.db.objects[nd.domain.defpos] is NodeType nt)
-                            nd.Create(cx, nt);
+                            nd.Create(cx, nt, defpos);
                     TNode? bn = null;
                     GqlEdge? ed = null;
                     for (var gb = ge.First(); gb != null; gb = gb.Next())
                         if (gb.value() is GqlNode g)
                         {
-                            if (g is GqlEdge)
-                                ed = (GqlEdge)g;
+                            if (g is GqlEdge edge)
+                                ed = edge;
                             else if (ed is not null && bn is not null && g.Eval(cx) is TNode nn)
                             {
                                 var el = cx.obs[ed.label.defpos] as Domain ?? ed.label;
@@ -4224,9 +4223,8 @@ namespace Pyrrho.Level3
                                 }
                                 if (nm == "" && cx.db.objects[cx.role.unlabelledEdgeTypesInfo[pn] ?? -1L] is EdgeType eu)
                                     et = eu;
-                                if (et is null)
-                                    et = (EdgeType)ed._NodeType(cx, Domain.EdgeType);
-                                ed.Create(cx, et);
+                                et ??= (EdgeType)ed._NodeType(cx, Domain.EdgeType);
+                                ed.Create(cx, et, defpos);
                             }
                             else
                                 bn = g.Eval(cx) as TNode;
@@ -4421,11 +4419,7 @@ namespace Pyrrho.Level3
         internal BList<long?> then => (BList<long?>)(mem[IfThenElse.Then] ?? BList<long?>.Empty);
         internal BTree<long, (long, long)> truncating =>
             (BTree<long, (long, long)>)(mem[Truncating] ?? BTree<long, (long, long)>.Empty);
-        internal Domain sort => (Domain?)mem[RowSet.RowOrder] ?? Domain.Null;
         internal int size => (int?)mem[RowSetSection.Size] ?? -1;
-        internal long ret => (long)(mem[ReturnStatement.Ret] ?? -1L);
-        internal BTree<string, (int, long?)> names =>
-            (BTree<string, (int, long?)>?)mem[ObInfo.Names] ?? BTree<string, (int, long?)>.Empty;
         internal long bindings => (long)(mem[BindingTable] ?? -1L);
         [Flags]
         internal enum Flags { None = 0, Bindings = 1, Body = 2, Return = 4, Schema = 8 }
@@ -4451,8 +4445,12 @@ namespace Pyrrho.Level3
         static BTree<long, object> _Mem(long dp, Context cx, BTree<long, object> m, BTree<long, (long, long)>? tg,
             CTree<long, TGParam> gs, BList<long?> ge, long st, long re)
         {
+            var ch = false;
             for (var b = gs.First(); b != null; b = b.Next())
+            {
                 cx.undefined -= b.key();
+                ch = true;
+            }
             m += (GDefs, gs);
             if (tg is not null)
                 m += (Truncating, tg);
@@ -4476,6 +4474,8 @@ namespace Pyrrho.Level3
                         if (cx.obs[c.value() ?? -1L] is GqlMatchAlt sa && gs[sa.pathId] is TGParam p
                                 && cx.obs[p.uid] is QlValue sv)
                             sv.AddFrom(cx, sa.defpos);
+            if (ch)
+                cx.NowTry();
             return m;
         }
         public static MatchStatement operator +(MatchStatement et, (long, object) x)
@@ -4537,6 +4537,30 @@ namespace Pyrrho.Level3
         /// <returns></returns>
         public override Context _Obey(Context cx)
         {
+            for (var b = cx.undefined.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is SqlReview sr)
+                {
+                    var ns = cx.names;
+                    DBObject v = sr;
+                    string? nm = null;
+                    long? t = null;
+                    for (var c = sr.chain?.First(); c != null; c = c.Next())
+                        if (c.value() is Ident id && ns[id.ident] is long cp
+                            && cx._Ob(cp) is DBObject nv)
+                        {
+                            t ??= cp;
+                            v = nv;
+                            nm = id.ident;
+                            ns = nv.domain.infos[cx.role.defpos]?.names ?? Names.Empty;
+                        }
+                    var tg = t ?? -1L;
+                    if (v is TableColumn tc)
+                        v = new SqlField(sr.defpos, nm??"", tc.seq, tg, tc.domain,tg);
+                    if (sr.alias != null)
+                        v += (_Alias, sr.alias);
+                    cx.undefined -= sr.defpos;
+                    cx.Replace(sr, v);
+                } 
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
             var ac
@@ -4545,13 +4569,12 @@ namespace Pyrrho.Level3
                     binding = cx.binding,
                     result = domain.defpos
                 };
+
             // Parse any truncating expressions
             for (var b = truncating.First(); b != null; b = b.Next())
             {
                 var (i, d) = b.value();
-                var lm = (ac.obs[i] as QlValue)?.Eval(cx) as TInt;
-                var qs = (ac.obs[d] as QlValue)?.Eval(cx) as TChar;
-                if (lm is null || qs is null) throw new PEException("PE60801");
+                if ((ac.obs[i] as QlValue)?.Eval(cx) is not TInt lm || (ac.obs[d] as QlValue)?.Eval(cx) is not TChar qs) throw new PEException("PE60801");
                 var il = lm.ToInt() ?? throw new PEException("PE60802");
                 var pd = new Parser(cx, qs.ToString());
                 if (cx.db.objects[b.key()] is NodeType nt)
@@ -4580,6 +4603,14 @@ namespace Pyrrho.Level3
                         if (gf is not null && xf is not null)
                             ExpNode(ac, new ExpStep(sa, xf, new GraphStep(gf.Next(), new EndStep(this))), Qlx.Null, null, null);
                     }
+            if (((Transaction)ac.db).physicals.Count == pre)
+            {
+                cx.result = bindings;
+                if (ac.obs[bindings] is RowSet brs)
+                    cx.Add(brs);
+            }
+            else
+                cx.result = -1L;
             if (ac.obs[body] is SelectStatement ss && ac.obs[ss.union] is RowSet su)
             {
                 ac.result = ss.union;
@@ -4606,8 +4637,10 @@ namespace Pyrrho.Level3
                 cx.obs += (cx.result, rrs); 
             if (then != BList<long?>.Empty)
             {
-                var ta = new Activation(ac, "" + defpos);
-                ta.result = cx.result;
+                var ta = new Activation(ac, "" + defpos)
+                {
+                    result = cx.result
+                };
                 ObeyList(then, ta);
                 ta.SlideDown();
                 ac.values += ta.values;
@@ -5131,30 +5164,34 @@ namespace Pyrrho.Level3
                     if (db?.key() is NodeType dj)
                         dt = dj;
                     dn = dt.Node(cx, tr);
-                    if (dn?.tableRow is TableRow rw && rw.tabledefpos != dt.defpos
+                    if (dn.tableRow is TableRow rw && rw.tabledefpos != dt.defpos
                         && cx.db.joinedNodes[tr.defpos]?.Contains(dt) == true)
                         dn = new TNode(cx,new TableRow(rw.defpos, rw.ppos, dt.defpos, rw.vals));
                     if (dn is null)
                         goto another;
                     if (bn.alt.mode == Qlx.TRAIL && dn is TEdge && pa?.HasNode(dn) == true)
                         goto another;
-                    if (bn.alt.mode == Qlx.ACYCLIC && dn is TNode && pa?.HasNode(dn) == true)
+                    if (bn.alt.mode == Qlx.ACYCLIC && dn is not null && pa?.HasNode(dn) == true)
                         goto another;
                     if (bn.alt.mode == Qlx.SHORTEST && !Shortest(bn, cx))
                         goto another;
                     if (bn.alt.mode == Qlx.LONGEST && !Longest(bn, cx))
                         goto another;
-                    if (pa is not null && dn != pd)
+                    if (dn is not null)
                     {
-                        cx.paths += (bn.alt.defpos, pa + (cx, dn));
-                        cx.binding += (bn.alt.pathId, pa[0L]);
+                        if (pa is not null && dn != pd)
+                        {
+                            cx.paths += (bn.alt.defpos, pa + (cx, dn));
+                            cx.binding += (bn.alt.pathId, pa[0L]);
+                        }
+                        DoBindings(cx, bn.alt.defpos, bn.xn, dn);
+                        if (!bn.xn.CheckProps(cx, dn))
+                            goto another;
+
+                        if (dn is TEdge de && pd is not null
+                            && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
+                            goto another;
                     }
-                    DoBindings(cx, bn.alt.defpos, bn.xn, dn);
-                    if (!bn.xn.CheckProps(cx, dn))
-                        goto another;
-                    if (dn is TEdge de && pd is not null
-                        && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
-                        goto another;
                     goto next;
                 another:
                     db = db?.Next();
@@ -5246,11 +5283,11 @@ namespace Pyrrho.Level3
             if (xn.state != CTree<long, TGParam>.Empty && dn.dataType is NodeType nt)
             {
                 var bi = cx.binding;
-                if (nt.infos[cx.role.defpos]?.names is BTree<string, (int, long?)> ns)
+                if (nt.infos[cx.role.defpos]?.names is Names ns)
                     for (var b = xn.docValue?.First(); b != null; b = b.Next())
                         if (gDefs[b.value().defpos] is TGParam tg
                             && b.key() is string n
-                            && ns?[n].Item2 is long np
+                            && ns?[n] is long np
                             && dn.tableRow.vals[np] is TypedValue tv)
                         {
                             if (tg.type.HasFlag(TGParam.Type.Group))
@@ -5380,7 +5417,7 @@ namespace Pyrrho.Level3
             }
             return true;
         }
-        protected override DBObject _Replace(Context cx, DBObject was, DBObject now)
+        internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
         {
             var r = (MatchStatement)base._Replace(cx, was, now);
             var ch = false;

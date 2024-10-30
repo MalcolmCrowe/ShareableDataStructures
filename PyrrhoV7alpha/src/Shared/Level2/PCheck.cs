@@ -1,5 +1,7 @@
 using System;
+using System.Runtime.Intrinsics.Arm;
 using System.Security.AccessControl;
+using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -104,9 +106,9 @@ namespace Pyrrho.Level2
             if (check != "" && check is not null)
             {
                 var ob = (DBObject?)rdr.context.db.objects[ckobjdefpos]??throw new PEException("PE1437");
-                var psr = new Parser(rdr, new Ident(check, rdr.context.Ix(ppos+1)));
+                var psr = new Parser(rdr, new Ident(check, ppos + 1));
                 nst = psr.cx.db.nextStmt;
-                var sv = psr.ParseSqlValue(Domain.Bool).Reify(rdr.context);
+                var sv = psr.ParseSqlValue(Domain.Bool);
                 test = sv.defpos;
                 framing = new Framing(psr.cx,nst);
             }
@@ -145,6 +147,7 @@ namespace Pyrrho.Level2
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             var ob = (DBObject?)cx.db.objects[ck.checkobjpos] ?? throw new PEException("PE1438");
             ob = ob.Add(ck, cx.db);
+            ck = (Check)ck.Apply(cx, (Domain)ob);
             cx.Install(ob);
             cx.Install(ck);
             return ob;
@@ -243,8 +246,10 @@ namespace Pyrrho.Level2
             cx.Install(ck);
             var nc = co.Add(ck, cx.db);
             cx.Install(nc);
-    //        cx.Add(ck.framing);
-            cx.db += ck;
+            //        cx.Add(ck.framing);
+            Domain dm = ((co is TableColumn tc) ? cx.db.objects[tc.tabledefpos] as Domain :
+    (co is Table tb) ? tb : co as Domain) ?? Domain.Null;
+            ck = (Check)ck.Apply(cx, dm);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return nc;

@@ -1,6 +1,7 @@
 using System;
 using System.Collections;
 using System.Collections.Generic;
+using System.ComponentModel.DataAnnotations;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -905,6 +906,14 @@ namespace Pyrrho.Common
             var r = Empty;
             foreach (var v in vs)
                 r += v;
+            return r;
+        }
+        public BList<V> Append(BList<V> vs)
+        {
+            var n = Length;
+            var r = this;
+            for (var b = vs.First(); b != null; b = b.Next())
+                r = new(r,b.value());
             return r;
         }
         public virtual bool Has(V v)

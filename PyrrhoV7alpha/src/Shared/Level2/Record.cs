@@ -482,12 +482,12 @@ namespace Pyrrho.Level2
                 var v = b.value();
                 sb.Append(cm); cm = ",";
                 sb.Append(DBObject.Uid(k));sb.Append('=');sb.Append(v.ToString());
-                sb.Append("[");
+                sb.Append('[');
                 if (v.dataType.kind != Qlx.TYPE)
                     sb.Append(v.dataType.kind);
                 else
                     sb.Append(v.dataType.name);
-                sb.Append("]");
+                sb.Append(']');
             }
             if (_classification != Level.D || type == Type.Update1)
             { sb.Append(" Classification: "); sb.Append(_classification); }
