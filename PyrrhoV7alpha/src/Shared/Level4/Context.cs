@@ -82,7 +82,7 @@ namespace Pyrrho.Level4
         internal Names names = Names.Empty; // QlValue names at current level
         internal Names dnames = Names.Empty; // non-QlValue (e.g. Domain, TableColumn) names at current level
         internal Names anames = Names.Empty; // ambient names
-        internal int sD => (int)defs.Count; 
+        internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal long lexical = 0L; // current select block, set in incSD()
         internal Graph? graph = null; // current graph, set by USE

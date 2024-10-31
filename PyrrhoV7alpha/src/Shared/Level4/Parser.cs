@@ -2297,7 +2297,7 @@ namespace Pyrrho.Level4
             var og = lxr.tgs;
             lxr.tgs = CTree<long, TGParam>.Empty;
             if (tok == Qlx.LBRACK)
-                lxr.tgg = TGParam.Type.Group;
+                lxr.tgg |= TGParam.Type.Group;
             Mustbe(Qlx.LPAREN, Qlx.ARROWBASE, Qlx.RARROW, Qlx.LBRACK);
             GqlNode? r = null;
             GqlNode? an = null;
@@ -11142,14 +11142,16 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.COLON,Qlx.DOUBLECOLON,Qlx.TYPED); // GQL extra options
             if (sch)
                 return (k, (QlValue)cx.Add(new SqlLiteral(k.uid, ParseDataType())));
-            Ident q = new(lxr.val.ToString(),lxr.Position); // capture instance reference
+            Ident q = new(lxr.val.ToString(),LexDp()); // capture instance reference
             if (tok == Qlx.Id && !cx.Known(q.ident) && q.uid>=Transaction.Analysing)
             {
                 cx.bindings += (q.uid, CTree<long, TypedValue>.Empty);
                 cx.names += (q.ident, q.uid);
             }
             lxr.docValue = false;
-            var kc = new QlValue(k, BList<Ident>.Empty, cx, xd);
+            if (lxr.tgs[lxr.Position]?.type.HasFlag(TGParam.Type.Group) == true)
+                xd = new Domain(-1L, Qlx.ARRAY, xd);
+            var kc = new QlValue(q, BList<Ident>.Empty, cx, xd);
             var eq = (lxr.val is TChar ec) ? ec.value : q.ident;
             if (lxr.caseSensitive && eq == "localDateTime") // allow JavaScript pseudos
             {
@@ -11160,7 +11162,7 @@ namespace Pyrrho.Level4
                     throw new DBException("42161", "Timestamp");
                 Next();
                 Mustbe(Qlx.RPAREN);
-                return (k,(QlValue)cx.Add(new SqlLiteral(q.uid, v)));
+                return (q,(QlValue)cx.Add(new SqlLiteral(q.uid, v)));
             }
             if (lxr.caseSensitive && eq == "date") 
             {
@@ -11171,7 +11173,7 @@ namespace Pyrrho.Level4
                     throw new DBException("42161", "Date");
                 Next();
                 Mustbe(Qlx.RPAREN);
-                return (k,(QlValue)cx.Add(new SqlLiteral(q.uid, v)));
+                return (q,(QlValue)cx.Add(new SqlLiteral(q.uid, v)));
             }
             if (lxr.caseSensitive && eq == "toInteger") // alow JavaScript cast
             {
@@ -11181,18 +11183,16 @@ namespace Pyrrho.Level4
                     throw new DBException("42161", "Integer");
                 Next();
                 Mustbe(Qlx.RPAREN);
-                return (k,(QlValue)cx.Add(new SqlLiteral(q.uid, v)));
+                return (q,(QlValue)cx.Add(new SqlLiteral(q.uid, v)));
             }
             if (tok == Qlx.Id && !cx.Known(eq))
             {
-                var vv = new SqlField(q.uid,q.ident,-1,-1L,kc.domain,pa);
+                var vv = new SqlField(q.uid,q.ident,-1,-1L,xd,pa);
                 cx.Add(vv);
                 cx.names+=(q.ident, q.uid);
                 lxr.tgs += (q.uid, new TGParam(q.uid,q.ident,kc.domain,lxr.tgg|TGParam.Type.Value,pa));
             }
-            var dm = lb.representation[ns[k.ident]]??Domain.Content;
-      //      if (lxr.tgg.HasFlag(TGParam.Type.Group))
-      //          dm = new Domain(-1L, Qlx.ARRAY, dm);
+            var dm = lb.representation[ns[k.ident]]??Domain.Content; // don't use xd: might be a Group/TArray
             var va = ParseSqlValue(dm);
             return (k,(QlValue)cx.Add(va));
         }

@@ -4815,7 +4815,7 @@ namespace Pyrrho.Level3
                 for (var b = sp.pattern.First(); b != null; b = b.Next())
                     if (cx.obs[b.value() ?? -1L] is GqlNode n)
                         for (var c = n.state.First(); c != null; c = c.Next())
-                            if (c.value().type != TGParam.Type.Path)
+                            if (!c.value().type.HasFlag(TGParam.Type.Path))
                                 ls += (c.value().uid, c.value());
                 if (cx.paths[alt.defpos] is TPath pa)
                 {

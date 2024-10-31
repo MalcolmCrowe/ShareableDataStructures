@@ -2595,9 +2595,9 @@ namespace Pyrrho.Level5
         }
         internal DBObject? IsBound(Context cx)
         {
-            if (type == Type.Node && cx.db.objects[cx.role.nodeTypes[value] ?? -1L] is NodeType nt)
+            if (type.HasFlag(Type.Node) && cx.db.objects[cx.role.nodeTypes[value] ?? -1L] is NodeType nt)
                 return nt;
-            if (type == Type.Edge && cx.db.objects[cx.role.edgeTypes[value]??-1L] is Domain d)
+            if (type.HasFlag(Type.Edge) && cx.db.objects[cx.role.edgeTypes[value]??-1L] is Domain d)
                 return d as EdgeType??Domain.EdgeType;
             return null;
         }
