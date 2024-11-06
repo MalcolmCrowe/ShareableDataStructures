@@ -101,6 +101,8 @@ namespace Pyrrho.Level3
             if (infos[cx.role.defpos] is not ObInfo oi
                 || !oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105").Add(Qlx.EXECUTE);
+            if (oi.name == "COMPLEXREAD8")
+                ;
             cx.Add(framing);
             var n = ins.Length;
             var acts = new TypedValue[n];

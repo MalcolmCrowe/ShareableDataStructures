@@ -163,7 +163,7 @@ namespace Pyrrho.Level2
             if (pr is not null)
             { 
                 psr.cx.AddParams(pr);
-                psr.cx.anames += (n.ident, ppos);
+                psr.cx.anames = psr.cx.names+(n.ident, ppos);
                 rdr.context.defs += (ppos, pr.names);
                 rdr.context.Add(pr);
             }

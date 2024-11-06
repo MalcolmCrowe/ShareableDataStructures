@@ -4603,7 +4603,16 @@ namespace Pyrrho.Level3
                         if (gf is not null && xf is not null)
                             ExpNode(ac, new ExpStep(sa, xf, new GraphStep(gf.Next(), new EndStep(this))), Qlx.Null, null, null);
                     }
-            if (((Transaction)ac.db).physicals.Count == pre)
+            var ps = ((Transaction)ac.db).physicals;
+            var changes = false;
+            // Alas, MatchStatement can have side effects such as creating ghostly NodeTypes for 
+            // BindingTable entries. For now we simply take them out and pretend they aren't there
+            for (var b = ps.PositionAt(pre); b != null; b = b.Next())
+                if (b.value() is PNodeType ph && names.Contains(ph.name))
+                    ac.db += (Transaction.Physicals, ps - b.key());
+                else
+                    changes = true;
+            if (!changes)
             {
                 cx.result = bindings;
                 if (ac.obs[bindings] is RowSet brs)
@@ -5030,7 +5039,7 @@ namespace Pyrrho.Level3
                     }
                 // case 2: pn has no primary index: follow the above logic for sysRefIndexes instead
                 var la = truncator.Contains(Domain.EdgeType.defpos) ? truncator[Domain.EdgeType.defpos].Item1 : int.MaxValue;
-                for (var b = pn.sindexes[pd.id.ToLong() ?? -1L]?.First(); b != null; b = b.Next())
+                for (var b = pn.sindexes[pd.tableRow.defpos]?.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.key()] is TableColumn cc
                         && cx.db.objects[cc.tabledefpos] is EdgeType rt
                         && rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
@@ -5187,9 +5196,9 @@ namespace Pyrrho.Level3
                         DoBindings(cx, bn.alt.defpos, bn.xn, dn);
                         if (!bn.xn.CheckProps(cx, dn))
                             goto another;
-
+                        cx.values += (bn.xn.defpos, dn);
                         if (dn is TEdge de && pd is not null
-                            && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving).CompareTo(pd.id) != 0)
+                            && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving).ToLong()?.CompareTo(pd.tableRow.defpos) != 0)
                             goto another;
                     }
                     goto next;
@@ -5288,7 +5297,7 @@ namespace Pyrrho.Level3
                         if (gDefs[b.value().defpos] is TGParam tg
                             && b.key() is string n
                             && ns?[n] is long np
-                            && dn.tableRow.vals[np] is TypedValue tv)
+                            && (dn.tableRow.vals[np]??cx._Ob(np)?.Eval(cx)) is TypedValue tv)
                         {
                             if (tg.type.HasFlag(TGParam.Type.Group))
                             {

@@ -11206,7 +11206,10 @@ cx.obs[high] is not QlValue hi)
                 if (cx.parse.HasFlag(ExecuteStatus.Compile) || (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables))
                 {
                     if (b.value() is TGParam tg && cx.names[tg.value] is long p)
+                    {
+                        tg = new TGParam(p,tg.value,tg.dataType,tg.type,tg.from);
                         ng += (p, tg);
+                    }
                 //    else
                         ng += (b.key(), b.value());
                 }
@@ -11522,6 +11525,12 @@ cx.obs[high] is not QlValue hi)
                 return false;
             cx.values += n.tableRow.vals;
             var ns = n._Names(cx);
+            for (var c = label.OnInsert(cx, -1L).First(); c != null; c = c.Next())
+                if (cx.db.objects[n.tableRow.tabledefpos] is Domain cd)
+                    for (var d= c.key().OnInsert(cx, -1L).First();d!=null;d=d.Next())
+                     if (d.key() is NodeType dd && !cd.EqualOrStrongSubtypeOf(dd)
+                            && dd.tableRows.Count>0) // excludes cases where dd is only a bindingvalue
+                        return false;
             for (var b = docValue?.First(); b != null; b = b.Next())
                 if (b.key() is string k)
                 {
@@ -11795,7 +11804,7 @@ cx.obs[high] is not QlValue hi)
             {
                 if (lT is null || aT is null)
                     throw new DBException("22G0W", label.name ?? "");
-                if (ed is EdgeType ef && ef.leavingType == lT.defpos && ef.arrivingType == aT.defpos)
+                if (ed is EdgeType ef && CanConnect(cx,ef.leavingType,lT.defpos) && CanConnect(cx,ef.arrivingType,aT.defpos))
                     return ed;
                 if (ed.kind != Qlx.UNION) throw new PEException("PE20903");
                 for (var c = ed.unionOf.First(); c != null; c = c.Next())
@@ -11831,7 +11840,7 @@ cx.obs[high] is not QlValue hi)
             }
             if (te is not null)
                 nt = te;
-            if (tl == CTree<Domain, bool>.Empty && lT is not null && aT is not null)
+            if (nd.label.defpos<0 && lT is not null && aT is not null)
             { // unlabelled edges have types determined by their kind and property set
                 var ps = CTree<string, bool>.Empty;
                 var pl = BList<DBObject>.Empty;
@@ -11892,9 +11901,14 @@ cx.obs[high] is not QlValue hi)
                     }
                 }
             }
+            if (be is not EdgeType && lT is not null && aT is not null)
+            {
+                var ep = new PEdgeType(nd.label.name, Domain.EdgeType, tl, cx.db.nextStmt, lT.defpos, aT.defpos, cx.db.nextPos, cx);
+                be = (EdgeType)(cx.Add(ep)??throw new DBException("42105"));
+                nt = be;
+            }
             if (be is not null)
             {
-                be = (EdgeType)(cx.db.objects[be?.defpos ?? -1L] ?? throw new PEException("PE060701"));
                 var bt = be.Build(cx, this, 0L, new BTree<long, object>(Domain.NodeTypes, tl), md);
                 if (bt is not null)
                 {
@@ -11912,6 +11926,18 @@ cx.obs[high] is not QlValue hi)
                 throw new DBException("42000", "_EdgeType").Add(Qlx.INSERT_STATEMENT, new TChar(name ?? "??"));
             return nt;
         }
+
+        private bool CanConnect(Context cx, long end, long defpos)
+        {
+            if (end == defpos)
+                return true;
+            if (cx._Ob(defpos) is JoinedNodeType jt)
+                for (var b=jt.nodeTypes.First();b!=null;b=b.Next())
+                    if (b.key().defpos==end)
+                        return true;
+            return false;
+        }
+
         internal override GqlNode Add(Context cx, GqlNode? an, CTree<long, TGParam> tgs)
         {
             if (an is null)
@@ -11957,7 +11983,7 @@ cx.obs[high] is not QlValue hi)
                 && cx.obs[leavingValue] is GqlNode sl
                 && sl.Eval(cx) is TNode ln)
             {
-                var lv = ln.id;
+                var lv = new TInt(ln.tableRow.defpos);
                 var li = (lc.domain.kind == Qlx.SET) ?
                     new SqlLiteral(cx.GetUid(), new TSet(lc.domain, CTree<TypedValue, bool>.Empty + (lv, true))) :
                     new SqlLiteral(cx.GetUid(), lv);
@@ -11968,7 +11994,7 @@ cx.obs[high] is not QlValue hi)
                 && cx.obs[arrivingValue] is GqlNode sa
                 && sa.Eval(cx) is TNode an)
             {
-                var av = an.id;
+                var av = new TInt(an.tableRow.defpos);
                 var ai = (ac.domain.kind == Qlx.SET) ?
                     new SqlLiteral(cx.GetUid(), new TSet(ac.domain, CTree<TypedValue, bool>.Empty + (av, true))) :
                     new SqlLiteral(cx.GetUid(), av);

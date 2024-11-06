@@ -2,7 +2,6 @@ using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Common;
 using Pyrrho.Level5;
-using System.Security.AccessControl;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -13,37 +12,6 @@ using System.Security.AccessControl;
 
 namespace Pyrrho.Level4
 {
- /*   internal class Iix : IComparable
-    {
-        internal readonly long lp; // lexical (if not equal to dp)
-        internal readonly long sd; // select depth or instance reference
-        internal readonly long dp; // defining
-        internal static Iix None = new (-1L);
-        internal Iix(long u) { lp = u; sd = 0;  dp = u;  }
-        internal Iix(long l,long s,long u) { lp = l; sd = s; dp = u;  }
-        internal Iix(Iix ix,long u) { lp = ix.lp; sd = ix.sd; dp = u; }
-        internal Iix(long l,Context cx,long u) { lp = l; sd = cx.sD; dp = u;  }
-        public int CompareTo(object? obj)
-        {
-            if (obj == null)
-                return -1;
-            var that = (Iix)obj;
-            return lp.CompareTo(that.lp);
-        }
-        public override string ToString()
-        {
-            if (dp < 0)
-            {
-                if (this == None)
-                    return "None";
-            }
-            var sb = new StringBuilder(DBObject.Uid(sd));
-            sb.Append(':'); sb.Append(DBObject.Uid(lp));
-            if (dp != lp)
-            { sb.Append('|'); sb.Append(DBObject.Uid(dp)); }
-            return sb.ToString();
-        }
-    } */
     /// <summary>
     /// Implement an identifier lexeme class.
     /// 
@@ -51,6 +19,7 @@ namespace Pyrrho.Level4
     internal class Ident : IComparable
     {
         internal readonly Ident? sub;
+        internal readonly long lp;
         internal readonly long uid;
         internal readonly string ident;
         /// <summary>
@@ -62,10 +31,11 @@ namespace Pyrrho.Level4
         internal Ident(Parser psr)
         {
             var lx = psr.lxr;
+            lp = lx.Position;
             uid = psr.LexDp();
             ident = ((lx.tok == Qlx.Id) ? lx.val?.ToString() : lx.tok.ToString()) ?? (DBObject.Uid(uid));
             if (lx.tgs[uid] is TGParam gp)
-                lx.tgs += (lx.Position, new TGParam(uid, gp.value, gp.dataType, gp.type, gp.from));
+                lx.tgs += (lp, new TGParam(uid, gp.value, gp.dataType, gp.type, gp.from));
             sub = null;
         }
         internal Ident(Ident lf, Ident sb)
@@ -142,201 +112,6 @@ namespace Pyrrho.Level4
                 return -1;
             return 0;
         }
-        /*        /// <summary>
-                /// The class is used for identifiers that have columns or are columns.
-                /// Therefore used for select lists as it consists of columns in the result.
-                /// (There is an annoying aspect of this implementation: 
-                ///  If we have a pair (Iix,Idents) and Idents is not empty, the sd part is an instance reference
-                /// </summary>
-                internal class Idents : BTree<string, BTree<long,(Iix, Idents)>>
-                {
-                    public new static Idents Empty = new();
-                    Idents() : base() { }
-                    internal Idents(BTree<string, BTree<long,(Iix, Idents)>> b) : base(b.root ?? throw new PEException("PE625")) 
-                    { }
-                    public static Idents operator +(Idents t, (string, Iix, Idents) x)
-                    {
-                        var (n, iix, ids) = x;
-                        if (n == null || n == "" || iix==null)
-                            return t;
-                        var s = t[n]??BTree<long,(Iix,Idents)>.Empty;
-                        // discard out-of-scope items
-                        for (var b = s.PositionAt(iix.sd+1); b != null; b = b.Next())
-                            s -= b.key();
-                        return new Idents(t + (n,s+(iix.sd,(iix,ids))));
-                    }
-                    public static Idents operator +(Idents t, (Ident, Iix) x)
-                    {
-                        var (id, p) = x;
-                        if (id.ident == null || id.ident == "")
-                            return t;
-                        if (t.Contains(id.ident))
-                        {
-                            var s = t[id.ident]??BTree<long,(Iix,Idents)>.Empty;
-                            if (s.Contains(p.sd))
-                            {
-                                var (to, ts) = s[p.sd];
-                                if (id.sub != null)
-                                    s += (p.sd, (to, ts + (id.sub, p)));
-                                else
-                                    s += (p.sd, (p, ts));
-                            }
-                            else if (id.sub != null)
-                                s += (p.sd, (new Iix(p, p.lp),
-                                    new(new BTree<string, BTree<long, (Iix, Idents)>>
-                                        (id.sub.ident, new BTree<long, (Iix, Idents)>(p.sd, (p, Empty))))));
-                            else
-                                s += (p.sd, (p, Empty));
-                            return new Idents(t + (id.ident, s));
-                        }
-                        else
-                        {
-                            var ts = Empty;
-                            if (id.sub != null)
-                                ts += (id.sub, p);
-                            return new Idents(t + (id.ident, new BTree<long,(Iix,Idents)>(p.sd,(p, ts))));
-                        }
-                    }
-                    public static Idents operator +(Idents t, (Ident, long) x)
-                    {
-                        var (id, n) = x;
-                        if (id.ident == null || id.ident == "")
-                            return t;
-                        (Iix where,Idents subs) ts = (id.iix,Empty);
-                        var s = t[id.ident]??BTree<long,(Iix,Idents)>.Empty;
-                        if (s[id.iix.sd] is (Iix, Idents) tu)
-                            ts = tu;
-                        var ti = ts.subs;
-                        if (id.sub != null && n > 0)
-                            ti += (id.sub, n - 1);
-                        return new Idents(t + (id.ident, s + (id.iix.sd,(ts.where, ti))));
-                    }
-                    public static Idents operator-(Idents t,string s)
-                    {
-                        BTree<string, BTree<long, (Iix, Idents)>> n = t;
-                        n -= s;
-                        return (n.root != null) ? new Idents(n) : Empty;
-                    }
-                    /// <summary>
-                    /// Identifier chain lookup function. Search in this
-                    /// for a given chain, stopping at a given length.
-                    /// Rarely used: cx.Lookup is preferred since it
-                    /// uses the cx.obs information for well-defined objects.
-                    /// </summary>
-                    /// <param name="x">A triple: (chain,len,breadcrumbtrail)</param>
-                    /// <returns>(Deepest Iix found, breadcrumbtrail,descendants, rest of chain)</returns>
-                    internal (BList<Iix>,Idents?,Ident?) this[(Ident,long,BList<Iix>) x]
-                    {
-                        get
-                        {
-                            var (ic, d, bc) = x;
-                            if (ic == null || !Contains(ic.ident) || d < 1)
-                                return (bc, null, ic);
-                            var ix = Iix.None;
-                            Idents ids = Empty;
-                            var s = this[ic.ident] ?? BTree<long, (Iix, Idents)>.Empty;
-                            for (var sd = ic.iix.sd; ix == Iix.None && sd >= 0; sd--)
-                                if (s.Contains(sd))
-                                    (ix, ids) = s[sd];
-                            if (ids != Empty && ic.sub != null && d > 1 && ids.Contains(ic.sub.ident))
-                                return ids[(ic.sub, d - 1, bc + ix)];
-                            return (bc + ix, ids, ic.sub);
-                        }
-                    }
-                    /// <summary>
-                    /// A simplified call of the above
-                    /// </summary>
-                    /// <param name="ic"></param>
-                    /// <returns></returns>
-                    internal Iix this[Ident ic]
-                    {
-                        get
-                        {
-                            if (!Contains(ic.ident))
-                                return Iix.None;
-                            var (bc, _, s) = this[(ic, ic.Length, BList<Iix>.Empty)];
-                            if (s != null)
-                                return Iix.None;
-                            return bc.Last()?.value()??Iix.None;
-                        }
-                    }
-                    internal (Iix,Idents) this[(string?,long)x]
-                    {
-                        get
-                        {
-                            var (s, d) = x;
-                            if (s != null && Contains(s))
-                                for (var b = PositionAt(s)?.value()?.Last(); b != null; b = b.Previous())
-                                {
-                                    if (b.key() <= d)
-                                        return b.value();
-                                }
-                            return (Iix.None, Empty);
-                        }
-                    }
-                    internal Idents ApplyDone(Context cx)
-                    {
-                        var r = BTree<string, BTree<long,(Iix,Idents)>>.Empty;
-                        for (var b=First();b is not null;b=b.Next())
-                         if (b.value() is BTree<long,(Iix,Idents)> x){
-                            for (var s = x.First(); s != null; s = s.Next())
-                            {
-                                var (p, st) = s.value();
-                                if (p.dp != -1L && cx.done[p.dp] is DBObject nb)
-                                {
-                                    p = new Iix(p.lp,p.sd,nb.defpos);
-                                    for (var c = (nb as Domain)?.rowType.First(); c != null; c = c.Next())
-                                        if (c.value() is long cp && cx.done[cp] is QlValue v && v.name is not null)
-                                        {
-                                            var ds = st[v.name] ?? BTree<long,(Iix,Idents)>.Empty;
-                                            st = new Idents(st + (v.name, ds +(p.sd,(new Iix(v.defpos,p.sd,v.defpos),Empty))));
-                                        }
-                                }
-                                st = st.ApplyDone(cx);
-                                r += (b.key(), x+(p.sd,(p, st))); // do not change the string key part
-                            }
-                        }
-                        return (r.Count>0)?new Idents(r):Idents.Empty;
-                    }
-                    internal Idents Relocate(Context cx)
-                    {
-                        var r = Empty;
-                        for (var b = First(); b != null; b = b.Next())
-                            if (b.value() is BTree<long, (Iix, Idents)> x)
-                            {
-                                var n = b.key();
-                                for (var c = x.First(); c != null; c = c.Next())
-                                {
-                                    var (p, ids) = c.value();
-                                    r += (n, cx.Fix(p), ids.Relocate(cx));
-                                }
-                            }
-                        return r;
-                    }
-                    public override ATree<string, BTree<long,(Iix, Idents)>> Add(ATree<string, BTree<long,(Iix, Idents)>> a)
-                    {
-                        return new Idents((BTree<string,BTree<long,(Iix,Idents)>>)base.Add(a));
-                    }
-                    public override string ToString()
-                    {
-                        var sb = new StringBuilder();
-                        for (var b = First(); b != null; b = b.Next())
-                            if (b.value() is BTree<long, (Iix, Idents)> x)
-                            {
-                                sb.Append(b.key()); sb.Append("=(");
-                                for (var c = x.First(); c != null; c = c.Next())
-                                {
-                                    var (p, ids) = c.value();
-                                    sb.Append(p.ToString()); sb.Append(',');
-                                    if (ids != Empty)
-                                        sb.Append(ids.ToString());
-                                }
-                                sb.Append(");");
-                            }
-                        return sb.ToString();
-                    }
-                }
-            } */
     }
     /// <summary>
     /// Lexical analysis for SQL

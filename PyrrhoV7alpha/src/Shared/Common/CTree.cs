@@ -336,7 +336,7 @@ namespace Pyrrho.Common
             if (kt == Qlx.INT || kt == Qlx.INTEGER)
             {
                 var v = Last()?.key();
-                var n = v?.ToInt() ?? 0;
+                var n = v?.ToLong() ?? 0;
                 return new TInt(n + 1);
             }
             if (kt == Qlx.CHAR)

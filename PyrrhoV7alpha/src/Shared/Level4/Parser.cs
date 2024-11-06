@@ -2635,7 +2635,7 @@ namespace Pyrrho.Level4
                 if (b.value() is TGParam g && g.value != ""
                     && cx.obs[g.uid] is DBObject sn && !re.Contains(sn.defpos) && g.IsBound(cx) is null)
                 {
-                    var dr = sn.domain;
+                    var dr = (sn is Domain d)?d:sn.domain;
                     if (g.type.HasFlag(TGParam.Type.Type))
                         dr = Domain.Char;
                     if (g.type.HasFlag(TGParam.Type.Group) && dr.kind != Qlx.ARRAY)
@@ -4586,7 +4586,10 @@ namespace Pyrrho.Level4
             var r = BList<DBObject>.Empty;
             while (tok != Qlx.RPAREN)
             {
-                r += ParseProcParameter(pn, xp);
+                var pp = ParseProcParameter(pn, xp);
+                r += pp;
+                if (pp.name is not null)
+                    cx.names += (pp.name, pp.defpos);
                 if (tok != Qlx.COMMA)
                     break;
                 Next();
@@ -11148,6 +11151,8 @@ namespace Pyrrho.Level4
                 cx.bindings += (q.uid, CTree<long, TypedValue>.Empty);
                 cx.names += (q.ident, q.uid);
             }
+            if (cx.Lookup(q.ident) is QlValue qi)
+                q = new(q.ident,qi.defpos);
             lxr.docValue = false;
             if (lxr.tgs[lxr.Position]?.type.HasFlag(TGParam.Type.Group) == true)
                 xd = new Domain(-1L, Qlx.ARRAY, xd);

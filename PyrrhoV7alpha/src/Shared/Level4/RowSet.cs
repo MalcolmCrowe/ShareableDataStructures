@@ -1240,7 +1240,7 @@ namespace Pyrrho.Level4
                     var i = b.key();
                     flags[i] = dc.Typecode() + (addFlags ? adds[i] : 0);
                     if (cx._Ob(cp) is DBObject tc)
-                        flags[i] += (tc.domain.notNull ? 0x100 : 0) +
+                        flags[i] += (((tc is Domain td)?td:tc.domain).notNull ? 0x100 : 0) +
                             (((tc as TableColumn)?.generated != GenerationRule.None) ? 0x200 : 0);
                 }
         }

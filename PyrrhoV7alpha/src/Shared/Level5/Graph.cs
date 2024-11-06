@@ -2599,6 +2599,8 @@ namespace Pyrrho.Level5
                 return nt;
             if (type.HasFlag(Type.Edge) && cx.db.objects[cx.role.edgeTypes[value]??-1L] is Domain d)
                 return d as EdgeType??Domain.EdgeType;
+            if (type.HasFlag(Type.Type) && cx.db.objects[cx.role.dbobjects[value] ?? -1L] is NodeType n)
+                return n;
             return null;
         }
         public override string ToString() 

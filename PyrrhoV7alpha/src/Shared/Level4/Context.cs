@@ -84,7 +84,6 @@ namespace Pyrrho.Level4
         internal Names anames = Names.Empty; // ambient names
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
-        internal long lexical = 0L; // current select block, set in incSD()
         internal Graph? graph = null; // current graph, set by USE
         internal Schema? schema = null; // current schema, set by AT
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
