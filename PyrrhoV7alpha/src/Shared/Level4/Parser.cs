@@ -1712,8 +1712,8 @@ namespace Pyrrho.Level4
                             {
                                 var px = new PIndex(cn.ident, (Table)tp.dataType,
                                     new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(tc), 1),
-                                PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate, rx, 
-                                    cx.db.nextPos);
+                                PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate,
+                                    rx,cx.db.nextPos);
                                 cx.Add(px);
                             }
                         }

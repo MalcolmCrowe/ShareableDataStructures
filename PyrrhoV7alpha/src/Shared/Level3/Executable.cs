@@ -5198,7 +5198,8 @@ namespace Pyrrho.Level3
                             goto another;
                         cx.values += (bn.xn.defpos, dn);
                         if (dn is TEdge de && pd is not null
-                            && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving).ToLong()?.CompareTo(pd.tableRow.defpos) != 0)
+                            && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving) is TInt pv
+                            && pv.ToLong()?.CompareTo(pd.tableRow.defpos) != 0 && pv.CompareTo(pd.id)!=0)
                             goto another;
                     }
                     goto next;
