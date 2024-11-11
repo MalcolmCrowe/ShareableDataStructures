@@ -11903,9 +11903,28 @@ cx.obs[high] is not QlValue hi)
             }
             if (be is not EdgeType && lT is not null && aT is not null)
             {
-                var ep = new PEdgeType(nd.label.name, Domain.EdgeType, tl, cx.db.nextStmt, lT.defpos, aT.defpos, cx.db.nextPos, cx);
-                be = (EdgeType)(cx.Add(ep)??throw new DBException("42105"));
-                nt = be;
+                if (nd.label.kind == Qlx.UNION)
+                {
+                    for (var b = state.First(); b != null; b = b.Next())
+                        if (b.value() is TGParam g && cx.role.edgeTypes[g.value] is long gp &&
+                            cx._Ob(gp) is Domain du && du.kind == Qlx.UNION)
+                        {
+                            for (var c = du.unionOf.First(); c != null; c = c.Next())
+                                if (c.key() is EdgeType de && de.leavingType == lT.defpos
+                                    && de.arrivingType == aT.defpos)
+                                {
+                                    nt = de;
+                                    break;
+                                }
+                            break;
+                        }
+                }
+                else
+                {
+                    var ep = new PEdgeType(nd.label.name, Domain.EdgeType, tl, cx.db.nextStmt, lT.defpos, aT.defpos, cx.db.nextPos, cx);
+                    be = (EdgeType)(cx.Add(ep) ?? throw new DBException("42105"));
+                    nt = be;
+                }
             }
             if (be is not null)
             {
@@ -11977,7 +11996,7 @@ cx.obs[high] is not QlValue hi)
         protected override CTree<string, QlValue> _AddEnds(Context cx, CTree<string, QlValue> ls)
         {
             ls = base._AddEnds(cx, ls);
-            if (domain is not EdgeType et)
+            if (cx.db.objects[domain.defpos] is not EdgeType et)
                 return ls;
             if (cx.db.objects[et.leaveCol] is TableColumn lc
                 && cx.obs[leavingValue] is GqlNode sl

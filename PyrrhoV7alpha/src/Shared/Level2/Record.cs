@@ -401,9 +401,9 @@ namespace Pyrrho.Level2
                             && (x.rows?.Contains(k) == true) && cx.db is Transaction
                             && x.rows?.Get(k, 0) is long q && q != now.defpos)
                             throw new DBException("23000", "duplicate key ", k);
-                        if (cx.db.objects[x.refindexdefpos] is Level3.Index rx &&
-                        //    rx.rows?.Contains(k)!=true
-                             cx.db.objects[x.reftabledefpos] is Table tb
+                        if (cx.db.objects[x.refindexdefpos] is Level3.Index rx
+                            && cx.db.objects[x.reftabledefpos] is Table tb
+                            && x.keys.representation.First()?.value().kind != Qlx.POSITION
                             && tb.Top().FindPrimaryIndex(cx) is Level3.Index px
                             && px.rows?.Contains(k) != true
                             && cx.db is Transaction)

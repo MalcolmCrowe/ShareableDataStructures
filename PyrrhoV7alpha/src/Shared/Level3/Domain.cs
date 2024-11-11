@@ -1362,6 +1362,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (obj is null)
                 return 1;
             var that = (Domain)obj;
+            if (defpos > 0L && that.defpos>0L)
+                return defpos.CompareTo(that.defpos);
             if (obj.GetType() == typeof (Domain) && that.GetType() != typeof(Domain))
                 return -1;
             var c = kind.CompareTo(that.kind);

@@ -1476,13 +1476,13 @@ namespace Pyrrho.Level5
                         && sf.leavingType == lt && sf.arrivingType == at)
                         sd = sf;
             sd ??= cx.db.objects[cx.role.dbobjects[id] ?? -1L] as Domain;
-            var ns = sd?.names ?? sd?.infos[cx.role.defpos]?.names ?? Names.Empty;
             if (sd is not null)
-                m = m+ (_Domain, sd) + (Kind, sd.kind);
+            {
+                m = m + (_Domain, sd) + (Kind, sd.kind);
+                cx.AddDefs(sd);
+            }
             else
                 m += (_Domain, dt);
-            if (ns.Count > 0)
-                m += (ObInfo._Names, ns);
             return m;
         }
         public static GqlLabel operator +(GqlLabel sl, (long, object) x)
@@ -1831,7 +1831,7 @@ namespace Pyrrho.Level5
                     if (ed.kind == Qlx.EDGETYPE)
                         ed = (Domain)cx.Add(UnionType(ed.defpos+1L, ed, this));
                     else if (ed.kind == Qlx.UNION)
-                        ed = (Domain)cx.Add(new Domain(ed.defpos, Qlx.UNION, ed.unionOf + ((Domain)this, true)));
+                        ed = (Domain)cx.Add(new Domain(ed.defpos, Qlx.UNION, ed.unionOf + (this, true)));
                     else throw new PEException("PE20901");
                     ro += (Role.EdgeTypes, ro.edgeTypes+(nm, ed.defpos));
                     ro += (Role.DBObjects, ro.dbobjects + (nm, ed.defpos));

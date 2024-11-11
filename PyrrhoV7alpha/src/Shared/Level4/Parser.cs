@@ -2479,7 +2479,7 @@ namespace Pyrrho.Level4
                 var un = CTree<Domain, bool>.Empty;
                 EdgeType? ee = null;
                 for (var b = left.unionOf.First(); b != null; b = b.Next())
-                    if (b.key() is EdgeType e
+                    if (cx.db.objects[b.key().defpos] is EdgeType e
                         && ((e.leavingType == lt?.defpos && at is null)
                         || (e.arrivingType == at?.defpos && lt is null)
                         || (e.leavingType == lt?.defpos && e.arrivingType == at?.defpos)))
