@@ -1217,7 +1217,7 @@ namespace Pyrrho.Level4
             return wds;
         }
         /// <summary>
-        /// We are parsing left to right and this is trickey for the ElementTypeSpecification syntax! All of
+        /// We are parsing left to right and this is tricky for the ElementTypeSpecification syntax! All of
         /// the helpful keywords are optional (although subject to complex restrictions),
         /// so they only serve to make the code here more confusing.
         /// We also allow alternative node tye references and multiplicity metadata.
@@ -1320,7 +1320,7 @@ namespace Pyrrho.Level4
                     var fi = id;
                     var fn = id.ident;
                     var ix = cx.dnames[fn];
-                    ft = cx.obs[(ix >= 0L) ? ix : cx.role.nodeTypes[fn] ?? -1L] as Domain;
+                    ft = cx.obs[(ix >= 0L) ? ix : cx.role.dbobjects[fn] ?? -1L] as Domain;
                     fp = ps;
                     var mi = new Ident(this);
                     var mn = mi.ident;
@@ -1346,7 +1346,7 @@ namespace Pyrrho.Level4
                     else if (Match(Qlx.LABEL, Qlx.LABELS, Qlx.COLON, Qlx.IS))
                         (st, sa, sp) = ElementDetails(si, Domain.NodeType);
                     FindOrCreateElementType(si, st, sp);
-                    st = cx.obs[cx.role.nodeTypes[sn] ?? -1L] as NodeType;
+                    st = cx.obs[cx.role.dbobjects[sn] ?? -1L] as NodeType;
                     Mustbe(Qlx.RPAREN);
                     switch (fk)
                     {
@@ -1366,7 +1366,7 @@ namespace Pyrrho.Level4
                         if (b.value().Item1 is Ident i)
                         {
                             ix = cx.names[i.ident];
-                            if (cx.obs[(ix > 0L) ? ix : cx.role.nodeTypes[i.ident]??-1L] is not NodeType t)
+                            if (cx.obs[(ix > 0L) ? ix : cx.role.dbobjects[i.ident]??-1L] is not NodeType t)
                                 throw new DBException("42107", i.ident);
                             lt += t;
                         }
@@ -1374,7 +1374,7 @@ namespace Pyrrho.Level4
                         if (b.value().Item1 is Ident i)
                         {
                             ix = cx.names[i.ident];
-                            if (cx.obs[(ix > 0L) ? ix : cx.role.nodeTypes[i.ident] ?? -1L] is not NodeType t)
+                            if (cx.obs[(ix > 0L) ? ix : cx.role.dbobjects[i.ident] ?? -1L] is not NodeType t)
                                 throw new DBException("42107", i.ident);
                             at += t;
                         }
@@ -1430,7 +1430,7 @@ namespace Pyrrho.Level4
                     Mustbe(Qlx.LPAREN);
                     var fi = new Ident(this);
                     var ix = cx.dnames[fi.ident];
-                    ft = cx.obs[(ix>0L) ? ix : cx.role.nodeTypes[fi.ident] ?? -1L] as NodeType;
+                    ft = cx.obs[(ix>0L) ? ix : cx.role.dbobjects[fi.ident] ?? -1L] as NodeType;
                     fa += (fi, ParseMetadata(Qlx.TYPE));
                     Mustbe(Qlx.Id);
                     while (Match(Qlx.VBAR))
@@ -1445,7 +1445,7 @@ namespace Pyrrho.Level4
                     Next();
                     var se = new Ident(this);
                     ix = cx.dnames[se.ident];
-                    st = cx.obs[(ix>0L) ? ix : cx.role.nodeTypes[se.ident] ?? -1L] as NodeType;
+                    st = cx.obs[(ix>0L) ? ix : cx.role.dbobjects[se.ident] ?? -1L] as NodeType;
                     sa += (se, ParseMetadata(Qlx.TYPE));
                     Mustbe(Qlx.Id);
                     while (Match(Qlx.VBAR))
@@ -1477,7 +1477,7 @@ namespace Pyrrho.Level4
                         if (b.value().Item1 is Ident i)
                         {
                             ix = cx.dnames[i.ident];
-                            if (cx.obs[(ix>0L) ? ix : cx.role.nodeTypes[i.ident] ?? -1L] is not NodeType t)
+                            if (cx.obs[(ix>0L) ? ix : cx.role.dbobjects[i.ident] ?? -1L] is not NodeType t)
                                 throw new DBException("42107", i.ident);
                             lt += t;
                         }
@@ -1485,7 +1485,7 @@ namespace Pyrrho.Level4
                         if (b.value().Item1 is Ident i)
                         {
                             ix = cx.dnames[i.ident];
-                            if (cx.obs[(ix>0L) ? ix : cx.role.nodeTypes[i.ident] ?? -1L] is not NodeType t)
+                            if (cx.obs[(ix>0L) ? ix : cx.role.dbobjects[i.ident] ?? -1L] is not NodeType t)
                                 throw new DBException("42107", i.ident);
                             at += t;
                         }
@@ -1680,6 +1680,7 @@ namespace Pyrrho.Level4
                         var tp = new PEdgeType(id.ident, (EdgeType)Domain.EdgeType.Relocate(id.uid), un, -1L,
                             lt.defpos, at.defpos, cx.db.nextPos, cx);
                         ut = (NodeType)(cx.Add(tp) ?? throw new DBException("42105"));
+                        cx.dnames += (ut.name, ut.defpos);
                         var us = CTree<string, Domain>.Empty;
                         for (var b = dm?.rowType.First(); b != null; b = b.Next())
                             if (cx.db.objects[b.value() ?? -1L] is TableColumn tc && cx.NameFor(tc.defpos) is string tn)
