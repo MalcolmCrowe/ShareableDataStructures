@@ -4,6 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Runtime.CompilerServices;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -7386,18 +7387,18 @@ namespace Pyrrho.Level3
                         var sb = new StringBuilder();
                         var cm = "";
                         if (tr?.subType >= 0 && cx.NameFor(tr.subType) is string ns)
-                            sb.Append(ns.Trim(':'));
+                            sb.Append(ns);//.Trim(':'));
                         else if (tr is not null && cx.db.objects[tr.tabledefpos] is Table tb)
                         {
                             if (tb.nodeTypes.Count==0 && tb.NameFor(cx) is string nm)
                             {
-                                sb.Append(cm); sb.Append(nm.Trim(':'));
+                                sb.Append(cm); sb.Append(nm);//.Trim(':'));
                             } else
                             for (var b = tb.nodeTypes.First(); b != null; b = b.Next())
                                 if (b.key().NameFor(cx) is string nk)
                                 {
                                     sb.Append(cm); cm = "&";
-                                    sb.Append(nk.Trim(':'));
+                                        sb.Append(nk); //.Trim(':'));
                                 }
                         }
                         return new TChar(sb.ToString());
@@ -11365,9 +11366,13 @@ cx.obs[high] is not QlValue hi)
                 for (var b = ll.First(); b != null; b = b.Next())
                     if (fi.infos[cx.role.defpos] is ObInfo oi && !oi.names.Contains(b.key()))
                     {
+                        for (var c = ((Transaction)cx.db).physicals.First(); c != null; c = c.Next())
+                            if (c.value() is PColumn3 p3 && p3.name == b.key())
+                                goto skip;
                         var pc = new PColumn3(fi, b.key(), -1, b.value().domain,PColumn.GraphFlags.None,
                             -1L, -1L, cx.db.nextPos, cx);
                         cx.Add(pc);
+                    skip:;
                     }
                 if (cx.db.objects[fi.defpos] is NodeType nn)
                     nt = nn;
@@ -11519,8 +11524,8 @@ cx.obs[high] is not QlValue hi)
         /// <returns></returns>
         internal bool CheckProps(Context cx, TNode n)
         {
-            if (this is not GqlEdge && n is TEdge)
-                return false;
+     //       if (this is not GqlEdge && n is TEdge)
+     //           return false;
             if (cx.binding[idValue] is TNode ni && ni.id.CompareTo(n.id)!=0)
                 return false;
             cx.values += n.tableRow.vals;

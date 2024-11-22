@@ -944,20 +944,20 @@ namespace Pyrrho.Level1
                 PutString(p.dataType.name);
                 PutInt(p.dataType.Typecode());
             }
-            PutData(_cx,p);
+            PutData(_cx,p,dt);
         }
         /// <summary>
         /// Send obs cell contents.
         /// Normal result of SELECT in client-server comms.
         /// </summary>
         /// <param name="tv"></param>
-        internal void PutData(Context _cx, TypedValue tv)
+        internal void PutData(Context _cx, TypedValue tv, Domain dt)
         {
             switch (tv.dataType.kind)
             {
                 case Qlx.Null: break;
                 case Qlx.SENSITIVE:
-                    PutData(_cx, ((TSensitive)tv).value);
+                    PutData(_cx, ((TSensitive)tv).value, dt);
                     break;
                 case Qlx.BOOLEAN:
                     {
@@ -1088,8 +1088,8 @@ namespace Pyrrho.Level1
                 case Qlx.EDGETYPE:
                     if (tv is TRow && tv.dataType is NodeType nt)
                         PutString(nt.Describe(_cx));
-                    else
-                        PutString(tv.ToString(_cx));
+                    else if (tv is TNode tn)
+                        PutString(tn.Cast(_cx,dt).ToString(_cx));
                     break;
                 case Qlx.TYPE: 
                     if (tv.dataType is UDType u && _cx.db.objects[u.defpos] is UDType ut)// may be different!

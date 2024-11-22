@@ -613,7 +613,7 @@ namespace Pyrrho
                                             {
                                                 tcp.PutString(an);
                                                 tcp.PutInt(dt.Typecode());
-                                                tcp.PutData(cx, vs[a] ?? TNull.Value);
+                                                tcp.PutData(cx, vs[a] ?? TNull.Value, dt);
                                             }
                                         }
                                     tcp.PutLong(ep);
@@ -703,7 +703,7 @@ namespace Pyrrho
                                         {
                                             tcp.PutString(an);
                                             tcp.PutInt(dt.Typecode());
-                                            tcp.PutData(cx, vs?[a] ?? TNull.Value);
+                                            tcp.PutData(cx, vs?[a] ?? TNull.Value, dt);
                                         }
                                     tcp.PutLong(ep ?? -1L);
                                     tcp.Write(Responses.Done);
@@ -1520,7 +1520,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(18 Nov 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(22 Nov 2024)", "http://www.pyrrhodb.com"
         ];
 	}
 }

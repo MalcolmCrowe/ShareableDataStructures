@@ -1,3 +1,4 @@
+using System.Runtime.ConstrainedExecution;
 using System.Text;
 using System.Text.Json.Serialization.Metadata;
 using Pyrrho.Common;
@@ -4991,74 +4992,14 @@ namespace Pyrrho.Level3
                             ds += (tq.defpos, tq);
                 }
             }
-            else if (pd is not null && pd.dataType is NodeType pn && pn is not EdgeType) // an edge attached to the TNode pd
+            else if (pd is not null && pd.dataType is NodeType pn)// && pn is not EdgeType) // an edge attached to the TNode pd
             {
                 var ctr = CTree<Domain, int>.Empty;
                 var tg = truncator != CTree<long, (int, Domain)>.Empty;
-                // case 1: pn has a primary index
-                for (var b = pn.rindexes.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is EdgeType rt)
-                    {
-                        if (pd.defpos == pd.dataType.defpos) // schmema flag
-                        {
-                            ds += (rt.defpos, rt.Schema(cx));
-                            continue;
-                        }
-                        if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
-                                continue;
-                        var lm = truncator.Contains(rt.defpos) ? truncator[rt.defpos].Item1 : int.MaxValue;
-                        var ic = (xn.tok == Qlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
-                        var xp = (xn.tok == Qlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;
-                        for (var g = b.value().First(); g != null; g = g.Next())
-                            if (g.key()[0] == ic)
-                            {
-                                if (cx.db.objects[xp] is Index rx
-                                && pd.tableRow.vals[pn.idCol] is TInt ti
-                                && rx.rows?.impl?[ti] is TPartial tp)
-                                {
-                                    if (lm < tp.value.Count && truncator[rt.defpos].Item2 is Domain dm
-                                        && dm.Length > 0)
-                                        ds = Trunc(ds, rt, tp.value, lm, dm);
-                                    else
-                                        for (var c = tp.value.First(); c != null; c = c.Next())
-                                            if (rt.tableRows[c.key()] is TableRow tr)
-                                            {
-                                                if (tg)
-                                                {
-                                                    if (AllTrunc(ctr))
-                                                        goto alldone;
-                                                    if (Trunc(ctr, rt))
-                                                        goto rtdone;
-                                                    ctr = AddIn(ctr, rt);
-                                                }
-                                                ds += (tr.defpos, tr);
-                                            }
-                                }
-                            rtdone:;
-                            }
-                    }
-                // case 2: pn has no primary index: follow the above logic for sysRefIndexes instead
-                var la = truncator.Contains(Domain.EdgeType.defpos) ? truncator[Domain.EdgeType.defpos].Item1 : int.MaxValue;
-                for (var b = pn.sindexes[pd.tableRow.defpos]?.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is TableColumn cc
-                        && cx.db.objects[cc.tabledefpos] is EdgeType rt
-                        && rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
-                        && (ne == "" || nx == "" || ne == nx)
-                        && b.value() is CTree<long, bool> pt)
-                        for (var c = pt.First(); c != null; c = c.Next())
-                        {
-                            var lm = truncator.Contains(rt.defpos) ? truncator[rt.defpos].Item1 : int.MaxValue;
-                            if (pd.defpos == pd.dataType.defpos && lm-- > 0 && la-- > 0)  // schema flag
-                            {
-                                ds += (rt.defpos, rt.Schema(cx));
-                                continue;
-                            }
-                            if (!xn.label.Match(cx, new CTree<long, bool>(rt.defpos, true), Qlx.EDGETYPE))
-                                continue;
-                            if (rt.tableRows[c.key()] is TableRow dr && lm-- > 0 && la-- > 0)
-                                ds += (dr.defpos, dr);
-                        }
-                    alldone:;
+                ds = Traverse(cx, this, xn, truncator, pd, pn, ctr, ds);
+                for (var b = pn.super.First(); b != null; b = b.Next())
+                    if (cx._Ob(b.key().defpos) is NodeType ps)
+                        ds = Traverse(cx, this, xn, truncator, pd, ps, ctr, ds);
             }
             else // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
                 ds = xn.For(cx, this, xn, ds);
@@ -5066,6 +5007,73 @@ namespace Pyrrho.Level3
             if (df != null && !Done(cx))
                 DbNode(cx, new NodeStep(be.alt, xn, df, new ExpStep(be.alt, be.matches?.Next(), be.next)),
                      (xn is GqlEdge && xn is not GqlPath) ? xn.tok : tok, pd);
+        }
+        static BTree<long,TableRow> Traverse(Context cx,MatchStatement ms,GqlNode xn, BTree<long,(int,Domain)> tr,
+            TNode pd,NodeType pn,CTree<Domain,int> ctr,BTree<long,TableRow>ds)
+        {
+            // case 1: pn has a primary index
+            for (var b = pn.rindexes.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is EdgeType rt && b.value() is CTree<Domain, Domain> pt)
+                {
+                    if (pd.defpos == pd.dataType.defpos) // schmema flag
+                    {
+                        ds += (rt.defpos, rt.Schema(cx));
+                        return ds;
+                    }
+                    if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
+                        return ds;
+                    var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
+                    var ic = (xn.tok == Qlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
+                    var xp = (xn.tok == Qlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;
+                    for (var g = pt.First(); g != null; g = g.Next())
+                        if (g.key()[0] == ic)
+                        {
+                            if (cx.db.objects[xp] is Index rx
+                            && pd.tableRow.vals[pn.idCol] is TInt ti
+                            && rx.rows?.impl?[ti] is TPartial tp)
+                            {
+                                if (lm < tp.value.Count && tr[rt.defpos].Item2 is Domain dm
+                                    && dm.Length > 0)
+                                    ds = Trunc(ds, rt, tp.value, lm, dm);
+                                else
+                                    for (var c = tp.value.First(); c != null; c = c.Next())
+                                        if (rt.tableRows[c.key()] is TableRow r)
+                                        {
+                                            if (tr.Count > 0L)
+                                            {
+                                                if (ms.AllTrunc(ctr))
+                                                    return ds;
+                                                if (ms.Trunc(ctr, rt))
+                                                    goto rtdone;
+                                                ctr = AddIn(ctr, rt);
+                                            }
+                                            ds += (r.defpos, r);
+                                        }
+                            }
+                        rtdone:;
+                        }
+                }
+            var la = tr.Contains(Domain.EdgeType.defpos) ? tr[Domain.EdgeType.defpos].Item1 : int.MaxValue;
+            for (var b = pn.sindexes[pd.tableRow.defpos]?.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is TableColumn cc
+                    && cx.db.objects[cc.tabledefpos] is EdgeType rt
+                    && rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
+                    && (ne == "" || nx == "" || ne == nx)
+                    && b.value() is CTree<long, bool> pt)
+                    for (var c = pt.First(); c != null; c = c.Next())
+                    {
+                        var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
+                        if (pd.defpos == pd.dataType.defpos && lm-- > 0 && la-- > 0)  // schema flag
+                        {
+                            ds += (rt.defpos, rt.Schema(cx));
+                            continue;
+                        }
+                        if (!xn.label.Match(cx, new CTree<long, bool>(rt.defpos, true), Qlx.EDGETYPE))
+                            continue;
+                        if (rt.tableRows[c.key()] is TableRow dr && lm-- > 0 && la-- > 0)
+                            ds += (dr.defpos, dr);
+                    }
+            return ds;
         }
         static CTree<Domain,int> AddIn(CTree<Domain,int> ctr,EdgeType rt)
         {
@@ -5199,8 +5207,13 @@ namespace Pyrrho.Level3
                         cx.values += (bn.xn.defpos, dn);
                         if (dn is TEdge de && pd is not null
                             && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving) is TInt pv
-                            && pv.ToLong()?.CompareTo(pd.tableRow.defpos) != 0 && pv.CompareTo(pd.id)!=0)
+                            && pv.ToLong()?.CompareTo(pd.tableRow.defpos) != 0 && pv.CompareTo(pd.id) != 0)
+                        {
+                            if (pd is TEdge ee &&
+                                dn.id.CompareTo((tok == Qlx.ARROWBASE) ? ee.arriving : ee.leaving)==0)
+                                goto next;
                             goto another;
+                        }
                     }
                     goto next;
                 another:

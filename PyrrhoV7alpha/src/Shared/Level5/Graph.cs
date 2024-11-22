@@ -251,7 +251,7 @@ namespace Pyrrho.Level5
                     {
                         gi = true;
                         rt += pn.idCol;
-                        rs += (pn.idCol, pn.idColDomain);
+                        rs += (pn.idCol, cx._Ob(pn.idCol)?.domain??Position);
                     }
                     for (var b = pd?.rowType.First(); b != null; b = b.Next())
                         if (b.value() is long p && pd?.representation[p] is Domain cd && !rs.Contains(p))
@@ -1456,11 +1456,17 @@ namespace Pyrrho.Level5
             m ??= BTree<long, object>.Empty;
             m = m + (ObInfo.Name, id);
             Domain dt = NodeType;
+            var da = ((Qlx)(m[Kind] ?? Qlx.NO)) == Qlx.DOUBLEARROW;
             if (!m.Contains(Kind))
                 m += (Kind, (lt is null || at is null) ? Qlx.NODETYPE : Qlx.EDGETYPE);
-            else if (((Qlx)(m[Kind]??Qlx.NO)) == Qlx.EDGETYPE)
+            else if (da && cx.db.objects[lt ?? -1L] is NodeType un)
+            {
+                m += (Under, new CTree<Domain,bool>(un,true));
+                dt = un;
+            }
+            else if (((Qlx)(m[Kind] ?? Qlx.NO)) == Qlx.EDGETYPE)
                 dt = EdgeType;
-            if (lt is not null && lt>=0 && at is not null && at>=0)
+            if ((!da) && lt is not null && lt>=0 && at is not null && at>=0)
             {
                 m = m + (GqlEdge.LeavingValue, lt.Value) + (GqlEdge.ArrivingValue, at.Value);
                 dt = EdgeType;
@@ -1538,6 +1544,7 @@ namespace Pyrrho.Level5
                         break;
                     }
                 case Qlx.NODETYPE:
+                case Qlx.DOUBLEARROW:
                 case Qlx.NO:
                     {
                         ds = xn.domain.For(cx, ms, xn, null);
@@ -1665,6 +1672,16 @@ namespace Pyrrho.Level5
             }
             if (kind == Qlx.NO)
                 sb.Append(base.ToString());
+            else if (super.Count>0L)
+            {
+                sb.Append(" under");
+                var cm = '[';
+                for (var b=super.First();b!=null;b=b.Next())
+                {
+                    sb.Append(cm);cm = ',';sb.Append(b.key());
+                }
+                if (cm == ',') sb.Append(']');
+            }    
             else if (defpos>0)
             {
                 sb.Append(' '); sb.Append(kind);
@@ -2475,9 +2492,10 @@ namespace Pyrrho.Level5
             var sb = new StringBuilder();
             sb.Append(ni.name);
             var cm = '(';
-            for (var b = nt.First(); b != null; b = b.Next())
-                if (b.value() is long cp && nt.representation[cp] is not null
-                    && nt.representation[cp]?.kind!=Qlx.POSITION
+            var tb = nt._PathDomain(cx);
+            for (var b = tb.First(); b != null; b = b.Next())
+                if (b.value() is long cp && tb.representation[cp] is not null
+                    && tb.representation[cp]?.kind!=Qlx.POSITION
                     && (cx.db.objects[cp] as TableColumn)?.infos[cx.role.defpos]?.name is string nm)
                 {
                     sb.Append(cm); cm = ',';
@@ -2543,6 +2561,25 @@ namespace Pyrrho.Level5
         internal virtual Names _Names(Context cx)
         {
             return dataType.infos[cx.role.defpos]?.names ?? Names.Empty;
+        }
+        internal TNode Cast(Context cx,Domain dt)
+        {
+            if (dt.defpos == dataType.defpos)
+                return this;
+            if (dataType is NodeType nt && nt.tableRows[defpos] is TableRow tr)
+            {
+                if (dt.defpos < 0) // calculate specific type
+                    return new TNode(cx, new TableRow(defpos, tr.prev, Specific(cx,nt), tr.vals));
+                return new TNode(cx, new TableRow(defpos, tr.prev, dt.defpos, tr.vals));
+            }
+            return this;
+        }
+        long Specific(Context cx,NodeType nt)
+        {
+            for (var b = nt.subtypes.First(); b != null; b = b.Next())
+                if (cx._Ob(b.key()) is NodeType tb && tb.tableRows.Contains(defpos))
+                    return Specific(cx, tb);
+            return nt.defpos;
         }
         public override string ToString()
         {

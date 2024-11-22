@@ -1545,7 +1545,7 @@ namespace Pyrrho.Level4
             if (la is not null && aa is not null && cx.db.objects[cx.role.edgeTypes[id.ident] ?? -1L] is NodeType ee
                 && ee.Length == ps.Length)
                 return ee;
-            var un = CTree<Domain, bool>.Empty; // relevant node types
+            var un = dm?.super ?? CTree<Domain, bool>.Empty; // relevant node types
             var ep = CTree<long, bool>.Empty; // properties found
             var pn = BTree<string, long?>.Empty; // required properties: names and qlvalue pos
             var rp = CTree<long, bool>.Empty; // properties required (by qlvalue pos)
@@ -1557,11 +1557,14 @@ namespace Pyrrho.Level4
             }
             var op = rp;
             // 1: Construct the set of relevant (super)types
-            if (dm is GqlLabel lb)
-                un = lb.OnInsert(cx,0L);
-            if (un.Count == 0 && dm?.defpos >= 0)
-                un += (dm, true);
-            else if (ps.Length > 0) // watch out for existing unlabelled node tye
+            if (id.ident != dm?.name)
+            {
+                if (dm is GqlLabel lb)
+                    un = lb.OnInsert(cx, 0L);
+                if (un.Count == 0 && dm?.defpos >= 0)
+                    un += (dm, true);
+            }
+            if (ps.Length > 0) // watch out for existing unlabelled node tye
             {
                 for (var b = cx.db.unlabelledNodeTypes.First(); b != null; b = b.Next())
                     if (cx.db.objects[b.value() ?? -1L] is NodeType t)
@@ -1755,7 +1758,7 @@ namespace Pyrrho.Level4
                 return (n, la, BList<(Ident, Domain)>.Empty);
             Domain le = GqlLabel.Empty;
             if (Match(Qlx.LABEL,Qlx.LABELS,Qlx.COLON,Qlx.DOUBLEARROW,Qlx.IMPLIES))
-                le = ParseNodeLabelExpression(xp);
+                le = ParseNodeLabelExpression(xp,id.ident);
             var lp = lxr.Position;
             if (Match(Qlx.DOUBLEARROW, Qlx.IMPLIES)) // we prefer DOUBLEARROW to the keyword
             {
@@ -1793,10 +1796,12 @@ namespace Pyrrho.Level4
             {
                 if (xp.kind == Qlx.NODETYPE)
                     le = FindOrCreateElementType(id, Domain.NodeType, ps);
-                else 
+                else
                     le = FindOrCreateElementType(id, Domain.EdgeType, ps, null,
                         BList<Domain?>.Empty, BList<Domain?>.Empty);
             }
+            else if (le.defpos > 0L && !cx.role.dbobjects.Contains(le.name))
+                le = FindOrCreateElementType(id, le, ps);
             lxr.tgs = CTree<long, TGParam>.Empty;
             return (le, la, ps);
         }
@@ -2469,13 +2474,20 @@ namespace Pyrrho.Level4
                 neg = true;
                 Next();
             }
-            if (tok == Qlx.COLON)
+            var ab = tok;
+            if (Match(Qlx.COLON,Qlx.DOUBLEARROW,Qlx.IMPLIES))
                 Next();
             var c1 = new Ident(this);
             Mustbe(Qlx.Id);
             var left = cx._Ob(cx.role.dbobjects[c1.ident] ?? -1L) as Domain 
-                ?? (Domain)cx.Add(new GqlLabel(c1,cx,lt,at,new BTree<long,object>(Domain.Kind,dm.kind)));
-            if (left.kind==Qlx.UNION && (lt is not null || at is not null))
+                ?? (Domain)cx.Add(new GqlLabel(c1,cx,lt,at,
+                new BTree<long,object>(Domain.Kind,dm.kind)));
+            if (ab == Qlx.DOUBLEARROW || ab == Qlx.IMPLIES)
+                left = new GqlLabel(c1=new Ident(a ?? throw new DBException("42000"),lp),cx,
+                    (NodeType)left, null, 
+                    new BTree<long, object>(Domain.Kind, left.kind)
+                    +(Domain.Under,new CTree<Domain,bool>(left,true)));
+            else if (left.kind==Qlx.UNION && (lt is not null || at is not null))
             {
                 var un = CTree<Domain, bool>.Empty;
                 EdgeType? ee = null;
@@ -2505,13 +2517,13 @@ namespace Pyrrho.Level4
             while (Match(Qlx.VBAR,Qlx.COLON,Qlx.AMPERSAND,Qlx.DOUBLEARROW))
             {
                 lp = lxr.Position;
-                var op = tok;
+                ab = tok;
                 Next();
-                if (Match(Qlx.COLON))
+                if (Match(Qlx.COLON,Qlx.DOUBLEARROW))
                     Next();
                 var right = ParseNodeLabelExpression(Domain.NodeType,c1.ident,lt,at);
                 cx.Add(right);
-                left = new GqlLabel(lp, left.defpos, right.defpos, new BTree<long,object>(Domain.Kind,op)); // leave name empty for now
+                left = new GqlLabel(lp, left.defpos, right.defpos, new BTree<long,object>(Domain.Kind,ab)); // leave name empty for now
                 cx.Add(left);
             }
             var ns = left.names;
