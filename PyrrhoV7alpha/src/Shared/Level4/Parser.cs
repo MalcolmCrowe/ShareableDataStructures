@@ -1957,7 +1957,7 @@ namespace Pyrrho.Level4
             var ge = ParseInsertGraphList(sch);
             var st = BList<long?>.Empty;
             var cs = (GraphInsertStatement)cx.Add(new GraphInsertStatement(cx.GetUid(), sch, ge, st));
-            if (cx.parse == ExecuteStatus.Obey && ((!sch)||cs.graphExps[0]?[0]?.domain.kind==Qlx.EDGETYPE))
+            if (cx.parse == ExecuteStatus.Obey && ((!sch) || cs.graphExps[0]?[0]?.domain.kind == Qlx.EDGETYPE))
                 cs._Obey(cx);
             if (tok == Qlx.THEN)
             {

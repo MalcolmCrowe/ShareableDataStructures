@@ -1137,6 +1137,29 @@ namespace Pyrrho.Common
         {
             return new TRow(rw.dataType, rw.values + x);
         }
+        public static TRow operator +(TRow p, (Context, long, TypedValue) x)
+        {
+            var (cx, k, v) = x;
+            var dt = p.dataType;
+            if (dt.representation.Contains(k))
+                return new TRow(dt, p.values + (k, v));
+            return new TRow((Domain)cx.Add(new Domain(dt.defpos, cx, Qlx.ROW, dt.representation + (k, v.dataType), dt.rowType + k)),
+                p.values + (k, v));
+        }
+        public static TRow operator +(TRow p, (Context, TNode) x)
+        {
+            var (cx, n) = x;
+            var a = (p.Length > 0) ? (TArray)p[0L] : new TArray(Domain.NodeType);
+            return new TRow(p.dataType, p.values + (0L, a + (cx, a?.Length ?? 0, n)));
+        }
+        internal bool HasNode(TNode n)
+        {
+            if (values[0] is TArray ta)
+                for (var i = 0; i < ta.Length; i++)
+                    if (ta[i] is TNode x && x.defpos == n.defpos)
+                        return true;
+            return false;
+        }
         internal override TypedValue this[long n] => values[n]??TNull.Value;
         internal virtual TypedValue this[int i]
         {

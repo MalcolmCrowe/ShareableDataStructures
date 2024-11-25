@@ -1,10 +1,5 @@
-using System.Collections.ObjectModel;
-using System.Data.SqlTypes;
-using System.Linq;
 using System.Net;
-using System.Security.AccessControl;
 using System.Text;
-using System.Xml.Linq;
 using Pyrrho.Common;
 using Pyrrho.Level1;
 using Pyrrho.Level2;
@@ -66,7 +61,7 @@ namespace Pyrrho.Level4
         internal BList<TriggerActivation> deferred = BList<TriggerActivation>.Empty;
         internal BList<Exception> warnings = BList<Exception>.Empty;
         internal ObTree obs = ObTree.Empty;
-        // these five fields help with Fix(dp) during instancing (for Views)
+        // these 3 fields help with Fix(dp) during instancing (for Views)
         internal long instDFirst = -1L; // first uid for instance dest
         internal long instSFirst = -1L; // first uid in framing
         internal long instSLast = -1L; // last uid in framing
@@ -77,8 +72,8 @@ namespace Pyrrho.Level4
         internal BTree<long, BTree<TRow, BTree<long, Register>>> funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         internal BTree<Domain, long?> newTypes = BTree<Domain, long?>.Empty; // uncommitted types
-        internal CTree<long, TPath> paths = CTree<long, TPath>.Empty; // of trails by GqlMatchAlt.defpos
         internal BTree<long,Names> defs = BTree<long,Names>.Empty; // lexical scopes at lower levels
+        internal TRow? path = null;
         internal Names names = Names.Empty; // QlValue names at current level
         internal Names dnames = Names.Empty; // non-QlValue (e.g. Domain, TableColumn) names at current level
         internal Names anames = Names.Empty; // ambient names

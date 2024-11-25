@@ -4693,6 +4693,10 @@ namespace Pyrrho.Level4
                 for (var b = gs.First(); b != null; b = b.Next())
                     if (b.value() is TGParam g && g.type.HasFlag(TGParam.Type.Field))
                         dt -= g.uid; */
+            var rs = BList<TRow>.Empty;
+            for (var b = r.First(); b != null; b = b.Next())
+                rs += b.value().Item2;
+            m += (_Rows, r);
             if (r.Length == 0)
             {
                 var t = new MTree(dt, TreeBehaviour.Ignore, 0);

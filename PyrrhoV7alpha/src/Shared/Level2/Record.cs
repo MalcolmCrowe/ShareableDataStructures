@@ -456,6 +456,7 @@ namespace Pyrrho.Level2
             var tp = tabledefpos;
             var now = Now(cx);
             cx = Add(cx, tb, now);
+            tb = cx.obs[tb.defpos] as Table ?? throw new PEException("PE30301");
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             subType = ost;

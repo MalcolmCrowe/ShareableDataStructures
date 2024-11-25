@@ -4,6 +4,7 @@ using Pyrrho.Level4;
 using System.Text;
 using Pyrrho.Level2;
 using System.Data.SqlTypes;
+using System.Xml;
 
 namespace Pyrrho.Level5
 {
@@ -536,7 +537,7 @@ namespace Pyrrho.Level5
             long? lt = (ut as EdgeType)?.leavingType, at = (ut as EdgeType)?.arrivingType;
             var st = (name!="")?ut.super:CTree<Domain,bool>.Empty;
             // The new Type may not yet have a Physical record, so fix that
-            if (!HaveNodeOrEdgeType(cx))
+            if (cx.parse==ExecuteStatus.Obey && !HaveNodeOrEdgeType(cx))
             {
                 PNodeType pt;
                 for (var b = (m?[NodeTypes] as CTree<Domain,long>)?.First(); b != null; b = b.Next())
@@ -1447,7 +1448,9 @@ namespace Pyrrho.Level5
         internal GqlLabel(long dp, string nm,  Context cx, long? lt = null, long? at = null, 
             BTree<long,object>? m=null)
             : this(dp, _Mem(cx, nm, lt, at, m))
-        { }
+        {
+            cx.dnames += (nm, dp);
+        }
         GqlLabel() : this(-1L, -1L, -1L) { }
         internal GqlLabel(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -1586,6 +1589,8 @@ namespace Pyrrho.Level5
             }
             else if (k == Qlx.EDGETYPE)
                 k = Qlx.COLON;
+            if (cx.parse != ExecuteStatus.Obey)
+                return new(Content, true);
             var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue] ?? CTree<string, QlValue>.Empty);
             return k switch
             {
@@ -2250,6 +2255,8 @@ namespace Pyrrho.Level5
                     else if (it.CompareTo(tv.dataType) != 0)
                         throw new DBException("42000", "Conflicting id types");
                 }
+            if (cx.parse != ExecuteStatus.Obey)
+                return this;
             var fl = CTree<long, TypedValue>.Empty;
             var dp = cx.db.nextPos;
             var tbs = CTree<long, bool>.Empty;

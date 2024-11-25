@@ -33,7 +33,7 @@ namespace Pyrrho.Level4
             var lx = psr.lxr;
             lp = lx.Position;
             uid = psr.LexDp();
-            ident = ((lx.tok == Qlx.Id) ? lx.val?.ToString() : lx.tok.ToString()) ?? (DBObject.Uid(uid));
+            ident = ((lx.tok == Qlx.Id && lx.val is not null)? lx.val.ToString() : DBObject.Uid(uid));
             if (lx.tgs[uid] is TGParam gp)
                 lx.tgs += (lp, new TGParam(uid, gp.value, gp.dataType, gp.type, gp.from));
             sub = null;
@@ -329,6 +329,7 @@ namespace Pyrrho.Level4
                             break;
                         }
                     case Qlx.COLON:
+                    case Qlx.VBAR:
                         {
                             var tg = new TGParam(Position, vo, gc,
                                 (tex ? TGParam.Type.Type : TGParam.Type.Value) | tgg, tga);

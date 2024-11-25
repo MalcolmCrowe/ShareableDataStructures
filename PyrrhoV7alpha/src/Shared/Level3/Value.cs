@@ -381,6 +381,8 @@ namespace Pyrrho.Level3
                 for (var b = r.Sources(cx).First(); b != null; b = b.Next())
                     if (cx.cursors[b.key()] is TypedValue sv)
                         return sv;
+            if (name != null && cx.names[name] is long p)
+                return cx.values[p]??TNull.Value;
             return _Default();
         }
         internal override void Set(Context cx, TypedValue v)
@@ -2850,8 +2852,8 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.PATH:
                     {
-                        if (cx.paths[cx.obs[left]?.from??-1L] is TPath pa && cx.obs[right] is QlValue pi)
-                            return pa[pi.defpos] ?? TNull.Value;
+                        if (cx.obs[right] is QlValue pi)
+                            return cx.path?[pi.defpos] ?? TNull.Value;
                         break;
                     }
                 case Qlx.PERIOD:
@@ -11228,6 +11230,8 @@ cx.obs[high] is not QlValue hi)
                 return nt;
             if (m is null)
                 return Domain.NodeType;
+            if (m[_Label] is GqlLabel lb && cx.obs[cx.dnames[lb.name]] is NodeType n)
+                return n;
             if (l >= 0)
                 m += (GqlEdge.LeavingValue, l);
             if (a >= 0)
@@ -11286,6 +11290,8 @@ cx.obs[high] is not QlValue hi)
             for (var b = cx.role.dbobjects.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.value()??-1L] is NodeType bt && bt.infos[cx.role.defpos] is ObInfo ti)
                 {
+                    if (label.name != null && ti.name != label.name)
+                        continue;
                     for (var c = docValue.First(); c != null; c = c.Next())
                         if (!ti.names.Contains(c.key()))
                             goto noMatch;
@@ -11305,8 +11311,8 @@ cx.obs[high] is not QlValue hi)
         }
         internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, GqlNode xn, BTree<long, TableRow>? ds)
         {
-            if (domain.defpos>0)
-                return domain.For(cx, ms, xn, ds);
+            if (label!=GqlLabel.Empty)
+                return label.For(cx, ms, xn, ds);
             return base.For(cx, ms, xn, ds);
         }
         internal virtual GqlNode Add(Context cx, GqlNode? an, CTree<long, TGParam> tgs)
@@ -11524,18 +11530,21 @@ cx.obs[high] is not QlValue hi)
         /// <returns></returns>
         internal bool CheckProps(Context cx, TNode n)
         {
-     //       if (this is not GqlEdge && n is TEdge)
-     //           return false;
-            if (cx.binding[idValue] is TNode ni && ni.id.CompareTo(n.id)!=0)
+            //       if (this is not GqlEdge && n is TEdge)
+            //           return false;
+            if (cx.binding[idValue] is TNode ni && ni.id.CompareTo(n.id) != 0)
                 return false;
             cx.values += n.tableRow.vals;
             var ns = n._Names(cx);
             for (var c = label.OnInsert(cx, -1L).First(); c != null; c = c.Next())
                 if (cx.db.objects[n.tableRow.tabledefpos] is Domain cd)
-                    for (var d= c.key().OnInsert(cx, -1L).First();d!=null;d=d.Next())
-                     if (d.key() is NodeType dd && !cd.EqualOrStrongSubtypeOf(dd)
-                            && dd.tableRows.Count>0) // excludes cases where dd is only a bindingvalue
-                        return false;
+                    for (var d = c.key().OnInsert(cx, -1L).First(); d != null; d = d.Next())
+                        if (d.key() is NodeType dd && !cd.EqualOrStrongSubtypeOf(dd)
+                               && dd.tableRows.Count > 0) // excludes cases where dd is only a bindingvalue
+                            return false;
+            if (label.kind == Qlx.VBAR && label is GqlLabel lb
+                && !CheckType(cx, lb.left, n) && !CheckType(cx, lb.right, n))
+                return false;
             for (var b = docValue?.First(); b != null; b = b.Next())
                 if (b.key() is string k)
                 {
@@ -11568,6 +11577,11 @@ cx.obs[high] is not QlValue hi)
                         }
                     }
                 }
+            var ob = cx.names;
+            if (search != CTree<long, bool>.Empty)
+                for (var b = n.dataType.infos[cx.role.defpos]?.names.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                        cx.names += (b.key(), p);
             for (var b = search.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is QlValue se)
                 {
@@ -11575,7 +11589,12 @@ cx.obs[high] is not QlValue hi)
                     if (r != TBool.True)
                         return false;
                 }
+            cx.names = ob;
             return true;
+        }
+        bool CheckType(Context cx,long t,TNode n)
+        {
+            return cx.db.objects[t] is NodeType nt && nt.tableRows.Contains(n.defpos);
         }
         internal CTree<long, TypedValue> EvalProps(Context cx, NodeType nt)
         {
