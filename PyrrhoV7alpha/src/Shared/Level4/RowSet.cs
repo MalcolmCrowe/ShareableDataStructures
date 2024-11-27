@@ -5474,6 +5474,21 @@ namespace Pyrrho.Level4
                                 k += v;
                             }
                     }
+                    if (tb is EdgeType et && cx.conn.refIdsToPos)
+                    {
+                        if (cx.db.objects[et.leavingType] is NodeType ln
+                            && vs[et.leaveCol] is TChar ld
+                            && long.Parse(ld.value) is long lp
+                            && ln.FindPrimaryIndex(cx) is Level3.Index lx
+                            && lx.rows?.impl?[new TInt(lp)] is TInt li)
+                            vs += (et.leaveCol, li);
+                        if (cx.db.objects[et.arrivingType] is NodeType an
+                            && vs[et.arriveCol] is TChar ad
+                            && long.Parse(ad.value) is long ap
+                            && an.FindPrimaryIndex(cx) is Level3.Index ax
+                            && ax.rows?.impl?[new TInt(ap)] is TInt ai)
+                            vs += (et.arriveCol, ai);
+                    }
                 }
                 return vs;
             }

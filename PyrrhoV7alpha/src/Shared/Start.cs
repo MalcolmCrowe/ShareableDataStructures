@@ -75,6 +75,7 @@ namespace Pyrrho
             // process the connection string
             var fn = conn.props["Files"];
             var user = conn.props["User"];
+            var log = PyrrhoStart.validationLog;
             Thread.CurrentThread.CurrentUICulture = new CultureInfo(conn.props["Locale"]??"");
             int p = -1;
             bool recovering = false;
@@ -182,6 +183,8 @@ namespace Pyrrho
                                 long t = 0;
                                 cx = new Context(db, cx??throw new PEException("PE14001"));
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
+                                log?.WriteLine("" + (++PyrrhoStart.validationStep));
+                                log?.WriteLine(cmd);
                                 cx.db = (Transaction)db;
                                 cx.done = ObTree.Empty;
                                 var tn = DateTime.Now.Ticks;
@@ -410,6 +413,8 @@ namespace Pyrrho
                                     throw new DBException("2E202").Mix();
                                 nextCol = 0; // discard anything left over from ReaderData
                                 var cmd = tcp.GetString();
+                                log?.WriteLine("" + (++PyrrhoStart.validationStep));
+                                log?.WriteLine(cmd);
                                 var tr = db.Transact(db.nextId, conn);
                                 var pl = tr.physicals.Count;
                                 db = tr;
@@ -1364,7 +1369,9 @@ namespace Pyrrho
         public static string hostname = "localhost";
         public static int port = 5433;
         internal static bool VerboseMode = false, TutorialMode = false, DebugMode = false, 
-            HTTPFeedbackMode = false,ShowPlan = false;
+            HTTPFeedbackMode = false,ShowPlan = false, ValidationMode = false;
+        internal static int validationStep = 0;
+        internal static StreamWriter? validationLog = null;
         /// <summary>
         /// The main service loop of the Pyrrho DBMS is here
         /// </summary>
@@ -1456,8 +1463,11 @@ namespace Pyrrho
                         case 'R': ShowPlan = true; break;
                         case 's': httpport = (p < 0) ? 8180 : p; break;
                         case 'S': httpsport = (p < 0) ? 8133 : p; break;
+                        case 'V': ValidationMode = true; validationStep = (p < 0) ? 0 : p; break;
                     }
                 }
+            if (ValidationMode)
+                validationLog = new StreamWriter("log.txt");
 #if WINDOWS
             arule = new FileSecurity();
             var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
@@ -1520,7 +1530,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(25 Nov 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(27 Nov 2024)", "http://www.pyrrhodb.com"
         ];
 	}
 }

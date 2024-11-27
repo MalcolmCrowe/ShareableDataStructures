@@ -5041,10 +5041,10 @@ namespace Pyrrho.Level3
                     if (pd.defpos == pd.dataType.defpos) // schmema flag
                     {
                         ds += (rt.defpos, rt.Schema(cx));
-                        return ds;
+                        continue;
                     }
                     if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
-                        return ds;
+                        continue;
                     var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
                     var ic = (xn.tok == Qlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
                     var xp = (xn.tok == Qlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;

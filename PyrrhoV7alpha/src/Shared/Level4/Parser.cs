@@ -436,8 +436,8 @@ namespace Pyrrho.Level4
                 case Qlx.SELECT:
                     return ParseCursorSpecification(xp); // single TBD
                                                                        //  return ParseSelectSingle(new Ident(this), xp);
-                case Qlx.SET: return ParseAssignment();  // some GQL TBD
-                                                     //  return ParseAssignment();
+                case Qlx.SET:
+                    return ParseAssignment();  // and see ParseSqlSet, some GQL TBD
                 case Qlx.SIGNAL: return ParseSignal();
                 case Qlx.SKIP: goto case Qlx.ORDER;
                 //GQL case Qlx.START
@@ -4938,7 +4938,7 @@ namespace Pyrrho.Level4
             if (tok == Qlx.LPAREN)
                 return ParseMultipleAssignment();
             if (Match(Qlx.AUTHORIZATION, Qlx.ROLE, Qlx.TIMEOUT,Qlx.TABLE, Qlx.DOMAIN,Qlx.TYPE,
-                Qlx.PROCEDURE, Qlx.FUNCTION, Qlx.TRIGGER, Qlx.METHOD,
+                Qlx.PROCEDURE, Qlx.FUNCTION, Qlx.TRIGGER, Qlx.METHOD, Qlx.REFERENCING,
                 Qlx.STATIC, Qlx.INSTANCE, Qlx.OVERRIDING, Qlx.CONSTRUCTOR))
             { 
                 ParseSqlSet(); 
@@ -7533,6 +7533,11 @@ namespace Pyrrho.Level4
                     throw new DBException("42105").Add(Qlx.OWNER).Mix();
                 Mustbe(Qlx.INTEGERLITERAL);
                 // ignore for now
+            }
+            else if (Match(Qlx.REFERENCING))
+            {
+                cx.conn.refIdsToPos = true;
+                Next();
             }
             else
             {

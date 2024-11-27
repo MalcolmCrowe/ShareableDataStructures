@@ -2717,8 +2717,9 @@ namespace Pyrrho.Level4
         // uid range for prepared statements is HeapStart=0x7000000000000000-0x7fffffffffffffff
         long _nextPrep = Transaction.HeapStart;
         internal long nextPrep => _nextPrep;
-        internal readonly Level1.TCPStream? _tcp = null;
+        internal readonly TCPStream? _tcp = null;
         internal readonly bool caseSensitive = false;
+        internal bool refIdsToPos = false;
         internal DateTime awake = DateTime.Now;
         internal readonly byte[] awakeBuf = [0, 1, (byte)Responses.Continue]; 
         /// <summary>
