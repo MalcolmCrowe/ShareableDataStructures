@@ -4634,17 +4634,18 @@ namespace Pyrrho.Level3
             }
             if (ac.obs[ac.result] is RowSet rs)
             {
-                if (mem[RowSet.RowOrder] is Domain ord)
-                {
-                    cx.Add(rs);
-                    rs = rs.Sort(cx, ord, false);
-                }
-                if (mem[RowSetSection.Size] is int ct)
-                {
-                    cx.Add(rs);
-                    rs = new RowSetSection(cx, rs, 0, ct);
-                }
-                ac.result = rs.defpos;
+                var bl = BList<(long, TRow)>.Empty;
+                var bt = CTree<CTree<long,TypedValue>, bool>.Empty;
+                var ej = 0;
+                for (var b = rs.First(ac); b != null; b = b.Next(cx))
+                    if (!bt.Contains(b.values))
+                    {
+                        bt += (b.values, true);
+                        bl += (ej++, b);
+                    }
+                var er = new ExplicitRowSet(cx.GetUid(), cx, rs, bl);
+                cx.Add(er);
+                ac.result = er.defpos;
                 ac.obs += (ac.result, rs);
             } 
             else if (gDefs == CTree<long, TGParam>.Empty)
@@ -5091,7 +5092,7 @@ namespace Pyrrho.Level3
                             ds += (rt.defpos, rt.Schema(cx));
                             continue;
                         }
-                        if (!xn.label.Match(cx, new CTree<long, bool>(rt.defpos, true), Qlx.EDGETYPE))
+                        if (!xn.label.Match(cx, new CTree<Domain, bool>(rt, true), Qlx.EDGETYPE))
                             continue;
                         if (rt.tableRows[c.key()] is TableRow dr && lm-- > 0 && la-- > 0)
                             ds += (dr.defpos, dr);
@@ -5225,7 +5226,7 @@ namespace Pyrrho.Level3
                             cx.binding += (-1L, pa[0L]);
                         }
                         DoBindings(cx, bn.xn, dn);
-                        if (!bn.xn.CheckProps(cx, dn))
+                        if (!bn.xn.CheckProps(cx, this, dn))
                             goto another;
                         cx.values += (bn.xn.defpos, dn);
                         if (dn is TEdge de && pd is not null
@@ -5290,7 +5291,7 @@ namespace Pyrrho.Level3
             if (cx.obs[fb?.value() ?? -1] is not GqlNode xi)
                 goto backtrack;
             DoBindings(cx, xi, dn);
-            if (!xi.CheckProps(cx, dn))
+            if (!xi.CheckProps(cx, this, dn))
                 goto backtrack;
             if (fb?.Next() is not ABookmark<int, long?> fn) goto backtrack;
             if (cx.obs[fn.value() ?? -1L] is GqlNode xn && bp.sp is GqlPath sp

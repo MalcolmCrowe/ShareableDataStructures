@@ -470,12 +470,14 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     return true;
             return false;
         }
-        internal virtual bool Match(Context cx, CTree<long, bool> ts, Qlx tk = Qlx.Null)
+        internal virtual bool Match(Context cx, CTree<Domain, bool> ts, Qlx tk = Qlx.Null)
         {
+            if (ts.Count == 0)
+                return true;
             return kind switch
             {
-                Qlx.NO => ts.Contains(cx.role.dbobjects[domain.name] ?? -1L),
-                Qlx.NODETYPE or Qlx.EDGETYPE => tk == kind || ts.Contains(domain.defpos),
+                Qlx.NO => ts.Contains(cx.db.objects[cx.role.dbobjects[domain.name] ?? -1L] as Domain??Null),
+                Qlx.NODETYPE or Qlx.EDGETYPE => tk == kind || ts.Contains(this),
                 _ => false
             };
         }

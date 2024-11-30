@@ -4105,6 +4105,7 @@ namespace Pyrrho.Level4
             {
                 var vs = CTree<long, TypedValue>.Empty;
                 cx.cursors += (sce.defpos, e);
+                cx.values += e.values;
                 for (var b = rowOrder.First(); b != null; b = b.Next())
                 if (cx.obs[b.value()??-1L] is QlValue s)
                     vs += (s.defpos, s.Eval(cx));

@@ -3,8 +3,6 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using System.Text;
 using Pyrrho.Level2;
-using System.Data.SqlTypes;
-using System.Xml;
 
 namespace Pyrrho.Level5
 {
@@ -1430,7 +1428,7 @@ namespace Pyrrho.Level5
     /// left and right can be NodeType defpos (if name is "")
     /// Domain is a node/edge type
     /// op can be Qlx.EXCLAMATION,Qlx.VBAR,Qlx.AMPERSAND,Qlx.IMPLIES,Qlx.COLON
-    /// OnInsert gives an unordered list of Node/Edgetype defpos (a CTree)
+    /// OnInsert gives a tree of Node/Edgetypes 
     /// For is used in Match to give a list of TNodes that match a given GqlNode/Edge/Path
     /// OnExtra method gives a single node/edgetype if available for allowExtras 
     /// </summary>
@@ -1439,10 +1437,8 @@ namespace Pyrrho.Level5
         internal static GqlLabel Empty = new();
         internal long left => (long)(mem[QlValue.Left] ?? -1L);
         internal long right => (long)(mem[QlValue.Right] ?? -1L);
-        public GqlLabel(long dp, long lf, long rg, BTree<long, object>? m = null)
-            : base(dp, (m ?? BTree<long, object>.Empty)
-                  + (QlValue.Left, lf) + (QlValue.Right, rg))
-        { }
+        public GqlLabel(long dp, Context? cx, long lf, long rg, BTree<long, object>? m = null)
+            : base(dp, _Mem(cx, m, lf, rg)) { }
         internal GqlLabel(Ident id, Context cx,NodeType? lt = null, NodeType? at = null, BTree<long,object>? m = null)
             : this(id.uid, id.ident, cx, lt?.defpos, at?.defpos, m) { }
         internal GqlLabel(long dp, string nm,  Context cx, long? lt = null, long? at = null, 
@@ -1451,9 +1447,34 @@ namespace Pyrrho.Level5
         {
             cx.dnames += (nm, dp);
         }
-        GqlLabel() : this(-1L, -1L, -1L) { }
+        GqlLabel() : this(-1L, null, -1L, -1L) { }
         internal GqlLabel(long dp, BTree<long, object> m) : base(dp, m)
         { }
+        static BTree<long,object> _Mem(Context? cx,BTree<long,object>? m,long lf, long rg)
+        {
+            m ??= BTree<long, object>.Empty;
+            if (cx?.obs[lf] is Domain lo && cx?.obs[rg] is Domain ro)
+            {
+                var rs = lo.representation + ro.representation;
+                var ln = lo.infos[cx.role.defpos]?.names ?? lo.names;
+                var rn = ro.infos[cx.role.defpos]?.names ?? ro.names;
+                var rt = ro.rowType;
+                for (var b = ln.First(); b != null; b = b.Next())
+                    if (ln[b.key()] is long lp)
+                    {
+                        var ld = lo.representation[lp];
+                        var rd = ro.representation[rn[b.key()]];
+                        if (ld is not null && rd is not null && ld.CompareTo(rd) != 0)
+                            throw new DBException("22G12", ln);
+                        if (!ro.representation.Contains(lp))
+                            rt += lp;
+                    }
+                m += (RowType,rt);
+                m += (Representation, rs);
+                m += (ObInfo._Names, ln + rn);
+            }
+            return m + (QlValue.Left, lf) + (QlValue.Right, rg);
+        }
         static BTree<long, object> _Mem(Context cx, string id, long? lt, long? at, BTree<long,object>?m)
         {
             m ??= BTree<long, object>.Empty;
@@ -1607,14 +1628,14 @@ namespace Pyrrho.Level5
                 _ => r
             };
         }
-        internal override bool Match(Context cx, CTree<long, bool> ts, Qlx tk = Qlx.Null)
+        internal override bool Match(Context cx, CTree<Domain, bool> ts, Qlx tk = Qlx.Null)
         {
             var lf = cx.obs[left] as Domain ?? Empty;
             var rg = cx.obs[right] as Domain ?? Empty;
             return kind switch
             {
-                Qlx.AMPERSAND or Qlx.COLON => ts.Contains(cx.role.dbobjects[domain.name] ?? -1L),
-                Qlx.NODETYPE or Qlx.EDGETYPE => tk == kind || ts.Contains(domain.defpos),
+                Qlx.AMPERSAND or Qlx.COLON => ts.Contains(domain),
+                Qlx.NODETYPE or Qlx.EDGETYPE => tk == kind || ts.Contains(domain),
                 Qlx.VBAR => lf.Match(cx, ts, tk) || rg.Match(cx, ts, tk),
                 Qlx.EXCLAMATION => !lf.Match(cx, ts, tk),
                 Qlx.NO => true,
@@ -1632,6 +1653,8 @@ namespace Pyrrho.Level5
             var nt = cx.FindNodeType(nm, dc);
             if (nt is null || nt.defpos<0)
             {
+                if (cx.ParsingMatch)
+                    return NodeType;
                 var pt = new PNodeType(nm, NodeType, nu, -1L, cx.db.nextPos, cx);
                 nt = (NodeType)(cx.Add(pt) ?? throw new DBException("42105"));
                 for (var b = dc?.First(); b != null; b = b.Next())
@@ -1647,6 +1670,8 @@ namespace Pyrrho.Level5
         }
         internal static EdgeType EdgeTypeFor(string nm, BTree<long, object> m, Context cx)
         {
+            if (cx.ParsingMatch)
+                return EdgeType;
             var un = (CTree<Domain, bool>)(m[Under] ?? CTree<Domain, bool>.Empty);
             var nu = CTree<Domain, bool>.Empty;
             for (var b = un.First(); b != null; b = b.Next())
@@ -1670,24 +1695,12 @@ namespace Pyrrho.Level5
         }
         public override string ToString()
         {
-            var sb = new StringBuilder(GetType().Name);
+            var sb = new StringBuilder(base.ToString());
             if (name is string nm && nm != kind.ToString())
             {
                 sb.Append(' '); sb.Append(nm);
             }
-            if (kind == Qlx.NO)
-                sb.Append(base.ToString());
-            else if (super.Count>0L)
-            {
-                sb.Append(" under");
-                var cm = '[';
-                for (var b=super.First();b!=null;b=b.Next())
-                {
-                    sb.Append(cm);cm = ',';sb.Append(b.key());
-                }
-                if (cm == ',') sb.Append(']');
-            }    
-            else if (defpos>0)
+            if (defpos>0)
             {
                 sb.Append(' '); sb.Append(kind);
                 if (left > 0)

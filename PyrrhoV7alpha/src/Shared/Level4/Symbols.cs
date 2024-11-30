@@ -154,7 +154,6 @@ namespace Pyrrho.Level4
         /// </summary>
 		public TypedValue val = TNull.Value, prevval = TNull.Value;
         public TypedValue pushVal = TNull.Value;
-        public bool ParsingMatch = false;
         private readonly Context cx; // only used for type prefix/suffix things
         public CTree<long,TGParam> tgs = CTree<long,TGParam>.Empty; // TGParam wizardry
         /// <summary>

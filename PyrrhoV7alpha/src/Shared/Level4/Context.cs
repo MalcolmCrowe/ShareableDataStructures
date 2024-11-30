@@ -81,6 +81,7 @@ namespace Pyrrho.Level4
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal Graph? graph = null; // current graph, set by USE
         internal Schema? schema = null; // current schema, set by AT
+        internal bool ParsingMatch = false;
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
         // bindings, and (possibly empty) dependencies
         public BTree<long, CTree<long,TypedValue>> bindings = BTree<long, CTree<long,TypedValue>>.Empty;
@@ -208,8 +209,10 @@ namespace Pyrrho.Level4
             if (_Ob(t[n.ident]) is DBObject ob)
             {
                 var ns = defs[ob.defpos]??ob.names;
-                if (ob is GqlNode g && n.sub?.ToString() is string nm)
-                    return (Add(new SqlField(n.uid, nm, -1, g.defpos, Domain.Content,g.defpos)),null);
+                if (ob is GqlNode g && n.sub?.ToString() is string nm
+                    && g.domain is Domain gd && gd.names[nm] is long np)
+                    return (Add(new SqlField(n.uid, nm, -1, g.defpos, 
+                        gd.representation[np],g.defpos)),null);
                 if (ob is QlValue || ob is RowSet || ob is Procedure)
                 { 
                     if (ns != Names.Empty && n.sub is Ident os)

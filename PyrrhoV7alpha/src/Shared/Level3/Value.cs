@@ -11528,7 +11528,7 @@ cx.obs[high] is not QlValue hi)
         /// <param name="cx"></param>
         /// <param name="n"></param>
         /// <returns></returns>
-        internal bool CheckProps(Context cx, TNode n)
+        internal bool CheckProps(Context cx, MatchStatement ms, TNode n)
         {
             //       if (this is not GqlEdge && n is TEdge)
             //           return false;
@@ -11536,15 +11536,26 @@ cx.obs[high] is not QlValue hi)
                 return false;
             cx.values += n.tableRow.vals;
             var ns = n._Names(cx);
-            for (var c = label.OnInsert(cx, -1L).First(); c != null; c = c.Next())
-                if (cx.db.objects[n.tableRow.tabledefpos] is Domain cd)
-                    for (var d = c.key().OnInsert(cx, -1L).First(); d != null; d = d.Next())
-                        if (d.key() is NodeType dd && !cd.EqualOrStrongSubtypeOf(dd)
-                               && dd.tableRows.Count > 0) // excludes cases where dd is only a bindingvalue
-                            return false;
-            if (label.kind == Qlx.VBAR && label is GqlLabel lb
-                && !CheckType(cx, lb.left, n) && !CheckType(cx, lb.right, n))
-                return false;
+            if (domain.defpos > 0L && n.dataType.defpos > 0L)
+            {
+                if (!n.dataType.EqualOrStrongSubtypeOf(domain))
+                    return false;
+            } else
+            {
+                for (var b = domain.names.First(); b != null; b = b.Next())
+                    if (b.value() is long xu &&ns[b.key()] is long nu && nu > 0L 
+                        && nu != xu)
+                        cx.values += (xu, cx.values[nu]??TNull.Value);
+                cx.ParsingMatch = true; // yuk prevent creation of nodetype binding variable
+                var ts = label.OnInsert(cx, defpos);
+                cx.ParsingMatch = false;
+                for (var b=ts.First();b!=null;b=b.Next())
+                    if (b.key().defpos==Domain.NodeType.defpos || b.key().defpos==Domain.EdgeType.defpos 
+                        ||(cx.obs[ms.bindings] as RowSet)?.domain.representation.Contains(b.key().defpos)!=false)
+                            ts -= b.key();
+                if (n.dataType is NodeType nt && !nt.Match(cx, ts))
+                    return false;
+            }
             for (var b = docValue?.First(); b != null; b = b.Next())
                 if (b.key() is string k)
                 {
@@ -11591,10 +11602,6 @@ cx.obs[high] is not QlValue hi)
                 }
             cx.names = ob;
             return true;
-        }
-        bool CheckType(Context cx,long t,TNode n)
-        {
-            return cx.db.objects[t] is NodeType nt && nt.tableRows.Contains(n.defpos);
         }
         internal CTree<long, TypedValue> EvalProps(Context cx, NodeType nt)
         {

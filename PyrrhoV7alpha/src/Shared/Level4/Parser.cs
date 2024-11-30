@@ -1765,7 +1765,7 @@ namespace Pyrrho.Level4
                 Next();
                 var lf = ParseNodeLabelExpression(xp);
                 cx.Add(lf);
-                le = (Domain)cx.Add(new GqlLabel(lp,le.defpos,lf.defpos,
+                le = (Domain)cx.Add(new GqlLabel(lp,cx,le.defpos,lf.defpos,
                     new BTree<long,object>(Domain.Kind,Qlx.DOUBLEARROW)));
             }
             var ps = BList<(Ident, Domain)>.Empty;
@@ -2436,7 +2436,7 @@ namespace Pyrrho.Level4
                 else if (ab == Qlx.LBRACK)
                     ba = Qlx.RBRACK;
                 Mustbe(ba);
-                var m = BTree<long, object>.Empty + (SqlFunction._Val, lb.defpos);
+                var m = BTree<long, object>.Empty + (SqlFunction._Val, lb.defpos) + (GqlNode._Label,lb);
                 r = ab switch
                 {
                     Qlx.LPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st, dm, m),
@@ -2511,7 +2511,7 @@ namespace Pyrrho.Level4
             cx.Add(c1.ident, left);
             if (neg)
             {
-                left = new GqlLabel(lp, -1L, left.defpos, new BTree<long,object>(Domain.Kind,Qlx.EXCLAMATION));
+                left = new GqlLabel(lp, cx, -1L, left.defpos, new BTree<long,object>(Domain.Kind,Qlx.EXCLAMATION));
                 cx.Add(left);
             }
             while (Match(Qlx.VBAR,Qlx.COLON,Qlx.AMPERSAND,Qlx.DOUBLEARROW))
@@ -2523,7 +2523,7 @@ namespace Pyrrho.Level4
                     Next();
                 var right = ParseNodeLabelExpression(Domain.NodeType,c1.ident,lt,at);
                 cx.Add(right);
-                left = new GqlLabel(lp, left.defpos, right.defpos, new BTree<long,object>(Domain.Kind,ab)); // leave name empty for now
+                left = new GqlLabel(lp, cx, left.defpos, right.defpos, new BTree<long,object>(Domain.Kind,ab)); // leave name empty for now
                 cx.Add(left);
             }
             var ns = left.names;
@@ -2562,7 +2562,7 @@ namespace Pyrrho.Level4
                 tg = ParseTruncation();
             }
             lxr.tgs = CTree<long, TGParam>.Empty;
-            lxr.ParsingMatch = true;
+            cx.ParsingMatch = true;
             var (tgs, svgs) = ParseGqlMatchList();
             var xs = CTree<long, bool>.Empty;
             for (var b = svgs.First(); b != null; b = b.Next())
@@ -2573,7 +2573,7 @@ namespace Pyrrho.Level4
                                 if (dd.value() is long ep)
                                     xs += (ep, true);
             // state M18
-            lxr.ParsingMatch = false;
+            cx.ParsingMatch = false;
             var (ers, ns) = BindingTable(cx, tgs);
             var m = ers.mem;
             m += (ObInfo._Names, ns);
@@ -5489,7 +5489,7 @@ namespace Pyrrho.Level4
                 {// the ident of the component to create
                     if (i == len - 1)
                     {
-                        if (!lxr.ParsingMatch) // flag as undefined unless we are parsing a MATCH
+                        if (!cx.ParsingMatch) // flag as undefined unless we are parsing a MATCH
                         {
                             ob = new SqlReview(c, ic, il, cx, xp) ?? throw new PEException("PE1561");
                             cx.Add(ob);
@@ -8877,13 +8877,13 @@ namespace Pyrrho.Level4
             if (tok != Qlx.HAVING)
                 return r;
             Next();
-            var lp = LexDp();
             r = ParseSqlValueDisjunct(Domain.Bool, false, dm);
             if (tok != Qlx.OR)
                 return r;
             var left = Disjoin(r);
             while (tok == Qlx.OR)
             {
+                var lp = LexDp();
                 Next();
                 left = (QlValue)cx.Add(new SqlValueExpr(lp, cx, Qlx.OR, left,
                     Disjoin(ParseSqlValueDisjunct(Domain.Bool, false, dm)), Qlx.NO));
@@ -8902,21 +8902,8 @@ namespace Pyrrho.Level4
             if (tok != Qlx.WHERE)
                 return null;
             Next();
-            var r = ParseSqlValueDisjunct(Domain.Bool, false);
-            if (tok != Qlx.OR)
-                return cx.FixTlb(r);
-            var left = Disjoin(r);
-            while (tok == Qlx.OR)
-            {
-                var lp = LexDp();
-                Next();
-                left = (QlValue)cx.Add(new SqlValueExpr(lp, cx, Qlx.OR, left,
-                    Disjoin(ParseSqlValueDisjunct(Domain.Bool, false)), Qlx.NO));
-                left = (QlValue)cx.Add(left);
-            }
-            r += (left.defpos, true);
-            //       lxr.context.cur.Needs(left.alias ?? left.name,RowSet.Need.condition);
-            return cx.FixTlb(r);
+            var left = ParseSqlValue(Domain.Bool, false);
+            return cx.FixTlb(Disjoin(left.defpos)); 
         }
         /// <summary>
 		/// WindowClause = WINDOW WindowDef { ',' WindowDef } .
@@ -9264,8 +9251,9 @@ namespace Pyrrho.Level4
                 left = Disjoin(ParseSqlValueDisjunct(xp, wfok));
                 while (left.domain.kind == Qlx.BOOLEAN && tok == Qlx.OR)
                 {
+                    var lp = LexDp();
                     Next();
-                    left = new SqlValueExpr(LexDp(), cx, Qlx.OR, left,
+                    left = new SqlValueExpr(lp, cx, Qlx.OR, left,
                         Disjoin(ParseSqlValueDisjunct(xp, wfok)), Qlx.NO);
                 }
             }
@@ -9339,6 +9327,12 @@ namespace Pyrrho.Level4
             if (Match(Qlx.TABLE))
                 Next();
             return ParseSqlValueItem(xp, false);
+        }
+        CTree<long,bool> Disjoin(long e) 
+        {
+            if (cx.obs[e] is SqlValueExpr se && se.op == Qlx.AND)
+                return Disjoin(se.left) + Disjoin(se.right);
+            return new (e,true);
         }
         QlValue Disjoin(CTree<long, bool> s) // s is not empty
         {
@@ -11169,8 +11163,10 @@ namespace Pyrrho.Level4
                 cx.bindings += (q.uid, CTree<long, TypedValue>.Empty);
                 cx.names += (q.ident, q.uid);
             }
+            if (cx.obs[lb.names[k.ident]] is TableColumn dc)
+                xd = dc.domain;
             if (cx.Lookup(q.ident) is QlValue qi)
-                q = new(q.ident,qi.defpos);
+                q = new(q.ident, qi.defpos);
             lxr.docValue = false;
             if (lxr.tgs[lxr.Position]?.type.HasFlag(TGParam.Type.Group) == true)
                 xd = new Domain(-1L, Qlx.ARRAY, xd);
