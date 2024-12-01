@@ -35,27 +35,26 @@ connecting (Person|Company to Account) cardinality(1)}]
 [CREATE PROCEDURE ComplexRead1(id1 int,startTime timestamp,endTime timestamp,truncationLimit int,truncationOrder string)
 MATCH 
 truncating (transfer (truncationOrder)=truncationLimit) 
-trail p=(m:Medium{isBlocked:true})
+trail (m:Medium{isBlocked:true})
    	-[:signIn where createTime>startTime and createTime<endTime]->
     		(:Account{id:otherId}) [()
--[x:transfer where createTime >startTime and createTime<endTime
-and (cardinality(p) =0 or 
-p.x[cardinality(p)-1].createTime<createtime)
+-[:transfer{createTime:x} where createTime >startTime and createTime<endTime
+and (cardinality(x)=1 or x[cardinality(x)-2]<createtime)
       ]->()]{1,3} (:Account{id:id1}) 
 RETURN 
 otherId, 
-(cardinality(p)-3)/2 as accountDistance, 
+cardinality(x) as accountDistance, 
 m.id as mediumId, 
 m.type as mediumType 
 order by (accountDistance,otherId,mediumId)]
 [CREATE PROCEDURE ComplexRead2(id1 int, startTime timestamp, endTime timestamp, truncationLimit int, truncationOrder string)
 MATCH 
 truncating (transfer (truncationOrder)=truncationLimit)
-trail p=(:Person{id:id1})-[:own]->(:Account)
-[()<-[x:transfer 
+trail (:Person{id:id1})-[:own]->(:Account)
+[()<-[:transfer{createTime:c} 
 where createTime >startTime and createTime <endTime
-and (cardinality(p) =0
-or p.x[cardinality(p)-1].createTime<createtime)
+and (cardinality(c)=1
+or c[cardinality(c)-2]<createtime)
 ]-()]{1,3} (:Account{id:otherId})<-[:deposit]-(a:Loan) 
 return 
 otherId, 
@@ -66,13 +65,12 @@ group by otherId
 order by (sumLoanAmount desc,otherId)]
 [CREATE PROCEDURE ComplexRead3(id1 int, id2 int, startTime timestamp, endTime timestamp) 
 MATCH 
-shortest p=(:Account{id:id1}) 
-[()-[x:transfer 
+shortest (:Account{id:id1}) 
+[()-[:transfer{createTime:x} 
 where createTime >startTime and createTime <endTime 
-and (cardinality(p)=0 or 
-p.x[cardinality(p)-1].createTime<createtime)]->()]+ 
+and (cardinality(x)=1 or x[cardinality(x)-2]<createtime)]->()]+ 
 (:Account{id:id2}) 
-RETURN min(cardinality(p)-4) as shortestPathLength]
+RETURN min(cardinality(x)) as shortestPathLength]
 [CREATE PROCEDURE ComplexRead4 (id1 int, id2 int, startTime timestamp, endTime timestamp)
 MATCH 
 (src:Account{id:id1})
@@ -98,12 +96,12 @@ order by (sumEdge2Amount desc, sumEdge3Amount desc, otherId)]
 [CREATE PROCEDURE ComplexRead5(id1 int, startTime timestamp,endTime timestamp,truncationLimit int, truncationOrder string) 
 MATCH 
 truncating (transfer (truncationOrder)=truncationLimit) 
-trail p=(:Account{id:id1}) 
-[()-[x:transfer 
-where createTime>startTime and createTime<endTime and (cardinality(p)=0 or 
-p.x[cardinality(p)-1].createTime<createtime)]->()]{1,3} 
+trail (:Account{id:id1}) 
+[()-[:transfer{createTime:c} 
+where createTime>startTime and createTime<endTime and (cardinality(c)=1 or 
+c[cardinality(c)-2]<createtime)]->()]{1,3} 
 (:Account{id:id2}) 
-order by cardinality(p) desc]
+order by cardinality(c) desc]
 [CREATE PROCEDURE ComplexRead6(id1 int, threshold1 decimal, threshold2 decimal, startTime timestamp, endTime timestamp, truncationLimit int, truncationOrder string)
 MATCH 
 truncating (transfer (truncationOrder)=truncationLimit)
@@ -134,17 +132,19 @@ count(dst) as numDst,
 case count(amt2) when 0 then -1 else sum(amt1)/sum(amt2) end
 as inOutRatio]
 [CREATE PROCEDURE ComplexRead8 (id1 int, threshold decimal, startTime timestamp, endTime timestamp, truncationLimit int, truncationOrder string) MATCH 
-truncating (transfer (truncationOrder)=truncationLimit) 
-trail p=(:Loan{id:id1})-[:deposit{amount:depAmt}]->(:Account)
-[()-[x:transfer|withdraw {amount:amt} 
-where createTime>startTime and createTime<endTime 
-and (cardinality(p)=0 or amount>threshold* p.x[cardinality(p)-1].amount)]->(dst)]{1,3} (:Account) 
-return 
-cardinality(p)-2 as distanceFromLoan, 
-dst.id as dstId, 
-case count(amt) when 0 then -1 
-else depAmt/sum(amt) end as ratio
-order by (distanceFromLoan, ratio, dstId)]
+  truncating ((truncationOrder)=truncationLimit) 
+  trail longest
+    (:Loan{id:id1})-[:deposit{amount:depAmt}]->(:Account)
+    [()-[:transfer|withdraw {amount:amt,createTime:x} 
+       where createTime>startTime and createTime<endTime 
+         and (cardinality(amt)=1 or createTime>x[cardinality(x)-2]
+           and amount>threshold* amt[cardinality(amt)-2])]->()]{1,3}    
+    (dst:Account) 
+  return 
+    cardinality(amt) as distanceFromLoan, 
+    dst.id as dstId, 
+    case count(amt) when 0 then -1 else depAmt/sum(amt) end as ratio
+  order by (distanceFromLoan, ratio, dstId)]
 [CREATE PROCEDURE ComplexRead9(id1 int, threshold decimal, startTime timestamp, endTime timestamp, truncationlimit int, truncationOrder string) 
 MATCH 
 truncating (transfer (truncationOrder)=truncationLimit)
@@ -239,7 +239,7 @@ RETURN mid,collect(dst) group by mid]
 CREATE (:Company{id:id1,name:name1,isBlocked:block1, createTime:current_time})]
 [CREATE PROCEDURE Write3 (id1 int, type1 string, block1 boolean) 
 CREATE (:Medium{id:id1,type:type1,isBlocked:block1, createTime:current_time })]
-[CREATE PROCEDURE Write4 (id1 int, accountId1 int, time1 timestamp, type1 string, blocked boolean) 
+[CREATE PROCEDURE Write4 (id1 int, accountId1 int, time1 timestamp, blocked boolean, type1 string) 
 MATCH (p:Person{id:id1}) 
 CREATE (p)-[:own]->
 (:Account {id:accountid1, 
@@ -297,10 +297,9 @@ CREATE PROCEDURE Write19 (id1 int) MATCH(p:Person{id:id1}) set p.isBlocked = tru
 	amt decimal, startTime timestamp, endTime timestamp)
 MATCH (src:Account{id:srcId,isBlocked:false}),
 (dst:Account{id:dstId,isBlocked:false})
-if exists (MATCH trail p=(dst) [()-[x:transfer 
+if exists (MATCH trail p=(dst) [()-[:transfer{createTime:x} 
 where createTime>startTime and createTime<endTime 
-and (cardinality(p)=0 
-or p.x[cardinality(p)-1].createTime<createtime)]->()]+(src))
+and (cardinality(x)=1 or x[cardinality(x)-2]<createtime)]->()]+(src))
 	then set src.isBlocked=true; set dst.isBlocked=true 
 	else CREATE(src)-[:transfer{createTime:current_time,amount:amt}]->(dst)
 end if]
