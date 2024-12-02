@@ -1,9 +1,4 @@
-using System.Collections.Specialized;
-using System.ComponentModel;
-using System.Data.Common;
-using System.Security.Cryptography.X509Certificates;
 using System.Text;
-using System.Xml;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
@@ -100,6 +95,26 @@ namespace Pyrrho.Common
         internal virtual TypedValue Min()
         {
             return this;
+        }
+        public static TypedValue operator+ (TypedValue left,TypedValue right)
+        {
+            if (left is TInt li && right is TInt ri)
+                return new TInt(li.value + ri.value);
+            if (left is TInteger lj && right is TInteger rj)
+                return new TInteger(lj.ivalue + rj.ivalue);
+            if (left is TNumeric ln && right is TNumeric rn)
+                return new TNumeric(ln.value + rn.value);
+            throw new PEException("PE40601");
+        }
+        public static TypedValue operator /(TypedValue left, int right)
+        {
+            if (left is TInt li)
+                return new TInt(li.value/right);
+            if (left is TInteger lj)
+                return new TInteger(lj.ivalue/new Integer(right));
+            if (left is TNumeric ln)
+                return new TNumeric(ln.value/new Numeric(right));
+            throw new PEException("PE40603");
         }
         internal virtual bool Contains(TypedValue e)
         { return false; }

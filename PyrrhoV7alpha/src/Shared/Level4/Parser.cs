@@ -10200,6 +10200,7 @@ namespace Pyrrho.Level4
                         }
                         var el = ParseSqlValue(xp);
                         cx.Add(el);
+                        rd = rd.Constrain(cx, lp, el.domain);
                         Mustbe(Qlx.END);
                         return (QlValue)cx.Add((v == null) ? (QlValue)new SqlCaseSearch(lp, cx, rd, cs, el.defpos)
                             : new SqlCaseSimple(lp, cx, rd, v, cs, el.defpos));

@@ -5,6 +5,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Runtime.CompilerServices;
+using System.Security;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -1267,6 +1268,10 @@ namespace Pyrrho.Level3
             }
             return (SqlCaseSimple)et.New(m + (dp,ob));
         }
+        public static SqlCaseSimple operator +(SqlCaseSimple et, (long, object) x)
+        {
+            return (SqlCaseSimple)et.New(et.mem + x);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlCaseSimple(defpos,m);
@@ -1387,6 +1392,7 @@ namespace Pyrrho.Level3
                 throw new PEException("PE50703");
             BList<DBObject>? ls;
             var r = this;
+            var a = alias;
             var ch = false;
             QlValue v = (QlValue?)cx.obs[val] ?? SqlNull.Value,
                 ce = (QlValue?)cx.obs[caseElse] ?? SqlNull.Value;
@@ -1432,8 +1438,10 @@ namespace Pyrrho.Level3
             }
             if (ch)
             {
-                r = new SqlCaseSimple(defpos, cx, domain, v, css, ce.defpos, from);
-                cx.Replace(this, r);
+                var nr = new SqlCaseSimple(defpos, cx, domain, v, css, ce.defpos, from);
+                if (a != null)
+                    nr += (_Alias, a);
+                cx.Replace(this, nr);
             }
             return (new BList<DBObject>(r), m);
         }
@@ -6511,13 +6519,14 @@ namespace Pyrrho.Level3
         }
         internal override CTree<long, bool> IsAggregation(Context cx,CTree<long,bool>ags)
         {
-
             var r = CTree<long, bool>.Empty;
             if (window >= 0) // Window functions do not aggregate rows!
                 return r;
-            if (aggregates(op))
+            var vl = cx.obs[val] as QlValue;
+            if (vl is not null && vl.domain.kind!=Qlx.ARRAY && vl.domain.kind!=Qlx.SET && vl.domain.kind!=Qlx.MULTISET
+                && aggregates(op))
                 r += (defpos, true);
-            if (cx.obs[val] is QlValue vl)
+            if (vl is not null)
                 r += vl.IsAggregation(cx,ags);
             if (cx.obs[op1] is QlValue o1)
                 r += o1.IsAggregation(cx,ags);
@@ -7024,7 +7033,17 @@ namespace Pyrrho.Level3
                 case Qlx.AVG:
                     {
                         if (fc == null)
-                            break;
+                        {
+                            var vl = cx.obs[val] as QlValue ?? throw new PEException("PE40601");
+                            var sum = vl.domain.elType?.defaultValue ?? throw new PEException("PE40611");
+                            var count = 0;
+                            for (var b = vl._Eval(cx).First(); b != null; b = b.Next())
+                            {
+                                count++;
+                                sum += b;
+                            }
+                            return sum /= count;
+                        }
                         switch (fc.sumType.kind)
                         {
                             case Qlx.NUMERIC:
@@ -7109,7 +7128,16 @@ namespace Pyrrho.Level3
                 //		case Qlx.CONVERT: transcoding all seems to be implementation-defined TBD
                 case Qlx.COUNT:
                     if (fc == null)
+                    { 
+                        if (cx.obs[val] is QlValue vl && vl._Eval(cx) is TypedValue tv)
+                        {
+                            if (tv is TArray va) return new TInt(va.Length);
+                            if (tv is TMultiset vm) return new TInt(vm.Count);
+                            if (tv is TSet vs) return new TInt(vs.Cardinality());
+                            throw new PEException("PE40605");
+                        }
                         break;
+                    }
                     return new TInt(fc.count);
                 case Qlx.CURRENT:
                     {
@@ -7451,7 +7479,13 @@ namespace Pyrrho.Level3
                 case Qlx.SUM:
                     {
                         if (fc == null)
-                            break;
+                        {
+                            var vl = cx.obs[val] as QlValue ?? throw new PEException("PE40601");
+                            var sum = vl.domain.elType?.defaultValue ?? throw new PEException("PE40611");
+                            for (var b = vl._Eval(cx).First(); b != null; b = b.Next())
+                                sum += b;
+                            return sum;
+                        }
                         switch (fc.sumType.kind)
                         {
                             case Qlx.Null: return TNull.Value;
@@ -7796,6 +7830,10 @@ namespace Pyrrho.Level3
                 case Qlx.SOME: goto case Qlx.ANY;
                 case Qlx.SUM:
                     {
+                        if (fc==null)
+                        {
+
+                        }
                         if (v == null || v == TNull.Value)
                         {
                             fc.count = ct;
@@ -11542,7 +11580,7 @@ cx.obs[high] is not QlValue hi)
                     return false;
             } else
             {
-                for (var b = domain.names.First(); b != null; b = b.Next())
+                for (var b = label.names.First(); b != null; b = b.Next())
                     if (b.value() is long xu &&ns[b.key()] is long nu && nu > 0L 
                         && nu != xu)
                         cx.values += (xu, cx.values[nu]??TNull.Value);

@@ -223,8 +223,9 @@ namespace Pyrrho.Common
                 return TreeBehaviour.Disallow;
             if (k != TNull.Value && !(t.keyType.CanTakeValueOf(k.dataType)
                 || (k.dataType.elType is Domain el && t.keyType.CanTakeValueOf(el))))
-                throw new DBException("22G03", t.keyType.kind, k.ToString()).ISO()
-                    .AddType(t.keyType).AddValue(k); 
+                k = t.keyType.Coerce(new Context(Database._system),k); // a long shot
+        //        throw new DBException("22G03", t.keyType.kind, k.ToString()).ISO()
+        //            .AddType(t.keyType).AddValue(k);
             ATree<TypedValue, TypedValue> a = t;
             AddNN(ref a, k, v);
             t = (SqlTree)a;
