@@ -312,6 +312,7 @@ namespace Pyrrho.Level2
             tc = (TableColumn)tc.Apply(cx, table);
             cx.db += (tc.defpos, tc);
             table += (DBObject.LastChange, ppos);
+            table += (ObInfo._Names, ti.names);
             cx.Install(table);
             cx.db += (table.defpos, table);
             if (table is UDType ut)

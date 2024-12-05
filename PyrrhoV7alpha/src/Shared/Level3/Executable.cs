@@ -4224,7 +4224,7 @@ namespace Pyrrho.Level3
                                             }
                                         throw new DBException("22G0W", nm);
                                     }
-                                    else throw new PEException("PE20902");
+                                    else throw new PEException("PE20803");
                                     found:;
                                 }
                                 if (nm == "" && cx.db.objects[cx.role.unlabelledEdgeTypesInfo[pn] ?? -1L] is EdgeType eu)
@@ -4632,6 +4632,8 @@ namespace Pyrrho.Level3
                 ac.result = ss.union;
                 ac.Add(su);
             }
+            else if (ac.obs[ac.result] is RowSet ra && ra.rows.Count == 0)
+                ac.warnings += new DBException("02000");    
             if (ac.obs[ac.result] is RowSet rs)
             {
                 var bl = BList<(long, TRow)>.Empty;
@@ -4809,16 +4811,15 @@ namespace Pyrrho.Level3
         /// of itself in the continuation if a further repeat is possible.
         /// 3 Step classes: PathFirstStep, PathStep, PathLastStep
         /// </summary>
-        internal class PathFirstStep(Qlx matchMode, GqlPath s, int i, GqlNode pg,
+        internal class PathFirstStep(Qlx matchMode, GqlPath s, int i, GqlNode? pg, 
             Step n) : Step(n.ms)
         {
             public Qlx mode = matchMode;
             public GqlPath sp = s; // the repeating pattern spec
-            public CTree<long, TGParam> state = CTree<long, TGParam>.Empty;
             public int im = i; // the iteration count
             public Step next = n; // the continuation
-                                  //    public GqlNode prev = pr; // the previous node
-            public GqlNode? xn = pg; // the first node of the path
+            public CTree<long, TGParam> state = s.state; 
+            public GqlNode? xn = pg;
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd)
             {
                 ms.ExpNode(cx, (ExpStep)next, tok, px, pd);
@@ -4826,7 +4827,7 @@ namespace Pyrrho.Level3
             public override Step? Cont => next;
             public override string ToString()
             {
-                var sb = new StringBuilder((mode == Qlx.NONE) ? "PathFirst" : mode.ToString());
+                var sb = new StringBuilder("First"+((mode == Qlx.NONE) ? "Path" : mode.ToString()));
                 sb.Append(im);
                 sb.Append(Show(sp?.pattern.First()));
                 sb.Append(','); sb.Append(next.ToString());
@@ -4864,7 +4865,7 @@ namespace Pyrrho.Level3
             public override Step? Cont => next;
             public override string ToString()
             {
-                var sb = new StringBuilder((mode == Qlx.NONE) ? "Path" : mode.ToString());
+                var sb = new StringBuilder("Last"+((mode == Qlx.NONE) ? "Path" : mode.ToString()));
                 sb.Append(im);
                 sb.Append(Show(sp?.pattern.First()));
                 sb.Append(','); sb.Append(next.ToString());
@@ -4969,6 +4970,7 @@ namespace Pyrrho.Level3
                 PathFirstNode(cx, new PathFirstStep(be.mode, sp, 0, gp,
                     new PathLastStep(be.mode, sp, be.matches?.Next(), 0,
                     new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next))), pd);
+                return;
             }
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
@@ -5083,6 +5085,8 @@ namespace Pyrrho.Level3
                     && cx.db.objects[cc.tabledefpos] is EdgeType rt
                     && rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
                     && (ne == "" || nx == "" || ne == nx)
+                    && ((xn.tok==Qlx.ARROWBASE)?(cc.flags==PColumn.GraphFlags.LeaveCol)
+                    :(cc.flags==PColumn.GraphFlags.ArriveCol))
                     && b.value() is CTree<long, bool> pt)
                     for (var c = pt.First(); c != null; c = c.Next())
                     {
@@ -5201,6 +5205,7 @@ namespace Pyrrho.Level3
                     var dt = cx.db.objects[tr.tabledefpos] as NodeType??throw new PEException("PE70704");
                     db = cx.db.joinedNodes[tr.defpos]?.First();
                     var oc = cx.binding;
+                    ov = cx.values;
                 LoopB:
                     if (db?.key() is NodeType dj)
                         dt = dj;
@@ -5243,6 +5248,7 @@ namespace Pyrrho.Level3
                 another:
                     db = db?.Next();
                     cx.binding = oc;
+                    cx.values = ov;
                     if (db!= null)
                         goto LoopB;
                     goto backtrack;
@@ -5253,6 +5259,7 @@ namespace Pyrrho.Level3
                 if (ot is not null)
                     cx.binding += (-1L, ot[0]);
                 cx.binding = ob; // unbind all the bindings from this recursion step
+                cx.values = ov;
                 if (Done(cx))
                     break;
                 ns = ns?.Next();
@@ -5311,6 +5318,11 @@ namespace Pyrrho.Level3
         /// <param name="dn">The current database node (TNode or TEdge)</param>
         void DoBindings(Context cx, GqlNode xn, TNode dn)
         {
+            var nd = dn._Names(cx);
+            for (var b = xn.label.names.First(); b != null; b = b.Next())
+                if (b.value() is long xu && nd[b.key()] is long nu && nu > 0L
+                    && nu != xu)
+                    cx.values += (xu, cx.values[nu] ?? TNull.Value);
             if (xn.state != CTree<long, TGParam>.Empty && dn.dataType is NodeType nt)
             {
                 var bi = cx.binding;
@@ -5336,7 +5348,7 @@ namespace Pyrrho.Level3
                    {
                         switch (b.key())
                         {
-                            case -(long)Qlx.Id: tv = dn; break;
+                            case -(long)Qlx.Id: /* tv = dn;*/ break;
                             case -(long)Qlx.RARROW:
                                 {
                                     var te = cx.GType(nt.leavingType);

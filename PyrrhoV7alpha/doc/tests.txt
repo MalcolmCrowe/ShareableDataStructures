@@ -808,9 +808,9 @@ MATCH ({name:'Peter Smith'})[()-[:Child]->()]+(x) RETURN x.name
 (Joe:Person {name:'Joe Hill', born:1952}),(Joe)<-[:married {since:1995}]-(Sue)]
 MATCH (n:Person) RETURN collect(n.born)
 MATCH (n:Person) RETURN avg(n.born)
-[MATCH (n:Person {name:'Joe Hill'})<-[r { since:1995}]-()
-BEGIN n.born = 1962; r.since = 1996 END]
-MATCH (n:Person)<-[:married{since:d}]-() RETURN n.name,d
+[MATCH (nm:Person {name:'Joe Hill'})<-[mr { since:1995}]-()
+BEGIN nm.born = 1962; mr.since = 1996 END]
+MATCH (n:Person)-[:married{since:dt}]->() RETURN n.name,dt
 [MATCH (e:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),
 (e)-[r:owns ]->(d),(d)-[r2:owned_by]->(e)]
 MATCH (d:Dog {name: 'Rex'})-[r:owned_by]->() DELETE r

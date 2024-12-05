@@ -266,22 +266,40 @@ namespace Pyrrho.Level2
                         cx.MergeColumn(q, nq); // ShallowReplace does the work
                         fix += (dataType.defpos, true);
                     }
+            var st = tg.rowType;
+            var sr = tg.representation;
+            var ss = tg.names;
             // The second stage of merging columns considers the columns from a new under
             for (var ub = under.First(); ub != null; ub = ub.Next())
                 if (ub.key() is UDType uD)
                 {
                     var hc = uD.HierarchyCols(cx);
-                    for (var b = prev.rowType.First(); b != null; b = b.Next())
+                    for (var b = hc.First(); b != null; b = b.Next())
                         if (b.value() is long np && cx.db.objects[np] is TableColumn tc
-                            && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string n
-                            && hc[n] is long ep  // in hierarchy
-                            && np != ep && ep>0)
+                            && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string n)
                         {
-                            var q = Math.Min(np, ep);
-                            var nq = Math.Max(np, ep);
-                            cx.MergeColumn(q, nq); // ShallowReplace does the work
-                            fix += (uD.defpos, true);
+                            if (prev.names[n] is long ep && ep>=0)  // in hierarchy
+                            {
+                                if (np != ep)
+                                {
+                                    var q = Math.Min(np, ep);
+                                    var nq = Math.Max(np, ep);
+                                    cx.MergeColumn(q, nq); // ShallowReplace does the work
+                                    fix += (uD.defpos, true);
+                                }
+                            } else if (uD.representation.Contains(np))
+                            {
+                                st += np;
+                                sr += (np, tc.domain);
+                                ss += (n, np);
+                            }
                         }
+                    if (st != tg.rowType)
+                    {
+                        tg = tg + (Domain.RowType, st) + (Domain.Representation, sr)
+                            + (ObInfo._Names, ss);
+                        cx.db += tg;
+                    }
                     // under and tg may have changed
                     tg = (UDType)(cx.db.objects[tg.defpos] ?? Domain.TypeSpec);
                     var ps = tg.HierarchyRepresentation(cx);

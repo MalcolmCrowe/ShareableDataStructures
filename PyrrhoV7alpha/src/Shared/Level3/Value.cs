@@ -7032,15 +7032,16 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.AVG:
                     {
-                        if (fc == null)
+                        if (cx.obs[val] is QlValue vl
+                            && (vl.domain.kind == Qlx.ARRAY || vl.domain.kind == Qlx.SET || vl.domain.kind == Qlx.MULTISET)
+                            && vl._Eval(cx) is TypedValue tv)
                         {
-                            var vl = cx.obs[val] as QlValue ?? throw new PEException("PE40601");
-                            var sum = vl.domain.elType?.defaultValue ?? throw new PEException("PE40611");
+                            var sum = (vl.domain.elType ?? Domain.Int).defaultValue;
                             var count = 0;
                             for (var b = vl._Eval(cx).First(); b != null; b = b.Next())
                             {
                                 count++;
-                                sum += b;
+                                sum += b.Value();
                             }
                             return sum /= count;
                         }
@@ -7127,18 +7128,19 @@ namespace Pyrrho.Level3
                     return domain.Coerce(cx, fc.mset);
                 //		case Qlx.CONVERT: transcoding all seems to be implementation-defined TBD
                 case Qlx.COUNT:
-                    if (fc == null)
-                    { 
-                        if (cx.obs[val] is QlValue vl && vl._Eval(cx) is TypedValue tv)
+                    {
+                        if (cx.obs[val] is QlValue vl
+                        && (vl.domain.kind == Qlx.ARRAY || vl.domain.kind == Qlx.SET || vl.domain.kind == Qlx.MULTISET)
+                        && vl._Eval(cx) is TypedValue tv)
                         {
+                            if (tv is TNull) return new TInt(0);
                             if (tv is TArray va) return new TInt(va.Length);
                             if (tv is TMultiset vm) return new TInt(vm.Count);
                             if (tv is TSet vs) return new TInt(vs.Cardinality());
                             throw new PEException("PE40605");
                         }
-                        break;
                     }
-                    return new TInt(fc.count);
+                        return new TInt(fc.count);
                 case Qlx.CURRENT:
                     {
                         var vl = (QlValue?)cx.obs[val] ?? throw new PEException("PE1965");
@@ -7478,12 +7480,13 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.SUM:
                     {
-                        if (fc == null)
+                        if (cx.obs[val] is QlValue vl
+                            && (vl.domain.kind == Qlx.ARRAY || vl.domain.kind == Qlx.SET || vl.domain.kind == Qlx.MULTISET)
+                            && vl._Eval(cx) is TypedValue tv)
                         {
-                            var vl = cx.obs[val] as QlValue ?? throw new PEException("PE40601");
-                            var sum = vl.domain.elType?.defaultValue ?? throw new PEException("PE40611");
-                            for (var b = vl._Eval(cx).First(); b != null; b = b.Next())
-                                sum += b;
+                            var sum = (vl.domain.elType ?? Domain.Int).defaultValue;
+                            for (var b = vl.Eval(cx).First(); b != null; b = b.Next())
+                                sum += b.Value();
                             return sum;
                         }
                         switch (fc.sumType.kind)
@@ -7768,7 +7771,7 @@ namespace Pyrrho.Level3
                 case Qlx.FIRST:
                     {
                         if (cx.obs[val] != null && fc.acc == null)
-                            fc.acc = v.First();
+                            fc.acc = v.First()?.Value()??TNull.Value;
                         break;
                     }
                 case Qlx.FUSION:
@@ -7795,7 +7798,7 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.LAST:
                     {
-                        fc.acc = v.Last();
+                        fc.acc = v.Last()?.Value()??TNull.Value;
                         break;
                     }
                 case Qlx.MAX:
@@ -11545,7 +11548,7 @@ cx.obs[high] is not QlValue hi)
             }
             cx.Add(nd);
             cx.defs = defs;
-            cx.names = dt.infos[cx.role.defpos]?.names??Names.Empty;
+            cx.names = nt.infos[cx.role.defpos]?.names??Names.Empty;
             return nd;
         }
         protected virtual CTree<string,QlValue> _AddEnds(Context cx, CTree<string,QlValue> ls)
@@ -11580,10 +11583,6 @@ cx.obs[high] is not QlValue hi)
                     return false;
             } else
             {
-                for (var b = label.names.First(); b != null; b = b.Next())
-                    if (b.value() is long xu &&ns[b.key()] is long nu && nu > 0L 
-                        && nu != xu)
-                        cx.values += (xu, cx.values[nu]??TNull.Value);
                 cx.ParsingMatch = true; // yuk prevent creation of nodetype binding variable
                 var ts = label.OnInsert(cx, defpos);
                 cx.ParsingMatch = false;
@@ -11875,7 +11874,7 @@ cx.obs[high] is not QlValue hi)
                     throw new DBException("22G0W", label.name ?? "");
                 if (ed is EdgeType ef && CanConnect(cx,ef.leavingType,lT.defpos) && CanConnect(cx,ef.arrivingType,aT.defpos))
                     return ed;
-                if (ed.kind != Qlx.UNION) throw new PEException("PE20903");
+                if (ed.kind != Qlx.UNION) throw new DBException("42002",label.name??"");
                 for (var c = ed.unionOf.First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key().defpos] is EdgeType ee
                         && ee.leavingType == lT.defpos && ee.arrivingType == aT.defpos)
@@ -12238,15 +12237,26 @@ cx.obs[high] is not QlValue hi)
     {
         internal const long
             MatchQuantifier = -484, // (int,int)
-            Pattern = -485; // BList<long?>
+            Pattern = -485, // BList<long?>
+            StartState = -238; // CTree<long,TGParam>
         internal BList<long?> pattern => (BList<long?>)(mem[Pattern]??BList<long?>.Empty);
         internal (int, int) quantifier => ((int, int))(mem[MatchQuantifier]??(1, 1));
         public GqlPath(Context cx, BList<long?> p, (int, int) lh, long i, long a)
-            : base(cx.GetUid(),new BTree<long, object>(Pattern,p)+(MatchQuantifier, lh)
+            : base(cx.GetUid(),_Mem(cx,p)+(Pattern,p)+(MatchQuantifier, lh)
                   +(LeavingValue,i)+(ArrivingValue,a))
         { }
         protected GqlPath(long dp, BTree<long, object> m) : base(dp, m)
         { }
+        static BTree<long, object> _Mem(Context cx, BList<long?> p)
+        {
+            var r = BTree<long, object>.Empty;
+            var b = p.First();
+            if (b?.value() is long ap && cx.obs[ap] is GqlNode a)
+                r += (StartState, a.state);
+            if (b?.Next()?.value() is long bp && cx.obs[bp] is GqlNode e)
+                r += (State, e.state);
+            return r;
+        }
         public static GqlPath operator +(GqlPath e, (long, object) x)
         {
             return (GqlPath)e.New(e.mem + x);

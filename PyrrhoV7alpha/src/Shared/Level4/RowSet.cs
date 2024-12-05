@@ -4355,12 +4355,12 @@ namespace Pyrrho.Level4
         protected override Cursor? _First(Context cx)
         {
             var a = (TSet?)mem[SqlLiteral._Val];
-            return (a == null) ? null : SetCursor.New(cx, this, a, a?._First());
+            return (a == null) ? null : SetCursor.New(cx, this, a, a?.First());
         }
         protected override Cursor? _Last(Context cx)
         {
             var a = (TSet?)mem[SqlLiteral._Val];
-            return (a == null) ? null : SetCursor.New(cx, this, a, a?._Last());
+            return (a == null) ? null : SetCursor.New(cx, this, a, a?.Last());
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4374,14 +4374,14 @@ namespace Pyrrho.Level4
         {
             internal readonly SetRowSet _mrs;
             internal readonly TSet _ms;
-            internal readonly TSet.SetBookmark _mb;
-            SetCursor(Context cx, SetRowSet mrs, TSet ms, TSet.SetBookmark mb)
+            internal readonly IBookmark<TypedValue> _mb;
+            SetCursor(Context cx, SetRowSet mrs, TSet ms, IBookmark<TypedValue> mb)
                 : base(cx, mrs, (int)mb.Position(), E, (TRow)mb.Value())
             {
                 _mrs = mrs; _ms = ms; _mb = mb;
             }
             internal static SetCursor? New(Context cx, SetRowSet mrs, TSet ms,
-                TSet.SetBookmark? mb)
+                IBookmark<TypedValue>? mb)
             {
                 if (mb == null)
                     return null;
@@ -4443,12 +4443,12 @@ namespace Pyrrho.Level4
         protected override Cursor? _First(Context cx)
         {
             var a = (TMultiset?)mem[SqlLiteral._Val];
-            return (a==null)?null:MultisetCursor.New(cx, this, a, a?._First());
+            return (a==null)?null:MultisetCursor.New(cx, this, a, a?.First());
         }
         protected override Cursor? _Last(Context cx)
         {
             var a = (TMultiset?)mem[SqlLiteral._Val];
-            return (a==null)?null:MultisetCursor.New(cx, this, a, a?._Last());
+            return (a==null)?null:MultisetCursor.New(cx, this, a, a?.Last());
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4462,14 +4462,14 @@ namespace Pyrrho.Level4
         {
             internal readonly MultisetRowSet _mrs;
             internal readonly TMultiset _ms;
-            internal readonly TMultiset.MultisetBookmark _mb;
-            MultisetCursor(Context cx,MultisetRowSet mrs,TMultiset ms,TMultiset.MultisetBookmark mb)
+            internal readonly IBookmark<TypedValue> _mb;
+            MultisetCursor(Context cx,MultisetRowSet mrs,TMultiset ms,IBookmark<TypedValue> mb)
                 : base(cx,mrs,(int)mb.Position(),E,(TRow)mb.Value())
             {
                 _mrs = mrs; _ms = ms; _mb = mb;
             }
             internal static MultisetCursor? New(Context cx,MultisetRowSet mrs,TMultiset ms,
-                TMultiset.MultisetBookmark? mb)
+                IBookmark<TypedValue>? mb)
             {
                 if (mb == null)
                     return null;

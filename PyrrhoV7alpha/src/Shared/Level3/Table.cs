@@ -139,6 +139,7 @@ namespace Pyrrho.Level3
                 tb += (RowType, tb.rowType + tc.defpos);
                 tb += (Representation, tb.representation + (tc.defpos, tc.domain));
                 tb += (Infos, tb.infos + (cx.role.defpos, oi));
+                tb += (ObInfo._Names, oi.names);
             }
             if (tc.flags.HasFlag(PColumn.GraphFlags.LeaveCol))
             {

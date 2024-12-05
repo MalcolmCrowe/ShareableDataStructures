@@ -694,9 +694,17 @@ namespace Pyrrho.Level5
                 throw new DBException("PE42133", name);
             for (var b = e.docValue.First(); b != null; b = b.Next())
                 if (!ni.names.Contains(b.key()) && allowExtras)
-                    r = (NodeType?)cx.Add(new PColumn3(r, b.key(), -1, b.value().domain,
-                    PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx))
-                        ??throw new DBException("42105");
+                {
+                    var nc = new PColumn3(r, b.key(), -1, b.value().domain,
+                    PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx);
+                    r = (NodeType?)cx.Add(nc)
+                        ?? throw new DBException("42105");
+                    ni += (ObInfo._Names, ni.names + (b.key(), nc.defpos));
+                    r += (Infos, r.infos+(cx.role.defpos,ni));
+                    r += (ObInfo._Names, ni.names);
+                    cx.Add(r);
+                    cx.db += r;
+                }
             return r;
         }
         internal NodeType FixNodeType(Context cx, Ident typename)
@@ -1896,7 +1904,7 @@ namespace Pyrrho.Level5
                         ud = (Domain)cx.Add(UnionType(cx.GetUid(), ud, this));
                     else if (ud.kind == Qlx.UNION)
                         ud = (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.UNION, ud.unionOf + (this, true)));
-                    else throw new PEException("PE20901");
+                    else throw new PEException("PE20902");
                     ro += (Role.UnlabelledNodeTypesInfo, ro.unlabelledNodeTypesInfo + (pn, ud.defpos));
                     cx.db += (Database.UnlabelledNodeTypes, cx.db.unlabelledNodeTypes + (ps, ud.defpos));
                     cx.db += ro;
@@ -2580,7 +2588,7 @@ namespace Pyrrho.Level5
         }
         internal virtual Names _Names(Context cx)
         {
-            return dataType.infos[cx.role.defpos]?.names ?? Names.Empty;
+            return (dataType.names!=Names.Empty)?dataType.names:dataType.infos[cx.role.defpos]?.names ?? Names.Empty;
         }
         internal TNode Cast(Context cx,Domain dt)
         {
