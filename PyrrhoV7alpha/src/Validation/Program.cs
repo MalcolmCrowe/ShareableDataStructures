@@ -9,7 +9,7 @@ namespace Validation
         static void Main(string[] args)
         {
             var inf = args[0].Split(".");
-            var offset = int.Parse(args[1]);
+            var offset = (args.Length>1)?int.Parse(args[1]):0;
             var conn = new PyrrhoConnect("Files=sf1");// + inf[0]);
             conn.Open();
             var pms = new StreamReader(args[0]);
