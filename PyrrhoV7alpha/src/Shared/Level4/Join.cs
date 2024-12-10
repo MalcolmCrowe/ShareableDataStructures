@@ -353,7 +353,7 @@ namespace Pyrrho.Level4
             var rs = (RowSet?)cx.obs[s] ?? throw new PEException("PE1500");
             return new BTree<long, RowSet>(f, rf) + (s, rs);
         }
-        internal override CTree<long, Cursor> SourceCursors(Context cx)
+        internal override CTree<long, TRow> SourceCursors(Context cx)
         {
             var pf = first;
             var ps = second;
@@ -635,7 +635,7 @@ namespace Pyrrho.Level4
 		internal readonly JoinRowSet _jrs;
         protected readonly Cursor? _left, _right;
         internal readonly bool _useLeft, _useRight;
-        internal readonly BTree<long, Cursor> _ts;
+        internal readonly BTree<long, TRow> _ts;
         protected JoinBookmark(Context cx, JoinRowSet jrs, Cursor? left, bool ul, Cursor? right,
             bool ur, int pos) : base(cx, jrs, pos, (left?._ds??E)+(right?._ds??E), 
                 _Vals(jrs,cx.obs[jrs.first] as Domain??throw new PEException("PE1403"), left, ul, right, ur))

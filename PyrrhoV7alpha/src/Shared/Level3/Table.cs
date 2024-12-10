@@ -560,7 +560,7 @@ ColsFrom(Context cx, long dp,BList<long?> rt, CTree<long, Domain> rs, BList<long
                 return true;
             return base.Denied(cx, priv);
         }
-        internal Table? Delete(Context cx, Delete del)
+        internal virtual Table? Delete(Context cx, Delete del)
         {
             if (cx._Ob(defpos) is not Table a) return null;
             for (var b=a.super.First();b!=null;b=b.Next())
@@ -981,5 +981,8 @@ ColsFrom(Context cx, long dp,BList<long?> rt, CTree<long, Domain> rs, BList<long
             return new TRow(from, new TChar(name), new TChar(key),
                 new TChar(sb.ToString()));
         }
+
+        internal virtual void Update(Context cx, TableRow prev, CTree<long, TypedValue> fields)
+        {  }
     }
 } 

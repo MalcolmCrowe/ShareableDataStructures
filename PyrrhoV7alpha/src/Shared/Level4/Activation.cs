@@ -470,7 +470,7 @@ namespace Pyrrho.Level4
         internal override void EachRow(int pos)
         {
             var cu = next?.cursors[(_trs.data>=0)?_trs.data : _trs.from];
-            var trc = (cu is not null)?new TransitionRowSet.TransitionCursor(this, _trs, cu, pos, insertCols)
+            var trc = (cu is not null)?new TransitionRowSet.TransitionCursor(this, _trs, (Cursor)cu, pos, insertCols)
                 : (TransitionRowSet.TransitionCursor?)cursors[_trs.defpos];
             if (trc == null || db==null || _cx.db==null || trc._tgc==null)
                 return;
@@ -959,7 +959,7 @@ namespace Pyrrho.Level4
                     _cx.newTables += (_vw.defpos, us + (ur.defpos, ur));
                     break;
                 case PTrigger.TrigType.Delete:
-                    for (var rb = cu.Rec()?.First(); rb != null; rb = rb.Next())
+                    for (var rb = ((Cursor)cu).Rec()?.First(); rb != null; rb = rb.Next())
                     {
                         rq.Method = HttpMethod.Delete;
                         RoundTrip(this, _vw.defpos, _tty, rq, url, sql);

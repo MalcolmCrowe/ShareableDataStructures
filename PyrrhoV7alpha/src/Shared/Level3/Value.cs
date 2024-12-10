@@ -7157,7 +7157,7 @@ namespace Pyrrho.Level3
                 case Qlx.CURRENT_TIMESTAMP: return new TDateTime(Domain.Timestamp, DateTime.UtcNow);
                 case Qlx.DESCRIBE:
                     {
-                        var nd = cx.cursors[from]?.node(cx);
+                        var nd = (cx.cursors[from] as Cursor)?.node(cx);
                         return (TypedValue?)nd ?? TNull.Value;
                     }
                 case Qlx.ELEMENT:
@@ -7415,7 +7415,7 @@ namespace Pyrrho.Level3
                 case Qlx.SPECIFICTYPE:
                     {
                         var rs = cx._Ob(from) as RowSet;
-                        var tr = cx.cursors[rs?.from ?? -1L]?.Rec()?[0];
+                        var tr = (cx.cursors[rs?.from ?? -1L] as Cursor)?.Rec()?[0];
                         var sb = new StringBuilder();
                         var cm = "";
                         if (tr?.subType >= 0 && cx.NameFor(tr.subType) is string ns)
@@ -7579,7 +7579,8 @@ namespace Pyrrho.Level3
                         }
                         vcx.result = from;
                         var p = -1L;
-                        for (var b = cx.cursors[from]?.Rec()?.First(); b is not null; b = b.Next())
+                        for (var b = (cx.cursors[from] as Cursor)?.Rec()?.First(); 
+                            b is not null; b = b.Next())
                         {
                             var t = b.value();
                             if (t.ppos > p)
@@ -12241,9 +12242,10 @@ cx.obs[high] is not QlValue hi)
             StartState = -238; // CTree<long,TGParam>
         internal BList<long?> pattern => (BList<long?>)(mem[Pattern]??BList<long?>.Empty);
         internal (int, int) quantifier => ((int, int))(mem[MatchQuantifier]??(1, 1));
-        public GqlPath(Context cx, BList<long?> p, (int, int) lh, long i, long a)
-            : base(cx.GetUid(),_Mem(cx,p)+(Pattern,p)+(MatchQuantifier, lh)
-                  +(LeavingValue,i)+(ArrivingValue,a))
+        internal Qlx inclusionMode => (Qlx)(mem[GqlMatchAlt.InclusionMode] ?? Qlx.ANY); // SHORTEST/LONGEST
+        public GqlPath(long lp,Context cx, BList<long?> p, (int, int) lh, long i, long a)
+            : base(lp,_Mem(cx,p)+(Pattern,p)+(MatchQuantifier, lh)
+                  +(LeavingValue,i)+(ArrivingValue,a)+(GqlMatchAlt.InclusionMode,cx.inclusionMode))
         { }
         protected GqlPath(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -12420,10 +12422,14 @@ cx.obs[high] is not QlValue hi)
             if (mode != Qlx.NONE)
             {
                 sb.Append(' '); sb.Append(mode);
+                if (mem[InclusionMode] is Qlx sh)
+                {
+                    sb.Append(' '); sb.Append(sh);
+                }
             }
             if (pathId>=0)
             {
-                sb.Append(' ');sb.Append(DBObject.Uid(pathId));
+                sb.Append(' ');sb.Append(Uid(pathId));
             }
             var cm = " [";
             for (var b=matchExps.First();b!=null;b=b.Next())

@@ -1152,10 +1152,10 @@ namespace Pyrrho.Level4
             }
             return r;
         }
-        internal virtual CTree<long,Cursor> SourceCursors(Context cx)
+        internal virtual CTree<long,TRow> SourceCursors(Context cx)
         {
             var p = source;
-            var r = (cx.obs[p] is RowSet rs)?rs.SourceCursors(cx) : CTree<long, Cursor>.Empty;
+            var r = (cx.obs[p] is RowSet rs)?rs.SourceCursors(cx) : CTree<long, TRow>.Empty;
             if (cx.cursors[p] is Cursor cu)
                 r += (p, cu);
             return r;
@@ -1252,8 +1252,10 @@ namespace Pyrrho.Level4
         protected abstract Cursor? _Last(Context cx);
         public virtual Cursor? First(Context cx)
         {
+            cx.obs += (defpos, this);
             var rs = Build(cx);
-            rs = (RowSet)(cx.obs[rs.defpos] ?? throw new PEException("0089"));
+            //           rs = (RowSet)(cx.obs[rs.defpos] ?? throw new PEException("0089"));
+            cx.obs += (defpos, rs);
             return rs._First(cx);
         }
         public virtual Cursor? Last(Context cx)
@@ -1877,6 +1879,10 @@ namespace Pyrrho.Level4
                 return (BindingRowSet)cx.Add(new BindingRowSet(cx, nd.defpos, nd) + (_Rows, rws));
             }
             return (BindingRowSet)cx.Add(new BindingRowSet(cx, cx.GetUid(), rw.dataType) + (_Rows, new CList<TRow>(rw)));
+        }
+        internal override RowSet Build(Context cx)
+        {
+            return (RowSet)cx.Add(this + (_Built, true));
         }
         protected override Cursor? _First(Context _cx)
         {
@@ -3023,9 +3029,9 @@ namespace Pyrrho.Level4
             m = rs._Depths(cx, m, d, p, o);
             return (InstanceRowSet)rs.New(m + (p, o));
         }
-        internal override CTree<long, Cursor> SourceCursors(Context cx)
+        internal override CTree<long, TRow> SourceCursors(Context cx)
         {
-            return CTree<long,Cursor>.Empty;
+            return CTree<long,TRow>.Empty;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -4007,6 +4013,118 @@ namespace Pyrrho.Level4
             }
         }
     }
+    /// <summary>
+    /// An XRow set is a Rowset of XRows. The constructor extends the TRows to XRows
+    /// and sets up a tree for returning the rows in keys order.
+    /// </summary>
+    internal class XRowSet : RowSet
+    {
+        internal const long 
+            XTree = -232; // CTree<TRow,CTree<TRow,bool>> keys,others : both TRows have all values
+        internal CTree<TRow, CTree<TRow,bool>> _tree => 
+            (CTree<TRow, CTree<TRow,bool>>)(mem[XTree]??CTree<TRow,CTree<TRow,bool>>.Empty);
+        internal int count => (int)(mem[_CountStar] ?? 0);
+        /// <summary>
+        /// Build an XRowSet given a Domain with keys and a source RowSet for evaluation
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="dt">The target domain with ordering keys</param>
+        /// <param name="sr">A rowset supplying rows for evaluation</param>
+        public XRowSet(Context cx,Domain dt, RowSet sr) :base(cx.GetUid(),_Mem(cx,dt,sr))
+        { }
+        XRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(Context cx,Domain dt,RowSet sr)
+        {
+            var tree = CTree<TRow, CTree<TRow,bool>>.Empty;
+            var dx = dt.mem[Level3.Index.Keys] as Domain ?? throw new PEException("PE20602");
+            var ct = 0;
+            for (var b = sr.First(cx); b != null; b = b.Next(cx))
+            {
+                var vs = b.values;
+                for (var c = dt.rowType.First(); c != null; c = c.Next())
+                    if (c.value() is long p && !vs.Contains(p)
+                        && cx.obs[p] is QlValue e)
+                        vs += (p, e.Eval(cx));
+                for (var c = dx.rowType.First(); c != null; c = c.Next())
+                    if (c.value() is long p && !vs.Contains(p)
+                        && cx.obs[p] is QlValue e)
+                    {
+                        var v = e.Eval(cx);
+                        if (v == TNull.Value)
+                            goto skip;
+                        vs += (p, v);
+                    }
+                var k = new TRow(dx, vs);
+                var r = new TRow(dt, vs);
+                var t = tree[k] ?? CTree<TRow, bool>.Empty;
+                tree += (k,t+(r,true));
+                ct++;
+            skip:;
+            }
+            return sr.mem + (RowType,dt.rowType) + (Representation,dt.representation)
+                + (XTree,tree) + (_CountStar,ct);
+        }
+        public static XRowSet operator+(XRowSet xs,(long,object)x)
+        {
+            return new XRowSet(xs.defpos, xs.mem + x);
+        }
+        protected override Cursor? _First(Context cx)
+        {
+            return XCursor.New(cx,this);
+        }
+        protected override Cursor? _Last(Context cx)
+        {
+            return XCursor.New(this,cx);
+        }
+        internal class XCursor : Cursor
+        {
+            readonly XRowSet _xs;
+            readonly ABookmark<TRow,CTree<TRow,bool>> _xb;
+            readonly ABookmark<TRow, bool> _pb;
+            XCursor(Context cx,XRowSet xs,int pos,ABookmark<TRow,CTree<TRow,bool>> xb,
+                ABookmark<TRow,bool> pb)
+                : base(cx,xs,pos,BTree<long,(long,long)>.Empty,pb.key())
+            {
+                _xs = xs; _xb = xb; _pb = pb;
+            }
+            internal static Cursor? New(Context cx,XRowSet xs)
+            {
+                var xb = xs._tree.First();
+                var pb = xb?.value().First();
+                return (xb is null || pb is null) ? null : new XCursor(cx,xs, 0, xb, pb);
+            }
+            internal static Cursor? New(XRowSet xs, Context cx)
+            {
+                var xb = xs._tree.Last();
+                var pb = xb?.value().Last();
+                return (xb is null||pb is null) ? null : new XCursor(cx,xs, xs.count-1, xb, pb);
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                var pb = _pb.Next();
+                if (pb is not null)
+                    return new XCursor(cx,_xs, _pos + 1, _xb, pb);
+                var xb = _xb.Next();
+                pb = xb?.value().First();
+                return (xb is null||pb is null) ? null : new XCursor(cx,_xs, _pos+1, xb, pb);
+            }
+
+            protected override Cursor? _Previous(Context cx)
+            {
+                var pb = _pb.Previous();
+                if (pb is not null)
+                    return new XCursor(cx,_xs, _pos - 1, _xb, pb);
+                var xb = _xb.Previous();
+                pb = _xb?.value().Last();
+                return (xb is null||pb is null) ? null : new XCursor(cx,_xs, _pos-1, xb, pb);
+            }
+
+            internal override BList<TableRow>? Rec()
+            {
+                throw new NotImplementedException();
+            }
+        }
+    }
     internal class OrderedRowSet : RowSet
     {
         internal const long
@@ -4105,12 +4223,11 @@ namespace Pyrrho.Level4
             {
                 var vs = CTree<long, TypedValue>.Empty;
                 cx.cursors += (sce.defpos, e);
-                cx.values += e.values;
                 for (var b = rowOrder.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()??-1L] is QlValue s)
-                    vs += (s.defpos, s.Eval(cx));
+                    if (cx.obs[b.value() ?? -1L] is QlValue s)
+                        vs += (s.defpos, s.Eval(cx));
                 var rw = new TRow(keys, vs);
-                tree +=(rw, SourceCursors(cx));
+                tree += (rw, SourceCursors(cx));
             }
             return (RowSet)cx.Add((this + (_Built, true) + (Level3.Index.Tree, tree.mt) + (_RTree, tree)));
         }
@@ -4131,11 +4248,13 @@ namespace Pyrrho.Level4
         {
             internal readonly OrderedRowSet _ors;
             internal RTreeBookmark? _rb;
-            internal OrderedCursor(Context cx,OrderedRowSet ors,RTreeBookmark rb,BTree<long,Cursor> cu)
+            internal OrderedCursor(Context cx,OrderedRowSet ors,RTreeBookmark rb,BTree<long,TRow> cu)
                 :base(cx,ors,rb._pos,rb._ds,rb)
             {
                 _ors = ors; _rb = rb;
-                cx.cursors += cu;
+                for (var b = cu.First(); b != null; b = b.Next())
+                    if (b.value() is Cursor c)
+                        cx.cursors += (b.key(), c);
             }
             public override MTreeBookmark? Mb()
             {
@@ -4144,7 +4263,7 @@ namespace Pyrrho.Level4
             internal static OrderedCursor? New(Context cx,OrderedRowSet ors,
                 RTreeBookmark? rb)
             {
-                if (rb == null || ors.rtree?.rows[rb._pos] is not BTree<long,Cursor> cu)
+                if (rb == null || ors.rtree?.rows[rb._pos] is not CTree<long,TRow> cu)
                     return null;
                 return new OrderedCursor(cx, ors, rb, cu);
             }
@@ -5391,7 +5510,7 @@ namespace Pyrrho.Level4
                                     throw new DBException("44003", ck.NameFor(cx), tc.NameFor(cx), t.NameFor(cx));
                             }
                     }
-                var r = new TargetCursor(cx, trc, fb, t, vs);
+                var r = new TargetCursor(cx, trc, (Cursor?)fb, t, vs);
                 if (r._rec != null)
                     for (var b = trc._trs.foreignKeys.First(); b != null; b = b.Next())
                         if (cx.db.objects[b.key()] is Level3.Index ix
@@ -5497,13 +5616,15 @@ namespace Pyrrho.Level4
             {
                 while (cx.next is not null && cx is not TableActivation)
                     cx = cx.next;
-                TableActivation ta = cx as TableActivation??throw new PEException("PE1932");
-                var trc = (TransitionCursor?)cx.next?.cursors[_trs.defpos]??throw new PEException("PE1933");
-                var tp = _trs.targetTrans[p]??-1L;
-                if (tp >=0)
+                TableActivation ta = cx as TableActivation ?? throw new PEException("PE1932");
+                var trc = (TransitionCursor?)cx.next?.cursors[_trs.defpos] ?? throw new PEException("PE1933");
+                var tp = _trs.targetTrans[p] ?? -1L;
+                if (tp >= 0)
                     trc += (ta, tp, v);
                 cx.next.cursors += (_trs.defpos, trc);
-                return ta.cursors[ta.table.defpos]??throw new PEException("PE1934");
+                if (ta.cursors[ta.table.defpos] is not Cursor r)
+                    throw new PEException("PE1934");
+                return r;
             }
             protected override Cursor? _Next(Context cx)
             {

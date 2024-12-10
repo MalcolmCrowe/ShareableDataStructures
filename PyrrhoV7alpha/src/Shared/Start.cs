@@ -184,7 +184,7 @@ namespace Pyrrho
                                 cx = new Context(db, cx??throw new PEException("PE14001"));
                                 db = new Parser(cx).ParseSql(cmd, Domain.Content);
                                 log?.WriteLine("" + (++PyrrhoStart.validationStep));
-                                log?.WriteLine(cmd);
+                                log?.WriteLine(cmd); log?.Flush();
                                 cx.db = (Transaction)db;
                                 cx.done = ObTree.Empty;
                                 var tn = DateTime.Now.Ticks;
@@ -1283,14 +1283,14 @@ namespace Pyrrho
         int MultisetLength(Context cx, TMultiset m)
         {
             int len = 4 + StringLength("MULTISET") + TypeLength(m.dataType.elType ?? Domain.Content);
-            for (var e = m._First(); e != null; e = e.Next())
+            for (var e = m.First(); e != null; e = e.Next())
                 len += 1 + DataLength(cx, e.Value());
             return len;
         }
         int SetLength(Context cx,TSet s)
         {
             int len = 4 + StringLength("SET") + TypeLength(s.dataType.elType ?? Domain.Content);
-            for (var e = s._First(); e != null; e = e.Next())
+            for (var e = s.First(); e != null; e = e.Next())
                 len += 1 + DataLength(cx, e.Value());
             return len;
         }
@@ -1530,7 +1530,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(27 Nov 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(10 Dec 2024)", "http://www.pyrrhodb.com"
         ];
 	}
 }

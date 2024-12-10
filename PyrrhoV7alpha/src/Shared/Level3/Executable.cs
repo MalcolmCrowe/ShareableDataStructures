@@ -1,4 +1,7 @@
+using System.Runtime.CompilerServices;
 using System.Runtime.ConstrainedExecution;
+using System.Runtime.Intrinsics.X86;
+using System.Security.Authentication.ExtendedProtection;
 using System.Text;
 using System.Text.Json.Serialization.Metadata;
 using System.Xml.Linq;
@@ -4627,33 +4630,41 @@ namespace Pyrrho.Level3
             }
             else
                 cx.result = -1L;
+
             if (ac.obs[body] is SelectStatement ss && ac.obs[ss.union] is RowSet su)
             {
                 ac.result = ss.union;
                 ac.Add(su);
+                if (ac.obs[ac.result] is OrderedRowSet os && ac.obs[os.source] is RowSet sc)
+                {
+                    var xs = new XRowSet(ac, os, sc);
+                    ac.obs += (os.defpos, xs);
+                    cx.obs += ac.obs;
+                    cx.result = DoExclusions(xs.defpos, cx, cx);
+                }
+                else if (ac.obs[DoExclusions(ac.result,ac,cx)] is RowSet rs)
+                {
+                    var bl = BList<(long, TRow)>.Empty;
+                    var bt = CTree<CTree<long, TypedValue>, bool>.Empty;
+                    var ej = 0;
+                    for (var b = rs.First(ac); b != null; b = b.Next(cx))
+                        if (!bt.Contains(b.values))
+                        {
+                            bt += (b.values, true);
+                            bl += (ej++, b);
+                        }
+                    var er = new ExplicitRowSet(cx.GetUid(), cx, rs, bl);
+                    cx.Add(er);
+                    cx.result = er.defpos;
+                    cx.obs += (ac.result, er);
+                }
             }
-            else if (ac.obs[ac.result] is RowSet ra && ra.rows.Count == 0)
-                ac.warnings += new DBException("02000");    
-            if (ac.obs[ac.result] is RowSet rs)
-            {
-                var bl = BList<(long, TRow)>.Empty;
-                var bt = CTree<CTree<long,TypedValue>, bool>.Empty;
-                var ej = 0;
-                for (var b = rs.First(ac); b != null; b = b.Next(cx))
-                    if (!bt.Contains(b.values))
-                    {
-                        bt += (b.values, true);
-                        bl += (ej++, b);
-                    }
-                var er = new ExplicitRowSet(cx.GetUid(), cx, rs, bl);
-                cx.Add(er);
-                ac.result = er.defpos;
-                ac.obs += (ac.result, rs);
-            } 
             else if (gDefs == CTree<long, TGParam>.Empty)
                 cx.result = TrueRowSet.OK(cx).defpos;
             else if (cx.obs[cx.result] is RowSet rrs)
-                cx.obs += (cx.result, rrs); 
+                cx.obs += (cx.result, rrs);
+            if (ac.obs[ac.result] is RowSet ra && ra.Cardinality(cx) == 0)
+                ac.warnings += new DBException("02000");
             if (then != BList<long?>.Empty)
             {
                 var ta = new Activation(ac, "" + defpos)
@@ -4673,6 +4684,31 @@ namespace Pyrrho.Level3
             if (aff > 0)
                 cx.result = -1L;            
             return cx;
+        }
+        internal long DoExclusions(long rp,Context ac,Context cx)
+        {
+            for (var b = ac.paths.First(); b != null; b = b.Next())
+                if (ac.obs[b.key()] is GqlPath gp && ac.obs[rp] is RowSet ba)
+                {
+                    var bl = BList<(long, TRow)>.Empty;
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                        for (var d = c.value().First(); d != null; d = d.Next())
+                        {
+                            for (var e = ba.First(ac); e != null; e = e.Next(ac))
+                            {
+                                for (var f = d.value().Item2.First(); f != null; f = f.Next())
+                                    if (e[f.key()].CompareTo(f.value()) != 0)
+                                        goto skip;
+                                bl += (bl.Length, e);
+                            skip:;
+                            }
+                        }
+                    var ers = new ExplicitRowSet(ac.GetUid(), ac, ba, bl);
+                    ac.Add(ers);
+                    cx.Add(ers);
+                    rp = ers.defpos;
+                }
+            return rp;
         }
         /// <summary>
         /// The Match implementation uses continuations as in Scheme or Haskell.
@@ -4834,10 +4870,11 @@ namespace Pyrrho.Level3
                 return sb.ToString();
             }
         }
-        internal class PathLastStep(Qlx matchMode, GqlPath s, ABookmark<int, long?>? m, int i, Step n) : Step(n.ms)
+        internal class PathLastStep(Qlx matchMode, GqlPath s, TNode st, ABookmark<int, long?>? m, int i, Step n) : Step(n.ms)
         {
             public Qlx mode = matchMode;
             public GqlPath sp = s;
+            public TNode start = st;
             public ABookmark<int, long?>? matches = m; // rest of the enclosing MatchgExp
             public int im = i;
             public Step next = n; // the continuation
@@ -4849,6 +4886,20 @@ namespace Pyrrho.Level3
             /// </summary>
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd)
             {
+                if (sp.inclusionMode != Qlx.ANY && pd?.defpos is long pp)
+                {
+                    var cl = cx.paths[sp.defpos] ?? CTree<long,CTree<long,(int,CTree<long, TypedValue>)>>.Empty;
+                    var cs = cl[start.defpos] ?? CTree<long, (int,CTree<long, TypedValue>)>.Empty;
+                    var (ln, ce) = (cs.Contains(pp))?cs[pp]:(0, CTree<long, TypedValue>.Empty);
+                    var inc = sp.inclusionMode switch
+                    {
+                        Qlx.SHORTEST => im <= ln,
+                        Qlx.LONGEST => im >= ln,
+                        _ => false
+                    };
+                    if (inc)
+                        cx.paths += (sp.defpos, cl + (start.defpos, cs + (pp,(im, cx.binding))));
+                }
                 if (ms.Done(cx))
                 {
                     next.Next(cx, cn, tok, px, pd);
@@ -4860,7 +4911,7 @@ namespace Pyrrho.Level3
                 // now see if we need to repeat the match process for this path pattern
                 if ((i < sp.quantifier.Item2 || sp.quantifier.Item2 < 0) && pd is not null)
                     ms.PathFirstNode(cx, new PathFirstStep(mode, sp, i, px,
-                        new PathLastStep(mode, sp, matches, i, next)), pd);
+                        new PathLastStep(mode, sp, start, matches, i, next)), pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -4968,7 +5019,7 @@ namespace Pyrrho.Level3
                 if (cx.path != null)
                     cx.path = PathInit(cx, cx.path, ma, 0);
                 PathFirstNode(cx, new PathFirstStep(be.mode, sp, 0, gp,
-                    new PathLastStep(be.mode, sp, be.matches?.Next(), 0,
+                    new PathLastStep(be.mode, sp, pd, be.matches?.Next(), 0,
                     new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next))), pd);
                 return;
             }
@@ -5052,10 +5103,9 @@ namespace Pyrrho.Level3
                     var ic = (xn.tok == Qlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
                     var xp = (xn.tok == Qlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;
                     for (var g = pt.First(); g != null; g = g.Next())
-                        if (g.key()[0] == ic)
+                        if (g.key()[0] == ic &&cx.db.objects[xp] is Index rx)
                         {
-                            if (cx.db.objects[xp] is Index rx
-                            && pd.tableRow.vals[pn.idCol] is TInt ti
+                            if (pd.tableRow.vals[pn.idCol] is TInt ti
                             && rx.rows?.impl?[ti] is TPartial tp)
                             {
                                 if (lm < tp.value.Count && tr[rt.defpos].Item2 is Domain dm
@@ -5063,6 +5113,26 @@ namespace Pyrrho.Level3
                                     ds = Trunc(ds, rt, tp.value, lm, dm);
                                 else
                                     for (var c = tp.value.First(); c != null; c = c.Next())
+                                        if (rt.tableRows[c.key()] is TableRow r)
+                                        {
+                                            if (tr.Count > 0L)
+                                            {
+                                                if (ms.AllTrunc(ctr))
+                                                    return ds;
+                                                if (ms.Trunc(ctr, rt))
+                                                    goto rtdone;
+                                                ctr = AddIn(ctr, rt);
+                                            }
+                                            ds += (r.defpos, r);
+                                        }
+                            }
+                            else if (rx.rows?.impl?[new TInt(pd.defpos)] is TPartial tq)
+                            {
+                                if (lm < tq.value.Count && tr[rt.defpos].Item2 is Domain dm
+                                    && dm.Length > 0)
+                                    ds = Trunc(ds, rt, tq.value, lm, dm);
+                                else
+                                    for (var c = tq.value.First(); c != null; c = c.Next())
                                         if (rt.tableRows[c.key()] is TableRow r)
                                         {
                                             if (tr.Count > 0L)
@@ -5219,10 +5289,6 @@ namespace Pyrrho.Level3
                         goto another;
                     if (bn.mode == Qlx.ACYCLIC && dn is not null && pa?.HasNode(dn) == true)
                         goto another;
-                    if (bn.mode == Qlx.SHORTEST && !Shortest(bn, cx))
-                        goto another;
-                    if (bn.mode == Qlx.LONGEST && !Longest(bn, cx))
-                        goto another;
                     if (dn is not null)
                     {
                         if (pa is not null && dn != pd)
@@ -5236,10 +5302,11 @@ namespace Pyrrho.Level3
                         cx.values += (bn.xn.defpos, dn);
                         if (dn is TEdge de && pd is not null
                             && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving) is TInt pv
-                            && pv.ToLong()?.CompareTo(pd.tableRow.defpos) != 0 && pv.CompareTo(pd.id) != 0)
+                            && pv.ToLong()?.CompareTo(pd.tableRow.defpos) != 0 && pv.CompareTo(pd.id) != 0
+                            && pd is TEdge ee)
                         {
-                            if (pd is TEdge ee &&
-                                dn.id.CompareTo((tok == Qlx.ARROWBASE) ? ee.arriving : ee.leaving)==0)
+                            var p = (tok == Qlx.ARROWBASE) ? ee.arriving : ee.leaving;
+                            if (dn.id.CompareTo(p) == 0 || new TInt(dn.defpos).CompareTo(p) == 0)
                                 goto next;
                             goto another;
                         }
@@ -5398,53 +5465,6 @@ namespace Pyrrho.Level3
                 if (cx.db.objects[b.key()] is NodeType st && st.tableRows.Contains(dn.defpos))
                     return SubType(cx, st, dn);
             return nt;
-        }
-        // implement an algorithn for SHORTEST
-        bool Shortest(Step st,Context cx)
-        {
-            ABookmark<int, long?>? gb = null;
-            if (cx.obs[gb?.value() ?? -1L] is GqlMatchAlt sm
-                   && (sm.mode == Qlx.SHORTEST || sm.mode==Qlx.LONGEST)
-                   && sm.pathId >= 0
-                   && cx.obs[cx.result] is ExplicitRowSet ers)
-            {
-                var rws = ers.explRows;
-                if (rws.Length == 0) return true;
-                var (ol,ov) = rws[ers.Length - 1];
-                if (ov[sm.pathId] is not TList op)
-                    return true; // ??
-                if (op.Length > cx.path?.Length)
-                {
-                    ers += (ExplicitRowSet.ExplRows, rws - (ers.Length-1));
-                    cx.Add(ers);
-                    return true;
-                }
-                return false;
-            }
-            return true;
-        }
-        bool Longest(Step st, Context cx)
-        {
-            ABookmark<int, long?>? gb = null;
-            if (cx.obs[gb?.value() ?? -1L] is GqlMatchAlt sm
-                   && (sm.mode == Qlx.LONGEST)
-                   && sm.pathId >= 0
-                   && cx.obs[cx.result] is ExplicitRowSet ers)
-            {
-                var rws = ers.explRows;
-                if (rws.Length == 0) return true;
-                var (ol, ov) = rws[ers.Length - 1];
-                if (ov[sm.pathId] is not TList op)
-                    return true; // ??
-                if (op.Length < cx.path?.Length)
-                {
-                    ers += (ExplicitRowSet.ExplRows, rws - (ers.Length - 1));
-                    cx.Add(ers);
-                    return true;
-                }
-                return false;
-            }
-            return true;
         }
         internal override DBObject _Replace(Context cx, DBObject was, DBObject now)
         {

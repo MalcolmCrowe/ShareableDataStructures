@@ -280,7 +280,6 @@ namespace Pyrrho.Level3
     internal class Grouping :Domain,IComparable
     {
         internal const long
-            GroupKind = -232, //Qlx
             Groups = -233, // CList<Grouping>
             Members = -234; // CTree<long,int> QlValue
         /// <summary>

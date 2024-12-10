@@ -2009,6 +2009,7 @@ namespace Pyrrho.Level4
                     if (Match(Qlx.SHORTEST, Qlx.LONGEST, Qlx.ALL, Qlx.ANY))
                     {
                         sh = tok;
+                        cx.inclusionMode = sh;
                         Next();
                     }
                     pi = new Ident(this);
@@ -2313,6 +2314,7 @@ namespace Pyrrho.Level4
             if (ab == Qlx.LBRACK)
             {
                 // state M22
+                var pl = lxr.Position;
                 var (tgp, svp) = ParseGqlMatch(f, pi, lxr.tgs);
                 Mustbe(Qlx.RBRACK);
                 // state M23
@@ -2323,7 +2325,7 @@ namespace Pyrrho.Level4
                 // state M24
                 tgs += tgp;
                 (var sa, ahead, tgs) = ParseMatchExp(ahead, pi, tgs, f, ln);
-                r = new GqlPath(cx, svp, qu, ln?.uid ?? -1L, sa.defpos);
+                r = new GqlPath(pl, cx, svp, qu, ln?.uid ?? -1L, sa.defpos);
                 // to state M34
             }
             else

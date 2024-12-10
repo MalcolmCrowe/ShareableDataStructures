@@ -172,7 +172,10 @@ namespace Pyrrho.Level2
         protected override TableRow Now(Context cx)
         {
             if (cx._Ob(tabledefpos) is Table tb && tb.tableRows[defpos] is TableRow tr)
+            {
                 prevrec = tr;
+                tb.Update(cx, prevrec, fields);
+            }
             if (prevrec is null)
                 throw new PEException("PE00809");
             Check(cx);

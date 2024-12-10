@@ -87,7 +87,7 @@ namespace Pyrrho.Level3
         public override Database RdrClose(ref Context cx)
         {
             cx.values = CTree<long, TypedValue>.Empty;
-            cx.cursors = BTree<long, Cursor>.Empty;
+            cx.cursors = BTree<long, TRow>.Empty;
             cx.obs = ObTree.Empty;
             cx.result = -1L;
             // but keep rdC, etags
@@ -165,6 +165,14 @@ namespace Pyrrho.Level3
             if (physicals == BTree<long, Physical>.Empty &&
                 (autoCommit || (cx.rdC.Count == 0 && (cx.db as Transaction)?.etags == null)))
                 return Rollback();
+            if (PyrrhoStart.ValidationMode)
+            {
+                var sb = new System.Text.StringBuilder();
+                for (var b = physicals.First(); b != null; b = b.Next())
+                    if (b.value() is Physical p && p is not PTransaction)
+                        sb.Append(p);
+                PyrrhoStart.validationLog?.WriteLine(sb.ToString());
+            }
             // check for the case of an ad-hoc user that does not need to commit
             if (physicals.Count == 1L && physicals.First()?.value() is PUser)
                 return Rollback();

@@ -48,7 +48,7 @@ namespace Pyrrho.Level4
         public Role role => db.role;
         internal Context? next, parent = null; // contexts form a stack (by nesting or calling)
         internal Rvv affected = Rvv.Empty;
-        public BTree<long, Cursor> cursors = BTree<long, Cursor>.Empty;
+        public BTree<long, TRow> cursors = BTree<long, TRow>.Empty;
         internal CTree<long, bool> restRowSets = CTree<long, bool>.Empty;
         public long nextHeap = -1L, parseStart = -1L;
         internal long result = -1L,lastret = -1L; // usually an ExplicitRowSet (binding table)
@@ -74,6 +74,9 @@ namespace Pyrrho.Level4
         internal BTree<Domain, long?> newTypes = BTree<Domain, long?>.Empty; // uncommitted types
         internal BTree<long,Names> defs = BTree<long,Names>.Empty; // lexical scopes at lower levels
         internal TRow? path = null;
+        internal Qlx inclusionMode = Qlx.ANY;
+        internal CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>> paths // shortest/longest
+            = CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>>.Empty; // GqlPath,TNode,TNode,Bindings
         internal Names names = Names.Empty; // QlValue names at current level
         internal Names dnames = Names.Empty; // non-QlValue (e.g. Domain, TableColumn) names at current level
         internal Names anames = Names.Empty; // ambient names

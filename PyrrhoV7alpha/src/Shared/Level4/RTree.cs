@@ -34,7 +34,7 @@ namespace Pyrrho.Level4
         /// In previous versions it was just the sorted BList of the rows,
         /// to get the current row, simply subscript by defpos. 
         /// </summary>
-        internal readonly BList<BTree<long,Cursor>> rows; // RowSet
+        internal readonly BList<BTree<long,TRow>> rows; // RowSet
         /// <summary>
         /// Constructor: a new empty MTree for given TreeSpec
         /// </summary>
@@ -44,16 +44,16 @@ namespace Pyrrho.Level4
             defpos = dp;
             keyType = dt;
             mt = new MTree(keyType,d,0);
-            rows = BList<BTree<long, Cursor>>.Empty;
+            rows = BList<BTree<long, TRow>>.Empty;
         }
-        protected RTree(RTree t, MTree m,BList<BTree<long,Cursor>> rs)
+        protected RTree(RTree t, MTree m,BList<BTree<long,TRow>> rs)
         {
             defpos = t.defpos;
             keyType = t.keyType;
             mt = m;
             rows = rs;
         }
-        public static TreeBehaviour Add(ref RTree t, TRow k, BTree<long,Cursor> v)
+        public static TreeBehaviour Add(ref RTree t, TRow k, BTree<long,TRow> v)
         {
             var m = t.mt;
             TreeBehaviour tb = MTree.Add(ref m, 
@@ -62,7 +62,7 @@ namespace Pyrrho.Level4
                 t = new RTree(t, m, t.rows + v);
             return tb;
         }
-        public static RTree operator+(RTree t,(TRow,BTree<long,Cursor>)x)
+        public static RTree operator+(RTree t,(TRow,BTree<long,TRow>)x)
         {
             var (k, v) = x;
             Add(ref t, k, v);
@@ -86,18 +86,18 @@ namespace Pyrrho.Level4
     {
         internal readonly RTree _rt;
         internal readonly MTreeBookmark _mb;
-        internal readonly BTree<long, Cursor> _cs; // for updatable joins
+        internal readonly BTree<long, TRow> _cs; // for updatable joins
         internal readonly CList<TypedValue> _key;
         RTreeBookmark(Context cx,RTree rt,int pos,MTreeBookmark mb,
-            BTree<long,Cursor> cs, Cursor rr)
+            BTree<long,TRow> cs, Cursor rr)
             :base(cx,rt.defpos,rt.keyType,pos,rr._ds,rr)
         { 
             _rt = rt; _mb = mb; _cs = cs;
             _key = mb._key;
         }
         RTreeBookmark(Context cx, RTree rt, int pos, MTreeBookmark mb,
-            BTree<long, Cursor> cs)
-            : this(cx, rt, pos, mb, cs, cs[rt.defpos]??throw new PEException("PE48177"))
+            BTree<long, TRow> cs)
+            : this(cx, rt, pos, mb, cs, (Cursor)(cs[rt.defpos]??throw new PEException("PE48177")))
         { }
         RTreeBookmark(Context cx,RTree rt, int pos, MTreeBookmark mb) 
             :this(cx,rt,pos,mb,rt.rows[(int)(mb.Value()??-1L)]?? throw new PEException("PE48178"))
@@ -116,7 +116,7 @@ namespace Pyrrho.Level4
         {
             for (var mb = rt.mt.First(); mb != null; mb = mb.Next())
                 if (mb.Value().HasValue)
-                    return new RTreeBookmark(cx,rt, 0, mb);
+                    return new RTreeBookmark(cx, rt, 0, mb);
             return null;
         }
         internal static RTreeBookmark? New(RTree rt,Context cx)
@@ -166,7 +166,7 @@ namespace Pyrrho.Level4
             var s = BTree<long, TableRow>.Empty;
             var r = BList<TableRow>.Empty;
             for (var b = _cs.First(); b != null; b = b.Next())
-                for (var c = b.value()?.Rec()?.First(); c != null; c = c.Next())
+                for (var c = (b.value() as Cursor)?.Rec()?.First(); c != null; c = c.Next())
                 {
                     var d = c.value();
                     if (!s.Contains(d.ppos))

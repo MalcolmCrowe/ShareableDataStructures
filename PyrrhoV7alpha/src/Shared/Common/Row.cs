@@ -1,3 +1,4 @@
+using System.Net.Http.Headers;
 using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -31,10 +32,6 @@ namespace Pyrrho.Common
         {
             dataType = t;
         }
-        internal virtual TypedValue Next()
-        {
-            throw new DBException("22009",dataType.kind.ToString());
-        }
         internal virtual byte BsonType()
         {
             return dataType.BsonType();
@@ -48,6 +45,10 @@ namespace Pyrrho.Common
         {
             get { return null; }
             set { }
+        }
+        internal virtual TypedValue _Next()
+        {
+            throw new NotImplementedException();
         }
         internal TypedValue? this[Ident n] { get { return this[n.ident]; } }
         internal virtual bool? ToBool()
@@ -80,13 +81,13 @@ namespace Pyrrho.Common
         {
             return 1;
         }
-        internal virtual TypedValue First()
+        internal virtual IBookmark<TypedValue>? First()
         {
-            return this;
+            return null;
         }
-        internal virtual TypedValue Last()
+        internal virtual IBookmark<TypedValue>? Last()
         {
-            return this;
+            return null;
         }
         internal virtual TypedValue Max()
         {
@@ -98,6 +99,8 @@ namespace Pyrrho.Common
         }
         public static TypedValue operator+ (TypedValue left,TypedValue right)
         {
+            if (left is TNull)
+                return right;
             if (left is TInt li && right is TInt ri)
                 return new TInt(li.value + ri.value);
             if (left is TInteger lj && right is TInteger rj)
@@ -191,6 +194,30 @@ namespace Pyrrho.Common
             return -1;
         }
     }
+    internal class TBookmark : IBookmark<TypedValue>
+    {
+        internal readonly TArray parent;
+        internal readonly int pos;
+        internal TypedValue value => parent[pos]??TNull.Value;
+        internal TBookmark(TypedValue pa, int po)
+        { parent = pa as TArray??throw new PEException("PE60201"); pos = po; }
+        public IBookmark<TypedValue>? Next() 
+        {
+            return (pos < parent.array.Count-1) ? new TBookmark(parent, pos+1):null; 
+        }
+        public IBookmark<TypedValue>? Previous()
+        {
+            return (pos > 0) ? new TBookmark(parent, pos - 1) : null;
+        }
+        public TypedValue Value()
+        {
+            return parent.array[pos]??TNull.Value;
+        }
+        public long Position()
+        {
+            return pos;
+        }
+    }
     // shareable
     internal class TInt : TypedValue
     {
@@ -214,11 +241,11 @@ namespace Pyrrho.Common
                 throw new DBException("22003");
             return this;
         }
-        internal override TypedValue Next()
+        internal override TypedValue _Next()
         {
             if (value == long.MaxValue)
-                return new TInteger(new Integer(value)).Next();
-            return base.Next();
+                return new TInteger(new Integer(value))._Next();
+            return base._Next();
         }
         internal override double ToDouble()
         {
@@ -271,7 +298,7 @@ namespace Pyrrho.Common
         static readonly Integer longMax = new (long.MaxValue), longMin = new (long.MinValue);
         internal TInteger(Domain dt, Integer i) : base(dt.Best(Domain.Int),0L) { ivalue = i; }
         internal TInteger(Integer i) : this(Domain.Int, i) { }
-        internal override TypedValue Next()
+        internal override TypedValue _Next()
         {
             return new TInteger(ivalue.Add(new Integer(1),0));
         }
@@ -357,7 +384,7 @@ namespace Pyrrho.Common
         internal readonly Numeric value;
         internal TNumeric(Domain dt, Numeric n) : base(dt.Best(Domain._Numeric)) { value = n; }
         internal TNumeric(Numeric n) : this(Domain._Numeric, n) { }
-        internal override TypedValue Next()
+        internal override TypedValue _Next()
         {
             return new TNumeric(dataType,new Numeric(value.mantissa.Add(new Integer(1),value.scale)));
         }
@@ -400,7 +427,7 @@ namespace Pyrrho.Common
         internal TReal(Domain dt, Numeric n) : base(dt) { nvalue = n; }
         internal TReal(double d) : this(Domain.Real, d) { }
         internal TReal(Numeric n) : this(Domain.Real, n) { }
-        internal override TypedValue Next()
+        internal override TypedValue _Next()
         {
             if (!double.IsNaN(dvalue))
                 return new TReal(dataType, dvalue + 1);
@@ -747,13 +774,13 @@ namespace Pyrrho.Common
         {
             return Length;
         }
-        internal override TypedValue First()
+        internal override IBookmark<TypedValue>? First()
         {
-            return list.First()?.value()??TNull.Value;
+            return (list.Length>0)?new TBookmark(this, 0):null;
         }
-        internal override TypedValue Last()
+        internal override IBookmark<TypedValue>? Last()
         {
-            return list.Last()?.value() ?? TNull.Value;
+            return (list.Length > 0) ? new TBookmark(this, list.Length - 1) : null;
         }
         internal override bool Contains(TypedValue e)
         {
@@ -848,13 +875,13 @@ namespace Pyrrho.Common
         {
             return Length;
         }
-        internal override TypedValue First()
+        internal override IBookmark<TypedValue>? First()
         {
-            return array.First()?.value() ?? TNull.Value;
+            return (array.Count>0L)?new TBookmark(this,0) : null;
         }
-        internal override TypedValue Last()
+        internal override IBookmark<TypedValue>? Last()
         {
-            return array.Last()?.value() ?? TNull.Value;
+            return (array.Count > 0L) ? new TBookmark(this,(int)(array.Count-1L)) : null;
         }
         internal override TypedValue Max()
         {
@@ -1275,6 +1302,25 @@ namespace Pyrrho.Common
             return r;
         }
     }
+    /// <summary>
+    /// An XRow is a TRow whose dataType contains a keys field: the values of the XRow are
+    /// guaranteed to include any non-null key values.
+    /// The XRow constructor draws on the current Context.
+    /// </summary>
+    internal class XRow : TRow
+    {
+        public XRow(Context cx, Domain dt, CTree<long, TypedValue> vs)
+        : base(dt, _Row(cx,dt,vs))
+        {  }
+        static CTree<long,TypedValue> _Row(Context cx, Domain dt, CTree<long,TypedValue> vs)
+        {
+            var kt = (dt.mem[Level3.Index.Keys] as Domain??throw new DBException("PE020601")).rowType;
+            for (var b = kt.First(); b != null; b = b.Next())
+                if (b.value() is long p && !vs.Contains(p) && cx.obs[p] is QlValue e)
+                    vs += (p, e.Eval(cx));
+            return vs;
+        }
+    }
     // we implement a TPath as a TRow: its row type is
     // [0=NodeType Array, {uid=TypedValue} ]
     // where uid identifies an unbound identifier X:T in the Match Statement
@@ -1323,7 +1369,7 @@ namespace Pyrrho.Common
                 dt.representation + (k, new Domain(-1L,Qlx.ARRAY, v.dataType)), dt.rowType + k)),
                 p.values + (k, v));
         }
-        internal bool HasNode(TNode n)
+        internal new bool HasNode(TNode n)
         {
             if (values[0] is TArray ta)
                 for (var i = 0; i < ta.Length; i++)
@@ -1392,12 +1438,12 @@ namespace Pyrrho.Common
         {
             return tree.Contains(a);
         }
-        internal SetBookmark? _First()
+        internal override IBookmark<TypedValue>? First()
         {
             var tf = tree.First();
             return (tf == null) ? null : new SetBookmark(this, 0, tf);
         }
-        internal SetBookmark? _Last()
+        internal override IBookmark<TypedValue>? Last()
         {
             var tl = tree.Last();
             return (tl == null) ? null : new SetBookmark(this, (int)tree.Count, tl);
@@ -1412,13 +1458,13 @@ namespace Pyrrho.Common
             {
                 _set = set; _pos = pos; _bmk = bmk;
             }
-            public SetBookmark? Next()
+            public IBookmark<TypedValue>? Next()
             {
                 var bmk = ABookmark<TypedValue, bool>.Next(_bmk, _set.tree);
                 if (bmk == null) return null;
                 return new SetBookmark(_set,_pos+1, bmk);
             }
-            public SetBookmark? Previous()
+            public IBookmark<TypedValue>? Previous()
             {
                 var bmk = ABookmark<TypedValue, bool>.Previous(_bmk, _set.tree);
                 if (bmk == null) return null;
@@ -1432,11 +1478,6 @@ namespace Pyrrho.Common
             public TypedValue Value()
             {
                 return _bmk.key();
-            }
-
-            IBookmark<TypedValue>? IBookmark<TypedValue>.Next()
-            {
-                return Next();
             }
         }
         /// <summary>
@@ -1592,14 +1633,6 @@ namespace Pyrrho.Common
             var nc = count + n;
             return new TMultiset(dataType, nt, nc);
         }
-        internal override TypedValue First()
-        {
-            return tree.First()?.key()??TNull.Value;
-        }
-        internal override TypedValue Last()
-        {
-            return tree.Last()?.key() ?? TNull.Value;
-        }
         /// <summary>
         /// Mutator: Add object a
         /// </summary>
@@ -1617,12 +1650,12 @@ namespace Pyrrho.Common
         {
             return tree.Contains(a);
         }
-        internal MultisetBookmark? _First()
+        internal override IBookmark<TypedValue>? First()
         {
             var tf = tree.First();
             return (tf==null)?null:new MultisetBookmark(this,0,tf);
         }
-        internal MultisetBookmark? _Last()
+        internal override IBookmark<TypedValue>? Last()
         {
             var tl = tree.Last();
             return (tl==null)?null:new MultisetBookmark(this, count-1, tl);
@@ -1639,7 +1672,7 @@ namespace Pyrrho.Common
             {
                 _set = set; _pos = pos; _bmk = bmk; _rep = rep;
             }
-            public MultisetBookmark? Next()
+            public IBookmark<TypedValue>? Next()
             {
                 var bmk = _bmk;
                 var rep = _rep;
@@ -1653,7 +1686,7 @@ namespace Pyrrho.Common
                     rep = bmk.value();
                 }
             }
-            public MultisetBookmark? Previous()
+            public IBookmark<TypedValue>? Previous()
             {
                 var bmk = _bmk;
                 var rep = _rep;

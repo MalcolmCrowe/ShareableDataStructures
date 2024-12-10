@@ -1913,6 +1913,40 @@ namespace Pyrrho.Level5
             cx.db += (Database.Role, cx.db.objects[cx.role.defpos]??throw new DBException("42105"));
             cx.db += this;
         }
+        internal override Table? Delete(Context cx, Delete del)
+        {
+            if (tableRows[del.delpos] is TableRow tr)
+            {
+                if (cx.db.objects[leavingType] is NodeType lT
+                    && tr.vals[leaveCol] is TInt li && li.ToLong() is long lp
+                    && lT.sindexes[lp] is CTree<long, CTree<long, bool>> Ll
+                    && Ll[leaveCol] is CTree<long, bool> Lll)
+                    cx.db += lT + (SysRefIndexes, lT.sindexes + (leaveCol, Ll + (leaveCol, Lll - del.delpos)));
+                if (cx.db.objects[arrivingType] is NodeType aT
+                    && tr.vals[arriveCol] is TInt ai && ai.ToLong() is long ap
+                    && aT.sindexes[ap] is CTree<long, CTree<long, bool>> Aa
+                    && Aa[arriveCol] is CTree<long, bool> Aaa)
+                    cx.db += aT + (SysRefIndexes, aT.sindexes + (ap, Aa + (arriveCol, Aaa - del.delpos)));
+            }
+            return base.Delete(cx, del);
+        }
+        internal override void Update(Context cx, TableRow prev, CTree<long, TypedValue> fields)
+        {
+            if (cx.db.objects[leavingType] is NodeType lT
+                && prev.vals[leaveCol] is TInt li 
+                && fields[leaveCol] is TInt lu && li.CompareTo(lu)!=0
+                && li.ToLong() is long lp
+                && lT.sindexes[lp] is CTree<long, CTree<long, bool>> Ll
+                && Ll[leaveCol] is CTree<long, bool> Lll)
+                cx.db += lT + (SysRefIndexes, lT.sindexes + (lp, Ll + (leaveCol, Lll - prev.defpos)));
+            if (cx.db.objects[arrivingType] is NodeType aT
+                && prev.vals[arriveCol] is TInt ai
+                && fields[arriveCol] is TInt au && ai.CompareTo(au)!=0 
+                && ai.ToLong() is long ap
+                && aT.sindexes[ap] is CTree<long, CTree<long, bool>> Aa
+                && Aa[arriveCol] is CTree<long, bool> Aaa)
+                cx.db += aT + (SysRefIndexes, aT.sindexes + (ap, Aa + (arriveCol, Aaa - prev.defpos)));
+        }
         internal override bool HaveNodeOrEdgeType(Context cx)
         {
             if (name != "")
