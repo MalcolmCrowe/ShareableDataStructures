@@ -437,6 +437,7 @@ namespace Pyrrho
                                     {
                                         if (PyrrhoStart.ShowPlan)
                                             res.ShowPlan(cx);
+                                        log?.WriteLine(new TDocArray(cx, res));
                                         cx.rdC += res.dependents;
                                         rb = res.First(cx);
                                         while (rb != null && rb.IsNull)
@@ -483,6 +484,7 @@ namespace Pyrrho
                                     rb = null;
                                     if (cx.obs[cx.result] is RowSet res)
                                     {
+                                        log?.WriteLine(new TDocArray(cx, res));
                                         if (PyrrhoStart.ShowPlan)
                                             res.ShowPlan(cx);
                                         cx.rdC += res.dependents;
@@ -1530,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(10 Dec 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(11 Dec 2024)", "http://www.pyrrhodb.com"
         ];
 	}
 }

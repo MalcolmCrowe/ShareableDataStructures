@@ -149,9 +149,15 @@ namespace Pyrrho.Level4
         internal override Context SlideDown()
         {
             if (next is Context nx && proc?.framing?.obs is BTree<long, DBObject> os)
-                for (var b = os.First(); b!= null; b = b.Next())
+                for (var b = os.First(); b != null; b = b.Next())
                     if (b.value() is DBObject ob)
                         nx.obs += (b.key(), ob);
+            if (next is not null && obs[result] is RowSet ra) // for GQL
+            {
+                next.obs += obs;
+                next.nextHeap = nextHeap;
+                next.result = result;
+            }
             return base.SlideDown();
         }
     }

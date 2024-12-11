@@ -116,6 +116,12 @@ namespace Pyrrho.Level3
                 if (b.value() is long p)
                     act.values += (p, acts[b.key()]);
             cx = bd._Obey(act);
+            if (act.obs[act.result] is RowSet ra)  // for GQL
+            {
+                cx.obs += act.obs;
+                cx.nextHeap = act.nextHeap;
+                cx.result = act.result;
+            }
             var r = act.Ret();
             if (r is TList)
                 for (var b = act.values.First(); b != null; b = b.Next())

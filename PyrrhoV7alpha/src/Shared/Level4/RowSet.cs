@@ -4076,6 +4076,10 @@ namespace Pyrrho.Level4
         {
             return XCursor.New(this,cx);
         }
+        internal override int Cardinality(Context cx)
+        {
+            return count;
+        }
         internal class XCursor : Cursor
         {
             readonly XRowSet _xs;

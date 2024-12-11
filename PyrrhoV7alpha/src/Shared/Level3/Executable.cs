@@ -4639,7 +4639,9 @@ namespace Pyrrho.Level3
                 {
                     var xs = new XRowSet(ac, os, sc);
                     ac.obs += (os.defpos, xs);
+                    ac.obs += (xs.defpos, xs);
                     cx.obs += ac.obs;
+                    cx.nextHeap = ac.nextHeap;
                     cx.result = DoExclusions(xs.defpos, cx, cx);
                 }
                 else if (ac.obs[DoExclusions(ac.result,ac,cx)] is RowSet rs)
@@ -5386,6 +5388,7 @@ namespace Pyrrho.Level3
         void DoBindings(Context cx, GqlNode xn, TNode dn)
         {
             var nd = dn._Names(cx);
+            cx.values += dn.tableRow.vals;
             for (var b = xn.label.names.First(); b != null; b = b.Next())
                 if (b.value() is long xu && nd[b.key()] is long nu && nu > 0L
                     && nu != xu)
