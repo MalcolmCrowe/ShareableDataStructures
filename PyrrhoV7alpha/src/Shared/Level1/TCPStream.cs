@@ -629,7 +629,7 @@ namespace Pyrrho.Level1
             PutString(et.ToString());
             PutInt(et.Typecode());
             PutInt((int)m.Count);
-            for (var e = m._First(); e != null; e = e.Next())
+            for (var e = m.First(); e != null; e = e.Next())
                 PutCell(cx, et, e.Value());
         }
         /// <summary>
@@ -643,7 +643,7 @@ namespace Pyrrho.Level1
             PutString(et.ToString());
             PutInt(et.Typecode());
             PutInt((int)m.tree.Count);
-            for (var e = m._First(); e != null; e = e.Next())
+            for (var e = m.First(); e != null; e = e.Next())
                 PutCell(cx, et, e.Value());
         }
         /// <summary>
