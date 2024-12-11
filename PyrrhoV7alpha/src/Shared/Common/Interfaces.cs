@@ -19,6 +19,7 @@ namespace Pyrrho.Common
     public interface IBookmark<V>
     {
         IBookmark<V>? Next(); // null if none
+        IBookmark<V>? Previous(); // null if none
         V Value();
         long Position();
     }
