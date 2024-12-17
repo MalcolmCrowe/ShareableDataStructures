@@ -30,7 +30,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public int num = 1;
         /// <summary>
-        /// whether this transaction profile changes the database schema
+        /// whether this transaction profile changes the database rowType
         /// </summary>
         public bool schema = false;
         /// <summary>
@@ -87,8 +87,8 @@ namespace Pyrrho.Level3
  /*       internal void Show(StringBuilder s)
         {
             s.Append("TRANSACTION occurrences "+num + " of which "+fails+" failed\n\r");
-            if (schema)
-                s.Append("Alterations to database schema\n\r");
+            if (rowType)
+                s.Append("Alterations to database rowType\n\r");
             foreach (Slot<long?> t in tables)
                 ((TableProfile)(t.Value)).Show(s);
         } */
@@ -145,7 +145,7 @@ namespace Pyrrho.Level3
     }
     /// <summary>
     /// Profile information for how a table has been affected in a transaction
-    /// by schema changes, reading, deletiing or inserting/updating records
+    /// by rowType changes, reading, deletiing or inserting/updating records
     /// </summary>
     class TableProfile
     {
@@ -158,7 +158,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public long dels; 
         /// <summary>
-        /// Whether this transaction changed the table schema
+        /// Whether this transaction changed the table rowType
         /// </summary>
         public bool schema = false;
         /// <summary>

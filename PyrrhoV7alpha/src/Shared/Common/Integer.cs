@@ -1045,7 +1045,7 @@ namespace Pyrrho.Common
         /// <returns>The new quotient</returns>
 		internal static Numeric Divide(Numeric a,Numeric b,int prec)
 		{
-			// we want at least prec bytes in the result, i.e. len(a)-len(b)>prec+1
+			// we want at least prec bytes in the valueType, i.e. len(a)-len(b)>prec+1
 			if (prec==0)
 				prec = 13; // if no precision specified
 			a = a.Denormalise(b.mantissa.Length-a.mantissa.Length+prec+1);

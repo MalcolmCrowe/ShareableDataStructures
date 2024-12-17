@@ -16,10 +16,10 @@ using static Pyrrho.Level4.Context;
 namespace Pyrrho.Level4
 {
     /// <summary>
-    /// A RowSet is the result of a stage of query processing: left to right semantics
+    /// A RowSet is the valueType of a stage of query processing: left to right semantics
     /// means that its construction should be delayed until the end of all dependent
     /// clauses for its syntax (i.e. all wheres, group by, orderings etc).
-    /// The _Domain by this stage will have uids for all columns in the result (the display)
+    /// The _Domain by this stage will have uids for all columns in the valueType (the display)
     /// or available for use in filtering/ordering clauses.
     /// 
     /// The where-condition in the query syntax is not quite the same the _Where property.
@@ -50,11 +50,11 @@ namespace Pyrrho.Level4
         /// <summary>
         /// ResultType: (None,General, Empty, Aggregation, Scalar). 
         /// The different shapes of the current table depend on the syntactically-defined 
-        /// numbers of rows or columns: The number of rows is 0 for an empty result, 
+        /// numbers of rows or columns: The number of rows is 0 for an empty valueType, 
         /// is always 1 for an ungrouped aggregation. 
         /// The number of columns is 0 if the statement merely tests 
         /// whether an operation succeeds (i.e. no exceptions), and 
-        /// is 1 for a scalar result 
+        /// is 1 for a scalar valueType 
         /// (e.g. null, true or false, or some other single value of a known type).
         /// </summary>
         public enum ResultType { None, General, Empty, Aggregation, Scalar };
@@ -385,7 +385,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="mm">The properties to be applied</param>
         /// <param name="cx">The context</param>
-        /// <param name="m">PRIVATE: Show accumulating properties of the result</param>
+        /// <param name="m">PRIVATE: Show accumulating properties of the valueType</param>
         /// <returns>updated rowset</returns>
         internal virtual RowSet Apply(BTree<long, object> mm,Context cx,BTree<long,object>? m = null)
         {
@@ -733,7 +733,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// KnownBase computes a set of QlValue uids known by this rowSet. The set is
-        /// defined by the keys of the CTree result. We ignore the Domain values of these trees.
+        /// defined by the keys of the CTree valueType. We ignore the Domain values of these trees.
         /// </summary>
         /// <param name="cx"></param>
         /// <returns>A set of SqlValues used to compute this RowSet</returns>
@@ -1205,7 +1205,7 @@ namespace Pyrrho.Level4
             return gs;
         }
         /// <summary>
-        /// Compute schema information (for the client) for this row set.
+        /// Compute rowType information (for the client) for this row set.
         /// 
         /// </summary>
         /// <param name="flags">The column flags to be filled in</param>
@@ -2510,7 +2510,7 @@ namespace Pyrrho.Level4
         /// We get here if there are any aggregations at this level (and if there are groupings there must be aggs).
         /// Let R be this, and have a source S. During this method, new properties that were proposed for R
         /// may be applied to a source S instead, and so on, for example, aggregation or grouping.
-        /// This may result in some subexpressions becoming meaningless in R, because its value has been calculated
+        /// This may valueType in some subexpressions becoming meaningless in R, because its value has been calculated
         /// earlier in the pipeline (and is now available in cx.values). We want to replace these subexpressions
         /// with the special QlValue Ambient so that cx.values gives the value instead of the subexpression.
         /// Selectlist expressions in T should be the subexpressions of R's select tree that it knows.
@@ -4817,10 +4817,10 @@ namespace Pyrrho.Level4
                 for (var b = gs.First(); b != null; b = b.Next())
                     if (b.value() is TGParam g && g.type.HasFlag(TGParam.Type.Field))
                         dt -= g.uid; */
-            var rs = BList<TRow>.Empty;
+            var rs = CList<TRow>.Empty;
             for (var b = r.First(); b != null; b = b.Next())
                 rs += b.value().Item2;
-            m += (_Rows, r);
+            m += (_Rows, rs);
             if (r.Length == 0)
             {
                 var t = new MTree(dt, TreeBehaviour.Ignore, 0);

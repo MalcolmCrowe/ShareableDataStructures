@@ -1534,6 +1534,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     {
                         if (a is TNumeric an && b is TNumeric bn)
                             c = an.value.CompareTo(bn.value);
+                        else goto case Qlx.INTEGER; // hack for now
                     }
                     break;
                 case Qlx.REAL:
@@ -3936,7 +3937,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         /// <param name="a">The left Integer operand</param>
         /// <param name="op">The operator</param>
         /// <param name="b">The right Integer operand</param>
-        /// <returns>The Integer result</returns>
+        /// <returns>The Integer valueType</returns>
         static TypedValue IntegerOps(Domain tp, Integer a, Qlx op, Integer b)
         {
             Integer r = op switch
@@ -3957,7 +3958,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         /// <param name="a">The left Numeric operand</param>
         /// <param name="op">The operator</param>
         /// <param name="b">The right Numeric operand</param>
-        /// <returns>The Numeric result</returns>
+        /// <returns>The Numeric valueType</returns>
         static Numeric DecimalOps(Numeric a, Qlx op, Numeric b)
         {
             var z = Integer.Zero;
@@ -3996,7 +3997,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         /// <param name="a">The left double operand</param>
         /// <param name="op">The operator</param>
         /// <param name="b">The right double operand</param>
-        /// <returns>The double result</returns>
+        /// <returns>The double valueType</returns>
         static double DoubleOps(double? aa, Qlx op, double? bb)
         {
             if (aa == null || bb == null)
@@ -4052,7 +4053,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         /// <summary>
         /// Compute the datatype resulting from limiting this by another datatype constraint.
         /// this.LimitBy(union) gives this if this is in the union, otherwise
-        /// this.LimitBy(dt) gives the same result as dt.LimitBy(this).
+        /// this.LimitBy(dt) gives the same valueType as dt.LimitBy(this).
         /// </summary>
         /// <param name="dt"></param>
         /// <returns></returns>

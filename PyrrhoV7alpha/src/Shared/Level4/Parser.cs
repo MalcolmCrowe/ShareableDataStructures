@@ -30,10 +30,10 @@ namespace Pyrrho.Level4
     /// Many SQL statements parse to Executables (can be placed in stored procedures etc)
     /// Can then be executed imediately depending on parser settings.
     /// 
-    /// Some constructs get parsed during database Load(): these should never try to change the schema
+    /// Some constructs get parsed during database Load(): these should never try to change the rowType
     /// or make other changes. parse should only call _Obey within a transaction.
     /// This means that (for now at least) stored executable code (triggers, procedures) should
-    /// never attempt schema changes. 
+    /// never attempt rowType changes. 
     /// </summary>
 	internal class Parser
     {
@@ -185,7 +185,7 @@ namespace Pyrrho.Level4
         /// The tye of database modification that may occur is determined by db.parse.
         /// </summary>
         /// <param name="sql">the input</param>
-        /// <param name="xp">the expected result tye (default is Domain.Content)</param>
+        /// <param name="xp">the expected valueType tye (default is Domain.Content)</param>
         /// <returns>The modified Database and the new uid highwatermark </returns>
         public Database ParseSql(string sql, Domain xp)
         {
@@ -278,7 +278,7 @@ namespace Pyrrho.Level4
             do
             {
                 ParseStatement(Domain.TableType);
-                //      cx.result = e.defpos;
+                //      cx.valueType = e.defpos;
                 if (tok == Qlx.SEMICOLON)
                     Next();
             } while (tok != Qlx.EOF);
@@ -331,7 +331,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>  
         /// </summary>
-        /// <param name="xp">A Domain or ObInfo for the expected result of the Executable</param>
+        /// <param name="xp">A Domain or ObInfo for the expected valueType of the Executable</param>
         /// <param name="procbody">If true, we are parsing a routine body (SQl-style RETURN)</param>
         /// <returns>The Executable results of the Parse</returns>
         public Executable ParseStatement(Domain xp,bool procbody = false)
@@ -350,11 +350,10 @@ namespace Pyrrho.Level4
                         Next();
                         var sn = new Ident(this);
                         Mustbe(Qlx.Id);
-                        var sc = cx.db.objects[(sn.ident == "HOME_SCHEMA")?cx.role.home_schema
-                            : cx.role.schemas[sn.ident] ?? -1L] as Schema
+                        var sc = cx.db.objects[cx.role.schemas[sn.ident] ?? -1L] as Schema
                             ?? throw new DBException("42107", sn.ident);
                         var sa = ParseStatement(xp,procbody);
-                        return (Executable)cx.Add(sa + (Executable.Schema, sc));
+                        return (Executable)cx.Add(sa + (Executable.ValueType, sc));
                     }
                 case Qlx.BEGIN: return ParseCompoundStatement(xp, "");
                 case Qlx.BINDING:
@@ -928,7 +927,7 @@ namespace Pyrrho.Level4
 		/// 	|	MethodCall .
         /// </summary>
         /// <param name="ob">The target object of the method call if any</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
 		Executable ParseCallStatement()
         {
             var lp = lxr.start;
@@ -2314,7 +2313,7 @@ namespace Pyrrho.Level4
             if (ab == Qlx.LBRACK)
             {
                 // state M22
-                var pl = lxr.Position;
+                var pl = cx.GetUid();
                 var (tgp, svp) = ParseGqlMatch(f, pi, lxr.tgs);
                 Mustbe(Qlx.RBRACK);
                 // state M23
@@ -2325,7 +2324,7 @@ namespace Pyrrho.Level4
                 // state M24
                 tgs += tgp;
                 (var sa, ahead, tgs) = ParseMatchExp(ahead, pi, tgs, f, ln);
-                r = new GqlPath(pl, cx, svp, qu, ln?.uid ?? -1L, sa.defpos);
+                r = new GqlPath(cx.GetUid(), cx, svp, qu, ln?.uid ?? -1L, sa.defpos);
                 // to state M34
             }
             else
@@ -2441,7 +2440,9 @@ namespace Pyrrho.Level4
                 var m = BTree<long, object>.Empty + (SqlFunction._Val, lb.defpos) + (GqlNode._Label,lb);
                 r = ab switch
                 {
-                    Qlx.LPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st, dm, m),
+                    // for GqlNode, use available type information from the previous node 
+                    Qlx.LPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st, 
+                                cx.db.objects[LastEdge(ln,tgs)?.arrivingType??-1L] as Domain, m),
                     Qlx.ARROWBASE => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, ln?.uid ?? -1L, -1L, dc, st, dm, m),
                     Qlx.RARROW => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, -1L, ln?.uid ?? -1L, dc, st, dm, m),
                     _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))
@@ -2466,6 +2467,16 @@ namespace Pyrrho.Level4
    //         cx.DecSD();
             lxr.tgs = og;
             return (r, svg, tgs);
+        }
+        EdgeType? LastEdge(Ident? ln,CTree<long,TGParam> tgs)
+        {
+            if (cx.obs[ln?.uid ?? -1L] is GqlEdge le && le.domain.defpos >= 0
+                    && le.domain is EdgeType lt)
+                return lt;
+            for (var b = tgs.Last(); b != null; b = b.Previous())
+                if (cx.db.objects[b.key()] is EdgeType t)
+                    return t;
+            return null;
         }
         Domain ParseNodeLabelExpression(NodeType dm, string? a=null, NodeType? lt = null, NodeType? at = null)
         {
@@ -2608,7 +2619,7 @@ namespace Pyrrho.Level4
                     else
                     {
                         e = cx.lastret;
-                        rd = cx.obs[(cx.obs[e] as ReturnStatement)?.result ?? -1L] as RowSet ?? rd;
+                        rd = (cx.obs[e] as ReturnStatement)?.valueType??Domain.Null;
                         pe = xe.defpos;
                     }
                     cx.names = on;
@@ -4666,7 +4677,7 @@ namespace Pyrrho.Level4
 		/// |	DECLARE id CURSOR FOR QueryExpression [ FOR UPDATE [ OF Cols ]] 
         /// |   HandlerDeclaration .
         /// </summary>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
 		Executable ParseDeclaration()
         {
             var lp = LexDp();
@@ -4783,7 +4794,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="n">the label</param>
         /// <param name="f">The procedure whose body is being defined if any</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
 		CompoundStatement ParseCompoundStatement(Domain xp, string n)
         {
             var cs = new CompoundStatement(LexDp(), n);
@@ -4885,7 +4896,7 @@ namespace Pyrrho.Level4
         /// <param name="xp">the expected ob tye if any</param>
 		Executable ParseLabelledStatement(Domain xp)
         {
-            Ident sc = ParseIdentChain(false).Item1;
+            var (sc,il) = ParseIdentChain(false);
             var lp = lxr.start;
             var cp = LexDp();
             // OOPS: according to SQL 2003 there MUST follow a colon for a labelled statement
@@ -4918,7 +4929,7 @@ namespace Pyrrho.Level4
                 return (Executable)cx.Add(new CallStatement(cx.GetUid(), c));
             }
             // OOPS: and a simple assignment for backwards compatibility
-            else if (Identify(sc, new BList<Ident>(sc), Domain.Content) is DBObject vb)
+            else if (Identify(sc, il, Domain.Content) is DBObject vb)
             {
                 if (vb is QlInstance vc && cx.db.objects[vc.sPos] is TableColumn tc)
                     vb = tc;
@@ -5173,7 +5184,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="n">the label</param>
         /// <param name="xp">The tye of the test expression</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
         Executable ParseForStatement(Domain xp, string? n)
         {
             var lp = LexDp();
@@ -5229,11 +5240,11 @@ namespace Pyrrho.Level4
             var ss = ParseCursorSpecification(Domain.TableType); // use ambient declarations
             d = Math.Max(d, ss.depth + 1);
             var cs = (RowSet?)cx.obs[ss.union] ?? throw new DBException("42000", "CursorSpec");
-            Mustbe(Qlx.DO);
+            var sawDo = Match(Qlx.DO);
+            if (sawDo) Next();
             var xs = ParseStatementList(xp);
             var fs = new ForSelectStatement(lp, n ?? "", c, cs, xs) + (DBObject._Depth, d);
-            Mustbe(Qlx.END);
-            Mustbe(Qlx.FOR);
+            if (sawDo) { Mustbe(Qlx.END); Mustbe(Qlx.FOR); }
             if (tok == Qlx.Id)
             {
                 if (n != null && n != lxr.val.ToString())
@@ -5246,7 +5257,7 @@ namespace Pyrrho.Level4
 		/// IfStatement = 	IF BooleanExpr THEN Statements { ELSEIF BooleanExpr THEN Statements } [ ELSE Statements ] END IF .
         /// </summary>
         /// <param name="xp">The tye of the test expression</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
 		Executable ParseIfThenElse(Domain xp)
         {
             var lp = LexDp();
@@ -5289,7 +5300,7 @@ namespace Pyrrho.Level4
 		/// Statements = 	Statement { ';' Statement } .
         /// </summary>
         /// <param name="xp">The obs tye of the test expression</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
 		BList<long?> ParseStatementList(Domain xp)
         {
             if (ParseStatement(xp, true) is not Executable a)
@@ -5330,7 +5341,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// parse a dotted identifier chain. Watch for pseudo TableColumns
         /// CHECK ROW PARTITION VERSIONING PROVENANCE TYPE_URI SYSTEM_TIME
-        /// The result will get classified as variable or ident
+        /// The valueType will get classified as variable or ident
         /// during the Analysis stage Selects when things get setup
         /// </summary>
         /// <param name="ppos">the lexer position</param>
@@ -5562,7 +5573,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="n">the label</param>
         /// <param name="xp">The  tye of the test expression</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
 		Executable ParseLoopStatement(Domain xp, string? n)
         {
             var ls = new LoopStatement(LexDp(), n ?? "");
@@ -5579,7 +5590,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="n">the label</param>
         /// <param name="xp">The tye of the test expression</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
         Executable ParseSqlWhile(Domain xp, string? n)
         {
             var ws = new WhileStatement(LexDp(), n ?? "");
@@ -5603,7 +5614,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="n">the label</param>
         /// <param name="xp">The obs tye of the test expression</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
         Executable ParseRepeat(Domain xp, string? n)
         {
             var rs = new RepeatStatement(LexDp(), n ?? "");
@@ -5623,7 +5634,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Parse a break or leave statement
         /// </summary>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
         Executable ParseBreakLeave()
         {
             Match(Qlx.BREAK, Qlx.LEAVE);
@@ -5641,7 +5652,7 @@ namespace Pyrrho.Level4
         /// Parse an iterate statement
         /// </summary>
         /// <param name="f">The procedure whose body is being defined if any</param>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
         Executable ParseIterate()
         {
             Next();
@@ -5653,7 +5664,7 @@ namespace Pyrrho.Level4
         /// |	SIGNAL (id|SQLSTATE [VALUE] string) [SET item=Value {,item=Value} ]
         /// |   RESIGNAL [id|SQLSTATE [VALUE] string] [SET item=Value {,item=Value} ]
         /// </summary>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
 		Executable ParseSignal()
         {
             Qlx s = tok;
@@ -5702,7 +5713,7 @@ namespace Pyrrho.Level4
         /// <summary>
 		/// Open =		OPEN id .
         /// </summary>
-        /// <returns>the Executable result of the parse</returns>
+        /// <returns>the Executable valueType of the parse</returns>
  		Executable ParseOpenStatement()
         {
             Next();
@@ -5715,7 +5726,7 @@ namespace Pyrrho.Level4
         /// <summary>
 		/// Close =		CLOSE id .
         /// </summary>
-        /// <returns>The Executable result of the parse</returns>
+        /// <returns>The Executable valueType of the parse</returns>
 		Executable ParseCloseStatement()
         {
             Next();
@@ -5728,7 +5739,7 @@ namespace Pyrrho.Level4
         /// <summary>
 		/// Fetch =		FETCH Cursor_id INTO VariableRef { ',' VariableRef } .
         /// </summary>
-        /// <returns>The Executable result of the parse</returns>
+        /// <returns>The Executable valueType of the parse</returns>
         Executable ParseFetchStatement()
         {
             Next();
@@ -7634,7 +7645,7 @@ namespace Pyrrho.Level4
         /// <summary>
 		/// CursorSpecification = [ XMLOption ] QueryExpression  .
         /// </summary>
-        /// <param name="xp">The result expected (default Domain.Content)</param>
+        /// <param name="xp">The valueType expected (default Domain.Content)</param>
         /// <returns>A CursorSpecification</returns>
 		internal SelectStatement ParseCursorSpecification(Domain xp)
         {
@@ -7659,7 +7670,7 @@ namespace Pyrrho.Level4
         /// Start the parse for a QueryExpression (called from View)
         /// </summary>
         /// <param name="sql">The ql string</param>
-        /// <param name="xp">The expected result tye</param>
+        /// <param name="xp">The expected valueType tye</param>
         /// <param name="ap">ambient limit in names: e.g. 0L allow all, lxr.Position allow none</param>
         /// <returns>a RowSet</returns>
 		public RowSet ParseQueryExpression(Ident sql, Domain xp, long ap)
@@ -7677,9 +7688,9 @@ namespace Pyrrho.Level4
 		/// A simple table query is defined (SQL2003-02 14.1SR18c) as a CursorSpecification 
         /// in which the RowSetExpr is a QueryTerm that is a QueryPrimary that is a QuerySpecification.
         /// </summary>
-        /// <param name="xp">the expected result tye</param>
+        /// <param name="xp">the expected valueType tye</param>
         /// <param name="lp">the most recent SELECT</param>
-        /// <returns>Updated result type, and a RowSet</returns>
+        /// <returns>Updated valueType type, and a RowSet</returns>
 		RowSet ParseRowSetSpec(Domain xp, long lp)
         {
             RowSet left, right;
@@ -7764,7 +7775,7 @@ namespace Pyrrho.Level4
         /// QueryExpression is a QueryTerm that is a QueryPrimary that is a QuerySpecification.
         /// </summary>
         /// <param name="t">the expected obs tye</param>
-        /// <returns>the updated result tye and the RowSet</returns>
+        /// <returns>the updated valueType tye and the RowSet</returns>
 		RowSet ParseQueryPrimary(Domain xp, long ap)
         {
             var lp = LexDp();
@@ -7974,7 +7985,7 @@ namespace Pyrrho.Level4
 		/// SelectList = '*' | SelectItem { ',' SelectItem } .
         /// </summary>
         /// <param name="dp">The position of the SELECT keyword</param>
-        /// <param name="xp">the expected result tye, or Domain.Content</param>
+        /// <param name="xp">the expected valueType tye, or Domain.Content</param>
         /// <returns>a "Domain" whose rowtype may contain SqlReviews for local columns</returns> 
 		Domain ParseSelectList(long dp, Domain xp, long ap)
         {
@@ -8459,7 +8470,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="dp">The occurrence of this table reference</param>
         /// <param name="ob">The table or view referenced</param>
-        /// <param name="q">The expected result for the enclosing query</param>
+        /// <param name="q">The expected valueType for the enclosing query</param>
         /// <returns></returns>
         RowSet _From(Ident ic, DBObject ob, Domain dm, Grant.Privilege pr, long ap, string? a = null)
         {
@@ -9789,7 +9800,7 @@ namespace Pyrrho.Level4
 		/// Count = COUNT '(' '*' ')'
 		/// | COUNT '(' [DISTINCT|ALL]  TypedValue) ')' FuncOpt .
 		/// Covariance = (COVAR_POP|COVAR_SAMP) '('  TypedValue ','  TypedValue ')' FuncOpt .
-        /// Schema = SCHEMA '(' ObjectName ')' . 
+        /// RowType = SCHEMA '(' ObjectName ')' . 
 		/// WindowSpec = Window_id | '(' WindowDetails ')' .
 		/// Exponential = EXP '('  TypedValue ')' .
 		/// Extract = EXTRACT '(' ExtractField FROM TypedValue ')' .
@@ -11044,9 +11055,21 @@ namespace Pyrrho.Level4
             var ps = (tok==Qlx.RPAREN)?BList<long?>.Empty:ParseSqlValueList(Domain.Content);
             var a = cx.db.Signature(cx, ps);
             Mustbe(Qlx.RPAREN);
-            if (cx.role.procedures[id.ident]?[a] is not long pp ||
-                cx.db.objects[pp] is not Procedure pr)
-                throw new DBException("42108", id.ident).Mix();
+            Procedure pr;
+            if (cx.role.procedures[id.ident]?[a] is long pp &&
+                cx.db.objects[pp] is Procedure pa)
+                pr = pa;
+            else
+            {
+                var ar = CList<Domain>.Empty;
+                for (var b = a.First(); b != null; b = b.Next())
+                    ar += (b.value()?.kind == Qlx.NUMERIC) ? Domain.Real : b.value();
+                if (cx.role.procedures[id.ident]?[ar] is long pq
+                    && cx.db.objects[pq] is Procedure pb)
+                    pr = pb;
+                else
+                    throw new DBException("42108", id.ident).Mix();
+            }
             var fc = new SqlProcedureCall(cx.GetUid(), cx, pr, ps);
             cx.Add(fc);
             return (Executable)cx.Add(new CallStatement(id.uid, fc));

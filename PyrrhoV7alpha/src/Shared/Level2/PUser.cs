@@ -90,7 +90,7 @@ namespace Pyrrho.Level2
             var nu = new User(this, cx.db);
             // If this is the first User to be defined, 
             // it becomes the Owner of the database, 
-            // and is granted User and Admin for the schema role
+            // and is granted User and Admin for the rowType role
             var first = true;
             for (var b = cx.db.roles.First(); first && b != null; b = b.Next())
                 if (b.value() is long bp && cx.db.objects[bp] is User)

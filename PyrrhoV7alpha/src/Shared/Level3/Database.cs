@@ -112,7 +112,7 @@ namespace Pyrrho.Level3
     /// 
     /// Prior to version 7, every Pyrrho database began with user and role records. From version 7 on,
     /// this is not required: the database user for a new empty database is the account running the engine,
-    /// and this account is initially allowed to use the the schema role. 
+    /// and this account is initially allowed to use the the rowType role. 
     /// 
     /// Creation of a new database by a connected user other than the server account can be permitted
     /// using command-line flags (it is not the default), and in that case the creator user is 
@@ -136,7 +136,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The _system database contains primitive domains and system tables and columns.
         /// These objects are inherited by any new database, and the _system._role uid
-        /// becomes the schema role uid (obviously evolves to have all of the database objects).
+        /// becomes the rowType role uid (obviously evolves to have all of the database objects).
         /// If there no users or roles defined in a database, the _system role uid is used
         /// </summary>
         internal static Database _system = Empty;
@@ -214,7 +214,7 @@ namespace Pyrrho.Level3
         internal static Role guestRole;
         /// <summary>
         /// This code sets up the _system Database.
-        /// It contains two roles ($Schema and _public), 
+        /// It contains two roles ($RowType and _public), 
         /// the predefined types and system tables.
         /// </summary>
         static Database()
@@ -390,7 +390,7 @@ namespace Pyrrho.Level3
             var user = con.props["User"] ?? throw new DBException("80000");
             if (objects[roles[user] ?? -1L] is not User u)// 2. if the user is unknown
             {
-                // Has the schema role any users?
+                // Has the rowType role any users?
                 var users = r.mem.Contains(Users);
                 if (users) // 2a make an uncommitted user
                     u = new User(user); // added to the new Transaction below
@@ -400,7 +400,7 @@ namespace Pyrrho.Level3
                     {
                         var sysdb = _system ?? throw new PEException("PE1009");
                         u = sysdb.user ?? throw new PEException("PE855");
-                        ro = schema // allow the server account use the schema role
+                        ro = schema // allow the server account use the rowType role
                             ?? throw new PEException("PE856");
                     }
                     else // 2bii deny access

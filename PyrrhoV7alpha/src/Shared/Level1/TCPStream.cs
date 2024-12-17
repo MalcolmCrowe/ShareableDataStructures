@@ -131,7 +131,7 @@ namespace Pyrrho.Level1
         /// <summary>
         /// Callback on completion of a read request from the network
         /// </summary>
-        /// <param name="ar">the async result</param>
+        /// <param name="ar">the async valueType</param>
         protected void Callback(IAsyncResult ar)
         {
             if (client == null || ar.AsyncState is not Buffer buf)
@@ -258,7 +258,7 @@ namespace Pyrrho.Level1
         /// <summary>
         /// Callback on completion of a write request to the network
         /// </summary>
-        /// <param name="ar">the async result</param>
+        /// <param name="ar">the async valueType</param>
         void Callback1(IAsyncResult ar)
         {
             if (ar.AsyncState is not Buffer buf || client == null)
@@ -653,7 +653,7 @@ namespace Pyrrho.Level1
         internal void PutTable(Context cx, RowSet r)
         {
             PutString("TABLE");
-            PutSchema(cx);
+            PutRowType(cx);
             int n = 0;
             for (var e = r.First(cx); e != null; e = e.Next(cx))
                 n++;
@@ -701,10 +701,10 @@ namespace Pyrrho.Level1
         }
 
         /// <summary>
-        /// Send a result schema to the client
+        /// Send a valueType rowType to the client
         /// </summary>
         /// <param name="rowSet">the results</param>
-        internal void PutSchema(Context cx)
+        internal void PutRowType(Context cx)
         {
             if (cx.obs[cx.result] is not RowSet result)
             {
@@ -758,7 +758,7 @@ namespace Pyrrho.Level1
             Flush();
         }
         /// <summary>
-        /// Send a schemaKey and result schema to the client for a weakly typed language
+        /// Send a schemaKey and valueType rowType to the client for a weakly typed language
         /// </summary>
         /// <param name="rowSet">the results</param>
         internal void PutSchema1(Context cx,RowSet result)
@@ -891,7 +891,7 @@ namespace Pyrrho.Level1
         }
         /// <summary>
         /// Send a data cell.
-        /// Normal result of SELECT in client-server comms.
+        /// Normal valueType of SELECT in client-server comms.
         /// Used in server-server comms to collect traversal conditions,
         /// and thus reduce the amount of data transferred
         /// </summary>
@@ -948,7 +948,7 @@ namespace Pyrrho.Level1
         }
         /// <summary>
         /// Send obs cell contents.
-        /// Normal result of SELECT in client-server comms.
+        /// Normal valueType of SELECT in client-server comms.
         /// </summary>
         /// <param name="tv"></param>
         internal void PutData(Context _cx, TypedValue tv, Domain dt)

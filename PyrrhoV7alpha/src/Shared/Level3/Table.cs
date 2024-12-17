@@ -17,7 +17,7 @@ namespace Pyrrho.Level3
     /// <summary>
     /// The Domain base has columns, but not all Domains with Columns are Tables 
     /// (e.g. Keys, Orderings and Groupings are domains with columns but are not tables).
-    /// Tables are not always associated with base tables either: the result of a View
+    /// Tables are not always associated with base tables either: the valueType of a View
     /// or SqlCall can be a Table.
     /// From v 7.04 we identify Table with Relation Type, hence Table is a kind of Domain
     /// that also has a collection of rows.

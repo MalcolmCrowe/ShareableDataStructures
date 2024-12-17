@@ -97,10 +97,10 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx)
         {
             // If this is the first Role to be defined, 
-            // it becomes the schema role and also the current role
+            // it becomes the rowType role and also the current role
             var first = cx.db.roles.Count == Database._system.roles.Count;
             var nr = new Role(this, cx.db, first);
-            if (first) // make the new Role the Schema role, and the definer of all objects so far
+            if (first) // make the new Role the RowType role, and the definer of all objects so far
             {
                 cx.db += (Database._Schema, nr.defpos);
                 for (var b = cx.db.objects.PositionAt(0); b != null && b.key()<Transaction.Analysing; 

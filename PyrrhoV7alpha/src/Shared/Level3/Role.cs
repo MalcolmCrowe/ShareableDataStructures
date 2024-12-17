@@ -30,14 +30,14 @@ namespace Pyrrho.Level3
     /// and this is also true for SystemTables.
     /// ALTER ROLE statements can only be executed by the role or its creator.
     /// Two special implicit roles cannot be ALTERed.
-    /// The schema role has access to system tables, and is the initial role for a new database.
-    /// The database owner is always allowed to use the schema role, but it is otherwise
-    /// subject to normal SQL statements. The schema role has the same uid as _system.role,
+    /// The rowType role has access to system tables, and is the initial role for a new database.
+    /// The database owner is always allowed to use the rowType role, but it is otherwise
+    /// subject to normal SQL statements. The rowType role has the same uid as _system.role,
     /// and maintains a tree of all users and roles known to the database.
     /// The guest role has access to all such that have been granted to PUBLIC: there is no Role object for this.
     /// In Pyrrho users are granted roles, and roles can be granted objects.  
     /// There is one exception: a single user can be granted ownership of the database:
-    /// this happens by default for the first user to be granted the schema role.
+    /// this happens by default for the first user to be granted the rowType role.
     /// If a role is granted to another role it causes a cascade of permissions, but does not establish
     /// an ongoing relationship between the roles (granting a role to a user does):
     /// for this reason granting a role to a role is deprecated.
@@ -60,7 +60,7 @@ namespace Pyrrho.Level3
             NodeTypes = -115, // BTree<string,long?> Labelled NodeType by name
             PropertyNames = -243, // CTree<string,CTree<long,bool>> Domains by child names
             Procedures = -249, // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
-            Schemas = -356,    // BTree<string,long?> Schema by name
+            Schemas = -356,    // BTree<string,long?> RowType by name
             UnlabelledNodeTypesInfo = -476, //BTree<CTree<string,bool>,long?> NodeType by properties
             UnlabelledEdgeTypesInfo = -482; //BTree<CTree<string,bool>,long?> EdgeType by properties
         internal BTree<string, long?> dbobjects => 
@@ -91,9 +91,8 @@ namespace Pyrrho.Level3
         public const Grant.Privilege use = Grant.Privilege.UseRole,
             admin = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
         internal long home_graph => (long)(mem[Executable.UseGraph] ?? -1);
-        internal long home_schema => (long)(mem[Executable.Schema] ?? -1);
         /// <summary>
-        /// Just to create the schema and guest roles
+        /// Just to create the rowType and guest roles
         /// </summary>
         /// <param name="nm"></param>
         /// <param name="u"></param>
@@ -236,7 +235,7 @@ namespace Pyrrho.Level3
             MethodInfos = -252, // BTree<string, BTree<CList<Domain>,long?>> Method
             Name = -50, // string
             _Names = -282, // Names TableColumn (SqlValues in RowSet)
-            SchemaKey = -286, // long (highwatermark for schema changes)
+            SchemaKey = -286, // long (highwatermark for rowType changes)
             Privilege = -253; // Grant.Privilege
         public string description => mem[Description]?.ToString() ?? "";
         public Grant.Privilege priv => (Grant.Privilege?)mem[Privilege]??Grant.Privilege.NoPrivilege;

@@ -190,8 +190,6 @@ namespace Pyrrho.Level2
             }
             if (priv == Privilege.GrantGraph && ob is Level5.Graph gp)
                 rg += (Executable.UseGraph, gp.defpos);
-            if (priv == Privilege.GrantUsage && ob is Level5.Schema sc)
-                rg += (Executable.Schema, sc.defpos);
             // install the privilege on the target object
             oi += (ObInfo.Privilege, pr);
             ob = (DBObject)ob.New(ob.mem+(DBObject.Infos,ob.infos + (grantee, oi)));

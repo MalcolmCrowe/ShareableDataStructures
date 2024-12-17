@@ -419,12 +419,12 @@ namespace Pyrrho.Level5
                 for (var b = th.tableRows.First(); b != null && lm-- > 0 && la-- > 0; b = b.Next())
                     if (b.value() is TableRow tr)
                         ds += (tr.defpos, tr);
-            } else  // schema flag
+            } else  // rowType flag
                 ds += (defpos, th.Schema(cx));
             return ds;
         }
         /// <summary>
-        /// Construct a fake TableRow for a nodetype schema
+        /// Construct a fake TableRow for a nodetype rowType
         /// </summary>
         /// <param name="cx"></param>
         /// <returns></returns>
@@ -1432,7 +1432,7 @@ namespace Pyrrho.Level5
         }
     }
     /// <summary>
-    /// For interpretation of labels: because of type renaming the result is role-dependent!
+    /// For interpretation of labels: because of type renaming the valueType is role-dependent!
     /// left and right can be NodeType defpos (if name is "")
     /// Domain is a node/edge type
     /// op can be Qlx.EXCLAMATION,Qlx.VBAR,Qlx.AMPERSAND,Qlx.IMPLIES,Qlx.COLON

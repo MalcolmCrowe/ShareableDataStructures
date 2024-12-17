@@ -366,7 +366,7 @@ namespace Pyrrho
                                 }
                                 else
                                 {
-                                    tcp.PutSchema(cx);
+                                    tcp.PutRowType(cx);
                                     rb = ((RowSet?)cx.obs[cx.result])?.First(cx);
                                     while (rb != null && rb.IsNull)
                                         rb = rb.Next(cx);
@@ -404,7 +404,7 @@ namespace Pyrrho
                                     tcp.PutInt(db.AffCount(cx));
                                 }
                                 else
-                                    tcp.PutSchema(cx);
+                                    tcp.PutRowType(cx);
                                 break;
                             }
                         case Protocol.ExecuteReader: // ExecuteReader
@@ -431,7 +431,7 @@ namespace Pyrrho
                                         pl++;
                                 if (cx.result > 0L && ((Transaction)db).physicals.Count<=pl)
                                 {
-                                    tcp.PutSchema(cx);
+                                    tcp.PutRowType(cx);
                                     rb = null;
                                     if (cx.obs[cx.result] is RowSet res)
                                     {
@@ -480,7 +480,7 @@ namespace Pyrrho
                                 else
                                 {
                                     tcp.Write(Responses.TableData);
-                                    tcp.PutSchema(cx);
+                                    tcp.PutRowType(cx);
                                     rb = null;
                                     if (cx.obs[cx.result] is RowSet res)
                                     {
@@ -508,7 +508,7 @@ namespace Pyrrho
                                 tcp.PutWarnings(cx);
                                 if (cx.result > 0)
                                 {
-                                    tcp.PutSchema(cx);
+                                    tcp.PutRowType(cx);
                                     rb = ((RowSet?)cx.obs[cx.result])?.First(cx);
                                 }
                                 else
@@ -791,7 +791,7 @@ namespace Pyrrho
                                 var ocx = cx;
                                 db = db.RdrClose(ref cx);
                                 rb = null;
-                                tcp.PutSchema(ocx);
+                                tcp.PutRowType(ocx);
                                 break;
                             }
                         case Protocol.CommitAndReport:
@@ -1532,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(11 Dec 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(17 Dec 2024)", "http://www.pyrrhodb.com"
         ];
 	}
 }

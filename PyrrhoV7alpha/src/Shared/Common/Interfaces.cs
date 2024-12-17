@@ -19,7 +19,11 @@ namespace Pyrrho.Common
     public interface IBookmark<V>
     {
         IBookmark<V>? Next(); // null if none
+<<<<<<< Updated upstream
         IBookmark<V>? Previous(); // null if none
+=======
+        IBookmark<V>? Previous(); 
+>>>>>>> Stashed changes
         V Value();
         long Position();
     }

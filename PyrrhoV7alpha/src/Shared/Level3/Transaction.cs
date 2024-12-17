@@ -593,12 +593,12 @@ namespace Pyrrho.Level3
                     }
                 case "skip":
                     {
-                        //                transaction.SetResults(new RowSetSection(transaction.result.rowSet, int.Parse(cp.Substring(5)), int.MaxValue));
+                        //                transaction.SetResults(new RowSetSection(transaction.valueType.rowSet, int.Parse(cp.Substring(5)), int.MaxValue));
                         break;
                     }
                 case "count":
                     {
-                        //                transaction.SetResults(new RowSetSection(transaction.result.rowSet, 0, int.Parse(cp.Substring(6))));
+                        //                transaction.SetResults(new RowSetSection(transaction.valueType.rowSet, 0, int.Parse(cp.Substring(6))));
                         break;
                     }
                 case "of":

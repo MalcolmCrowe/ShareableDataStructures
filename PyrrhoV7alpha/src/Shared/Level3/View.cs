@@ -33,7 +33,7 @@ namespace Pyrrho.Level3
             : base(pv.ppos, pv.dataType.mem + (m??BTree<long,object>.Empty)
                   + (ObInfo.Name,pv.name) + (Definer,pv.definer)
                   +(Owner,pv.owner)+(Infos,pv.infos)+(_Framing,pv.framing)
-                  + (ViewDef,pv.viewdef) + (ViewResult,pv.framing.result)
+                  + (ViewDef,pv.viewdef) + (ViewResult,pv.framing.valueType.defpos)
                   + (LastChange, pv.ppos) + (Owner, cx.user?.defpos??-501L)
                   + (ObInfo._Names, pv.infos[cx.role.defpos]?.names??Names.Empty))
         { }
@@ -87,16 +87,16 @@ namespace Pyrrho.Level3
         {
             var od = cx.done;
             cx.done = ObTree.Empty;
-            var st = framing.result;
+            var st = framing.valueType;
             cx.instDFirst = (cx.parse == ExecuteStatus.Obey) ? cx.nextHeap : cx.db.nextStmt;
             cx.instSFirst = (framing.obs.PositionAt(Transaction.Executables)?.key() ?? 0L) - 1;
             cx.instSLast = framing.obs.Last()?.key() ?? -1L;
             var ni = cx.GetUid();
             cx.uids += (defpos, ni);
             cx.Add((Framing)framing.Fix(cx)); // need virtual columns
-            var ns = cx.Fix(st);
+            var ns = (Domain)st.Fix(cx);
             var dt = (Domain)Fix(cx);
-            var vi = (View)Relocate(ni) + (ViewResult,ns) + (_From,lp);
+            var vi = (View)Relocate(ni) + (ViewResult,ns.defpos) + (_From,lp);
             vi = (View)vi.Fix(cx);
             cx.Add(vi);
             var vn = new Ident(vi.NameFor(cx), vi.defpos);

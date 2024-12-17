@@ -1,3 +1,4 @@
+using System.Data.Common;
 using System.Net;
 using System.Text;
 using Pyrrho.Common;
@@ -83,7 +84,7 @@ namespace Pyrrho.Level4
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal Graph? graph = null; // current graph, set by USE
-        internal Schema? schema = null; // current schema, set by AT
+        internal Schema? schema = null; // current rowType, set by AT
         internal bool ParsingMatch = false;
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
         // bindings, and (possibly empty) dependencies
@@ -213,9 +214,9 @@ namespace Pyrrho.Level4
             {
                 var ns = defs[ob.defpos]??ob.names;
                 if (ob is GqlNode g && n.sub?.ToString() is string nm
-                    && g.domain is Domain gd && gd.names[nm] is long np)
-                    return (Add(new SqlField(n.uid, nm, -1, g.defpos, 
-                        gd.representation[np],g.defpos)),null);
+                    && g.domain is Domain gd && gd.names[nm] is long np
+                    && gd.representation[np] is Domain dt)
+                    return (Add(new SqlField(n.uid, nm, -1, g.defpos,dt,g.defpos)),null);
                 if (ob is QlValue || ob is RowSet || ob is Procedure)
                 { 
                     if (ns != Names.Empty && n.sub is Ident os)
@@ -650,7 +651,7 @@ namespace Pyrrho.Level4
             var (oldlx, ldefs) = defsStore[sd - 1];
             for (var b = undefined.First(); b != null; b = b.Next())
                 if (obs[b.key()] is DBObject ob)
-                    ob.Resolve(this, te?.defpos ?? result, BTree<long, object>.Empty);
+                    ob.Resolve(this, te?.defpos ?? valueType, BTree<long, object>.Empty);
             for (var b = sm?.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && obs[p] is QlValue uv && uv.name is string n)
                 {
@@ -1834,7 +1835,7 @@ namespace Pyrrho.Level4
             }
         }
         /// <summary>
-        /// As a result of Alter Type we need to merge two TableColumns. We can't use the Replace machinery
+        /// As a valueType of Alter Type we need to merge two TableColumns. We can't use the Replace machinery
         /// above since everyting will have depth 1. So we need a new set of transformers.
         /// These are called ShallowReplace because that is what they do on DBObjects.
         /// We do rely on Domains with columns all having positive uids, and no forward column references
@@ -2796,7 +2797,7 @@ namespace Pyrrho.Level4
             Obs = -449;     // ObTree 
         public ObTree obs => 
             (ObTree?)mem[Obs]??ObTree.Empty;
-        public long result => (long)(mem[Executable.Result]??-1L);
+        public Domain valueType => (Domain)(mem[Executable.ValueType] ?? Domain.Null);
         public Rvv? withRvv => (Rvv?)mem[Rvv.RVV];
         internal static Framing Empty = new();
         Framing() { }
@@ -2806,7 +2807,11 @@ namespace Pyrrho.Level4
         { }
         static BTree<long, object> _Mem(Context cx,long nst)
         {
-            var r = BTree<long, object>.Empty + (Executable.Result, cx.result);
+            var r = BTree<long, object>.Empty;
+            if (cx.result > 0 && cx.obs[cx.result] is RowSet rs)
+                r += (Executable.ValueType, rs);
+            else if (cx.val is TypedValue rv && rv!=TNull.Value)
+                r += (Executable.ValueType, rv.dataType);
             if (cx.affected is not null)
                  r+= (Rvv.RVV, cx.affected);
             var os = ObTree.Empty;
@@ -2834,7 +2839,7 @@ namespace Pyrrho.Level4
                     var nb = (DBObject)ob.Fix(cx);
                     r += (nb.defpos, nb);
                 }
-            return new Framing(BTree<long, object>.Empty + (Obs, r) + (Executable.Result, cx.uids[result] ?? result));
+            return new Framing(BTree<long, object>.Empty + (Obs, r) + (Executable.ValueType, valueType.Fix(cx)));
         }
         public static Framing operator+(Framing f,(long,object)x)
         {
@@ -2882,7 +2887,7 @@ namespace Pyrrho.Level4
                     }
                 }
             r += (Obs, os);
-            r += (Executable.Result, cx.Fix(result));
+            r += (Executable.ValueType, (Domain)valueType.Fix(cx));
             return r; 
         }
         public override string ToString()
@@ -2895,9 +2900,9 @@ namespace Pyrrho.Level4
                 sb.Append(' '); sb.Append(b.value());
             }
             sb.Append(')');
-            if (result>=0)
+            if (valueType.kind!=Qlx.Null)
             {
-                sb.Append(" Result ");sb.Append(DBObject.Uid(result));
+                sb.Append(" DataType ");sb.Append(valueType);
             }
             return sb.ToString();
         }
@@ -2912,7 +2917,7 @@ namespace Pyrrho.Level4
         /// The bookmark for the current row
         /// </summary>
         internal Cursor? wrb = null;
-        /// the result of COUNT
+        /// the valueType of COUNT
         /// </summary>
         internal long count = 0L;
         /// <summary>
@@ -2948,7 +2953,7 @@ namespace Pyrrho.Level4
         /// </summary>
         internal Numeric? sumDecimal = null;
         /// <summary>
-        /// the boolean result so far
+        /// the boolean valueType so far
         /// </summary>
         internal bool? bval = null;
         /// <summary>

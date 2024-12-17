@@ -21,7 +21,11 @@ namespace Pyrrho.Level3
 {
     /// <summary>
     /// IMMUTABLE SHAREABLE
-    /// Executable statements can be used in stored procedures. 
+    /// In Gql, executable statements all specify valueType.
+    /// On completion of Executable._Obey, we should have
+    /// (cx.val==TNull.Value or cx.val.dataTypeEqualOrStrongSubtypeOf(valueType)) 
+    /// and (cx.valueType<0L or cx.obs[cx.result].EqualOrStrongSubtypeOf(valueType)).
+    /// In Sql, Executable statements can be used in stored procedures. 
     /// This class provides machinery to support control statements in stored procedures.
     /// Control statements (blocks) generally ovveride this basic infrastructure.
     /// The behaviour of condition handlers and loops requires some infrastructure here.
@@ -37,15 +41,13 @@ namespace Pyrrho.Level3
 	{
         internal const long
             Label = -92, // string
-            Result = -93, // long Domain
-            Schema = -171, // long (Graph)Schema
+            ValueType = -93, // Domain of val (a TypedValue)
             UseGraph = -481; // long Graph
         /// <summary>
         /// The label for the Executable
         /// </summary>
         internal string? label => (string?)mem[Label];
-        internal long result => (long)(mem[Result] ?? -1L);
-        internal long schema => (long)(mem[Schema] ?? -1L);
+        internal Domain valueType => (Domain)(mem[ValueType] ?? Domain.Null);
         internal long graph => (long)(mem[UseGraph]??-1L);
         internal static Executable None = new();
         Executable() : base(--_uid, BTree<long, object>.Empty) { }
@@ -82,8 +84,6 @@ namespace Pyrrho.Level3
         }
        internal Context Obey(Context cx)
         {
-            if (cx.db.objects[schema] is Schema sc)
-                cx.schema = sc;
             if (cx.db.objects[graph] is Graph g)
                 cx.graph = g;
             if (cx is Activation ax)
@@ -119,8 +119,8 @@ namespace Pyrrho.Level3
             var nm = GetType().Name;
             var sb = new StringBuilder(nm);
             if (mem.Contains(Label)) { sb.Append(' '); sb.Append(label); }
-            if (result > 0)
-            { sb.Append(" Result: "); sb.Append(Uid(result)); }
+            if (valueType.kind!=Qlx.Null)
+            { sb.Append(" Result: "); sb.Append(valueType); }
             if (mem.Contains(ObInfo.Name)) { sb.Append(' '); sb.Append(mem[ObInfo.Name]); }
             sb.Append(' ');sb.Append(Uid(defpos));
             return sb.ToString();
@@ -581,7 +581,7 @@ namespace Pyrrho.Level3
         }
 	}
     /// <summary>
-    /// A procedure formal parameter has mode and result info
+    /// A procedure formal parameter has mode and valueType info
     /// 
     /// </summary>
     internal class FormalParameter : QlValue
@@ -595,7 +595,7 @@ namespace Pyrrho.Level3
         /// </summary>
 		public Qlx paramMode => (Qlx)(mem[ParamMode] ?? Qlx.IN);
         /// <summary>
-        /// The result mode of the parameter: RESULT or NO
+        /// The valueType mode of the parameter: RESULT or NO
         /// </summary>
 		public Qlx result => (Qlx)(mem[Result] ?? Qlx.NO);
         /// <summary>
@@ -1168,16 +1168,22 @@ namespace Pyrrho.Level3
             if (cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
             {
                 if (vb is SqlValueExpr se && se.op == Qlx.DOT && cx._Ob(se.left)?.Eval(cx) is TNode tl
-                    && cx._Ob(se.right) is QlInstance sc && tl.dataType is Table st 
+                    && cx._Ob(se.right) is QlInstance sc && tl.dataType is Table st
                     && st.representation[sc.sPos] is Domain cd
                     && cd.Coerce(cx, tv) is TypedValue v1)
                     cx.Add(new Update(tl.tableRow, st.defpos, new CTree<long, TypedValue>(sc.sPos, v1),
                         cx.db.nextPos, cx));
                 else if (vb is SqlField sf && cx._Ob(sf.from)?.Eval(cx) is TNode nf
                     && nf.dataType is Table tf && tf._PathDomain(cx).infos[cx.role.defpos] is ObInfo fi
-                    && cx._Ob(fi.names[sf.name??""]) is TableColumn tc
+                    && cx._Ob(fi.names[sf.name ?? ""]) is TableColumn tc
                     && tc.domain.Coerce(cx, tv) is TypedValue v3)
                     cx.Add(new Update(nf.tableRow, tf.defpos, new CTree<long, TypedValue>(tc.defpos, v3),
+                        cx.db.nextPos, cx));
+                else if (vb is SqlReview sr && sr.chain?[0] is Ident id && cx.names[id.ident] is long cp
+                    && cx.values[cp] is TNode tn && sr.chain?[1] is Ident ci
+                    && tn.dataType is Table tt && tt.names[ci.ident] is long cc
+                    && tt.representation[cc] is Domain d4 && d4.Coerce(cx, tv) is TypedValue v4)
+                    cx.Add(new Update(tn.tableRow, tt.defpos, new CTree<long, TypedValue>(cc, v4),
                         cx.db.nextPos, cx));
                 else if (dm != Domain.Content && dm != Domain.Null && dm.Coerce(cx, tv) is TypedValue v2)
                     cx.values += (vb?.defpos ?? -1L, v2);
@@ -1415,7 +1421,7 @@ namespace Pyrrho.Level3
         /// The return value
         /// </summary>
 		public long ret => (long)(mem[Ret] ?? -1L);
-    //    public long result => (long)(mem[SqlInsert.Value] ??-1L);
+    //    public long valueType => (long)(mem[SqlInsert.Value] ??-1L);
         /// <summary>
         /// Constructor: a return statement from the parser
         /// </summary>
@@ -1501,9 +1507,9 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" -> ");sb.Append(Uid(ret));
-            if (result>0)
+            if (valueType.kind!=Qlx.Null)
             {
-                sb.Append(" Result ");sb.Append(Uid(result));
+                sb.Append(" Result ");sb.Append(valueType);
             }
             return sb.ToString();
         }
@@ -4380,9 +4386,9 @@ namespace Pyrrho.Level3
     /// The Match syntax consists of a graph expression, an optional where condition and an optional action part.
     /// Parsing of the graph expression results in a collection of previously unbound identifiers(GDefs) 
     /// and a collection of constraints(boolean SqlValueExpr). By default, the resulting domain is an ExplicitRowSet
-    /// whose columns match the bindings CList<TGParam>(an ordering of GDefs). Whether or not it is the final result,
-    /// this bindingtable is used during the match process to eleminate duplicate rows in the result.
-    /// If a return (or Yield) statement is present, a rowset built from its rows becomes the Match result: 
+    /// whose columns match the bindings CList<TGParam>(an ordering of GDefs). Whether or not it is the final valueType,
+    /// this bindingtable is used during the match process to eleminate duplicate rows in the valueType.
+    /// If a return (or Yield) statement is present, a rowset built from its rows becomes the Match valueType: 
     /// a SelectRowSet, built directly by the MatchStatement. Such a RETURN statement is just one 
     /// of the statement types that can be dependent on the Match: it is very common for the dependent statement 
     /// to be CREATE. Any dependent statement(s) are executed by AddRow in the EndStep of the match process, 
@@ -4416,7 +4422,7 @@ namespace Pyrrho.Level3
         internal const long
             BindingTable = -490, // long ExplicitRowSet
             GDefs = -210,   // CTree<long,TGParam>
-            MatchFlags = -496, // Bindings=1,Body=2,Return=4,Schema=8
+            MatchFlags = -496, // Bindings=1,Body=2,Return=4,RowType=8
             MatchList = -491, // BList<long?> GqlMatch
             Truncating = -492; // BTree<long,(long,long)> EdgeType (or 0L), lm QlValue, ord QlValue
         internal CTree<long, TGParam> gDefs =>
@@ -4535,7 +4541,7 @@ namespace Pyrrho.Level3
         /// during the path matching process x stands for a simple value 
         /// (a single node, or an expression evalated from its properties),
         /// But, as a field of the path value p, p.x is an array of the values constructed so far.
-        /// In result rowset, RETURN, WHERE, or the body statement of the MATCH, x will be an array
+        /// In valueType rowset, RETURN, WHERE, or the body statement of the MATCH, x will be an array
         /// for the current binding set.
         /// Accordingly, the MatchStatement defines such x as array types, except within the body of DbNode.
         /// At the end of a pattern, in PathStep, we change the binding to contain the array values instead,
@@ -4553,7 +4559,7 @@ namespace Pyrrho.Level3
                     var ns = cx.names;
                     DBObject v = sr;
                     string? nm = null;
-                    long? t = null;
+                    long? t = null; 
                     for (var c = sr.chain?.First(); c != null; c = c.Next())
                         if (c.value() is Ident id && ns[id.ident] is long cp
                             && cx._Ob(cp) is DBObject nv)
@@ -4565,7 +4571,12 @@ namespace Pyrrho.Level3
                         }
                     var tg = t ?? -1L;
                     if (v is TableColumn tc)
-                        v = new SqlField(sr.defpos, nm??"", tc.seq, tg, tc.domain,tg);
+                        v = new SqlField(sr.defpos, nm ?? "", tc.seq, tg, tc.domain, tg);
+                    else
+                    {
+                        cx.Add(sr + (ObInfo._Names, cx.names));
+                        continue;
+                    }
                     if (sr.alias != null)
                         v += (_Alias, sr.alias);
                     cx.undefined -= sr.defpos;
@@ -4657,12 +4668,13 @@ namespace Pyrrho.Level3
                         }
                     var er = new ExplicitRowSet(cx.GetUid(), cx, rs, bl);
                     cx.Add(er);
-                    cx.result = er.defpos;
+                    ac.result = er.defpos;
+                    cx.result = ac.result;
                     cx.obs += (ac.result, er);
                 }
             }
             else if (gDefs == CTree<long, TGParam>.Empty)
-                cx.result = TrueRowSet.OK(cx).defpos;
+                cx.result = ac.result = TrueRowSet.OK(cx).defpos;
             else if (cx.obs[cx.result] is RowSet rrs)
                 cx.obs += (cx.result, rrs);
             if (ac.obs[ac.result] is RowSet ra && ra.Cardinality(cx) == 0)
@@ -4671,7 +4683,7 @@ namespace Pyrrho.Level3
             {
                 var ta = new Activation(ac, "" + defpos)
                 {
-                    result = cx.result
+                    result = ac.result
                 };
                 ObeyList(then, ta);
                 ta.SlideDown();
@@ -4721,7 +4733,7 @@ namespace Pyrrho.Level3
         /// Step.Next says what to do in that case: and may call the next matching method if any,
         /// AddRow, or if neither of these is appropriate, will do nothing.
         /// Of course, when calling the next matching method, we set up its Step.
-        /// As a result, on each success the stack grows, and corresponds to the trail.
+        /// As a valueType, on each success the stack grows, and corresponds to the trail.
         /// </summary>
         internal abstract class Step(MatchStatement m)
         {
@@ -5046,7 +5058,7 @@ namespace Pyrrho.Level3
                 : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
                is TableRow tn)
                 ds += (tn.defpos, tn);
-            else if (pd is not null && pd.defpos == pd.dataType.defpos) // schema case
+            else if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
                 if (pd.dataType is EdgeType et &&
                     cx.db.objects[(tok == Qlx.ARROWBASE) ? et.leavingType : et.arrivingType] is NodeType pn
@@ -5163,7 +5175,7 @@ namespace Pyrrho.Level3
                     for (var c = pt.First(); c != null; c = c.Next())
                     {
                         var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
-                        if (pd.defpos == pd.dataType.defpos && lm-- > 0 && la-- > 0)  // schema flag
+                        if (pd.defpos == pd.dataType.defpos && lm-- > 0 && la-- > 0)  // rowType flag
                         {
                             ds += (rt.defpos, rt.Schema(cx));
                             continue;

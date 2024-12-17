@@ -746,7 +746,7 @@ namespace Pyrrho.Level2
             var oc = cx.parse;
             framing = new Framing(cx,nst);
             nst = ns;
-            dataType = (Domain)(framing.obs[framing.result] ?? cx.obs[tgt] ?? dom);
+            dataType = framing.valueType;
             cx.parse = oc;
         }
         protected Compiled(Type tp, long pp, Context cx, string nm, Domain dm, long ns)

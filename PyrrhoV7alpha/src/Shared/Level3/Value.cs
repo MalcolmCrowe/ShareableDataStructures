@@ -186,7 +186,7 @@ namespace Pyrrho.Level3
             return cs.Contains(defpos);
         }
         /// <summary>
-        /// The result of this function is important only for its keys.
+        /// The valueType of this function is important only for its keys.
         /// </summary>
         /// <param name="cx"></param>
         /// <param name="kb"></param>
@@ -660,6 +660,28 @@ namespace Pyrrho.Level3
         }
         protected SqlReview(long dp,BTree<long,object>m) :base(dp,m)
         {  }
+        internal override TypedValue _Eval(Context cx)
+        {
+            // as a last resort try to resolve the name
+            TypedValue v = TNull.Value;
+            var ns = names;
+            for (var b=chain?.First();b!=null;b=b.Next())
+                if (b.value() is Ident id && ns[id.ident] is long cp)
+                {
+                    if (v == TNull.Value && cx.values[cp] is TypedValue w)
+                    {
+                        v = w;
+                        ns = w.dataType.names;
+                    }
+                    else if (v is TNode tn)
+                        v = tn.tableRow.vals[cp] ?? TNull.Value;
+                    else if (v is TRow tr)
+                        v = tr.values[cp] ?? TNull.Value;
+                }
+            if (v != TNull.Value)
+                return v;
+            return base._Eval(cx);
+        }
         internal override Basis New(BTree<long, object> m)
         {
             return new SqlReview(defpos,m);
@@ -5970,7 +5992,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// construct a new MethodCall QlValue.
         /// At construction time the proc and target will be unknown.
-        /// Domain of a MethodCall is the result domain
+        /// Domain of a MethodCall is the valueType domain
         /// Target will be null for a constructor call
         /// </summary>
         public SqlMethodCall(long dp, Context cx, Procedure pr,
@@ -6092,7 +6114,7 @@ namespace Pyrrho.Level3
             return false;
         }
         /// <summary>
-        /// Evaluate the method call and return the result
+        /// Evaluate the method call and return the valueType
         /// </summary>
         internal override TypedValue _Eval(Context cx)
         {
@@ -7834,10 +7856,8 @@ namespace Pyrrho.Level3
                 case Qlx.SOME: goto case Qlx.ANY;
                 case Qlx.SUM:
                     {
-                        if (fc==null)
-                        {
-
-                        }
+                        if (fc == null)
+                            break;
                         if (v == null || v == TNull.Value)
                         {
                             fc.count = ct;
@@ -7948,7 +7968,8 @@ namespace Pyrrho.Level3
             {
                 var t1 = cx.funcs[from] ?? BTree<TRow, BTree<long, Register>>.Empty;
                 var t2 = t1[key] ?? BTree<long, Register>.Empty;
-                t2 += (defpos, fc);
+                if (fc is not null)
+                    t2 += (defpos, fc);
                 t1 += (key, t2);
                 cx.funcs += (from, t1);
             }
@@ -9458,7 +9479,7 @@ cx.obs[high] is not QlValue hi)
         /// <param name="a">the left operand string</param>
         /// <param name="b">the right operand string</param>
         /// <param name="e">the escape character</param>
-        /// <returns>the boolean result</returns>
+        /// <returns>the boolean valueType</returns>
         static bool Like(string a, string b, char e)
         {
             if (a == null || b == null)
