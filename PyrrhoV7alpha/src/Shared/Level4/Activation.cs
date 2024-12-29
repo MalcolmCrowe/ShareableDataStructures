@@ -152,7 +152,7 @@ namespace Pyrrho.Level4
                 for (var b = os.First(); b != null; b = b.Next())
                     if (b.value() is DBObject ob)
                         nx.obs += (b.key(), ob);
-            if (next is not null && obs[result] is RowSet ra) // for GQL
+            if (next is not null && result is RowSet ra) // for GQL
             {
                 next.obs += obs;
                 next.nextHeap = nextHeap;
@@ -628,7 +628,7 @@ namespace Pyrrho.Level4
                 return _cx;
             // Statement-level after triggers
             Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachStatement);
-            _cx.result = -1L;
+            _cx.result = null;
             return _cx;
         }
         /// <summary>
@@ -1072,7 +1072,7 @@ namespace Pyrrho.Level4
                     {
                         values += (_trs.target, v);
                         values += _trig.Frame(next.values);
-                        var nx = ((Executable?)obs[wp.stms.First()?.value() ?? -1L])?._Obey(this);
+                        var nx = Executable.ObeyList(wp.stms,"",null,this);
                         if (nx != this)
                             throw new PEException("PE677");
                         if (trc != null) // row-level trigger 

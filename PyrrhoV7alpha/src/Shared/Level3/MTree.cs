@@ -69,7 +69,7 @@ namespace Pyrrho.Level3
             info = ti;
             off = ff;
             nullsAndDuplicates = fk;
-            if (!ti.rowType.Contains(ff) || ti.representation[ti.rowType[ff]??-1L] is not Domain sd)
+            if (!ti.rowType.Contains(ff) || ti.representation[ti.rowType[ff]] is not Domain sd)
                 throw new PEException("PE6001");
             if (k[ff] is not TypedValue head)
                 throw new PEException("PE6002");

@@ -504,7 +504,7 @@ namespace Pyrrho.Level2
         internal void Add(Physical ph)
         {
             ph.OnLoad(this);
-            context.result = -1L;
+            context.result = null;
             context.db.Add(context, ph);
         }
         /// <summary>

@@ -96,7 +96,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="actIns">The actual parameters</param>
         /// <returns>The possibily modified Transaction</returns>
-        public Context Exec(Context cx, BList<long?> actIns)
+        public Context Exec(Context cx, CList<long> actIns)
         {
             if (infos[cx.role.defpos] is not ObInfo oi
                 || !oi.priv.HasFlag(Grant.Privilege.Execute))
@@ -114,7 +114,7 @@ namespace Pyrrho.Level3
                 if (b.value() is long p)
                     act.values += (p, acts[b.key()]);
             cx = bd._Obey(act);
-            if (act.obs[act.result] is RowSet ra)  // for GQL
+            if (act.result is RowSet ra)  // for GQL
             {
                 cx.obs += act.obs;
                 cx.nextHeap = act.nextHeap;
@@ -147,7 +147,7 @@ namespace Pyrrho.Level3
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
                 if (b.value() is long bp && act.obs[bp] is FormalParameter p &&
-                    cx.obs[actIns[i] ?? -1L] is DBObject x)
+                    cx.obs[actIns[i]] is DBObject x)
                 {
                     var m = p.paramMode;
                     if (m == Qlx.INOUT || m == Qlx.OUT)

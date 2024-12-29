@@ -105,9 +105,9 @@ namespace Pyrrho.Level3
             +(Enforcement,(Grant.Privilege)15)) //read|insert|update|delete
         { }
         protected Table(Qlx t) : base(--_uid,t, BTree<long,object>.Empty) { }
-        internal Table(Context cx,CTree<long,Domain>rs, BList<long?> rt, BTree<long,ObInfo> ii)
+        internal Table(Context cx,CTree<long,Domain>rs, CList<long> rt, BTree<long,ObInfo> ii)
             : base(cx,rs,rt,ii) { }
-        internal Table(long dp, Context cx, CTree<long, Domain> rs, BList<long?> rt, int ds)
+        internal Table(long dp, Context cx, CTree<long, Domain> rs, CList<long> rt, int ds)
             : base(dp, cx, Qlx.TABLE, rs, rt, ds) { }
         internal Table(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
@@ -360,8 +360,8 @@ namespace Pyrrho.Level3
             }
             return ts;
         }
-       internal override (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, Names, BTree<long,Names>)
-ColsFrom(Context cx, long dp,BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, 
+       internal override (CList<long>, CTree<long, Domain>, CList<long>, BTree<long, long?>, Names, BTree<long,Names>)
+ColsFrom(Context cx, long dp,CList<long> rt, CTree<long, Domain> rs, CList<long> sr, 
            BTree<long, long?> tr, Names ns, BTree<long,Names> ds, long ap)
         {
             for (var b=super.First();b!=null;b=b.Next())
@@ -369,7 +369,7 @@ ColsFrom(Context cx, long dp,BList<long?> rt, CTree<long, Domain> rs, BList<long
                     (rt, rs, sr, tr, ns, ds) = st.ColsFrom(cx, dp, rt, rs, sr, tr, ns, ds, ap);
             var j = 0;
             for (var b = rowType.First(); b != null; b = b.Next())
-                if (cx._Ob(b.value() ?? -1L) is DBObject ob && !tr.Contains(ob.defpos))
+                if (cx._Ob(b.value()) is DBObject ob && !tr.Contains(ob.defpos))
                 {
                     var nm = ob.NameFor(cx);
                     var nn = nm ?? ob.alias;
@@ -461,7 +461,7 @@ ColsFrom(Context cx, long dp,BList<long?> rt, CTree<long, Domain> rs, BList<long
                 if (cx.db.objects[b.key()] is Check ck)
                     ck.Cascade(cx, a, u);
             for (var b = rowType.First();b!=null;b=b.Next())
-                if (cx.db.objects[b.value()??-1L] is TableColumn tc)
+                if (cx.db.objects[b.value()] is TableColumn tc)
                         tc.Cascade(cx, a, u);
             for (var b = indexes.First(); b != null; b = b.Next())
                 for (var c = b.value().First(); c != null; c = c.Next())
@@ -527,7 +527,7 @@ ColsFrom(Context cx, long dp,BList<long?> rt, CTree<long, Domain> rs, BList<long
                     r += x;
             return (r==BList<Index>.Empty)?null:r.ToArray();
         }
-        internal Index[]? FindIndex(Database db, BList<long?> cols,
+        internal Index[]? FindIndex(Database db, CList<long> cols,
     PIndex.ConstraintType fl = (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique))
         {
             var r = BList<Index>.Empty;

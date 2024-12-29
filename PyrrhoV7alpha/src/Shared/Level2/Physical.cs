@@ -62,6 +62,7 @@ namespace Pyrrho.Level2
         public readonly long ppos;
         public long trans;
         public long time;
+        public bool ifNeeded = false;
         protected Physical(Type tp, long pp)
         {
             type = tp;
@@ -180,6 +181,11 @@ namespace Pyrrho.Level2
         public virtual DBException? Conflicts(CTree<long,bool> t,PTransaction ct)
         {
             return null;
+        }
+
+        internal virtual bool NeededFor(BTree<long, Physical> physicals)
+        {
+            return !ifNeeded;
         }
     }
     internal class Curated : Physical
@@ -848,14 +854,14 @@ namespace Pyrrho.Level2
             }
             if (vw.infos[_cx.role.defpos] is ObInfo vi && vi.metadata.Contains(Qlx.ETAG))
             {
-                if (_cx.obs[_cx.result] is RowSet rs && rs.First(_cx) is Cursor cu)
-                    rq.Headers.Add("If-Match",cu._Rvv(_cx).ToString());
+                if (_cx.result is RowSet rs && rs.First(_cx) is Cursor cu)
+                        rq.Headers.Add("If-Match", cu._Rvv(_cx).ToString());
                 else if (_cx.db is not null)
                 {
                     rq.Headers.Add("If-Match", "W/\"" + _cx.db.length + "\"");
                     if (_cx.db.lastModified is DateTime dt)
-                    rq.Headers.Add("If-Unmodified-Since",
-                        ""+new THttpDate(dt,vi.metadata.Contains(Qlx.MILLI)));
+                        rq.Headers.Add("If-Unmodified-Since",
+                            "" + new THttpDate(dt, vi.metadata.Contains(Qlx.MILLI)));
                 }
             }
             return rq;

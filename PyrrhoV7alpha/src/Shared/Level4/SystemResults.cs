@@ -21,7 +21,7 @@ namespace Pyrrho.Level4
         public BTree<long, TableColumn> sysCols =>
             (BTree<long, TableColumn>?)mem[SysCols] ?? BTree<long, TableColumn>.Empty;
         public long role => (long)(mem[Database.Role] ?? -1L);
-        public BList<long?> sRowType => (BList<long?>?)mem[InstanceRowSet.SRowType] ?? BList<long?>.Empty;
+        public CList<long> sRowType => (CList<long>?)mem[InstanceRowSet.SRowType] ?? CList<long>.Empty;
         internal SystemTable(string n) : base(--_uid, _Mem(n))
         {
             var sys = Database._system ?? throw new PEException("PE1013");
@@ -59,8 +59,8 @@ namespace Pyrrho.Level4
                 + (Representation, s.representation+(c.defpos,c.domain));
              //   + (TableCols, s.tableCols + (c.defpos, c.domain));
         }
-        internal override (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, Names, BTree<long,Names>)
-         ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr, 
+        internal override (CList<long>, CTree<long, Domain>, CList<long>, BTree<long, long?>, Names, BTree<long,Names>)
+         ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long> sr, BTree<long, long?> tr, 
             Names ns, BTree<long,Names> ds, long ap)
         {
             return (rowType, representation, rowType, tr, ns, ds);
@@ -94,7 +94,7 @@ namespace Pyrrho.Level4
         }
         public SystemTable AddIndex(params string[] k)
         {
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             var rs = CTree<long, Domain>.Empty;
             foreach (var c in k)
                 for (var b = sysCols.First(); b != null; b = b.Next())
@@ -280,7 +280,7 @@ namespace Pyrrho.Level4
         internal SystemTable? sysFrom => (SystemTable?)mem[SysTable];
         internal SystemIndex? sysIx => (SystemIndex?)mem[SysIx];
         internal BList<SystemFilter> sysFilt => (BList<SystemFilter>?)mem[SysFilt]??BList<SystemFilter>.Empty;
-        internal new BList<long?> rowType => sRowType;
+        internal new CList<long> rowType => sRowType;
         /// <summary>
         /// Construct results for a system table.
         /// Independent of database, role, and user.
@@ -3014,14 +3014,14 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the second part of the key
             /// </summary>
-            readonly BList<long?> _sub;
+            readonly CList<long> _sub;
             readonly int _ix;
             /// <summary>
             /// construct a new Log$TriggerUpdate enumerator
             /// </summary>
             /// <param name="r"></param>
             LogTriggerUpdateColumnBookmark(Context _cx, SystemRowSet res,int pos,Physical ph, long pp,
-                BList<long?> s,int i): base(_cx,res,pos,ph, pp,_Value(res, ph,s,i))
+                CList<long> s,int i): base(_cx,res,pos,ph, pp,_Value(res, ph,s,i))
             {
                 _sub = s;
                 _ix = i;
@@ -3119,12 +3119,12 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Pos,Column)
             /// </summary>
-            static TRow _Value(SystemRowSet res, Physical ph,BList<long?> _sub,int _ix)
+            static TRow _Value(SystemRowSet res, Physical ph,CList<long> _sub,int _ix)
             {
                 PTrigger pt = (PTrigger)ph;
                 return new TRow(res,
                     Pos(pt.ppos),
-                    new TInt(_sub[_ix]??-1L));
+                    new TInt(_sub[_ix]));
             }
         }
         static void LogTriggeredActionResults()
@@ -5192,16 +5192,16 @@ namespace Pyrrho.Level4
             /// Enumerators for implementation
             /// </summary>
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<string,long?>? _inner;
+            readonly ABookmark<string,long>? _inner;
             /// <summary>
             /// create the Sys$Column enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<string,long?> inner)
-                : base(_cx,res, pos, inner.value()??-1L,((DBObject)outer.value()).lastChange,
-                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value()??-1L,
-                          _cx._Dom(inner.value()??-1L) ?? throw new PEException("PE0485")))
+                ABookmark<string,long> inner)
+                : base(_cx,res, pos, inner.value(),((DBObject)outer.value()).lastChange,
+                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value(),
+                          _cx._Dom(inner.value()) ?? throw new PEException("PE0485")))
             {
                 _outer = outer;
                 _inner = inner;
@@ -5365,16 +5365,16 @@ namespace Pyrrho.Level4
             /// 3 enumerators for implementation!
             /// </summary>
             readonly ABookmark<long,bool> _inner;
-            readonly ABookmark<string,long?> _middle;
+            readonly ABookmark<string,long> _middle;
             readonly ABookmark<long,object> _outer;
             /// <summary>
             /// create the Sys$ColumnCheck enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnCheckBookmark(Context cx, SystemRowSet res,int pos,ABookmark<long,object>outer,
-                ABookmark<string,long?> middle,ABookmark<long,bool> inner)
+                ABookmark<string,long> middle,ABookmark<long,bool> inner)
                 : base(cx,res,pos,inner.key(),((DBObject?)cx.db.objects[inner.key()])?.lastChange??-1L,
-                      _Value(cx,res,outer.value(),middle.value()??-1L,inner.key()))
+                      _Value(cx,res,outer.value(),middle.value(),inner.key()))
             {
                 _outer = outer;
                 _middle = middle;
@@ -5814,16 +5814,16 @@ namespace Pyrrho.Level4
             readonly ABookmark<long, object> _outer;
             readonly ABookmark<Domain, CTree<long,bool>> _second;
             readonly ABookmark<long,bool> _third;
-            readonly ABookmark<int, long?> _inner;
+            readonly ABookmark<int, long> _inner;
             /// <summary>
             /// create the Role$IndexKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleIndexKeyBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<Domain, CTree<long, bool>> second, ABookmark<long, bool> third,
-                ABookmark<int, long?> inner)
-                : base(_cx, res, pos, inner.value()??-1L, 0, _Value(_cx, res, inner.key(),
-                      (TableColumn)(_cx.db.objects[inner.value()??-1L] ?? throw new PEException("PE49212"))))
+                ABookmark<int, long> inner)
+                : base(_cx, res, pos, inner.value(), 0, _Value(_cx, res, inner.key(),
+                      (TableColumn)(_cx.db.objects[inner.value()] ?? throw new PEException("PE49212"))))
             {
                 _outer = outer; _second = second; _third = third; _inner = inner;
             }
@@ -6122,13 +6122,13 @@ namespace Pyrrho.Level4
             /// enumerate the procedures tree
             /// </summary>
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int, long?> _inner;
+            readonly ABookmark<int, long> _inner;
             /// <summary>
             /// create the Rle$Parameter enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleParameterBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> en,
-                ABookmark<int,long?> inner, FormalParameter fp)
+                ABookmark<int,long> inner, FormalParameter fp)
                 : base(_cx,res,pos,en.key(), fp.lastChange,
                       _Value(res,en.key(),inner.key(),fp))
             {
@@ -6517,13 +6517,13 @@ namespace Pyrrho.Level4
             readonly ABookmark<long,object> _outer;
             readonly ABookmark<PTrigger.TrigType, CTree<long, bool>> _middle;
             readonly ABookmark<long,bool> _inner;
-            readonly ABookmark<int, long?> _fourth;
+            readonly ABookmark<int, long> _fourth;
             RoleTriggerUpdateColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
                 ABookmark<PTrigger.TrigType, CTree<long, bool>> middle, ABookmark<long, bool> inner,
-                ABookmark<int,long?> fourth,Trigger tg)
+                ABookmark<int,long> fourth,Trigger tg)
                 : base(_cx,res, pos,inner.key(),0,
                       _Value(_cx,res,outer.value(),tg,
-                          fourth.value()??-1L))
+                          fourth.value()))
             {
                 _outer = outer;
                 _middle = middle;
@@ -7267,14 +7267,14 @@ namespace Pyrrho.Level4
             t.Add();
         }
         internal class RoleGraphPropertyBookmark(Context cx, SystemRowSet r, int pos,
-            ABookmark<long, object> obmk, ABookmark<long, bool> mbmk, ABookmark<int, long?> bmk,
+            ABookmark<long, object> obmk, ABookmark<long, bool> mbmk, ABookmark<int, long> bmk,
             DBObject g, NodeType nt, TableColumn tc) : SystemBookmark(cx, r, pos, nt.defpos, nt.defpos, _Value(cx, r, g, nt, tc))
         {
             readonly ABookmark<long, object> _obmk = obmk;
             readonly DBObject _g = g;
             readonly ABookmark<long, bool> _mbmk = mbmk;
             readonly NodeType _nt = nt;
-            readonly ABookmark<int,long?> _bmk = bmk;
+            readonly ABookmark<int,long> _bmk = bmk;
 
             internal static RoleGraphPropertyBookmark? New(Context cx, SystemRowSet res)
             {
@@ -7284,7 +7284,7 @@ namespace Pyrrho.Level4
                         {
                             if (cx.obs[c.key()] is NodeType e)
                                 for (var d = e.rowType.First(); d != null; d = d.Next())
-                                    if (cx._Ob(d.value()??-1L) is TableColumn tc)
+                                    if (cx._Ob(d.value()) is TableColumn tc)
                                     {
                                         var rb = new RoleGraphPropertyBookmark(cx, res, 0, b, c, d, g, e, tc);
                                         if (rb.Match(res) && Eval(res.where, cx))
@@ -7296,7 +7296,7 @@ namespace Pyrrho.Level4
                         {
                             if (cx._Ob(c.key()) is NodeType e)
                                 for (var d = e.rowType.First(); d != null; d = d.Next())
-                                    if (cx._Ob(d.value()??-1L) is TableColumn tc)
+                                    if (cx._Ob(d.value()) is TableColumn tc)
                                     {
                                         var rb = new RoleGraphPropertyBookmark(cx, res, 0, b, c, d, gt, e, tc);
                                         if (rb.Match(res) && Eval(res.where, cx))
@@ -7315,7 +7315,7 @@ namespace Pyrrho.Level4
                 for (; obmk != null;)
                 {
                     for (var c = bmk?.Next(); c != null; c = c.Next())
-                        if (mbmk != null && cx._Ob(c.value()??-1L) is TableColumn tc)
+                        if (mbmk != null && cx._Ob(c.value()) is TableColumn tc)
                         {
                             var rb = new RoleGraphPropertyBookmark(cx, res, _pos + 1, obmk, mbmk, c, g, nt, tc);
                             if (rb.Match(res) && Eval(res.where, cx))
@@ -7692,14 +7692,14 @@ namespace Pyrrho.Level4
         internal class RolePrimaryKeyBookmark : SystemBookmark
         {
             readonly ABookmark<long,object> _outer;
-            readonly ABookmark<int, long?> _inner;
+            readonly ABookmark<int, long> _inner;
             /// <summary>
             /// create the Sys$PrimaryKey enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RolePrimaryKeyBookmark(Context _cx, SystemRowSet res,int pos,
-                ABookmark<long,object> outer, ABookmark<int,long?>inner)
-                : base(_cx,res,pos,inner.value()??-1L,((Table)outer.value()).lastChange,
+                ABookmark<long,object> outer, ABookmark<int,long>inner)
+                : base(_cx,res,pos,inner.value(),((Table)outer.value()).lastChange,
                       _Value(_cx,res,outer.value(),inner))
             {
                 _outer = outer;
@@ -7720,11 +7720,11 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value(table,ordinal,ident)
             /// </summary>
-            static TRow _Value(Context _cx, SystemRowSet rs, object ob, ABookmark<int,long?> e)
+            static TRow _Value(Context _cx, SystemRowSet rs, object ob, ABookmark<int,long> e)
             {
                 var tb = (Table)ob;
+                var p = e.value();
                 if (tb.infos[_cx.role.defpos] is not ObInfo oi
-                    || e.value() is not long p
                     || _cx.db.objects[p] is not ObInfo ci)
                     throw new DBException("42105").Add(Qlx.OBJECT);
                 return new TRow(rs,

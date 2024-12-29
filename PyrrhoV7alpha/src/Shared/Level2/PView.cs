@@ -86,10 +86,10 @@ namespace Pyrrho.Level2
             psr.Next(); psr.Next();  // VIEW name
             nst = psr.cx.db.nextStmt;
             var vw = psr.ParseViewDefinition(name,ppos+1) ?? throw new PEException("0035");
-            //       var cs = psr.ParseCursorSpecification(Domain.TableType);
             dataType = vw.domain;
             infos = vw.infos;
-            psr.cx.result = vw.result;
+            rdr.context.obs += vw.framing.obs;
+            psr.cx.result = rdr.context.obs[vw.result] as RowSet;
             framing = new Framing(psr.cx, nst);
         }
         internal virtual BTree<long, object> _Dom(Context cx, BTree<long, object>? m)

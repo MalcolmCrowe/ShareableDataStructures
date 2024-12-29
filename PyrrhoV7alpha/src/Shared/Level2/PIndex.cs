@@ -86,6 +86,15 @@ namespace Pyrrho.Level2
             }
             return -1;
         }
+        internal override bool NeededFor(BTree<long, Physical> physicals)
+        {
+            if (!ifNeeded)
+                return true;
+            for (var b = physicals.First(); b != null; b = b.Next())
+                if (b.value() is Record r && r.tabledefpos == tabledefpos)
+                    return true;
+            return false;
+        }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
         /// </summary>
@@ -97,9 +106,11 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex(string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, long pp) :
+            ConstraintType fl, long rx, long pp, bool ifN = false) :
             this(Type.PIndex, nm, tb, cl, fl, rx, pp)
-        { }
+        {
+            ifNeeded = ifN;
+        }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
         /// </summary>
@@ -188,7 +199,7 @@ namespace Pyrrho.Level2
             int n = rdr.GetInt();
             if (n > 0)
             {
-                var rt = BList<long?>.Empty;
+                var rt = CList<long>.Empty;
                 var rs = CTree<long, Domain>.Empty;
                 for (int j = 0; j < n; j++)
                 {
@@ -299,7 +310,7 @@ namespace Pyrrho.Level2
                 }
                 cx.Install(rt);
             }
-            var cs = BList<long?>.Empty;
+            var cs = CList<long>.Empty;
             var kc = tb.keyCols;
             var fl = PColumn.GraphFlags.None;
             for (var b = x.keys.First(); b != null; b = b.Next())

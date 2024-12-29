@@ -102,7 +102,7 @@ namespace Pyrrho
         public virtual ETag SendResults(HttpListenerResponse rs,Transaction tr,Context cx,
             string url,bool etags)
         {
-            var r = (RowSet?)cx.obs[cx.result];
+            var r = (RowSet?)cx.result;
             Cursor? e = r?.First(cx);
             ETag et = ETag.Empty;
             if (cx.db is not null && etags)
@@ -136,7 +136,7 @@ namespace Pyrrho
         {
             rs.StatusCode = 200;
             cx.versioned = true;
-            var r = (RowSet?)cx.obs[cx.result];
+            var r = (RowSet?)cx.result;
             if (r == null && cx.exec is QuerySearch us)
                 r = (RowSet?)cx.obs[us.source];
             if (r == null && cx.exec is SqlInsert si)
@@ -203,7 +203,7 @@ namespace Pyrrho
         {
             var cm = "";
             Header(rs, tr,cx, dn,"");
-            if (cx.obs[cx.result] is RowSet r)
+            if (cx.result is RowSet r)
             {
                 BeforeResults();
                 for (var e=r.First(cx); e != null; e = e.Next(cx))
@@ -243,7 +243,7 @@ namespace Pyrrho
             sbuild.Append("<html>\r\n");
             sbuild.Append("<body>\r\n");
             cx.versioned = true;
-            var rs = (RowSet?)cx.obs[cx.result];
+            var rs = (RowSet?)cx.result;
             if (rs == null)
                 return;
             var fm = rs as TableRowSet ?? cx.obs[rs.source] as TableRowSet;

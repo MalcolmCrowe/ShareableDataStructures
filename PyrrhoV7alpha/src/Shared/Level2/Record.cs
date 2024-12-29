@@ -124,7 +124,8 @@ namespace Pyrrho.Level2
         /// <param name="t">The Record or Update type</param>
         /// <param name="bp">The buffer</param>
         /// <param name="pos">The defining position</param>
-		protected Record(Type t, Reader rdr) : base(t, rdr) { }
+		protected Record(Type t, Reader rdr) : base(t, rdr) 
+        {  }
         protected Record(Record x, Writer wr) : base(x, wr)
         {
             tabledefpos = wr.cx.Fix(x.tabledefpos);
@@ -243,7 +244,7 @@ namespace Pyrrho.Level2
             }
             return cdt;
         }
-        public CList<TypedValue> MakeKey(BList<long?> cols)
+        public CList<TypedValue> MakeKey(CList<long> cols)
         {
             var r = CList<TypedValue>.Empty;
             for (var b = cols.First(); b is not null; b = b.Next())
@@ -439,7 +440,8 @@ namespace Pyrrho.Level2
             //       var dm = tb._PathDomain(cx);
             for (var c = tb.First(); c != null; c = c.Next())
             {
-                if (c.value() is not long p || tb.representation[p] is not Domain dv)
+                var p = c.value();
+                if (tb.representation[p] is not Domain dv)
                     throw new PEException("PE10701");
                 if (fields[p] is TypedValue v && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))
                 {

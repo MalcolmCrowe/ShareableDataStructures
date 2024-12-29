@@ -39,13 +39,13 @@ namespace Pyrrho.Level2
             var dm1 = (t == Type.EditType) ? dm : (Domain)dm.Relocate(pp);
             if (dm1 is EdgeType ne && dm1.defpos != dm.defpos && ne.leavingType > 0 && ne.arrivingType > 0)
                 ne.Fix(cx);
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             var rs = CTree<long,Domain>.Empty;
             var cs = CTree<string,long>.Empty;
             for (var b = un.First(); b != null; b = b.Next())
                 if (b.key() is Table sp)
                     for (var c = sp.rowType.First(); c != null; c = c.Next())
-                        if (cx.db.objects[c.value() ?? -1L] is TableColumn tc
+                        if (cx.db.objects[c.value()] is TableColumn tc
                             && tc.NameFor(cx) is string cn
                             && !rs.Contains(tc.defpos))
                         {
@@ -54,7 +54,7 @@ namespace Pyrrho.Level2
                             rs += (tc.defpos, tc.domain);
                         }
             for (var b = dm1.rowType.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.value() ?? -1L] is TableColumn tc
+                if (cx.db.objects[b.value()] is TableColumn tc
                     && tc.NameFor(cx) is string cn
                     && !rs.Contains(tc.defpos))
                 {
@@ -187,10 +187,10 @@ namespace Pyrrho.Level2
                         rs -= p;
                         ns -= b.key();
                     }
-                var tr = BList<long?>.Empty;
+                var tr = CList<long>.Empty;
                 for (var b = ns.First(); b != null; b = b.Next())
                     tr += b.value();
-                var nrt = BList<long?>.Empty;
+                var nrt = CList<long>.Empty;
                 if (dt != null)
                     m += (Domain.Representation, rs);
                 for (var b = tr.First(); b is not null; b = b.Next())

@@ -1170,7 +1170,7 @@ namespace Pyrrho.Common
             var ss = s.Trim('"').Split(separator, StringSplitOptions.None);
             foreach (var t in ss)
             {
-                var tt = t.Split(',');
+                var tt = t.Split('.');
                 if (tt.Length > 2)
                     r += (UidParse(tt[0]), (UidParse(tt[1]), UidParse(tt[2])));
             }
@@ -1208,8 +1208,8 @@ namespace Pyrrho.Common
                 sb.Append(DBObject.Uid(b.key())); 
                 for (var c = b.value()?.First(); c != null; c = c.Next())
                 if (c.value() is long p){
-                    sb.Append(',');
-                    sb.Append(DBObject.Uid(c.key())); sb.Append(',');
+                    sb.Append('.');
+                    sb.Append(DBObject.Uid(c.key())); sb.Append('.');
                     sb.Append(DBObject.Uid(p));
                 }
                 sb.Append('"');

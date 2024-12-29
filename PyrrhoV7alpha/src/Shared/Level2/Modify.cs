@@ -26,7 +26,7 @@ namespace Pyrrho.Level2
         /// The new parameters and body of the routine
         /// </summary>
 		public Ident? source;
-        public BList<long?> parms = BList<long?>.Empty;
+        public CList<long> parms = CList<long>.Empty;
         /// <summary>
         /// The Parsed version of the body for the definer's role
         /// </summary>

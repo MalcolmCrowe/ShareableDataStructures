@@ -69,7 +69,7 @@ namespace Pyrrho.Level3
             OrderFunc = -84, // Procedure?  Unlike any other property!
             Precision = -85, // int (D)
             Representation = -87, // CTree<long,Domain> DBObject (gets extended by Matching)
-            RowType = -187,  // BList<long?> 
+            RowType = -187,  // CList<long> 
             Scale = -88, // int (D)
             Start = -89, // Qlx (D)
             Subtypes = -155, // CTree<long,bool> Domain direct subtypes
@@ -190,7 +190,7 @@ namespace Pyrrho.Level3
         public CTree<long, bool> constraints => (CTree<long, bool>?)mem[Constraints] ?? CTree<long, bool>.Empty;
         public CTree<long, Domain> representation =>
             (CTree<long, Domain>?)mem[Representation] ?? CTree<long, Domain>.Empty;
-        public virtual BList<long?> rowType => (BList<long?>?)mem[RowType] ?? BList<long?>.Empty;
+        public virtual CList<long> rowType => (CList<long>?)mem[RowType] ?? CList<long>.Empty;
         public int Length => rowType.Length;
         public Procedure? orderFunc => (Procedure?)mem[OrderFunc];
         public CTree<long, bool> aggs =>
@@ -202,11 +202,11 @@ namespace Pyrrho.Level3
         public TGParam.Type mod => (TGParam.Type)(mem[SqlFunction.Mod] ?? TGParam.Type.None);
         public CTree<Domain, bool> unionOf =>
             (CTree<Domain, bool>?)mem[UnionOf] ?? CTree<Domain, bool>.Empty;
-        internal Domain(Context cx, CTree<long, Domain> rs, BList<long?> rt, BTree<long, ObInfo> ii)
+        internal Domain(Context cx, CTree<long, Domain> rs, CList<long> rt, BTree<long, ObInfo> ii)
             : this(-1L, _Mem(cx, Qlx.TABLE, rs, rt, rt.Length) + (Infos, ii)
                   + (ObInfo._Names, ii[cx.role.defpos]?.names??Names.Empty)
                   + (ObInfo._Metadata, ii[cx.role.defpos]?.metadata??TMetadata.Empty)) { }
-        internal Domain(long dp, Context cx, Qlx t, CTree<long, Domain> rs, BList<long?> rt, int ds = 0)
+        internal Domain(long dp, Context cx, Qlx t, CTree<long, Domain> rs, CList<long> rt, int ds = 0)
             : this(dp, _Mem(cx, t, rs, rt, ds))
         {
             cx.Add(this);
@@ -252,7 +252,7 @@ namespace Pyrrho.Level3
         static BTree<long, object> _Mem(Context cx, Qlx t, BList<DBObject> vs, int ds = 0)
         {
             var rs = CTree<long, Domain>.Empty;
-            var cs = BList<long?>.Empty;
+            var cs = CList<long>.Empty;
             var ag = CTree<long, bool>.Empty;
             var ns = Names.Empty;
             for (var b = vs.First(); b != null; b = b.Next())
@@ -272,7 +272,7 @@ namespace Pyrrho.Level3
                 m += (Display, ds);
             return cx.DoDepth(m);
         }
-        static BTree<long, object> _Mem(Context cx, Qlx t, CTree<long, Domain> rs, BList<long?> cs, int ds = 0)
+        static BTree<long, object> _Mem(Context cx, Qlx t, CTree<long, Domain> rs, CList<long> cs, int ds = 0)
         {
             for (var b = cs.First(); b != null; b = b.Next())
                   if (b.value() is long p && !rs.Contains(p))
@@ -297,7 +297,7 @@ namespace Pyrrho.Level3
         internal Domain Scalar(Context cx)
         {
             if ((kind == Qlx.TABLE || kind == Qlx.ROW) && Length > 0)
-                return (Domain)(cx.obs[rowType[0] ?? -1L]?.domain ?? Content);
+                return (Domain)(cx.obs[rowType[0]]?.domain ?? Content);
             return this;
         }
         internal Domain Best(Domain dt)
@@ -366,7 +366,7 @@ namespace Pyrrho.Level3
             }
             if (ch)
                 m += (Representation, rp);
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             for (var b=d.rowType.First();b is not null;b=b.Next())
             {
                 var p = b.value();
@@ -383,8 +383,8 @@ namespace Pyrrho.Level3
                 m = m + (RowType, rt) + (Display,ds);
             return (Domain)d.New(m);
         }
-        internal virtual (BList<long?>, CTree<long, Domain>, BList<long?>, BTree<long, long?>, Names, BTree<long,Names>)
-ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<long?> sr, BTree<long, long?> tr,
+        internal virtual (CList<long>, CTree<long, Domain>, CList<long>, BTree<long, long?>, Names, BTree<long,Names>)
+ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long> sr, BTree<long, long?> tr,
  Names ns, BTree<long,Names> ds, long ap)
         {
             for (var b = super.First(); b != null; b = b.Next())
@@ -405,8 +405,8 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 }
             return (rt, rs, sr, tr, ns, ds);
         }
-        internal virtual (Table, BList<long?>, CTree<long, Domain>)
-            ColsFrom(Context cx,BList<long?> rt, CTree<long, Domain> rs)
+        internal virtual (Table, CList<long>, CTree<long, Domain>)
+            ColsFrom(Context cx,CList<long> rt, CTree<long, Domain> rs)
         {
             for (var b = super.First(); b != null; b = b.Next())
                 if (b.key() is Table st)
@@ -431,7 +431,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             return r;
         }
         public long? this[int i] => (i>=0 && i<rowType.Length)?rowType[i]:-1L;
-        public ABookmark<int,long?>? First()
+        public ABookmark<int,long>? First()
         {
             return rowType.First();
         }
@@ -526,11 +526,71 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                     else
                         rs += (sv.defpos, sv.domain);
                 }
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             for (var b = rs.First(); b != null; b = b.Next())
                 rt += b.key();
             return (rt.Length==0)?Row:new Domain(-1L, cx, Qlx.ROW, rs, rt);
         }
+        /// <summary>
+        /// Compute rowType information (for the client) for this row set.
+        /// 
+        /// </summary>
+        /// <param name="flags">The column flags to be filled in</param>
+        internal void Schema(Context cx, int[] flags)
+        {
+            //     int m = domain.rowType.Length;
+            bool addFlags = true;
+            var adds = new int[flags.Length];
+            // see if we are going to add index flags stuff
+            var j = 0;
+            for (var ib = (this as RowSet)?.keys.First(); j < flags.Length && ib != null;
+                ib = ib.Next(), j++)
+            {
+                var found = false;
+                for (var b = rowType.First(); b != null;
+                    b = b.Next())
+                    if (b.key() == ib.key())
+                    {
+                        adds[b.key()] = (j + 1) << 4;
+                        found = true;
+                        break;
+                    }
+                if (!found)
+                    addFlags = false;
+            }
+            var d = display;
+            if (d == 0)
+                d = int.MaxValue;
+            for (var b = rowType.First(); b != null && b.key() < d; b = b.Next())
+                if (b.value() is long cp && representation[cp] is Domain dc)
+                {
+                    var i = b.key();
+                    flags[i] = dc.Typecode() + (addFlags ? adds[i] : 0);
+                    if (cx._Ob(cp) is DBObject tc)
+                        flags[i] += (((tc is Domain td) ? td : tc.domain).notNull ? 0x100 : 0) +
+                            (((tc as TableColumn)?.generated != GenerationRule.None) ? 0x200 : 0);
+                }
+        }
+        public string NameFor(Context cx, int i)
+        {
+            if (rowType[i] is long p)
+            {
+                if (cx.obs[p] is QlValue sv && (sv.alias ?? sv.name) is string sn && sn != "")
+                    return sn;
+                if (cx.obs[p] is Domain sd && sd.name is string n && n != "")
+                    return n;
+                if (cx.obs[p] is SqlCall sc && cx.NameFor(sc.procdefpos) is string pn)
+                    return pn;
+                if (this is InstanceRowSet ir && ir.sRowType[i] is long ip
+                    && cx.db.objects[ip] is DBObject tc && tc.infos[cx.role.defpos] is ObInfo ci
+                    && ci.name is string im && im != "")
+                    return im;
+                if (cx.obs[p] is SystemTableColumn ss && ss.name is string ns && ns != "")
+                    return ns;
+            }
+            return "Col" + i;
+        }
+
         internal virtual void Show(StringBuilder sb)
         {
             if (defpos >= 0)
@@ -673,7 +733,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         sb.Append(cm); cm = (b.key() + 1 == display) ? "|" : ",";
                         sb.Append(Uid(p));
                     }
-                if (rowType != BList<long?>.Empty)
+                if (rowType != CList<long>.Empty)
                     sb.Append(')');
             }
             _Show(sb);
@@ -888,7 +948,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                         var dp = rdr.GetLong();
                         var vs = CTree<long,TypedValue>.Empty;
                         var dt = CTree<long, Domain>.Empty;
-                        var rt = BList<long?>.Empty;
+                        var rt = CList<long>.Empty;
                         var tb = (Table?)rdr.context.db.objects[dp];
                         var ma = BTree<string, long?>.Empty;
                         if (rdr.context.db.format < 52)
@@ -1490,16 +1550,16 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 cx.Add(sb);
                 if ((orderflags & OrderCategory.Relative) == OrderCategory.Relative)
                 {
-                    orderFunc.Exec(cx, new BList<long?>(sa.defpos) + sb.defpos);
+                    orderFunc.Exec(cx, new CList<long>(sa.defpos) + sb.defpos);
                     if (cx.val.ToInt() is int ri)
                         c = ri;
                     else
                         throw new DBException("22004");
                     goto ret;
                 }
-                orderFunc.Exec(cx,new BList<long?>(sa.defpos));
+                orderFunc.Exec(cx,new CList<long>(sa.defpos));
                 a = cx.val;
-                orderFunc.Exec(cx,new BList<long?>(sb.defpos));
+                orderFunc.Exec(cx,new CList<long>(sb.defpos));
                 b = cx.val;
                 c = a.dataType.Compare(a, b);
                 goto ret;
@@ -1791,7 +1851,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             if (kind == Qlx.ANY)
                 return true;
             if ((dt.kind == Qlx.TABLE || dt.kind == Qlx.ROW) && dt.rowType.Length == 1
-                && CanTakeValueOf(dt.representation[dt.rowType[0]??-1L]??Null))
+                && CanTakeValueOf(dt.representation[dt.rowType[0]]??Null))
                 return true;
             if (dt.EqualOrStrongSubtypeOf(this))
                 return true;
@@ -3697,7 +3757,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         }
         internal override TypedValue _Eval(Context cx)
         {
-            if (rowType != BList<long?>.Empty)
+            if (rowType != CList<long>.Empty)
             {
                 var vs = CTree<long, TypedValue>.Empty;
                 for (var b = rowType.First(); b != null; b = b.Next())
@@ -4319,7 +4379,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             }
             if (ch)
                 r +=(cx, Representation, rs);
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             ch = false;
             for (var b=rowType.First();b is not null;b=b.Next())
             {
@@ -4352,7 +4412,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
             }
             if (ch)
                 r += (Representation, rs);
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             ch = false;
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p)
@@ -4401,7 +4461,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             if (defpos < ap)
                 throw new PEException("PE50722");
-            var cs = BList<long?>.Empty;
+            var cs = CList<long>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var ch = false;
             var de = depth;
@@ -5250,7 +5310,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         /// <returns></returns>
         internal override Table _PathDomain(Context cx)
         {
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             var rs = CTree<long,Domain>.Empty;
             var ii = infos;
             var ui = infos[cx.role.defpos];
@@ -5309,7 +5369,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
                 if (cx.db.objects[b.key()] is UDType u)
                     r += u.AllSubTypeCols(cx); 
             for (var b = t?.rowType.First(); b != null; b = b.Next())// top levels overwrite lower
-                if (cx._Ob(b.value() ?? -1L) is TableColumn tc)
+                if (cx._Ob(b.value()) is TableColumn tc)
                     r += (tc.NameFor(cx), tc.defpos);
             return r; 
         }
@@ -5317,7 +5377,7 @@ ColsFrom(Context cx, long dp, BList<long?> rt, CTree<long, Domain> rs, BList<lon
         {
             var r = CTree<long, Domain>.Empty;
             for (var b = HierarchyCols(cx).First(); b != null; b = b.Next())
-                if (cx._Ob(b.value()??-1L) is DBObject o)
+                if (cx._Ob(b.value()) is DBObject o)
                     r += (o.defpos, o.domain);
             return r;
         }

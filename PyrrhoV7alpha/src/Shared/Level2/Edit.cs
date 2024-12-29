@@ -303,14 +303,14 @@ namespace Pyrrho.Level2
                     // under and tg may have changed
                     tg = (UDType)(cx.db.objects[tg.defpos] ?? Domain.TypeSpec);
                     var ps = tg.HierarchyRepresentation(cx);
-                    var rt = BList<long?>.Empty;
+                    var rt = CList<long>.Empty;
                     for (var b = ps.First(); b != null; b = b.Next())
                         rt += b.key();
                     var uP = cx.uids[uD.defpos] ?? uD.defpos; // just in case
                     var un = (UDType)(cx.db.objects[uP] ?? throw new DBException("PE40802"));
                     un += (Table.TableRows, un.tableRows + tg.tableRows);
                     var ui = un.infos[cx.role.defpos] ?? new ObInfo(un.name, Grant.AllPrivileges);
-                    var no = un.rowType == BList<long?>.Empty;
+                    var no = un.rowType == CList<long>.Empty;
                     Level3.Index? xx = null;
                     // special case: if un is a nodetype without an ID column and we have an ID column
                     if (un is NodeType nu && nu.idCol < 0 && tg is NodeType tn && tn.idCol > 0)
@@ -320,7 +320,7 @@ namespace Pyrrho.Level2
                             throw new DBException("42000").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT);
                         var nx = cx.db.objects[tn.idIx] as Level3.Index ?? throw new PEException("PE40405");
                         // we get nu to adopt the ID column of nt, and clone the ID index
-                        nu += (Domain.RowType, new BList<long>(tn.idCol));
+                        nu += (Domain.RowType, new CList<long>(tn.idCol));
                         nu += (Domain.Representation,
                             new CTree<long, Domain>(tn.idCol, tn.representation[tn.idCol] ?? Domain.Position));
                         nu += (NodeType.IdCol, tn.idCol);
@@ -396,7 +396,7 @@ namespace Pyrrho.Level2
                         tg += (Domain.Under, under - uD + (un, true));
                     }
                 }
-            var ru = BList<long?>.Empty;
+            var ru = CList<long>.Empty;
             var rs = CTree<long,Domain>.Empty;
             for (var b = tg.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long cp && tg.representation?[cp] is Domain d)

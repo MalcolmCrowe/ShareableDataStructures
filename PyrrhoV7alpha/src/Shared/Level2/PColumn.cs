@@ -165,7 +165,7 @@ namespace Pyrrho.Level2
         }
         void Commit(Context cx,Table ta)
         {
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             for (var b = ta.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && p != ppos && p < Transaction.TransPos)
                     rt += p;
@@ -496,10 +496,12 @@ namespace Pyrrho.Level2
     internal class PColumn3 : PColumn2
     {
         public PColumn3(UDType ut, string nm, int sq, Domain dm,
-            GraphFlags gf, long ix, long tp, long pp, Context cx)
+            GraphFlags gf, long ix, long tp, long pp, Context cx, bool ifN = false)
             : this(ut, nm, sq, dm, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
                     dm.notNull, GenerationRule.None, gf, ix, tp, pp, cx)
-        { }
+        {
+            ifNeeded = ifN;
+        }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
         /// </summary>
@@ -576,6 +578,15 @@ namespace Pyrrho.Level2
             index = wr.cx.Fix(x.index);
             toType = wr.cx.Fix(x.toType);
             table = (Table?)wr.cx.db.objects[wr.cx.Fix(x.table?.defpos??-1L)]??table;
+        }
+        internal override bool NeededFor(BTree<long, Physical> physicals)
+        {
+            if (!ifNeeded)
+                return true;
+            for (var b = physicals.First(); b != null; b = b.Next())
+                if (b.value() is Record r && r.tabledefpos == tabledefpos)
+                    return true;
+            return false;
         }
         protected override Physical Relocate(Writer wr)
         {

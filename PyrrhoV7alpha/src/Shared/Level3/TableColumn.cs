@@ -263,7 +263,7 @@ namespace Pyrrho.Level3
                     rws += (b.key(), rw - defpos);
                 }
                 tb += (Table.TableRows, rws);
-                var r = BList<long?>.Empty;
+                var r = CList<long>.Empty;
                 for (var b = tb.rowType.First(); b != null; b = b.Next())
                     if (b.value() != defpos)
                         r += b.value();
@@ -574,8 +574,7 @@ namespace Pyrrho.Level3
             var vs = vals;
             for (var b = dm.First(); b != null; b = b.Next())
             {
-                if (b.value() is not long p)
-                    throw new PEException("PE10703");
+                var p = b.value();
                 var dv = dm.representation[p] ?? Domain.Position;
                 if (vs[p] is not TypedValue v)
                     throw new DBException("22G0Y", cx.NameFor(p)??"");
@@ -654,7 +653,7 @@ namespace Pyrrho.Level3
                 }
             return r;
         }
-        public CList<TypedValue> MakeKey(BList<long?> cols)
+        public CList<TypedValue> MakeKey(CList<long> cols)
         {
             var r = CList<TypedValue>.Empty;
             for (var b = cols.First(); b != null; b = b.Next())

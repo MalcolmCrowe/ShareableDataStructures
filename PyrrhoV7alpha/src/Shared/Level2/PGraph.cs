@@ -30,9 +30,11 @@ namespace Pyrrho.Level2
             if (nt is not EdgeType)
                 nt.AddNodeOrEdgeType(cx);
         }
-        public PNodeType(string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
+        public PNodeType(string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx,
+            bool ifN = false)
             : base(Type.PNodeType, nm, nt + (ObInfo.Name, nm), un, ns, pp, cx) 
         {
+            ifNeeded = ifN;
             nt.AddNodeOrEdgeType(cx);
         }
         public PNodeType(Reader rdr) : base(Type.PNodeType, rdr) 
@@ -40,6 +42,19 @@ namespace Pyrrho.Level2
         protected PNodeType(Type t, Reader rdr):base(t, rdr) { }
         protected PNodeType(PNodeType x,Writer wr) :base(x,wr) 
         { }
+        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
+        {
+            return base.Commit(wr, tr);
+        }
+        internal override bool NeededFor(BTree<long, Physical> physicals)
+        {
+            if (!ifNeeded)
+                return true;
+            for (var b = physicals.First(); b != null; b = b.Next())
+                if (b.value() is Record r && r.tabledefpos == defpos)
+                    return true;
+            return false;
+        }
         protected override Physical Relocate(Writer wr)
         {
             return new PNodeType(this,wr);
@@ -57,9 +72,10 @@ namespace Pyrrho.Level2
             return base.Dependent(wr, tr);
         }
         public PEdgeType(string nm, EdgeType nt, CTree<Domain, bool> un, long ns, 
-            long lt, long at, long pp, Context cx) 
+            long lt, long at, long pp, Context cx, bool IfN=false) 
             : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) 
         {
+            ifNeeded = IfN;
             if (lt <= 0 || at <= 0)
                 throw new PEException("PE20801");
             leavingType = lt;

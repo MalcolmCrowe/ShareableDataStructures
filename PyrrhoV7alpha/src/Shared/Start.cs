@@ -289,7 +289,7 @@ namespace Pyrrho
                             tcp.PutFileNames(); break;
                         // set the current reader
                         case Protocol.ResetReader:
-                            rb = ((RowSet?)cx?.obs[cx.result])?.First(cx);
+                            rb = ((RowSet?)cx?.result)?.First(cx);
                             tcp.Write(Responses.Done);
                             tcp.Flush();
                             break;
@@ -334,7 +334,7 @@ namespace Pyrrho
                                 tcp.PutWarnings(cx);
                                 cx.done = ObTree.Empty;
                                 conn.Add(nm, new PreparedStatement(cx,nst));
-                                cx.result = -1L;
+                                cx.result = null;
                                 db = db.RdrClose(ref cx);
                                 tcp.Write(Responses.Done);
                                 break;
@@ -358,7 +358,7 @@ namespace Pyrrho
                                 cx.db = db;
                                 cx.done = ObTree.Empty;
                                 tcp.PutWarnings(cx);
-                                if (cx.result <= 0L)
+                                if (cx.result is null)
                                 {
                                     db = db.RdrClose(ref cx);
                                     tcp.Write(Responses.Done);
@@ -367,7 +367,7 @@ namespace Pyrrho
                                 else
                                 {
                                     tcp.PutRowType(cx);
-                                    rb = ((RowSet?)cx.obs[cx.result])?.First(cx);
+                                    rb = ((RowSet?)cx.result)?.First(cx);
                                     while (rb != null && rb.IsNull)
                                         rb = rb.Next(cx);
                                     nextCol = 0;
@@ -395,7 +395,7 @@ namespace Pyrrho
                                 cx.db = (Transaction)db;
                                 cx.done = ObTree.Empty;
                                 tcp.PutWarnings(cx);
-                                if (cx.result < 0L)
+                                if (cx.result is null)
                                 {
                                     db = db.RdrClose(ref cx);
                                     tcp.Write(Responses.DoneTrace);
@@ -429,11 +429,11 @@ namespace Pyrrho
                                 for (var b = ((Transaction)db).physicals.PositionAt(pl); b != null; b = b.Next())
                                     if (b.value() is PDomain)
                                         pl++;
-                                if (cx.result > 0L && ((Transaction)db).physicals.Count<=pl)
+                                if (cx.result is not null && ((Transaction)db).physicals.Count<=pl)
                                 {
                                     tcp.PutRowType(cx);
                                     rb = null;
-                                    if (cx.obs[cx.result] is RowSet res)
+                                    if (cx.result is RowSet res)
                                     {
                                         if (PyrrhoStart.ShowPlan)
                                             res.ShowPlan(cx);
@@ -469,7 +469,7 @@ namespace Pyrrho
                                 var tn = DateTime.Now.Ticks;
                                 var c = db.AffCount(cx);
                                 tcp.PutWarnings(cx);
-                                if (cx.result <= 0L)
+                                if (cx.result is null)
                                 {
                                     tcp.Write(Responses.MatchDone);
                                     tcp.PutInt(c);   
@@ -482,16 +482,12 @@ namespace Pyrrho
                                     tcp.Write(Responses.TableData);
                                     tcp.PutRowType(cx);
                                     rb = null;
-                                    if (cx.obs[cx.result] is RowSet res)
+                                    if (cx.result is RowSet rs)
                                     {
-                                        log?.WriteLine(new TDocArray(cx, res));
-                                        if (PyrrhoStart.ShowPlan)
-                                            res.ShowPlan(cx);
-                                        cx.rdC += res.dependents;
-                                        rb = res.First(cx);
-                                        while (rb != null && rb.IsNull)
-                                            rb = rb.Next(cx);
-                                    } 
+                                        log?.WriteLine(new TDocArray(cx, rs));
+                                        cx.rdC += rs.dependents;
+                                        rb = rs.First(cx);
+                                    }
                                     db = cx.db;
                                 }
                                 break;
@@ -506,10 +502,10 @@ namespace Pyrrho
                                 cx = new(db, cx??throw new PEException("PE14009")) { versioned = true };
                                 tr.Execute(cx, k, "GET", db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
-                                if (cx.result > 0)
+                                if (cx.result is not null)
                                 {
                                     tcp.PutRowType(cx);
-                                    rb = ((RowSet?)cx.obs[cx.result])?.First(cx);
+                                    rb = ((RowSet?)cx.result)?.First(cx);
                                 }
                                 else
                                 {
@@ -527,7 +523,7 @@ namespace Pyrrho
                                 cx = new Context(db, cx??throw new PEException("PE14010"));
                                 tr.Execute(cx, 0L, "GET",  db.name, path, "", "", "");
                                 tcp.PutWarnings(cx);
-                                if (cx.obs[cx.result] is RowSet rs)
+                                if (cx.result is RowSet rs)
                                 {
                                     tcp.PutSchema1(cx, rs);
                                     rb = rs.First(cx);
@@ -1110,7 +1106,7 @@ namespace Pyrrho
             tcp.PutInt(1);
             var domains = BTree<int, Domain>.Empty;
             var i = 0;
-            if (rb.columns is BList<long?> co)
+            if (rb.columns is CList<long> co)
             {
                 for (var b = co.First(); b != null; b = b.Next(), i++)
                     if (b.value() is long p)
@@ -1532,7 +1528,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2024 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(17 Dec 2024)", "http://www.pyrrhodb.com"
+            "7.09alpha","(29 Dec 2024)", "http://www.pyrrhodb.com"
         ];
 	}
 }

@@ -345,7 +345,7 @@ namespace Pyrrho.Level4
             }
             if ((vo is not null && cx.Known(vo)) || cx.role.dbobjects.Contains(s))
                 return tok;
-            if (cx.parse == ExecuteStatus.Obey && cx.db is not null
+            if (cx.parse.HasFlag(ExecuteStatus.Obey) && cx.db is not null
                 && cx.role is not null && cx.db.prefixes != BTree<string, long?>.Empty
                 && cx.db.objects[cx.db.prefixes[s] ?? -1L] is UDType dt && val is not null
                 && dt.name is not null)
@@ -358,7 +358,7 @@ namespace Pyrrho.Level4
                     && cx.db.objects[md[sig] ?? -1L] is Method mt)
                 {
                     cx.Add(new SqlLiteral(ps, Domain._Numeric.Coerce(cx, val)));
-                    val = mt.Exec(cx, new BList<long?>(ps)).val;
+                    val = mt.Exec(cx, new CList<long>(ps)).val;
                 }
                 else
                     val = new TSubType(dt, val);
@@ -367,7 +367,7 @@ namespace Pyrrho.Level4
         }
         Qlx MaybeSuffix()
         {
-            if (cx.parse == ExecuteStatus.Obey)
+            if (cx.parse.HasFlag(ExecuteStatus.Obey))
             {
                 var oldtok = tok;
                 var oldval = val;
@@ -384,7 +384,7 @@ namespace Pyrrho.Level4
                         && mi.methodInfos[dt.name] is BTree<CList<Domain>, long?> md
                         && cx.db.objects[md[sig]??-1L] is Method mt
                         && cx.Add(new SqlLiteral(cx.GetUid(), prevval)) is QlValue r)
-                        val = mt.Exec(cx, new BList<long?>(r.defpos)).val;
+                        val = mt.Exec(cx, new CList<long>(r.defpos)).val;
                     else
                         val = new TSubType(dt, prevval);
                     tok = oldtok;

@@ -137,7 +137,7 @@ namespace Pyrrho.Level3
         /// <param name="vs"></param>
         /// <param name="ls"></param>
         /// <returns></returns>
-        internal static BTree<long, object> _Deps(Context cx,BList<DBObject> vs,BList<long?> ls)
+        internal static BTree<long, object> _Deps(Context cx,BList<DBObject> vs,CList<long> ls)
         {
             var d = 1;
             var r = BTree<long,object>.Empty;
@@ -160,7 +160,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="vs"></param>
         /// <returns></returns>
-        internal static BTree<long,object> _Deps(Context cx,BList<long?> ls, params DBObject?[] vs)
+        internal static BTree<long,object> _Deps(Context cx,CList<long> ls, params DBObject?[] vs)
         {
             var d = 1;
             var r = BTree<long, object>.Empty;
@@ -753,12 +753,12 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    internal class Names : BTree<string,long?>
+    internal class Names : BTree<string,long>
     {
         public new readonly static Names Empty = new();
         internal Names() : base(null) { }
-        internal Names(string k, long? v) : base(k, v) { }
-        internal Names(Bucket<string, long?> b) : base(b) { }
+        internal Names(string k, long v) : base(k, v) { }
+        internal Names(Bucket<string, long> b) : base(b) { }
         public static Names operator +(Names tree, (string, long) v)
         {
             var (p, x) = v;
@@ -778,22 +778,25 @@ namespace Pyrrho.Level3
                 a -= c.key();
             return a;
         }
-        public new long this[string n] => base[n]??-1L;
+        public new long this[string n]
+        {
+            get { var p = base[n]; return (p != 0L) ? p : -1L; }
+        }
         
-        protected override ATree<string, long?> Add(string k, long? v)
+        protected override ATree<string, long> Add(string k, long v)
         {
             if (root is not null && Contains(k))
                 return new Names(root.Update(this, k, v));
             return Insert(k, v);
         }
-        public override ATree<string, long?> Add(ATree<string, long?> a)
+        public override ATree<string, long> Add(ATree<string, long> a)
         {
             var tree = this;
             for (var b = a?.First(); b != null; b = b.Next())
                 tree = (Names)tree.Add(b.key(), b.value());
             return tree;
         }
-        protected override ATree<string, long?> Insert(string k, long? v) // this does not contain k
+        protected override ATree<string, long> Insert(string k, long v) // this does not contain k
         {
             if (root == null || root.total == 0)  // empty BTree
                 return new Names(k, v);
@@ -801,14 +804,14 @@ namespace Pyrrho.Level3
                 return new Names(root.Split()).Add(k, v);
             return new Names(root.Add(this, k, v));
         }
-        internal override ATree<string, long?> Update(string k, long? v) // this Contains k
+        internal override ATree<string, long> Update(string k, long v) // this Contains k
         {
             if (root == null || !Contains(k))
                 throw new Exception("PE01");
             return new Names(root.Update(this, k, v));
         }
 
-        internal override ATree<string, long?> Remove(string k)
+        internal override ATree<string, long> Remove(string k)
         {
             if (root == null || !Contains(k))
                 return this;
@@ -827,7 +830,7 @@ namespace Pyrrho.Level3
                 {
                     sb.Append(cm); cm = ", ";
                     sb.Append(k); sb.Append('=');
-                    sb.Append(DBObject.Uid(v??-1L));
+                    sb.Append(DBObject.Uid(v));
                 }
             }
             if (cm != "(")
@@ -895,7 +898,7 @@ namespace Pyrrho.Level3
             if (name == sr.name || name == sr.alias)
             {
                 for (var b = domain.rowType.First(); b != null; b = b.Next())
-                    if (cx.obs[b.value() ?? -1L] is DBObject c && c.defpos>ap)
+                    if (cx.obs[b.value()] is DBObject c && c.defpos>ap)
                         (_, m) = c.Resolve(cx, sr, m, ap); // will test if c.defpos>rs.defpos
             }
             return (BList<DBObject>.Empty,m);

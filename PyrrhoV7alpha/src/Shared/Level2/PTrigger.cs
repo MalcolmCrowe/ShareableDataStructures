@@ -40,7 +40,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// The TableColumns for update
         /// </summary>
-		public BList<long?>? cols = null;
+		public CList<long>? cols = null;
         /// <summary>
         /// The alias for the old row
         /// </summary>
@@ -84,7 +84,7 @@ namespace Pyrrho.Level2
         ///         /// <param name="nst">The first possible framing object</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTrigger(string tc, long tb, int ty, BList<long?> cs, Ident? or,
+        public PTrigger(string tc, long tb, int ty, CList<long> cs, Ident? or,
             Ident? nr, Ident? ot, Ident? nt, Ident sce, long nst, Context cx, long pp)
             : this(Type.PTrigger, tc, tb, ty, cs, or, nr, ot, nt, sce, nst, cx, pp)
         { }
@@ -104,7 +104,7 @@ namespace Pyrrho.Level2
         /// <param name="nst">The first possible framing object</param>
         /// <param name="cx">The context</param>
         /// <param name="pp">The current position in the datafile</param>
-        protected PTrigger(Type tp, string tc, long tb, int ty, BList<long?> cs, 
+        protected PTrigger(Type tp, string tc, long tb, int ty, CList<long> cs, 
             Ident? or, Ident? nr, Ident? ot, Ident? nt, Ident sce, long nst, Context cx, long pp)
             : base(tp,pp,cx,tc,tb,Domain.TableType,nst)
 		{
@@ -133,7 +133,7 @@ namespace Pyrrho.Level2
             target = cx.Fix(x.target);
             from = cx.Fix(x.from);
             def = cx.Fix(x.def);
-            var cs = BList<long?>.Empty;
+            var cs = CList<long>.Empty;
             if (x.cols != null)
                 for (var b = x.cols.First(); b != null; b = b.Next())
                     if (b.value() is long p)
@@ -187,7 +187,7 @@ namespace Pyrrho.Level2
             target = rdr.GetLong();
 			tgtype = (TrigType)rdr.GetInt();
 			int n = rdr.GetInt();
-            var cols = BList<long?>.Empty;
+            var cols = CList<long>.Empty;
 			while (n-->0)
                 cols += rdr.GetLong();
             nst = rdr.context.db.nextStmt;

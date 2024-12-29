@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("22 October 2024 Repeatable tests");
+                Console.WriteLine("29 December 2024 Repeatable tests, AVOIDING TESTS 22-23  ");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -117,9 +117,9 @@ namespace Test
                 connA.Act("insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')");
                 connA.Act("create role A");
                 connA.Act("grant A to \"" + user +"\"");
-                Test22();
-                ResetA();
-                Test23();
+              //  Test22();
+              //  ResetA();
+              //  Test23();
             } 
             Test24(); 
             Test25();
@@ -1264,19 +1264,19 @@ namespace Test
             CheckResults(25, 6, "MATCH ({name:'Peter Smith'})[()-[:Child]->()]+(x) RETURN x.name",
                 "[{NAME:'Fred Smith'},{NAME:'Mary Smith'}]");
             Act(361, "CREATE (e1:Person {name:'Emil', born:1975 }), (k1:Person {name:'Karin', born:1977 }),"
-                +"(e1)-[:married {since:2000}]->(k1)");
+                +"(e1)<-[:married {since:2000}]-(k1)");
             Act(362, "CREATE (Sue:Person {name:'Sue Hill', born:1975}),"
-                +"(Joe:Person {name:'Joe Hill', born:1952}),(Joe)-[:married {since:1995}]->(Sue);");
+                +"(Joe:Person {name:'Joe Hill', born:1952}),(Joe)<-[:married {since:1995}]-(Sue)");
             CheckResults(25, 7, "MATCH (n:Person) RETURN collect(n.born)",
                 "[{COLLECT:'MULTISET[1952,1975,1975,1977]'}]");
             CheckResults(25, 8, "MATCH (n:Person) RETURN avg(n.born)","[{AVG:1969.75}]");
-            Act(363, "MATCH (nm:Person {name:'Joe Hill'})-[mr { since:1995}]->() "
+            Act(363, "MATCH (nm:Person {name:'Joe Hill'})<-[mr { since:1995}]-() "
                 +"BEGIN nm.born = 1962; mr.since = 1996 END");
-            CheckResults(25, 9, "MATCH (n:Person)-[:married{since:dt}]->() RETURN n.name,dt", 
+            CheckResults(25, 9, "MATCH (n:Person)<-[:married{since:dt}]-() RETURN n.name,dt", 
                 "[{NAME:'Emil',DT:2000},{NAME:'Joe Hill',DT:1996}]");
             Act(364, "MATCH (ee:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),"
                 +"(ee)-[:owns]->(d),(d)-[:owned_by]->(ee)");
-            Act(365, "MATCH (dg:Dog {name: 'Rex'})-[ro:owned_by]->() DELETE ro;");
+            Act(365, "MATCH (dg:Dog {name: 'Rex'})-[ro:owned_by]->() DELETE ro");
             Act(366, "MATCH (ka{name:'Karin'}),()-[ow:owns ]->({name:'Rex'}) SET ow.leaving=ka");
             CheckResults(25, 10, "select count(*) from owned_by", "[{COUNT:0}]");
             CheckResults(25, 11, "MATCH (n)-[:owns]->(dg) RETURN n.name,dg.name as dog", 

@@ -430,7 +430,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             DistinctGp = -235, // bool
-            Sets = -236; // BList<long?> Grouping
+            Sets = -236; // CList<long> Grouping
         /// <summary>
         /// whether DISTINCT has been specified
         /// </summary>
@@ -438,8 +438,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The specified grouping sets. We translate ROLLUP and CUBE into these
         /// </summary>
-        internal BList<long?> sets =>
-            (BList<long?>?)mem[Sets] ?? BList<long?>.Empty;
+        internal CList<long> sets =>
+            (CList<long>?)mem[Sets] ?? CList<long>.Empty;
         internal GroupSpecification(long lp, Context cx, BTree<long, object> m) : base(lp,m) { }
         internal GroupSpecification(long lp, BTree<long, object> m) : base(lp, m) { }
         public static GroupSpecification operator+(GroupSpecification gs,(long,object)x)
@@ -492,7 +492,7 @@ namespace Pyrrho.Level3
                 r += (Sets, ns);
             return r;
         }
-        internal bool Grouped(Context cx,BList<long?> vals)
+        internal bool Grouped(Context cx,CList<long> vals)
         {
             for (var b = vals?.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v && !v.Grouped(cx, this))
@@ -501,7 +501,7 @@ namespace Pyrrho.Level3
         }
         internal GroupSpecification Known(Context cx,RestRowSet rr)
         {
-            var ss = BList<long?>.Empty;
+            var ss = CList<long>.Empty;
             for (var b = sets.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is Grouping g && g.Known(cx, rr))
                     ss += p;
@@ -510,7 +510,7 @@ namespace Pyrrho.Level3
         }
         internal Domain Cols(Context cx,RowSet rs)
         {
-            var gs = BList<long?>.Empty;
+            var gs = CList<long>.Empty;
             for (var b = sets.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is Grouping g)
                     gs = rs._Info(cx, g, gs);

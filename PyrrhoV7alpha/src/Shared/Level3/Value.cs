@@ -6,6 +6,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Runtime.CompilerServices;
 using System.Security;
+using System.Xml.XPath;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
@@ -497,7 +498,7 @@ namespace Pyrrho.Level3
                 _ => throw new PEException("PE61"),
             };
         }
-        internal virtual RowSet RowSetFor(long dp,Context cx,BList<long?> us,
+        internal virtual RowSet RowSetFor(long dp,Context cx,CList<long> us,
             CTree<long,Domain> re)
         {
             if (cx.val is TRow r)
@@ -570,7 +571,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
         internal override string ToString(string sg, Remotes rf, 
-            BList<long?> cs, CTree<long, string> ns, Context cx)
+            CList<long> cs, CTree<long, string> ns, Context cx)
         {
             switch (rf)
             {
@@ -1899,7 +1900,7 @@ namespace Pyrrho.Level3
         {
             return cx.values[defpos]??TNull.Value;
         }
-        internal override string ToString(string sg,Remotes rf,BList<long?> cs,
+        internal override string ToString(string sg,Remotes rf,CList<long> cs,
             CTree<long, string> ns, Context cx)
         {
             var sb = new StringBuilder(cx.obs[from]?.ToString(sg,rf,cs,ns,cx)??"");
@@ -3117,7 +3118,7 @@ namespace Pyrrho.Level3
             }
             return sb.ToString();
         }
-        internal override string ToString(string sg, Remotes rf, BList<long?> cs,
+        internal override string ToString(string sg, Remotes rf, CList<long> cs,
             CTree<long, string> ns, Context cx)
         {
             var sb = new StringBuilder();
@@ -3218,7 +3219,7 @@ namespace Pyrrho.Level3
         {
             return "NULL";
         }
-        internal override string ToString(string sg, Remotes rf, BList<long?> cs,
+        internal override string ToString(string sg, Remotes rf, CList<long> cs,
             CTree<long, string> ns, Context cx)
         {
             return "null";
@@ -3507,7 +3508,7 @@ namespace Pyrrho.Level3
                 return (QlValue)cx.Add(this+(_Domain,dt));
             return base.Constrain(cx, dt);
         }
-        internal override string ToString(string sg, Remotes rf, BList<long?> cs, CTree<long, string> ns, Context cx)
+        internal override string ToString(string sg, Remotes rf, CList<long> cs, CTree<long, string> ns, Context cx)
         {
             if (val.dataType.kind == Qlx.CHAR)
             {
@@ -3601,7 +3602,7 @@ namespace Pyrrho.Level3
         {
             cx.Add(this);
         }
-        public SqlRow(long dp, Context cx, Domain xp, BList<long?> vs, BTree<long, object>? m = null)
+        public SqlRow(long dp, Context cx, Domain xp, CList<long> vs, BTree<long, object>? m = null)
             : base(dp, _Inf(cx, m, xp, vs) + (_Depth,cx._DepthBV(vs,xp.depth+1)))
         {
             cx.Add(this);
@@ -3628,7 +3629,7 @@ namespace Pyrrho.Level3
             return m;
         }
         protected static BTree<long, object> _Inf(Context cx, BTree<long, object>? m,
-    Domain xp, BList<long?> vs)
+    Domain xp, CList<long> vs)
         {
             var cb = xp.First();
             var bs = BList<DBObject>.Empty;
@@ -3693,7 +3694,7 @@ namespace Pyrrho.Level3
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SqlRow)base._Replace(cx, so, sv);
-            var cs = BList<long?>.Empty;
+            var cs = CList<long>.Empty;
             var vs = BList<DBObject>.Empty;
             var ch = false;
             for (var b = domain.rowType.First(); b != null; b = b.Next())
@@ -3880,7 +3881,7 @@ namespace Pyrrho.Level3
                     r += s.Needs(cx, rs);
             return r;
         }
-        internal override string ToString(string sg, Remotes rf, BList<long?> cs,
+        internal override string ToString(string sg, Remotes rf, CList<long> cs,
             CTree<long, string> ns, Context cx)
         {
             var sb = new StringBuilder();
@@ -4063,10 +4064,10 @@ namespace Pyrrho.Level3
     internal class SqlRowArray : QlValue
     {
         internal const long
-            _Rows = -319; // BList<long?> QlValue
-        internal BList<long?> rows =>
-            (BList<long?>?)mem[_Rows]?? BList<long?>.Empty;
-        public SqlRowArray(long dp,Context cx,Domain ap,BList<long?> rs) 
+            _Rows = -319; // CList<long> QlValue
+        internal CList<long> rows =>
+            (CList<long>?)mem[_Rows]?? CList<long>.Empty;
+        public SqlRowArray(long dp,Context cx,Domain ap,CList<long> rs) 
             : base(dp, BTree<long,object>.Empty+(_Domain,ap)+(_Rows, rs)+(_Depth,cx._DepthBV(rs,ap.depth+1)))
         {
             cx.Add(this);
@@ -4098,7 +4099,7 @@ namespace Pyrrho.Level3
             {
                 case _Rows:
                     {
-                        m += (_Depth,cx._DepthBV((BList<long?>)ob,et.depth));
+                        m += (_Depth,cx._DepthBV((CList<long>)ob,et.depth));
                         break;
                     }
                 case Domain.Aggs:
@@ -4143,7 +4144,7 @@ namespace Pyrrho.Level3
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SqlRowArray)base._Replace(cx, so, sv);
-            var rws = BList<long?>.Empty;
+            var rws = CList<long>.Empty;
             var ch = false;
             for (var b = rows?.First(); b != null; b = b.Next())
                 if (b.value() is long p)
@@ -4160,7 +4161,7 @@ namespace Pyrrho.Level3
         {
             var r = true;
             for (var b = rows.First(); b != null && r; b = b.Next())
-                if (cx.obs[b.value() ?? -1L] is QlValue v)
+                if (cx.obs[b.value()] is QlValue v)
                     r = v.isConstant(cx);
             return r;
         }
@@ -4184,7 +4185,7 @@ namespace Pyrrho.Level3
             if (from > 0)
                 return this;
             var r = (SqlRowArray)base.AddFrom(cx, q);
-            var rws = BList<long?>.Empty;
+            var rws = CList<long>.Empty;
             var ch = false;
             var ag = domain.aggs;
             for (var b = r.rows?.First(); b != null; b = b.Next())
@@ -4248,7 +4249,7 @@ namespace Pyrrho.Level3
                 vs += v.Eval(cx);
             return new TList(domain, vs);
         }
-        internal override RowSet RowSetFor(long dp, Context cx, BList<long?> us,
+        internal override RowSet RowSetFor(long dp, Context cx, CList<long> us,
             CTree<long, Domain> re)
         {
             var dm = domain;
@@ -4305,7 +4306,7 @@ namespace Pyrrho.Level3
             var r = this;
             BList<DBObject> ls;
             var ch = false;
-            var rs = BList<long?>.Empty;
+            var rs = CList<long>.Empty;
             for (var b = rows.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v)
                 {
@@ -4480,12 +4481,12 @@ namespace Pyrrho.Level3
     internal class SqlValueArray : QlValue
     {
         internal const long
-            _Array = -328, // BList<long?> QlValue
+            _Array = -328, // CList<long> QlValue
             Svs = -329; // long SqlValueSelect
         /// <summary>
         /// the array
         /// </summary>
-        public BList<long?> array =>(BList<long?>?)mem[_Array]??BList<long?>.Empty;
+        public CList<long> array =>(CList<long>?)mem[_Array]??CList<long>.Empty;
         // alternatively, the source
         public long svs => (long)(mem[Svs] ?? -1L);
         /// <summary>
@@ -4493,7 +4494,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">the context</param>
         /// <param name="a">the array</param>
-        public SqlValueArray(long dp,Context cx,Domain xp,BList<long?> v)
+        public SqlValueArray(long dp,Context cx,Domain xp,CList<long> v)
             : base(dp,xp.mem+(_Array,v)+(_Domain,xp)+(_Depth,cx._DepthBV(v,xp.depth+1)))
         {
             cx.Add(this);
@@ -4524,7 +4525,7 @@ namespace Pyrrho.Level3
             switch (dp)
             {
                 case _Array:
-                    m += (_Depth, cx._DepthBV((BList<long?>)ob,et.depth));
+                    m += (_Depth, cx._DepthBV((CList<long>)ob,et.depth));
                     break;
                 case Domain.Aggs:
                     m += (_Depth, cx._DepthTVX((CTree<long,bool>)ob, et.depth));
@@ -4571,7 +4572,7 @@ namespace Pyrrho.Level3
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SqlValueArray)base._Replace(cx, so, sv);
-            var ar = BList<long?>.Empty;
+            var ar = CList<long>.Empty;
             for (var b = ar.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
@@ -4591,7 +4592,7 @@ namespace Pyrrho.Level3
             if (from > 0)
                 return this;
             var r = (SqlValueArray)base.AddFrom(cx, q);
-            var ar = BList<long?>.Empty;
+            var ar = CList<long>.Empty;
             var ag = domain.aggs;
             var ch = false;
             for (var b = array.First(); b != null; b = b.Next())
@@ -4718,7 +4719,7 @@ namespace Pyrrho.Level3
             BList<DBObject> ls;
             var r = this;
             var ch = false;
-            var vs = BList<long?>.Empty;
+            var vs = CList<long>.Empty;
             for (var b = array.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v) {
                     if (p > ap)
@@ -4776,16 +4777,16 @@ namespace Pyrrho.Level3
     internal class SqlValueMultiset : QlValue
     {
         internal const long
-            MultiSqlValues = -302; // BList<long?> QlValue
+            MultiSqlValues = -302; // CList<long> QlValue
         /// <summary>
         /// the array
         /// </summary>
-        public BList<long?> multi => (BList<long?>)(mem[MultiSqlValues] ?? BList<long?>.Empty);
+        public CList<long> multi => (CList<long>)(mem[MultiSqlValues] ?? CList<long>.Empty);
         /// <summary>
         /// construct an SqlValueMultiset value
         /// </summary>
         /// <param name="a">the array</param>
-        public SqlValueMultiset(long dp, Context cx, Domain xp, BList<long?> v)
+        public SqlValueMultiset(long dp, Context cx, Domain xp, CList<long> v)
             : base(dp, xp.mem + (MultiSqlValues, v)
                   +(_Depth,cx._DepthBV(v,xp.depth+1)))
         {
@@ -4817,7 +4818,7 @@ namespace Pyrrho.Level3
             switch(dp)
             {
                 case MultiSqlValues:
-                    m += (_Depth, cx._DepthBV((BList<long?>)ob, et.depth));
+                    m += (_Depth, cx._DepthBV((CList<long>)ob, et.depth));
                     break;
                 case Domain.Aggs:
                     m += (_Depth, cx._DepthTVX((CTree<long, bool>)ob, et.depth));
@@ -4861,7 +4862,7 @@ namespace Pyrrho.Level3
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SqlValueMultiset)base._Replace(cx, so, sv);
-            var mu = BList<long?>.Empty;
+            var mu = CList<long>.Empty;
             for (var b = multi.First(); b != null; b = b.Next())
                 if (b.value() is long p){
                     var v = cx.ObReplace(p, so, sv);
@@ -4987,7 +4988,7 @@ namespace Pyrrho.Level3
             BList<DBObject> ls;
             var r = this;
             var d = depth;
-            var vs = BList<long?>.Empty;
+            var vs = CList<long>.Empty;
             for (var b = multi.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v)
                 {
@@ -5026,16 +5027,16 @@ namespace Pyrrho.Level3
     internal class SqlValueSet : QlValue
     {
         internal const long
-            Elements = -261; // BList<long?> QlValue
+            Elements = -261; // CList<long> QlValue
         /// <summary>
         /// the array
         /// </summary>
-        public BList<long?> els => (BList<long?>)(mem[Elements] ?? BList<long?>.Empty);
+        public CList<long> els => (CList<long>)(mem[Elements] ?? CList<long>.Empty);
         /// <summary>
         /// construct an SqlValueSet value
         /// </summary>
         /// <param name="v">the elements</param>
-        public SqlValueSet(long dp, Context cx, Domain xp, BList<long?> v)
+        public SqlValueSet(long dp, Context cx, Domain xp, CList<long> v)
             : base(dp, xp.mem + (Elements, v)
                   +(_Depth,cx._DepthBV(v,xp.depth+1)))
         {
@@ -5070,7 +5071,7 @@ namespace Pyrrho.Level3
                     m += (_Depth, cx._DepthTVX((CTree<long, bool>)ob, et.depth));
                     break;
                 case Elements:
-                    m += (_Depth, cx._DepthBV((BList<long?>)ob, et.depth));
+                    m += (_Depth, cx._DepthBV((CList<long>)ob, et.depth));
                     break;
                 default:
                     {
@@ -5111,7 +5112,7 @@ namespace Pyrrho.Level3
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SqlValueSet)base._Replace(cx, so, sv);
-            var es = BList<long?>.Empty;
+            var es = CList<long>.Empty;
             for (var b = els.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
@@ -5129,7 +5130,7 @@ namespace Pyrrho.Level3
                 return this;
             var dm = domain;
             var r = (SqlValueMultiset)base.AddFrom(cx, q);
-            var mu = BList<long?>.Empty;
+            var mu = CList<long>.Empty;
             var ag = dm.aggs;
             var ch = false;
             for (var b = els.First(); b != null; b = b.Next())
@@ -5238,7 +5239,7 @@ namespace Pyrrho.Level3
             BList<DBObject> ls;
             var r = this;
             var d = depth;
-            var vs = BList<long?>.Empty;
+            var vs = CList<long>.Empty;
             for (var b = els.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v)
                 {
@@ -5268,6 +5269,54 @@ namespace Pyrrho.Level3
                 }
             sb.Append(')');
             return sb.ToString();
+        }
+    }
+    internal class QlMatchValue : QlValue
+    {
+        internal const long
+            _NextStmt = -171; // long Executable
+        public long match => (long)(mem[_NextStmt] ?? -1L);
+        internal QlMatchValue(Context cx,Executable ms,Domain  dm)
+            : base(cx.GetUid(), ms.mem + (_NextStmt, ms.defpos)
+                  +(_Domain,((MatchStatement)ms).domain))
+        { }
+        protected QlMatchValue(long dp, BTree<long, object> m)
+            : base(dp, m) { }
+        internal override TypedValue _Eval(Context cx)
+        {
+            if (cx.obs[match] is not MatchStatement ms) return TNull.Value;
+            cx = ms._Obey(cx); // NB the result is available in cx.result in all cases (e.g. CONTENT)
+            var rs = cx.result as RowSet;
+            var vl = cx.val;
+            switch(domain.kind)
+            {
+                case Qlx.DOCARRAY: return new TDocArray(cx,rs ?? TrueRowSet.OK(cx));
+                case Qlx.NO:
+                case Qlx.LIST:
+                    {
+                        var rl = BList<TypedValue>.Empty;
+                        for (var b = rs?.First(cx); b != null; b = b.Next(cx))
+                            rl += b;
+                        return new TList(domain, rl);
+                    }
+                case Qlx.ROW: return (TypedValue?)rs?.First(cx) ?? TNull.Value;
+                default: return (domain.Length>0)?rs?.First(cx)?[0] ?? TNull.Value:TNull.Value;
+            }
+        }
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
+        {
+            var nm = cx.Fix(match);
+            if (nm != match)
+                m += (_NextStmt, nm);
+            return base._Fix(cx, m);
+        }
+        internal override DBObject Relocate(long dp, Context cx)
+        {
+            return new QlMatchValue(dp, _Fix(cx,mem));
+        }
+        public override string ToString()
+        {
+            return base.ToString() + " Match "+Uid(match);
         }
     }
     /// <summary>
@@ -5326,7 +5375,7 @@ namespace Pyrrho.Level3
         {
             return new SqlValueSelect(defpos,m);
         }
-        internal override RowSet RowSetFor(long dp, Context cx, BList<long?> us,
+        internal override RowSet RowSetFor(long dp, Context cx, CList<long> us,
             CTree<long,Domain> re)
         {
             if (cx.obs[expr] is not RowSet r)
@@ -5641,7 +5690,7 @@ namespace Pyrrho.Level3
     internal abstract class SqlCall : QlValue
     {
         internal const long
-            Parms = -133, // BList<long?> QlValue
+            Parms = -133, // CList<long> QlValue
             ProcDefPos = -134, // long Procedure
             Var = -135; // long QlValue
         /// <summary>
@@ -5655,14 +5704,14 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The tree of actual parameters
         /// </summary>
-		public BList<long?> parms => (BList<long?>)(mem[Parms] ?? BList<long?>.Empty);
-        public SqlCall(long lp, Context cx, Procedure pr, BList<long?> acts, long tg=-1L)
+		public CList<long> parms => (CList<long>)(mem[Parms] ?? CList<long>.Empty);
+        public SqlCall(long lp, Context cx, Procedure pr, CList<long> acts, long tg=-1L)
         : base(lp, _Mem(lp,cx,pr) + (Parms, acts) + (ProcDefPos,pr.defpos) 
               + (Var,tg)+(_Domain,pr.domain))
         {
             cx.Add(this);
         }
-        internal SqlCall(long dp, string pn, BList<long?> acts, long tg)
+        internal SqlCall(long dp, string pn, CList<long> acts, long tg)
 : base(dp, BTree<long,object>.Empty + (Parms, acts) + (ObInfo.Name, pn) + (Var, tg))
         { }
         protected SqlCall(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -5706,7 +5755,7 @@ namespace Pyrrho.Level3
                     m += (_Depth, cx._DepthTVX((CTree<long,bool>)o, s.depth));
                     break;
                 case Parms:
-                    m += (_Depth, cx._DepthBV((BList<long?>)o, s.depth));
+                    m += (_Depth, cx._DepthBV((CList<long>)o, s.depth));
                     break;
                 case ProcDefPos:
                 case Var:
@@ -5809,7 +5858,7 @@ namespace Pyrrho.Level3
                 if (a.defpos != var)
                     r += (cx, Var, a.defpos);
             }
-            var vs = BList<long?>.Empty;
+            var vs = CList<long>.Empty;
             for (var b = parms.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v)
                     vs += v.AddFrom(cx, q).defpos;
@@ -5833,7 +5882,7 @@ namespace Pyrrho.Level3
                 return true;
             return procdefpos == defpos || Calls(parms, defpos, cx);
         }
-        internal static bool Calls(BList<long?> ss, long defpos, Context cx)
+        internal static bool Calls(CList<long> ss, long defpos, Context cx)
         {
             for (var b = ss?.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p]?.Calls(defpos, cx) == true)
@@ -5868,11 +5917,11 @@ namespace Pyrrho.Level3
     internal class SqlProcedureCall : SqlCall
     {
         public SqlProcedureCall(long dp, Context cx, Procedure pr, 
-            BList<long?> acts) : base(dp, cx, pr,acts,-1L) 
+            CList<long> acts) : base(dp, cx, pr,acts,-1L) 
         {
             cx.Add(this);
         }
-        public SqlProcedureCall(long dp, Context cx, string pn, BList<long?> acts, QlValue tg)
+        public SqlProcedureCall(long dp, Context cx, string pn, CList<long> acts, QlValue tg)
     : base(dp, pn, acts, tg.defpos)
         {
             cx.Add(this);
@@ -5906,7 +5955,7 @@ namespace Pyrrho.Level3
                     m += (_Depth, cx._DepthTVX((CTree<long, bool>)o, s.depth));
                     break;
                 case Parms:
-                    m += (_Depth, cx._DepthBV((BList<long?>)o, s.depth));
+                    m += (_Depth, cx._DepthBV((CList<long>)o, s.depth));
                     break;
                 case ProcDefPos:
                 case Var:
@@ -5946,8 +5995,8 @@ namespace Pyrrho.Level3
             }
             if (proc == null)
                 throw new PEException("PE47167");
-            proc.Exec(cx, parms);
-            var r = cx.val ?? domain.defaultValue;
+            var ac = proc.Exec(cx, parms);
+            var r = ac.val ?? domain.defaultValue;
             cx.values += (defpos, r);
             return r;
         }
@@ -5996,11 +6045,11 @@ namespace Pyrrho.Level3
         /// Target will be null for a constructor call
         /// </summary>
         public SqlMethodCall(long dp, Context cx, Procedure pr,
-            BList<long?> acts, QlValue? tg) : base(dp,cx, pr, acts, tg?.defpos??-1L)
+            CList<long> acts, QlValue? tg) : base(dp,cx, pr, acts, tg?.defpos??-1L)
         {
             cx.Add(this);
         }
-        public SqlMethodCall(long dp, Context cx, string pn,BList<long?> acts, QlValue tg) 
+        public SqlMethodCall(long dp, Context cx, string pn,CList<long> acts, QlValue tg) 
             : base(dp, pn, acts, tg.defpos)
         {
             cx.Add(this);
@@ -6034,7 +6083,7 @@ namespace Pyrrho.Level3
                     m += (_Depth, cx._DepthTVX((CTree<long, bool>)o, s.depth));
                     break;
                 case Parms:
-                    m += (_Depth, cx._DepthBV((BList<long?>)o, s.depth));
+                    m += (_Depth, cx._DepthBV((CList<long>)o, s.depth));
                     break;
                 case ProcDefPos:
                 case Var:
@@ -6147,12 +6196,12 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class SqlConstructor : SqlCall
     {
-        public SqlConstructor(long dp, Context cx, Procedure pr, BList<long?> args)
+        public SqlConstructor(long dp, Context cx, Procedure pr, CList<long> args)
             : base(dp, cx, pr, args)
         {
             cx.Add(this);
         }
-        internal SqlConstructor(long dp, Context cx, Domain ut, BList<long?> args)
+        internal SqlConstructor(long dp, Context cx, Domain ut, CList<long> args)
             :base(dp, BTree<long, object>.Empty + (Parms, args) + (ObInfo.Name, ut.name) + (_Domain, ut))
         { }
         protected SqlConstructor(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -6240,13 +6289,13 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="u">the type</param>
         /// <param name="lk">the actual parameters</param>
-        public SqlDefaultConstructor(long dp, Context cx, Domain u, BList<long?> ins)
+        public SqlDefaultConstructor(long dp, Context cx, Domain u, CList<long> ins)
             : base(dp, _Mem(cx.GetUid(),cx,(UDType)u,ins))
         {
             cx.Add(this);
         }
         protected SqlDefaultConstructor(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long, object> _Mem(long ap, Context cx, UDType u, BList<long?> ps)
+        static BTree<long, object> _Mem(long ap, Context cx, UDType u, CList<long> ps)
         {
             var rb = u.representation.First();
             for (var b = ps.First(); b != null && rb != null; b = b.Next(), rb = rb.Next())
@@ -6984,7 +7033,7 @@ namespace Pyrrho.Level3
             }
             else if (aggregates(op))
             {
-                var og = cx.obs[from] as RowSet ?? cx.obs[cx.result] as RowSet?? throw new PEException("PE29005");
+                var og = cx.obs[from] as RowSet ?? cx.result as RowSet?? throw new PEException("PE29005");
                 var gc = og.groupCols;
                 var key = (gc == null || gc == Domain.Null) ? TRow.Empty : new TRow(gc, cx.values);
                 fc = cx.funcs[from]?[key]?[defpos] ?? StartCounter(cx, key);
@@ -7384,6 +7433,8 @@ namespace Pyrrho.Level3
                     return TNull.Value;
                 case Qlx.POSITION:
                     {
+                        if (cx.values[val] is TNode n)
+                            return new TInt(n.tableRow.defpos);
                         if (op1 != -1L && op2 != -1L)
                         {
                             string t = cx.obs[op1]?.Eval(cx)?.ToString() ?? "";
@@ -7596,10 +7647,10 @@ namespace Pyrrho.Level3
                         var vcx = new Context(cx);
                         if (vl is not null)
                         {
-                            vcx.result = vl.defpos;
+                            vcx.result = cx.obs[vl.defpos] as RowSet;
                             return new TRvv("");
                         }
-                        vcx.result = from;
+                        vcx.result = cx.obs[from] as RowSet;
                         var p = -1L;
                         for (var b = (cx.cursors[from] as Cursor)?.Rec()?.First(); 
                             b is not null; b = b.Next())
@@ -8131,7 +8182,7 @@ namespace Pyrrho.Level3
             return r;
         }
         // tailor REST call to remote DBMS
-        internal override string ToString(string sg, Remotes rf, BList<long?> cs,
+        internal override string ToString(string sg, Remotes rf, CList<long> cs,
             CTree<long, string> ns, Context cx)
         {
             if (op == Qlx.COUNT && mod == Qlx.TIMES)
@@ -8589,7 +8640,7 @@ namespace Pyrrho.Level3
             Low = -352, // long QlValue
             Op = -353, // Qlx
             _Select = -354, //long RowSet
-            Vals = -355; //BList<long?> QlValue
+            Vals = -355; //CList<long> QlValue
         public long what => (long)(mem[WhileStatement.What]??-1L);
         /// <summary>
         /// The comparison operator: LSS etc
@@ -9646,7 +9697,7 @@ cx.obs[high] is not QlValue hi)
         /// <summary>
         /// The tree of values option
         /// </summary>
-        public BList<long?> vals => (BList<long?>)(mem[QuantifiedPredicate.Vals]??BList<long?>.Empty);
+        public CList<long> vals => (CList<long>)(mem[QuantifiedPredicate.Vals]??CList<long>.Empty);
         public long val => (long)(mem[SqlFunction._Val] ?? -1L);
         public InPredicate(long dp,Context cx, QlValue w, BList<QlValue>? vs = null) 
             : base(dp, _Mem(cx,w,vs))
@@ -9658,7 +9709,7 @@ cx.obs[high] is not QlValue hi)
         {
             var m = BTree<long, object>.Empty;
             var dm = Domain.Bool;
-            var cs = BList<long?>.Empty;
+            var cs = CList<long>.Empty;
             var ag = w.IsAggregation(cx,CTree<long,bool>.Empty);
             m += (WhileStatement.What, w.defpos);
             if (ag!=CTree<long,bool>.Empty)
@@ -9763,7 +9814,7 @@ cx.obs[high] is not QlValue hi)
             switch (dp)
             {
                 case QuantifiedPredicate.Vals:
-                    m += (_Depth,cx._DepthBV((BList<long?>)ob, et.depth));
+                    m += (_Depth,cx._DepthBV((CList<long>)ob, et.depth));
                     break;
                 default:
                     {
@@ -10005,7 +10056,7 @@ cx.obs[high] is not QlValue hi)
             sb.Append(" in ");
             if (val >= 0)
                 sb.Append(Uid(val));
-            else if (vals != BList<long?>.Empty)
+            else if (vals != CList<long>.Empty)
             {
                 var cm = "(";
                 for (var b = vals.First(); b != null; b = b.Next())
@@ -11519,7 +11570,7 @@ cx.obs[high] is not QlValue hi)
                 var vp = cx.GetUid();
                 var ts = new TableRowSet(cx.GetUid(), cx, nt.defpos, ap);
                 var lo = BList<DBObject>.Empty;
-                var iC = BList<long?>.Empty;
+                var iC = CList<long>.Empty;
                 var tb = ts.First();
                 for (var bb = ts.rowType.First(); bb != null && tb != null; bb = bb.Next(), tb = tb.Next())
                     if (bb.value() is long bq && cx.NameFor(bq) is string n9
@@ -11531,7 +11582,7 @@ cx.obs[high] is not QlValue hi)
                 // ll generally has fewer columns than nt
                 // carefully construct what would happen with ordinary SQL INSERT VALUES
                 // we want dm to be constructed as having a subset of fm's columns using fm's iSMap
-                var dr = BList<long?>.Empty;
+                var dr = CList<long>.Empty;
                 var ds = CTree<long, Domain>.Empty;
                 for (var b = lo.First(); b != null; b = b.Next())
                     if (b.value() is QlValue sv && sv.defpos > 0)
@@ -11546,7 +11597,7 @@ cx.obs[high] is not QlValue hi)
                 var rn = new SqlRow(cx.GetUid(), cx, dm, dm.rowType);
                 cx.Add(rn);
                 QlValue n = rn;
-                n = new SqlRowArray(vp, cx, dm, new BList<long?>(n.defpos));
+                n = new SqlRowArray(vp, cx, dm, new CList<long>(n.defpos));
                 var sce = n.RowSetFor(vp, cx, fm.rowType, fm.representation)
                     + (cx, RowSet.RSTargets, fm.rsTargets)
                     + (RowSet.Asserts, RowSet.Assertions.AssignTarget);
@@ -11556,7 +11607,7 @@ cx.obs[high] is not QlValue hi)
                 // NB: The TargetCursor/trigger machinery will place values in cx.values in the !0.. range
                 // From the point of view of graph operations these are spurious, and should not be accessed
                 // The only exception is to retrieve the value of tn
-                s._Obey(cx);
+                s._Obey(cx); // ??
                 if (nd.name != null)
                     cx.Add(nd.name, nd);
                 tn = cx.values[np] as TNode ?? throw new DBException("42105").Add(Qlx.INSERT_STATEMENT);
@@ -11749,7 +11800,7 @@ cx.obs[high] is not QlValue hi)
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = (NullPredicate)base._Replace(cx, so, sv);
+            var r = (QlValue)base._Replace(cx, so, sv);
             var vl = cx.ObReplace(refersTo, so, sv);
             if (vl !=refersTo)
                 r += (cx, RefersTo, vl);
@@ -11766,7 +11817,7 @@ cx.obs[high] is not QlValue hi)
             }
             return r;
         }
-        internal override string ToString(string sg, Remotes rf, BList<long?> cs, CTree<long, string> ns, Context cx)
+        internal override string ToString(string sg, Remotes rf, CList<long> cs, CTree<long, string> ns, Context cx)
         {
             var sb = new StringBuilder(GetType().Name);
             sb.Append(' '); sb.Append(Uid(refersTo)); 
@@ -12158,13 +12209,13 @@ cx.obs[high] is not QlValue hi)
                     {
                         var li = new ObInfo(nl, Grant.AllPrivileges);
                         var ln = Names.Empty;
-                        var lt = BList<long?>.Empty;
+                        var lt = CList<long>.Empty;
                         var ls = CTree<long, Domain>.Empty;
                         var ri = rg.infos[cx.role.defpos] ?? throw new DBException("42105");
                         for (var b = ri.names.First(); b != null; b = b.Next())
                         {
                             var k = b.key();
-                            var rc = cx.db.objects[b.value()??-1L] as TableColumn ?? throw new DBException("42105");
+                            var rc = cx.db.objects[b.value()] as TableColumn ?? throw new DBException("42105");
                             lt += rc.defpos;
                             ls += (rc.defpos, rc.domain);
                             ln += (b.key(),rc.defpos);
@@ -12189,7 +12240,7 @@ cx.obs[high] is not QlValue hi)
                     // This means reparenting them.
                     var ri = new ObInfo(nr, Grant.AllPrivileges);
                     var rn = Names.Empty;
-                    var rt = BList<long?>.Empty;
+                    var rt = CList<long>.Empty;
                     var rs = CTree<long, Domain>.Empty;
                     var li = lf?.infos[cx.role.defpos] ?? throw new DBException("42105");
                     var ln = li.names;
@@ -12197,7 +12248,7 @@ cx.obs[high] is not QlValue hi)
                     for (var b = li.names.First(); b != null; b = b.Next())
                     {
                         var k = b.key();
-                        var lc = cx.db.objects[b.value()??-1L] as TableColumn ?? throw new DBException("42105");
+                        var lc = cx.db.objects[b.value()] as TableColumn ?? throw new DBException("42105");
                         if (lc.flags == PColumn.GraphFlags.None)
                             continue;
                         cx.db += lc + (TableColumn._Table, np);
@@ -12259,18 +12310,18 @@ cx.obs[high] is not QlValue hi)
     {
         internal const long
             MatchQuantifier = -484, // (int,int)
-            Pattern = -485, // BList<long?>
+            Pattern = -485, // CList<long>
             StartState = -238; // CTree<long,TGParam>
-        internal BList<long?> pattern => (BList<long?>)(mem[Pattern]??BList<long?>.Empty);
+        internal CList<long> pattern => (CList<long>)(mem[Pattern]??CList<long>.Empty);
         internal (int, int) quantifier => ((int, int))(mem[MatchQuantifier]??(1, 1));
         internal Qlx inclusionMode => (Qlx)(mem[GqlMatchAlt.InclusionMode] ?? Qlx.ANY); // SHORTEST/LONGEST
-        public GqlPath(long lp,Context cx, BList<long?> p, (int, int) lh, long i, long a)
+        public GqlPath(long lp,Context cx, CList<long> p, (int, int) lh, long i, long a)
             : base(lp,_Mem(cx,p)+(Pattern,p)+(MatchQuantifier, lh)
                   +(LeavingValue,i)+(ArrivingValue,a)+(GqlMatchAlt.InclusionMode,cx.inclusionMode))
         { }
         protected GqlPath(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long, object> _Mem(Context cx, BList<long?> p)
+        static BTree<long, object> _Mem(Context cx, CList<long> p)
         {
             var r = BTree<long, object>.Empty;
             var b = p.First();
@@ -12296,7 +12347,7 @@ cx.obs[high] is not QlValue hi)
         {
             var m = 0;
             for (var b = pattern.First(); b != null; b = b.Next())
-                if (cx.obs[b.value()??-1L] is GqlNode p)
+                if (cx.obs[b.value()] is GqlNode p)
                     m += p.MinLength(cx);
             return quantifier.Item1 * m;
         }
@@ -12306,7 +12357,7 @@ cx.obs[high] is not QlValue hi)
             tgs += state;
             GqlEdge? last = null;
             for (var b = pattern.Last(); b != null && last is null; b = b.Next())
-                last = cx.obs[b.value() ?? -1L] as GqlEdge;
+                last = cx.obs[b.value()] as GqlEdge;
             if (an?.state[an.defpos] is TGParam lg)
                 if (direction == Qlx.ARROWBASE)
                 {
@@ -12330,7 +12381,7 @@ cx.obs[high] is not QlValue hi)
             sb.Append('[');
             for (var b=pattern.First();b!=null;b=b.Next())
             {
-                sb.Append(cm); cm = ","; sb.Append(Uid(b.value()??-1L));
+                sb.Append(cm); cm = ","; sb.Append(Uid(b.value()));
             }
             sb.Append(']');
             var (l, h) = quantifier;
@@ -12341,9 +12392,9 @@ cx.obs[high] is not QlValue hi)
     class GqlMatch : QlValue
     {
         internal const long
-            MatchAlts = -486; // BList<long?> GqlMatchAlt
-        internal BList<long?> matchAlts => (BList<long?>)(mem[MatchAlts] ?? BList<long?>.Empty);
-        public GqlMatch(Context cx, BList<long?>ms) 
+            MatchAlts = -486; // CList<long> GqlMatchAlt
+        internal CList<long> matchAlts => (CList<long>)(mem[MatchAlts] ?? CList<long>.Empty);
+        public GqlMatch(Context cx, CList<long>ms) 
             : this(cx.GetUid(),new BTree<long,object>(MatchAlts,ms))
         {
         }
@@ -12369,7 +12420,7 @@ cx.obs[high] is not QlValue hi)
             for (var b = matchAlts.First(); b != null; b = b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(Uid(b.value() ?? -1L));
+                sb.Append(Uid(b.value()));
             }
             if (cm == ",") sb.Append(']');
             return sb.ToString();
@@ -12378,15 +12429,15 @@ cx.obs[high] is not QlValue hi)
     class GqlMatchAlt : QlValue
     {
         internal const long
-            MatchExps = -487, // BList<long?> GqlNode
+            MatchExps = -487, // CList<long> GqlNode
             InclusionMode = -497, // Qlx
             MatchMode = -483, // Qlx
             PathId = -488;  // long
         internal Qlx mode => (Qlx)(mem[MatchMode] ?? Qlx.NONE);
         internal Qlx inclusion => (Qlx)(mem[InclusionMode] ?? Qlx.NONE);
         internal long pathId => (long)(mem[PathId] ?? -1L);
-        internal BList<long?> matchExps => (BList<long?>)(mem[MatchExps] ?? BList<long?>.Empty);
-        public GqlMatchAlt(long dp,Context cx, Qlx m, Qlx sh, BList<long?> p, long pp)
+        internal CList<long> matchExps => (CList<long>)(mem[MatchExps] ?? CList<long>.Empty);
+        public GqlMatchAlt(long dp,Context cx, Qlx m, Qlx sh, CList<long> p, long pp)
             : base(dp, new BTree<long, object>(MatchMode, m) + (MatchExps, p) + (PathId,pp)
                   + (InclusionMode,sh))
         {
@@ -12394,7 +12445,7 @@ cx.obs[high] is not QlValue hi)
             var hasPath = false;
             for (var b = p.First(); b != null; b = b.Next())
             {
-                if (cx.obs[b.value() ?? -1L] is GqlNode sn)
+                if (cx.obs[b.value()] is GqlNode sn)
                 {
                     min += sn.MinLength(cx);
                     if (sn is GqlPath sp)
@@ -12426,9 +12477,9 @@ cx.obs[high] is not QlValue hi)
         {
             var r = (GqlMatchAlt)base._Replace(cx, was, now);
             var ch = false;
-            var ls = BList<long?>.Empty;
+            var ls = CList<long>.Empty;
             for (var b = matchExps.First(); b != null; b = b.Next())
-                if (cx.obs[b.value() ?? -1L] is GqlNode sa)
+                if (cx.obs[b.value()] is GqlNode sa)
                 {
                     var a = sa.Replace(cx, was, now);
                     if (a != sa)
@@ -12456,7 +12507,7 @@ cx.obs[high] is not QlValue hi)
             for (var b=matchExps.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(Uid(b.value()??-1L));
+                sb.Append(Uid(b.value()));
             }
             if (cm == ",") sb.Append(']');
             return sb.ToString();

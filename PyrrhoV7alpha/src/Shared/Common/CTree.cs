@@ -443,6 +443,21 @@ namespace Pyrrho.Common
                 r += x.value();
             return r;
         }
+        public new static CList<V> FromArray(params V[] vs)
+        {
+            var r = Empty;
+            foreach (var v in vs)
+                r += v;
+            return r;
+        }
+        public CList<V> Append(CList<V> vs)
+        {
+            var n = Length;
+            var r = this;
+            for (var b = vs.First(); b != null; b = b.Next())
+                r = new(r, b.value());
+            return r;
+        }
         public int CompareTo(object? obj)
         {
             if (obj == null)

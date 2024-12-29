@@ -52,9 +52,10 @@ namespace Pyrrho.Level4
         public BTree<long, TRow> cursors = BTree<long, TRow>.Empty;
         internal CTree<long, bool> restRowSets = CTree<long, bool>.Empty;
         public long nextHeap = -1L, parseStart = -1L;
-        internal long result = -1L,lastret = -1L; // usually an ExplicitRowSet (binding table)
+        internal Domain? result = null,lastret = null;
         internal CTree<long, TypedValue> values = CTree<long, TypedValue>.Empty;
         public TypedValue val = TNull.Value;
+        public Domain valueType => result ?? val?.dataType ?? Domain.Null;
         internal Database db = Database.Empty;
         internal Connection conn;
         internal string? url = null;
@@ -100,7 +101,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Used for prepared statements
         /// </summary>
-        internal BList<long?> qParams = BList<long?>.Empty;
+        internal CList<long> qParams = CList<long>.Empty;
         /// <summary>
         /// The current or latest statement
         /// </summary>
@@ -185,7 +186,8 @@ namespace Pyrrho.Level4
         }
         internal (DBObject?,Ident?) Lookup(Ident n)
         {
-            if (_Ob(names[n.ToString()]) is DBObject ob)
+            var p = names[n.ToString()];
+            if (p!=0L && _Ob(p) is DBObject ob)
                 return (ob, null);
             var (o, s) = Lookup(names, n);
             if (o is null && defs[Lookup(n.ident)?.defpos ?? -1L] is Names f && n.sub is not null)
@@ -210,13 +212,19 @@ namespace Pyrrho.Level4
         }
         internal (DBObject?, Ident?) Lookup(Names t, Ident n,long f=-1L)
         {
-            if (_Ob(t[n.ident]) is DBObject ob)
+            var p = t[n.ident];
+            if (p!=0L && _Ob(p) is DBObject ob)
             {
                 var ns = defs[ob.defpos]??ob.names;
-                if (ob is GqlNode g && n.sub?.ToString() is string nm
+                if (ob is GqlNode g)
+                {
+                    if (n.sub?.ToString() is string nm
                     && g.domain is Domain gd && gd.names[nm] is long np
                     && gd.representation[np] is Domain dt)
-                    return (Add(new SqlField(n.uid, nm, -1, g.defpos,dt,g.defpos)),null);
+                        return (Add(new SqlField(n.uid, nm, -1, g.defpos, dt, g.defpos)), null);
+                    if (n.sub?.ident == "POSITION")
+                        return (Add(new SqlFunction(n.uid, this, Qlx.POSITION, g, null, null, Qlx.NO)), null);
+                }
                 if (ob is QlValue || ob is RowSet || ob is Procedure)
                 { 
                     if (ns != Names.Empty && n.sub is Ident os)
@@ -241,7 +249,7 @@ namespace Pyrrho.Level4
             var r = Names.Empty;
             for (var b = ns.First(); b != null; b = b.Next())
             {
-                var p = b.value()??-1L;
+                var p = b.value();
                 if (done[p] is DBObject nb)
                     r += (b.key(), nb.defpos);
                 else
@@ -337,10 +345,10 @@ namespace Pyrrho.Level4
         {
             return new Iix(l, this, d);
         } */
-        internal CTree<long, bool> Needs(CTree<long, bool> nd, BList<long?> rt)
+        internal CTree<long, bool> Needs(CTree<long, bool> nd, CList<long> rt)
         {
             for (var b = rt?.First(); b != null; b = b.Next())
-                nd += obs[b.value() ?? -1L]?.Needs(this) ?? CTree<long, bool>.Empty;
+                nd += obs[b.value()]?.Needs(this) ?? CTree<long, bool>.Empty;
             return nd;
         }
         /// <summary>
@@ -382,7 +390,7 @@ namespace Pyrrho.Level4
             var d = Convert.ToBase64String(Encoding.UTF8.GetBytes(cr));
             rq.Headers.Add("UseDefaultCredentials", "false");
             rq.Headers.Add("Authorization", "Basic " + d);
-            rq.Headers.Add("If-Match", "\"" + etag + "\"");
+            rq.Headers.Add("If-Match", etag);
             var rs = PyrrhoStart.htc.Send(rq);
             if (rs.StatusCode == HttpStatusCode.OK)
             {
@@ -475,10 +483,16 @@ namespace Pyrrho.Level4
                 return d;
             return (obs[q] is DBObject ob) ? Math.Max(ob.depth + 1, d) : d;
         }
-        internal int _DepthBV(BList<long?>? t, int d)
+        internal int _DepthBV(CList<long>? t, int d)
         {
             for (var b = t?.First(); b != null; b = b.Next())
                 d = _DepthV(b.value(), d);
+            return d;
+        }
+        internal int _DepthBBV(CList<CList<long>>?t, int d)
+        {
+            for (var b = t?.First(); b != null; b = b.Next())
+                d = _DepthBV(b.value(), d);
             return d;
         }
         internal int _DepthTUb(CTree<UpdateAssignment, bool>? t, int d)
@@ -722,7 +736,7 @@ namespace Pyrrho.Level4
                 defs = ldefs;
             lexical = oldlx;
         } */
-        internal BTree<long, QlValue> Map(BList<long?> s)
+        internal BTree<long, QlValue> Map(CList<long> s)
         {
             var r = BTree<long, QlValue>.Empty;
             for (var b = s.First(); b != null; b = b.Next())
@@ -730,7 +744,7 @@ namespace Pyrrho.Level4
                     r += (p, sp);
             return r;
         }
-        internal static bool HasItem(BList<long?> rt, long p)
+        internal static bool HasItem(CList<long> rt, long p)
         {
             for (var b = rt.First(); b != null; b = b.Next())
                 if (b.value() == p)
@@ -869,11 +883,11 @@ namespace Pyrrho.Level4
       //          cx.Add(tb + (Table.TableCols, rs));
             return cx;
         }
-        internal static bool Match(BList<long?> a, BList<long?> b)
+        internal static bool Match(CList<long> a, CList<long> b)
         {
             return Compare(a, b)==0;
         }
-        internal static int Compare(BList<long?> a, BList<long?> b)
+        internal static int Compare(CList<long> a, CList<long> b)
         {
             var c = a.Count.CompareTo(b.Count);
             if (c!=0)
@@ -1014,19 +1028,19 @@ namespace Pyrrho.Level4
                 {
                     HandlerStatement.Action => Math.Max(((HandlerStatement)o).depth, d),
                     Domain.Aggs => _DepthTVX((CTree<long, bool>)o, d),
-                    SqlValueArray._Array => _DepthBV((BList<long?>)o, d),
+                    SqlValueArray._Array => _DepthBV((CList<long>)o, d),
                     RowSet.Assig => _DepthTUb((CTree<UpdateAssignment, bool>)o, d),
-                    SqlCall.Parms => _DepthBV((BList<long?>)o, d),
+                    SqlCall.Parms => _DepthBV((CList<long>)o, d),
                     SqlCaseSimple.Cases => _DepthBPVV((BList<(long, long)>)o, d),
                     Domain.DefaultRowValues => _DepthTVX((CTree<long, TypedValue>)o, d),
-                    IfThenElse.Else => _DepthBV((BList<long?>)o, d),
-                    IfThenElse.Elsif => _DepthBV((BList<long?>)o, d),
+                    ConditionalStatement.Else => _DepthBV((CList<long>)o, d),
+                    ConditionalStatement.Elsif => _DepthBV((CList<long>)o, d),
                     ExplicitRowSet.ExplRows => _DepthBPVX((BList<(long, TRow)>)o, d),
                     RowSet.Filter => _DepthTVX((CTree<long, TypedValue>)o, d),
                     SqlFunction.Filter => _DepthTVX((CTree<long, bool>)o, d),
                     TransitionRowSet.ForeignKeys => _DepthTVX((CTree<long, bool>)o, d),
                     TableColumn.Generated => _DepthG((GenerationRule)o, d),
-                    RowSet.Groupings => _DepthBV((BList<long?>)o, d),
+                    RowSet.Groupings => _DepthBV((CList<long>)o, d),
                     RowSet.GroupIds => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.Having => _DepthTVX((CTree<long, bool>)o, d),
                     Table.Indexes => _DepthTDTVb((CTree<Domain, CTree<long, bool>>)o, d),
@@ -1034,7 +1048,7 @@ namespace Pyrrho.Level4
                     JoinRowSet.JoinCond => _DepthTVX((CTree<long, bool>)o, d),
                     JoinRowSet.JoinUsing => _DepthTVV((BTree<long, long?>)o, d),
                     GetDiagnostics.List => _DepthTVX((CTree<long, Qlx>)o, d),
-                    MultipleAssignment.List => _DepthBV((BList<long?>)o, d),
+                    MultipleAssignment.List => _DepthBV((CList<long>)o, d),
                     RowSet._Matches => _DepthTVX((CTree<long, TypedValue>)o, d),
                     RowSet.Matching => _DepthTVTVb((CTree<long, CTree<long, bool>>)o, d),
                     Grouping.Members => _DepthTVX((CTree<long, int>)o, d),
@@ -1042,37 +1056,37 @@ namespace Pyrrho.Level4
                     RestView.NamesMap => _DepthTVX((CTree<long, string>)o, d),
                     Domain.NodeTypes => _DepthTDb((CTree<Domain, bool>)o, d),
                     JoinRowSet.OnCond => _DepthTVV((BTree<long, long?>)o, d),
-                    FetchStatement.Outs => _DepthBV((BList<long?>)o, d),
-                    PreparedStatement.QMarks => _DepthBV((BList<long?>)o, d),
+                    FetchStatement.Outs => _DepthBV((CList<long>)o, d),
+                    PreparedStatement.QMarks => _DepthBV((CList<long>)o, d),
                     SelectRowSet.RdCols => _DepthTVX((CTree<long, bool>)o, d),
                     RowSet.Referenced => _DepthTVX((CTree<long, bool>)o, d),
                     Level3.Index.References => _DepthTVBt((BTree<long, BList<TypedValue>>)o, d),
                     Domain.Representation => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.RestRowSetSources => _DepthTVX((CTree<long, bool>)o, d),
-                    Domain.RowType => _DepthBV((BList<long?>)o, d),
+                    Domain.RowType => _DepthBV((CList<long>)o, d),
                     SignalStatement.SetList => _DepthTXV((BTree<Qlx, long?>)o, d),
-                    GroupSpecification.Sets => _DepthBV((BList<long?>)o, d),
+                    GroupSpecification.Sets => _DepthBV((CList<long>)o, d),
                     RowSet.SIMap => _DepthTXV((BTree<long, long?>)o, d),
-                    SqlRowSet.SqlRows => _DepthBV((BList<long?>)o, d),
-                    InstanceRowSet.SRowType => _DepthBV((BList<long?>)o, d),
+                    SqlRowSet.SqlRows => _DepthBV((CList<long>)o, d),
+                    InstanceRowSet.SRowType => _DepthBV((CList<long>)o, d),
                     RowSet.Stem => _DepthTVX((CTree<long, bool>)o, d),
-                    CompoundStatement.Stms => _DepthBV((BList<long?>)o, d),
+                    NestedStatement.Stms => _DepthBV((CList<long>)o, d),
                     ForwardReference.Subs => _DepthTVX((CTree<long, bool>)o, d),
-                    IfThenElse.Then => _DepthBV((BList<long?>)o, d),
+                    ConditionalStatement.Then => _DepthBV((CList<long>)o, d),
                     Domain.UnionOf => _DepthTDb((CTree<Domain, bool>)o, d),
-                    RestRowSetUsing.UsingCols => _DepthBV((BList<long?>)o, d),
+                    RestRowSetUsing.UsingCols => _DepthBV((CList<long>)o, d),
                     RowSet.UsingOperands => _DepthTVV((BTree<long, long?>)o, d),
                     AssignmentStatement.Val => Math.Max(((AssignmentStatement)o).depth, d),
                     AssignmentStatement.Vbl => Math.Max(((AssignmentStatement)o).depth, d),
-                    WhileStatement.What => _DepthBV((BList<long?>)o, d),
-                    SimpleCaseStatement.Whens => _DepthBV((BList<long?>)o, d),
+                    WhileStatement.What => _DepthBV((CList<long>)o, d),
+                    SimpleCaseStatement.Whens => _DepthBV((CList<long>)o, d),
                     RowSet._Where => _DepthTVX((CTree<long, bool>)o, d),
                     RowSet.Windows => _DepthTVX((CTree<long, bool>)o, d),
-                    QuantifiedPredicate.Vals => _DepthBV((BList<long?>)o, d),
-                    MatchStatement.MatchList => _DepthBV((BList<long?>)o, d),
+                    QuantifiedPredicate.Vals => _DepthBV((CList<long>)o, d),
+                    MatchStatement.MatchList => _DepthBV((CList<long>)o, d),
                     MatchStatement.Truncating => _DepthTlPiD((BTree<long, (int, Domain)>)o, d),
-                    GqlMatch.MatchAlts => _DepthBV((BList<long?>)o, d),
-                    GqlMatchAlt.MatchExps => _DepthBV((BList<long?>)o, d),
+                    GqlMatch.MatchAlts => _DepthBV((CList<long>)o, d),
+                    GqlMatchAlt.MatchExps => _DepthBV((CList<long>)o, d),
                     _ => Math.Max(d, 1)
                 };
             return d;
@@ -1262,14 +1276,27 @@ namespace Pyrrho.Level4
                 }
             return ch ? r : xs;
         }
-        internal BList<long?> ReplacedLl(BList<long?> ks)
+        internal CList<long> ReplacedLl(CList<long> ks)
         {
-            var r = BList<long?>.Empty;
+            var r = CList<long>.Empty;
             var ch = false;
             for (var b = ks.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
                     var np = done[p]?.defpos ?? p;
+                    ch = ch || p != np;
+                    r += np;
+                }
+            return ch ? r : ks;
+        }
+        internal CList<CList<long>> ReplacedLLl(CList<CList<long>> ks)
+        {
+            var r = CList<CList<long>>.Empty;
+            var ch = false;
+            for (var b = ks.First(); b != null; b = b.Next())
+                if (b.value() is CList<long> p)
+                {
+                    var np = ReplacedLl(p);
                     ch = ch || p != np;
                     r += np;
                 }
@@ -1453,7 +1480,7 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b = wh.First(); b != null; b = b.Next())
             {
-                var p = b.value()??-1L;
+                var p = b.value();
                 var k = b.key();
                 var nb = done[p];
                 var nk = nb?.alias ?? k;
@@ -1554,9 +1581,9 @@ namespace Pyrrho.Level4
                 }
             return ag;
         }
-        internal static BList<long?> ShallowReplace(BList<long?> rt, long was, long now)
+        internal static CList<long> ShallowReplace(CList<long> rt, long was, long now)
         {
-            var r = BList<long?>.Empty;
+            var r = CList<long>.Empty;
             var ch = false;
             for (var b = rt.First(); b != null; b = b.Next())
                 if (b.value() == was)
@@ -1647,7 +1674,7 @@ namespace Pyrrho.Level4
                         case HandlerStatement.Action: v = Replaced((long)v); break;
                         case Level3.Index.Adapter: v = Replaced((long)v); break;
                         case Domain.Aggs: v = ReplacedTlb((CTree<long, bool>)v); break;
-                        case SqlValueArray._Array: v = ReplacedLl((BList<long?>)v); break;
+                        case SqlValueArray._Array: v = ReplacedLl((CList<long>)v); break;
                         case SqlSelectArray.ArrayValuedQE: v = Replaced((long)v); break;
                         case RowSet.Assig: v = ReplacedTUb((CTree<UpdateAssignment, bool>)v); break;
                         case Procedure.Body: v = Replaced((long)v); break;
@@ -1661,8 +1688,8 @@ namespace Pyrrho.Level4
                         case RowSet._Data: v = Replaced((long)v); break;
                         case Domain.DefaultRowValues: v = ReplacedTlV((CTree<long, TypedValue>)v); break;
                         case SqlTreatExpr._Diff: v = Replaced((BTree<long,object>)v,w); break;
-                        case IfThenElse.Else: v = ReplacedLl((BList<long?>)v); break;
-                        case IfThenElse.Elsif: v = ReplacedLl((BList<long?>)v); break;
+                        case ConditionalStatement.Else: v = ReplacedLl((CList<long>)v); break;
+                        case ConditionalStatement.Elsif: v = ReplacedLl((CList<long>)v); break;
                         case LikePredicate.Escape: v = Replaced((long)v); break;
                         case ExplicitRowSet.ExplRows: v = ReplacedBlT((BList<(long, TRow)>)v); break;
                         case SqlValueSelect.Expr: v = Replaced((long)v); break;
@@ -1670,13 +1697,13 @@ namespace Pyrrho.Level4
                         case SqlFunction.Filter: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case GenerationRule.GenExp: v = Replaced((long)v); break;
                         case RowSet.Group: v = Replaced((long)v); break;
-                        case RowSet.Groupings: v = ReplacedLl((BList<long?>)v); break;
+                        case RowSet.Groupings: v = ReplacedLl((CList<long>)v); break;
                         case RowSet.GroupIds: v = ReplacedTlD((CTree<long, Domain>)v); break;
                         case RowSet.Having: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case QuantifiedPredicate.High: v = Replaced((long)v); break;
                         case Table.Indexes: v = ReplacedTDTlb((CTree<Domain, CTree<long, bool>>)v); break;
                         case LocalVariableDec.Init: v = Replaced((long)v); break;
-                        case SqlInsert.InsCols: v = ReplacedLl((BList<long?>)v); break;
+                        case SqlInsert.InsCols: v = ReplacedLl((CList<long>)v); break;
                         case Procedure.Inverse: v = Replaced((long)v); break;
                         case RowSet.ISMap: v = ReplacedTll((BTree<long, long?>)v); break;
                         case JoinRowSet.JFirst: v = Replaced((long)v); break;
@@ -1690,7 +1717,7 @@ namespace Pyrrho.Level4
                         case QlValue.Left: v = Replaced((long)v); break;
                         case MemberPredicate.Lhs: v = Replaced((long)v); break;
                         case GetDiagnostics.List: v = Replaced((CTree<long, Qlx>)v); break;
-                        case MultipleAssignment.List: v = ReplacedLl((BList<long?>)v); break;
+                        case MultipleAssignment.List: v = ReplacedLl((CList<long>)v); break;
                         case QuantifiedPredicate.Low: v = Replaced((long)v); break;
                         case RowSet._Matches: v = ReplacedTlV((CTree<long, TypedValue>)v); break;
                         case RowSet.Matching: v = ReplacedTTllb((CTree<long, CTree<long, bool>>)v); break;
@@ -1704,13 +1731,13 @@ namespace Pyrrho.Level4
                         case SimpleCaseStatement._Operand: v = Replaced((long)v); break;
                         case WindowSpecification.Order: v = ((Domain)v).Replaced(this); break;
                         case Domain.OrderFunc: v = Replaced((long)v); break;
-                        case FetchStatement.Outs: v = ReplacedLl((BList<long?>)v); break;
-                        case SqlCall.Parms: v = ReplacedLl((BList<long?>)v); break;
-                        case Procedure.Params: v = ReplacedLl((BList<long?>)v); break;
+                        case FetchStatement.Outs: v = ReplacedLl((CList<long>)v); break;
+                        case SqlCall.Parms: v = ReplacedLl((CList<long>)v); break;
+                        case Procedure.Params: v = ReplacedLl((CList<long>)v); break;
                         case WindowSpecification.PartitionType: v = ((Domain)v).Replaced(this); break;
                         //    case RowSet.Periods:        v = Replaced
                         case SqlCall.ProcDefPos: v = Replaced((long)v); break;
-                        case PreparedStatement.QMarks: v = ReplacedLl((BList<long?>)v); break;
+                        case PreparedStatement.QMarks: v = ReplacedLl((CList<long>)v); break;
                         case SelectRowSet.RdCols: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RowSet.Referenced: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case Level3.Index.References: v = ReplacedBBlV((BTree<long, BList<TypedValue>>)v); break;
@@ -1723,45 +1750,45 @@ namespace Pyrrho.Level4
                         case MultipleAssignment.Rhs: v = Replaced((long)v); break;
                         case MergeRowSet._Right: v = Replaced((long)v); break;
                         case QlValue.Right: v = Replaced((long)v); break;
-                        case RowSet.RowOrder: v = ReplacedLl((BList<long?>)v); break;
-                        case Domain.RowType: v = ReplacedLl((BList<long?>)v); break;
+                        case RowSet.RowOrder: v = ReplacedLl((CList<long>)v); break;
+                        case Domain.RowType: v = ReplacedLl((CList<long>)v); break;
                         case RowSetPredicate.RSExpr: v = Replaced((long)v); break;
                         case RowSet.RSTargets: v = ReplacedTll((BTree<long, long?>)v); break;
                         case SqlDefaultConstructor.Sce: v = Replaced((long)v); break;
-                        case IfThenElse.Search: v = Replaced((long)v); break;
+                        case ConditionalStatement.Search: v = Replaced((long)v); break;
                         case ForSelectStatement.Sel: v = Replaced((long)v); break;
                         case QuantifiedPredicate._Select: v = Replaced((long)v); break;
                         case SignalStatement.SetList: v = Replaced((BTree<Qlx, long?>)v); break;
-                        case GroupSpecification.Sets: v = ReplacedLl((BList<long?>)v); break;
+                        case GroupSpecification.Sets: v = ReplacedLl((CList<long>)v); break;
                         case RowSet.SIMap: v = ReplacedTll((BTree<long, long?>)v); break;
                         case RowSet._Source: v = Replaced((long)v); break;
                         case SqlCursor.Spec: v = Replaced((long)v); break;
-                        case SqlRowSet.SqlRows: v = ReplacedLl((BList<long?>)v); break;
-                        case InstanceRowSet.SRowType: v = ReplacedLl((BList<long?>)v); break;
+                        case SqlRowSet.SqlRows: v = ReplacedLl((CList<long>)v); break;
+                        case InstanceRowSet.SRowType: v = ReplacedLl((CList<long>)v); break;
                         case RowSet.Stem: v = ReplacedTlb((CTree<long, bool>)v); break;
-                        case CompoundStatement.Stms: v = ReplacedLl((BList<long?>)v); break;
+                        case NestedStatement.Stms: v = ReplacedLl((CList<long>)v); break;
                         case QlValue.Sub: v = Replaced((long)v); break;
                         case SqlValueArray.Svs: v = Replaced((long)v); break;
                         case Level3.Index.TableDefPos: v = Replaced((long)v); break;
                         case Table.TableRows: v = ReplacedTlR((BTree<long, TableRow>)v,w); break;
                         case RowSet.Target: v = Replaced((long)v); break;
-                        case IfThenElse.Then: v = ReplacedLl((BList<long?>)v); break;
+                        case ConditionalStatement.Then: v = ReplacedLl((CList<long>)v); break;
                         case SqlTreatExpr.TreatExpr: v = Replaced((long)v); break;
                         case SelectStatement.Union: v = Replaced((long)v); break;
                         case Domain.UnionOf: v = ReplacedTDb((CTree<Domain, bool>)v); break;
                         case RestRowSetUsing.UrlCol: v = Replaced((long)v); break;
-                        case RestRowSetUsing.UsingCols: v = ReplacedLl((BList<long?>)v); break;
+                        case RestRowSetUsing.UsingCols: v = ReplacedLl((CList<long>)v); break;
                         case RowSet.UsingOperands: v = ReplacedTll((BTree<long, long?>)v); break;
                         case AssignmentStatement.Val: v = Replaced((long)v); break;
                         case AssignmentStatement.Vbl: v = Replaced((long)v); break;
-                        case WhileStatement.What: v = ReplacedLl((BList<long?>)v); break;
-                        case SimpleCaseStatement.Whens: v = ReplacedLl((BList<long?>)v); break;
+                        case WhileStatement.What: v = ReplacedLl((CList<long>)v); break;
+                        case SimpleCaseStatement.Whens: v = ReplacedLl((CList<long>)v); break;
                         case FetchStatement.Where: v = Replaced((long)v); break;
                         case RowSet._Where: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case RowSet.Windows: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case WindowSpecification.WQuery: v = Replaced((long)v); break;
                         case SqlFunction._Val: v = Replaced((long)v); break;
-                        case QuantifiedPredicate.Vals: v = ReplacedLl((BList<long?>)v); break;
+                        case QuantifiedPredicate.Vals: v = ReplacedLl((CList<long>)v); break;
                         case SqlInsert.Value: v = Replaced((long)v); break;
                         case SelectRowSet.ValueSelect: v = Replaced((long)v); break;
                         case SqlCall.Var: v = Replaced((long)v); break;
@@ -1829,7 +1856,7 @@ namespace Pyrrho.Level4
             if (dm.infos[role.defpos] is ObInfo di)
             {
                 for (var b = dm.rowType.First(); b != null; b = b.Next())
-                    if (db.objects[b.value() ?? -1L] is Domain cd)
+                    if (db.objects[b.value()] is Domain cd)
                         AddDefs(cd);
                 defs += (dm.defpos, di.names);
             }
@@ -1911,7 +1938,7 @@ namespace Pyrrho.Level4
         internal void Add(Names ns)
         {
             for (var b = ns.First(); b != null; b = b.Next())
-                if (_Ob(b.value() ?? -1L) is DBObject ob && !names.Contains(b.key()))
+                if (_Ob(b.value()) is DBObject ob && !names.Contains(b.key()))
                     Add(b.key(), ob);
         }
         internal void AddParams(Procedure pr)
@@ -2280,7 +2307,7 @@ namespace Pyrrho.Level4
             }
             return ut;
         }
-        internal Domain GroupCols(BList<long?> gs, Domain dm)
+        internal Domain GroupCols(CList<long> gs, Domain dm)
         {
             var gc = CTree<long, Domain>.Empty;
             if (dm is RowSet rs)
@@ -2302,7 +2329,7 @@ namespace Pyrrho.Level4
                                                 gc += (cp, ce.domain);
                                 }
                     }
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             for (var b = gc.First(); b != null; b = b.Next())
                 rt += b.key();
             return (rt.Length==0)?Domain.Row:new Domain(-1L, this, Qlx.ROW, gc, rt);
@@ -2327,21 +2354,35 @@ namespace Pyrrho.Level4
                 return null;
             return new Ident(id.ident, Fix(id.uid), FixI(id.sub));
         }
-        internal BList<long?> FixLl(BList<long?> ord)
+        internal CList<long> FixLl(CList<long> ord)
         {
-            var r = BList<long?>.Empty;
+            var r = CList<long>.Empty;
             var ch = false;
             for (var b = ord.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
                     var f = Fix(p);
-                    if (f < 0)
+                    if (f <= 0)
                         continue;
                     if (p != f)
                         ch = true;
                     r += f;
                 }
             return ch ? r : ord;
+        }
+        internal CList<CList<long>> FixLLl(CList<CList<long>> stms)
+        {
+            var r = CList<CList<long>>.Empty;
+            var ch = false;
+            for (var b = stms.First(); b != null; b = b.Next())
+                if (b.value() is CList<long> rr)
+                {
+                    var f = FixLl(rr);
+                    if (rr != f)
+                        ch = true;
+                    r += f;
+                }
+            return ch ? r : stms;
         }
         internal BList<Domain> FixBD(BList<Domain> ds)
         {
@@ -2808,7 +2849,7 @@ namespace Pyrrho.Level4
         static BTree<long, object> _Mem(Context cx,long nst)
         {
             var r = BTree<long, object>.Empty;
-            if (cx.result > 0 && cx.obs[cx.result] is RowSet rs)
+            if (cx.result is RowSet rs)
                 r += (Executable.ValueType, rs);
             else if (cx.val is TypedValue rv && rv!=TNull.Value)
                 r += (Executable.ValueType, rv.dataType);
@@ -2829,17 +2870,6 @@ namespace Pyrrho.Level4
         internal override Basis New(BTree<long, object> m)
         {
             return new Framing(m);
-        }
-        internal Framing Relocate(Context cx)
-        {
-            var r = ObTree.Empty;
-            for (var b = obs.First(); b != null; b = b.Next())
-                if (b.value() is DBObject ob)
-                {
-                    var nb = (DBObject)ob.Fix(cx);
-                    r += (nb.defpos, nb);
-                }
-            return new Framing(BTree<long, object>.Empty + (Obs, r) + (Executable.ValueType, valueType.Fix(cx)));
         }
         public static Framing operator+(Framing f,(long,object)x)
         {

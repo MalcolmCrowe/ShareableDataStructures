@@ -88,7 +88,7 @@ namespace Pyrrho.Level3
             var od = cx.done;
             cx.done = ObTree.Empty;
             var st = framing.valueType;
-            cx.instDFirst = (cx.parse == ExecuteStatus.Obey) ? cx.nextHeap : cx.db.nextStmt;
+            cx.instDFirst = (cx.parse.HasFlag(ExecuteStatus.Obey)) ? cx.nextHeap : cx.db.nextStmt;
             cx.instSFirst = (framing.obs.PositionAt(Transaction.Executables)?.key() ?? 0L) - 1;
             cx.instSLast = framing.obs.Last()?.key() ?? -1L;
             var ni = cx.GetUid();
@@ -106,7 +106,7 @@ namespace Pyrrho.Level3
             for (var b = ids?.First(); b != null; b = b.Next())
             {
                 var c = b.key(); // a view column id
-                var vx = b.value() ?? -1L;
+                var vx = b.value();
                 var qx = ods[c]; // a reference in q to this
                 if (vx == qx || qx<0)
                     continue;
@@ -124,7 +124,7 @@ namespace Pyrrho.Level3
             cx.instDFirst = -1L;
             if (cx.db != null && framing.obs.Last()?.key() is long t)
             {
-                if (cx.parse == ExecuteStatus.Obey)
+                if (cx.parse.HasFlag(ExecuteStatus.Obey))
                 {
                     if (t >= cx.nextHeap)
                         cx.nextHeap = t + 1;
@@ -339,6 +339,13 @@ namespace Pyrrho.Level3
                 }
             return base.Drop(d, nd);
         }
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
+        {
+            var rs = cx.Fix(result);
+            if (rs != result)
+                m += (ViewResult, rs);
+            return base._Fix(cx, m);
+        }
         /// <summary>
         /// a readable version of the View
         /// </summary>
@@ -462,11 +469,11 @@ namespace Pyrrho.Level3
         {
             // set up instancing parameters
             var vn = new Ident(name, cx.GetUid());
-            cx.instDFirst = (cx.parse == ExecuteStatus.Obey) ? cx.nextHeap : cx.db.nextStmt;
+            cx.instDFirst = (cx.parse.HasFlag(ExecuteStatus.Obey)) ? cx.nextHeap : cx.db.nextStmt;
             cx.instSFirst = (representation.First()?.key() ?? 0L) - 1;
             cx.instSLast = representation.Last()?.key() ?? -1L;
             // construct our instanced virtual columns, and the instanced domain
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var ns = ur?.names??Names.Empty;
             var un = Names.Empty;
@@ -509,7 +516,7 @@ namespace Pyrrho.Level3
                     if (b.value() is long p && cx.obs[p] is QlValue sv && sv.name is string sn
                         && cx.obs[cx.names[sn]] is QlValue sq && sv.dbg!=sq.dbg)
                         cx.Replace(sv, sq);
-            cx.result = r.defpos;
+            cx.result = r;
             return cx.Add(r);
         }
         internal override RowSet RowSets(Ident id,Context cx, Domain d, long fm, long ap,
@@ -524,7 +531,7 @@ namespace Pyrrho.Level3
                 for (var b = rrs.names.First(); b != null; b = b.Next())
                 {
                     var c = b.key(); // a view column id
-                    var qx = b.value()??-1L;
+                    var qx = b.value();
                     var vx = cx.names[c]; // a reference in q to this
                     if (vx == qx || qx <0)
                         continue;

@@ -155,7 +155,7 @@ namespace Pyrrho.Common
         {
             return "TypedValue";
         }
-        internal virtual string ToString(BList<long?> cs, Context cx)
+        internal virtual string ToString(CList<long> cs, Context cx)
         {
             return ToString();
         }
@@ -373,7 +373,7 @@ namespace Pyrrho.Common
         {
             return value??"null";
         }
-        internal override string ToString(BList<long?> cs,Context cx)
+        internal override string ToString(CList<long> cs,Context cx)
         {
             return "'" + value + "'";
         }
@@ -1022,8 +1022,8 @@ namespace Pyrrho.Common
             var r = Rvv.Empty;
             var dp = vs[DBObject.Defpos]?.ToLong() ?? -1L;
             var pp = vs[DBObject.LastChange]?.ToLong() ?? -1L;
-            if (dp >= 0 && pp >= 0)
-                r += (cx.result, (dp, pp));
+            if (cx.result is not null && dp >= 0 && pp >= 0)
+                r += (cx.result.defpos, (dp, pp));
             rvv = r;
         }
         public override string ToString()
@@ -1078,7 +1078,7 @@ namespace Pyrrho.Common
         internal readonly CTree<long, TypedValue> values;
         internal readonly int docCol = -1;  // note the position of a single document column if present
         internal int Length => dataType.Length;
-        internal BList<long?> columns => dataType.rowType;
+        internal CList<long> columns => dataType.rowType;
         internal static TRow Empty = new (Domain.Row, CTree<long, TypedValue>.Empty);
         public TRow(Domain dt,CTree<long,TypedValue> vs)
             :base(dt)
@@ -1211,7 +1211,7 @@ namespace Pyrrho.Common
                 var j = 1;
                 for (var b = dataType.rowType.First(); i >= j && b != null; b = b.Next(), j++)
                     if (i == j)
-                        return values[b.value()??-1L]??TNull.Value;
+                        return values[b.value()]??TNull.Value;
                 return TNull.Value;
             }
         }

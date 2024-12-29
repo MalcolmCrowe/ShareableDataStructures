@@ -27,7 +27,7 @@ namespace Pyrrho.Level3
             OldTable = -296, // long RowSet
             TrigPpos = -299, // long Trigger
             TrigType = -297, // PTrigger.TrigType
-            UpdateCols = -298; // BList<long?> QlValue
+            UpdateCols = -298; // CList<long> QlValue
         public long table => (long)(mem[RowSet.Target]??-1L);
         /// <summary>
         /// The trigger type (flags)
@@ -36,7 +36,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The tree of update TableColumns
         /// </summary>
-		public BList<long?> cols => (BList<long?>?)mem[UpdateCols]??BList<long?>.Empty;
+		public CList<long> cols => (CList<long>?)mem[UpdateCols]??CList<long>.Empty;
         /// <summary>
         /// the name of the old row
         /// </summary>
@@ -127,7 +127,7 @@ namespace Pyrrho.Level3
             {
                 sb.Append(" From: "); sb.Append(Uid(from));
                 sb.Append(" Action:"); sb.Append(Uid(action));
-                if (cols != null && cols!=BList<long?>.Empty)
+                if (cols != null && cols!=CList<long>.Empty)
                 {
                     sb.Append(" UpdateCols:");
                     var cm = '(';
@@ -159,7 +159,7 @@ namespace Pyrrho.Level3
             if (a != action)
                 r +=(cx, Action, a);
             var ch = false;
-            var cs = BList<long?>.Empty;
+            var cs = CList<long>.Empty;
             for (var b = cols?.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
@@ -229,10 +229,10 @@ namespace Pyrrho.Level3
     internal class TransitionTable : RowSet
     {
         internal const long
-            ColIds = -304, // BList<long?> TableColumn
+            ColIds = -304, // CList<long> TableColumn
             Old = -327, // bool
             Trig = -458; // long
-        internal BList<long?> colIds => (BList<long?>)(mem[ColIds] ?? BList<long?>.Empty);
+        internal CList<long> colIds => (CList<long>)(mem[ColIds] ?? CList<long>.Empty);
         internal long trig => (long)(mem[Trig] ?? -1L);
         internal bool old => (bool)(mem[Old]??false);
  //       internal long trig => (long)mem[Trig];

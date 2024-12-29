@@ -89,7 +89,7 @@ namespace Pyrrho.Level3
         /// <param name="ns">remote names</param>
         /// <param name="cx">Context</param>
         /// <returns></returns>
-        internal virtual string ToString(string sg, Remotes rf, BList<long?> cs, 
+        internal virtual string ToString(string sg, Remotes rf, CList<long> cs, 
             CTree<long,string> ns, Context cx)
         {
             return ToString();
@@ -97,7 +97,7 @@ namespace Pyrrho.Level3
     }
     [Flags]
     public enum ExecuteStatus 
-    { Parse=1, Obey=2, Graph=4, GraphType=8, Prepare=16, Compile=32, Commit=64, Detach=128 }
+    { Parse=1, Obey=2, Graph=4, GraphType=8, Prepare=16, Compile=32, Commit=64, Http=128, Detach=256 }
 
     /// <summary>
     /// Counter-intuitively, a logical database (embodied by the durable contents of the transaction log)
@@ -473,7 +473,7 @@ namespace Pyrrho.Level3
                     r += ob.domain;
             return r;
         }
-        internal CList<Domain> Signature(Context cx,BList<long?> ins)
+        internal CList<Domain> Signature(Context cx,CList<long> ins)
         {
             var r = CList<Domain>.Empty;
             for (var b = ins.First(); b != null; b = b.Next())

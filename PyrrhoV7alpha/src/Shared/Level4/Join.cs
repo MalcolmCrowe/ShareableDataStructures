@@ -134,8 +134,8 @@ namespace Pyrrho.Level4
             var rs = BList<string>.Empty;
             var lm = BTree<string, QlValue>.Empty;
             var nn = Names.Empty;
-            var cs = BList<long?>.Empty;
-            var fs = BList<long?>.Empty;
+            var cs = CList<long>.Empty;
+            var fs = CList<long>.Empty;
             var re = CTree<long, Domain>.Empty;
             for (var b = lr.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue sv)

@@ -80,7 +80,7 @@ namespace Pyrrho.Level3
         /// <param name="n">The method name</param>
         /// <param name="actIns">The actual parameter tree</param>
         /// <returns>The return value</returns>
-        public Context Exec(Context cx, long var, BList<long?> actIns)
+        public Context Exec(Context cx, long var, CList<long> actIns)
         {
             if (cx.role==null || infos[cx.role.defpos] is not ObInfo oi
              || !oi.priv.HasFlag(Grant.Privilege.Execute))

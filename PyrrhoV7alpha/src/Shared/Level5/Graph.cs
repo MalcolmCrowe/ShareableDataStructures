@@ -77,7 +77,7 @@ namespace Pyrrho.Level5
             var oi = new ObInfo(nm, Grant.AllPrivileges);
             oi += (ObInfo.Name, nm);
             r += (Definer, cx.role.defpos);
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             var rs = CTree<long, Domain>.Empty;
             var ns = Names.Empty;
             var nn = Names.Empty;
@@ -295,7 +295,7 @@ namespace Pyrrho.Level5
             }
             return base.Add(cx, pm);
         }
-  /*      internal override BList<long?> Add(BList<long?> a, int k, long v, long p)
+  /*      internal override CList<long> Add(CList<long> a, int k, long v, long p)
         {
             if (p == idCol)
                 k = 0;
@@ -432,7 +432,7 @@ namespace Pyrrho.Level5
         {
             var vals = CTree<long, TypedValue>.Empty;
             for (var b = rowType.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.value() ?? -1L] is TableColumn tc)
+                if (cx.db.objects[b.value()] is TableColumn tc)
                     vals += (tc.defpos, new TTypeSpec(tc.domain));
             return new TableRow(defpos, -1L, defpos, vals);
         }
@@ -468,14 +468,14 @@ namespace Pyrrho.Level5
             var nt = this;
             if (!cx.role.dbobjects.Contains(name))
             {
-                var pn = new PNodeType(name, this, super, -1L, cx.db.nextPos, cx);
+                var pn = new PNodeType(name, this, super, -1L, cx.db.nextPos, cx, true);
                 nt = (NodeType)(cx.Add(pn)??throw new DBException("42105"));
                 var dc = (CTree<string, QlValue>?)m?[GqlNode.DocValue];
                 for (var b = dc?.First(); b != null; b = b.Next())
                     if (b.value() is QlValue sv && !nt.HierarchyCols(cx).Contains(b.key()))
                     {
                         var pc = new PColumn3(nt, b.key(), -1, sv.domain, PColumn.GraphFlags.None,
-                            -1L, -1L, cx.db.nextPos, cx);
+                            -1L, -1L, cx.db.nextPos, cx, true);
                         nt = (NodeType)(cx.Add(pc)??throw new DBException("42105"));
                     }
             }
@@ -488,7 +488,7 @@ namespace Pyrrho.Level5
             var nt = this;
             if (!cx.role.dbobjects.Contains(name))
             {
-                var pn = new PNodeType(name, this, super, -1L, cx.db.nextPos, cx);
+                var pn = new PNodeType(name, this, super, -1L, cx.db.nextPos, cx, true);
                 nt = (NodeType)(cx.Add(pn) ?? throw new DBException("42105"));
                 cx.obs += (defpos,nt);
                 for (var b = d?.First(); b != null; b = b.Next())
@@ -497,7 +497,7 @@ namespace Pyrrho.Level5
                         && !nt.HierarchyCols(cx).Contains(s))
                     {
                         var pc = new PColumn3(nt, s, -1, sv.domain, PColumn.GraphFlags.None,
-                            -1L, -1L, cx.db.nextPos, cx);
+                            -1L, -1L, cx.db.nextPos, cx, true);
                         if (cx.Add(pc) is NodeType nn)
                         {
                             cx.obs += (defpos, nn);
@@ -696,7 +696,7 @@ namespace Pyrrho.Level5
                 if (!ni.names.Contains(b.key()) && allowExtras)
                 {
                     var nc = new PColumn3(r, b.key(), -1, b.value().domain,
-                    PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx);
+                    PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx, true);
                     r = (NodeType?)cx.Add(nc)
                         ?? throw new DBException("42105");
                     ni += (ObInfo._Names, ni.names + (b.key(), nc.defpos));
@@ -752,9 +752,9 @@ namespace Pyrrho.Level5
         /// <returns>The name of the special column (which may have changed),
         /// the modified domain bits and names for ut, and ut with poissible changes to indexes</returns>
         /// <exception cref="DBException"></exception>
-        internal static (string?, BList<long?>, CTree<long, Domain>, BTree<string, long?>, NodeType)
+        internal static (string?, CList<long>, CTree<long, Domain>, BTree<string, long?>, NodeType)
             GetColAndIx(Context cx, NodeType ut, Level3.Index? rx, long kc, string? id, long xp, long cp, long tp,
-                bool se, BList<long?> rt, CTree<long, Domain> rs, BTree<string, long?> sn)
+                bool se, CList<long> rt, CTree<long, Domain> rs, BTree<string, long?> sn)
         {
             TableColumn? tc = null; // the specified column: it might be an existing one but will maybe get a new index
             PColumn3? pc = null; // the new column if required
@@ -789,8 +789,11 @@ namespace Pyrrho.Level5
                 }
                 else
                 {
+                    var ifn = true;
+                    if (((Transaction)cx.db).physicals[ut.defpos] is Physical ph)
+                        ifn = ph.ifNeeded;
                     pc = new PColumn3(ut, id, -1, cd, gf, rx?.defpos ?? -1L, kc,
-                        cx.db.nextPos, cx);
+                        cx.db.nextPos, cx, ifn);
                     // see note above
                     ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.ID));
                     ut += (cp, pc.ppos);
@@ -798,7 +801,7 @@ namespace Pyrrho.Level5
                     //    rt = Remove(rt, kc); FIX
                     rs -= kc;
                     var ot = rt;
-                    rt = new BList<long?>(pc.ppos);
+                    rt = new CList<long>(pc.ppos);
                     for (var c = ot.First(); c != null; c = c.Next())
                         if (c.value() is long op)
                             rt += op;
@@ -825,7 +828,7 @@ namespace Pyrrho.Level5
                         px = new PIndex(id, ut, di,
                             (cp == IdCol) ? PIndex.ConstraintType.PrimaryKey
                             : (PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate),
-                            rx?.defpos ?? -1L, cx.db.nextPos);
+                            rx?.defpos ?? -1L, cx.db.nextPos, ifn);
                         tc += (Level3.Index.RefIndex, px.ppos);
                     }
                 }
@@ -1669,7 +1672,7 @@ namespace Pyrrho.Level5
                     if (!nt.HierarchyCols(cx).Contains(b.key()))
                     {
                         var pc = new PColumn3(nt, b.key(), -1, b.value().domain, PColumn.GraphFlags.None,
-                            -1L, -1L, cx.db.nextPos, cx);
+                            -1L, -1L, cx.db.nextPos, cx, true);
                         nt = (NodeType)(cx.Add(pc)??throw new DBException("42105"));
                     }
                 nt = nt.Build(cx, null, 0L, m);
@@ -1688,14 +1691,14 @@ namespace Pyrrho.Level5
             var lt = (long)(m[EdgeType.LeavingType] ?? -1L);
             var at = (long)(m[EdgeType.ArrivingType] ?? -1L);
             var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue] ?? CTree<string, QlValue>.Empty);
-            var pt = new PEdgeType(nm, EdgeType, nu, -1L, lt, at, cx.db.nextPos, cx);
+            var pt = new PEdgeType(nm, EdgeType, nu, -1L, lt, at, cx.db.nextPos, cx, true);
             var ro = cx.role;
             var e = (EdgeType?)cx.Add(pt) ?? throw new DBException("42105");
             for (var b = dc?.First(); b != null; b = b.Next())
                 if (!e.HierarchyCols(cx).Contains(b.key()))
                 {
                     var pc = new PColumn3(e, b.key(), -1, b.value().domain, PColumn.GraphFlags.None,
-                        -1L, -1L, cx.db.nextPos, cx);
+                        -1L, -1L, cx.db.nextPos, cx, true);
                     e = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105"));
                 }
             e = (EdgeType)e.Build(cx, null, 0L, m);
@@ -2188,7 +2191,7 @@ namespace Pyrrho.Level5
         {
             if (lt == leavingType && at == arrivingType)
                 return base.OnInsert(cx, d, lt, at);
-            var pe = new PEdgeType(name, this, super, -1L, lt, at,cx.db.nextPos,cx); 
+            var pe = new PEdgeType(name, this, super, -1L, lt, at,cx.db.nextPos,cx, true); 
             var et = (EdgeType)(cx.Add(pe) ?? throw new DBException("42105"));
             cx.obs += (defpos, et);
             for (var b = d?.First(); b != null; b = b.Next())

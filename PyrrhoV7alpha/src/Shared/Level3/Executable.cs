@@ -1,14 +1,9 @@
-using System.Runtime.CompilerServices;
-using System.Runtime.ConstrainedExecution;
-using System.Runtime.Intrinsics.X86;
-using System.Security.Authentication.ExtendedProtection;
 using System.Text;
-using System.Text.Json.Serialization.Metadata;
-using System.Xml.Linq;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using static System.Net.Mime.MediaTypeNames;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -24,7 +19,7 @@ namespace Pyrrho.Level3
     /// In Gql, executable statements all specify valueType.
     /// On completion of Executable._Obey, we should have
     /// (cx.val==TNull.Value or cx.val.dataTypeEqualOrStrongSubtypeOf(valueType)) 
-    /// and (cx.valueType<0L or cx.obs[cx.result].EqualOrStrongSubtypeOf(valueType)).
+    /// and (cx.valueType<0L or cx.result.EqualOrStrongSubtypeOf(valueType)).
     /// In Sql, Executable statements can be used in stored procedures. 
     /// This class provides machinery to support control statements in stored procedures.
     /// Control statements (blocks) generally ovveride this basic infrastructure.
@@ -59,39 +54,43 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="e">The Executables</param>
         /// <param name="tr">The transaction</param>
-		protected static Context ObeyList(BList<long?> e, Context cx)
+		internal static Context ObeyList(CList<CList<long>> stms, string label, 
+            ABookmark<int,long>? next, Context cx)
         {
-            if (e == null)
-                throw new DBException("42173");
-            Context nx = cx;
-            Activation a = (Activation)cx;
-            for (var b = e.First(); b != null && nx == cx
-                && ((Activation)cx).signal == null; b = b.Next())
-                if (b.value() is long p && cx._Ob(p) is Executable x)
-                    try
-                    {
-                        nx = x._Obey(a);
-                        if (a == nx && a.signal != null)
-                            a.signal.Throw(a);
-                        if (cx != nx)
-                            break;
-                    }
-                    catch (DBException ex)
-                    {
-                        a.signal = new Signal(cx.cxid, ex);
-                    }
-            return nx;
+            var bs = cx.result;
+            var ns = cx.names;
+            var bi = cx.binding;
+            var act = new Activation(cx,label);
+            for (var eb = stms.First(); eb is not null; eb = eb.Next())
+            {
+                act.result = bs;
+                act.names = ns;
+                act.binding = bi;
+                var ec = eb.value().First();
+                if (ec is not null && cx.obs[ec.value()] is Executable e) //  act = (Activation)ObeyList(stms, act);
+                {
+                    var el = CList<long>.Empty;
+                    for (var b = ec.Next(); b != null; b = b.Next())
+                        el += b.value();
+                    for (var b = next; b is not null; b = b.Next())
+                        el += b.value();
+                    act = (Activation)e._Obey(act, el.First());
+                }
+            }
+            act.signal?.Throw(cx);
+            cx.db = act.db;
+            return act.SlideDown();
         }
-       internal Context Obey(Context cx)
+       internal Context Obey(Context cx,ABookmark<int,long>? next = null)
         {
             if (cx.db.objects[graph] is Graph g)
                 cx.graph = g;
             if (cx is Activation ax)
-                return _Obey(ax);
+                return _Obey(ax,next);
             else
             {
                 var a = new Activation(cx,"");
-                var r = _Obey(a);
+                var r = _Obey(a,next);
                 cx = a.SlideDown();
                 return r;
             }
@@ -103,14 +102,21 @@ namespace Pyrrho.Level3
         /// It parses the string and executes it in the current context
         /// </summary>
         /// <param name="cx">The context</param>
-		public virtual Context _Obey(Context cx)
+		public virtual Context _Obey(Context cx,ABookmark<int,long>? next=null)
         {
             return cx;
         }
-        internal static bool Calls(BList<long?> ss,long defpos,Context cx)
+        internal static bool Calls(CList<long> ss,long defpos,Context cx)
         {
             for (var b = ss?.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p]?.Calls(defpos, cx) == true)
+                    return true;
+            return false;
+        }
+        internal static bool Calls(CList<CList<long>> ss, long defpos, Context cx)
+        {
+            for (var b = ss?.First(); b != null; b = b.Next())
+                if (b.value() is CList<long> p && Calls(p, defpos, cx) == true)
                     return true;
             return false;
         }
@@ -155,13 +161,14 @@ namespace Pyrrho.Level3
             return Last()?.value();
         }
     }
+
     internal class CommitStatement : Executable
     {
         internal CommitStatement(long dp) : base(dp)
         {
         }
 
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             cx.db.Commit(cx);
             return cx.parent ?? cx;
@@ -177,7 +184,7 @@ namespace Pyrrho.Level3
     }
     internal class RollbackStatement(long dp) : Executable(dp)
     {
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             cx.db.Rollback();
             throw new DBException("40000").ISO();
@@ -260,9 +267,11 @@ namespace Pyrrho.Level3
                 r += (cx,Union, nu);
             return r;
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            cx.result = union;
+            cx.result = cx.obs[union] as RowSet;
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         public override string ToString()
@@ -276,24 +285,24 @@ namespace Pyrrho.Level3
     /// A Compound Statement for the SQL procedure language
     /// 
     /// </summary>
-    internal class CompoundStatement : Executable
+    internal class NestedStatement : Executable
     {
         internal const long
-             Stms = -96; // BList<long?> Executable
+             Stms = -96; // CList<CList<long>> Executable
         /// <summary>
         /// The contained tree of Executables
         /// </summary>
-		public BList<long?> stms =>
-            (BList<long?>?)mem[Stms] ?? BList<long?>.Empty;
+		public CList<CList<long>> stms =>
+            (CList<CList<long>>?)mem[Stms] ?? CList<CList<long>>.Empty;
         /// <summary>
         /// Constructor: create a compound statement
         /// </summary>
         /// <param name="n">The label for the compound statement</param>
-		internal CompoundStatement(long dp, string n)
+		internal NestedStatement(long dp, string n)
             : base(dp, new BTree<long, object>(Label, n))
         { }
-        public CompoundStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static CompoundStatement operator +(CompoundStatement et, (long, object) x)
+        public NestedStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static NestedStatement operator +(NestedStatement et, (long, object) x)
         {
             var d = et.depth;
             var m = et.mem;
@@ -306,10 +315,10 @@ namespace Pyrrho.Level3
                 if (d > et.depth)
                     m += (_Depth, d);
             }
-            return (CompoundStatement)et.New(m + x);
+            return (NestedStatement)et.New(m + x);
         }
 
-        public static CompoundStatement operator +(CompoundStatement e, (Context, long, object) x)
+        public static NestedStatement operator +(NestedStatement e, (Context, long, object) x)
         {
             var d = e.depth;
             var m = e.mem;
@@ -317,27 +326,27 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == Stms)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+                m += (_Depth, cx._DepthBBV((CList<CList<long>>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
                 if (d > e.depth)
                     m += (_Depth, d);
             }
-            return (CompoundStatement)e.New(m + (p, o));
+            return (NestedStatement)e.New(m + (p, o));
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new CompoundStatement(defpos, m);
+            return new NestedStatement(defpos, m);
         }
         internal override DBObject New(long dp,BTree<long,object>m)
         {
-            return new CompoundStatement(dp, m);
+            return new NestedStatement(dp, m);
         }
         protected override BTree<long,object> _Fix(Context cx,BTree<long,object>m)
         {
             var r = base._Fix(cx,m);
-            var nc = cx.FixLl(stms);
+            var nc = cx.FixLLl(stms);
             if (nc != stms)
                 r += (Stms, nc);
             return r;
@@ -350,19 +359,37 @@ namespace Pyrrho.Level3
         /// _Obey a Compound Statement.
         /// </summary>
         /// <param name="tr">The transaction</param>
-		public override Context _Obey(Context cx)
+		public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             cx.exec = this;
-            var act = new Activation(cx, label ?? "") { binding=cx.binding};
-            act = (Activation)ObeyList(stms, act);
+            var bs = cx.result;
+            var ns = cx.names;
+            var bi = cx.binding;
+            var act = new Activation(cx, label ?? "");
+            for (var eb = stms.First(); eb is not null; eb = eb.Next())
+            {
+                act.result = bs;
+                act.names = ns;
+                act.binding = bi;
+                var ec = eb.value().First();
+                if (ec is not null && cx.obs[ec.value()] is Executable e) //  act = (Activation)ObeyList(stms, act);
+                {
+                    var el = CList<long>.Empty;
+                    for (var b = ec.Next(); b != null; b = b.Next())
+                        el += b.value();
+                    for (var b = next; b is not null; b = b.Next())
+                        el += b.value();
+                    act = (Activation)e._Obey(act, el.First());
+                }
+            }
             act.signal?.Throw(cx);
             cx.db = act.db;
             return act.SlideDown();
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = (CompoundStatement)base._Replace(cx, so, sv);
-            var ns = cx.ReplacedLl(stms);
+            var r = (NestedStatement)base._Replace(cx, so, sv);
+            var ns = cx.ReplacedLLl(stms);
             if (ns!=stms)
                 r += (cx, Stms, ns);
             return r;
@@ -370,8 +397,109 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            var cm = "(";
+            sb.Append('(');
+            var cc = "";
             for (var b = stms.First(); b != null; b = b.Next())
+            {
+                sb.Append(cc); cc = ";";
+                var cm = "";
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.value() is long p)
+                    {
+                        sb.Append(cm); cm = ",";
+                        sb.Append(Uid(p));
+                    }
+            }
+            sb.Append(')');
+            return sb.ToString();
+        }
+    }
+    /// <summary>
+    /// A Linear Daata Accessing Statement for the GQL procedure language
+    /// 
+    /// </summary>
+    internal class AccssingStatement : Executable
+    {
+        internal const long
+             GQLStms = -366; // CList<long> Executable
+        /// <summary>
+        /// The contained tree of Executables
+        /// </summary>
+		public CList<long> gqlStms =>
+            (CList<long>?)mem[GQLStms] ?? CList<long>.Empty;
+        /// <summary>
+        /// Constructor: create a compound statement
+        /// </summary>
+        /// <param name="n">The label for the compound statement</param>
+		internal AccssingStatement(long dp, string n)
+            : base(dp, new BTree<long, object>(Label, n))
+        { }
+        public AccssingStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static AccssingStatement operator +(AccssingStatement et, (long, object) x)
+        {
+            var d = et.depth;
+            var m = et.mem;
+            var (dp, ob) = x;
+            if (et.mem[dp] == ob)
+                return et;
+            if (ob is DBObject bb && dp != _Depth)
+            {
+                d = Math.Max(bb.depth + 1, d);
+                if (d > et.depth)
+                    m += (_Depth, d);
+            }
+            return (AccssingStatement)et.New(m + x);
+        }
+        public static AccssingStatement operator +(AccssingStatement e, (Context, long, object) x)
+        {
+            var d = e.depth;
+            var m = e.mem;
+            var (cx, p, o) = x;
+            if (e.mem[p] == o)
+                return e;
+            if (p == GQLStms)
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
+            else if (o is long q && cx.obs[q] is DBObject ob)
+            {
+                d = Math.Max(ob.depth + 1, d);
+                if (d > e.depth)
+                    m += (_Depth, d);
+            }
+            return (AccssingStatement)e.New(m + (p, o));
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new AccssingStatement(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new AccssingStatement(dp, m);
+        }
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
+        {
+            var r = base._Fix(cx, m);
+            var nc = cx.FixLl(gqlStms);
+            if (nc != gqlStms)
+                r += (GQLStms, nc);
+            return r;
+        }
+        internal override bool Calls(long defpos, Context cx)
+        {
+            return Calls(gqlStms, defpos, cx);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = (NestedStatement)base._Replace(cx, so, sv);
+            var ns = cx.ReplacedLl(gqlStms);
+            if (ns != gqlStms)
+                r += (cx, GQLStms, ns);
+            return r;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            var cm = "(";
+            for (var b = gqlStms.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
                     sb.Append(cm); cm = ",";
@@ -381,14 +509,13 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    
     internal class PreparedStatement : Executable
     {
         internal const long
-            QMarks = -396,  // BList<long?> QlValue
+            QMarks = -396,  // CList<long> QlValue
             Target = -397; // Executable
-        internal BList<long?> qMarks =>
-           (BList<long?>?)mem[QMarks] ?? BList<long?>.Empty;
+        internal CList<long> qMarks =>
+           (CList<long>?)mem[QMarks] ?? CList<long>.Empty;
         internal Executable? target => (Executable?)mem[Target];
         public PreparedStatement(Context cx,long nst)
             : base(cx.GetUid(), _Mem(cx) + (QMarks, cx.qParams) + (_Framing, new Framing(cx,nst)))
@@ -427,7 +554,7 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == QMarks)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -444,7 +571,7 @@ namespace Pyrrho.Level3
         {
             return new PreparedStatement(dp, m);
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int,long>? next = null)
         {
             if (target == null)
                 return cx;
@@ -551,14 +678,16 @@ namespace Pyrrho.Level3
         /// Execute the local variable declaration, by adding the local variable to the activation (overwrites any previous)
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = (Activation)cx;
             a.exec = this;
             var vb = (QlValue)(cx.obs[vbl] ?? throw new PEException("PE1101"));
             TypedValue tv = cx.obs[init]?.Eval(cx)??vb.domain.defaultValue;
             a.bindings += (defpos, CTree<long,TypedValue>.Empty); // local variables need special handling
-            cx.AddValue(vb, tv); // We expect a==ac, but if not, tv will be copied to a later
+            cx.AddValue(vb, tv); // We expect a==ac, but if not, tv will be copied later
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override CTree<long, bool> Needs(Context context, long rs)
@@ -675,7 +804,7 @@ namespace Pyrrho.Level3
         {
             return CTree<long, bool>.Empty;
         }
-        internal override string ToString(string sg,Remotes rf,BList<long?> cs,
+        internal override string ToString(string sg,Remotes rf,CList<long> cs,
             CTree<long, string> ns, Context cx)
         {
             return Eval(cx).ToString();
@@ -769,11 +898,13 @@ namespace Pyrrho.Level3
         /// Instantiate the cursor
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var cu = cx.obs[cs];
             if (cu is not null)
                 cx.AddValue(cu, cu.Eval(cx));
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -873,7 +1004,7 @@ namespace Pyrrho.Level3
         /// Obeying the handler declaration means installing the handler for each condition
         /// </summary>
         /// <param name="tr">The transaction</param>
-		public override Context _Obey(Context cx)
+		public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
 		{
             cx.exec = this;
             var a = (Activation)cx;
@@ -881,6 +1012,8 @@ namespace Pyrrho.Level3
             for (var c =conds.First();c is not null;c=c.Next())
                 if (c.value() is string h)
 				a.exceptions+=(h,new Handler(this,a));
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
 		}
         internal override bool Calls(long defpos, Context cx)
@@ -989,7 +1122,7 @@ namespace Pyrrho.Level3
         /// Execute the action part of the Handler Statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx,ABookmark<int,long>? next= null)
         {
                 Activation? definer = null;
                 for (Context? p = cx; definer == null && p != null; p = p.next)
@@ -997,16 +1130,16 @@ namespace Pyrrho.Level3
                         definer = p as Activation;
                 if (hdlr?.htype == Qlx.UNDO)
                 {
-                    CompoundStatement? cs = null;
+                    NestedStatement? cs = null;
                     for (Context? p = cx; cs == null && p != null; p = p.next)
-                        cs = p.exec as CompoundStatement;
+                        cs = p.exec as NestedStatement;
                     if (cs != null && definer?.saved is ExecState es)
                     {
                         cx.db = es.mark;
                         cx.next = es.stack;
                     }
                 }
-                ((Executable?)cx.obs[hdlr?.action??-1L])?._Obey(cx);
+                ((Executable?)cx.obs[hdlr?.action??-1L])?._Obey(cx,next);
                 if (hdlr?.htype == Qlx.EXIT && definer?.next is Context nx)
                     return nx;
                 var a = (Activation)cx;
@@ -1082,7 +1215,7 @@ namespace Pyrrho.Level3
         /// Execute a break statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             cx.exec = this;
             if (label == "")
@@ -1093,6 +1226,8 @@ namespace Pyrrho.Level3
                     cx = c;
                     break;
                 }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
 	}
@@ -1160,7 +1295,7 @@ namespace Pyrrho.Level3
             return (cx.obs[vbl]?.Calls(defpos, cx)??false) || 
                 (cx.obs[val]?.Calls(defpos,cx)??false);
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             cx.exec = this;
             var vb = cx._Ob(vbl);
@@ -1171,23 +1306,37 @@ namespace Pyrrho.Level3
                     && cx._Ob(se.right) is QlInstance sc && tl.dataType is Table st
                     && st.representation[sc.sPos] is Domain cd
                     && cd.Coerce(cx, tv) is TypedValue v1)
+                {
                     cx.Add(new Update(tl.tableRow, st.defpos, new CTree<long, TypedValue>(sc.sPos, v1),
                         cx.db.nextPos, cx));
+                    cx.val = v1;
+                }
                 else if (vb is SqlField sf && cx._Ob(sf.from)?.Eval(cx) is TNode nf
                     && nf.dataType is Table tf && tf._PathDomain(cx).infos[cx.role.defpos] is ObInfo fi
                     && cx._Ob(fi.names[sf.name ?? ""]) is TableColumn tc
                     && tc.domain.Coerce(cx, tv) is TypedValue v3)
+                {
                     cx.Add(new Update(nf.tableRow, tf.defpos, new CTree<long, TypedValue>(tc.defpos, v3),
                         cx.db.nextPos, cx));
+                    cx.val = v3;
+                }
                 else if (vb is SqlReview sr && sr.chain?[0] is Ident id && cx.names[id.ident] is long cp
                     && cx.values[cp] is TNode tn && sr.chain?[1] is Ident ci
                     && tn.dataType is Table tt && tt.names[ci.ident] is long cc
                     && tt.representation[cc] is Domain d4 && d4.Coerce(cx, tv) is TypedValue v4)
+                {
                     cx.Add(new Update(tn.tableRow, tt.defpos, new CTree<long, TypedValue>(cc, v4),
                         cx.db.nextPos, cx));
+                    cx.val = v4;
+                }
                 else if (dm != Domain.Content && dm != Domain.Null && dm.Coerce(cx, tv) is TypedValue v2)
+                {
                     cx.values += (vb?.defpos ?? -1L, v2);
+                    cx.val = v2;
+                }
             }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1222,12 +1371,12 @@ namespace Pyrrho.Level3
     {
         internal const long
             LhsType = -107, // Domain
-            List = -108, // BList<long?> QlValue
+            List = -108, // CList<long> QlValue
             Rhs = -109; // long QlValue
         /// <summary>
         /// The tree of identifiers
         /// </summary>
-        internal BList<long?> list => (BList<long?>?)mem[List]??BList<long?>.Empty;
+        internal CList<long> list => (CList<long>?)mem[List]??CList<long>.Empty;
         /// <summary>
         /// The row type of the lefthand side, used to coerce the given value 
         /// </summary>
@@ -1247,7 +1396,7 @@ namespace Pyrrho.Level3
         {
             var dm = rg.domain ?? Domain.Null;
             var r = new BTree<long, object>(Rhs, rg.defpos);
-            var ls = BList<long?>.Empty;
+            var ls = CList<long>.Empty;
             for (var b = lh.First(); b != null; b = b.Next())
                 if (b.value() is Ident id && cx.obs[id.uid] is QlValue v
                             && v.domain is Domain vd)
@@ -1281,7 +1430,7 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == List)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -1320,7 +1469,7 @@ namespace Pyrrho.Level3
         /// Execute the multiple assignment
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
@@ -1331,6 +1480,8 @@ namespace Pyrrho.Level3
                     if (list[j] is long p)
                         cx.values += (p, r[j] ?? TNull.Value);
             }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1402,10 +1553,12 @@ namespace Pyrrho.Level3
         /// Execute the treatment: reparse the values of this row and add it to the new domain table.
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = cx; 
             a.exec = this;
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
     }
@@ -1484,15 +1637,21 @@ namespace Pyrrho.Level3
         /// Execute the return statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
             a.val = cx.obs[ret]?.Eval(cx) ?? TNull.Value;
             cx = a.SlideDown();
-            if (cx.obs[cx.result] is ExplicitRowSet es && es.CanTakeValueOf(a.val.dataType))
-                cx.obs += (cx.result,es+(cx.GetUid(), a.val));
-            cx.lastret = defpos;
+            if (cx.result is ExplicitRowSet es && es.CanTakeValueOf(a.val.dataType))
+            {
+                es += (cx.GetUid(), a.val);
+                cx.obs += (cx.result.defpos, es);
+                cx.result = es;
+                cx.lastret = es;
+            }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
 		}
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -1522,7 +1681,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             _Operand = -112, // long QlValue
-            Whens = -113; // BList<long?> WhenPart
+            Whens = -113; // CList<long> WhenPart
         /// <summary>
         /// The test expression
         /// </summary>
@@ -1530,28 +1689,28 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A tree of when parts
         /// </summary>
-        public BList<long?> whens => (BList<long?>?)mem[Whens]?? BList<long?>.Empty;
+        public CList<long> whens => (CList<long>?)mem[Whens]?? CList<long>.Empty;
         /// <summary>
         /// An else part
         /// </summary>
-        public BList<long?> els => (BList<long?>?)mem[IfThenElse.Else]?? BList<long?>.Empty;
+        public CList<long> els => (CList<long>?)mem[ConditionalStatement.Else]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a case statement from the parser
         /// </summary>
         public SimpleCaseStatement(long dp,QlValue op,BList<WhenPart> ws,
-            BList<long?> ss) : 
+            CList<CList<long>> ss) : 
             base(dp,_Mem(op,ws,ss))
         { }
         protected SimpleCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(QlValue op, BList<WhenPart> ws,
-            BList<long?> ss)
+            CList<CList<long>> ss)
         {
             var r = new BTree<long, object>(_Operand, op.defpos);
-            var wl = BList<long?>.Empty;
+            var wl = CList<CList<long>>.Empty;
             for (var b = ws.First(); b != null; b = b.Next())
                 if (b.value() is WhenPart w)
-                    wl += w.defpos;
-            r += (IfThenElse.Else, ss);
+                    wl += new CList<long>(w.defpos);
+            r += (ConditionalStatement.Else, ss);
             return r + (Whens, wl);
         }
         public static SimpleCaseStatement operator +(SimpleCaseStatement et, (long, object) x)
@@ -1577,8 +1736,8 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == IfThenElse.Else || p == Whens)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+            if (p == ConditionalStatement.Else || p == Whens)
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -1600,7 +1759,7 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var ne = cx.FixLl(els);
             if (ne!=els)
-            r += (IfThenElse.Else, ne);
+            r += (ConditionalStatement.Else, ne);
             var no = cx.Fix(operand);
             if (no!=operand)
             r += (_Operand, no);
@@ -1620,15 +1779,23 @@ namespace Pyrrho.Level3
         /// Execute the case statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
-            for(var c = whens.First();c is not null; c=c.Next())
-                if (cx.obs[operand] is QlValue sv && sv.Matches(cx)==true
+            for (var c = whens.First(); c is not null; c = c.Next())
+                if (cx.obs[operand] is QlValue sv && sv.Matches(cx) == true
                     && c.value() is long p && cx.obs[p] is WhenPart w)
-                    return ObeyList(w.stms, cx);
-            return ObeyList(els, cx);
+                {
+                    cx = ObeyList(w.stms,"",next,cx);
+                    goto next;
+                }
+            var eb = els?.First();
+            if (cx.obs[eb?.value()??-1L] is Executable ee)
+                cx = ee._Obey(cx, eb?.Next());
+        next: if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
+            return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -1641,7 +1808,7 @@ namespace Pyrrho.Level3
                 r +=(cx, Whens, nw);
             var ne = cx.ReplacedLl(els);
             if (ne != els)
-                r+=(cx, IfThenElse.Else, ne);
+                r+=(cx, ConditionalStatement.Else, ne);
             return r;
         }
         public override string ToString()
@@ -1674,24 +1841,24 @@ namespace Pyrrho.Level3
         /// <summary>
         /// A tree of when parts
         /// </summary>
-		public BList<long?> whens => (BList<long?>?)mem[SimpleCaseStatement.Whens]??BList<long?>.Empty;
+		public CList<long> whens => (CList<long>?)mem[SimpleCaseStatement.Whens]??CList<long>.Empty;
         /// <summary>
         /// An else part
         /// </summary>
-		public BList<long?> els => (BList<long?>?)mem[IfThenElse.Else]?? BList<long?>.Empty;
+		public CList<long> els => (CList<long>?)mem[ConditionalStatement.Else]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a searched case statement from the parser
         /// </summary>
-		public SearchedCaseStatement(long dp,BList<WhenPart>ws,BList<long?>ss) 
+		public SearchedCaseStatement(long dp,BList<WhenPart>ws,CList<CList<long>>ss) 
             : base(dp,_Mem(ws,ss))
         {  }
         protected SearchedCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(BList<WhenPart>ws,BList<long?>ss)
+        static BTree<long,object> _Mem(BList<WhenPart>ws,CList<CList<long>>ss)
         {
             var r = BTree<long, object>.Empty;
-            if (ss != BList<long?>.Empty)
-                r += (IfThenElse.Else, ss);
-            var wl = BList<long?>.Empty;
+            if (ss != CList<CList<long>>.Empty)
+                r += (ConditionalStatement.Else, ss);
+            var wl = CList<long>.Empty;
             for (var b = ws.First(); b != null; b = b.Next())
                 if (b.value() is WhenPart w)
                     wl += w.defpos;
@@ -1741,7 +1908,7 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var ne = cx.FixLl(els);
             if (ne != els)
-                r += (IfThenElse.Else, ne);
+                r += (ConditionalStatement.Else, ne);
             var nw = cx.FixLl(whens);
             if (nw != whens)
                 r += (SimpleCaseStatement.Whens, nw);
@@ -1759,16 +1926,24 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="tr">The transaction</param>
         /// 
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = cx; // from the top of the stack each time
             a.exec = this;
             for (var c = whens.First(); c != null; c = c.Next())
                 if (c.value() is long p && cx.obs[p] is WhenPart w
                     && ((QlValue?)cx.obs[w.cond])?.Matches(cx) == true)
-                        return ObeyList(w.stms, cx);
-			return ObeyList(els,cx);
-		}
+                {
+                    cx = ObeyList(w.stms,"",next,cx);
+                    goto next;
+                }
+            var eb = els?.First();
+            if (cx.obs[eb?.value() ?? -1L] is Executable ee)
+                cx = ee.Obey(cx, eb?.Next());
+            next:  if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
+            return cx;
+        }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
             var r = (SearchedCaseStatement)base._Replace(cx, so, sv);
@@ -1777,7 +1952,7 @@ namespace Pyrrho.Level3
                 r+=(cx, SimpleCaseStatement.Whens, nw);
             var ne = cx.ReplacedLl(els);
             if (ne != els)
-                r+=(cx, IfThenElse.Else, ne);
+                r+=(cx, ConditionalStatement.Else, ne);
             return r;
         }
         public override string ToString()
@@ -1815,15 +1990,15 @@ namespace Pyrrho.Level3
         /// <summary>
         /// a tree of statements
         /// </summary>
-		public BList<long?> stms =>(BList<long?>?)mem[CompoundStatement.Stms]?? BList<long?>.Empty;
+		public CList<CList<long>> stms =>(CList<CList<long>>?)mem[NestedStatement.Stms]?? CList<CList<long>>.Empty;
         /// <summary>
         /// Constructor: A searched when part from the parser
         /// </summary>
         /// <param name="v">A search condition</param>
         /// <param name="s">A tree of statements for this when</param>
-        public WhenPart(long dp,QlValue? v, BList<long?> s) 
+        public WhenPart(long dp,QlValue? v, CList<CList<long>> s) 
             : base(dp, ((v is null)?BTree<long, object>.Empty:new BTree<long,object>(Cond,v.defpos))
-                  +(CompoundStatement.Stms,s))
+                  +(NestedStatement.Stms,s))
         { }
         protected WhenPart(long dp, BTree<long, object> m) : base(dp, m) { }
         public static WhenPart operator +(WhenPart et, (long, object) x)
@@ -1849,8 +2024,8 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == CompoundStatement.Stms)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+            if (p == NestedStatement.Stms)
+                m += (_Depth, cx._DepthBBV((CList<CList<long>>) o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -1873,25 +2048,18 @@ namespace Pyrrho.Level3
             var nc = cx.Fix(cond);
             if (cond != nc)
                 r += (Cond, nc);
-            var ns = cx.FixLl(stms);
+            var ns = cx.FixLLl(stms);
             if (ns != stms)
-                r += (CompoundStatement.Stms, ns);
+                r += (NestedStatement.Stms, ns);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
             return Calls(stms,defpos,cx) || (cx.obs[cond]?.Calls(defpos, cx)??false);
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var a = cx;
-            if (cond == -1L || ((QlValue?)cx.obs[cond])?.Matches(cx)==true)
-            {
-                a.val = TBool.True;
-                return ObeyList(stms, cx);
-            }
-            a.val = TBool.False;
-            return cx;
+            return ObeyList(stms, "", next, cx);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -1899,9 +2067,9 @@ namespace Pyrrho.Level3
             var no = ((QlValue?)cx.obs[cond])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[cond]?.defpos ?? cond) && no is not null)
                 r+=(cx, Cond, no);
-            var nw = cx.ReplacedLl(stms);
+            var nw = cx.ReplacedLLl(stms);
             if (nw != stms)
-                r+=(cx, CompoundStatement.Stms, nw);
+                r+=(cx, NestedStatement.Stms, nw);
             return r;
         }
         public override string ToString()
@@ -1912,7 +2080,8 @@ namespace Pyrrho.Level3
             sb.Append(" Stms: ");
             var cm = "(";
             for (var b = stms.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                for (var c=b.value()?.First();c!=null;c=c.Next())
+                if (c.value() is long p)
                 {
                     sb.Append(cm); cm = ",";
                     sb.Append(Uid(p));
@@ -1921,17 +2090,13 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    /// <summary>
-    /// An if-then-else statement for a stored proc/func
-    /// 
-    /// </summary>
-	internal class IfThenElse : Executable
+	internal class ConditionalStatement : Executable
 	{
         internal const long
-            Else = -116, // BList<long?> Executable
-            Elsif = -117, // BList<long?> Executable
+            Else = -116, // CList<long> Executable
+            Elsif = -117, // CList<long> Executable (SQL IF)
             Search = -118, // long QlValue
-            Then = -119; // BList<long?> Executable
+            Then = -119; // CList<long> Executable
         /// <summary>
         /// The test condition
         /// </summary>
@@ -1939,23 +2104,24 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The then statements
         /// </summary>
-		public BList<long?> then => (BList<long?>?)mem[Then]?? BList<long?>.Empty;
+		public CList<CList<long>> then => (CList<CList<long>>?)mem[Then]?? CList<CList<long>>.Empty;
         /// <summary>
-        /// The elsif parts
+        /// The elsif parts (only for SQL version)
         /// </summary>
-		public BList<long?> elsif => (BList<long?>?)mem[Elsif] ?? BList<long?>.Empty;
+		public CList<CList<long>> elsif => (CList<CList<long>>?)mem[Elsif] ?? CList<CList<long>>.Empty;
         /// <summary>
         /// The else part
         /// </summary>
-		public BList<long?> els => (BList<long?>?)mem[Else] ?? BList<long?>.Empty;
+		public CList<CList<long>> els => (CList<CList<long>>?)mem[Else] ?? CList<CList<long>>.Empty;
         /// <summary>
         /// Constructor: an if-then-else statement from the parser
         /// </summary>
-		public IfThenElse(long dp,QlValue se,BList<long?>th,BList<long?>ei,BList<long?> el) 
+		public ConditionalStatement(long dp,QlValue se, CList<CList<long>> th, CList<CList<long>> ei,
+            CList<CList<long>> el) 
             : base(dp,new BTree<long, object>(Search,se.defpos) +(Then,th) +(Elsif,ei) + (Else,el))
 		{}
-        protected IfThenElse(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static IfThenElse operator +(IfThenElse et, (long, object) x)
+        protected ConditionalStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static ConditionalStatement operator +(ConditionalStatement et, (long, object) x)
         {
             var d = et.depth;
             var m = et.mem;
@@ -1968,10 +2134,10 @@ namespace Pyrrho.Level3
                 if (d > et.depth)
                     m += (_Depth, d);
             }
-            return (IfThenElse)et.New(m + x);
+            return (ConditionalStatement)et.New(m + x);
         }
 
-        public static IfThenElse operator +(IfThenElse e, (Context, long, object) x)
+        public static ConditionalStatement operator +(ConditionalStatement e, (Context, long, object) x)
         {
             var d = e.depth;
             var m = e.mem;
@@ -1979,22 +2145,22 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == Elsif || p==Then || p==Else)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+                m += (_Depth, cx._DepthBBV((CList<CList<long>>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
                 if (d > e.depth)
                     m += (_Depth, d);
             }
-            return (IfThenElse)e.New(m + (p, o));
+            return (ConditionalStatement)e.New(m + (p, o));
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new IfThenElse(defpos,m);
+            return new ConditionalStatement(defpos,m);
         }
         internal override DBObject New(long dp, BTree<long, object>m)
         {
-            return new IfThenElse(dp, m);
+            return new ConditionalStatement(dp, m);
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
@@ -2002,13 +2168,13 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (Search, ns);
-            var nt = cx.FixLl(then);
+            var nt = cx.FixLLl(then);
             if (nt != then)
                 r += (Then, nt);
-            var ne = cx.FixLl(els);
+            var ne = cx.FixLLl(els);
             if (els != ne)
                 r += (Else, ne);
-            var ni = cx.FixLl(elsif);
+            var ni = cx.FixLLl(elsif);
             if (ni != elsif)
                 r += (Elsif, ni);
             return r;
@@ -2021,31 +2187,42 @@ namespace Pyrrho.Level3
         /// _Obey an if-then-else statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = (Activation)cx; 
             a.exec = this;
-            if (((QlValue?)cx.obs[search])?.Matches(cx)==true)
-                return ObeyList(then, cx);
+            if (((QlValue?)cx.obs[search])?.Matches(cx) == true)
+            {
+                cx = ObeyList(then,"",next,cx);
+                goto next;
+            }
             for (var g = elsif.First(); g != null; g = g.Next())
-                if (g.value() is long p && cx.obs[p] is IfThenElse f 
-                    && ((QlValue?)cx.obs[f.search])?.Matches(cx)==true)
-                    return ObeyList(f.then, cx);
-            return ObeyList(els, cx);
+                if (g.value().First()?.value() is long p && cx.obs[p] is ConditionalStatement f
+                    && ((QlValue?)cx.obs[f.search])?.Matches(cx) == true)
+                {
+                    cx = ObeyList(f.then, "", next, cx);
+                    goto next;
+                }
+            var eb = els.First()?.value()?.First();
+            if (cx.obs[eb?.value() ?? -1L] is Executable ee)
+                cx = ee._Obey(cx, eb?.Next());
+            next: if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
+            return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = (IfThenElse)base._Replace(cx, so, sv);
+            var r = (ConditionalStatement)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[search]?.defpos ?? search) && no is not null)
                 r+=(cx, Search, no);
-            var nt = cx.ReplacedLl(then);
+            var nt = cx.ReplacedLLl(then);
             if (nt != then)
                 r+=(cx, Then, nt);
-            var ni = cx.ReplacedLl(elsif);
+            var ni = cx.ReplacedLLl(elsif);
             if (ni != elsif)
                 r+=(cx, Elsif, ni);
-            var ne = cx.ReplacedLl(els);
+            var ne = cx.ReplacedLLl(els);
             if (ne != els)
                 r+=(cx, Else, ne);
             return r;
@@ -2056,21 +2233,24 @@ namespace Pyrrho.Level3
             sb.Append(" Operand="); sb.Append(Uid(search));
             var cm = " Then: ";
             for (var b = then.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                for (var c=b.value().First();c!=null;c=c.Next())
+                if (c.value() is long p)
                 {
                     sb.Append(cm); cm = ";";
                     sb.Append(Uid(p));
                 }
             cm = " ElsIf: ";
             for (var b = elsif.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.value() is long p)
                 {
                     sb.Append(cm); cm = ";";
                     sb.Append(Uid(p));
                 }
             cm = " Else: ";
             for (var b = els.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.value() is long p)
                 {
                     sb.Append(cm); cm = ";";
                     sb.Append(Uid(p));
@@ -2136,11 +2316,13 @@ namespace Pyrrho.Level3
         /// Add the namespaces
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int,long>?next = null)
         {
             for(var b=nsps.First();b!= null;b=b.Next())
                 if (b.value() is string s)
                 cx.nsps+=(b.key(),s);
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         public override string ToString()
@@ -2163,15 +2345,15 @@ namespace Pyrrho.Level3
 	internal class WhileStatement : Executable
 	{
         internal const long
-            What = -123; // BList<long?> Executable
+            What = -123; // CList<long> Executable
         /// <summary>
         /// The search condition for continuing
         /// </summary>
-		public long search => (long)(mem[IfThenElse.Search]??-1L);
+		public long search => (long)(mem[ConditionalStatement.Search]??-1L);
         /// <summary>
         /// The statements to execute
         /// </summary>
-		public BList<long?> what => (BList<long?>?)mem[What]?? BList<long?>.Empty;
+		public CList<long> what => (CList<long>?)mem[What]?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a while statement from the parser
         /// </summary>
@@ -2203,7 +2385,7 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == What)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -2225,7 +2407,7 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var ns = cx.Fix(search);
             if (ns != search)
-                r += (IfThenElse.Search, ns);
+                r += (ConditionalStatement.Search, ns);
             var nw = cx.FixLl(what);
             if (nw != what)
                 r += (What, nw);
@@ -2235,7 +2417,7 @@ namespace Pyrrho.Level3
         /// Execute a while statement
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = (Activation)cx; 
             a.exec = this;
@@ -2243,7 +2425,9 @@ namespace Pyrrho.Level3
             while (na==cx && a.signal == null && ((QlValue?)cx.obs[search])?.Matches(cx)==true)
             {
                 var lp = new Activation(cx, label ?? "") { cont = a, brk = a };
-                na = ObeyList(what, lp);
+                var wb = what.First();
+                if (cx.obs[wb?.value()??-1L] is Executable we)
+                    na = we._Obey(lp,wb?.Next());
                 if (na == lp)
                     na = cx;
                 a = (Activation)na.SlideDown();
@@ -2260,7 +2444,7 @@ namespace Pyrrho.Level3
             var r = (WhileStatement)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[search]?.defpos ?? search) && no is not null)
-                r+=(cx, IfThenElse.Search, no);
+                r+=(cx, ConditionalStatement.Search, no);
             var nw = cx.ReplacedLl(what);
             if (nw != what)
                 r+=(cx, What, nw);
@@ -2289,11 +2473,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The condition for stopping
         /// </summary>
-		public long search => (long)(mem[IfThenElse.Search]??-1L);
+		public long search => (long)(mem[ConditionalStatement.Search]??-1L);
         /// <summary>
         /// The tree of statements to execute at least once
         /// </summary>
-		public BList<long?> what => (BList<long?>?)mem[WhileStatement.What]??BList<long?>.Empty;
+		public CList<CList<long>> what => (CList<CList<long>>?)mem[WhileStatement.What]??CList<CList<long>>.Empty;
          /// <summary>
         /// Constructor: a repeat statement from the parser
         /// </summary>
@@ -2325,7 +2509,7 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == WhileStatement.What)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+                m += (_Depth, cx._DepthBBV((CList<CList<long>>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -2347,8 +2531,8 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var ns = cx.Fix(search);
             if (ns != search)
-                r += (IfThenElse.Search, ns);
-            var nw = cx.FixLl(what);
+                r += (ConditionalStatement.Search, ns);
+            var nw = cx.FixLLl(what);
             if (nw != what)
                 r += (WhileStatement.What, nw);
             return r;
@@ -2361,21 +2545,21 @@ namespace Pyrrho.Level3
         /// Execute the repeat statement
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int,long>?next = null)
         {
             var a = (Activation)cx;
             a.exec = this;
             var act = new Activation(cx,label??"");
             for (; ;)
             {
-                var na = ObeyList(what, act);
-                if (na != act)
-                    break;
+                ObeyList(what, "", next, act);
                 act.signal?.Throw(act);
                 if (((QlValue?)cx.obs[search])?.Matches(act)!=false)
                     break;
             }
             cx = act.SlideDown(); 
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -2383,8 +2567,8 @@ namespace Pyrrho.Level3
             var r = (RepeatStatement)base._Replace(cx, so, sv);
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[search]?.defpos ?? search) && no is not null)
-                r+=(cx,IfThenElse.Search, no);
-            var nw = cx.ReplacedLl(what);
+                r+=(cx,ConditionalStatement.Search, no);
+            var nw = cx.ReplacedLLl(what);
             if (nw != what)
                 r +=(cx, WhileStatement.What, nw);
             return r;
@@ -2394,10 +2578,12 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             var cm = " What: ";
             for (var b = what.First(); b != null; b = b.Next())
-            if (b.value() is long p){
-                sb.Append(cm); cm = ";";
-                sb.Append(Uid(p));
-            }
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.value() is long p)
+                    {
+                        sb.Append(cm); cm = ";";
+                        sb.Append(Uid(p));
+                    }
             sb.Append(" Operand="); sb.Append(Uid(search));
             return sb.ToString();
         }
@@ -2459,10 +2645,12 @@ namespace Pyrrho.Level3
         /// Execute the iterate statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = (Activation)cx; // from the top of the stack each time
             a.exec = this;
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return a.cont ?? cx;
 		}
 	}
@@ -2475,7 +2663,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public BList<long?> stms => (BList<long?>?)mem[CompoundStatement.Stms]??BList<long?>.Empty;
+		public CList<long> stms => (CList<long>?)mem[NestedStatement.Stms] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a loop statement from the parser
         /// </summary>
@@ -2507,8 +2695,8 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == CompoundStatement.Stms)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+            if (p == NestedStatement.Stms)
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -2530,7 +2718,7 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx,m);
             var ns = cx.FixLl(stms);
             if (ns != stms)
-                r += (CompoundStatement.Stms, ns);
+                r += (NestedStatement.Stms, ns);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2541,7 +2729,7 @@ namespace Pyrrho.Level3
         /// Execute the loop statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = (Activation)cx; // from the top of the stack each time
             a.exec = this;
@@ -2552,7 +2740,9 @@ namespace Pyrrho.Level3
             {
                 lp.brk = a;
                 lp.cont = act;
-                na = (Activation)ObeyList(stms, lp);
+                var sb = stms.First();
+                if (cx.obs[sb?.value()??-1L] is Executable se)
+                na = (Activation)se.Obey(lp,sb?.Next());
                 if (na==lp)
                     lp.signal?.Throw(a);
             }
@@ -2568,7 +2758,7 @@ namespace Pyrrho.Level3
             var r = (LoopStatement)base._Replace(cx, so, sv);
             var nw = cx.ReplacedLl(stms);
             if (nw != stms)
-                r += (cx, CompoundStatement.Stms, nw);
+                r += (cx, NestedStatement.Stms, nw);
             return r;
         }
         public override string ToString()
@@ -2603,36 +2793,51 @@ namespace Pyrrho.Level3
         {
             return new ForStatement(fs.defpos, fs.mem + x);
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var ls = cx._Ob(list) as SqlValueArray??throw new DBException("PE10601");
+            var ls = cx._Ob(list) ??throw new DBException("PE10601");
             var vb = cx._Ob(vbl) as QlValue ?? throw new DBException("PE10602");
-            var dl = cx._Ob(ls.domain.defpos) as Domain ?? throw new DBException("PE10603");
-            var et = cx._Ob(dl.elType?.defpos ?? -1L) as Domain ?? throw new DBException("PE10604");
+            if (ls.domain.Length!=1) throw new DBException("PE10603");
             var vl = ls.Eval(cx) as TList;
-            var fe = vl?[0];
-            if (vb.domain.kind != Qlx.CONTENT || fe is null) throw new DBException("42000").Add(Qlx.FOR_STATEMENT); // should be unbound
-            var rt = new BList<long?>(vbl);
-            var rs = new CTree<long, Domain>(vbl, dl);
-            if (op!=Qlx.NO)
+            if (vl?.Cardinality()==0)
             {
-                rt += col; rs += (col,Domain.Int);
+                cx.result = null;
+                return cx;
             }
-            var rd = (rt.Length==0)?Domain.TableType:new Domain(-1L, cx, Qlx.TABLE, rs, rt);
-            var bs = BindingRowSet.Get(cx, new TRow(rd, fe));
+            var fe = vl?[0];
+            if (/* vb.domain.kind != Qlx.CONTENT ||*/ fe is null) throw new DBException("42000").Add(Qlx.FOR_STATEMENT); // should be unbound
+            var rt = cx.result?.rowType ?? CList<long>.Empty;
+            var rs = cx.result?.representation ?? CTree<long, Domain>.Empty;
+            rt += vbl;
+            rs += (vbl, fe.dataType);
+            if (col > 0)
+            {
+                rt += col;
+                rs += (col, Domain.Int);
+            }
+            var rd = new Domain(-1L, cx, Qlx.TABLE, rs, rt);
+            var bl = BList<(long, TRow)>.Empty;
             for (var i = 0; i < (vl?.Length ?? 0); i++)
             {
-                var vs = new CTree<long, TypedValue>(vbl, vl?[i]??TNull.Value);
-                switch(op)
+                var vs = new CTree<long, TypedValue>(vbl, vl?[i] ?? TNull.Value);
+                switch (op)
                 {
-                    case Qlx.ORDINALITY: vs += (col, new TInt(i + 1)); break; 
+                    case Qlx.ORDINALITY: vs += (col, new TInt(i + 1)); break;
                     case Qlx.OFFSET: vs += (col, new TInt(i)); break;
                 }
-                bs += (cx, new TRow(rd, vs));
+                if (cx.result is null)
+                    bl += (cx.GetUid(), new TRow(rd, vs));
+                else if (cx.result is BindingRowSet br)
+                    for (var b = br.First(cx); b != null; b = (BindingRowSet.Bindings?)b.Next(cx))
+                        bl += (cx.GetUid(), new TRow(rd, vs + b.values));
+                else
+                    for (var b = (cx.result as RowSet)?.First(cx); b != null; b = b.Next(cx))
+                        bl += (cx.GetUid(), new TRow(rd, vs + b.values));
             }
-            cx.result = bs.defpos;
-            if (cx._Ob(stm) is Executable st)
-                cx = st.Obey(cx);
+            var bs = new ExplicitRowSet(cx.GetUid(), cx, rd, bl);
+            cx.result = bs;
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         public override string ToString()
@@ -2664,14 +2869,15 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public BList<long?> stms => (BList<long?>?)mem[CompoundStatement.Stms]??BList<long?>.Empty;
+		public CList<CList<long>> stms => 
+            (CList<CList<long>>?)mem[NestedStatement.Stms]??CList<CList<long>>.Empty;
         /// <summary>
         /// Constructor: a for statement from the parser
         /// </summary>
         /// <param name="n">The label for the FOR</param>
         public ForSelectStatement(long dp, string n,Ident vn, 
-            RowSet rs,BList<long?>ss ) 
-            : base(dp,BTree<long, object>.Empty+ (Sel,rs.defpos) + (CompoundStatement.Stms,ss)
+            RowSet rs,CList<CList<long>>ss ) 
+            : base(dp,BTree<long, object>.Empty+ (Sel,rs.defpos) + (NestedStatement.Stms,ss)
                   +(Label,n)+(ForVn,vn.ident))
 		{ }
         protected ForSelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -2698,8 +2904,8 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == CompoundStatement.Stms)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+            if (p == NestedStatement.Stms)
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -2722,9 +2928,9 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(sel);
             if (ns != sel)
                 r += (Sel, ns);
-            var nn = cx.FixLl(stms);
+            var nn = cx.FixLLl(stms);
             if (nn != stms)
-                r += (CompoundStatement.Stms, nn);
+                r += (NestedStatement.Stms, nn);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -2735,7 +2941,7 @@ namespace Pyrrho.Level3
         /// Execute a FOR statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int,long>? next = null)
         {
             cx.exec = this;
             if (cx.obs[sel] is RowSet qs)
@@ -2749,11 +2955,15 @@ namespace Pyrrho.Level3
                         ac.values += cu.values;
                     ac.brk = cx as Activation;
                     ac.cont = ac;
-                    ac = (Activation)ObeyList(stms, ac);
+                    var sb = stms.First()?.value().First();
+                    if (cx.obs[sb?.value()??-1L] is Executable se)
+                        ac = (Activation)se._Obey(ac,sb?.Next());
                     ac.signal?.Throw(cx);
                 }
                 return ac.SlideDown();
             }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -2762,9 +2972,9 @@ namespace Pyrrho.Level3
             var no = ((RowSet?)cx.obs[sel])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[sel]?.defpos??sel) && no is not null)
                 r+=(cx, Sel, no);
-            var nw = cx.ReplacedLl(stms);
+            var nw = cx.ReplacedLLl(stms);
             if (nw != stms)
-                r+=(cx, CompoundStatement.Stms, nw);
+                r+=(cx, NestedStatement.Stms, nw);
             return r;
         }
         public override string ToString()
@@ -2775,11 +2985,12 @@ namespace Pyrrho.Level3
             sb.Append(" Sel="); sb.Append(Uid(sel));
             var cm = " Stms: ";
             for (var b = stms.First(); b != null; b = b.Next())
-                if (b.value() is long p)
-                {
-                    sb.Append(cm); cm = ";";
-                    sb.Append(Uid(p));
-                }
+                for (var c = b.value().First(); c != null; c = c.Next())
+                    if (c.value() is long p)
+                    {
+                        sb.Append(cm); cm = ";";
+                        sb.Append(Uid(p));
+                    }
             return sb.ToString();
         }
     }
@@ -2853,8 +3064,10 @@ namespace Pyrrho.Level3
         /// Execute an open statement
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx,ABookmark<int,long>? next = null)
         {
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -2942,9 +3155,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Execute the close statement
         /// </summary>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int,long>?next = null)
         {
             cx.Add(new EmptyRowSet(defpos,cx,Domain.Null));
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -2971,7 +3186,7 @@ namespace Pyrrho.Level3
         internal const long
             Cursor = -129, // long SqlCursor
             How = -130, // Qlx
-            Outs = -131, // BList<long?> QlValue
+            Outs = -131, // CList<long> QlValue
             Where = -132; // long QlValue
         long cursor =>(long)(mem[Cursor]??-1L);
         /// <summary>
@@ -2985,7 +3200,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The tree of assignable expressions to receive values
         /// </summary>
-		public BList<long?> outs => (BList<long?>?)mem[Outs]?? BList<long?>.Empty; 
+		public CList<long> outs => (CList<long>?)mem[Outs]?? CList<long>.Empty; 
         /// <summary>
         /// Constructor: a fetch statement from the parser
         /// </summary>
@@ -3020,7 +3235,7 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == Outs)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -3059,7 +3274,7 @@ namespace Pyrrho.Level3
         /// Execute a fetch
         /// </summary>
         /// <param name="tr">The transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx,ABookmark<int,long>?next = null)
         {
             if (cx.obs[cursor] is SqlCursor cu && cx.obs[cu.spec] is RowSet cs)
             {
@@ -3109,6 +3324,8 @@ namespace Pyrrho.Level3
                 else
                     cx = new Signal(defpos, "02000", "No obs").Obey(cx);
             }
+            if (next is not null && cx.obs[next.value()] is Executable ne)
+                cx = ne._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -3218,7 +3435,7 @@ namespace Pyrrho.Level3
         /// Execute a proc/method call
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx,ABookmark<int,long>?next = null)
         {
             cx.exec = this;
             if (cx.obs[call] is not SqlCall sc)
@@ -3226,8 +3443,11 @@ namespace Pyrrho.Level3
             var proc = (Procedure)(cx.db.objects[sc.procdefpos] ?? throw new DBException("42108"));
             var ac = new Context(cx, cx._Ob(proc.definer) as Role ?? throw new DBException("42108"),
                 cx.user ?? throw new DBException("42108"));
-            var a = proc?.Exec(ac, sc.parms) ?? cx;
-            return a.SlideDown();
+            var a = proc?.Exec(ac, sc.parms) ?? ac;
+            cx = a.SlideDown();
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
+            return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -3343,7 +3563,7 @@ namespace Pyrrho.Level3
         /// Execute a signal
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
@@ -3388,6 +3608,8 @@ namespace Pyrrho.Level3
                     cx = h._Obey(cx);
                 }
             }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         /// <summary>
@@ -3543,7 +3765,7 @@ namespace Pyrrho.Level3
     internal class GetDiagnostics : Executable
     {
         internal const long
-            List = -141; // CTree<long,Qlx>
+            List = -141; // CTree<long,Qlx> targets (each will receive a TypedValue)
         internal CTree<long, Qlx> list =>
             (CTree<long, Qlx>?)mem[List] ?? CTree<long, Qlx>.Empty;
         internal GetDiagnostics(long dp) : base(dp, BTree<long, object>.Empty) { }
@@ -3608,13 +3830,15 @@ namespace Pyrrho.Level3
         /// _Obey a GetDiagnostics statement
         /// </summary>
         /// <param name="tr">the transaction</param>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             cx.exec = this;
             for (var b = list.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is QlValue s && b.value() is Qlx t
                     && cx.tr is not null && cx.tr.diagnostics[t] is TypedValue v)
                 cx.AddValue(s, v);
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -3653,7 +3877,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The output tree
         /// </summary>
-		public BList<long?> outs => (BList<long?>?)mem[FetchStatement.Outs] ?? BList<long?>.Empty;
+		public CList<long> outs => (CList<long>?)mem[FetchStatement.Outs] ?? CList<long>.Empty;
         /// <summary>
         /// Constructor: a select statement: single row from the parser
         /// </summary>
@@ -3686,7 +3910,7 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == FetchStatement.Outs)
-                m += (_Depth, cx._DepthBV((BList<long?>)o, d));
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else
             if (o is long q && cx.obs[q] is DBObject ob)
             {
@@ -3723,7 +3947,7 @@ namespace Pyrrho.Level3
         /// Execute a select statement: single row
         /// </summary>
         /// <param name="tr">The transaction</param>
-		public override Context _Obey(Context cx)
+		public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = cx.GetActivation(); // from the top of the stack each time
             a.exec = this;
@@ -3733,9 +3957,12 @@ namespace Pyrrho.Level3
                 for (var b = outs.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.obs[p] is QlValue sv)
                         a.AddValue(sv, rb[b.key()]);
+                a.result = new TrivialRowSet(a.GetUid(), a, rb);
             }
             else
                 a.NoData();
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -3852,9 +4079,9 @@ namespace Pyrrho.Level3
                 r = cx.Add(r, Value, nv);
             return r;
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            cx.result = 0;
+            cx.result = null;
             if (cx.obs[source] is RowSet tg && cx.obs[value] is RowSet data)
             {
                 var ts = BTree<long, TargetActivation>.Empty;
@@ -3885,6 +4112,8 @@ namespace Pyrrho.Level3
                             cx.affected += ta.affected;
                     }
             }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         public override string ToString()
@@ -3893,7 +4122,7 @@ namespace Pyrrho.Level3
             sb.Append(" Target: ");
             sb.Append(Uid(source));
             sb.Append(" Value: "); sb.Append(Uid(value));
-            if (insCols.rowType!=BList<long?>.Empty)
+            if (insCols.rowType!=CList<long>.Empty)
             {
                 sb.Append(" Columns: [");
                 var cm = "";
@@ -3917,10 +4146,12 @@ namespace Pyrrho.Level3
         protected DeleteNode(long dp, BTree<long, object>? m = null) : base(dp, m)
         {
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var n = cx.obs[what]?.Eval(cx) as TNode??throw new DBException("22004");
             cx.Add(new Delete1(n.tableRow, cx.db.nextPos, cx));
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
     }
@@ -3992,7 +4223,7 @@ namespace Pyrrho.Level3
             r += (RowSet._Source, cx.Fix(source));
             return r;
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx,ABookmark<int,long>? next = null)
         {
             if (detach)
                 cx.parse |= ExecuteStatus.Detach;
@@ -4024,6 +4255,8 @@ namespace Pyrrho.Level3
                             cx.affected += ta.affected;
                     }
             }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         /// <summary>
@@ -4086,9 +4319,9 @@ namespace Pyrrho.Level3
         {
             return new UpdateSearch(defpos, m);
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int,long>? next = null)
         {
-            cx.result = 0;
+            cx.result = null;
             if (cx.obs[source] is RowSet tg)
             {
                 var ts = BTree<long, TargetActivation>.Empty;
@@ -4118,6 +4351,8 @@ namespace Pyrrho.Level3
                             cx.affected += ta.affected;
                     }
             }
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal override DBObject New(long dp, BTree<long, object> m)
@@ -4133,11 +4368,11 @@ namespace Pyrrho.Level3
         // In MatchStatement we can also have SqlNodes that are SqlPaths 
         internal CList<CList<GqlNode>> graphExps =>
             (CList<CList<GqlNode>>)(mem[GraphExps] ?? CList<CList<GqlNode>>.Empty);
-        internal BList<long?> stms => 
-            (BList<long?>?)mem[IfThenElse.Then] ?? BList<long?>.Empty;
+        internal CList<long> stms => 
+            (CList<long>?)mem[ConditionalStatement.Then] ?? CList<long>.Empty;
         internal bool atSchemaLevel => (bool)(mem[AtSchemaLevel] ?? false);
-        public GraphInsertStatement(long dp, bool sch, CList<CList<GqlNode>> ge, BList<long?> th)
-            : base(dp, new BTree<long, object>(GraphExps, ge) + (IfThenElse.Then, th) +(AtSchemaLevel,sch))
+        public GraphInsertStatement(long dp, bool sch, CList<CList<GqlNode>> ge, CList<long> th)
+            : base(dp, new BTree<long, object>(GraphExps, ge) + (ConditionalStatement.Then, th) +(AtSchemaLevel,sch))
         { }
         public GraphInsertStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
@@ -4186,7 +4421,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <returns>the same context</returns>
         /// <exception cref="DBException"></exception>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int,long>? next = null)
         {
             var ob = cx.names;
             for (var b = graphExps.First(); b != null; b = b.Next())
@@ -4248,6 +4483,8 @@ namespace Pyrrho.Level3
                         }
                 }
             cx.names = ob;
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         internal CTree<long,bool> GraphTypes(Context cx)
@@ -4267,7 +4504,7 @@ namespace Pyrrho.Level3
                 sb.Append(" SCHEMA");
             string cm;
             sb.Append('['); sb.Append(graphExps);sb.Append(']');
-            if (stms!=BList<long?>.Empty)
+            if (stms!=CList<long>.Empty)
             {
                 cm = " THEN [";
                 for (var b = stms.First(); b != null; b = b.Next())
@@ -4289,12 +4526,11 @@ namespace Pyrrho.Level3
     {
         internal CTree<UpdateAssignment, bool> assig =>
             (CTree<UpdateAssignment, bool>)(mem[RowSet.Assig] ?? CTree<UpdateAssignment, bool>.Empty);
-        internal long stm => (long)(mem[Procedure.Body] ?? -1L);
         public static LetStatement operator+(LetStatement ls,(long,object)x)
         {
             return new LetStatement(ls.defpos, ls.mem + x);
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx,ABookmark<int,long>? next = null)
         {
             var vs = CTree<long, TypedValue>.Empty;
             var ls = BList<DBObject>.Empty;
@@ -4309,9 +4545,9 @@ namespace Pyrrho.Level3
                 cx.binding += vs;
             }
             var dm = new Domain(Qlx.TABLE, cx, ls);
-            cx.result = BindingRowSet.Get(cx, new TRow(dm, vs)).defpos;
-            if (cx._Ob(stm) is Executable st)
-                cx = st.Obey(cx);
+            cx.result = BindingRowSet.Get(cx, new TRow(dm, vs));
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
         public override string ToString()
@@ -4335,9 +4571,9 @@ namespace Pyrrho.Level3
         {
             return new OrderAndPageStatement(ls.defpos, ls.mem + x);
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var bt = cx.obs[cx.result] as ExplicitRowSet
+            var bt = cx.result as ExplicitRowSet
                 ?? new ExplicitRowSet(cx.GetUid(), cx, Domain.Row, new BList<(long, TRow)>((cx.GetUid(), TRow.Empty)));
             var nr = BList<(long,TRow)>.Empty;
             var od = (mem[RowSet.RowOrder] as Domain)?? Domain.Row;
@@ -4350,7 +4586,9 @@ namespace Pyrrho.Level3
                 nr += (b._pos, b);
             var nb = new ExplicitRowSet(bt.defpos, cx, bt, nr) + (TableRowSet._Index, bt.index);
             cx.Add(nb);
-            cx.result = nb.defpos;
+            cx.result = nb;
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
     }
@@ -4360,9 +4598,9 @@ namespace Pyrrho.Level3
         {
             return new FilterStatement(ls.defpos, ls.mem + x);
         }
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var bt = cx.obs[cx.result] as ExplicitRowSet
+            var bt = cx.result
                 ?? new ExplicitRowSet(cx.GetUid(), cx, Domain.Row, new BList<(long, TRow)>((cx.GetUid(), TRow.Empty)));
             var nr = BList<(long, TRow)>.Empty;
             if (mem[RowSet._Where] is CTree<long, bool> wh)
@@ -4370,15 +4608,21 @@ namespace Pyrrho.Level3
                 bt += (RowSet._Where, wh);
                 cx.Add(bt);
             }
-            for (var b = bt.First(cx); b != null; b = b.Next(cx))
-            {
-                if (!b.Matches(cx))
-                    break;
-                nr += (b._pos, b);
-            }
-            var nb = new ExplicitRowSet(bt.defpos, cx, bt, nr) + (TableRowSet._Index, bt.index);
+            if (bt is RowSet br)
+                for (var b = br.First(cx); b != null; b = b.Next(cx))
+                {
+                    if (b.Matches(cx))
+                        nr += (b._pos, b);
+                }
+            else if (bt is BindingRowSet bu)
+                for (var b = bu.First(cx); b != null; b = b.Next(cx) as BindingRowSet.Bindings)
+                    if (b.Matches(cx))
+                        nr += (b._pos, b);
+            var nb = new ExplicitRowSet(bt.defpos, cx, bt, nr);
             cx.Add(nb);
-            cx.result = nb.defpos;
+            cx.result = nb;
+            if (next is not null && cx.obs[next.value()] is Executable e)
+                cx = e._Obey(cx, next.Next());
             return cx;
         }
     }
@@ -4423,16 +4667,16 @@ namespace Pyrrho.Level3
             BindingTable = -490, // long ExplicitRowSet
             GDefs = -210,   // CTree<long,TGParam>
             MatchFlags = -496, // Bindings=1,Body=2,Return=4,RowType=8
-            MatchList = -491, // BList<long?> GqlMatch
+            MatchList = -491, // CList<long> GqlMatch
             Truncating = -492; // BTree<long,(long,long)> EdgeType (or 0L), lm QlValue, ord QlValue
         internal CTree<long, TGParam> gDefs =>
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
-        internal BList<long?> matchList =>
-            (BList<long?>)(mem[MatchList] ?? BList<long?>.Empty);
+        internal CList<long> matchList =>
+            (CList<long>)(mem[MatchList] ?? CList<long>.Empty);
         internal CTree<long, bool> where =>
             (CTree<long, bool>)(mem[RowSet._Where] ?? CTree<long, bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
-        internal BList<long?> then => (BList<long?>)(mem[IfThenElse.Then] ?? BList<long?>.Empty);
+        internal CList<long> then => (CList<long>)(mem[ConditionalStatement.Then] ?? CList<long>.Empty);
         internal BTree<long, (long, long)> truncating =>
             (BTree<long, (long, long)>)(mem[Truncating] ?? BTree<long, (long, long)>.Empty);
         internal int size => (int?)mem[RowSetSection.Size] ?? -1;
@@ -4444,22 +4688,22 @@ namespace Pyrrho.Level3
         /// This private field is modified only at the start of _Obey
         /// </summary>
         BTree<long,(int,Domain)> truncator = BTree<long,(int,Domain)>.Empty;
-        public MatchStatement(Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, BList<long?> ge,
-            BTree<long, object> m, long st, long re)
-            : this(cx.GetUid(), cx, tg, gs, ge, m, st, re)
+        public MatchStatement(Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, CList<long> ge,
+            BTree<long, object> m)
+            : this(cx.GetUid(), cx, tg, gs, ge, m)
         {
             cx.Add(this);
         }
-        MatchStatement(long dp, Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, BList<long?> ge,
-    BTree<long, object> m, long st, long re)
-            : base(dp, _Mem(dp, cx, m, tg, gs, ge, st, re) + (Procedure.Body, st))
+        MatchStatement(long dp, Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, CList<long> ge,
+    BTree<long, object> m)
+            : base(dp, _Mem(dp, cx, m, tg, gs, ge)) // + (Procedure.Body, st))
         {
             cx.Add(this);
         }
         public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
         { }
         static BTree<long, object> _Mem(long dp, Context cx, BTree<long, object> m, BTree<long, (long, long)>? tg,
-            CTree<long, TGParam> gs, BList<long?> ge, long st, long re)
+            CTree<long, TGParam> gs, CList<long> ge)
         {
             var ch = false;
             for (var b = gs.First(); b != null; b = b.Next())
@@ -4474,15 +4718,15 @@ namespace Pyrrho.Level3
             for (var b = gs.First(); b != null && f == Flags.None; b = b.Next())
                 if (b.value().value != "")
                     f |= Flags.Bindings;
-            if (cx.obs[st] is Executable e)
+/*            if (cx.obs[st] is Executable e)
             {
                 f |= Flags.Body;
-                if (e.domain.rowType != BList<long?>.Empty)
+                if (e.domain.rowType != CList<long>.Empty)
                     f |= Flags.Return;
                 m += (Procedure.Body, st);
-            }
+            } */
             m += (MatchFlags, f);
-            m += (ReturnStatement.Ret, re);
+     //       m += (ReturnStatement.Ret, re);
             m += (MatchList, ge);
  /*           for (var b = ge.First(); b != null; b = b.Next())
                 if (cx.obs[b.value() ?? -1L] is GqlMatch sm)
@@ -4551,7 +4795,7 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">The context</param>
         /// <returns></returns>
-        public override Context _Obey(Context cx)
+        public override Context _Obey(Context cx, ABookmark<int, long>? ef = null)
         {
             for (var b = cx.undefined.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlReview sr)
@@ -4588,9 +4832,8 @@ namespace Pyrrho.Level3
                 = new Activation(cx, "Match")
                 {
                     binding = cx.binding,
-                    result = domain.defpos
+                    result = domain as RowSet
                 };
-
             // Parse any truncating expressions
             for (var b = truncating.First(); b != null; b = b.Next())
             {
@@ -4617,45 +4860,16 @@ namespace Pyrrho.Level3
             var gf = matchList.First();
             if (ac.obs[gf?.value() ?? -1L] is GqlMatch sm)
                 for (var ab = sm.matchAlts.First(); ab!= null; ab = ab.Next())
-                    if (ac.obs[ab.value() ?? -1L] is GqlMatchAlt sa)
+                    if (ac.obs[ab.value()] is GqlMatchAlt sa)
                     {
                         var xf = sa.matchExps.First();
                         if (gf is not null && xf is not null)
                             ExpNode(ac, new ExpStep(sa.mode, xf, ab.Next(), 
-                                new GraphStep(sa.mode, gf.Next(), new EndStep(this))), Qlx.Null, null, null);
+                                new GraphStep(sa.mode, gf.Next(), new EndStep(this, ef),ef),ef), Qlx.Null, null, null);
                     }
+            cx.result = ac.result;
             var ps = ((Transaction)ac.db).physicals;
-            var changes = false;
-            // Alas, MatchStatement can have side effects such as creating ghostly NodeTypes for 
-            // BindingTable entries. For now we simply take them out and pretend they aren't there
-            for (var b = ps.PositionAt(pre); b != null; b = b.Next())
-                if (b.value() is PNodeType ph && names.Contains(ph.name))
-                    ac.db += (Transaction.Physicals, ps - b.key());
-                else
-                    changes = true;
-            if (!changes)
-            {
-                cx.result = bindings;
-                if (ac.obs[bindings] is RowSet brs)
-                    cx.Add(brs);
-            }
-            else
-                cx.result = -1L;
-
-            if (ac.obs[body] is SelectStatement ss && ac.obs[ss.union] is RowSet su)
-            {
-                ac.result = ss.union;
-                ac.Add(su);
-                if (ac.obs[ac.result] is OrderedRowSet os && ac.obs[os.source] is RowSet sc)
-                {
-                    var xs = new XRowSet(ac, os, sc);
-                    ac.obs += (os.defpos, xs);
-                    ac.obs += (xs.defpos, xs);
-                    cx.obs += ac.obs;
-                    cx.nextHeap = ac.nextHeap;
-                    cx.result = DoExclusions(xs.defpos, cx, cx);
-                }
-                else if (ac.obs[DoExclusions(ac.result,ac,cx)] is RowSet rs)
+            if (DoExclusions(cx.result as RowSet,ac,cx) is RowSet rs)
                 {
                     var bl = BList<(long, TRow)>.Empty;
                     var bt = CTree<CTree<long, TypedValue>, bool>.Empty;
@@ -4668,41 +4882,28 @@ namespace Pyrrho.Level3
                         }
                     var er = new ExplicitRowSet(cx.GetUid(), cx, rs, bl);
                     cx.Add(er);
-                    ac.result = er.defpos;
+                    ac.result = er;
                     cx.result = ac.result;
-                    cx.obs += (ac.result, er);
                 }
-            }
-            else if (gDefs == CTree<long, TGParam>.Empty)
-                cx.result = ac.result = TrueRowSet.OK(cx).defpos;
-            else if (cx.obs[cx.result] is RowSet rrs)
-                cx.obs += (cx.result, rrs);
-            if (ac.obs[ac.result] is RowSet ra && ra.Cardinality(cx) == 0)
+            if (gDefs == CTree<long, TGParam>.Empty) 
+                cx.result = ac.result = TrueRowSet.OK(cx); 
+            if (ac.result is RowSet ra && ra.Cardinality(cx) == 0)
                 ac.warnings += new DBException("02000");
-            if (then != BList<long?>.Empty)
-            {
-                var ta = new Activation(ac, "" + defpos)
-                {
-                    result = ac.result
-                };
-                ObeyList(then, ta);
-                ta.SlideDown();
-                ac.values += ta.values;
-                ac.db = ta.db;
-            }
+            if (then != CList<long>.Empty)
+                ObeyList(new CList<CList<long>>(then), "", ef, ac);
             ac.SlideDown();
             cx.db = ac.db;
             if (ac.obs[bindings] is RowSet bs)
                 cx.obs += (bindings, bs);
             var aff = ac.db.AffCount(ac);
             if (aff > 0)
-                cx.result = -1L;            
+                cx.result = null;
             return cx;
         }
-        internal long DoExclusions(long rp,Context ac,Context cx)
+        internal RowSet? DoExclusions(RowSet? rs,Context ac,Context cx)
         {
             for (var b = ac.paths.First(); b != null; b = b.Next())
-                if (ac.obs[b.key()] is GqlPath gp && ac.obs[rp] is RowSet ba)
+                if (ac.obs[b.key()] is GqlPath gp && rs is RowSet ba)
                 {
                     var bl = BList<(long, TRow)>.Empty;
                     for (var c = b.value().First(); c != null; c = c.Next())
@@ -4720,9 +4921,9 @@ namespace Pyrrho.Level3
                     var ers = new ExplicitRowSet(ac.GetUid(), ac, ba, bl);
                     ac.Add(ers);
                     cx.Add(ers);
-                    rp = ers.defpos;
+                    rs = ers;
                 }
-            return rp;
+            return rs;
         }
         /// <summary>
         /// The Match implementation uses continuations as in Scheme or Haskell.
@@ -4735,10 +4936,10 @@ namespace Pyrrho.Level3
         /// Of course, when calling the next matching method, we set up its Step.
         /// As a valueType, on each success the stack grows, and corresponds to the trail.
         /// </summary>
-        internal abstract class Step(MatchStatement m)
+        internal abstract class Step(MatchStatement m,ABookmark<int,long>? ef)
         {
-            public MatchStatement ms = m; // all continuations know the MatchStatement
-
+            public MatchStatement _ms = m; // all continuations know the MatchStatement
+            public ABookmark<int, long>? _ef = ef;
             /// <summary>
             /// The parameters are (maybe) a Step, and the current end state of the match 
             /// </summary>
@@ -4748,14 +4949,14 @@ namespace Pyrrho.Level3
             /// <param name="pd">The current last matched node if any</param>
             public abstract void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd);
             public virtual Step? Cont => null;
-            protected static string Show(ABookmark<int, long?>? b)
+            protected static string Show(ABookmark<int, long>? b)
             {
                 var sb = new StringBuilder();
                 var cm = '[';
                 for (; b != null; b = b.Next())
                 {
                     sb.Append(cm); cm = ',';
-                    sb.Append(Uid(b.value() ?? -1L));
+                    sb.Append(Uid(b.value()));
                 }
                 if (cm == '[') sb.Append(cm); sb.Append(']');
                 return sb.ToString();
@@ -4766,30 +4967,30 @@ namespace Pyrrho.Level3
         /// In a complex situation there may be several possibly alternative RETURNS, 
         /// and all such must be placed in the binding table.
         /// </summary>
-        internal class EndStep(MatchStatement m) : Step(m)
+        internal class EndStep(MatchStatement m,ABookmark<int,long>?e) : Step(m,e)
         {
             /// <summary>
             /// On success we call AddRow
             /// </summary>
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd)
             {
-                for (var b = ms.where.First(); b != null; b = b.Next())
+                for (var b = _ms.where.First(); b != null; b = b.Next())
                     if (cx.obs[b.key()] is SqlValueExpr se && se.Eval(cx) != TBool.True)
                         return;
-                ms.AddRow(cx);
+                _ms.AddRow(cx,_ef);
             }
             public override string ToString()
             {
-                return "End[" + Uid(ms.defpos) + "]";
+                return "End[" + Uid(_ms.defpos) + "]";
             }
         }
         /// <summary>
         /// GraphStep contains the remaining alternative matchexpressions in the MatchStatement.
         /// A GraphStep precedes the final EndStep, but there may be others?
         /// </summary>
-        internal class GraphStep(Qlx mode, ABookmark<int, long?>? graphs, Step n) : Step(n.ms)
+        internal class GraphStep(Qlx mode, ABookmark<int, long>? graphs, Step n,ABookmark<int,long>?ef) : Step(n._ms,ef)
         {
-            internal readonly ABookmark<int, long?>? matchAlts = graphs; // the current place in the MatchStatement
+            internal readonly ABookmark<int, long>? matchAlts = graphs; // the current place in the MatchStatement
             readonly Qlx matchMode = mode;
             readonly Step next = n; // the continuation
 
@@ -4799,15 +5000,15 @@ namespace Pyrrho.Level3
             /// </summary>
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd)
             {
-                if ((!ms.Done(cx)) && cx.obs[matchAlts?.value() ?? -1L] is GqlMatch sm)
+                if ((!_ms.Done(cx)) && cx.obs[matchAlts?.value() ?? -1L] is GqlMatch sm)
                 {
                     for (var ab = sm.matchAlts.First(); ab != null; ab = ab.Next())
-                        if (cx.obs[ab.value() ?? -1L] is GqlMatchAlt sa)
+                        if (cx.obs[ab.value()] is GqlMatchAlt sa)
                         {
                             cx.binding -= sa.pathId;
                             var af = sa.matchExps.First();
-                            var an = new GraphStep(matchMode, matchAlts?.Next(), next);
-                            ms.ExpNode(cx, new ExpStep(matchMode, af, ab.Next(), an),Qlx.Null, null, null);
+                            var an = new GraphStep(matchMode, matchAlts?.Next(), next,next._ef);
+                            _ms.ExpNode(cx, new ExpStep(matchMode, af, ab.Next(), an,next._ef),Qlx.Null, null, null);
                         }
                 }
                 else 
@@ -4827,11 +5028,11 @@ namespace Pyrrho.Level3
         /// GqlNode, GqlEdge, or GqlPath 
         /// (if ExpNode finds it is a GqlPath it sets up PathNode to follow it).
         /// </summary>
-        internal class ExpStep(Qlx matchMode, ABookmark<int, long?>? m, ABookmark<int,long?>?ab, Step n) : Step(n.ms)
+        internal class ExpStep(Qlx matchMode, ABookmark<int, long>? m, ABookmark<int,long>?ab, Step n,ABookmark<int,long>?ef) : Step(n._ms,ef)
         {
             public Qlx mode = matchMode;
-            public ABookmark<int, long?>? matches = m; // the current place in the matchExp
-            public ABookmark<int, long?>? alts = ab; // the current place in the alts
+            public ABookmark<int, long>? matches = m; // the current place in the matchExp
+            public ABookmark<int, long>? alts = ab; // the current place in the alts
             public Step next = n; // the continuation
 
             /// <summary>
@@ -4840,8 +5041,8 @@ namespace Pyrrho.Level3
             /// </summary>
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? pg, TNode? pd)
             {
-                if ((!ms.Done(cx)) && matches != null)
-                    ms.ExpNode(cx, new ExpStep(mode, matches, ab, cn ?? next), tok, pg, pd);
+                if ((!_ms.Done(cx)) && matches != null)
+                    _ms.ExpNode(cx, new ExpStep(mode, matches, ab, cn ?? next, _ef), tok, pg, pd);
                 else 
                     next.Next(cx, null, Qlx.WITH, pg, pd);
             }
@@ -4862,7 +5063,7 @@ namespace Pyrrho.Level3
         /// 3 Step classes: PathFirstStep, PathStep, PathLastStep
         /// </summary>
         internal class PathFirstStep(Qlx matchMode, GqlPath s, int i, GqlNode? pg, 
-            Step n) : Step(n.ms)
+            Step n,ABookmark<int,long>?ef) : Step(n._ms, ef)
         {
             public Qlx mode = matchMode;
             public GqlPath sp = s; // the repeating pattern spec
@@ -4872,7 +5073,7 @@ namespace Pyrrho.Level3
             public GqlNode? xn = pg;
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd)
             {
-                ms.ExpNode(cx, (ExpStep)next, tok, px, pd);
+                _ms.ExpNode(cx, (ExpStep)next, tok, px, pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -4884,12 +5085,14 @@ namespace Pyrrho.Level3
                 return sb.ToString();
             }
         }
-        internal class PathLastStep(Qlx matchMode, GqlPath s, TNode st, ABookmark<int, long?>? m, int i, Step n) : Step(n.ms)
+        internal class PathLastStep(Qlx matchMode, GqlPath s, TNode st, ABookmark<int, long>? m, int i, 
+            Step n,ABookmark<int,long>?ef) 
+            : Step(n._ms, ef)
         {
             public Qlx mode = matchMode;
             public GqlPath sp = s;
             public TNode start = st;
-            public ABookmark<int, long?>? matches = m; // rest of the enclosing MatchgExp
+            public ABookmark<int, long>? matches = m; // rest of the enclosing MatchgExp
             public int im = i;
             public Step next = n; // the continuation
             /// <summary>
@@ -4914,7 +5117,7 @@ namespace Pyrrho.Level3
                     if (inc)
                         cx.paths += (sp.defpos, cl + (start.defpos, cs + (pp,(im, cx.binding))));
                 }
-                if (ms.Done(cx))
+                if (_ms.Done(cx))
                 {
                     next.Next(cx, cn, tok, px, pd);
                     return;
@@ -4924,8 +5127,8 @@ namespace Pyrrho.Level3
                     next.Next(cx, cn, tok, px, pd);
                 // now see if we need to repeat the match process for this path pattern
                 if ((i < sp.quantifier.Item2 || sp.quantifier.Item2 < 0) && pd is not null)
-                    ms.PathFirstNode(cx, new PathFirstStep(mode, sp, i, px,
-                        new PathLastStep(mode, sp, start, matches, i, next)), pd);
+                    _ms.PathFirstNode(cx, new PathFirstStep(mode, sp, i, px,
+                        new PathLastStep(mode, sp, start, matches, i, next,_ef),_ef), pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -4942,7 +5145,7 @@ namespace Pyrrho.Level3
         /// checks these one by one.
         /// </summary>
         internal class NodeStep(Qlx matchMode, GqlNode x, ABookmark<long, TableRow>? no,Step n) 
-            : Step(n.ms)
+            : Step(n._ms, n._ef)
         {
             public Qlx mode = matchMode;
             public ABookmark<long, TableRow>? nodes = no;
@@ -4954,7 +5157,7 @@ namespace Pyrrho.Level3
             /// </summary>
             public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? pg, TNode? pd)
             {
-                ms.ExpNode(cx, (ExpStep)next, tok, pg, pd);
+                _ms.ExpNode(cx, (ExpStep)next, tok, pg, pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -4978,7 +5181,7 @@ namespace Pyrrho.Level3
         /// appended to the Match, we execute them for the current row of the binding table.
         /// </summary>
         /// <param name="cx">The context</param>
-        void AddRow(Context cx)
+        void AddRow(Context cx, ABookmark<int, long>? ef)
         {
             // everything has been checked
             if (flags == Flags.None)
@@ -4992,16 +5195,11 @@ namespace Pyrrho.Level3
                 cx.Add(ers);
                 cx.val = TNull.Value;
                 cx.values += cx.binding;
-                var ro = cx.result;
-                if (cx.obs[body] is Executable bd && cx.binding != CTree<long, TypedValue>.Empty)
-                {
-                    cx = bd._Obey(cx);
-                    if (bd is SelectStatement ss)
-                        ro = ss.union;
-                }
+                cx.result = ers;
+                if (cx.obs[ef?.value()??-1L] is Executable bd)
+                    cx = bd._Obey(cx, ef?.Next());
                 if (flags == Flags.None)
                     cx.val = TBool.True;
-                cx.result = ro;
             }
         }
         static int _step = 0; // debugging assistant
@@ -5026,7 +5224,7 @@ namespace Pyrrho.Level3
             }
             cx.conn.Awake();
             var step = ++_step;
-            if (xn is GqlPath sp && sp.pattern.First() is ABookmark<int, long?> ma && pd is not null)
+            if (xn is GqlPath sp && sp.pattern.First() is ABookmark<int, long> ma && pd is not null)
             {
                 // additions to the path binding happen in PathStep.Next()
                 // here we just ensure that the required arrays have been initialised
@@ -5034,7 +5232,7 @@ namespace Pyrrho.Level3
                     cx.path = PathInit(cx, cx.path, ma, 0);
                 PathFirstNode(cx, new PathFirstStep(be.mode, sp, 0, gp,
                     new PathLastStep(be.mode, sp, pd, be.matches?.Next(), 0,
-                    new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next))), pd);
+                    new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next,be._ef),be._ef),be._ef), pd);
                 return;
             }
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
@@ -5088,7 +5286,7 @@ namespace Pyrrho.Level3
             var df = ds.First();
             if (df != null && !Done(cx))
                 DbNode(cx, new NodeStep(be.mode, xn, df, 
-                    new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next)),
+                    new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._ef)),
                      (xn is GqlEdge && xn is not GqlPath) ? xn.tok : tok, pd);
         }
         static BTree<long,TableRow> Traverse(Context cx,MatchStatement ms,GqlNode xn, BTree<long,(int,Domain)> tr,
@@ -5350,12 +5548,12 @@ namespace Pyrrho.Level3
             cx.values = ov;
             cx.binding = ob;
         }
-        static TRow PathInit(Context cx, TRow pa, ABookmark<int, long?> ma, int d)
+        static TRow PathInit(Context cx, TRow pa, ABookmark<int, long> ma, int d)
         {
             for (var c = ma; c != null; c = c.Next())
-                if (cx.obs[c.value() ?? -1L] is GqlNode cn)
+                if (cx.obs[c.value()] is GqlNode cn)
                 {
-                    if (cn is GqlPath sp && sp.pattern.First() is ABookmark<int, long?> sm)
+                    if (cn is GqlPath sp && sp.pattern.First() is ABookmark<int, long> sm)
                         pa = PathInit(cx, pa, sm, d + 1);
                     else
                         for (var b = cn.state.First(); b != null; b = b.Next())
@@ -5381,10 +5579,10 @@ namespace Pyrrho.Level3
             DoBindings(cx, xi, dn);
             if (!xi.CheckProps(cx, this, dn))
                 goto backtrack;
-            if (fb?.Next() is not ABookmark<int, long?> fn) goto backtrack;
-            if (cx.obs[fn.value() ?? -1L] is GqlNode xn && bp.sp is GqlPath sp
+            if (fb?.Next() is not ABookmark<int, long> fn) goto backtrack;
+            if (cx.obs[fn.value()] is GqlNode xn && bp.sp is GqlPath sp
                 && (bp.im < sp.quantifier.Item2 || sp.quantifier.Item2 < 0))
-                ExpNode(cx, new ExpStep(bp.mode, fn, null, bp.next), Qlx.NULL, xi, dn); // use ordinary ExpNode for the internal pattern
+                ExpNode(cx, new ExpStep(bp.mode, fn, null, bp.next,bp._ef), Qlx.NULL, xi, dn); // use ordinary ExpNode for the internal pattern
                                                                                   // dn must be an edge
                                                                                   // and xn must be an GqlEdge
             backtrack:
@@ -5485,9 +5683,9 @@ namespace Pyrrho.Level3
         {
             var r = (MatchStatement)base._Replace(cx, was, now);
             var ch = false;
-            var ls = BList<long?>.Empty;
+            var ls = CList<long>.Empty;
             for (var b=matchList.First();b!=null;b=b.Next())
-                if (cx.obs[b.value()??-1L] is GqlMatchAlt sa)
+                if (cx.obs[b.value()] is GqlMatchAlt sa)
                 {
                     var a = sa.Replace(cx, was, now);
                     if (a != sa)
@@ -5518,7 +5716,7 @@ namespace Pyrrho.Level3
             for (var b=matchList.First();b!=null;b=b.Next())
             {
                 sb.Append(cm); cm = ",";
-                sb.Append(Uid(b.value() ?? -1L));
+                sb.Append(Uid(b.value()));
             }
             sb.Append(')');
             if (where != CTree<long, bool>.Empty)
@@ -5533,13 +5731,13 @@ namespace Pyrrho.Level3
             {
                 sb.Append(" Bindings "); sb.Append(Uid(bindings));
             }
-            if (then!=BList<long?>.Empty)
+            if (then!=CList<long>.Empty)
             {
                 sb.Append(" THEN ["); cm = "";
                 for (var b = then.First(); b != null; b = b.Next())
                 {
                     sb.Append(cm); cm = ",";
-                    sb.Append(Uid(b.value() ?? -1L));
+                    sb.Append(Uid(b.value()));
                 }
                 sb.Append(']');
             }

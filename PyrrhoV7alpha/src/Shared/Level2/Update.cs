@@ -187,7 +187,8 @@ namespace Pyrrho.Level2
             {
                 for (var b = tb.First(); b != null; b = b.Next())
                 {
-                    if (b.value() is not long p || tb.representation[p] is not Domain dv)
+                    var p = b.value();
+                    if (tb.representation[p] is not Domain dv)
                         throw new PEException("PE10701");
                     if (fields[p] is TypedValue v
                         && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(dv))

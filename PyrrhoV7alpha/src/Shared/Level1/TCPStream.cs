@@ -706,7 +706,7 @@ namespace Pyrrho.Level1
         /// <param name="rowSet">the results</param>
         internal void PutRowType(Context cx)
         {
-            if (cx.obs[cx.result] is not RowSet result)
+            if (cx.result is not Domain result)
             {
 #if EMBEDDED
                 WriteByte(11);
@@ -1097,14 +1097,14 @@ namespace Pyrrho.Level1
                         var tf = ut.rowType.First();
                         if (ut.prefix != null)
                         {
-                            if (tf != null && tv is TRow tr && tr.values[tf.value()??-1L] is TypedValue nv)
+                            if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
                                 tv = nv;
                             PutString(ut.prefix + tv.ToString());
                             break;
                         }
                         if (ut.suffix is not null)
                         {
-                            if (tf != null && tv is TRow tr && tr.values[tf.value()??-1L] is TypedValue nv)
+                            if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
                                 tv = nv;
                             PutString(tv.ToString()+ut.suffix);
                             break;

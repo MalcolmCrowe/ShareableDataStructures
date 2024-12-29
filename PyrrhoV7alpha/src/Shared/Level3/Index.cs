@@ -103,7 +103,7 @@ namespace Pyrrho.Level3
                         r += (RefIndex, px.defpos);
                 }
             }
-            var rt = BList<long?>.Empty;
+            var rt = CList<long>.Empty;
             var rs = CTree<long, Domain>.Empty;
             for (var b = c.columns.First(); b != null; b = b.Next())
                 if (b.value() is long pos)
