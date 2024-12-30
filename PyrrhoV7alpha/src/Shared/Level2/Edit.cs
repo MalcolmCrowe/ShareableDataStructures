@@ -269,6 +269,7 @@ namespace Pyrrho.Level2
             var st = tg.rowType;
             var sr = tg.representation;
             var ss = tg.names;
+            var si = tg.infos[cx.role.defpos];
             // The second stage of merging columns considers the columns from a new under
             for (var ub = under.First(); ub != null; ub = ub.Next())
                 if (ub.key() is UDType uD)
@@ -310,6 +311,9 @@ namespace Pyrrho.Level2
                     var un = (UDType)(cx.db.objects[uP] ?? throw new DBException("PE40802"));
                     un += (Table.TableRows, un.tableRows + tg.tableRows);
                     var ui = un.infos[cx.role.defpos] ?? new ObInfo(un.name, Grant.AllPrivileges);
+                    ss += ui.names;
+                    if (si != null)
+                        si += (ObInfo._Names, ss);
                     var no = un.rowType == CList<long>.Empty;
                     Level3.Index? xx = null;
                     // special case: if un is a nodetype without an ID column and we have an ID column
@@ -404,7 +408,9 @@ namespace Pyrrho.Level2
                     ru += cp;
                     rs += (cp,d);
                 }
-            tg = tg + (Domain.RowType, ru) + (Domain.Representation, rs) + (ObInfo._Names, tg.names);
+            tg = tg + (Domain.RowType, ru) + (Domain.Representation, rs) + (ObInfo._Names, ss);
+            if (si!=null)
+                tg += (DBObject.Infos,tg.infos+(cx.role.defpos,si));
             // record our new dataType
             cx.obs += (tg.defpos, tg);
             cx.db += (tg.defpos, tg);
