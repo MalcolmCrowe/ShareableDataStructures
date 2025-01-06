@@ -1564,6 +1564,31 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 c = a.dataType.Compare(a, b);
                 goto ret;
             }
+            var ak = Equivalent(a.dataType.kind);
+            var bk = Equivalent(b.dataType.kind);
+            if (ak != bk && ak!=Qlx.Null)
+            {
+                if (ak == Qlx.INTEGER && a.ToInteger() is Integer ai)
+                    if (bk == Qlx.NUMERIC)
+                        return _Numeric.Compare(new TNumeric(new Numeric(ai)), b);
+                    else
+                    {
+                        if (bk == Qlx.REAL)
+                            return Real.Compare(new TReal(ai), b);
+                    }
+                else if (bk == Qlx.INTEGER && b.ToInteger() is Integer bi)
+                    if (bk == Qlx.NUMERIC)
+                        return _Numeric.Compare(a, new TNumeric(new Numeric(bi)));
+                    else
+                    {
+                        if (bk == Qlx.REAL)
+                            return Real.Compare(a, new TReal(bi));
+                    }
+                else if (a.ToDouble() is double ad && b.ToDouble() is double bd)
+                    return (ad == bd) ? 0 : (ad > bd) ? 1 : -1;
+                else
+                    c = ak.CompareTo(bk);
+            }
             switch (Equivalent(kind))
             {
                 case Qlx.BOOLEAN:
