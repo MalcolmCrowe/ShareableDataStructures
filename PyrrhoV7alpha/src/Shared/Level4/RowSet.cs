@@ -1562,7 +1562,7 @@ namespace Pyrrho.Level4
         public virtual Cursor? Next(Context cx)
         {
             for (var b = _dom.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                if (b.value() is long p && (cx.obs[p] is not QlInstance qi || qi.sPos<0))
                     cx.values -= p;
             return _Next(cx);
         }
@@ -3644,6 +3644,13 @@ namespace Pyrrho.Level4
                     }
                 }
                 return null;
+            }
+            public override Cursor? Next(Context cx)
+            {
+                for (var b = _dom.First(); b != null; b = b.Next())
+                    if (b.value() is long p)
+                        cx.values -= p;
+                return _Next(cx);
             }
             protected override Cursor? _Next(Context _cx)
             {
