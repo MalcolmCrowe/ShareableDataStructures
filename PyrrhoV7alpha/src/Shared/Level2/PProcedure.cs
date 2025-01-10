@@ -150,7 +150,6 @@ namespace Pyrrho.Level2
                 return;
             var psr = new Parser(rdr.context, source);
             psr.cx.defs = BTree<long,Names>.Empty;
-            psr.cx.names = rdr.context.anames;
             psr.cx.obs = ObTree.Empty;
             psr.cx.depths = BTree<int, ObTree>.Empty;
             var n = new Ident(name, ppos);
@@ -160,6 +159,8 @@ namespace Pyrrho.Level2
             dataType = dt;
             framing = new Framing(psr.cx,nst); // heading only
             var pr = (Procedure?)Install(psr.cx);
+            psr.cx.anames = Names.Empty;
+            psr.cx.names = Names.Empty;
             if (pr is not null)
             { 
                 psr.cx.AddParams(pr);

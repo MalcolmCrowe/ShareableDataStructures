@@ -418,7 +418,7 @@ namespace Pyrrho.Level3
     /// A Linear Daata Accessing Statement for the GQL procedure language
     /// 
     /// </summary>
-    internal class AccssingStatement : Executable
+    internal class AccessingStatement : Executable
     {
         internal const long
              GQLStms = -366; // CList<long> Executable
@@ -431,11 +431,11 @@ namespace Pyrrho.Level3
         /// Constructor: create a compound statement
         /// </summary>
         /// <param name="n">The label for the compound statement</param>
-		internal AccssingStatement(long dp, string n)
+		internal AccessingStatement(long dp, string n)
             : base(dp, new BTree<long, object>(Label, n))
         { }
-        public AccssingStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static AccssingStatement operator +(AccssingStatement et, (long, object) x)
+        public AccessingStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static AccessingStatement operator +(AccessingStatement et, (long, object) x)
         {
             var d = et.depth;
             var m = et.mem;
@@ -448,9 +448,9 @@ namespace Pyrrho.Level3
                 if (d > et.depth)
                     m += (_Depth, d);
             }
-            return (AccssingStatement)et.New(m + x);
+            return (AccessingStatement)et.New(m + x);
         }
-        public static AccssingStatement operator +(AccssingStatement e, (Context, long, object) x)
+        public static AccessingStatement operator +(AccessingStatement e, (Context, long, object) x)
         {
             var d = e.depth;
             var m = e.mem;
@@ -465,15 +465,15 @@ namespace Pyrrho.Level3
                 if (d > e.depth)
                     m += (_Depth, d);
             }
-            return (AccssingStatement)e.New(m + (p, o));
+            return (AccessingStatement)e.New(m + (p, o));
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new AccssingStatement(defpos, m);
+            return new AccessingStatement(defpos, m);
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new AccssingStatement(dp, m);
+            return new AccessingStatement(dp, m);
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
         {
@@ -4148,10 +4148,12 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var n = cx.obs[what]?.Eval(cx) as TNode??throw new DBException("22004");
-            cx.Add(new Delete1(n.tableRow, cx.db.nextPos, cx));
-            if (next is not null && cx.obs[next.value()] is Executable e)
-                cx = e._Obey(cx, next.Next());
+            if (cx.obs[what]?.Eval(cx) is TNode n)
+            {
+                cx.Add(new Delete1(n.tableRow, cx.db.nextPos, cx));
+                if (next is not null && cx.obs[next.value()] is Executable e)
+                    cx = e._Obey(cx, next.Next());
+            }
             return cx;
         }
     }
@@ -4673,7 +4675,7 @@ namespace Pyrrho.Level3
             (CTree<long, TGParam>)(mem[GDefs] ?? CTree<long, TGParam>.Empty);
         internal CList<long> matchList =>
             (CList<long>)(mem[MatchList] ?? CList<long>.Empty);
-        internal CTree<long, bool> where =>
+        internal CTree<long, bool> where => // GQL-169
             (CTree<long, bool>)(mem[RowSet._Where] ?? CTree<long, bool>.Empty);
         internal long body => (long)(mem[Procedure.Body] ?? -1L);
         internal CList<long> then => (CList<long>)(mem[ConditionalStatement.Then] ?? CList<long>.Empty);
@@ -5183,6 +5185,9 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context</param>
         void AddRow(Context cx, ABookmark<int, long>? ef)
         {
+            for (var b = where.First(); b != null; b = b.Next()) // GQL-169
+                if (cx.obs[b.key()]?.Eval(cx) != TBool.True)
+                    return;
             // everything has been checked
             if (flags == Flags.None)
                 cx.val = TBool.True;

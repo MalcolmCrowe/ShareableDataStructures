@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Globalization;
+using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
 //
@@ -2558,6 +2559,8 @@ namespace Pyrrho.Level4
             m += (MatchStatement.MatchFlags, flags);
             m += (MatchStatement.BindingTable, ers.defpos);
             m += (DBObject._Domain, ers);
+            if (Match(Qlx.WHERE) && ParseWhereClause() is CTree<long, bool> wh) // GQL-169
+                m += (RowSet._Where, wh);
             BindingRowSet rr = ers;
             cx.Add(ers);
             cx.result = ers;
@@ -8978,8 +8981,17 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.DELETE);
             if (!Match(Qlx.WITH, Qlx.FROM))
             {
-                var n = ParseSqlValue(Domain.NodeType) ?? throw new DBException("42161", "Node or Edge");
-                return (Executable)cx.Add(new DeleteNode(cx.GetUid(), n));
+                var de = DeleteNode();
+                if (!Match(Qlx.COMMA))
+                    return de;
+                var ds = new CList<long>(de.defpos);
+                while (Match(Qlx.COMMA))
+                {
+                    Next();
+                    ds += DeleteNode().defpos;
+                }
+                return (Executable)cx.Add(new AccessingStatement(cx.GetUid(), 
+                    new BTree<long, object>(AccessingStatement.GQLStms, ds)));
             }
             Mustbe(Qlx.FROM);
             Ident ic = new(this);
@@ -9024,6 +9036,14 @@ namespace Pyrrho.Level4
                 cx = ((Transaction)cx.db).Execute(qs, cx);
             cx.exec = qs;
             return (Executable)cx.Add(qs);
+        }
+        Executable DeleteNode()
+        {
+            var n = lxr.val;
+            Mustbe(Qlx.Id);
+            return (Executable)cx.Add(new DeleteNode(cx.GetUid(),
+                    cx.obs[cx.names[n.ToString()]] as QlValue
+                    ?? throw new DBException("42161", "Node or edgde")));
         }
         /// <summary>
         /// the update statement
@@ -9232,6 +9252,7 @@ namespace Pyrrho.Level4
         }
         QlValue ParseSqlTableValue(Domain xp)
         {
+            cx.names = cx.anames;
             if (tok == Qlx.LPAREN)
             {
                 Next();
