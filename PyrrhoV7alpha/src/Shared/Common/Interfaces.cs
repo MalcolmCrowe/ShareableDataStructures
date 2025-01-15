@@ -1,6 +1,6 @@
 ﻿using System;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -19,7 +19,7 @@ namespace Pyrrho.Common
     public interface IBookmark<V>
     {
         IBookmark<V>? Next(); // null if none
-        IBookmark<V>? Previous(); // null if none
+        IBookmark<V>? Previous(); 
         V Value();
         long Position();
     }

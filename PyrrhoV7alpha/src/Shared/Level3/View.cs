@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using System.Text;
 using static Pyrrho.Level4.RowSet;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -101,7 +101,7 @@ namespace Pyrrho.Level3
             cx.Add(vi);
             var vn = new Ident(vi.NameFor(cx), vi.defpos);
             var ods = cx.names;
-            var ids = vi.domain.infos[cx.role.defpos]?.names??Names.Empty;
+            var ids = vi.infos[cx.role.defpos]?.names??Names.Empty;
             cx.done = ObTree.Empty;
             for (var b = ids?.First(); b != null; b = b.Next())
             {

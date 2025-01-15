@@ -6,7 +6,7 @@ using System.Configuration;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -39,6 +39,7 @@ namespace Pyrrho.Level2
         protected PView(Type pt,string nm,string vd, Domain dm, long nst, long pp, Context cx) 
             : base(pt,pp,cx,nm, dm, nst)
         {
+            cx.result = dm as RowSet;
             viewdef = vd;
         }
         /// <summary>
@@ -139,15 +140,7 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
-            // The definer is the given role
-            //           var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
-            //               Grant.Privilege.Update | Grant.Privilege.Delete | 
-            //               Grant.Privilege.GrantDelete | Grant.Privilege.GrantSelect |
-            //               Grant.Privilege.GrantInsert |
-            //               Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
-            //           var ti = new ObInfo(name, priv);
             var vw = new View(this, cx) + (DBObject.LastChange, ppos);
-            //    + (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, ti));
             ro += (Role.DBObjects, ro.dbobjects + (name, ppos));
             cx.db = cx.db + ro  + vw;
             if (cx.db.mem.Contains(Database.Log))

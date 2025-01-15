@@ -7,7 +7,7 @@ using Pyrrho.Level2;
 namespace Pyrrho.Level5
 {
     // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-    // (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+    // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
     //
     // This software is without support and no liability for damage consequential to use.
     // You can view and test this code
@@ -439,6 +439,13 @@ namespace Pyrrho.Level5
         public override Domain For()
         {
             return NodeType;
+        }
+        internal NodeType Specific(Context cx,TableRow tr)
+        {
+            for (var b = subtypes.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key()] is NodeType t && t.tableRows.Contains(tr.defpos))
+                    return t.Specific(cx, tr);
+            return this;
         }
         internal override int Typecode()
         {
@@ -2536,9 +2543,14 @@ namespace Pyrrho.Level5
         public long defpos => tableRow.defpos;
         public TypedValue id => tableRow.vals[(dataType as NodeType)?.idCol??-1L]??new TInt(defpos);
         internal TNode(Context cx, TableRow tr)
-            : base(cx.db.objects[tr.tabledefpos] as NodeType ?? throw new PEException("PE50402"))
+            : base(_Type(cx,tr))
         {
             tableRow = tr;
+        }
+        static Domain _Type(Context cx,TableRow tr)
+        {
+            var nm = cx.db.objects[tr.tabledefpos] as NodeType ?? throw new PEException("PE50402");
+            return nm.Specific(cx, tr);
         }
         internal override TypedValue this[long p] => tableRow.vals[p]??TNull.Value;
         internal virtual bool CheckProps(Context cx,TNode n)

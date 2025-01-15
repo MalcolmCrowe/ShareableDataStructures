@@ -1,7 +1,5 @@
-using System;
-using System.Collections.Generic;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -12,10 +10,10 @@ namespace Pyrrho.Common
 {
     /// <summary>
     /// The base class for all Trees in Pyrrho
-    /// All trees contain KeyValuePairs in key keys
+    /// Uses generic KeyValuePair because tuples don't allow typecasts.
     /// </summary>
- //   [System.Diagnostics.DebuggerDisplay("{ToString()}")]
-	public abstract class ATree<K,V>(Bucket<K, V>? r) where K:IComparable
+    //   [System.Diagnostics.DebuggerDisplay("{ToString()}")]
+    public abstract class ATree<K,V>(Bucket<K, V>? r) where K:IComparable
 	{
         /// <summary>
         /// MemoryLimit is a server configuration parameter. The default value of zero (no limit)

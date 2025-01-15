@@ -4,7 +4,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -31,7 +31,8 @@ namespace Pyrrho.Level3
             Body = -168, // long Executable
             Clause = -169,// string
             Inverse = -170, // long
-            Params = -172; // Domain  
+            Params = -172, // Domain  
+            ProcBody = -143; // bool whether to parse a body
         /// <summary>
         /// The arity (number of parameters) of the procedure
         /// </summary>
@@ -46,6 +47,7 @@ namespace Pyrrho.Level3
         public string clause => (string?)mem[Clause]??"";
         public long inverse => (long)(mem[Inverse]??-1L);
         public bool monotonic => (bool)(mem[SqlFunction.Monotonic] ?? false);
+        public bool procbody => (bool)(mem[ProcBody]?? false);
         /// <summary>
         /// Constructor: Build a level 3 procedure from a level 2 procedure
         /// </summary>

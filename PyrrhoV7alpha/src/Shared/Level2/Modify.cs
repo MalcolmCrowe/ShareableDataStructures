@@ -3,7 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -56,8 +56,8 @@ namespace Pyrrho.Level2
             cx.db += (Database.NextStmt, Transaction.Executables);
             return cx;
         }
-        public Modify(string nm, long dp, RowSet rs, Ident sce, long pp, Context cx)
-            : base(Type.Modify, pp, cx, nm, rs, cx.db.nextStmt)
+        public Modify(string nm, long dp, QueryStatement rs, Ident sce, long pp, Context cx)
+            : base(Type.Modify, pp, cx, nm, rs.domain, cx.db.nextStmt)
         {
             modifydefpos = dp;
             source = sce;
@@ -119,6 +119,7 @@ namespace Pyrrho.Level2
             // instantiate everything we may need
             var odt = pr.udType;
             cx.AddDefs(odt);
+            cx.defs += (odt.defpos, odt.names);
             if (odt.infos[cx.role.defpos] is ObInfo ti)
                 cx.Add(ti.names);
             pr.Instance(psr.LexDp(), psr.cx);
@@ -132,7 +133,7 @@ namespace Pyrrho.Level2
                 }
             cx.Install(pr);
             // and parse the body
-            if (psr.ParseStatement(pr.domain,true) is not Executable bd)
+            if (psr.ParseStatement((DBObject._Domain,pr.domain),(NestedStatement.WfOK,true),(Procedure.ProcBody,true)) is not Executable bd)
                 throw new PEException("PE1978");
             for (var b = cx.undefined.First(); b != null; b = b.Next())
                 if (b.key() is long k && cx.obs[k] is SqlCall uo)

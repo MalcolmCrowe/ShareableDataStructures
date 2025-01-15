@@ -5,7 +5,7 @@ using Pyrrho.Level5;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -280,7 +280,10 @@ namespace Pyrrho.Level2
         {
             var ro = cx.role;
             var un = CTree<Domain, bool>.Empty;
-            for (var b = dataType.super.First(); b != null; b = b.Next())
+            var ps = CTree<long, Domain>.Empty;
+            var pn = CTree<string, long>.Empty;
+            var pt = CList<long>.Empty;
+            for (var b = under.First(); b != null; b = b.Next())
                 if (b.key() is UDType so)
                 {
                     if (so.defpos >= Transaction.Analysing
@@ -288,8 +291,18 @@ namespace Pyrrho.Level2
                         so = cx.db.objects[cx.role.dbobjects[so.name ?? ""] ?? -1L] as NodeType
                         ?? throw new PEException("PE070405");
                     un += (so, true);
+                    for (var c = so.rowType.First();c!=null;c=c.Next())
+                    {
+                        var p = c.value();
+                        if (ps[p] is not Domain pd)
+                            pt += p;
+                        else if (so.representation[p]?.kind != pd.kind)
+                            throw new DBException("PE20921");
+                    }
+                    ps += so.representation;
+                    pn += so.infos[cx.role.defpos]?.names ?? Names.Empty;
                 }
-            if (un.CompareTo(dataType.super) != 0)
+            if (un.CompareTo(under) != 0)
             {
                 dataType += (Domain.Under, un);
                 under = un;
@@ -306,14 +319,16 @@ namespace Pyrrho.Level2
                 }
             if (st.CompareTo(dataType.subtypes) != 0)
                 dataType += (Domain.Subtypes, st);
-            var ps = CTree<long, bool>.Empty;
-            var pn = CTree<string, bool>.Empty;
             for (var b = dataType.representation.First(); b != null; b = b.Next())
-                if (cx.NameFor(b.key()) is string n)
+                if (cx.NameFor(b.key()) is string n && !pn.Contains(n))
                 {
-                    ps += (b.key(), true);
-                    pn += (n, true);
+                    ps += (b.key(), b.value());
+                    pn += (n, b.key());
+                    pt += b.key();
                 }
+            if (pt.CompareTo(dataType.rowType)!=0 || ps.CompareTo(dataType.representation)!=0)
+                dataType = dataType+(Domain.RowType,pt)+(Domain.Representation,ps)
+                    + (Domain.Display,pt.Length);
             ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var ss = CTree<Domain, bool>.Empty;
             var oi = dataType.infos[cx.role.defpos];

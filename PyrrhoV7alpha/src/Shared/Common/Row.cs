@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -1491,7 +1491,7 @@ namespace Pyrrho.Common
             return new TSet(dataType,tree - a);
         }
         /// <summary>
-        /// Creator: forms the union of two sets
+        /// Creator: forms the result of two sets
         /// </summary>
         /// <param name="a">A first set</param>
         /// <param name="b">A second set</param>
@@ -1754,7 +1754,7 @@ namespace Pyrrho.Common
             return m;
         }
         /// <summary>
-        /// Creator: forms the union of two Multisets, optionally removing duplicates
+        /// Creator: forms the result of two Multisets, optionally removing duplicates
         /// </summary>
         /// <param name="a">A first multiset</param>
         /// <param name="b">A second multiset</param>

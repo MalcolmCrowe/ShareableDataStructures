@@ -6,7 +6,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -31,7 +31,7 @@ namespace Pyrrho.Level3
     internal class Domain : DBObject, IComparable
     {
         /// <summary>
-        /// A new system Union type
+        /// A new system Result type
         /// </summary>
         /// <param name="lp"></param>
         /// <param name="ut"></param>
@@ -221,7 +221,7 @@ namespace Pyrrho.Level3
         {
             cx.Add(this);
         }
-        // A union of types
+        // A result of types
         public Domain(long dp, Qlx t, CTree<Domain, bool> u)
             : this(dp, BTree<long, object>.Empty + (Kind, t) + (UnionOf, u))
         {
@@ -419,12 +419,12 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 }
             return (new Table(-1L,cx,rs,rt,rt.Length), rt, rs);
         }
-        internal Names HierarchyCols(Context cx)
+        internal Names HierarchyCols(Context cx,long exc=-1L)
         {
             var t = cx._Ob(defpos)??this;
             if (t is not UDType a)
                 return Names.Empty;
-            var r = a.AllSubTypeCols(cx);
+            var r = a.AllCols(a.subtypes-exc, cx);
             for (var b = a.super.First(); b != null; b = b.Next())
                 if (b.key() is UDType ut)
                     r += ut.HierarchyCols(cx);
@@ -1566,7 +1566,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             }
             var ak = Equivalent(a.dataType.kind);
             var bk = Equivalent(b.dataType.kind);
-            if (ak != bk && ak!=Qlx.Null)
+            if (ak != bk && ak != Qlx.Null)
             {
                 if (ak == Qlx.INTEGER && a.ToInteger() is Integer ai)
                     if (bk == Qlx.NUMERIC)
@@ -2014,12 +2014,12 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     psr.Next();
                     psr.Mustbe(Qlx.EQL);
                     if (ns[a] is long p &&
-                    psr.ParseSqlValueItem(representation[p] ?? Null, false) is SqlLiteral sl)
+                    psr.ParseSqlValueItem((_Domain,representation[p] ?? Null)) is SqlLiteral sl)
                         vs += (p, sl.val);
                     else throw new DBException("42000", "Parse "+a);
                 }
                 else if (rowType[j++] is long rj 
-                    && psr.ParseSqlValueItem(representation[rj] ?? Null, false) is SqlLiteral v)
+                    && psr.ParseSqlValueItem((_Domain,representation[rj] ?? Null)) is SqlLiteral v)
                         vs += (rj, v.val);
                 if (psr.tok != Qlx.COMMA)
                     break;
@@ -2210,7 +2210,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                     { v = new TReal(this, (double)x); return null; }
                                     if (lx.ch == '.') // tolerate .00000
                                     {
-                                        //            if (union)
+                                        //            if (result)
                                         //                throw new InvalidCastException();
                                         lx.Advance();
                                         if (lx.ch > '5') // >= isn't entirely satisfactory either
@@ -4137,7 +4137,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
         }
         /// <summary>
         /// Compute the datatype resulting from limiting this by another datatype constraint.
-        /// this.LimitBy(union) gives this if this is in the union, otherwise
+        /// this.LimitBy(result) gives this if this is in the result, otherwise
         /// this.LimitBy(dt) gives the same valueType as dt.LimitBy(this).
         /// </summary>
         /// <param name="dt"></param>
@@ -5380,19 +5380,19 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             return null;
         }
         /// <summary>
-        ///  We go to a lot of trouble to ensure that columns all have different nms 
+        ///  We go to a lot of trouble to ensure that columns all have different names
         ///  in any UDType subType/superType hierarchy. We use MergeColumn
         ///  whenever necessary to ensure this.
         /// </summary>
         /// <param name="cx"></param>
         /// <returns>a tree of all columns in subtypes with their defining type</returns>
-        internal Names AllSubTypeCols(Context cx)
+        internal Names AllCols(CTree<long,bool> subtypes,Context cx)
         {
             var r = Names.Empty;
-            var t = (cx._Ob(defpos) ?? this) as Domain;
+            var t = (cx.db.objects[defpos] ?? this) as Domain;
             for (var b = subtypes.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is UDType u)
-                    r += u.AllSubTypeCols(cx); 
+                    r += u.AllCols(u.subtypes,cx); 
             for (var b = t?.rowType.First(); b != null; b = b.Next())// top levels overwrite lower
                 if (cx._Ob(b.value()) is TableColumn tc)
                     r += (tc.NameFor(cx), tc.defpos);
@@ -5448,7 +5448,9 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
         }
         internal override Domain Constrain(Context cx, long lp, Domain dt)
         {
-             throw new DBException("42000",name);
+            if (dt.kind==Qlx.CONTENT || EqualOrStrongSubtypeOf(dt))
+                return this;
+            throw new DBException("42000",name);
         }
         protected override void _Cascade(Context cx, Drop.DropAction a, BTree<long, TypedValue> u)
         {

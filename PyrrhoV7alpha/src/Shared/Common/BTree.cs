@@ -4,7 +4,7 @@ using System.Collections.Generic;
 using System.ComponentModel.DataAnnotations;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -106,6 +106,21 @@ namespace Pyrrho.Common
                 if (b.value() is K k)
                     tree -= k;
             return tree;
+        }
+        public static BTree<K,V> New(params (K, V)[] m)
+        {
+            var r = Empty;
+            for (var i = 0; i < m.Length; i++)
+                r += m[i];
+            return r;
+        }
+        public (K, V)[] ToArray()
+        {
+            var r = new (K, V)[Count];
+            var j = 0;
+            for (var b=First();b!=null;b=b.Next())
+                r[j++] = (b.key(),b.value());
+            return r;
         }
         /// <summary>
         /// Creator: Create a new BTree that has a new association in the BTree
@@ -893,7 +908,7 @@ namespace Pyrrho.Common
                 else r += b.value();
             return r;
         }
-        public V[] ToArray()
+        public V[] ListToArray()
         {
             var r = new V[Length];
             var i = 0;

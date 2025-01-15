@@ -5,7 +5,7 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -39,10 +39,13 @@ namespace Pyrrho.Level3
             _Domain = -192, // Domain 
             _Framing = -167, // Framing
             _From = -306, // long RowSet (or maybe an edge connector QlInstance)
+            Gql = -144, // GQL nonterminal
+            HavingDom = -363, // Domain
             _Ident = -409, // Ident (used in ForwardReference, SqlReview, and RowSet)
             Infos = -126, // BTree<long,ObInfo> Role
             LastChange = -68, // long (formerly called Ppos)
             Owner = -59, // long
+            Scope = -330, // long current lexical scope 
             Sensitive = -69; // bool
         /// <summary>
         /// During transaction execution, many DBObjects have aliases.
@@ -65,6 +68,7 @@ namespace Pyrrho.Level3
         internal BTree<long, ObInfo> infos =>
     (BTree<long, ObInfo>?)mem[Infos] ?? BTree<long, ObInfo>.Empty;
         internal long from => (long)(mem[_From] ?? -1L);
+        internal GQL gql => (GQL)(mem[Gql] ?? GQL.None);
         internal string name => (string)(mem[ObInfo.Name] ?? "");
         public Names names => (Names)(mem[ObInfo._Names] ?? Names.Empty);
         public TMetadata metadata => (TMetadata)(mem[ObInfo._Metadata] ?? TMetadata.Empty);

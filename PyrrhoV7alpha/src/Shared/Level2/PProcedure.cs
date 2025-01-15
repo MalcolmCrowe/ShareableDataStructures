@@ -5,7 +5,7 @@ using System.Configuration;
 using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -171,7 +171,8 @@ namespace Pyrrho.Level2
             psr.LexDp(); //synchronise with CREATE
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
-            if (psr.tok != Qlx.EOF && psr.ParseStatement(dt,true) is Executable bd)
+            if (psr.tok != Qlx.EOF 
+                && psr.ParseStatement((Procedure.ProcBody,true),(DBObject._Domain,dt),(NestedStatement.WfOK,true)) is Executable bd)
                 proc = bd.defpos;
             psr.cx.parse = op;
             framing = new Framing(psr.cx,nst);

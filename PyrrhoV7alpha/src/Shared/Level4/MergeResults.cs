@@ -3,7 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -189,7 +189,7 @@ namespace Pyrrho.Level4
         }
     }
     /// <summary>
-    /// A Union enumerator for merge rowset
+    /// A Result enumerator for merge rowset
     ///     /
     /// </summary>
     internal class UnionBookmark : MergeBookmark
@@ -217,7 +217,7 @@ namespace Pyrrho.Level4
                 || _compare(r,left,right)<0);
         }
         /// <summary>
-        /// Move to the next row in the union
+        /// Move to the next row in the result
         /// </summary>
         /// <returns>whether there is a next row</returns>
         protected override Cursor? _Next(Context _cx)

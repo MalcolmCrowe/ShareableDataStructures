@@ -7,7 +7,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -108,7 +108,7 @@ namespace Pyrrho.Level2
                 var ob = (DBObject?)rdr.context.db.objects[ckobjdefpos]??throw new PEException("PE1437");
                 var psr = new Parser(rdr, new Ident(check, ppos + 1));
                 nst = psr.cx.db.nextStmt;
-                var sv = psr.ParseSqlValue(Domain.Bool);
+                var sv = psr.ParseSqlValue((DBObject._Domain,Domain.Bool));
                 test = sv.defpos;
                 framing = new Framing(psr.cx,nst);
             }

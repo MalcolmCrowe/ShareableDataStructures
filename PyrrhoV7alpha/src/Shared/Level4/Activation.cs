@@ -6,7 +6,7 @@ using System.Text;
 using System.Net;
 using static Pyrrho.Level3.Basis;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -51,9 +51,6 @@ namespace Pyrrho.Level4
             : base(cx)
         {
             label = n;
-            next = cx;
-            cursors = cx.cursors;
-            nextHeap = cx.nextHeap;
         }
         /// <summary>
         /// Constructor: a new activation for a Procedure. See CalledActivation constructor.
@@ -131,13 +128,13 @@ namespace Pyrrho.Level4
             proc = p;
             for (var b = p.ins.First(); b != null; b = b.Next())
                 if (b.value() is long c)
-                    bindings += (c, CTree<long, TypedValue>.Empty);
+                    bindings += (c, Domain.Null);
             if (p is Method mt)
             {
                 cmt = mt;
                 for (var b = mt.udType.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long c)
-                        bindings += (c, CTree<long, TypedValue>.Empty);
+                        bindings += (c, Domain.Null);
             }
         }
         internal override TypedValue Ret()

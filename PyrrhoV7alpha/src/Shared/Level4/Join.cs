@@ -2,7 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -62,8 +62,8 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="j">The Join part</param>
 		public JoinRowSet(long dp,Context cx, RowSet lr, Qlx k,RowSet rr,
-            BTree<long,object>? m = null) :
-            base(dp, cx, _Mem(cx,m,k,lr,(RowSet)cx.Add(rr+(_From,dp))))
+            BTree<long,object>? m = null)
+            : base(dp, cx, _Mem(cx,m,k,lr,(RowSet)cx.Add(rr+(_From,dp))))
         {
             cx.Add(this);
         }

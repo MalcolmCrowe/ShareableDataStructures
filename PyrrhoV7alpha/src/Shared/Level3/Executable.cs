@@ -1,11 +1,14 @@
+using System.Data;
+using System;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 using static System.Net.Mime.MediaTypeNames;
+using System.Reflection.Metadata;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -46,8 +49,10 @@ namespace Pyrrho.Level3
         internal long graph => (long)(mem[UseGraph]??-1L);
         internal static Executable None = new();
         Executable() : base(--_uid, BTree<long, object>.Empty) { }
-        internal Executable(long dp, BTree<long, object>? m=null) 
-            : base(dp, m??BTree<long, object>.Empty) { }
+        internal Executable(long dp, params (long, object)[] m) 
+            : base(dp, BTree<long,object>.New(m)) { }
+        internal Executable(long dp, BTree<long, object> m)
+            : base(dp, m) { }
         /// <summary>
         /// Support execution of a tree of Executables, in an Activation.
         /// With break behaviour
@@ -136,6 +141,15 @@ namespace Pyrrho.Level3
         {
             return new Executable(dp,mem+m);
         }
+        internal Executable Check(GQL w030)
+        {
+            if (w030 != GQL.None && w030 != gql)
+            switch(gql)
+            {
+                default: throw new DBException("42161", w030);
+            }
+            return this;
+        }
     }
     internal class ExecuteList : BList<Executable>
     {
@@ -198,31 +212,22 @@ namespace Pyrrho.Level3
             throw new NotImplementedException();
         }
     }
-    /// <summary>
-    /// A Select Statement can be used in a stored procedure so is a subclass of Executable
-    /// 
-    /// </summary>
-    internal class SelectStatement : Executable
+    internal class QueryStatement : AccessingStatement
     {
         internal const long
-            Union = -196; // long RowSet
-        /// <summary>
-        /// The QueryExpression 
-        /// </summary>
-        public long union => (long)(mem[Union] ?? -1L);
-        /// <summary>
-        /// Constructor
-        /// </summary>
-        /// <param name="c">The cursor specification</param>
-        public SelectStatement(long dp, RowSet r)
-            : base(dp, new BTree<long, object>(Union, r.defpos)+(_Domain,r)) 
+            Result = -196; // long Domain
+        public long result => (long)(mem[Result] ?? -1L);
+        public QueryStatement(long dp, Domain r, CList<long> ss)
+            : base(dp, new BTree<long, object>(Result, r.defpos)+(_Domain,r)+(GqlStms,ss)) 
         { }
-        protected SelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static SelectStatement operator +(SelectStatement et, (long, object) x)
+        public QueryStatement(long dp, Context cx, Domain xp, Executable ss)
+            :base(dp,cx,xp,ss) { }
+        internal QueryStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static QueryStatement operator +(QueryStatement et, (long, object) x)
         {
-            return new SelectStatement(et.defpos, et.mem + x);
+            return new QueryStatement(et.defpos, et.mem + x);
         }
-        public static SelectStatement operator +(SelectStatement rs, (Context, long, object) x)
+        public static QueryStatement operator +(QueryStatement rs, (Context, long, object) x)
         {
             var d = rs.depth;
             var m = rs.mem;
@@ -235,71 +240,69 @@ namespace Pyrrho.Level3
                 if (d > rs.depth)
                     m += (_Depth, d);
             }
-            if (p == Union)
+            if (p == Result)
                 m += (_Domain, cx._Dom(p));
-            return (SelectStatement)rs.New(m + (p, o));
+            return (QueryStatement)rs.New(m + (p, o));
         }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SelectStatement(defpos,m);
+            return new QueryStatement(defpos,m);
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new SelectStatement(dp, m);
+            return new QueryStatement(dp, m);
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object>m)
         {
             var r = base._Fix(cx,m);
-            var nc = cx.Fix(union);
-            if (nc != union)
-                r += (Union, nc);
+            var nc = cx.Fix(result);
+            if (nc != result)
+                r += (Result, nc);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return cx.obs[union]?.Calls(defpos, cx)??false;
+            return cx.obs[result]?.Calls(defpos, cx)??false;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = (SelectStatement)base._Replace(cx, so, sv);
-            var nu = ((RowSet?)cx.obs[union])?.Replace(cx, so, sv)?.defpos;
-            if (nu!=union && nu is not null)
-                r += (cx,Union, nu);
+            var r = (QueryStatement)base._Replace(cx, so, sv);
+            var nu = ((RowSet?)cx.obs[result])?.Replace(cx, so, sv)?.defpos;
+            if (nu!=result && nu is not null)
+                r += (cx,Result, nu);
             return r;
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            cx.result = cx.obs[union] as RowSet;
-            if (next is not null && cx.obs[next.value()] is Executable e)
-                cx = e._Obey(cx, next.Next());
-            return cx;
+            if (cx.obs[result] is RowSet rs)
+                cx.result = rs.Build(cx);
+            return base._Obey(cx,next);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            sb.Append(" Union="); sb.Append(Uid(union));
+            sb.Append(" Result="); sb.Append(Uid(result));
             return sb.ToString();
         }
     }
-    /// <summary>
-    /// A Compound Statement for the SQL procedure language
-    /// 
-    /// </summary>
     internal class NestedStatement : Executable
     {
         internal const long
-             Stms = -96; // CList<CList<long>> Executable
+             Stms = -96, // CList<CList<long>> Executable
+             WfOK = -211; // window function allowed (note GQL v1 does not have window functions)
         /// <summary>
         /// The contained tree of Executables
         /// </summary>
 		public CList<CList<long>> stms =>
             (CList<CList<long>>?)mem[Stms] ?? CList<CList<long>>.Empty;
+        public bool wfOK => (bool)(mem[WfOK] ?? false);
         /// <summary>
         /// Constructor: create a compound statement
         /// </summary>
         /// <param name="n">The label for the compound statement</param>
-		internal NestedStatement(long dp, string n)
-            : base(dp, new BTree<long, object>(Label, n))
+		internal NestedStatement(long dp, Context cx,CList<CList<long>> ss, params (long, object)[] m)
+            : base(dp, BTree<long, object>.New(m)+(Stms,ss)
+                  +(_Domain, cx.result??Domain.Null) + (_Depth,cx.result?.depth??1))
         { }
         public NestedStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static NestedStatement operator +(NestedStatement et, (long, object) x)
@@ -342,6 +345,10 @@ namespace Pyrrho.Level3
         internal override DBObject New(long dp,BTree<long,object>m)
         {
             return new NestedStatement(dp, m);
+        }
+        internal Executable? LastOf(Context cx)
+        {
+            return cx.obs[stms.Last()?.value().Last()?.value() ?? -1L] as Executable;
         }
         protected override BTree<long,object> _Fix(Context cx,BTree<long,object>m)
         {
@@ -418,23 +425,33 @@ namespace Pyrrho.Level3
     /// A Linear Daata Accessing Statement for the GQL procedure language
     /// 
     /// </summary>
-    internal class AccessingStatement : Executable
+    internal class AccessingStatement(long dp, BTree<long, object> m) : Executable(dp, m)
     {
         internal const long
-             GQLStms = -366; // CList<long> Executable
+             GqlStms = -366; // CList<long> Executable
         /// <summary>
         /// The contained tree of Executables
         /// </summary>
 		public CList<long> gqlStms =>
-            (CList<long>?)mem[GQLStms] ?? CList<long>.Empty;
-        /// <summary>
-        /// Constructor: create a compound statement
-        /// </summary>
-        /// <param name="n">The label for the compound statement</param>
-		internal AccessingStatement(long dp, string n)
-            : base(dp, new BTree<long, object>(Label, n))
-        { }
-        public AccessingStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+            (CList<long>?)mem[GqlStms] ?? CList<long>.Empty;
+        public AccessingStatement(long dp, Context cx, Domain xp, Executable ss)
+            : this(dp, _Mem(cx, xp, ss))
+        { } 
+        static BTree<long,object> _Mem(Context cx,Domain xp,Executable ss)
+        {
+            var st = (CList<long>)(ss.mem[GqlStms] ?? CList<long>.Empty);
+            for (var b = st.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is Executable e)
+                {
+                    var d = xp.depth;
+                    xp = e.domain + (_Depth, Math.Max(d, xp.depth)) + (ObInfo._Names,e.names);
+                }
+            var r = BTree<long, object>.Empty + (_Domain, xp);
+            if (xp.names.Count > 0)
+                r += (ObInfo._Names, xp.names);
+            cx.result = xp;
+            return r;
+        }
         public static AccessingStatement operator +(AccessingStatement et, (long, object) x)
         {
             var d = et.depth;
@@ -457,7 +474,7 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == GQLStms)
+            if (p == GqlStms)
                 m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
@@ -480,7 +497,7 @@ namespace Pyrrho.Level3
             var r = base._Fix(cx, m);
             var nc = cx.FixLl(gqlStms);
             if (nc != gqlStms)
-                r += (GQLStms, nc);
+                r += (GqlStms, nc);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
@@ -489,24 +506,41 @@ namespace Pyrrho.Level3
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = (NestedStatement)base._Replace(cx, so, sv);
+            var r = (AccessingStatement)base._Replace(cx, so, sv);
             var ns = cx.ReplacedLl(gqlStms);
             if (ns != gqlStms)
-                r += (cx, GQLStms, ns);
+                r += (cx, GqlStms, ns);
             return r;
+        }
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
+        {
+            var ef = gqlStms.First();
+            if (ef is not null && cx.obs[ef.value()] is Executable e)
+                cx = e._Obey(cx, ef.Next());
+            if (next != null && cx.obs[next.value()] is Executable ne)
+                cx = ne._Obey(cx, next.Next());
+            return cx;
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            var cm = "(";
+            var cm = ' ';
             for (var b = gqlStms.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                 {
-                    sb.Append(cm); cm = ",";
+                    sb.Append(cm); sb.Append('-');
                     sb.Append(Uid(p));
                 }
-            sb.Append(')');
             return sb.ToString();
+        }
+    }
+    internal class EmptyStatement : Executable
+    {
+        internal static Executable Empty = new EmptyStatement();
+        EmptyStatement():base(-1L) { }
+        internal EmptyStatement(long dp, Context cx) : base(dp, BTree<long,object>.Empty)
+        {
+            cx.result = Domain.Null;
         }
     }
     internal class PreparedStatement : Executable
@@ -684,7 +718,7 @@ namespace Pyrrho.Level3
             a.exec = this;
             var vb = (QlValue)(cx.obs[vbl] ?? throw new PEException("PE1101"));
             TypedValue tv = cx.obs[init]?.Eval(cx)??vb.domain.defaultValue;
-            a.bindings += (defpos, CTree<long,TypedValue>.Empty); // local variables need special handling
+            a.bindings += (defpos, Domain.Null); // local variables need special handling
             cx.AddValue(vb, tv); // We expect a==ac, but if not, tv will be copied later
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
@@ -1252,7 +1286,7 @@ namespace Pyrrho.Level3
         /// Constructor: An assignment statement from the parser
         /// </summary>
 		public AssignmentStatement(long dp,DBObject vb,QlValue va) 
-            : base(dp,BTree<long, object>.Empty+(Vbl,vb.defpos)+(Val,va.defpos)
+            : base(dp,BTree<long, object>.Empty+(Vbl,vb.defpos)+(Val,va.defpos)+(Gql,GQL.LetStatement)
                   +(Dependents,CTree<long,bool>.Empty+(vb.defpos,true)+(va.defpos,true)))
         { }
         protected AssignmentStatement(long dp, BTree<long, object> m) : base(dp, m) { }
@@ -1396,6 +1430,7 @@ namespace Pyrrho.Level3
         {
             var dm = rg.domain ?? Domain.Null;
             var r = new BTree<long, object>(Rhs, rg.defpos);
+            r += (Gql, GQL.LetStatement);
             var ls = CList<long>.Empty;
             for (var b = lh.First(); b != null; b = b.Next())
                 if (b.value() is Ident id && cx.obs[id.uid] is QlValue v
@@ -1579,7 +1614,7 @@ namespace Pyrrho.Level3
         /// Constructor: a return statement from the parser
         /// </summary>
         public ReturnStatement(long dp,QlValue v) : base(dp, 
-            new BTree<long, object>(Ret,v.defpos))
+            new BTree<long, object>(Ret,v.defpos)+(Gql,GQL.PrimitiveResultStatement))
         { }
         protected ReturnStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ReturnStatement operator +(ReturnStatement et, (long, object) x)
@@ -1698,12 +1733,12 @@ namespace Pyrrho.Level3
         /// Constructor: a case statement from the parser
         /// </summary>
         public SimpleCaseStatement(long dp,QlValue op,BList<WhenPart> ws,
-            CList<CList<long>> ss) : 
-            base(dp,_Mem(op,ws,ss))
+            Executable ss) : 
+            base(dp,_Mem(op,ws,ss)+(Gql,GQL.CaseExpression))
         { }
         protected SimpleCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long, object> _Mem(QlValue op, BList<WhenPart> ws,
-            CList<CList<long>> ss)
+            Executable ss)
         {
             var r = new BTree<long, object>(_Operand, op.defpos);
             var wl = CList<CList<long>>.Empty;
@@ -1849,15 +1884,13 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a searched case statement from the parser
         /// </summary>
-		public SearchedCaseStatement(long dp,BList<WhenPart>ws,CList<CList<long>>ss) 
-            : base(dp,_Mem(ws,ss))
+		public SearchedCaseStatement(long dp,BList<WhenPart>ws,Executable ss) 
+            : base(dp,_Mem(ws,ss)+(Gql,GQL.CaseExpression))
         {  }
         protected SearchedCaseStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(BList<WhenPart>ws,CList<CList<long>>ss)
+        static BTree<long,object> _Mem(BList<WhenPart>ws,Executable ss)
         {
-            var r = BTree<long, object>.Empty;
-            if (ss != CList<CList<long>>.Empty)
-                r += (ConditionalStatement.Else, ss);
+            var r = new BTree<long, object>(ConditionalStatement.Else, ss);
             var wl = CList<long>.Empty;
             for (var b = ws.First(); b != null; b = b.Next())
                 if (b.value() is WhenPart w)
@@ -1996,11 +2029,19 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="v">A search condition</param>
         /// <param name="s">A tree of statements for this when</param>
-        public WhenPart(long dp,QlValue? v, CList<CList<long>> s) 
-            : base(dp, ((v is null)?BTree<long, object>.Empty:new BTree<long,object>(Cond,v.defpos))
-                  +(NestedStatement.Stms,s))
+        public WhenPart(long dp,QlValue? v, Executable s) 
+            : base(dp, _Mem(v,s) + (Gql,s.gql))
         { }
         protected WhenPart(long dp, BTree<long, object> m) : base(dp, m) { }
+        static BTree<long,object> _Mem(QlValue? v, Executable s)
+        {
+            var m = BTree<long, object>.Empty;
+            if (v is QlValue q)
+                m += (Cond, q);
+            if (s is NestedStatement sa)
+                m += (NestedStatement.Stms, sa.stms);
+            return m;
+        }
         public static WhenPart operator +(WhenPart et, (long, object) x)
         {
             var d = et.depth;
@@ -2093,10 +2134,10 @@ namespace Pyrrho.Level3
 	internal class ConditionalStatement : Executable
 	{
         internal const long
-            Else = -116, // CList<long> Executable
-            Elsif = -117, // CList<long> Executable (SQL IF)
+            Else = -116, // Executable
+            Elsif = -117, // CList<long> (SQL IF)
             Search = -118, // long QlValue
-            Then = -119; // CList<long> Executable
+            Then = -119; // Executable
         /// <summary>
         /// The test condition
         /// </summary>
@@ -2104,21 +2145,21 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The then statements
         /// </summary>
-		public CList<CList<long>> then => (CList<CList<long>>?)mem[Then]?? CList<CList<long>>.Empty;
+		public Executable then => (Executable)(mem[Then]?? EmptyStatement.Empty);
         /// <summary>
         /// The elsif parts (only for SQL version)
         /// </summary>
-		public CList<CList<long>> elsif => (CList<CList<long>>?)mem[Elsif] ?? CList<CList<long>>.Empty;
+		public CList<long> elsif => (CList<long>)(mem[Elsif] ?? CList<long>.Empty);
         /// <summary>
         /// The else part
         /// </summary>
-		public CList<CList<long>> els => (CList<CList<long>>?)mem[Else] ?? CList<CList<long>>.Empty;
+		public Executable els => (Executable)(mem[Else] ?? EmptyStatement.Empty);
         /// <summary>
         /// Constructor: an if-then-else statement from the parser
         /// </summary>
-		public ConditionalStatement(long dp,QlValue se, CList<CList<long>> th, CList<CList<long>> ei,
-            CList<CList<long>> el) 
-            : base(dp,new BTree<long, object>(Search,se.defpos) +(Then,th) +(Elsif,ei) + (Else,el))
+		public ConditionalStatement(long dp,QlValue se, Executable th, CList<long> ei, Executable el) 
+            : base(dp,new BTree<long, object>(Search,se.defpos) +(Then,th) +(Elsif,ei) + (Else,el)
+                  +(Gql,GQL.ConditionalStatement))
 		{}
         protected ConditionalStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ConditionalStatement operator +(ConditionalStatement et, (long, object) x)
@@ -2144,8 +2185,8 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == Elsif || p==Then || p==Else)
-                m += (_Depth, cx._DepthBBV((CList<CList<long>>)o, d));
+            if (p==Elsif)
+                m += (_Depth, cx._DepthBV((CList<long>)o, d));
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -2168,20 +2209,20 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (Search, ns);
-            var nt = cx.FixLLl(then);
+            var nt = then.Fix(cx);
             if (nt != then)
                 r += (Then, nt);
-            var ne = cx.FixLLl(els);
+            var ne = els.Fix(cx);
             if (els != ne)
                 r += (Else, ne);
-            var ni = cx.FixLLl(elsif);
+            var ni = cx.FixLl(elsif);
             if (ni != elsif)
                 r += (Elsif, ni);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(then,defpos, cx)||Calls(elsif,defpos,cx)||Calls(els,defpos,cx);
+            return then.Calls(defpos, cx)||Calls(elsif,defpos,cx)||els.Calls(defpos,cx);
         }
         /// <summary>
         /// _Obey an if-then-else statement
@@ -2193,19 +2234,17 @@ namespace Pyrrho.Level3
             a.exec = this;
             if (((QlValue?)cx.obs[search])?.Matches(cx) == true)
             {
-                cx = ObeyList(then,"",next,cx);
+                cx = then._Obey(cx,next);
                 goto next;
             }
             for (var g = elsif.First(); g != null; g = g.Next())
-                if (g.value().First()?.value() is long p && cx.obs[p] is ConditionalStatement f
+                if (g.value() is long p && cx.obs[p] is ConditionalStatement f
                     && ((QlValue?)cx.obs[f.search])?.Matches(cx) == true)
                 {
-                    cx = ObeyList(f.then, "", next, cx);
+                    cx = f.then._Obey(cx,next);
                     goto next;
                 }
-            var eb = els.First()?.value()?.First();
-            if (cx.obs[eb?.value() ?? -1L] is Executable ee)
-                cx = ee._Obey(cx, eb?.Next());
+            cx = els._Obey(cx, next);
             next: if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
             return cx;
@@ -2216,13 +2255,13 @@ namespace Pyrrho.Level3
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[search]?.defpos ?? search) && no is not null)
                 r+=(cx, Search, no);
-            var nt = cx.ReplacedLLl(then);
+            var nt = then._Replace(cx,so,sv);
             if (nt != then)
                 r+=(cx, Then, nt);
-            var ni = cx.ReplacedLLl(elsif);
+            var ni = cx.ReplacedLl(elsif);
             if (ni != elsif)
                 r+=(cx, Elsif, ni);
-            var ne = cx.ReplacedLLl(els);
+            var ne = els._Replace(cx,so,sv);
             if (ne != els)
                 r+=(cx, Else, ne);
             return r;
@@ -2231,30 +2270,15 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Operand="); sb.Append(Uid(search));
-            var cm = " Then: ";
-            for (var b = then.First(); b != null; b = b.Next())
-                for (var c=b.value().First();c!=null;c=c.Next())
-                if (c.value() is long p)
-                {
-                    sb.Append(cm); cm = ";";
-                    sb.Append(Uid(p));
-                }
+            var cm = " Then: ";sb.Append(Uid(then.defpos));
             cm = " ElsIf: ";
             for (var b = elsif.First(); b != null; b = b.Next())
-                for (var c = b.value().First(); c != null; c = c.Next())
-                    if (c.value() is long p)
+                    if (b.value() is long p)
                 {
                     sb.Append(cm); cm = ";";
                     sb.Append(Uid(p));
                 }
-            cm = " Else: ";
-            for (var b = els.First(); b != null; b = b.Next())
-                for (var c = b.value().First(); c != null; c = c.Next())
-                    if (c.value() is long p)
-                {
-                    sb.Append(cm); cm = ";";
-                    sb.Append(Uid(p));
-                }
+            cm = " Else: "; sb.Append(Uid(els.defpos));
             return sb.ToString();
         }
     }
@@ -2345,7 +2369,7 @@ namespace Pyrrho.Level3
 	internal class WhileStatement : Executable
 	{
         internal const long
-            What = -123; // CList<long> Executable
+            What = -123; // long Executable
         /// <summary>
         /// The search condition for continuing
         /// </summary>
@@ -2353,14 +2377,11 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements to execute
         /// </summary>
-		public CList<long> what => (CList<long>?)mem[What]?? CList<long>.Empty;
+		public long what => (long)(mem[What]??-1L);
         /// <summary>
         /// Constructor: a while statement from the parser
         /// </summary>
-        /// <param name="n">The label for the while</param>
-		public WhileStatement(long dp,string n) : base(dp,new BTree<long,object>(Label,n)) 
-        {  }
-        protected WhileStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal WhileStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static WhileStatement operator +(WhileStatement et, (long, object) x)
         {
             var d = et.depth;
@@ -2384,8 +2405,8 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == What)
-                m += (_Depth, cx._DepthBV((CList<long>)o, d));
+            if (p == What && o is long w)
+                m += (_Depth, cx.obs[w]?.depth??1);
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -2408,7 +2429,7 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (ConditionalStatement.Search, ns);
-            var nw = cx.FixLl(what);
+            var nw = cx.Fix(what);
             if (nw != what)
                 r += (What, nw);
             return r;
@@ -2425,9 +2446,8 @@ namespace Pyrrho.Level3
             while (na==cx && a.signal == null && ((QlValue?)cx.obs[search])?.Matches(cx)==true)
             {
                 var lp = new Activation(cx, label ?? "") { cont = a, brk = a };
-                var wb = what.First();
-                if (cx.obs[wb?.value()??-1L] is Executable we)
-                    na = we._Obey(lp,wb?.Next());
+                if (cx.obs[what] is Executable we)
+                    na = we._Obey(lp);
                 if (na == lp)
                     na = cx;
                 a = (Activation)na.SlideDown();
@@ -2437,7 +2457,8 @@ namespace Pyrrho.Level3
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(what,defpos,cx) || (cx.obs[search]?.Calls(defpos, cx)??false);
+            return ((cx.obs[what] as Executable)?.Calls(defpos,cx)??false) 
+                || (cx.obs[search]?.Calls(defpos, cx)??false);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
@@ -2445,7 +2466,7 @@ namespace Pyrrho.Level3
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[search]?.defpos ?? search) && no is not null)
                 r+=(cx, ConditionalStatement.Search, no);
-            var nw = cx.ReplacedLl(what);
+            var nw = cx.Replaced(what);
             if (nw != what)
                 r+=(cx, What, nw);
             return r;
@@ -2454,13 +2475,7 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Operand="); sb.Append(Uid(search));
-            var cm = " What: ";
-            for (var b = what.First(); b != null; b = b.Next())
-                if (b.value() is long p)
-                {
-                    sb.Append(cm); cm = ";";
-                    sb.Append(Uid(p));
-                }
+            sb.Append(' ');sb.Append(Uid(what));
             return sb.ToString();
         }
     }
@@ -2477,14 +2492,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The tree of statements to execute at least once
         /// </summary>
-		public CList<CList<long>> what => (CList<CList<long>>?)mem[WhileStatement.What]??CList<CList<long>>.Empty;
-         /// <summary>
-        /// Constructor: a repeat statement from the parser
-        /// </summary>
-        /// <param name="n">The label</param>
-        public RepeatStatement(long dp,string n) : base(dp,new BTree<long,object>(Label,n)) 
-        {  }
-        protected RepeatStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+		public long what => (long)(mem[WhileStatement.What]??-1L);
+        internal RepeatStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static RepeatStatement operator +(RepeatStatement et, (long, object) x)
         {
             var d = et.depth;
@@ -2508,8 +2517,8 @@ namespace Pyrrho.Level3
             var (cx, p, o) = x;
             if (e.mem[p] == o)
                 return e;
-            if (p == WhileStatement.What)
-                m += (_Depth, cx._DepthBBV((CList<CList<long>>)o, d));
+            if (p == WhileStatement.What && o is long w)
+                m += (_Depth, cx.obs[w]?.depth??1);
             else if (o is long q && cx.obs[q] is DBObject ob)
             {
                 d = Math.Max(ob.depth + 1, d);
@@ -2532,14 +2541,14 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(search);
             if (ns != search)
                 r += (ConditionalStatement.Search, ns);
-            var nw = cx.FixLLl(what);
+            var nw = cx.Fix(what);
             if (nw != what)
                 r += (WhileStatement.What, nw);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return Calls(what, defpos, cx) || (cx.obs[search]?.Calls(defpos,cx)??false);
+            return (cx.obs[what]?.Calls(defpos, cx)??false) || ((cx.obs[search]?.Calls(defpos,cx))??false);
         }
         /// <summary>
         /// Execute the repeat statement
@@ -2552,7 +2561,7 @@ namespace Pyrrho.Level3
             var act = new Activation(cx,label??"");
             for (; ;)
             {
-                ObeyList(what, "", next, act);
+                act = (Activation)(((cx.obs[what] as Executable)?._Obey(act))??act);
                 act.signal?.Throw(act);
                 if (((QlValue?)cx.obs[search])?.Matches(act)!=false)
                     break;
@@ -2568,7 +2577,7 @@ namespace Pyrrho.Level3
             var no = ((QlValue?)cx.obs[search])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[search]?.defpos ?? search) && no is not null)
                 r+=(cx,ConditionalStatement.Search, no);
-            var nw = cx.ReplacedLLl(what);
+            var nw = cx.Replaced(what);
             if (nw != what)
                 r +=(cx, WhileStatement.What, nw);
             return r;
@@ -2576,15 +2585,8 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            var cm = " What: ";
-            for (var b = what.First(); b != null; b = b.Next())
-                for (var c = b.value().First(); c != null; c = c.Next())
-                    if (c.value() is long p)
-                    {
-                        sb.Append(cm); cm = ";";
-                        sb.Append(Uid(p));
-                    }
             sb.Append(" Operand="); sb.Append(Uid(search));
+            sb.Append(" What: "); sb.Append(Uid(what));
             return sb.ToString();
         }
     }
@@ -2667,11 +2669,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Constructor: a loop statement from the parser
         /// </summary>
-        /// <param name="s">The statements</param>
-        /// <param name="n">The loop identifier</param>
-		public LoopStatement(long dp,string n):base(dp,new BTree<long,object>(Label,n))
-		{ }
-        protected LoopStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal LoopStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static LoopStatement operator +(LoopStatement et, (long, object) x)
         {
             var d = et.depth;
@@ -2784,10 +2782,10 @@ namespace Pyrrho.Level3
         internal long stm => (long)(mem[Procedure.Body] ?? -1L);
         internal ForStatement(long dp, QlValue f, QlValue v, Qlx o, long c, Executable x, Context cx)
             : this(dp, BTree<long, object>.Empty + (Procedure.Body,x.defpos)
-                  + (_Domain,x.domain) + (CountCol,c) + (SqlValueExpr.Op,o)
+                  + (_Domain,x.domain) + (CountCol,c) + (SqlValueExpr.Op,o) + (Gql,GQL.ForStatement)
                   + (AssignmentStatement.Vbl, f.defpos) + (AssignmentStatement.Val, v.defpos))
         { }
-        internal ForStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
+        internal ForStatement(long dp, BTree<long, object>? m = null) : base(dp, m??BTree<long,object>.Empty)
         { }
         public static ForStatement operator+(ForStatement fs,(long,object)x)
         {
@@ -2795,29 +2793,27 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var ls = cx._Ob(list) ??throw new DBException("PE10601");
+            var vl = cx.val??cx._Ob(list)?.Eval(cx) as TList;
             var vb = cx._Ob(vbl) as QlValue ?? throw new DBException("PE10602");
-            if (ls.domain.Length!=1) throw new DBException("PE10603");
-            var vl = ls.Eval(cx) as TList;
-            if (vl?.Cardinality()==0)
-            {
-                cx.result = null;
+            if (vl?.dataType.Length!=1) throw new DBException("PE10603");
+            var n = vl.Cardinality();
+            if (n==0)
                 return cx;
-            }
-            var fe = vl?[0];
+            var fe = vl[0];
             if (/* vb.domain.kind != Qlx.CONTENT ||*/ fe is null) throw new DBException("42000").Add(Qlx.FOR_STATEMENT); // should be unbound
-            var rt = cx.result?.rowType ?? CList<long>.Empty;
-            var rs = cx.result?.representation ?? CTree<long, Domain>.Empty;
-            rt += vbl;
-            rs += (vbl, fe.dataType);
-            if (col > 0)
-            {
-                rt += col;
-                rs += (col, Domain.Int);
-            }
-            var rd = new Domain(-1L, cx, Qlx.TABLE, rs, rt);
+            /*         var rt = cx.result?.rowType ?? CList<long>.Empty;
+                     var rs = cx.result?.representation ?? CTree<long, Domain>.Empty;
+                     rt += vbl;
+                     rs += (vbl, fe.dataType);
+                     if (col > 0)
+                     {
+                         rt += col;
+                         rs += (col, Domain.Int);
+                     }
+                     var rd = new Domain(-1L, cx, Qlx.TABLE, rs, rt); */
+            var rd = domain;
             var bl = BList<(long, TRow)>.Empty;
-            for (var i = 0; i < (vl?.Length ?? 0); i++)
+            for (var i = 0; i < n; i++)
             {
                 var vs = new CTree<long, TypedValue>(vbl, vl?[i] ?? TNull.Value);
                 switch (op)
@@ -2826,15 +2822,15 @@ namespace Pyrrho.Level3
                     case Qlx.OFFSET: vs += (col, new TInt(i)); break;
                 }
                 if (cx.result is null)
-                    bl += (cx.GetUid(), new TRow(rd, vs));
+                    bl += (cx.GetUid(), new TRow(rd, vs)); 
                 else if (cx.result is BindingRowSet br)
                     for (var b = br.First(cx); b != null; b = (BindingRowSet.Bindings?)b.Next(cx))
-                        bl += (cx.GetUid(), new TRow(rd, vs + b.values));
+                        bl += (cx.GetUid(), new TRow(rd, vs + b.values)); 
                 else
                     for (var b = (cx.result as RowSet)?.First(cx); b != null; b = b.Next(cx))
-                        bl += (cx.GetUid(), new TRow(rd, vs + b.values));
+                        bl += (cx.GetUid(), new TRow(rd, vs + b.values)); 
             }
-            var bs = new ExplicitRowSet(cx.GetUid(), cx, rd, bl);
+            var bs = new ExplicitRowSet(cx.GetUid(), cx, rd, bl); 
             cx.result = bs;
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
@@ -2857,7 +2853,7 @@ namespace Pyrrho.Level3
 	{
         internal const long
             ForVn = -125, // string
-            Sel = -127; // long RowSet
+            Sel = -127; // long Executable
         /// <summary>
         /// The query for the FOR
         /// </summary>
@@ -2869,18 +2865,8 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The statements in the loop
         /// </summary>
-		public CList<CList<long>> stms => 
-            (CList<CList<long>>?)mem[NestedStatement.Stms]??CList<CList<long>>.Empty;
-        /// <summary>
-        /// Constructor: a for statement from the parser
-        /// </summary>
-        /// <param name="n">The label for the FOR</param>
-        public ForSelectStatement(long dp, string n,Ident vn, 
-            RowSet rs,CList<CList<long>>ss ) 
-            : base(dp,BTree<long, object>.Empty+ (Sel,rs.defpos) + (NestedStatement.Stms,ss)
-                  +(Label,n)+(ForVn,vn.ident))
-		{ }
-        protected ForSelectStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+		public Executable then => (Executable)(mem[ConditionalStatement.Then]??EmptyStatement.Empty);
+         internal ForSelectStatement(long dp, BTree<long, object> m) : base(dp, m+(Gql,GQL.ForStatement)) { }
         public static ForSelectStatement operator +(ForSelectStatement et, (long, object) x)
         {
             var d = et.depth;
@@ -2928,14 +2914,11 @@ namespace Pyrrho.Level3
             var ns = cx.Fix(sel);
             if (ns != sel)
                 r += (Sel, ns);
-            var nn = cx.FixLLl(stms);
-            if (nn != stms)
-                r += (NestedStatement.Stms, nn);
             return r;
         }
         internal override bool Calls(long defpos, Context cx)
         {
-            return (cx.obs[sel]?.Calls(defpos, cx)??false) || Calls(stms,defpos,cx);
+            return cx.obs[sel]?.Calls(defpos, cx)??false;
         }
         /// <summary>
         /// Execute a FOR statement
@@ -2955,9 +2938,7 @@ namespace Pyrrho.Level3
                         ac.values += cu.values;
                     ac.brk = cx as Activation;
                     ac.cont = ac;
-                    var sb = stms.First()?.value().First();
-                    if (cx.obs[sb?.value()??-1L] is Executable se)
-                        ac = (Activation)se._Obey(ac,sb?.Next());
+                    then._Obey(ac,next);
                     ac.signal?.Throw(cx);
                 }
                 return ac.SlideDown();
@@ -2972,9 +2953,6 @@ namespace Pyrrho.Level3
             var no = ((RowSet?)cx.obs[sel])?.Replace(cx, so, sv)?.defpos;
             if (no != (cx.done[sel]?.defpos??sel) && no is not null)
                 r+=(cx, Sel, no);
-            var nw = cx.ReplacedLLl(stms);
-            if (nw != stms)
-                r+=(cx, NestedStatement.Stms, nw);
             return r;
         }
         public override string ToString()
@@ -2983,14 +2961,6 @@ namespace Pyrrho.Level3
             if (forvn != null)
             { sb.Append(" Var="); sb.Append(forvn); }
             sb.Append(" Sel="); sb.Append(Uid(sel));
-            var cm = " Stms: ";
-            for (var b = stms.First(); b != null; b = b.Next())
-                for (var c = b.value().First(); c != null; c = c.Next())
-                    if (c.value() is long p)
-                    {
-                        sb.Append(cm); cm = ";";
-                        sb.Append(Uid(p));
-                    }
             return sb.ToString();
         }
     }
@@ -3375,7 +3345,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public CallStatement(long dp, SqlCall c, BTree<long, object>? m = null)
     : base(dp, m ?? BTree<long, object>.Empty
-          + (_Domain, c.domain)
+          + (_Domain, c.domain) + (Gql,GQL.CallQueryStatement)
           + (Call, c.defpos) + (Dependents, new CTree<long, bool>(c.defpos, true))
           + (ObInfo.Name, c.name ?? ""))
         { }
@@ -4016,7 +3986,7 @@ namespace Pyrrho.Level3
         static BTree<long, object> _Mem(RowSet fm,long v, Domain iC)
         {
             var r = BTree<long, object>.Empty + (RowSet._Source, fm.defpos)
-                 + (Value, v);
+                 + (Value, v) + (Gql,GQL.InsertStatement);
             if (iC != null)
                 r += (InsCols, iC);
             return r;
@@ -4081,7 +4051,6 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            cx.result = null;
             if (cx.obs[source] is RowSet tg && cx.obs[value] is RowSet data)
             {
                 var ts = BTree<long, TargetActivation>.Empty;
@@ -4141,11 +4110,10 @@ namespace Pyrrho.Level3
     {
         internal long what => (long)(mem[WhileStatement.What] ?? -1L);
         internal DeleteNode(long dp,QlValue v)
-            : base(dp,new BTree<long,object>(WhileStatement.What,v.defpos)) 
+            : base(dp,new BTree<long,object>(WhileStatement.What,v.defpos)+(Gql,GQL.RemoveStatement)) 
         { }
-        protected DeleteNode(long dp, BTree<long, object>? m = null) : base(dp, m)
-        {
-        }
+        protected DeleteNode(long dp,BTree<long,object>?m=null) : base(dp, m??BTree<long,object>.Empty)
+        { }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             if (cx.obs[what]?.Eval(cx) is TNode n)
@@ -4175,7 +4143,7 @@ namespace Pyrrho.Level3
         protected QuerySearch(long dp, BTree<long, object> m) : base(dp, m) { }
         static BTree<long,object> _Mem(CTree<UpdateAssignment, bool>? ua)
         {
-            var r = BTree<long, object>.Empty;
+            var r = new BTree<long, object>(Gql,GQL.DeleteStatement);
             if (ua is not null)
                 r += (RowSet.Assig, ua);
             return r;
@@ -4324,7 +4292,7 @@ namespace Pyrrho.Level3
         public override Context _Obey(Context cx, ABookmark<int,long>? next = null)
         {
             cx.result = null;
-            if (cx.obs[source] is RowSet tg)
+            if ((cx.result??cx.obs[source]) is RowSet tg)
             {
                 var ts = BTree<long, TargetActivation>.Empty;
                 for (var it = tg.rsTargets.First(); it != null; it = it.Next())
@@ -4374,9 +4342,10 @@ namespace Pyrrho.Level3
             (CList<long>?)mem[ConditionalStatement.Then] ?? CList<long>.Empty;
         internal bool atSchemaLevel => (bool)(mem[AtSchemaLevel] ?? false);
         public GraphInsertStatement(long dp, bool sch, CList<CList<GqlNode>> ge, CList<long> th)
-            : base(dp, new BTree<long, object>(GraphExps, ge) + (ConditionalStatement.Then, th) +(AtSchemaLevel,sch))
+            : base(dp, new BTree<long, object>(GraphExps, ge) + (ConditionalStatement.Then, th) +(AtSchemaLevel,sch)
+                  + (Gql,GQL.InsertGraphPattern))
         { }
-        public GraphInsertStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
+        public GraphInsertStatement(long dp, BTree<long, object>? m = null) : base(dp, m??BTree<long,object>.Empty)
         { }
         public static GraphInsertStatement operator +(GraphInsertStatement et, (long, object) x)
         {
@@ -4567,31 +4536,53 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    class OrderAndPageStatement(long dp, BTree<long, object> m) : Executable(dp, m)
+    class OrderAndPageStatement(long dp, BTree<long, object> m) : QueryStatement(dp, m)
     {
+        public Domain rowOrder => (Domain)(mem[RowSet.RowOrder] ?? Domain.Null);
+        public int offset => (int)(mem[RowSetSection.Offset] ?? 0);
+        public int size => (int)(mem[RowSetSection.Size] ?? 0);
         public static OrderAndPageStatement operator +(OrderAndPageStatement ls, (long, object) x)
         {
             return new OrderAndPageStatement(ls.defpos, ls.mem + x);
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var bt = cx.result as ExplicitRowSet
-                ?? new ExplicitRowSet(cx.GetUid(), cx, Domain.Row, new BList<(long, TRow)>((cx.GetUid(), TRow.Empty)));
+            if (cx.result is not RowSet rs)
+                throw new DBException("02000");
             var nr = BList<(long,TRow)>.Empty;
             var od = (mem[RowSet.RowOrder] as Domain)?? Domain.Row;
-            var rs = bt.Sort(cx, od, false);
+            rs = rs.Sort(cx, od, false);
             var ff = (int)(mem[RowSetSection.Offset] ?? 0);
             var lm = (int)(mem[RowSetSection.Size] ?? 0);
             if (ff!=0 || lm!=0)
                 rs = new RowSetSection(cx, rs,ff,lm);
             for (var b = rs.First(cx); b != null; b = b.Next(cx))
                 nr += (b._pos, b);
-            var nb = new ExplicitRowSet(bt.defpos, cx, bt, nr) + (TableRowSet._Index, bt.index);
+            var nb = new ExplicitRowSet(rs.defpos, cx, rs, nr);
+            if (cx.result is TableRowSet ts)
+                nb += (TableRowSet._Index, ts.index);
             cx.Add(nb);
             cx.result = nb;
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
             return cx;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (rowOrder!=Domain.Null)
+            {
+                sb.Append(" Order ");sb.Append(Uid(rowOrder.defpos));
+            }
+            if (offset!=0)
+            { 
+                sb.Append(" Offset "); sb.Append(offset);
+            }
+            if (size!=0)
+            {
+                sb.Append(" Size "); sb.Append(size);
+            }
+            return sb.ToString();
         }
     }
     class FilterStatement(long dp, BTree<long, object> m) : Executable(dp, m)
@@ -4608,7 +4599,7 @@ namespace Pyrrho.Level3
             if (mem[RowSet._Where] is CTree<long, bool> wh)
             {
                 bt += (RowSet._Where, wh);
-                cx.Add(bt);
+                bt = (Domain)cx.Add(bt);
             }
             if (bt is RowSet br)
                 for (var b = br.First(cx); b != null; b = b.Next(cx))
@@ -4650,7 +4641,7 @@ namespace Pyrrho.Level3
     /// binding values become additional constraints. 
     /// Evaluation of the match statement traverses all of the nodes/edges in the database: each full traversal
     /// building a row of the bindingtable. The set of nodes and edges matched in that row is a graph
-    /// and in this way a match statement defines a graph (the union of the graphs of its rows).
+    /// and in this way a match statement defines a graph (the result of the graphs of its rows).
     /// If there is a dependent statement, it is obeyed for each row of the binding table.
     /// During pattern matching, the pattern is traversed: (a) on a node expression the database is examined for nodes
     /// that match it, and where it satisfies all constraints on that node, the bindings are noted.
@@ -4698,11 +4689,11 @@ namespace Pyrrho.Level3
         }
         MatchStatement(long dp, Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, CList<long> ge,
     BTree<long, object> m)
-            : base(dp, _Mem(dp, cx, m, tg, gs, ge)) // + (Procedure.Body, st))
+            : base(dp, _Mem(dp, cx, m, tg, gs, ge))
         {
             cx.Add(this);
         }
-        public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m)
+        public MatchStatement(long dp, BTree<long, object>? m = null) : base(dp, m??BTree<long, object>.Empty)
         { }
         static BTree<long, object> _Mem(long dp, Context cx, BTree<long, object> m, BTree<long, (long, long)>? tg,
             CTree<long, TGParam> gs, CList<long> ge)
@@ -4713,6 +4704,7 @@ namespace Pyrrho.Level3
                 cx.undefined -= b.key();
                 ch = true;
             }
+            m += (Gql, GQL.MatchStatement);
             m += (GDefs, gs);
             if (tg is not null)
                 m += (Truncating, tg);
@@ -4848,7 +4840,7 @@ namespace Pyrrho.Level3
                 var rt = BList<DBObject>.Empty;
                 while (pd.tok == Qlx.Id)
                 {
-                    rt += ac._Ob(pd.ParseOrderItem(false)) ?? SqlNull.Value;
+                    rt += ac._Ob(pd.ParseOrderItem()) ?? SqlNull.Value;
                     if (pd.tok == Qlx.COMMA)
                         pd.Next();
                     else
@@ -4897,9 +4889,6 @@ namespace Pyrrho.Level3
             cx.db = ac.db;
             if (ac.obs[bindings] is RowSet bs)
                 cx.obs += (bindings, bs);
-            var aff = ac.db.AffCount(ac);
-            if (aff > 0)
-                cx.result = null;
             return cx;
         }
         internal RowSet? DoExclusions(RowSet? rs,Context ac,Context cx)
@@ -5747,6 +5736,255 @@ namespace Pyrrho.Level3
                 sb.Append(']');
             }
             return sb.ToString();
-        } 
+        }
+    }
+    /// <summary>
+    /// To follow the GQL spec we construct triples for binary operations such as 
+    /// (composite query expression) UNION (composite query primary>)
+    /// Each such triple will have a defpos.Many of the non-terminals are heavily overloaded, 
+    /// and we are not as fussy as the GQL spec, so we give Executable an extra property Gql as a constraint. 
+    /// For example in this case we will receive a current working table and we will apply 
+    /// GQL.CompositeQueryExpression to it when it is referenced by this triple.
+    /// Sometime we might check the syntax rules.
+    /// </summary>
+    internal enum GQL
+    {
+        AbbreviatedEdgePattern,
+        AbsoluteCatalogSchemaReference,
+        AggregateFunction,
+        AggregatingValueExpression,
+        AllDifferentPredicate,
+        AmbientLinearDataModifyingStatement,
+        AmbientLinearDataModifyingStatementBody,
+        AmbientLinearQueryStatement,
+        ApproximateNumericType,
+        BinaryExactNumericType,
+        BindingTableExpression,
+        BindingTableReference,
+        BindingTableReferenceValueType,
+        BindingTableType,
+        BindingVariable,
+        BindingVariableReference,
+        BindingVariableDefinition,
+        BooleanType,
+        BooleanValueExpression,
+        ByteStringType,
+        CallCatalogModifyingProcedureStatement,
+        CallDataModifyingProcedureStatement,
+        CallProcedureStatement,
+        CallQueryStatement,
+        CaseAbbreviation,
+        CaseExpression,
+        CaseSpecfication,
+        CastSpecification,
+        CatalogGraphTypeParentAndName,
+        CatalogObjectParentReference,
+        CatalogProcedureParentAndName,
+        CatalogSchemaParentAndName,
+        CharacterStringType,
+        ClosedDynamicUnionType,
+        ClosedEdgeReferenceValueType,
+        ClosedNodeReferenceValueType,
+        CommonValueExpression,
+        ComparisonPredicate,
+        CompositeQueryExpression,
+        CompositeQueryPrimary,
+        CompositeQueryStatement,
+        ConditionalStatement,
+        ConditionalStatementElseClause,
+        ConditionalStatementResult,
+        ConditionalStatementWhenClause,
+        ConstructedValueType,
+        CreateGraphStatement,
+        CreateGraphTypeStatement,
+        CreateSchemaStatement,
+        DateTimeValueExpression,
+        DecimalExactNumericType,
+        DeleteStatement,
+        DelimitedBindingTableName,
+        DelimitedGraphName,
+        DirectedPredicate,
+        DropGraphStatement,
+        DropGraphTypeStatement,
+        DropSchemaStatement,
+        DurationValueExpression,
+        DynamicPropertyValueType,
+        DynamicUnionType,
+        EdgePattern,
+        EdgeReferenceValueType,
+        EdgeTypeFiller,
+        EdgeTypeImpliedContent,
+        EdgeTypeKeyLabelSet,
+        EdgeTypeLabelSet,
+        EdgeTypePattern,
+        EdgeTypePhrase,
+        EdgeTypePhraseFiller,
+        EdgeTypePropertyTypes,
+        EdgeTypeSpecification,
+        ElementIdFunction,
+        ExistsPredicate,
+        ElementPattern,
+        ElementPatternPredicate,
+        ElementPatternWhereClause,
+        ElementPropertySpecification,
+        ElementTypeList,
+        ElementTypeSpecification,
+        ElementVariableDeclaration,
+        ExactNumericType,
+        FieldTypesSpecification,
+        FilterStatement,
+        FocusedLinearDataModifyingStatement,
+        FocusedLinearDataModifyingProcedureSpecification,
+        FocusedLinearDataModifyingStatementBody,
+        FocusedLinearQueryAndPrimitiveResultStatementPart,
+        FocusedLinearQueryStatement,
+        FocusedNestedDataModifyingProcedureSpecification,
+        FocusedNestedQuerySpecification,
+        FocusedPrimitiveResultStatement,
+        ForStatement,
+        FullEdgePattern,
+        GraphExpression,
+        GraphPattern,
+        GraphPatternBindingTable,
+        GraphReference,
+        GraphReferenceValueType,
+        GraphTypeReference,
+        GraphTypeSpecificationBody,
+        GraphVariableDefinition,
+        ImmaterialValueType,
+        InsertEdgePattern,
+        InsertEdgePointingLeft,
+        InsertEdgePointingRight,
+        InsertEdgeUndirected,
+        InsertGraphPattern,
+        InsertNodePattern,
+        InsertPathPattern,
+        InsertPathPatternList,
+        InsertStatement,
+        LabelAndPropertySetSpecification,
+        LabelConjunction,
+        LabelDisjunction,
+        LabeledPredicate,
+        LabelExpression,
+        LabelPrimary,
+        LabelSetPhrase,
+        LabelSetSpecification,
+        LabelTerm,
+        LetStatement,
+        LetValueExpression,
+        LetVariableDefinitionList,
+        LimitClause,
+        LinearCatalogModifyingStatement,
+        LinearDataModifyingStatement,
+        LinearQueryStatement,
+        ListValueConstructor,
+        ListValueExpression,
+        ListValueType,
+        MatchStatement,
+        NestedBindingTableQuerySpecification,
+        NestedDataModifyingProcedureSpecification,
+        NestedGraphTypeSpecification,
+        NestedProcedureSpecification,
+        NestedQuerySpecification,
+        NodePattern,
+        NodeReferenceValueType,
+        NodeTypeFiller,
+        NodeTypeImpliedContent,
+        NodeTypeKeyLabelSet,
+        NodeTypeLabelSet,
+        NodeTypePattern,
+        NodeTypePhrase,
+        NodeTypePhraseFiller,NodeTypePropertyTypes,
+        NodeTypeSpecification,
+        None, // default value
+        NonParenthesizedValueExpression,
+        NonParenthesizedValueExpressionPrimarySpecialCase,
+        NormalizedPredicate,
+        NullPredicate,
+        NumericType,
+        NumericValueExpression,
+        NumericValueFunction,
+        ObjectExpressionPrimary,
+        ObjectNameOrBindingVariable,
+        OffsetClause,
+        OpenDynamicUnionType,
+        OpenEdgeReferenceValueType,
+        OpenNodeReferenceValueType,
+        OptionalMatchStatement,
+        OrderByAndPageStatement,
+        OrderByClause,
+        ParenthesizedValueExpression,
+        PathConcatenation,
+        PathFactor,
+        PathMultisetAlternation,
+        PathPattern,
+        PathPatternExpression,
+        PathPatternUnion,
+        PathPrimary,
+        PathTerm,
+        PathValueConcatenation,
+        PathValueConstructor,
+        PathValueExpression,
+        PathValuePrimary,
+        PathValueType,
+        PredefinedType,
+        PrimitiveCatalogModifyingStatement,
+        PrimitiveDataModifyingStatement,
+        PrimitiveQueryStatement,
+        PrimitiveResultStatement,
+        ProcedureReference,
+        PropertyExistsPredicate,
+        PropertyReference,
+        PropertyTypeList,
+        PropertyTypesSpecification,
+        RecordConstructor,
+        RecordExpression,
+        RecordType,
+        ReferenceParameterSpecification,
+        ReferenceValueExpression,
+        ReferenceValueType,
+        RelativeCatalogSchemaReference,
+        RemoveStatement,
+        SamePredicate,
+        SchemaReference,
+        SearchCondition,
+        SearchedCase,
+        SearchedConditionalStatement,
+        SearchedWhenClause,
+        SelectGraphMatch,
+        SelectQuerySpecification,
+        SelectStatement,
+        SetStatement,
+        SignedBinaryExactNumericType,
+        SimpleCase,
+        SimpleCatalogModifyingStatement,
+        SimpleDataModifyingStatement,
+        SimpleLinearDataAccessingStatement,
+        SimpleLinearQueryStatement,
+        SimpleMatchStatement,
+        SimpleQueryStatement,
+        SimpleWhenClause,
+        SimplifiedContents,
+        SimplifieedMultisetAlternnation,
+        SimplifiedPathPatternExpression,
+        SimplifiedPathUnion,
+        SimplifiedQuantified,
+        SimplifiedSecondary,
+        SimplifiedTerm,
+        SimplifiedTertiary,
+        StringValueExpression,
+        SourceDestimationPredicate,
+        SubstitutedParameterReference,
+        TemporalType,
+        UnsignedBinaryExactNumericType,
+        UnsignedValueSpecfication,
+        UseGraphClause,
+        ValueVariableDefinition,
+        ValueExpression,
+        ValueExpressionPrimary,
+        ValueQueryExpression,
+        ValueType,
+        ValueTypePredicate,
+        WhereClause
     }
 }

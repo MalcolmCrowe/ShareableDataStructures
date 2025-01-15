@@ -6,7 +6,7 @@ using System;
 using System.Net;
 using System.Transactions;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -90,6 +90,7 @@ namespace Pyrrho.Level3
             cx.cursors = BTree<long, TRow>.Empty;
             cx.obs = ObTree.Empty;
             cx.result = null;
+            cx.binding = CTree<long,TypedValue>.Empty;
             // but keep rdC, etags
             if (!autoCommit)
                 return this;
@@ -300,6 +301,7 @@ namespace Pyrrho.Level3
                 cx.parse = ExecuteStatus.Obey;
                 wr.cx.db += (LastModified, File.GetLastWriteTimeUtc(name));
                 wr.cx.result = null;
+                wr.cx.binding = CTree<long, TypedValue>.Empty;
                 var at = CTree<long, Domain>.Empty;
                 for (var b = wr.cx.uids.First(); b != null; b = b.Next())
                     if (wr.cx.db.objects[b.value() ?? -1L] is DBObject o)
@@ -440,6 +442,7 @@ namespace Pyrrho.Level3
                 {
                     case "HEAD":
                         cx.result = null;
+                        cx.binding = CTree<long, TypedValue>.Empty;
                         break;
                     case "GET":
                         db.Execute(cx, fm, method, dn, path, query, j);
@@ -588,7 +591,7 @@ namespace Pyrrho.Level3
                         var wt = CTree<long, bool>.Empty;
                         for (var si = 0; si < n; si++)
                         {
-                            var v = psr.ParseSqlValue(new Ident(sk[si], cx.GetUid()), Domain.Bool);
+                            var v = psr.ParseSqlValue(new Ident(sk[si], cx.GetUid()), (DBObject._Domain,Domain.Bool));
                             var ls = v.Resolve(cx, f, BTree<long, object>.Empty,0L).Item1;
                             for (var c = ls.First(); c != null; c = c.Next())
                                 if (c.value() is QlValue cv)

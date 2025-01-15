@@ -4,7 +4,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Text;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -249,64 +249,40 @@ namespace Pyrrho.Level2
         /// <exception cref="DBException"></exception>
         internal override DBObject Install(Context cx)
         {
-            var fix = CTree<long, bool>.Empty;
             var r = base.Install(cx);
             if (cx.db.objects[_defpos] is not UDType tg)
                 throw new PEException("PE408205");
-            // To make things easier we consider the merging of columns in two stages,
-            // first deal with where our new columns match columns in the hierarchy
-            if (prev.infos[cx.role.defpos] is ObInfo pi)
-                for (var b = r.names.First(); b != null; b = b.Next())
-                    if (b.value() is long np && !prev.representation.Contains(np) // new name
-                        && hierCols[b.key()] is long ep  // in hierarchy
-                        && np != ep)
-                    {
-                        var q = Math.Min(np, ep);
-                        var nq = Math.Max(np, ep);
-                        cx.MergeColumn(q, nq); // ShallowReplace does the work
-                        fix += (dataType.defpos, true);
-                    }
-            var st = tg.rowType;
-            var sr = tg.representation;
-            var ss = tg.names;
-            var si = tg.infos[cx.role.defpos];
-            // The second stage of merging columns considers the columns from a new under
+            var st = dataType.rowType;
+            var sr = dataType.representation;
+            var ss = dataType.infos[-502]?.names??dataType.names;
+            var si = dataType.infos[cx.role.defpos];
+            // if our new columns (in hierCols) match columns in the hierarchy they need to be merged
+            // (if they cannot be merged we raise an exception)
             for (var ub = under.First(); ub != null; ub = ub.Next())
                 if (ub.key() is UDType uD)
                 {
-                    var hc = uD.HierarchyCols(cx);
-                    for (var b = hc.First(); b != null; b = b.Next())
-                        if (b.value() is long np && cx.db.objects[np] is TableColumn tc
-                            && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string n)
+                    var hc = uD.HierarchyCols(cx,defpos);
+                    for (var b = hierCols.First(); b != null; b = b.Next())
+                        if (hc[b.key()] is long ep && ep > 0 && b.value() is long np) 
                         {
-                            if (prev.names[n] is long ep && ep>=0)  // in hierarchy
-                            {
-                                if (np != ep)
-                                {
-                                    var q = Math.Min(np, ep);
-                                    var nq = Math.Max(np, ep);
-                                    cx.MergeColumn(q, nq); // ShallowReplace does the work
-                                    fix += (uD.defpos, true);
-                                }
-                            } else if (uD.representation.Contains(np))
-                            {
-                                st += np;
-                                sr += (np, tc.domain);
-                                ss += (n, np);
-                            }
+                            var q = Math.Min(np, ep);
+                            var nq = Math.Max(np, ep);
+                            nq = cx.uids[nq] ?? nq;
+                            cx.MergeColumn(nq, q); // ShallowReplace does the work
+                            ss += (b.key(), q);
+                            var cd = ((cx.db.objects[nq]??cx.db.objects[q]) is TableColumn tc
+                            && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string n) ? tc.domain
+                            : throw new PEException("PE20932");
+                            sr -= nq;
+                            sr += (q, cd);
+                            var rt = CList<long>.Empty;
+                            for (var c = st.First(); c != null; c = c.Next())
+                                if (c.value() == nq)
+                                    rt += q;
+                                else 
+                                    rt += c.value();
+                            st = rt;
                         }
-                    if (st != tg.rowType)
-                    {
-                        tg = tg + (Domain.RowType, st) + (Domain.Representation, sr)
-                            + (ObInfo._Names, ss);
-                        cx.db += tg;
-                    }
-                    // under and tg may have changed
-                    tg = (UDType)(cx.db.objects[tg.defpos] ?? Domain.TypeSpec);
-                    var ps = tg.HierarchyRepresentation(cx);
-                    var rt = CList<long>.Empty;
-                    for (var b = ps.First(); b != null; b = b.Next())
-                        rt += b.key();
                     var uP = cx.uids[uD.defpos] ?? uD.defpos; // just in case
                     var un = (UDType)(cx.db.objects[uP] ?? throw new DBException("PE40802"));
                     un += (Table.TableRows, un.tableRows + tg.tableRows);
@@ -401,16 +377,16 @@ namespace Pyrrho.Level2
                     }
                 }
             var ru = CList<long>.Empty;
-            var rs = CTree<long,Domain>.Empty;
-            for (var b = tg.rowType.First(); b != null; b = b.Next())
-                if (b.value() is long cp && tg.representation?[cp] is Domain d)
+            var rs = CTree<long, Domain>.Empty;
+            for (var b = st.First(); b != null; b = b.Next())
+                if (b.value() is long cp && sr?[cp] is Domain d)
                 {
                     ru += cp;
-                    rs += (cp,d);
+                    rs += (cp, d);
                 }
             tg = tg + (Domain.RowType, ru) + (Domain.Representation, rs) + (ObInfo._Names, ss);
-            if (si!=null)
-                tg += (DBObject.Infos,tg.infos+(cx.role.defpos,si));
+            if (si != null)
+                tg += (DBObject.Infos, tg.infos + (cx.role.defpos, si));
             // record our new dataType
             cx.obs += (tg.defpos, tg);
             cx.db += (tg.defpos, tg);

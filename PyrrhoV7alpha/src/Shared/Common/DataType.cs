@@ -1,7 +1,7 @@
 using System.Text;
 using Pyrrho.Level3;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -847,14 +847,13 @@ namespace Pyrrho.Common
         WHENEVER = 819,
         WHILE = 820, // vol 4
         WIDTH_BUCKET = 821,
-        WINDOW = 822,
-        WITHIN = 823,
-        WITHOUT = 824,
-        WORK = 825,
-        WRITE = 826,
-        X = 827, // Pyrrho 4.5
-        Y = 828, // Pyrrho 4.5
-        ZONE = 829
+        WITHIN = 822,
+        WITHOUT = 823,
+        WORK = 824,
+        WRITE = 825,
+        X = 826, // Pyrrho 4.5
+        Y = 827, // Pyrrho 4.5
+        ZONE = 828
     }
     /// <summary>
     /// These are the underlying (physical) datatypes used  for values in the database

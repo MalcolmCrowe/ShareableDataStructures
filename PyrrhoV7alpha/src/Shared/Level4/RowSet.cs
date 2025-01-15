@@ -5,7 +5,7 @@ using Pyrrho.Level5;
 using System.Text;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -70,7 +70,6 @@ namespace Pyrrho.Level4
             Ambient = -175, // CTree<long,bool> QlValue for RestView support
             Asserts = -212, // Assertions
             Assig = -174, // CTree<UpdateAssignment,bool> 
-            Builder = -152, // long Executable
             _Built = -402, // bool
             _CountStar = -281, // long 
             _Data = -368, // long RowSet
@@ -93,14 +92,10 @@ namespace Pyrrho.Level4
             RowOrder = -404, // Domain
             RSTargets = -197, // BTree<long,long?> Table TableRowSet 
             SIMap = -214, // BTree<long,long?> TableColumn,QlValue
-            _Result = -143, // ResultType
             _Scalar = -206, // bool
             _Source = -151, // long RowSet
-            Stability = -144, // CTree<long,CTree<long,TypedValue>> QlValue QlValue
-            Stem = -211, // CTree<long,bool> RowSet 
             Target = -153, // long (a table or view for simple IDU ops)
-            _Where = -190, // CTree<long,bool> Boolean conditions to be imposed by this query
-            Windows = -201; // CTree<long,bool> WindowSpecification
+            _Where = -190; // CTree<long,bool> Boolean conditions to be imposed by this query
         internal Assertions asserts => (Assertions)(mem[Asserts] ?? Assertions.None);
         internal new string? name => (string?)mem[ObInfo.Name];
         /// <summary>
@@ -139,19 +134,6 @@ namespace Pyrrho.Level4
     //    internal long selectDepth => (long)(mem[QlValue.SelectDepth] ?? -1L);
         internal long source => (long)(mem[_Source] ??  -1L);
         internal bool distinct => (bool)(mem[Distinct] ?? false);
-        internal ResultType resultType => (ResultType)(mem[_Result] ?? ResultType.None);
-        /// <summary>
-        /// Stability: The current table may be a constant, or may depend on one or more parameters. 
-        /// If a parameter changes, the value of the current table needs to be recalculated. 
-        /// This is done by cx.bindings: long->(long->TypedValue) in which for an expression E, 
-        /// E.defpos maps to the set of parameters it depends on, with their latest values. 
-        /// If the mapping long->TypedValue is empty, the binding is a constant for the transaction 
-        /// (e.g. depends only on the contents of tables at transaction start): 
-        /// if the TypedValue is not null, and changes, E should be recalculated. 
-        /// If stability is not specified, the rowset must be recomputed on each reference.
-        /// </summary>
-        internal CTree<long, CTree<long, TypedValue>> stability =>
-            (CTree<long, CTree<long, TypedValue>>)(mem[Stability] ?? CTree<long, CTree<long, TypedValue>>.Empty);
         internal CTree<UpdateAssignment, bool> assig =>
             (CTree<UpdateAssignment, bool>?)mem[Assig]
             ?? CTree<UpdateAssignment, bool>.Empty;
@@ -171,17 +153,11 @@ namespace Pyrrho.Level4
         internal CList<long> groupings =>
             (CList<long>?)mem[Groupings] ?? CList<long>.Empty;
         internal Domain groupCols => (Domain)(mem[GroupCols]??Null);
-        internal long builder => (long)(mem[Builder]??-1L);
         /// <summary>
         /// The having clause
         /// </summary>
         internal CTree<long, bool> having =>
             (CTree<long, bool>?)mem[Having] ?? CTree<long, bool>.Empty;
-        /// <summary>
-        /// A set of window names defined
-        /// </summary>
-        internal CTree<long, bool> window =>
-            (CTree<long, bool>?)mem[Windows] ?? CTree<long, bool>.Empty;
         internal MTree? tree => (MTree?)mem[Level3.Index.Tree];
         internal bool scalar => (bool)(mem[_Scalar] ?? false);
         /// <summary>
@@ -280,9 +256,7 @@ namespace Pyrrho.Level4
                 case SelectRowSet.RdCols:
                 case Referenced:
                 case RestRowSetSources:
-                case Stem:
                 case _Where:
-                case Windows: m += (_Depth, cx._DepthTVX((CTree<long, bool>)o, d)); break;
                 case InstanceRowSet.SRowType:
                 case SqlRowSet.SqlRows:
                 case Groupings: m += (_Depth, cx._DepthBV((CList<long>)o, d)); break;
@@ -884,8 +858,6 @@ namespace Pyrrho.Level4
         }
         internal virtual RowSet Build(Context cx)
         {
-            if (cx.obs[builder] is Executable xe)
-                xe._Obey(cx);
             if (Built(cx))
                 return this;
             var r = (RowSet)New(mem + (_Built, true));
@@ -1562,7 +1534,7 @@ namespace Pyrrho.Level4
         public virtual Cursor? Next(Context cx)
         {
             for (var b = _dom.First(); b != null; b = b.Next())
-                if (b.value() is long p && (cx.obs[p] is not QlInstance qi || qi.sPos<0))
+                if (b.value() is long p && (cx.obs[p] is not QlInstance qi || qi.sPos < 0))
                     cx.values -= p;
             return _Next(cx);
         }
@@ -2628,6 +2600,8 @@ namespace Pyrrho.Level4
                 return this;
             if (building)
                 throw new PEException("0077");
+            if (cx.undefined != CTree<long, long>.Empty)
+                throw new DBException("42112", cx.NameFor(cx.undefined.First()?.key() ?? -1)??"");
             var ags = aggs;
             cx.groupCols += (defpos, groupCols);
             if (ags != CTree<long, bool>.Empty && cx.obs[source] is RowSet sce)

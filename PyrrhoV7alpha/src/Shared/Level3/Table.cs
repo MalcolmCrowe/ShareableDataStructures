@@ -5,7 +5,7 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Reflection.Emit;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -525,7 +525,7 @@ ColsFrom(Context cx, long dp,CList<long> rt, CTree<long, Domain> rs, CList<long>
             for (var b = indexes[key]?.First(); b != null; b = b.Next())
             if (db.objects[b.key()] is Index x && (x.flags&fl)!=0)
                     r += x;
-            return (r==BList<Index>.Empty)?null:r.ToArray();
+            return (r==BList<Index>.Empty)?null:r.ListToArray();
         }
         internal Index[]? FindIndex(Database db, CList<long> cols,
     PIndex.ConstraintType fl = (PIndex.ConstraintType.PrimaryKey | PIndex.ConstraintType.Unique))
@@ -536,7 +536,7 @@ ColsFrom(Context cx, long dp,CList<long> rt, CTree<long, Domain> rs, CList<long>
                     for (var c = b.value().First(); c != null; c = c.Next())
                         if (db.objects[c.key()] is Index x && (x.flags & fl) != 0)
                             r += x;
-            return (r == BList<Index>.Empty) ? null : r.ToArray();
+            return (r == BList<Index>.Empty) ? null : r.ListToArray();
         }
         internal override RowSet RowSets(Ident id, Context cx, Domain q, long fm, long ap,
             Grant.Privilege pr=Grant.Privilege.Select, string? a=null, TableRowSet? ur = null)

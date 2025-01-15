@@ -335,6 +335,7 @@ namespace Pyrrho
                                 cx.done = ObTree.Empty;
                                 conn.Add(nm, new PreparedStatement(cx,nst));
                                 cx.result = null;
+                                cx.binding = CTree<long, TypedValue>.Empty;
                                 db = db.RdrClose(ref cx);
                                 tcp.Write(Responses.Done);
                                 break;
@@ -469,7 +470,7 @@ namespace Pyrrho
                                 var tn = DateTime.Now.Ticks;
                                 var c = db.AffCount(cx);
                                 tcp.PutWarnings(cx);
-                                if (cx.result is null)
+                                if (c>0)
                                 {
                                     tcp.Write(Responses.MatchDone);
                                     tcp.PutInt(c);   
@@ -1528,7 +1529,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(10 Jan 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(15 Jan 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

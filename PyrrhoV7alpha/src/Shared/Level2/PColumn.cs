@@ -6,7 +6,7 @@ using Pyrrho.Level5;
 using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2024
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -472,7 +472,7 @@ namespace Pyrrho.Level2
                         cx.Add(rv);
                         cx.Add(nm, rv);
                     }
-                var sv = psr.ParseSqlValue(dataType);
+                var sv = psr.ParseSqlValue((DBObject._Domain,dataType));
                 psr.cx.Add(sv);
                 generated += (GenerationRule.GenExp, sv.defpos);
                 framing = new Framing(psr.cx, nst);
