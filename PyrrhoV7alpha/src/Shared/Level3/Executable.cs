@@ -718,7 +718,7 @@ namespace Pyrrho.Level3
             a.exec = this;
             var vb = (QlValue)(cx.obs[vbl] ?? throw new PEException("PE1101"));
             TypedValue tv = cx.obs[init]?.Eval(cx)??vb.domain.defaultValue;
-            a.bindings += (defpos, Domain.Null); // local variables need special handling
+            a.bindings += (defpos, tv.dataType); // local variables need special handling
             cx.AddValue(vb, tv); // We expect a==ac, but if not, tv will be copied later
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
@@ -4684,9 +4684,7 @@ namespace Pyrrho.Level3
         public MatchStatement(Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, CList<long> ge,
             BTree<long, object> m)
             : this(cx.GetUid(), cx, tg, gs, ge, m)
-        {
-            cx.Add(this);
-        }
+        { }
         MatchStatement(long dp, Context cx, BTree<long, (long, long)>? tg, CTree<long, TGParam> gs, CList<long> ge,
     BTree<long, object> m)
             : base(dp, _Mem(dp, cx, m, tg, gs, ge))
@@ -4704,6 +4702,8 @@ namespace Pyrrho.Level3
                 cx.undefined -= b.key();
                 ch = true;
             }
+            if (cx.obs[(long)(m[BindingTable] ?? -1L)] is BindingRowSet bs)
+                cx.Add(bs + (BindingRowSet.Builder, dp));
             m += (Gql, GQL.MatchStatement);
             m += (GDefs, gs);
             if (tg is not null)

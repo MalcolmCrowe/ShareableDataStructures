@@ -128,13 +128,13 @@ namespace Pyrrho.Level4
             proc = p;
             for (var b = p.ins.First(); b != null; b = b.Next())
                 if (b.value() is long c)
-                    bindings += (c, Domain.Null);
+                    bindings += (c, p.domain);
             if (p is Method mt)
             {
                 cmt = mt;
                 for (var b = mt.udType.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long c)
-                        bindings += (c, Domain.Null);
+                        bindings += (c, cx.db.objects[c] as Domain??Domain.Null);
             }
         }
         internal override TypedValue Ret()

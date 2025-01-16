@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Globalization;
+using System.Net.Sockets;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -2017,7 +2018,7 @@ namespace Pyrrho.Level4
                             var qi = cx.Add(new QlValue(pi, BList<Ident>.Empty, cx, Domain.PathType)
                                 +(DBObject._From,dp));
                             cx.Add(pi.ident,qi);
-                            cx.bindings += (pi.uid, Domain.Null);
+                            cx.bindings += (pi.uid, qi.domain);
                             tgs = lxr.tgs;
                         }
                         Mustbe(Qlx.EQL);
@@ -2335,7 +2336,6 @@ namespace Pyrrho.Level4
                     if (ix <0L)
                     {
                         id = lp;
-                        cx.bindings += (b.uid, Domain.Null);
                         cx.names += (b.ident, b.uid);
                     }
                     else
@@ -2362,6 +2362,7 @@ namespace Pyrrho.Level4
                         dm = tye;
                     else if (lb is QlValue gl && gl.Eval(cx) is TTypeSpec tt)
                         dm = tt._dataType as NodeType;
+                    cx.bindings += (b.uid, dm??Domain.NodeType);
                     var pg = (dm is not null) ? dm.kind switch
                     {
                         Qlx.NODETYPE => TGParam.Type.Node,
@@ -2515,7 +2516,7 @@ namespace Pyrrho.Level4
                     left = (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.UNION, un));
             }
             if (left is GqlLabel)
-                cx.bindings += (c1.uid, Domain.Null);
+                cx.bindings += (c1.uid, left);
             cx.Add(left);
             cx.Add(c1.ident, left);
             if (neg)
@@ -5343,7 +5344,7 @@ namespace Pyrrho.Level4
             var s = CList<long>.Empty;
             var ox = cx.result;
             for (var b = cx.names.First(); b != null; b = b.Next())
-                if (b.value() is long p && p>0 && cx.obs[p]?.domain.kind != Qlx.CONTENT)
+                if (b.value() is long p && p>0 && (cx.obs[p]?.Defined()!=false))
                     cx.anames += (b.key(), b.value());
             while (StartStatement())
             {
@@ -5539,7 +5540,7 @@ namespace Pyrrho.Level4
                 return new QlValue(ic.uid, cx.obs[ic.uid]?.mem??BTree<long,object>.Empty+(ObInfo.Name,ic.ident));
             // if sub is non-zero there is a new chain to construct
             var nm = len - m;
-            DBObject ob;
+            DBObject? ob = null;
             // nm is the position  of the first such in the chain ic
             // create the missing components if any (see 6.1.2 (1))
             for (var i = nm; i < len; i++)
@@ -5549,7 +5550,12 @@ namespace Pyrrho.Level4
                     {
                         if (!cx.ParsingMatch) // flag as undefined unless we are parsing a MATCH
                         {
-                            ob = new SqlReview(c, ic, il, cx, xp) ?? throw new PEException("PE1561");
+                            for (var b = cx.bindings.First(); b != null && ob is null; b = b.Next())
+                                if (cx.obs[b.key()] is GqlNode g && g.name == ic[i-1]?.ident
+                                    && g.domain.names[c.ident] is long pb && pb > 0
+                                    && cx.db.objects[pb] is DBObject po)
+                                    ob = new SqlField(ic.uid, c.ident, -1, b.key(), po.domain, b.key());
+                            ob ??= new SqlReview(c, ic, il, cx, xp) ?? throw new PEException("PE1561");
                             cx.Add(ob);
                         }
                         else if (ic[i - 1] is Ident ip && cx.names[ip.ident] is long px && px>0)
@@ -5563,7 +5569,7 @@ namespace Pyrrho.Level4
                         {
                             ob = cx.Add(new QlValue(c, il, cx, 
                                 lxr.tgg.HasFlag(TGParam.Type.Group)?new Domain(-1L,Qlx.ARRAY,xp):xp));
-                            cx.bindings += (c.uid, Domain.Null);
+                            cx.bindings += (c.uid, ob.domain);
                         }
                         pa = ob;
                     }
@@ -9914,14 +9920,12 @@ namespace Pyrrho.Level4
                 Next();
                 Mustbe(Qlx.LPAREN);
                 var de = ParseStatementList();
-                if (de is not NestedStatement ne || ne.stms.Length != 1)
-                    throw new DBException("42000");
+                if (de is not AccessingStatement ae) throw new DBException("PE70821");
                 Mustbe(Qlx.RPAREN);
-                cx.obs -= ne.defpos;
                 if (op == Qlx.EXISTS)
-                    return (QlValue)cx.Add(new ExistsPredicate(LexDp(), cx, ne.stms[0]??CList<long>.Empty));
+                    return (QlValue)cx.Add(new ExistsPredicate(LexDp(), cx, cx.result as RowSet));
                 else
-                    return (QlValue)cx.Add(new UniquePredicate(LexDp(), cx, ne.stms[0] ?? CList<long>.Empty));
+                    return (QlValue)cx.Add(new UniquePredicate(LexDp(), cx, cx.result as RowSet));
             }
             if (Match(Qlx.RDFLITERAL, Qlx.CHARLITERAL,
                 Qlx.INTEGERLITERAL, Qlx.NUMERICLITERAL, Qlx.NULL,
