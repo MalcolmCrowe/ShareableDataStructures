@@ -1727,6 +1727,9 @@ namespace Pyrrho.Level4
     }
     internal class BindingRowSet : RowSet
     {
+        internal const long
+            Builder = -152; // long Executable (probably a MatchStatement)
+        internal long builder => (long)(mem[Builder] ?? -1L);
         internal MTree? mt =>(MTree?)mem[Level3.Index.Tree];
         internal int cardinality => rows.Length;
         internal BindingRowSet(Context cx,long dp, Domain dm) 
@@ -1800,6 +1803,21 @@ namespace Pyrrho.Level4
             }
             return (BindingRowSet)cx.Add(new BindingRowSet(cx, cx.GetUid(), rw.dataType) 
                 + (_Rows, new CList<TRow>(rw)));
+        }
+        internal override bool Built(Context cx)
+        {
+            return (bool)(mem[_Built]??false);
+        }
+        internal override RowSet Build(Context cx)
+        {
+            if (Built(cx))
+                return this;
+            base.Build(cx);
+            if (cx.obs[builder] is Executable e)
+                e._Obey(cx);
+            var r = (RowSet)(cx.obs[defpos]??this);
+            cx.result = r;
+            return r;
         }
         protected override Cursor? _First(Context cx)
         {
@@ -1909,7 +1927,7 @@ namespace Pyrrho.Level4
         }
         protected override Cursor? _First(Context _cx)
         {
-            return new TrivialCursor(_cx,this);
+            return new TrivialCursor(_cx, this);
         }
         protected override Cursor? _Last(Context _cx)
         {
@@ -1971,8 +1989,6 @@ namespace Pyrrho.Level4
             }
             static TRow _Val(Context cx,TrivialRowSet t)
             {
-                if (t.row != Empty)
-                    return t.row;
                 var vs = CTree<long, TypedValue>.Empty;
                 for (var b = t.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.obs[p] is QlValue sv)
@@ -4177,6 +4193,7 @@ namespace Pyrrho.Level4
     
     internal class EmptyRowSet : RowSet
     {
+        internal static EmptyRowSet Empty = new EmptyRowSet(-1L,BTree<long,object>.Empty);
         internal EmptyRowSet(long dp, Context cx,Domain dm,CList<long>?us=null,
             CTree<long,Domain>?re=null) 
             : base(dp, _Mem(cx,dm,us,re)) 

@@ -356,6 +356,7 @@ namespace Pyrrho.Level3
         {
             return CTree<long, bool>.Empty;
         }
+        internal virtual bool Defined() => domain.kind != Qlx.CONTENT;
         internal virtual CTree<long, bool> ExposedOperands(Context cx,CTree<long,bool> ag,Domain? gc)
         {
             var os = Operands(cx) - ag;
@@ -505,7 +506,10 @@ namespace Pyrrho.Level3
                 return tv;
             if (cx.binding[defpos] is TypedValue tb)
                 return tb;
-            return _Eval(cx);
+            var v = _Eval(cx);
+            if (v != TNull.Value)
+                cx.values += (defpos, v);
+            return v;
         }
         internal virtual TypedValue _Eval(Context cx)
         {

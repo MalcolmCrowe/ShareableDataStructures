@@ -105,8 +105,8 @@ namespace Pyrrho.Common
                 return new TInt(li.value + ri.value);
             if (left is TInteger lj && right is TInteger rj)
                 return new TInteger(lj.ivalue + rj.ivalue);
-            if (left is TNumeric ln && right is TNumeric rn)
-                return new TNumeric(ln.value + rn.value);
+            if (left is TReal ln && right is TReal rn)
+                return new TReal(ln.ToDouble() + rn.ToDouble());
             throw new PEException("PE40601");
         }
         public static TypedValue operator /(TypedValue left, int right)
