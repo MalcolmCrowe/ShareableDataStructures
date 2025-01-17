@@ -5317,7 +5317,7 @@ namespace Pyrrho.Level4
             var s = CList<long>.Empty;
             var ox = cx.result;
             for (var b = cx.names.First(); b != null; b = b.Next())
-                if (b.value() is long p && p > 0 && cx.obs[p]?.Defined()==true)
+                if (b.value() is long p && p > 0 && cx.obs[p]?.domain.kind != Qlx.CONTENT)
                     cx.anames += (b.key(), b.value());
             while (StartStatement() && !Match(Qlx.UNTIL))
             {
@@ -8283,8 +8283,8 @@ namespace Pyrrho.Level4
                 Next();
                 return (RowSet)cx.Add(ParseTableReference(dp, m));
             }
-      //      else if (cx.result is BindingRowSet bs)
-      //          return bs;
+            else if (cx.result is BindingRowSet bs)
+                return bs;
             else
             {
                 var mm = BTree<long, object>.New(m);
@@ -9918,38 +9918,27 @@ namespace Pyrrho.Level4
             {
                 Qlx op = tok;
                 Next();
-                var lb = Mustbe(Qlx.LPAREN,Qlx.LBRACE);
+                Mustbe(Qlx.LPAREN);
                 var de = ParseStatementList();
                 if (de is not AccessingStatement ae) throw new DBException("PE70821");
-                Mustbe((lb==Qlx.LPAREN)?Qlx.RPAREN:Qlx.RBRACE);
+                Mustbe(Qlx.RPAREN);
                 if (op == Qlx.EXISTS)
-                    return (QlValue)cx.Add(new ExistsPredicate(LexDp(), cx, 
-                        cx.result as RowSet??EmptyRowSet.Empty));
+                    return (QlValue)cx.Add(new ExistsPredicate(LexDp(), cx, cx.result as RowSet));
                 else
-                    return (QlValue)cx.Add(new UniquePredicate(LexDp(), cx, 
-                        cx.result as RowSet ?? EmptyRowSet.Empty));
+                    return (QlValue)cx.Add(new UniquePredicate(LexDp(), cx, cx.result as RowSet));
             }
-            var mm = BTree<long, object>.New(m);
-            var xp = (mm[DBObject._Domain] as Domain) ?? Domain.Content;
             if (Match(Qlx.RDFLITERAL, Qlx.CHARLITERAL,
                 Qlx.INTEGERLITERAL, Qlx.NUMERICLITERAL, Qlx.NULL,
             Qlx.REALLITERAL, Qlx.BLOBLITERAL, Qlx.BOOLEANLITERAL))
             {
-                if (tok == Qlx.CHARLITERAL && xp.kind != Qlx.CHAR)
-                {
-                    var sc = new Scanner(LexDp(), lxr.input, lxr.start, cx);
-                    sc.Advance();
-                    if (xp.TryParse(sc, out TypedValue rv) is DBException ex)
-                        throw ex;
-                    r = new SqlLiteral(LexDp(), rv);
-                } 
-                else
-                    r = new SqlLiteral(LexDp(), lxr.val);
+                r = new SqlLiteral(LexDp(), lxr.val);
                 Next();
                 return (QlValue)cx.Add(r);
             }
             // pseudo functions
             StartDataType();
+            var mm = BTree<long, object>.New(m);
+            var xp = (mm[DBObject._Domain] as Domain) ?? Domain.Content;
             switch (tok)
             {
                 case Qlx.ARRAY:

@@ -381,9 +381,8 @@ namespace Pyrrho.Level3
             // check for lateral case
             if (cx.obs[from] is RowSet r)
                 for (var b = r.Sources(cx).First(); b != null; b = b.Next())
-                    if (cx.cursors[b.key()] is TRow sv 
-                        && sv[defpos] is TypedValue lv && lv != TNull.Value)
-                            return lv;
+                    if (cx.cursors[b.key()] is TypedValue sv)
+                        return sv;
             if (name != null && cx.names[name] is long p)
                 return cx.values[p]??TNull.Value;
             return _Default();
@@ -478,7 +477,7 @@ namespace Pyrrho.Level3
         {
             for (var b = ags.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlFunction fr && fr.op == Qlx.RESTRICT
-                    && fr.val == defpos && SqlFunction.aggregatable(cx.obs[fr.val]?.domain.kind??Qlx.NO))
+                    && fr.val == defpos)
                     return new CTree<long, bool>(defpos, true);
             return CTree<long,bool>.Empty;
         }
@@ -1373,7 +1372,7 @@ namespace Pyrrho.Level3
             var v = cx.obs[val]?.Eval(cx)??TNull.Value;
             for (var b = cases.First();b is not null;b=b.Next())
             {
-                var (r, w) = b.value();
+                var (w, r) = b.value();
                 if (domain.Compare(v, cx.obs[w]?.Eval(cx)??TNull.Value) == 0)
                 {
                     var x = cx.obs[r]?.Eval(cx)??TNull.Value;
@@ -6603,8 +6602,7 @@ namespace Pyrrho.Level3
             if (window >= 0) // Window functions do not aggregate rows!
                 return r;
             var vl = cx.obs[val] as QlValue;
-            var va = aggregatable(vl?.domain.kind??Qlx.NO);
-            if (vl is not null && aggregates(op) && va)
+            if (vl is not null && aggregates(op))
                 r += (defpos, true);
             if (vl is not null)
                 r += vl.IsAggregation(cx,ags);
@@ -8379,16 +8377,6 @@ namespace Pyrrho.Level3
                 or Qlx.LAST or Qlx.MAX or Qlx.MIN or Qlx.RESTRICT or Qlx.STDDEV_POP 
                 or Qlx.STDDEV_SAMP or Qlx.SOME or Qlx.SUM => true,
                 _ => false,
-            };
-        }
-        internal static bool aggregatable(Qlx op)
-        {
-            return op switch
-            {
-                Qlx.ANY or Qlx.ARRAY or Qlx.COLLECT or Qlx.LIST or Qlx.CONTENT
-                or Qlx.DOCARRAY or Qlx.DOCUMENT
-                or Qlx.SET or Qlx.MULTISET or Qlx.ROW or Qlx.TABLE => false,
-                _ => true,
             };
         }
     }
@@ -10800,27 +10788,33 @@ cx.obs[high] is not QlValue hi)
     /// </summary>
     internal abstract class RowSetPredicate : QlValue
     {
-        internal const long
-            RSExpr = -363; // long RowSet
-        public long expr => (long)(mem[RSExpr] ?? -1);
+        public CList<long> gqlStms => 
+            (CList<long>)(mem[AccessingStatement.GqlStms]??CList<long>.Empty);
         /// <summary>
         /// the base query
         /// </summary>
-        public RowSetPredicate(long dp,Context cx,RowSet e) 
-            : base(dp, _Mem(e) + (RSExpr, e.defpos))
+        public RowSetPredicate(long dp,Context cx,CList<long> ss) 
+            : base(dp,_Mem(cx,ss))
         { }
         protected RowSetPredicate(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object>_Mem(RowSet e)
+        static BTree<long,object>_Mem(Context cx,CList<long> ss)
         {
             var m = BTree<long, object>.Empty;
             var dm = Domain.Bool;
-            var ag = e.aggs;
+            var ag = CTree<long,bool>.Empty;
+            var d = 1;
+            for (var b = ss.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is RowSet s)
+                {
+                    ag += s.aggs;
+                    d = Math.Max(d, s.depth + 1);
+                }
             if (ag != CTree<long, bool>.Empty)
             {
                 dm = (Domain)dm.New(dm.mem + (Domain.Aggs, ag));
                 m += (Domain.Aggs, ag);
             }
-            m = m + (_Domain, dm) + (_Depth, e.depth + 1);
+            m = m + (_Domain, dm) + (_Depth, d);
             return m;
         }
         public static RowSetPredicate operator +(RowSetPredicate et, (long, object) x)
@@ -10855,24 +10849,26 @@ cx.obs[high] is not QlValue hi)
         }
         internal override CTree<long, bool> _Rdc(Context cx)
         {
-            if (cx.obs[expr] is not QlValue e)
-                throw new PEException("PE49540");
-            return e._Rdc(cx);
+            var r = CTree<long, bool>.Empty;
+            for (var b = gqlStms.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is QlValue e)
+                    r += e._Rdc(cx);
+            return r;
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
         {
             var r = base._Fix(cx, m);
-            var nq = cx.Fix(expr);
-            if (nq != expr)
-                r += (RSExpr, nq);
+            var ex = cx.FixLl(gqlStms);
+            if (ex != gqlStms)
+                r += (AccessingStatement.GqlStms, ex);
             return r;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = (RowSetPredicate)base._Replace(cx, so, sv);
-            var e = cx.ObReplace(expr, so, sv);
-            if (e != expr)
-                r += (cx, RSExpr, e);
+            var r = (UniquePredicate)base._Replace(cx, so, sv);
+            var ex = cx.ReplacedLl(gqlStms);
+            if (ex != gqlStms)
+                r += (cx, AccessingStatement.GqlStms, ex);
             return r;
         }
         internal override QlValue Having(Context c, Domain dm)
@@ -10889,20 +10885,28 @@ cx.obs[high] is not QlValue hi)
         }
         internal RowSet Exec(Context cx)
         {
-            var r = cx.obs[expr] as RowSet ?? throw new PEException("PE70822");
-            cx.result = r;
+            if (cx.bindings[defpos] is RowSet rs)
+                return rs;
+            var ef = gqlStms.First();
+            if (ef is null || cx.obs[ef.value()] is not Executable e)
+                throw new DBException("PE70901");
+            var ro = cx.result;
+            var nc = e._Obey(cx, ef.Next());
+            var r = cx.result as RowSet??throw new DBException("22G0X");
+            cx.bindings += (defpos, r);
+            cx.result = ro;
             return r;
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
-            for (var b = (cx.result??domain).rowType.First(); b != null; b = b.Next())
+            for (var b = domain.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue s)
                     tg = s.StartCounter(cx, rs, tg);
             return tg;
         }
         internal override BTree<long, Register> AddIn(Context cx, Cursor rb, BTree<long, Register> tg)
         {
-            for (var b = (cx.result??domain).rowType.First(); b != null; b = b.Next())
+            for (var b = domain.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue s)
                     tg = s.AddIn(cx, rb, tg);
             return tg;
@@ -10919,9 +10923,11 @@ cx.obs[high] is not QlValue hi)
         }
         internal override CTree<long, bool> Needs(Context cx, long rs)
         {
-            if (cx.obs[expr] is not QlValue e)
-                throw new PEException("PE49543");
-            return e.Needs(cx, rs);
+            var r = CTree<long, bool>.Empty;
+            for (var b=gqlStms.First();b!=null;b=b.Next())
+                if (cx.obs[b.value()] is QlValue e)
+                    r += e.Needs(cx, rs);
+            return r;
         }
         internal override bool LocallyConstant(Context cx, RowSet rs)
         {
@@ -10934,7 +10940,7 @@ cx.obs[high] is not QlValue hi)
     /// </summary>
     internal class ExistsPredicate : RowSetPredicate
     {
-        public ExistsPredicate(long dp,Context cx,RowSet e) : base(dp,cx,e)
+        public ExistsPredicate(long dp,Context cx,CList<long> ss) : base(dp,cx,ss)
         {
             cx.Add(this);
         }
@@ -10977,19 +10983,33 @@ cx.obs[high] is not QlValue hi)
         {
             return new ExistsPredicate(dp,m);
         }
+        protected override BTree<long,object> _Fix(Context cx,BTree<long,object>m)
+        {
+            var r = base._Fix(cx,m);
+            var ex = cx.FixLl(gqlStms);
+            if (ex != gqlStms)
+                r += (AccessingStatement.GqlStms, ex);
+            return r;
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = (UniquePredicate)base._Replace(cx, so, sv);
+            var ex = cx.ReplacedLl(gqlStms);
+            if (ex != gqlStms)
+                r += (cx, AccessingStatement.GqlStms, ex);
+            return r;
+        }
         /// <summary>
         /// The predicate is true if the rowSet has at least one element
         /// </summary>
         internal override TypedValue _Eval(Context cx)
         {
-            var rs = cx.obs[expr] as RowSet ?? throw new PEException("PE70823");
-            cx.Add(rs + (RowSet._Built, false));
-            return TBool.For(rs?.First(cx) is not null);
+            return TBool.For(Exec(cx).First() is not null);
         }
         public override string ToString()
         {
             var sb = new StringBuilder("exists ");
-            sb.Append(Uid(expr));
+            sb.Append(gqlStms);
             return sb.ToString();
         }
     }
@@ -10999,7 +11019,7 @@ cx.obs[high] is not QlValue hi)
     /// </summary>
     internal class UniquePredicate : RowSetPredicate
     {
-        public UniquePredicate(long dp,Context cx, RowSet e) : base(dp, cx, e)
+        public UniquePredicate(long dp,Context cx,CList<long> ss) : base(dp,cx,ss)
         {
             cx.Add(this);
         }
@@ -11041,6 +11061,14 @@ cx.obs[high] is not QlValue hi)
         internal override DBObject New(long dp, BTree<long, object>m)
         {
             return new UniquePredicate(dp,m);
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            var r = (UniquePredicate)base._Replace(cx, so, sv);
+            var ex = cx.ReplacedLl(gqlStms);
+            if (ex != gqlStms)
+                r +=(cx, AccessingStatement.GqlStms, ex);
+            return r;
         }
         /// <summary>
         /// the predicate is true if the rows are distinct 
