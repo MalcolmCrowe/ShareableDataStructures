@@ -72,13 +72,9 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Execute a Method
         /// </summary>
-        /// <param name="cx">The context</param>
-        /// <param name="db">The database</param>
-        /// <param name="dt">The return type</param>
-        /// <param name="ut">The owning object type</param>
-        /// <param name="sce">The source object instance (null for constructor)</param>
-        /// <param name="n">The method name</param>
-        /// <param name="actIns">The actual parameter tree</param>
+        /// <param name="cx">The context: this should be an isolated Activation</param>
+        /// <param name="var">The source object instance (null for constructor)</param>
+        /// <param name="actIns">The actual parameter list</param>
         /// <returns>The return value</returns>
         public Context Exec(Context cx, long var, CList<long> actIns)
         {

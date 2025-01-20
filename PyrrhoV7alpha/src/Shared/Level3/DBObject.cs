@@ -87,7 +87,7 @@ namespace Pyrrho.Level3
         internal Framing framing =>
             (Framing?)mem[_Framing] ?? Framing.Empty;
         internal Ident? id => (Ident?)mem[_Ident];
-
+        internal virtual bool Defined() => domain.kind != Qlx.CONTENT;
         protected DBObject(long pp, long dp, BTree<long, object>? m = null)
             : this(dp, (m ?? BTree<long, object>.Empty) + (LastChange, pp))
         { }

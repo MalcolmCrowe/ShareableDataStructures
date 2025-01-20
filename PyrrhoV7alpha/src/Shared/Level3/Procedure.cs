@@ -96,8 +96,9 @@ namespace Pyrrho.Level3
         /// <summary>
         /// Execute a Procedure/function.
         /// </summary>
+        /// <param name="cx">The context: should be an isolated Activation</param>
         /// <param name="actIns">The actual parameters</param>
-        /// <returns>The possibily modified Transaction</returns>
+        /// <returns>The Context, possibly modified</returns>
         public Context Exec(Context cx, CList<long> actIns)
         {
             if (infos[cx.role.defpos] is not ObInfo oi

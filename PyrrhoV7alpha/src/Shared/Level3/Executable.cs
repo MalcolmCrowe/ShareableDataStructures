@@ -3413,10 +3413,12 @@ namespace Pyrrho.Level3
             var proc = (Procedure)(cx.db.objects[sc.procdefpos] ?? throw new DBException("42108"));
             var ac = new Context(cx, cx._Ob(proc.definer) as Role ?? throw new DBException("42108"),
                 cx.user ?? throw new DBException("42108"));
+            var oc = cx.values;
             var a = proc?.Exec(ac, sc.parms) ?? ac;
             cx = a.SlideDown();
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
+            cx.values = oc;
             return cx;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
@@ -4563,6 +4565,7 @@ namespace Pyrrho.Level3
                 nb += (TableRowSet._Index, ts.index);
             cx.Add(nb);
             cx.result = nb;
+            cx.size += (rs.defpos, lm);
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
             return cx;
@@ -4672,7 +4675,6 @@ namespace Pyrrho.Level3
         internal CList<long> then => (CList<long>)(mem[ConditionalStatement.Then] ?? CList<long>.Empty);
         internal BTree<long, (long, long)> truncating =>
             (BTree<long, (long, long)>)(mem[Truncating] ?? BTree<long, (long, long)>.Empty);
-        internal int size => (int?)mem[RowSetSection.Size] ?? -1;
         internal long bindings => (long)(mem[BindingTable] ?? -1L);
         [Flags]
         internal enum Flags { None = 0, Bindings = 1, Body = 2, Return = 4, Schema = 8 }
@@ -4769,7 +4771,8 @@ namespace Pyrrho.Level3
         }
         public bool Done(Context cx)
         {
-            return size >= 0 && cx.obs[bindings] is BindingRowSet se && se.rows.Count >= size;
+            var size = cx.size.Contains(bindings)?cx.size[bindings]: -1;
+            return size>=0 && cx.obs[bindings] is BindingRowSet se && se.rows.Count >= size;
         }
         /// <summary>
         /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.

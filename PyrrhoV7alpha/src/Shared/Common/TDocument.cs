@@ -416,7 +416,7 @@ namespace Pyrrho.Common
         /// <returns>the exception</returns>
         static DBException ParseException(string m)
         {
-            return new DBException("22300", m).Pyrrho();
+            return new DBException("22000", m).Pyrrho();
         }
         static string GetString(char qu, string s, int n, ref int i)
         {
@@ -1090,9 +1090,9 @@ namespace Pyrrho.Common
                 if (c == ']')
                     return i;
                 if (c != ',')
-                    throw new DBException("22300", "Expected , at " + (i - 1)).Pyrrho();
+                    throw new DBException("22000", "Expected , at " + (i - 1)).Pyrrho();
             }
-            throw new DBException("22300", "Incomplete syntax at " + (i - 1)).Pyrrho();
+            throw new DBException("22000", "Incomplete syntax at " + (i - 1)).Pyrrho();
         }
         internal TDocArray Add(TypedValue c)
         {

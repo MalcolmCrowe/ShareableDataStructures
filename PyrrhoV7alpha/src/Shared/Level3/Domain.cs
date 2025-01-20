@@ -917,8 +917,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         var vs = BList<TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                            if (GetDataType(rdr) is Domain dt)
-                                vs += el.Coerce(rdr.context,dt.Get(log, rdr, pp));
+                            vs += el.Get(log, rdr, pp);
                         return new TList(this, vs);
                     }
                 case Qlx.MULTISET:
@@ -1545,22 +1544,25 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             {
                 var cx = Context._system;
                 var sa = new SqlLiteral(cx.GetUid(),a);
-                cx.Add(sa);
+                var oc = cx.values;
+                var ac = new Activation(cx, orderFunc.name ?? Uid(orderFunc.defpos));
+                ac.Add(sa);
                 var sb = new SqlLiteral(cx.GetUid(),b);
-                cx.Add(sb);
+                ac.Add(sb);
                 if ((orderflags & OrderCategory.Relative) == OrderCategory.Relative)
                 {
-                    orderFunc.Exec(cx, new CList<long>(sa.defpos) + sb.defpos);
-                    if (cx.val.ToInt() is int ri)
+                    orderFunc.Exec(ac, new CList<long>(sa.defpos) + sb.defpos);
+                    if (ac.val.ToInt() is int ri)
                         c = ri;
                     else
                         throw new DBException("22004");
                     goto ret;
                 }
-                orderFunc.Exec(cx,new CList<long>(sa.defpos));
-                a = cx.val;
-                orderFunc.Exec(cx,new CList<long>(sb.defpos));
-                b = cx.val;
+                orderFunc.Exec(ac,new CList<long>(sa.defpos));
+                a = ac.val;
+                orderFunc.Exec(ac,new CList<long>(sb.defpos));
+                b = ac.val;
+                cx.values = oc;
                 c = a.dataType.Compare(a, b);
                 goto ret;
             }
@@ -3069,6 +3071,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     }
                 case Qlx.REAL:
                     {
+                        if (vk == Qlx.CHAR)
+                            return new TReal(this,double.Parse(v.ToString()));
                         var r = v.ToDouble();
                         if (prec == 0)
                             return new TReal(this, r);

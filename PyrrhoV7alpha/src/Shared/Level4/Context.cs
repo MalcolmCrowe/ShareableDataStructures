@@ -83,6 +83,7 @@ namespace Pyrrho.Level4
         internal Names anames = Names.Empty; // ambient names
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
+        internal CTree<long,int> size = CTree<long,int>.Empty; // BindingSet. yuk: A hack for limit with match statements 
         internal Graph? graph = null; // current graph, set by USE
         internal Schema? schema = null; // current rowType, set by AT
         internal bool ParsingMatch = false;

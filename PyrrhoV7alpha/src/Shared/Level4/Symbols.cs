@@ -357,8 +357,11 @@ namespace Pyrrho.Level4
                     mi.methodInfos[dt.name] is BTree<CList<Domain>, long?> md
                     && cx.db.objects[md[sig] ?? -1L] is Method mt)
                 {
-                    cx.Add(new SqlLiteral(ps, Domain._Numeric.Coerce(cx, val)));
-                    val = mt.Exec(cx, new CList<long>(ps)).val;
+                    var oc = cx.values;
+                    var ac = new Activation(cx, mt.name ?? DBObject.Uid(mt.defpos));
+                    ac.Add(new SqlLiteral(ps, Domain._Numeric.Coerce(cx, val)));
+                    val = mt.Exec(ac, new CList<long>(ps)).val;
+                    cx.values = oc;
                 }
                 else
                     val = new TSubType(dt, val);
@@ -380,11 +383,16 @@ namespace Pyrrho.Level4
                     && cx.db.objects[cx.db.suffixes[vs]??-1L] is UDType dt
                     && dt.name != null && prevval is not null)
                 {
-                    if (dt.infos[cx.role.defpos] is ObInfo mi 
+                    if (dt.infos[cx.role.defpos] is ObInfo mi
                         && mi.methodInfos[dt.name] is BTree<CList<Domain>, long?> md
-                        && cx.db.objects[md[sig]??-1L] is Method mt
+                        && cx.db.objects[md[sig] ?? -1L] is Method mt
                         && cx.Add(new SqlLiteral(cx.GetUid(), prevval)) is QlValue r)
-                        val = mt.Exec(cx, new CList<long>(r.defpos)).val;
+                    {
+                        var oc = cx.values;
+                        var ac = new Activation(cx, mt.name ?? DBObject.Uid(mt.defpos));
+                        val = mt.Exec(ac, new CList<long>(r.defpos)).val;
+                        cx.values = oc;
+                    }
                     else
                         val = new TSubType(dt, prevval);
                     tok = oldtok;
