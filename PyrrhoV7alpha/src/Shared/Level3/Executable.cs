@@ -4553,7 +4553,8 @@ namespace Pyrrho.Level3
                 throw new DBException("02000");
             var nr = BList<(long,TRow)>.Empty;
             var od = (mem[RowSet.RowOrder] as Domain)?? Domain.Row;
-            rs = rs.Sort(cx, od, false);
+            if (od.Length>0)
+                rs = rs.Sort(cx, od, false);
             var ff = (int)(mem[RowSetSection.Offset] ?? 0);
             var lm = (int)(mem[RowSetSection.Size] ?? 0);
             if (ff!=0 || lm!=0)
@@ -4791,7 +4792,8 @@ namespace Pyrrho.Level3
         /// from (T) to (T array) for all non-path x named in xn.state for some xn in ps.sp.pattern.
         /// </summary>
         /// <param name="cx">The context</param>
-        /// <returns></returns>
+        /// <param name="ef">following accessing statements</param>
+        /// <returns>the context</returns>
         public override Context _Obey(Context cx, ABookmark<int, long>? ef = null)
         {
             for (var b = cx.undefined.First(); b != null; b = b.Next())
@@ -4853,6 +4855,22 @@ namespace Pyrrho.Level3
                 truncator += (b.key(), (il, od));
             }
             var pre = ((Transaction)ac.db).physicals.Count;
+            // When we reach the end of the match expression,
+            // we will obey the following statements up to an orderby/page statement. 
+            // first identify these:
+            var fs = CList<long>.Empty;
+            while (ef?.value() is long ep)
+            {
+                if (cx.obs[ep] is OrderAndPageStatement op)
+                {
+                    if (op.size>0)
+                        cx.size += (defpos, op.size);
+                    break;
+                }
+                fs += ep;
+                ef = ef.Next();
+            }
+            var ff = fs.First();
             _step = 0;
             var gf = matchList.First();
             if (ac.obs[gf?.value() ?? -1L] is GqlMatch sm)
@@ -4862,8 +4880,9 @@ namespace Pyrrho.Level3
                         var xf = sa.matchExps.First();
                         if (gf is not null && xf is not null)
                             ExpNode(ac, new ExpStep(sa.mode, xf, ab.Next(), 
-                                new GraphStep(sa.mode, gf.Next(), new EndStep(this, ef),ef),ef), Qlx.Null, null, null);
+                                new GraphStep(sa.mode, gf.Next(), new EndStep(this, ff),ff),ff), Qlx.Null, null, null);
                     }
+            // The binding set of the match and some or all its following statements is now done
             cx.result = ac.result;
             var ps = ((Transaction)ac.db).physicals;
             if (DoExclusions(cx.result as RowSet,ac,cx) is RowSet rs)
@@ -4892,6 +4911,8 @@ namespace Pyrrho.Level3
             cx.db = ac.db;
             if (ac.obs[bindings] is RowSet bs)
                 cx.obs += (bindings, bs);
+            if (cx.obs[ef?.value() ?? -1L] is Executable fe)
+                cx = fe._Obey(cx, ef?.Next());
             return cx;
         }
         internal RowSet? DoExclusions(RowSet? rs,Context ac,Context cx)

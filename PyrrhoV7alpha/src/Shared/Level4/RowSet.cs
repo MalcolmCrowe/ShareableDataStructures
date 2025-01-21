@@ -5874,7 +5874,7 @@ namespace Pyrrho.Level4
             }
             protected override Cursor? _Next(Context cx)
             {
-                if (_pos+1 >= _rss.size)
+                if (_pos+1 >= _rss.size && _rss.size!=0)
                     return null;
                 if (_rb.Next(cx) is Cursor rb)
                     return new RowSetSectionCursor(cx, _rss, rb);
@@ -5882,7 +5882,7 @@ namespace Pyrrho.Level4
             }
             protected override Cursor? _Previous(Context cx)
             {
-                if (_pos + 1 >= _rss.size)
+                if (_pos + 1 >= _rss.size && _rss.size!=0)
                     return null;
                 if (_rb.Previous(cx) is Cursor rb)
                     return new RowSetSectionCursor(cx, _rss, rb);
