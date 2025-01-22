@@ -4552,17 +4552,21 @@ namespace Pyrrho.Level3
             if (cx.result is not RowSet rs)
                 throw new DBException("02000");
             var nr = BList<(long,TRow)>.Empty;
+            var ro = cx.result;
             var od = (mem[RowSet.RowOrder] as Domain)?? Domain.Row;
             if (od.Length>0)
                 rs = rs.Sort(cx, od, false);
             var ff = (int)(mem[RowSetSection.Offset] ?? 0);
             var lm = (int)(mem[RowSetSection.Size] ?? 0);
-            if (ff!=0 || lm!=0)
-                rs = new RowSetSection(cx, rs,ff,lm);
+            if (ff != 0 || lm != 0)
+            {
+                rs = new RowSetSection(cx, rs, ff, lm);
+                cx.result = rs;
+            }
             for (var b = rs.First(cx); b != null; b = b.Next(cx))
                 nr += (b._pos, b);
             var nb = new ExplicitRowSet(rs.defpos, cx, rs, nr);
-            if (cx.result is TableRowSet ts)
+            if (ro is TableRowSet ts)
                 nb += (TableRowSet._Index, ts.index);
             cx.Add(nb);
             cx.result = nb;
@@ -5322,6 +5326,8 @@ namespace Pyrrho.Level3
             for (var b = pn.rindexes.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is EdgeType rt && b.value() is CTree<Domain, Domain> pt)
                 {
+                    if (xn.label.kind == Qlx.UNION && !xn.label.unionOf.Contains(rt))
+                        continue;
                     if (pd.defpos == pd.dataType.defpos) // schmema flag
                     {
                         ds += (rt.defpos, rt.Schema(cx));

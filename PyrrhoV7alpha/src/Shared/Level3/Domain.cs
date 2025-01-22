@@ -1672,7 +1672,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                 else if (j == y.Length) c = 1;
                                 else c = xe.Compare(x[j], y[j]);
                                 if (c != 0)
-                                    break;
+                                    goto ret;
                             }
                             break;
                         }
@@ -1686,12 +1686,11 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             c = 0;
                             var xb = tx.array.First();
                             var yb = ty.array.First();
-                            for (; xb!=null && yb!=null;xb=xb.Next(),yb=yb.Next())
+                            for (;c==0 && xb!=null && yb!=null;xb=xb.Next(),yb=yb.Next())
                             {
                                 c = xb.key().CompareTo(yb.key());
-                                if (c != 0)
-                                    break;
-                                c = xe.Compare(xb.value(), yb.value());
+                                if (c == 0)
+                                    c = xe.Compare(xb.value(), yb.value());
                             }
                             if (xb != null)
                                 c = 1;
