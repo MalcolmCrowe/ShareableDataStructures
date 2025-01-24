@@ -834,7 +834,8 @@ namespace Pyrrho.Level5
                         di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(tc), 1);
                         px = new PIndex(id, ut, di,
                             (cp == IdCol) ? PIndex.ConstraintType.PrimaryKey
-                            : (PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate),
+                            : (PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
+                            | PIndex.ConstraintType.CascadeDelete),
                             rx?.defpos ?? -1L, cx.db.nextPos, ifn);
                         tc += (Level3.Index.RefIndex, px.ppos);
                     }

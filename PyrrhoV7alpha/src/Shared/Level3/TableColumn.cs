@@ -583,7 +583,7 @@ namespace Pyrrho.Level3
             }
             return this;
         }
-        internal void Cascade(TableActivation cx, CTree<long, TypedValue>? u = null)
+        internal Context Cascade(Context _cx, TableActivation cx, CTree<long, TypedValue>? u = null)
         {
             var db = cx.db;
             //       var fr = (TableRowSet)cx.next.obs[cx._fm.defpos];
@@ -612,7 +612,7 @@ namespace Pyrrho.Level3
                                         ku += (q, new UpdateAssignment(q, v));
                                     }
                                 if (ku == BTree<long, UpdateAssignment>.Empty) // not updating a key
-                                    return;
+                                    return cx;
                                 cx.updates += ku;
                             }
                             var restrict = (cx._tty == PTrigger.TrigType.Delete && rx.flags.HasFlag(PIndex.ConstraintType.RestrictDelete))
@@ -629,10 +629,11 @@ namespace Pyrrho.Level3
                                     if (d.Value() is long vv && cx._trs.At(cx, vv, u) is Cursor cu)
                                     {
                                         cx.next.cursors += (cx._trs.data, cu);
-                                        cx.EachRow((int)d._pos);
+                                        _cx = cx.EachRow(_cx,(int)d._pos);
                                     }
                                 }
                         }
+            return _cx;
         }
         public CList<TypedValue> MakeKey(Index x)
         {

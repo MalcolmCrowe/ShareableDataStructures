@@ -1737,7 +1737,8 @@ namespace Pyrrho.Level4
                             {
                                 var px = new PIndex(cn.ident, (Table)tp.dataType,
                                     new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(tc), 1),
-                                PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate,
+                                PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
+                                | PIndex.ConstraintType.CascadeDelete,
                                     rx,cx.db.nextPos);
                                 cx.Add(px);
                             }
@@ -8199,23 +8200,33 @@ namespace Pyrrho.Level4
                 m += wh;
                 ((RowSet)(cx.obs[r.source] ?? throw new PEException("PE2002"))).Apply(wh, cx);
             }
+            // tolerate a group specification in non-aggregating queries
+            // e.g. where SUM etc are just for path binding arrays
             if (tok == Qlx.GROUP)
             {
-                if (r.aggs == CTree<long, bool>.Empty)
-                    throw new DBException("42128", "GROUP");
                 if (ParseGroupClause(r) is GroupSpecification gs)
                 {
                     gc = gs.Cols(cx, r);
                     gg = gs;
-                    m += (RowSet.Group, gs.defpos);
-                    m += (RowSet.GroupCols, gc);
+                    if (r.aggs.Count != 0)
+                    {
+                        m += (RowSet.Group, gs.defpos);
+                        m += (RowSet.GroupCols, gc);
+                    }
                 }
             }
             if (tok == Qlx.HAVING)
             {
                 if (r.aggs == CTree<long, bool>.Empty)
                     throw new DBException("42128", "HAVING");
-                m += (RowSet.Having, ParseHavingClause(r));
+                if (r.aggs.Count != 0)
+                    m += (RowSet.Having, ParseHavingClause(r));
+                else
+                {
+                    var wh = r.where + (CTree<long, bool>)(m[RowSet._Where] ?? CTree<long, bool>.Empty)
+                        + ParseHavingClause(r);
+                    m += (RowSet._Where, wh);
+                }
             }
             // a following order and page statement can handle <order by clause, offset clause and limit clause
             if (r.aggs.Count > 0 && cx.conn._tcp is not null)
@@ -9073,14 +9084,14 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.DELETE);
             if (!Match(Qlx.WITH, Qlx.FROM))
             {
-                var de = DeleteNode();
+                var de = DeleteNode(cc);
                 if (!Match(Qlx.COMMA))
                     return de;
                 var ds = new CList<long>(de.defpos);
                 while (Match(Qlx.COMMA))
                 {
                     Next();
-                    ds += DeleteNode().defpos;
+                    ds += DeleteNode(cc).defpos;
                 }
                 return (Executable)cx.Add(new AccessingStatement(cx.GetUid(),
                     new BTree<long, object>(AccessingStatement.GqlStms, ds)));
@@ -9129,13 +9140,13 @@ namespace Pyrrho.Level4
             cx.exec = qs;
             return (Executable)cx.Add(qs);
         }
-        Executable DeleteNode()
+        Executable DeleteNode(bool detach)
         {
             var n = lxr.val;
             Mustbe(Qlx.Id);
             return (Executable)cx.Add(new DeleteNode(cx.GetUid(),
                     cx.obs[cx.names[n.ToString()]] as QlValue
-                    ?? throw new DBException("42161", "Node or edgde")));
+                    ?? throw new DBException("42161", "Node or edgde"),detach));
         }
         /// <summary>
         /// the update statement

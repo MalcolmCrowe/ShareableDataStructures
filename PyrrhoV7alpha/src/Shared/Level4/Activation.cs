@@ -76,7 +76,7 @@ namespace Pyrrho.Level4
                     next.values += (k, v);
             }
             next.val = val;
-            next.nextHeap = nextHeap;
+            next.nextHeap = Math.Max(next.nextHeap,nextHeap);
             next.result = result;
             if (next.next is Context nx)
                 nx.lastret = next.lastret;
@@ -173,11 +173,13 @@ namespace Pyrrho.Level4
             _fm = fm;
             _tgt = cx._Ob(fm.target) as Domain??throw new DBException("42105");
         }
-        internal virtual void EachRow(int pos)
-        { }
-        internal virtual Context Finish()
+        internal virtual Context EachRow(Context cx,int pos)
         {
-            return _cx;
+            return cx;
+        }
+        internal virtual Context Finish(Context cx)
+        {
+            return cx;
         }
         internal static HttpResponseMessage RoundTrip(Context cx, long vp, PTrigger.TrigType tp, HttpRequestMessage rq, string url, StringBuilder? sql)
         {
@@ -335,7 +337,7 @@ namespace Pyrrho.Level4
                                 if (xb.value() is long xp && obs[xp] is QlInstance xc 
                                     && db.objects[xc.sPos] is TableColumn tc)
                                     Add(tc);
-                            if ((obs[rf.data] ?? obs[rf.defpos]) is RowSet da)
+                            if ((obs[rf.data] ?? obs[rf.defpos]) is RowSet da && !casc.Contains(rt.defpos))
                             {
                                 var ra = new TableActivation(this, rf, da, tt);
                                 if (tt != PTrigger.TrigType.Insert)
@@ -378,7 +380,7 @@ namespace Pyrrho.Level4
 
                                     }
                                 cx.nextHeap = nextHeap;
-                                casc += (rx.defpos, ra);
+                                casc += (rt.defpos, ra);
                             }
                         }
                 }
@@ -470,19 +472,19 @@ namespace Pyrrho.Level4
                     break;
             }
         }
-        internal override void EachRow(int pos)
+        internal override Context EachRow(Context _cx,int pos)
         {
             var cu = next?.cursors[(_trs.data>=0)?_trs.data : _trs.from];
             var trc = (cu is not null)?new TransitionRowSet.TransitionCursor(this, _trs, (Cursor)cu, pos, insertCols)
                 : (TransitionRowSet.TransitionCursor?)cursors[_trs.defpos];
             if (trc == null || db==null || _cx.db==null || trc._tgc==null)
-                return;
+                return _cx;
             var tgc = trc._tgc;
             var rc = tgc._rec;
             var trs = _trs;
             newRow = rc?.vals;
             if (newRow==null || rc==null || trigFired == true)
-                return;
+                return _cx;
             switch (_tty & (PTrigger.TrigType)7)
             {
                 case PTrigger.TrigType.Insert:
@@ -492,14 +494,15 @@ namespace Pyrrho.Level4
                         if (trigFired != true)
                             trigFired = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
                         if (trigFired == true) // an insteadof trigger has fired
-                            return;
+                            return _cx;
                         var st = rc.subType;
                         Record r;
                         if (level != Level.D)
-                            r = new Record3(table.defpos, newRow, st, level, db.nextPos, _cx);
+                            r = new Record3(table.defpos, newRow, st, level, _cx.db.nextPos, _cx);
                         else
-                            r = new Record(table.defpos, newRow, db.nextPos, _cx);
+                            r = new Record(table.defpos, newRow, _cx.db.nextPos, _cx);
                         Add(r);
+                        _cx.Add(r);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (r.defpos, new TableRow(r,_cx)));
                         count++;
@@ -507,7 +510,6 @@ namespace Pyrrho.Level4
                             values += (r.defpos, new TNode(this,rc));
                         // install the record in the transaction
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
-                        _cx.db = db;
                         // Row-level after triggers
                         values += (Trigger.NewRow, new TRow(tgc.dataType, newRow));
                         Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
@@ -537,7 +539,7 @@ namespace Pyrrho.Level4
                         if (fi != true)
                             fi = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
                         if (fi == true) // an insteadof trigger has fired
-                            return;
+                            return _cx;
                         // Step C
                         //#if MANDATORYACCESSCONTROL
                         // If Update is enforced by the table, and a record selected for update 
@@ -568,18 +570,18 @@ namespace Pyrrho.Level4
                             throw new PEException("PE631");
                         next.cursors += (_trs.defpos, trc._tgc);
                         if (newRow.Count == 0L)
-                            return;
+                            return _cx;
                         for (var b = casc.First(); b != null; b = b.Next())
-                            if (b.value() is TableActivation ct)
-                                was?.Cascade(ct, newRow);
+                            if (b.value() is TableActivation ct && was!=null)
+                                _cx = was.Cascade(_cx, ct, newRow);
                         var nu = tgc._rec ?? throw new PEException("PE1907");
                         var u = (security == null) ?
-                                new Update(nu, table.defpos, newRow, db.nextPos, _cx) :
-                                new Update1(nu, table.defpos, newRow, ((TLevel)security.Eval(_cx)).val, db.nextPos, _cx);
+                                new Update(nu, table.defpos, newRow, _cx.db.nextPos, _cx) :
+                                new Update1(nu, table.defpos, newRow, ((TLevel)security.Eval(_cx)).val, _cx.db.nextPos, _cx);
                         Add(u);
+                        _cx.Add(u);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (nu.defpos, new TableRow(u, _cx)));
-                        _cx.db = db;
                         Triggers(PTrigger.TrigType.After | PTrigger.TrigType.EachRow);
                         break;
                     }
@@ -587,10 +589,10 @@ namespace Pyrrho.Level4
                     {
                         var fi = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
                         if (fi == true)
-                            return;
+                            return _cx;
                         fi = Triggers(PTrigger.TrigType.Instead | PTrigger.TrigType.EachRow);
                         if (fi == true)
-                            return;
+                            return _cx;
                         tgc = (TransitionRowSet.TargetCursor)(cursors[_trs.defpos] ??
                             throw new PEException("PE631"));
                         rc = tgc._rec ?? throw new PEException("PE631");
@@ -606,21 +608,24 @@ namespace Pyrrho.Level4
 //#endif
                         for (var b = casc.First(); b != null; b = b.Next())
                             if (b.value() is TableActivation ct)
-                                rc.Cascade(ct);
+                                _cx = rc.Cascade(_cx,ct);
                         if (parse.HasFlag(ExecuteStatus.Detach))
-                            rc.Cascade(this);
+                            _cx = rc.Cascade(_cx,this);
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, cx.db.nextPos);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns - rc.defpos);
-                        Add(new Delete1(rc, db.nextPos, this));
-                        _cx.db = db;
+                        var de = new Delete1(rc, _cx.db.nextPos, _cx);
+                        Add(de);
+                        _cx.Add(de);
                         count++;
                         break;
                     }
             }
+            return _cx;
         }
-        internal override Context Finish()
+        internal override Context Finish(Context cx)
         {
+            _cx = cx;
             if (trigFired == true)
                 return _cx;
             // Statement-level after triggers
@@ -710,8 +715,9 @@ namespace Pyrrho.Level4
                     break;
             }
         }
-        internal override void EachRow(int pos)
+        internal override Context EachRow(Context cx, int pos)
         {
+            _cx = cx;
             var cu = _cx.cursors[_fm.defpos];
             var _sql = new StringBuilder(); 
             var assig = _rr.assig;
@@ -738,7 +744,7 @@ namespace Pyrrho.Level4
                                 u = rc?.vals[sc?.sPos ?? -1L];
                             }
                     if (u == null || u == TNull.Value)
-                        return;
+                        return _cx;
                 }
                 url = u.ToString();
                 var ix = url.LastIndexOf('/');
@@ -828,9 +834,11 @@ namespace Pyrrho.Level4
             }
             if (url is not null && _targetName is not null)
                 actions += (url, _targetName, _sql.ToString());
+            return _cx;
         }
-        internal override Context Finish()
+        internal override Context Finish(Context cx)
         {
+            _cx = cx;
             string str;
             for (var ab = actions.First(); ab != null; ab = ab.Next())
             {
@@ -881,11 +889,12 @@ namespace Pyrrho.Level4
             }
         }
         // perform the round trips one row at a time for now
-        internal override void EachRow(int pos)
+        internal override Context EachRow(Context cx, int pos)
         {
+            _cx = cx;
             var cu = cursors[_fm.defpos];
             if (cu == null)
-                return;
+                return _cx;
             var vs = cu.values;
             if (role is not Role ro || _vw.infos[ro.defpos] is not ObInfo vi)
                 throw new DBException("42105").Add(Qlx.ROLE);
@@ -920,7 +929,7 @@ namespace Pyrrho.Level4
                     break;
                 case PTrigger.TrigType.Update:
                     if (_rr.assig.Count == 0)
-                        return;
+                        return _cx;
                     for (var b = updates.First(); b != null; b = b.Next())
                         if (b.value() is UpdateAssignment ua)
                         {
@@ -970,6 +979,7 @@ namespace Pyrrho.Level4
                     }
                     break;
             }
+            return _cx;
         }
     }
     /// <summary>
@@ -1108,7 +1118,7 @@ namespace Pyrrho.Level4
             next.values = values;
             next.warnings += warnings;
             next.deferred += deferred;
-            next.nextHeap = nextHeap;
+            next.nextHeap = Math.Max(next.nextHeap,nextHeap);
             next.lastret = lastret;
             if (db != next.db)
             {

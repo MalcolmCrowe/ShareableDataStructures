@@ -585,9 +585,9 @@ namespace Pyrrho
                                     if (ans?.First()?.value() is TableActivation ta)
                                     {
                                         ta.cursors += (ta._fm.defpos, ib);
-                                        ta.EachRow(ib._pos);
+                                        ta.EachRow(cx, ib._pos);
                                         cx.db = ta.db;
-                                        ta.Finish();
+                                        ta.Finish(cx);
                                         vs = ta.newRow ?? CTree<long, TypedValue>.Empty;
                                         if (cx.affected != null && ta.affected != null)
                                             cx.affected += ta.affected;
@@ -675,9 +675,9 @@ namespace Pyrrho
                                         {
                                             ta.updates = us;
                                             ta.cursors += (ta._fm.defpos, ib);
-                                            ta.EachRow(ib._pos);
+                                            ta.EachRow(cx, ib._pos);
                                             cx.db = ta.db;
-                                            ta.Finish();
+                                            ta.Finish(cx);
                                             vs = ta.newRow;
                                             if (cx.affected is not null && ta.affected is not null)
                                                 cx.affected += ta.affected;
@@ -749,9 +749,9 @@ namespace Pyrrho
                                     if (ib is not null && ans?.First()?.value() is TableActivation ta)
                                     {
                                         ta.cursors += (ta._fm.defpos, ib);
-                                        ta.EachRow(ib._pos);
+                                        ta.EachRow(cx, ib._pos);
                                         cx.db = ta.db;
-                                        ta.Finish();
+                                        ta.Finish(cx);
                                         if (cx.affected is not null && ta.affected is not null)
                                             cx.affected += ta.affected;
                                     }
@@ -1529,7 +1529,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(22 Jan 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(24 Jan 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

@@ -808,7 +808,7 @@ namespace Pyrrho.Level3
                 if (rs.First(cx) is Cursor cu)
                 {
                     ta.cursors = cx.cursors + (rs.defpos, cu);
-                    ta.EachRow(0);
+                    ta.EachRow(cx,0);
                 }
                 cx.db = ta.db;
             }
@@ -838,7 +838,7 @@ namespace Pyrrho.Level3
                     ta.db = cx.db;
                     cx.cursors += (rs.defpos, cu);
                     ta.cursors = cx.cursors;
-                    ta.EachRow(0);
+                    ta.EachRow(cx, 0);
                 }
             }
             return cx;
@@ -854,7 +854,7 @@ namespace Pyrrho.Level3
                         {
                             ta.db = cx.db;
                             cx.cursors += (fm.defpos, ib);
-                            ta.EachRow(b._pos);
+                            ta.EachRow(cx, b._pos);
                             cx.db = ta.db;
                         }
             }

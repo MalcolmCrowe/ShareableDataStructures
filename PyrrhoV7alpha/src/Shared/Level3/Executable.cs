@@ -4066,8 +4066,7 @@ namespace Pyrrho.Level3
                             ta.db = cx.db;
                             ta.cursors = cx.cursors;
                             ta.cursors += (ta._fm.defpos, ib);
-                            ta.EachRow(ib._pos);
-                            cx.db = ta.db;
+                            cx = ta.EachRow(cx, ib._pos);
                             if (ta is TableActivation at && cx.db.objects[at.table.defpos] is Table tt)
                                 cx.obs+=(tt.defpos,tt);
                             ts += (it.key(), ta);
@@ -4076,7 +4075,7 @@ namespace Pyrrho.Level3
                     if (c.value() is TargetActivation ta)
                     {
                         ta.db = cx.db;
-                        ta.Finish();
+                        cx = ta.Finish(cx);
                         ts += (c.key(), ta);
                         cx.affected ??= Rvv.Empty;
                         if (ta.affected != null)
@@ -4111,19 +4110,27 @@ namespace Pyrrho.Level3
     internal class DeleteNode : Executable
     {
         internal long what => (long)(mem[WhileStatement.What] ?? -1L);
-        internal DeleteNode(long dp,QlValue v)
-            : base(dp,new BTree<long,object>(WhileStatement.What,v.defpos)+(Gql,GQL.RemoveStatement)) 
+        internal bool detach => mem[Level3.Index.IndexConstraint] is PIndex.ConstraintType;
+        internal DeleteNode(long dp,QlValue v,bool detach)
+            : base(dp,new BTree<long,object>(WhileStatement.What,v.defpos)+(Gql,GQL.RemoveStatement)
+                  +(Level3.Index.IndexConstraint, PIndex.ConstraintType.CascadeDelete)) 
         { }
         protected DeleteNode(long dp,BTree<long,object>?m=null) : base(dp, m??BTree<long,object>.Empty)
         { }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
+            // don't simply do Delete1: we need cascade behaviour
             if (cx.obs[what]?.Eval(cx) is TNode n)
             {
-                cx.Add(new Delete1(n.tableRow, cx.db.nextPos, cx));
-                if (next is not null && cx.obs[next.value()] is Executable e)
-                    cx = e._Obey(cx, next.Next());
-            }
+                var ts = new TableRowSet(cx.GetUid(), cx, n.dataType.defpos, 0L)
+                    + (TableRowSet.SingleNode,n.tableRow.defpos);
+                cx.Add(ts);
+                var qs = new QuerySearch(cx.GetUid(), ts);
+                cx.Add(qs);
+                if (detach)
+                    cx.parse = cx.parse | ExecuteStatus.Detach;
+                qs._Obey(cx);
+            } 
             return cx;
         }
     }
@@ -4212,15 +4219,14 @@ namespace Pyrrho.Level3
                             ta.db = cx.db;
                             ta.cursors = cx.cursors;
                             ta.cursors += (ta._fm.defpos, ib);
-                            ta.EachRow(ib._pos);
-                            cx.db = ta.db;
+                            cx = ta.EachRow(cx, ib._pos);
                             ts += (it.key(), ta);
                         }
                 for (var c = ts.First(); c != null; c = c.Next())
                     if (c.value() is TargetActivation ta)
                     {
                         ta.db = cx.db;
-                        ta.Finish();
+                        cx = ta.Finish(cx);
                         ts += (c.key(), ta);
                         cx.affected ??= Rvv.Empty;
                         if (ta.affected is not null)
@@ -4239,6 +4245,8 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(" Target: "); sb.Append(Uid(source));
+            if (mem[Level3.Index.IndexConstraint] is PIndex.ConstraintType cc)
+            { sb.Append(' '); sb.Append(cc); }
             return sb.ToString();
         }
     }
@@ -4308,7 +4316,7 @@ namespace Pyrrho.Level3
                             ta.cursors = cx.cursors;
                             ta.cursors += (ta._fm.defpos, ib);
                             ta.values += ib.values;
-                            ta.EachRow(ib._pos);
+                            cx = ta.EachRow(cx, ib._pos);
                             cx.db = ta.db;
                             ts += (it.key(), ta);
                         }
@@ -4316,7 +4324,7 @@ namespace Pyrrho.Level3
                     if (c.value() is TargetActivation ta)
                     {
                         ta.db = cx.db;
-                        ta.Finish();
+                        cx = ta.Finish(cx);
                         ts += (c.key(), ta);
                         cx.affected ??= Rvv.Empty;
                         if (ta.affected != null)
