@@ -3110,9 +3110,15 @@ namespace Pyrrho.Level4
                     if (cx.obs[k] is SqlValueExpr se && se.op == Qlx.EQL &&
                         cx.obs[se.left] is QlValue le && cx.obs[se.right] is QlValue ri)
                     {
-                        if (le.isConstant(cx) && !imm.Contains(ri.defpos))
+                        if (le is SqlFunction sf && sf.op == Qlx.POSITION && ri.isConstant(cx)
+                            && !imm.Contains(ri.defpos))
+                            mm += (SingleNode, ri.Eval(cx).ToLong()??0L);
+                        else if (ri is SqlFunction ss && ss.op == Qlx.POSITION && le.isConstant(cx)
+                            && !imm.Contains(le.defpos))
+                            mm += (SingleNode, le.Eval(cx).ToLong()??0L);
+                        else if (le.isConstant(cx) && !imm.Contains(ri.defpos))
                             mm += (_Matches, imm + (ri.defpos, le.Eval(cx)));
-                        if (ri.isConstant(cx) && !imm.Contains(le.defpos))
+                        else if (ri.isConstant(cx) && !imm.Contains(le.defpos))
                             mm += (_Matches, imm + (le.defpos, ri.Eval(cx)));
                     }
                 }
@@ -4276,6 +4282,13 @@ namespace Pyrrho.Level4
             return 0;
         }
     }
+    internal class FinishRowSet : EmptyRowSet
+    {
+        public FinishRowSet(Context cx) : base(cx.GetUid(), BTree<long, object>.Empty)
+        {
+            cx.Add(this);
+        }
+    }
     /// <summary>
     /// A RowSet for UNNEST of an array
     /// </summary>
@@ -5230,11 +5243,8 @@ namespace Pyrrho.Level4
         {
             if (u is not null)
                 cx.pending += (dp, u);
-            for (var b = (TransitionCursor?)First(cx); b != null;
-                b = (TransitionCursor?)b.Next(cx))
-                if (b._ds[cx._trs.target].Item1 == dp)
-                    return b;
-            return null;
+            return new TableRowSet(cx.GetUid(), cx, cx.table.defpos, 0L, 
+                new BTree<long, object>(TableRowSet.SingleNode, dp)).First(cx);
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {

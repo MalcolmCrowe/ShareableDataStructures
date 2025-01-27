@@ -67,6 +67,7 @@ namespace Pyrrho.Level3
         /// The corresponding properties in TableRowSet include inherited columns.
         /// </summary>
         public override Domain domain => throw new NotImplementedException();
+        internal override bool Defined() => defpos > 0;
         internal virtual CTree<long, Domain> tableCols => representation;
         // Type Graph stuff
         public long idIx => (long)(mem[NodeType.IdIx] ?? -1L);
@@ -566,6 +567,7 @@ ColsFrom(Context cx, long dp,CList<long> rt, CTree<long, Domain> rs, CList<long>
             for (var b=a.super.First();b!=null;b=b.Next())
                 (b.key() as Table)?.Delete(cx, del);
             if (a.tableRows[del.delpos] is TableRow delRow)
+            {
                 for (var b = indexes.First(); b != null; b = b.Next())
                     for (var c = b.value().First(); c != null; c = c.Next())
                         if (cx.db.objects[c.key()] is Index ix &&
@@ -577,6 +579,14 @@ ColsFrom(Context cx, long dp,CList<long> rt, CTree<long, Domain> rs, CList<long>
                                 ix += (Index.Tree, new MTree(inf, mt.nullsAndDuplicates, 0));
                             cx.Install(ix);
                         }
+                if (cx.db is Transaction tr && del.delpos > Transaction.TransPos)
+                    for (var b = tr.physicals.First(); b != null; b = b.Next())
+                        if (b.value().ppos == del.delpos)
+                        {
+                            tr += (Transaction.Physicals, tr.physicals - b.key());
+                            break;
+                        }
+            }
             var tb = a;
             tb -= del.delpos;
             tb += (LastData, del.ppos);

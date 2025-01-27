@@ -369,6 +369,7 @@ namespace Pyrrho.Level4
                             goto case Qlx.ORDER;
                         return ParseFetchStatement();
                     case Qlx.FILTER: return ParseFilter();
+                    case Qlx.FINISH: return ParseReturn();
                     case Qlx.FOR: return ParseForStatement();
                     case Qlx.GET: return ParseGetDiagnosticsStatement();
                     case Qlx.GRANT: return ParseGrant();
@@ -475,7 +476,7 @@ namespace Pyrrho.Level4
         {
             return Match(Qlx.ALTER, Qlx.AT, Qlx.BEGIN, Qlx.BINDING, Qlx.BREAK, Qlx.CALL, 
                 Qlx.CASE, Qlx.CREATE, Qlx.CLOSE, Qlx.COMMIT, Qlx.CREATE, Qlx.DECLARE, 
-                Qlx.DELETE, Qlx.DETACH,Qlx.DROP, Qlx.FETCH, Qlx.FILTER, Qlx.FOR,
+                Qlx.DELETE, Qlx.DETACH,Qlx.DROP, Qlx.FETCH, Qlx.FILTER, Qlx.FINISH, Qlx.FOR,
                 Qlx.GET, Qlx.GRANT, Qlx.GRAPH, Qlx.IF, Qlx.INSERT, Qlx.ITERATE, 
                 Qlx.LBRACE, Qlx.LEAVE, Qlx.LET,  Qlx.LIMIT, Qlx.LOOP, Qlx.MATCH, Qlx.NODETACH,
                 Qlx.OFFSET, Qlx.OPEN, Qlx.OPTIONAL, Qlx.ORDER, Qlx.PROPERTY, Qlx.REPEAT,
@@ -4955,11 +4956,18 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// |	RETURN TypedValue
+        /// |   FINISH
         /// </summary>
 		Executable ParseReturn(params (long,object)[]m)
         {
             var mm = BTree<long, object>.New(m);
             var xp = mm[DBObject._Domain] as Domain?? Domain.Null;
+            if (Match(Qlx.FINISH))
+            {
+                Next();
+                cx.result = new FinishRowSet(cx);
+                return EmptyStatement.Empty;
+            }
             Next();
             QlValue re;
             var dp = cx.GetUid();
@@ -5297,8 +5305,11 @@ namespace Pyrrho.Level4
                 Next();
                 el = ParseStatement(m);
             }
-            Mustbe(Qlx.END);
-            Mustbe(Qlx.IF);
+            if (Match(Qlx.END))
+            {
+                Next();
+                Mustbe(Qlx.IF);
+            }
             var ife = new ConditionalStatement(lp, se, th, ei, el);
             cx = old;
             var r = (Executable)cx.Add(ife);

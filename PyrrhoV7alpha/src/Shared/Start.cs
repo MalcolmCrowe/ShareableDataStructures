@@ -1466,7 +1466,10 @@ namespace Pyrrho
                     }
                 }
             if (ValidationMode)
+            {
                 validationLog = new StreamWriter("log.txt");
+                validationLog.AutoFlush = true;
+            }
 #if WINDOWS
             arule = new FileSecurity();
             var administrators = new SecurityIdentifier(WellKnownSidType.BuiltinAdministratorsSid, null);
@@ -1529,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(24 Jan 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(27 Jan 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

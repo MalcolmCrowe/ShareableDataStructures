@@ -4427,7 +4427,7 @@ namespace Pyrrho.Level3
                             {
                                 var el = cx.obs[ed.label.defpos] as Domain ?? ed.label;
                                 var nm = (el.kind == Qlx.EDGETYPE) ?
-                                    (el is GqlLabel) ? (el.name ?? el.domain.name) : el.ToString() : "";
+                                    (el is GqlLabel) ? (el.name ?? el.domain.name) : el.name : "";
                                 var ln = (ed.tok == Qlx.ARROWBASE) ? bn : nn;
                                 var an = (ed.tok == Qlx.ARROWBASE) ? nn : bn;
                                 var pn = CTree<string, bool>.Empty;
@@ -4441,7 +4441,7 @@ namespace Pyrrho.Level3
                                     else if (ew.kind == Qlx.UNION)
                                     {
                                         for (var c = ew.unionOf.First(); c != null; c = c.Next())
-                                            if (cx.obs[c.key().defpos] is EdgeType ex 
+                                            if (cx._Ob(c.key().defpos) is EdgeType ex 
                                                 && ln.dataType.defpos==ex.leavingType && an.dataType.defpos==ex.arrivingType)
                                             {
                                                 et = ex;

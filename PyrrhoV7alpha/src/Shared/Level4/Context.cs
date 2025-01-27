@@ -2114,7 +2114,7 @@ namespace Pyrrho.Level4
             next.warnings += warnings;
             next.deferred += deferred;
             next.val = val;
-            next.nextHeap = nextHeap;
+            next.nextHeap = Math.Max(nextHeap,next.nextHeap);
             next.lastret = lastret;
             if (db != next.db)
             {
@@ -2963,6 +2963,221 @@ namespace Pyrrho.Level4
             }
             s.Append('}');
             return s.ToString();
+        }
+
+        internal void AddIn(Context cx,SqlFunction fn, QlValue? vl, TypedValue v)
+        {
+            if (fn.mod == Qlx.DISTINCT && vl is not null)
+            {
+                if (mset == null)
+                    mset = new TMultiset(vl.domain);
+                else if (mset.Contains(v))
+                    return;
+                mset = mset.Add(v);
+            }
+            switch (fn.op)
+            {
+                case Qlx.AVG:
+                    if (v == null)
+                        break;
+                    count += v.Cardinality();
+                    goto case Qlx.SUM;
+                case Qlx.ANY:
+                    {
+                        if (fn.window >= 0)
+                            goto case Qlx.COLLECT;
+                        if (v is TBool tb)
+                            bval = (bval is bool xf) ?
+                                (tb.value is bool xt) ? (xf || xt) : xf
+                                : null;
+                        break;
+                    }
+                case Qlx.COLLECT:
+                    {
+                        if (vl is null || v is TNull)
+                            break;
+                        mset ??= new TMultiset(v.dataType);
+                        mset = mset.Add(v);
+                        break;
+                    }
+                case Qlx.COUNT:
+                    if (fn.mod == Qlx.TIMES && v == TNull.Value)
+                        count++;
+                    else
+                        count += v.Cardinality();
+                    break;
+                case Qlx.EVERY:
+                    {
+                        if (v is TBool vb)
+                            bval = ((bval is bool xf) && (vb.value is bool xv)) ? (xf && xv) : null;
+                        break;
+                    }
+                case Qlx.FIRST:
+                    {
+                        if (cx.obs[fn.val] != null && acc == null)
+                            acc = v.First()?.Value() ?? TNull.Value;
+                        break;
+                    }
+                case Qlx.FUSION:
+                    {
+                        if (vl?.domain is not Domain dm)
+                            throw new PEException("PE48194");
+                        if (mset == null)
+                        {
+                            if (dm.elType is Domain de)
+                                mset = new TMultiset(de);
+                        }
+                        else
+                            mset = TMultiset.Union(mset, v as TMultiset, true);
+                        break;
+                    }
+                case Qlx.INTERSECTION:
+                    {
+                        var mv = v as TMultiset;
+                        if (mset == null)
+                            mset = mv;
+                        else
+                            mset = TMultiset.Intersect(mset, mv, true);
+                        break;
+                    }
+                case Qlx.LAST:
+                    {
+                        acc = v.Last()?.Value() ?? TNull.Value;
+                        break;
+                    }
+                case Qlx.MAX:
+                    {
+                        if (v != TNull.Value && (acc == null || acc.CompareTo(v) < 0))
+                            acc = v.Max();
+                        break;
+                    }
+                case Qlx.MIN:
+                    {
+                        if (v != TNull.Value && (acc == null || acc.CompareTo(v) > 0))
+                            acc = v.Min();
+                        break;
+                    }
+                case Qlx.RESTRICT:
+                    {
+                        if (v != TNull.Value && (acc == null || acc.CompareTo(v) == 0))
+                            acc = v;
+                        else
+                        if (cx.conn._tcp is not null) throw new DBException("42170", vl?.name ?? "");
+                        break;
+                    }
+                case Qlx.STDDEV_POP:
+                    {
+                        var dv = v.ToDouble();
+                        sum1 += dv;
+                        acc1 += dv * dv;
+                        count++;
+                        break;
+                    }
+                case Qlx.STDDEV_SAMP: goto case Qlx.STDDEV_POP;
+                case Qlx.SOME: goto case Qlx.ANY;
+                case Qlx.SUM:
+                    {
+                        switch (sumType.kind)
+                        {
+                            case Qlx.ARRAY:
+                                {
+                                    if (sumType.kind == Qlx.CONTENT && sumType.elType is not null)
+                                        sumType = sumType.elType;
+                                    for (var i = 0; i < v.Cardinality(); i++)
+                                        if (v[i] is TInteger iv)
+                                        {
+                                            sumType = Domain.Int;
+                                            sumInteger = (sumInteger is Integer os) ?
+                                                os + iv.ivalue : iv.ivalue;
+                                        }
+                                        else if (v[i] is TInt vc)
+                                        {
+                                            sumType = Domain.Int;
+                                            sumLong += vc.value;
+                                        }
+                                        else if (v[i] is TReal rv)
+                                        {
+                                            sumType = Domain.Real;
+                                            sum1 += rv.dvalue;
+                                        }
+                                        else if (v[i] is TNumeric nv)
+                                        {
+                                            sumType = Domain._Numeric;
+                                            sumDecimal = (sumDecimal is Numeric od) ?
+                                                od + nv.value : nv.value;
+                                            break;
+                                        }
+                                    break;
+                                }
+                            case Qlx.CONTENT:
+                                {
+                                    if (v is TInteger iv)
+                                    {
+                                        sumType = Domain.Int;
+                                        sumInteger = iv.ivalue;
+                                    }
+                                    else if (v is TInt vc)
+                                    {
+                                        sumType = Domain.Int;
+                                        sumLong = vc.value;
+                                    }
+                                    else if (v is TReal rv)
+                                    {
+                                        sumType = Domain.Real;
+                                        sum1 = rv.dvalue;
+                                    }
+                                    else if (v is TNumeric nv)
+                                    {
+                                        sumType = Domain._Numeric;
+                                        sumDecimal = nv.value;
+                                    }
+                                    else if (v is not TNull)
+                                        throw new DBException("22000", fn.domain.kind);
+                                }
+                                break;
+                            case Qlx.INTEGER:
+                                if (v is TInteger vn)
+                                {
+                                    Integer a = vn.ivalue;
+                                    if (sumInteger is null)
+                                        sumInteger = new Integer(sumLong) + a;
+                                    else
+                                        sumInteger += a;
+                                }
+                                else if (v is TInt vi)
+                                {
+                                    var a = vi.value;
+                                    if (sumInteger is null)
+                                    {
+                                        if ((a > 0) ? (sumLong <= long.MaxValue - a) : (sumLong >= long.MinValue - a))
+                                            sumLong += a;
+                                        else
+                                            sumInteger = new Integer(sumLong) + new Integer(a);
+                                    }
+                                    else
+                                        sumInteger += new Integer(a);
+                                }
+                                break;
+                            case Qlx.REAL:
+                                {
+                                    if (v is TReal rv)
+                                        sum1 += rv.dvalue;
+                                }
+                                break;
+                            case Qlx.NUMERIC:
+                                {
+                                    if (v is TNumeric nv)
+                                    {
+                                        if (sumDecimal is not Numeric sn)
+                                            sn = Numeric.Zero;
+                                        sumDecimal = sn + nv.value;
+                                    }
+                                }
+                                break;
+                        }
+                        break;
+                    }
+            }
         }
     }
     /// <summary>
