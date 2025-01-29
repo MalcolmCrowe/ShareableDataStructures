@@ -4133,6 +4133,17 @@ namespace Pyrrho.Level3
             } 
             return cx;
         }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            if (what>=0)
+            {
+                sb.Append(" node ");sb.Append(Uid(what));
+            }
+            if (detach)
+                sb.Append(" detach");
+            return sb.ToString();
+        }
     }
     /// <summary>
     /// QuerySearch is for DELETE and UPDATE 

@@ -2250,23 +2250,23 @@ namespace Pyrrho.Level4
                     m = m + (GqlEdge.LeavingValue, ln.defpos) + (GqlEdge.ArrivingValue, an.defpos);
             }
             if (cx.obs[id] is GqlNode r)
-                r = new GqlReference(lp, (dm is null)?r:r + (DBObject._Domain,dm));
+                r = new GqlReference(cx, lp, (dm is null) ? r : r + (DBObject._Domain, dm));
             else if (lb.defpos >= 0 && lb.rowType == CList<long>.Empty && lb is NodeType zt
-                && (zt.kind!=Qlx.EDGETYPE || dc.Count==0L))
+                && (zt.kind != Qlx.EDGETYPE || dc.Count == 0L))
                 r = new GqlReference(lp, zt);
             else
                 r = ab switch
             {
                 Qlx.LPAREN => new GqlNode(nb, BList<Ident>.Empty, cx, id, dc, lxr.tgs, dm, m),
-                Qlx.LBRACK => new GqlEdge(nb, BList<Ident>.Empty, cx, Qlx.Null, -1L, 
+                Qlx.LBRACK => new GqlEdge(nb, BList<Ident>.Empty, cx, Qlx.Null, -1L,
                 -1L, -1L, dc, lxr.tgs, dm, m),
                 Qlx.ARROWBASE => new GqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
-                ((ln is GqlReference lr)?lr.id?.uid:ln?.defpos) ?? -1L, 
-                ((an is GqlReference ar)?ar.id?.uid:an?.defpos) ?? -1L, dc, lxr.tgs, dm, m),
+                ((ln is GqlReference lr) ? lr.id?.uid : ln?.defpos) ?? -1L,
+                ((an is GqlReference ar) ? ar.id?.uid : an?.defpos) ?? -1L, dc, lxr.tgs, dm, m),
                 Qlx.RARROW => new GqlEdge(nb, BList<Ident>.Empty, cx, ab, id,
-                ((an is GqlReference ar) ? ar.id?.uid : an?.defpos) ?? -1L, 
+                ((an is GqlReference ar) ? ar.id?.uid : an?.defpos) ?? -1L,
                 ((ln is GqlReference lr) ? lr.id?.uid : ln?.defpos) ?? -1L, dc, lxr.tgs, dm, m),
-                _ => throw new DBException("42000", ab).Add(Qlx.INSERT_STATEMENT,new TChar(ab.ToString()))
+                _ => throw new DBException("42000", ab).Add(Qlx.INSERT_STATEMENT, new TChar(ab.ToString()))
             };
             if (wh is not null)
                 r += (RowSet._Where, wh);
@@ -2441,19 +2441,23 @@ namespace Pyrrho.Level4
                 else if (ab == Qlx.LBRACK)
                     ba = Qlx.RBRACK;
                 Mustbe(ba);
-                var m = BTree<long, object>.Empty + (SqlFunction._Val, lb.defpos) + (GqlNode._Label,lb);
-                r = ab switch
+                r = cx.obs[id] as GqlReference;
+                if (r is null)
                 {
-                    // for GqlNode, use available type information from the previous node 
-                    Qlx.LPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st, 
-                                cx.db.objects[((lt==Qlx.RARROW)?LastEdge(ln,tgs)?.leavingType:LastEdge(ln,tgs)?.arrivingType)??-1L] as Domain, m),
-                    Qlx.ARROWBASE => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, ln?.uid ?? -1L, -1L, dc, st, dm, m),
-                    Qlx.RARROW => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, -1L, ln?.uid ?? -1L, dc, st, dm, m),
-                    _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))
-                };
-                r += (GqlNode._Label, lb);
-                if (wh is not null)
-                    r += (RowSet._Where, wh);
+                    var m = BTree<long, object>.Empty + (SqlFunction._Val, lb.defpos) + (GqlNode._Label, lb);
+                    r = ab switch
+                    {
+                        // for GqlNode, use available type information from the previous node 
+                        Qlx.LPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st,
+                                    cx.db.objects[((lt == Qlx.RARROW) ? LastEdge(ln, tgs)?.leavingType : LastEdge(ln, tgs)?.arrivingType) ?? -1L] as Domain, m),
+                        Qlx.ARROWBASE => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, ln?.uid ?? -1L, -1L, dc, st, dm, m),
+                        Qlx.RARROW => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, -1L, ln?.uid ?? -1L, dc, st, dm, m),
+                        _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))
+                    };
+                    r += (GqlNode._Label, lb);
+                    if (wh is not null)
+                        r += (RowSet._Where, wh);
+                }
             }
             cx.Add(r);
             // state M32

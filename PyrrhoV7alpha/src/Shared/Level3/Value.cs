@@ -11607,21 +11607,28 @@ cx.obs[high] is not QlValue hi)
     {
         internal const long RefersTo = -452; // long GqlNode
         internal long refersTo => (long)(mem[RefersTo] ?? -1L);
-        internal GqlReference(long dp, GqlNode n)
-            : this(dp, n.mem + (RefersTo, n.defpos)) { }
+        internal GqlReference(Context cx,long dp, GqlNode n)
+            : this(dp, n.mem + (RefersTo, n.defpos)) 
+        {
+            cx.names += (n.name ?? throw new PEException("PE40431"), n.defpos);
+        }
         internal GqlReference(long dp, NodeType nt)
-            : this(dp, nt.mem + (RefersTo, nt.defpos) + (_Domain,nt)) { }
+            : this(dp, nt.mem + (RefersTo, nt.defpos) + (_Domain, nt)) { }
         protected GqlReference(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static GqlReference operator+ (GqlReference r,(long,object)x)
+        {
+            return new GqlReference(r.defpos, r.mem + x);
+        }
         internal override TypedValue _Eval(Context cx)
         {
-            return cx.obs[refersTo]?._Eval(cx)??TNull.Value;
+            return cx.obs[refersTo]?._Eval(cx) ?? TNull.Value;
         }
         internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
         {
-            var r = (QlValue)base._Replace(cx, so, sv);
+            var r = (GqlReference)base._Replace(cx, so, sv);
             var vl = cx.ObReplace(refersTo, so, sv);
-            if (vl !=refersTo)
-                r += (cx, RefersTo, vl);
+            if (vl != refersTo)
+                r += (RefersTo, vl);
             return r;
         }
         protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
@@ -11635,12 +11642,13 @@ cx.obs[high] is not QlValue hi)
             }
             return r;
         }
-        internal override string ToString(string sg, Remotes rf, CList<long> cs, CTree<long, string> ns, Context cx)
+        public override string ToString()
         {
-            var sb = new StringBuilder(GetType().Name);
-            sb.Append(' '); sb.Append(Uid(refersTo)); 
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" refers to "); sb.Append(Uid(refersTo));
             return sb.ToString();
         }
+
     }
     /// <summary>
     /// For an insert edge label set, tok (mem[SVE.Op]) here can be Qlx.COLON or Qlx.AMPERSAND
