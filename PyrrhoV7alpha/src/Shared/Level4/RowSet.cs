@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.Numerics;
 using System.Text;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -285,7 +286,7 @@ namespace Pyrrho.Level4
         }
         internal virtual CList<long> SourceProps => CList<long>.FromArray(_Source,
             JoinRowSet.JFirst, JoinRowSet.JSecond,
-            MergeRowSet._Left, MergeRowSet._Right,
+            CompositeRowSet._Left, CompositeRowSet._Right,
             RestRowSetUsing.RestTemplate, RestRowSetUsing.UsingTableRowSet);
         static readonly CList<long> pre = CList<long>.FromArray(Having, Matching, _Where, _Matches);
         static readonly BTree<long, bool> prt = new BTree<long, bool>(Having, true)
@@ -1434,7 +1435,7 @@ namespace Pyrrho.Level4
     }
     /// <summary>
     /// 1. Throughout the code RowSets are navigated using Cursors instead of
-    /// Enumerators of any sort. The great advantage of bookmarks generally is
+    /// Cursors of any sort. The great advantage of bookmarks generally is
     /// that they are immutable. (E.g. the ABookmark classes always refer to a
     /// snapshot of the tree at the time of constructing the bookmark.)
     /// 2. The Rowset field is readonly but NOT immutable as it contains the Context cx.
@@ -1519,6 +1520,13 @@ namespace Pyrrho.Level4
             _rowsetpos = rs.defpos;
             _dom = rs;
             _pos = 0;
+            _ds = CTree<long, (long, long)>.Empty;
+        }
+        protected Cursor(RowSet rs,int pos,TRow rw) :base(rw,rs)
+        {
+            _rowsetpos = rs.defpos;
+            _dom = rs;
+            _pos = pos;
             _ds = CTree<long, (long, long)>.Empty;
         }
 
@@ -7659,4 +7667,364 @@ namespace Pyrrho.Level4
             }
         }
     }
+    /// <summary>
+    /// A CompositeRowSet is for handling UNION, INTERSECT, EXCEPT
+    ///     /
+    /// </summary>
+    internal class CompositeRowSet : RowSet
+    {
+        internal const long
+            _Left = -244, // long RowSet
+            _Right = -246; // long RowSet
+        /// <summary>
+        /// The first operand of the merge operation
+        /// </summary>
+        internal long left => (long)(mem[_Left] ?? -1L);
+        /// <summary>
+        /// The second operand of the merge operation
+        /// </summary>
+        internal long right => (long)(mem[_Right] ?? -1L);
+        /// <summary>
+        /// UNION/INTERSECT/EXCEPT
+        /// </summary>
+        internal Qlx op => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.NONE);
+        /// <summary>
+        /// Constructor: a composite rowset from two queries, whose rowsets have been constructed.
+        /// However, all rows get mapped elementwise to the domain
+        /// </summary>
+        /// <param name="a">the left operand</param>
+        /// <param name="b">the right operand</param>
+        /// <param name="q">true if DISTINCT specified</param>
+        internal CompositeRowSet(long dp, Context cx, Domain q, RowSet a, RowSet b, bool d, Qlx op)
+            : base(dp, cx, _Mem(q, a, b) + (Distinct, d) + (SqlValueExpr.Op, op)
+                  + (_Left, a.defpos) + (_Right, b.defpos))
+        {
+            if (q.Length == 0)
+                throw new PEException("PE40731");
+            cx.Add(this);
+        }
+        protected CompositeRowSet(long dp, BTree<long, object> m) : base(dp, m) 
+        { }
+        static BTree<long, object> _Mem(Domain dm, RowSet a, RowSet b)
+        {
+            var m = BTree<long, object>.Empty + (RowType, dm.rowType) + (Representation, dm.representation);
+            var la = a.lastData;
+            var lb = b.lastData;
+            if (la != 0L && lb != 0L)
+                m += (Table.LastData, Math.Max(la, lb));
+            return m;
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new CompositeRowSet(defpos, m);
+        }
+        public static CompositeRowSet operator +(CompositeRowSet rs, (long, object) x)
+        {
+            var (dp, ob) = x;
+            if (rs.mem[dp] == ob)
+                return rs;
+            return (CompositeRowSet)rs.New(rs.mem + x);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new CompositeRowSet(dp, m);
+        }
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
+        {
+            var r = base._Fix(cx, m);
+            var nl = cx.Fix(left);
+            if (nl != left)
+                r += (_Left, nl);
+            var nr = cx.Fix(right);
+            if (nr != right)
+                r += (_Right, nr);
+            return r;
+        }
+        internal override bool Knows(Context cx, long rp, bool ambient = false)
+        {
+            return rp == left || rp == right || base.Knows(cx, rp, ambient);
+        }
+        internal override CTree<long, bool> Sources(Context cx)
+        {
+            return new CTree<long, bool>(left, true) + (right, true);
+        }
+        internal override BTree<long, RowSet> AggSources(Context cx)
+        {
+            var l = left;
+            var r = right;
+            return new BTree<long, RowSet>(l, (RowSet?)cx.obs[l] ?? throw new PEException("PE2200"))
+                + (r, (RowSet?)cx.obs[r] ?? throw new PEException("PE2201"));
+        }
+        protected override Cursor? _First(Context cx)
+        {
+            var lf = cx.obs[left] as RowSet;
+            var rg = cx.obs[right] as RowSet;
+            if (lf is null || rg is null)
+                return null;
+            return op switch
+            {
+                Qlx.UNION => UnionCursor.New(this, cx, lf, rg),
+                Qlx.INTERSECT => IntersectCursor.New(this, cx, lf, rg),
+                Qlx.EXCEPT => ExceptCursor.New(this, cx, lf, rg),
+                _ => throw new PEException("PE899"),
+            };
+        }
+        protected override Cursor? _Last(Context cx)
+        {
+            throw new NotImplementedException();
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(' '); sb.Append(op);
+            sb.Append(" Left: "); sb.Append(Uid(left));
+            sb.Append(" Right: "); sb.Append(Uid(right));
+            return sb.ToString();
+        }
+        /// <summary>
+        /// A Result Cursor for composite rowset
+        ///     /
+        /// </summary>
+        internal abstract class CompositeCursor : Cursor
+        {
+            protected readonly CompositeRowSet _rowSet;
+            protected readonly Cursor? _left;
+            protected readonly Cursor? _right;
+            protected readonly TRow? _leftRow;
+            protected readonly TRow? _rightRow;
+            protected readonly bool _leftUsed;
+            protected readonly bool _rightUsed;
+            protected CompositeCursor(CompositeRowSet r, int pos, Cursor? lf, Cursor? rg,
+                TRow? lr, TRow? rr, bool lu, bool ru, TRow rw)
+                : base(r, pos, rw)
+            {
+                _rowSet = r;
+                _left = lf;
+                _right = rg;
+                _leftRow = lr;
+                _rightRow = rr;
+                _leftUsed = lu;
+                _rightUsed = ru;
+            }
+            internal override BList<TableRow>? Rec()
+            {
+                return null;
+            }
+            protected static int _compare(RowSet r, TRow? left, TRow? right)
+            {
+                if (left == null)
+                    return -1;
+                if (right == null)
+                    return 1;
+                var dt = r.rowType;
+                for (var i = 0; i < dt.Length; i++)
+                    if (dt[i] is long n)
+                    {
+                        var c = left[n].ToString().CompareTo(right[n].ToString());
+                        if (c != 0)
+                            return c;
+                    }
+                return 0;
+            }
+        }
+        internal class UnionCursor : CompositeCursor
+        {
+            /// <summary>
+            /// Constructor: a bookmark for the composite rowset
+            /// </summary>
+            /// <param name="r">the composite rowset</param>
+            UnionCursor(CompositeRowSet r, int pos, Cursor? lf, Cursor? rg,
+                TRow? lr, TRow? rr, bool lu, bool ru) :
+                base(r, pos, lf, rg, lr, rr, lu, ru, (lu ? lf : ru ? rg : Empty) ?? Empty)
+            { }
+            internal static UnionCursor? New(CompositeRowSet r, Context cx, RowSet ls, RowSet rs)
+            {
+                var lf = ls.First(cx);
+                var rf = rs.First(cx);
+                var lu = lf != null;
+                var ru = rf != null;
+                if (!lu && !ru)
+                    return null;
+                var lr = (lf != null) ? new TRow(lf, r) : null;
+                var rr = (rf != null) ? new TRow(rf, r) : null;
+                var c = _compare(r, lf, rf);
+                if (lu && ru && c < 0)
+                    ru = false;
+                if (lu && ru && c > 0)
+                    lu = false;
+                return new UnionCursor(r, 0, lf, rf, lr, rr, lu, ru);
+            }
+            /// <summary>
+            /// Move to the next row in the result
+            /// </summary>
+            /// <returns>whether there is a next row</returns>
+            protected override Cursor? _Next(Context cx)
+            {
+                var lf = _leftUsed ? _left?.Next(cx) : _left;
+                var rf = _rightUsed ? _right?.Next(cx) : _right;
+                var lu = lf != null;
+                var ru = rf != null;
+                if (!lu && !ru)
+                    return null;
+                var lr = (lf != null) ? new TRow(lf, _rowSet) : null;
+                var rr = (rf != null) ? new TRow(rf, _rowSet) : null;
+                var c = _compare(_rowSet, lf, rf);
+                if (lu && ru && c < 0)
+                    ru = false;
+                if (lu && ru && c > 0)
+                    lu = false;
+                return new UnionCursor(_rowSet, _pos + 1, lf, rf, lr, rr, lu, ru);
+            }
+            protected override Cursor? _Previous(Context _cx)
+            {
+                return null;
+            }
+        }
+        /// <summary>
+        /// An except Cursor for the composite rowset
+        ///     /
+        /// </summary>
+        internal class ExceptCursor : CompositeCursor
+        {
+            /// <summary>
+            /// Constructor: a bookmark for the composite rowset
+            /// </summary>
+            /// <param name="r">the composite rowset</param>
+            ExceptCursor(CompositeRowSet r, int pos, Cursor? lf, Cursor? rg,
+                TRow? lr, TRow? rr, bool lu, bool ru) :
+                base(r, pos, lf, rg, lr, rr, lu, ru, (lu ? lf : ru ? rg : Empty) ?? Empty)
+            { }
+            internal static ExceptCursor? New(CompositeRowSet r, Context cx, RowSet ls, RowSet rs)
+            {
+                var lf = ls.First(cx);
+                var rf = rs.First(cx);
+                for (; ; )
+                {
+                    if (lf == null)
+                        return null;
+                    var lr = (lf != null) ? new TRow(lf, r) : null;
+                    var rr = (rf != null) ? new TRow(rf, r) : null;
+                    var c = _compare(r, lf, rf);
+                    if (c > 0)
+                    {
+                        rf = rf?.Next(cx);
+                        continue;
+                    }
+                    if (c == 0)
+                    {
+                        lf = lf?.Next(cx);
+                        rf = rf?.Next(cx);
+                        continue;
+                    }
+                    return new ExceptCursor(r, 0, lf, rf, lr, rr, true, false);
+                }
+            }
+            /// <summary>
+            /// Move to the next row in the result
+            /// </summary>
+            /// <returns>whether there is a next row</returns>
+            protected override Cursor? _Next(Context cx)
+            {
+                var lf = _left?.Next(cx);
+                var rf = _right;
+                for (; ; )
+                {
+                    if (lf == null)
+                        return null;
+                    var lr = (lf != null) ? new TRow(lf, _rowSet) : null;
+                    var rr = (rf != null) ? new TRow(rf, _rowSet) : null;
+                    var c = _compare(_rowSet, lf, rf);
+                    if (c > 0)
+                    {
+                        rf = rf?.Next(cx);
+                        continue;
+                    }
+                    if (c == 0)
+                    {
+                        lf = lf?.Next(cx);
+                        rf = rf?.Next(cx);
+                        continue;
+                    }
+                    return new ExceptCursor(_rowSet, _pos + 1, lf, rf, lr, rr, true, false);
+                }
+            }
+            protected override Cursor? _Previous(Context _cx)
+            {
+                return null;
+            }
+        }
+        /// <summary>
+        /// An intersect Cursor for the merge row set
+        ///     /
+        /// </summary>
+        internal class IntersectCursor : CompositeCursor
+        {
+            /// <summary>
+            /// Constructor: a bookmark for the composite rowset
+            /// </summary>
+            /// <param name="r">the composite rowset</param>
+            IntersectCursor(CompositeRowSet r, int pos, Cursor? lf, Cursor? rg,
+                TRow? lr, TRow? rr, bool lu, bool ru) :
+                base(r, pos, lf, rg, lr, rr, lu, ru, (lu ? lf : ru ? rg : Empty) ?? Empty)
+            { }
+            internal static IntersectCursor? New(CompositeRowSet r, Context cx, RowSet ls, RowSet rs)
+            {
+                var lf = ls.First(cx);
+                var rf = rs.First(cx);
+                for (; ; )
+                {
+                    if (lf == null)
+                        return null;
+                    var lr = (lf != null) ? new TRow(lf, r) : null;
+                    var rr = (rf != null) ? new TRow(rf, r) : null;
+                    var c = _compare(r, lf, rf);
+                    if (c > 0)
+                    {
+                        rf = rf?.Next(cx);
+                        continue;
+                    }
+                    if (c == 0)
+                    {
+                        lf = lf?.Next(cx);
+                        rf = rf?.Next(cx);
+                        continue;
+                    }
+                    return new IntersectCursor(r, 0, lf, rf, lr, rr, true, false);
+                }
+            }
+            /// <summary>
+            /// Move to the next row in the result
+            /// </summary>
+            /// <returns>whether there is a next row</returns>
+            protected override Cursor? _Next(Context cx)
+            {
+                var lf = _left?.Next(cx);
+                var rf = _right?.Next(cx);
+                for (; ; )
+                {
+                    if (lf == null && rf == null)
+                        return null;
+                    var lr = (lf != null) ? new TRow(lf, _rowSet) : null;
+                    var rr = (rf != null) ? new TRow(rf, _rowSet) : null;
+                    var c = _compare(_rowSet, lf, rf);
+                    if (c > 0)
+                    {
+                        rf = rf?.Next(cx);
+                        continue;
+                    }
+                    if (c < 0)
+                    {
+                        lf = lf?.Next(cx);
+                        continue;
+                    }
+                    return new IntersectCursor(_rowSet, 0, lf, rf, lr, rr, true, true);
+                }
+            }
+            protected override Cursor? _Previous(Context _cx)
+            {
+                return null;
+            }
+        }
+    }
+
 }

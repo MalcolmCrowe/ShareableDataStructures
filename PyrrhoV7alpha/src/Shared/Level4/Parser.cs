@@ -364,6 +364,7 @@ namespace Pyrrho.Level4
                     case Qlx.DETACH: goto case Qlx.DELETE;
                     case Qlx.DROP: ParseDropStatement(); return Executable.None; // some GQL TBD
                     case Qlx.EOF: return new Executable(LexDp());
+                    case Qlx.EXCEPT: return ParseCompositeQueryStatement();
                     case Qlx.FETCH: Next();
                         if (Match(Qlx.FIRST))
                             goto case Qlx.ORDER;
@@ -377,6 +378,7 @@ namespace Pyrrho.Level4
                     case Qlx.Id: return ParseLabelledStatement(m);
                     case Qlx.IF: return ParseIfThenElseStmt(m);
                     case Qlx.INSERT: return ParseSqlInsert();
+                    case Qlx.INTERSECT: return ParseCompositeQueryStatement(m);
                     case Qlx.ITERATE: return ParseIterate();
                     case Qlx.LBRACE: goto case Qlx.BEGIN;
                     case Qlx.LEAVE: return ParseBreakLeave();
@@ -436,21 +438,7 @@ namespace Pyrrho.Level4
                             return (Executable)cx.Add(new QueryStatement(lp,
                                 new BTree<long, object>(QueryStatement.Result, tb.RowSets(tn, cx, tb, -1L, 0L).defpos)));
                         }
-                    case Qlx.UNION:
-                        {
-                            var tk = tok;
-                            var sq = Qlx.NO;
-                            if (cx.result?.kind != Qlx.TABLE) throw new DBException("42001");
-                            lp = LexDp();
-                            Next();
-                            if (Match(Qlx.DISTINCT, Qlx.ALL))
-                            {
-                                sq = tok;
-                                Next();
-                            }
-                            return new QueryStatement(lp, cx, xp,
-                                ParseStatement((Domain.Kind, Qlx.TABLE), (SqlValueExpr.Op, tk), (SqlValueExpr.Modifier, sq)));
-                        }
+                    case Qlx.UNION: return ParseCompositeQueryStatement(m);
                     case Qlx.UPDATE: (cx, var ue) = ParseSqlUpdate(); return ue;
                     case Qlx.USE:
                         {
@@ -476,12 +464,13 @@ namespace Pyrrho.Level4
         {
             return Match(Qlx.ALTER, Qlx.AT, Qlx.BEGIN, Qlx.BINDING, Qlx.BREAK, Qlx.CALL, 
                 Qlx.CASE, Qlx.CREATE, Qlx.CLOSE, Qlx.COMMIT, Qlx.CREATE, Qlx.DECLARE, 
-                Qlx.DELETE, Qlx.DETACH,Qlx.DROP, Qlx.FETCH, Qlx.FILTER, Qlx.FINISH, Qlx.FOR,
-                Qlx.GET, Qlx.GRANT, Qlx.GRAPH, Qlx.IF, Qlx.INSERT, Qlx.ITERATE, 
+                Qlx.DELETE, Qlx.DETACH,Qlx.DROP, Qlx.EXCEPT,
+                Qlx.FETCH, Qlx.FILTER, Qlx.FINISH, Qlx.FOR,
+                Qlx.GET, Qlx.GRANT, Qlx.GRAPH, Qlx.IF, Qlx.INSERT, Qlx.INTERSECT, Qlx.ITERATE, 
                 Qlx.LBRACE, Qlx.LEAVE, Qlx.LET,  Qlx.LIMIT, Qlx.LOOP, Qlx.MATCH, Qlx.NODETACH,
                 Qlx.OFFSET, Qlx.OPEN, Qlx.OPTIONAL, Qlx.ORDER, Qlx.PROPERTY, Qlx.REPEAT,
                 Qlx.REMOVE, Qlx.RESIGNAL, Qlx.RETURN, Qlx.REVOKE, Qlx.ROLLBACK, Qlx.SELECT,
-                Qlx.SET, Qlx.SIGNAL, Qlx.SKIP, Qlx.TABLE, Qlx.UPDATE, Qlx.USE, Qlx.VALUE,
+                Qlx.SET, Qlx.SIGNAL, Qlx.SKIP, Qlx.TABLE, Qlx.UNION, Qlx.UPDATE, Qlx.USE, Qlx.VALUE,
                 Qlx.VALUES, Qlx.WHEN, Qlx.WHERE, Qlx.WHILE, Qlx.WITH) || Match(Qlx.Id);
         }
         byte MustBeLevelByte()
@@ -2338,6 +2327,12 @@ namespace Pyrrho.Level4
                 if (tok == Qlx.Id)
                 {
                     var ix = cx.names[b.ident];
+                    if (cx.obs[ix] is GqlNode nb)
+                    {
+                        Next();
+                        Mustbe(Qlx.RPAREN);
+                        return (nb, svg, tgs);
+                    }
                     if (lxr.tgs[lp] is TGParam ig)
                         st += (-(int)Qlx.Id, ig);
                     if (ix <0L)
@@ -2616,18 +2611,19 @@ namespace Pyrrho.Level4
             var re = CTree<long, Domain>.Empty;
             var ns = Names.Empty;
             for (var b = gs.First(); b != null; b = b.Next())
-                if (b.value() is TGParam g && g.value != ""
+                if (b.value() is TGParam g && g.value != "" && b.key()>=Transaction.TransPos
                     && cx.obs[g.uid] is DBObject sn && !re.Contains(sn.defpos) && g.IsBound(cx) is null)
                 {
                     var dr = (sn is Domain d)?d:sn.domain;
+                    var gp = g.uid;
                     if (g.type.HasFlag(TGParam.Type.Type))
                         dr = Domain.Char;
                     if (g.type.HasFlag(TGParam.Type.Group) && dr.kind != Qlx.ARRAY)
                         dr = new Domain(-1L, Qlx.ARRAY, dr);
-                    re += (sn.defpos, dr);
-                    rt += sn.defpos;
+                    re += (gp, dr);
+                    rt += gp;
                     if (g.value != null)
-                        ns += (g.value,g.uid);
+                        ns += (g.value,gp);
                 }
             if (rt.Count == 0)
             {
@@ -4761,6 +4757,7 @@ namespace Pyrrho.Level4
             var cs = new NestedStatement(LexDp(), cx, CList<CList<long>>.Empty, m);
             var st = Mustbe(Qlx.BEGIN,Qlx.LBRACE);
             var et = (st == Qlx.BEGIN) ? Qlx.END : Qlx.RBRACE;
+            var lp = LexDp();
             if (Match(Qlx.TRANSACTION))
                 throw new DBException("22G01", "Nested transactions are not supported").ISO();
             var r = CList<CList<long>>.Empty;
@@ -4771,6 +4768,18 @@ namespace Pyrrho.Level4
                 if (Match(Qlx.SEMICOLON, Qlx.NEXT))
                 {
                     r += rr;
+                    // unbind any intervening GqlNode names
+                    for (var b = cx.names.First(); b != null; b = b.Next())
+                    {
+                        if (b.value() is long bp && cx.obs[bp] is GqlNode n
+                            && n.name?[0] != '#')
+                        {
+                            if (n is GqlReference nr)
+                                bp = nr.refersTo;
+                            if (bp>lp)
+                                cx.names -= b.key();
+                        }
+                    }
                     rr = CList<long>.Empty;
                     Next();
                 }
@@ -5178,12 +5187,14 @@ namespace Pyrrho.Level4
             {
                 c = new Ident(this);
                 Mustbe(Qlx.Id);
+                if (cx.names.Contains(c.ident))
+                    throw new DBException("42014", c.ident);
                 cx.names += (c.ident, c.uid);
                 if (tok==Qlx.IN)
                 {
                     Next();
                     var fv = new QlValue(c, BList<Ident>.Empty, cx, Domain.Content);
-                    var fl = ParseSqlValue((DBObject._Domain, Domain.TableType));
+                    var fl = ParseSqlValue();
                     var fd = ((fl.domain.kind == Qlx.ARRAY) ? fl.domain.elType : fl.domain)??Domain.Content;
                     fv += (DBObject._Domain, fd);
                     cx.Add(fv);
@@ -5236,6 +5247,14 @@ namespace Pyrrho.Level4
                 Next();
             }
             return (Executable)cx.Add(fs);
+        }
+        Executable ParseCompositeQueryStatement(params (long, object)[]m)
+        {
+            var lp = LexDp();
+            var lf = cx.result?.defpos ?? throw new DBException("42000", tok);
+            var tk = Mustbe(Qlx.EXCEPT,Qlx.INTERSECT,Qlx.UNION);
+            var rg = (ParseStatement(m) as QueryStatement??throw new DBException("42000")).defpos;
+            return (Executable)cx.Add(new CompositeQueryStatement(lp, cx, tk, lf, rg));
         }
         /// <summary>
         /// IfStatement = 	IF BooleanExpr THEN Statements { ELSEIF BooleanExpr THEN Statements } [ ELSE Statements ] END IF .
@@ -7758,7 +7777,7 @@ namespace Pyrrho.Level4
                     Next();
                 }
                 right = ParseRowSetTerm(m);
-                left = new MergeRowSet(cx.GetUid(), cx, xp, left, right, md == Qlx.DISTINCT, op);
+                left = new CompositeRowSet(cx.GetUid(), cx, xp, left, right, md == Qlx.DISTINCT, op);
                 if (md == Qlx.DISTINCT)
                     left += (RowSet.Distinct, true);
             }
@@ -7825,7 +7844,7 @@ namespace Pyrrho.Level4
                     Next();
                 }
                 right = ParseQueryPrimary(m);
-                left = new MergeRowSet(lp, cx, xp, left, right, d == Qlx.DISTINCT, Qlx.INTERSECT);
+                left = new CompositeRowSet(lp, cx, xp, left, right, d == Qlx.DISTINCT, Qlx.INTERSECT);
                 if (d == Qlx.DISTINCT)
                     left += (RowSet.Distinct, true);
             }

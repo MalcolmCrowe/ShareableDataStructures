@@ -11917,6 +11917,9 @@ cx.obs[high] is not QlValue hi)
         {
             if (end == defpos)
                 return true;
+            if (cx.db.objects[end] is NodeType et && cx.db.objects[defpos] is NodeType dt
+                && dt.EqualOrStrongSubtypeOf(et))
+                return true;
             if (cx._Ob(defpos) is JoinedNodeType jt)
                 for (var b=jt.nodeTypes.First();b!=null;b=b.Next())
                     if (b.key().defpos==end)

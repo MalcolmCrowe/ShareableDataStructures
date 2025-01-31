@@ -1617,7 +1617,7 @@ namespace Pyrrho.Level4
                         case Table.KeyCols: v = ReplacedTlb((CTree<long, bool>)v); break;
                         case Level3.Index.Keys: v = ((Domain)v).Replaced(this); break;
                 //        case GqlNode._Label: v = ((DBObject)v).Replaced(this); break;
-                        case MergeRowSet._Left: v = Replaced((long)v); break;
+                        case CompositeRowSet._Left: v = Replaced((long)v); break;
                         case QlValue.Left: v = Replaced((long)v); break;
                         case MemberPredicate.Lhs: v = Replaced((long)v); break;
                         case GetDiagnostics.List: v = Replaced((CTree<long, Qlx>)v); break;
@@ -1652,7 +1652,7 @@ namespace Pyrrho.Level4
                         case ReturnStatement.Ret: v = Replaced((long)v); break;
                         case Schema._Graphs: v = ReplacedTlb((CTree<long,bool>)v); break;
                         case MultipleAssignment.Rhs: v = Replaced((long)v); break;
-                        case MergeRowSet._Right: v = Replaced((long)v); break;
+                        case CompositeRowSet._Right: v = Replaced((long)v); break;
                         case QlValue.Right: v = Replaced((long)v); break;
                         case RowSet.RowOrder: v = ReplacedLl((CList<long>)v); break;
                         case Domain.RowType: v = ReplacedLl((CList<long>)v); break;

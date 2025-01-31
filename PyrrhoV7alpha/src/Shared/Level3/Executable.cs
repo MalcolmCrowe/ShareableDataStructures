@@ -7,6 +7,8 @@ using Pyrrho.Level4;
 using Pyrrho.Level5;
 using static System.Net.Mime.MediaTypeNames;
 using System.Reflection.Metadata;
+using System.Numerics;
+using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -515,10 +517,27 @@ namespace Pyrrho.Level3
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var ef = gqlStms.First();
+            var en = ef?.Next();
+            ABookmark<int, long>? em = null;
+            // Fix the execution order if we have CompositeQueries (UNION/EXCEPT/INTERSECT)
             if (ef is not null && cx.obs[ef.value()] is Executable e)
-                cx = e._Obey(cx, ef.Next());
-            if (next != null && cx.obs[next.value()] is Executable ne)
+            {
+                if (e is MatchStatement ms && en is not null
+                    && cx.obs[en.value()] is CompositeQueryStatement)
+                { em = en;  en = null;  }
+                cx = e._Obey(cx, en);
+            }
+            if (em==null && next != null && cx.obs[next.value()] is Executable ne)
                 cx = ne._Obey(cx, next.Next());
+            else if (em!=null && cx.obs[em.value()] is CompositeQueryStatement ce) // prepend em to next
+            {
+                var cn = CList<long>.Empty;
+                for (var b = em.Next(); b != null; b = b.Next())
+                    cn += b.value();
+                for (var b = next; b != null; b = b.Next())
+                    cn += b.value();
+                cx = ce._Obey(cx, cn.First());
+            }
             return cx;
         }
         public override string ToString()
@@ -2128,6 +2147,53 @@ namespace Pyrrho.Level3
                     sb.Append(Uid(p));
                 }
             sb.Append(')');
+            return sb.ToString();
+        }
+    }
+    internal class CompositeQueryStatement : QueryStatement
+    {
+        public Qlx op => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.NO);
+        public long left => (long)(mem[QlValue.Left] ?? -1L);
+        public long right => (long)(mem[QlValue.Right] ?? -1L);
+        public CompositeQueryStatement(long dp, Context cx, Qlx opr, long lf, long rg)
+            : this(dp, BTree<long,object>.Empty + (Gql, GQL.CompositeQueryStatement)
+                  + (QlValue.Left, lf) + (QlValue.Right, rg) + (SqlValueExpr.Op, opr)
+                  + (Result,cx.GetUid()))
+        {
+            if (cx.obs[lf] is not RowSet rl || !(cx.obs[rg] is MatchStatement ms
+                && cx.obs[ms.bindings] is RowSet rs))
+                throw new DBException("42000");
+            var lb = rl.rowType.First();
+            var rb = rs.rowType.First();
+            var er = opr switch 
+            { Qlx.UNION => "22104", Qlx.INTERSECT=>"22105", Qlx.EXCEPT=>"22106",_=>"42000"};
+            for (; lb != null && rb != null; lb = lb.Next(), rb = rb.Next())
+                if (rl.representation[lb.value()]?.kind != rs.representation[rb.value()]?.kind)
+                    throw new DBException(er);
+            if (lb != null || rb != null) throw new DBException(er);
+        }
+        protected CompositeQueryStatement(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static CompositeQueryStatement operator+(CompositeQueryStatement cs,(long,object) x)
+        {
+            return (CompositeQueryStatement)cs.New(cs.defpos, cs.mem + x);
+        }
+        public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
+        {
+            var rl = (cx.obs[left] as RowSet) ?? throw new DBException("42105");
+            var er = (cx.obs[right] as Executable) ?? throw new DBException("42105");
+            cx = er._Obey(cx, next) ?? throw new DBException("42105");
+            var rg = cx.obs[(er as MatchStatement)?.bindings??-1L] as RowSet;
+            rg ??= cx.result as RowSet ?? throw new DBException("42105");
+            var cr = new CompositeRowSet(cx.GetUid(), cx, rl, rl, rg, true, op);
+            cx.result = (RowSet)cx.Add(cr);
+            return cx;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(' '); sb.Append(op);
+            sb.Append(" Left: "); sb.Append(Uid(left));
+            sb.Append(" Right: "); sb.Append(Uid(right));
             return sb.ToString();
         }
     }
@@ -4681,7 +4747,7 @@ namespace Pyrrho.Level3
     /// On completion of the match statement, or on failure at any point, we unbind the last binding made
     /// and take the next choice from the previous step if any (backtracking).
     /// </summary>
-    internal class MatchStatement : Executable
+    internal class MatchStatement : QueryStatement
     {
         internal const long
             BindingTable = -490, // long ExplicitRowSet
@@ -4908,22 +4974,24 @@ namespace Pyrrho.Level3
             // The binding set of the match and some or all its following statements is now done
             cx.result = ac.result;
             var ps = ((Transaction)ac.db).physicals;
-            if (DoExclusions(cx.result as RowSet,ac,cx) is RowSet rs)
-                {
-                    var bl = BList<(long, TRow)>.Empty;
-                    var bt = CTree<CTree<long, TypedValue>, bool>.Empty;
-                    var ej = 0;
-                    for (var b = rs.First(ac); b != null; b = b.Next(cx))
-                        if (!bt.Contains(b.values))
-                        {
-                            bt += (b.values, true);
-                            bl += (ej++, b);
-                        }
-                    var er = new ExplicitRowSet(cx.GetUid(), cx, rs, bl);
-                    cx.Add(er);
-                    ac.result = er;
-                    cx.result = ac.result;
-                }
+            if (ac.paths!=CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>>.Empty
+                    && DoExclusions(cx.result as RowSet, ac, cx) is RowSet rs)
+            {
+                var bl = BList<(long, TRow)>.Empty;
+                var bt = CTree<CTree<long, TypedValue>, bool>.Empty;
+                var ej = 0;
+                var er = new BindingRowSet(cx, cx.GetUid(), rs);
+                for (var b = rs.First(ac); b != null; b = b.Next(cx))
+                    if (!bt.Contains(b.values))
+                    {
+                        bt += (b.values, true);
+                        bl += (ej++, b);
+                        er += (cx, b);
+                    }
+                cx.Add(er);
+                ac.result = er;
+                cx.result = ac.result;
+            }
             if (gDefs == CTree<long, TGParam>.Empty) 
                 cx.result = ac.result = TrueRowSet.OK(cx); 
             if (ac.result is RowSet ra && ra.Cardinality(cx) == 0)
