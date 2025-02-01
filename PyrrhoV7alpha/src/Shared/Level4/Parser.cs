@@ -210,6 +210,7 @@ namespace Pyrrho.Level4
                 var na = e._Obey(ac, null);
                 if (na == ac && ac.signal != null)
                     ac.signal.Throw(ac);
+                cx.obs = na.obs;
                 cx = na.SlideDown();
             }
             if (tok == Qlx.SEMICOLON) // tolerate a final ;
@@ -2300,10 +2301,14 @@ namespace Pyrrho.Level4
             GqlNode? r = null;
             GqlNode? an = null;
             var b = new Ident(this);
+            if (cx.obs[cx.names[b.ident]] is GqlNode nb)
+                r = new GqlReference(cx,b.uid,nb);
             long id = -1L;
             var ahead = CList<long>.Empty;
             if (ab == Qlx.LBRACK)
             {
+                if (r is not null)
+                    throw new DBException("42002", b.ident);
                 // state M22
                 var pl = cx.GetUid();
                 var (tgp, svp) = ParseGqlMatch(f, pi, lxr.tgs);
@@ -2327,12 +2332,6 @@ namespace Pyrrho.Level4
                 if (tok == Qlx.Id)
                 {
                     var ix = cx.names[b.ident];
-                    if (cx.obs[ix] is GqlNode nb)
-                    {
-                        Next();
-                        Mustbe(Qlx.RPAREN);
-                        return (nb, svg, tgs);
-                    }
                     if (lxr.tgs[lp] is TGParam ig)
                         st += (-(int)Qlx.Id, ig);
                     if (ix <0L)
@@ -2348,6 +2347,8 @@ namespace Pyrrho.Level4
                 DBObject lb = GqlLabel.Empty;
                 if (tok == Qlx.COLON)
                 {
+                    if (r is not null)
+                        throw new DBException("42002", b.ident);
                     lxr.tex = true; // expect a Type
                     Next();
                     var s = cx.names[b.ident];
@@ -2393,6 +2394,8 @@ namespace Pyrrho.Level4
                 CTree<long, bool>? wh = null;
                 if (tok == Qlx.LBRACE)
                 {
+                    if (r is not null)
+                        throw new DBException("42002", b.ident);
                     lxr.tex = false; // expect a Value
                     Next();
                     while (tok != Qlx.RBRACE)
@@ -2407,6 +2410,8 @@ namespace Pyrrho.Level4
                 // state M30
                 if (tok == Qlx.WHERE)
                 {
+                    if (r is not null)
+                        throw new DBException("42002", b.ident);
                     var cd = cx.names;
                     var ot = lxr.tgs;
                     var od = dm ?? Domain.NodeType;
@@ -2436,7 +2441,8 @@ namespace Pyrrho.Level4
                 else if (ab == Qlx.LBRACK)
                     ba = Qlx.RBRACK;
                 Mustbe(ba);
-                r = cx.obs[id] as GqlReference;
+                r ??= cx.obs[id] as GqlReference;
+                var le = (ln != null && cx.names[ln.ident] is long pl && pl >= 0L) ? pl : ln?.uid?? -1L;
                 if (r is null)
                 {
                     var m = BTree<long, object>.Empty + (SqlFunction._Val, lb.defpos) + (GqlNode._Label, lb);
@@ -2445,8 +2451,8 @@ namespace Pyrrho.Level4
                         // for GqlNode, use available type information from the previous node 
                         Qlx.LPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st,
                                     cx.db.objects[((lt == Qlx.RARROW) ? LastEdge(ln, tgs)?.leavingType : LastEdge(ln, tgs)?.arrivingType) ?? -1L] as Domain, m),
-                        Qlx.ARROWBASE => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, ln?.uid ?? -1L, -1L, dc, st, dm, m),
-                        Qlx.RARROW => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, -1L, ln?.uid ?? -1L, dc, st, dm, m),
+                        Qlx.ARROWBASE => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, le, -1L, dc, st, dm, m),
+                        Qlx.RARROW => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, -1L, le, dc, st, dm, m),
                         _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))
                     };
                     r += (GqlNode._Label, lb);
@@ -2590,7 +2596,7 @@ namespace Pyrrho.Level4
                                     xs += (ep, true);
             // state M18
             cx.ParsingMatch = false;
-            var (ers, ns) = BindingTable(cx, tgs);
+            var (ers, ns) = BindingTable(cx, tgs, svgs);
             var m = ers.mem;
             m += (ObInfo._Names, ns);
             m += (MatchStatement.MatchFlags, flags);
@@ -2605,11 +2611,29 @@ namespace Pyrrho.Level4
             cx.Add(ms);
             return ms;
         }
-        internal static (BindingRowSet, Names) BindingTable(Context cx, CTree<long, TGParam> gs)
+        internal static (BindingRowSet, Names) BindingTable(Context cx, CTree<long, TGParam> gs, CList<long> svgs)
         {
             var rt = CList<long>.Empty;
             var re = CTree<long, Domain>.Empty;
             var ns = Names.Empty;
+            var ds = CTree<long, Domain>.Empty;
+            for (var a = svgs.First(); a != null; a = a.Next())
+                if (cx.obs[a.value()] is GqlMatch gm)
+                    for (var b = gm.matchAlts.First(); b != null; b = b.Next())
+                        if (cx.obs[b.value()] is GqlMatchAlt ga)
+                            for (var c = ga.matchExps.First(); c != null; c = c.Next())
+                                if (cx.obs[c.value()] is GqlNode gn)
+                                {
+                                    ds += (gn.defpos, gn.domain);
+                                    for (var d = gn.docValue.First(); d != null; d = d.Next())
+                                        if (cx.obs[gn.domain.names[d.key()]] is TableColumn tc
+                                            && d.value() is QlValue q)
+                                        {
+                                            ds += (q.defpos, tc.domain);
+                                            if (q.domain.kind==Qlx.CONTENT)
+                                                cx.Add(q + (DBObject._Domain, tc.domain));
+                                        }
+                                }
             for (var b = gs.First(); b != null; b = b.Next())
                 if (b.value() is TGParam g && g.value != "" && b.key()>=Transaction.TransPos
                     && cx.obs[g.uid] is DBObject sn && !re.Contains(sn.defpos) && g.IsBound(cx) is null)

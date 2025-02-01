@@ -519,6 +519,20 @@ namespace Pyrrho.Level3
             var ef = gqlStms.First();
             var en = ef?.Next();
             ABookmark<int, long>? em = null;
+            var bd = CTree<long,Domain>.Empty;
+            var br = CList<long>.Empty;
+            // Accumulate BindingSets if we have multip[le MatchStatements
+            for (var b = ef; b != null; b = b.Next())
+                if (cx.obs[b.value()] is MatchStatement m && cx.obs[m.bindings] is BindingRowSet bs)
+                {
+                    for (var c = bs.rowType.First(); c != null; c = c.Next())
+                        if (!bd.Contains(c.value()))
+                            br += c.value();
+                    bd += bs.representation;
+                    if (bd.Count > bs.representation.Count)
+                        cx.Add(new BindingRowSet(cx,bs.defpos,
+                            bs + (Domain.RowType, br) + (Domain.Representation, bd)));
+                }
             // Fix the execution order if we have CompositeQueries (UNION/EXCEPT/INTERSECT)
             if (ef is not null && cx.obs[ef.value()] is Executable e)
             {
@@ -4920,7 +4934,7 @@ namespace Pyrrho.Level3
                 = new Activation(cx, "Match")
                 {
                     binding = cx.binding,
-                    result = domain as RowSet
+                    result = cx.result
                 };
             // Parse any truncating expressions
             for (var b = truncating.First(); b != null; b = b.Next())
@@ -4972,7 +4986,7 @@ namespace Pyrrho.Level3
                                 new GraphStep(sa.mode, gf.Next(), new EndStep(this, ff),ff),ff), Qlx.Null, null, null);
                     }
             // The binding set of the match and some or all its following statements is now done
-            cx.result = ac.result;
+            cx.obs = ac.obs;
             var ps = ((Transaction)ac.db).physicals;
             if (ac.paths!=CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>>.Empty
                     && DoExclusions(cx.result as RowSet, ac, cx) is RowSet rs)
@@ -4990,18 +5004,16 @@ namespace Pyrrho.Level3
                     }
                 cx.Add(er);
                 ac.result = er;
-                cx.result = ac.result;
+                cx.obs += (bindings, er);
             }
             if (gDefs == CTree<long, TGParam>.Empty) 
                 cx.result = ac.result = TrueRowSet.OK(cx); 
-            if (ac.result is RowSet ra && ra.Cardinality(cx) == 0)
-                ac.warnings += new DBException("02000");
             if (then != CList<long>.Empty)
                 ObeyList(new CList<CList<long>>(then), "", ef, ac);
             ac.SlideDown();
+            cx.obs = ac.obs;
             cx.db = ac.db;
-            if (ac.obs[bindings] is RowSet bs)
-                cx.obs += (bindings, bs);
+            cx.result = (cx.obs[cx.result?.defpos??-1L] as RowSet)??cx.result;
             if (cx.obs[ef?.value() ?? -1L] is Executable fe)
                 cx = fe._Obey(cx, ef?.Next());
             return cx;
@@ -5304,7 +5316,7 @@ namespace Pyrrho.Level3
                 cx.Add(ers);
                 cx.val = TNull.Value;
                 cx.values += cx.binding;
-                cx.result = ers;
+                cx.result ??= ers;
                 if (cx.obs[ef?.value()??-1L] is Executable bd)
                     cx = bd._Obey(cx, ef?.Next());
                 if (flags == Flags.None)

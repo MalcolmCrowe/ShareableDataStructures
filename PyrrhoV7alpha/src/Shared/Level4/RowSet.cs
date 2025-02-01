@@ -1514,12 +1514,12 @@ namespace Pyrrho.Level4
             cx.cursors += (cu._rowsetpos, this);
             cx.values += values;
         }
-        protected Cursor(BindingRowSet rs, CTree<long, TypedValue> vs)
+        protected Cursor(BindingRowSet rs, CTree<long, TypedValue> vs, int pos=0)
              : base(rs, vs)
         {
             _rowsetpos = rs.defpos;
             _dom = rs;
-            _pos = 0;
+            _pos = pos;
             _ds = CTree<long, (long, long)>.Empty;
         }
         protected Cursor(RowSet rs,int pos,TRow rw) :base(rw,rs)
@@ -1742,7 +1742,8 @@ namespace Pyrrho.Level4
         internal int cardinality => rows.Length;
         internal BindingRowSet(Context cx, long dp, Domain dm)
             : this(dp, new BTree<long, object>(RowType, dm.rowType)
-                  + (Representation, dm.representation)
+                  + (Representation, dm.representation) + (RowOrder,dm)
+                  + (_Built,true)
                   + (Level3.Index.Tree, new MTree(dm, TreeBehaviour.Ignore, 0)))
         {
             cx.Add(this);
@@ -1845,8 +1846,8 @@ namespace Pyrrho.Level4
         {
             readonly BindingRowSet _rs;
             readonly MTreeBookmark _mb;
-            Bindings(Context cx, BindingRowSet rs, MTreeBookmark mb, TRow rw)
-                : base(rs, rw.values)
+            Bindings(Context cx, BindingRowSet rs, MTreeBookmark mb, TRow rw, int pos=0)
+                : base(rs, rw.values, pos)
             {
                 _rs = rs;
                 _mb = mb;
@@ -1860,12 +1861,12 @@ namespace Pyrrho.Level4
             public override Cursor? Next(Context cx)
             {
                 return (_mb?.Next() is MTreeBookmark mb && _rs.rows[(int)(mb.Value() ?? -1L)] is TRow tr) ?
-                    new Bindings(cx, _rs, mb, tr) : null;
+                    new Bindings(cx, _rs, mb, tr, _pos+1) : null;
             }
             protected override Cursor? _Next(Context cx)
             {
                 return (_mb?.Next() is MTreeBookmark mb && _rs.rows[(int)(mb.Value() ?? -1L)] is TRow tr) ?
-                    new Bindings(cx, _rs, mb, tr) : null;
+                    new Bindings(cx, _rs, mb, tr, _pos+1) : null;
             }
             protected override Cursor? _Previous(Context cx)
             {
@@ -2235,7 +2236,7 @@ namespace Pyrrho.Level4
             }
             var os = (Domain)(m[OrdSpec] ?? Row);
             var di = (bool)(m[Distinct] ?? false);
-            if (os.CompareTo(r.rowOrder) != 0 || di != r.distinct)
+            if (os.Length>0 && os.CompareTo(r.rowOrder) != 0 || di != r.distinct)
                 r = (RowSet)cx.Add(new OrderedRowSet(cx, r, os, di));
             var rc = CTree<long, bool>.Empty;
             var d = Math.Max(dm.depth, r.depth) + 1;
@@ -7820,7 +7821,7 @@ namespace Pyrrho.Level4
                 for (var i = 0; i < dt.Length; i++)
                     if (dt[i] is long n)
                     {
-                        var c = left[n].ToString().CompareTo(right[n].ToString());
+                        var c = left[n].CompareTo(right[n]);
                         if (c != 0)
                             return c;
                     }
@@ -7904,17 +7905,20 @@ namespace Pyrrho.Level4
                         return null;
                     var lr = (lf != null) ? new TRow(lf, r) : null;
                     var rr = (rf != null) ? new TRow(rf, r) : null;
-                    var c = _compare(r, lf, rf);
-                    if (c > 0)
+                    if (rf != null)
                     {
-                        rf = rf?.Next(cx);
-                        continue;
-                    }
-                    if (c == 0)
-                    {
-                        lf = lf?.Next(cx);
-                        rf = rf?.Next(cx);
-                        continue;
+                        var c = _compare(r, lf, rf);
+                        if (c > 0)
+                        {
+                            rf = rf?.Next(cx);
+                            continue;
+                        }
+                        if (c == 0)
+                        {
+                            lf = lf?.Next(cx);
+                            rf = rf?.Next(cx);
+                            continue;
+                        }
                     }
                     return new ExceptCursor(r, 0, lf, rf, lr, rr, true, false);
                 }
@@ -7933,17 +7937,20 @@ namespace Pyrrho.Level4
                         return null;
                     var lr = (lf != null) ? new TRow(lf, _rowSet) : null;
                     var rr = (rf != null) ? new TRow(rf, _rowSet) : null;
-                    var c = _compare(_rowSet, lf, rf);
-                    if (c > 0)
+                    if (rf != null)
                     {
-                        rf = rf?.Next(cx);
-                        continue;
-                    }
-                    if (c == 0)
-                    {
-                        lf = lf?.Next(cx);
-                        rf = rf?.Next(cx);
-                        continue;
+                        var c = _compare(_rowSet, lf, rf);
+                        if (c > 0)
+                        {
+                            rf = rf?.Next(cx);
+                            continue;
+                        }
+                        if (c == 0)
+                        {
+                            lf = lf?.Next(cx);
+                            rf = rf?.Next(cx);
+                            continue;
+                        }
                     }
                     return new ExceptCursor(_rowSet, _pos + 1, lf, rf, lr, rr, true, false);
                 }
@@ -7973,20 +7980,19 @@ namespace Pyrrho.Level4
                 var rf = rs.First(cx);
                 for (; ; )
                 {
-                    if (lf == null)
+                    if (lf == null || rf==null)
                         return null;
-                    var lr = (lf != null) ? new TRow(lf, r) : null;
-                    var rr = (rf != null) ? new TRow(rf, r) : null;
+                    var lr = new TRow(lf, r);
+                    var rr = new TRow(rf, r);
                     var c = _compare(r, lf, rf);
                     if (c > 0)
                     {
                         rf = rf?.Next(cx);
                         continue;
                     }
-                    if (c == 0)
+                    if (c < 0)
                     {
                         lf = lf?.Next(cx);
-                        rf = rf?.Next(cx);
                         continue;
                     }
                     return new IntersectCursor(r, 0, lf, rf, lr, rr, true, false);
@@ -8002,10 +8008,10 @@ namespace Pyrrho.Level4
                 var rf = _right?.Next(cx);
                 for (; ; )
                 {
-                    if (lf == null && rf == null)
+                    if (lf == null || rf == null)
                         return null;
-                    var lr = (lf != null) ? new TRow(lf, _rowSet) : null;
-                    var rr = (rf != null) ? new TRow(rf, _rowSet) : null;
+                    var lr = new TRow(lf, _rowSet);
+                    var rr = new TRow(rf, _rowSet);
                     var c = _compare(_rowSet, lf, rf);
                     if (c > 0)
                     {
