@@ -358,7 +358,7 @@ namespace Pyrrho.Level4
                     && cx.db.objects[md[sig] ?? -1L] is Method mt)
                 {
                     var oc = cx.values;
-                    var ac = new Activation(cx, mt.name ?? DBObject.Uid(mt.defpos));
+                    var ac = new CalledActivation(cx, mt);
                     ac.Add(new SqlLiteral(ps, Domain._Numeric.Coerce(cx, val)));
                     val = mt.Exec(ac, new CList<long>(ps)).val;
                     cx.values = oc;
@@ -389,7 +389,7 @@ namespace Pyrrho.Level4
                         && cx.Add(new SqlLiteral(cx.GetUid(), prevval)) is QlValue r)
                     {
                         var oc = cx.values;
-                        var ac = new Activation(cx, mt.name ?? DBObject.Uid(mt.defpos));
+                        var ac = new CalledActivation(cx, mt);
                         val = mt.Exec(ac, new CList<long>(r.defpos)).val;
                         cx.values = oc;
                     }

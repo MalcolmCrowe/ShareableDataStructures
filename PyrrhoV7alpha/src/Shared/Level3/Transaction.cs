@@ -385,7 +385,7 @@ namespace Pyrrho.Level3
             }
             if (cx.undefined != CTree<long, long>.Empty)
                 throw new DBException("42112", cx.obs[cx.undefined.First()?.key() ?? -1L]?.mem[ObInfo.Name] ?? "?");
-            var a = new Activation(cx, e.label ?? "")
+            var a = new LabelledActivation(cx, e.label ?? "")
             {
                 exec = e
             };

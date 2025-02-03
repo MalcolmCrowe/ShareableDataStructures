@@ -438,7 +438,7 @@ namespace Pyrrho
                                     {
                                         if (PyrrhoStart.ShowPlan)
                                             res.ShowPlan(cx);
-                                        log?.WriteLine(new TDocArray(cx, res));
+                                        log?.WriteLine(new TDocArray(new Context(cx), res));
                                         cx.rdC += res.dependents;
                                         rb = res.First(cx);
                                         while (rb != null && rb.IsNull)
@@ -1532,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(01 Feb 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(03 Feb 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

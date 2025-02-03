@@ -1545,7 +1545,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 var cx = Context._system;
                 var sa = new SqlLiteral(cx.GetUid(),a);
                 var oc = cx.values;
-                var ac = new Activation(cx, orderFunc.name ?? Uid(orderFunc.defpos));
+                var ac = new CalledActivation(cx, orderFunc);
                 ac.Add(sa);
                 var sb = new SqlLiteral(cx.GetUid(),b);
                 ac.Add(sb);

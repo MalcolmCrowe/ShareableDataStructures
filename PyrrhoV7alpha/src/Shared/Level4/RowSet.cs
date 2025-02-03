@@ -3953,122 +3953,6 @@ namespace Pyrrho.Level4
             }
         }
     }
-    /// <summary>
-    /// An XRow set is a Rowset of XRows. The constructor extends the TRows to XRows
-    /// and sets up a tree for returning the rows in keys order.
-    /// </summary>
-    internal class XRowSet : RowSet
-    {
-        internal const long 
-            XTree = -232; // CTree<TRow,CTree<TRow,bool>> keys,others : both TRows have all values
-        internal CTree<TRow, CTree<TRow,bool>> _tree => 
-            (CTree<TRow, CTree<TRow,bool>>)(mem[XTree]??CTree<TRow,CTree<TRow,bool>>.Empty);
-        internal int count => (int)(mem[_CountStar] ?? 0);
-        /// <summary>
-        /// Build an XRowSet given a Domain with keys and a source RowSet for evaluation
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="dt">The target domain with ordering keys</param>
-        /// <param name="sr">A rowset supplying rows for evaluation</param>
-        public XRowSet(Context cx,Domain dt, RowSet sr) :base(cx.GetUid(),_Mem(cx,dt,sr))
-        { }
-        XRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long,object> _Mem(Context cx,Domain dt,RowSet sr)
-        {
-            var tree = CTree<TRow, CTree<TRow,bool>>.Empty;
-            var dx = dt.mem[Level3.Index.Keys] as Domain ?? throw new PEException("PE20602");
-            var ct = 0;
-            for (var b = sr.First(cx); b != null; b = b.Next(cx))
-            {
-                var vs = b.values;
-                for (var c = dt.rowType.First(); c != null; c = c.Next())
-                    if (c.value() is long p && !vs.Contains(p)
-                        && cx.obs[p] is QlValue e)
-                        vs += (p, e.Eval(cx));
-                for (var c = dx.rowType.First(); c != null; c = c.Next())
-                    if (c.value() is long p && !vs.Contains(p)
-                        && cx.obs[p] is QlValue e)
-                    {
-                        var v = e.Eval(cx);
-                        if (v == TNull.Value)
-                            goto skip;
-                        vs += (p, v);
-                    }
-                var k = new TRow(dx, vs);
-                var r = new TRow(dt, vs);
-                var t = tree[k] ?? CTree<TRow, bool>.Empty;
-                tree += (k,t+(r,true));
-                ct++;
-            skip:;
-            }
-            return sr.mem + (RowType,dt.rowType) + (Representation,dt.representation)
-                + (XTree,tree) + (_CountStar,ct);
-        }
-        public static XRowSet operator+(XRowSet xs,(long,object)x)
-        {
-            return new XRowSet(xs.defpos, xs.mem + x);
-        }
-        protected override Cursor? _First(Context cx)
-        {
-            return XCursor.New(cx,this);
-        }
-        protected override Cursor? _Last(Context cx)
-        {
-            return XCursor.New(this,cx);
-        }
-        internal override int Cardinality(Context cx)
-        {
-            return count;
-        }
-        internal class XCursor : Cursor
-        {
-            readonly XRowSet _xs;
-            readonly ABookmark<TRow,CTree<TRow,bool>> _xb;
-            readonly ABookmark<TRow, bool> _pb;
-            XCursor(Context cx,XRowSet xs,int pos,ABookmark<TRow,CTree<TRow,bool>> xb,
-                ABookmark<TRow,bool> pb)
-                : base(cx,xs,pos,BTree<long,(long,long)>.Empty,pb.key())
-            {
-                _xs = xs; _xb = xb; _pb = pb;
-            }
-            internal static Cursor? New(Context cx,XRowSet xs)
-            {
-                var xb = xs._tree.First();
-                var pb = xb?.value().First();
-                return (xb is null || pb is null) ? null : new XCursor(cx,xs, 0, xb, pb);
-            }
-            internal static Cursor? New(XRowSet xs, Context cx)
-            {
-                var xb = xs._tree.Last();
-                var pb = xb?.value().Last();
-                return (xb is null||pb is null) ? null : new XCursor(cx,xs, xs.count-1, xb, pb);
-            }
-            protected override Cursor? _Next(Context cx)
-            {
-                var pb = _pb.Next();
-                if (pb is not null)
-                    return new XCursor(cx,_xs, _pos + 1, _xb, pb);
-                var xb = _xb.Next();
-                pb = xb?.value().First();
-                return (xb is null||pb is null) ? null : new XCursor(cx,_xs, _pos+1, xb, pb);
-            }
-
-            protected override Cursor? _Previous(Context cx)
-            {
-                var pb = _pb.Previous();
-                if (pb is not null)
-                    return new XCursor(cx,_xs, _pos - 1, _xb, pb);
-                var xb = _xb.Previous();
-                pb = _xb?.value().Last();
-                return (xb is null||pb is null) ? null : new XCursor(cx,_xs, _pos-1, xb, pb);
-            }
-
-            internal override BList<TableRow>? Rec()
-            {
-                throw new NotImplementedException();
-            }
-        }
-    }
     internal class OrderedRowSet : RowSet
     {
         internal const long
@@ -5473,7 +5357,7 @@ namespace Pyrrho.Level4
                             if (cx.db.objects[ix.adapter] is Procedure ad)
                             {
                                 var oc = cx.values;
-                                var ac = new Activation(cx, ad.name ?? Uid(ad.defpos));
+                                var ac = new CalledActivation(cx, ad);
                                 cx = (TableActivation)ad.Exec(ac, ix.keys.rowType);
                                 cx.values = oc;
                                 k = ((TRow)cx.val).ToKey();
@@ -7111,6 +6995,7 @@ namespace Pyrrho.Level4
                 cx.values -= uc.values;
             }
             cx.values += (defpos, a);
+            cx.obs += (defpos, this + (_Rows, a) + (_Built,true));
             cx.url = null;
             return base.Build(cx);
         }

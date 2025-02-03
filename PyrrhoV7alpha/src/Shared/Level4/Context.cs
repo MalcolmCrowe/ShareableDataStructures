@@ -2095,12 +2095,19 @@ namespace Pyrrho.Level4
             Add(pi);
             return pi;
         }
-        internal Activation GetActivation()
+        internal CalledActivation? GetCalledActivation()
         {
             for (var c = this; c != null; c = c.next)
-                if (c is Activation ac)
+                if (c is CalledActivation ac)
                     return ac;
-            return new Activation(this,"");
+            return null;
+        }
+        internal LabelledActivation GetLabelledActivation()
+        {
+            for (var c = this; c != null; c = c.next)
+                if (c is LabelledActivation ac)
+                    return ac;
+            return new LabelledActivation(this,"");
         }
         internal DBObject? GetObject(string n)
         {

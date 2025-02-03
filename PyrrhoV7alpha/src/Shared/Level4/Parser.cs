@@ -206,11 +206,10 @@ namespace Pyrrho.Level4
             }
             if (cx.parse.HasFlag(ExecuteStatus.Obey))
             {
-                var ac = new Activation(cx, "");
+                var ac = new LabelledActivation(cx, "");
                 var na = e._Obey(ac, null);
                 if (na == ac && ac.signal != null)
                     ac.signal.Throw(ac);
-                cx.obs = na.obs;
                 cx = na.SlideDown();
             }
             if (tok == Qlx.SEMICOLON) // tolerate a final ;
@@ -237,7 +236,7 @@ namespace Pyrrho.Level4
                         {
                             var qr = CList<long>.Empty;
                             var oc = cx.values;
-                            var ac = new Activation(cx, proc.name ?? DBObject.Uid(proc.defpos));
+                            var ac = new LabelledActivation(cx, proc.name ?? DBObject.Uid(proc.defpos));
                             for (var c = proc.ins.First(); c != null; c = c.Next())
                                 if (proc.framing.obs[c.key()] is FormalParameter fp
                                         && fp.name is string fn && pd[fn] is TypedValue v)
@@ -261,7 +260,15 @@ namespace Pyrrho.Level4
             tok = lxr.tok;
             do
             {
-                ParseStatement();
+                var e = ParseStatement();
+          /*      if (cx.parse.HasFlag(ExecuteStatus.Obey))
+                {
+                    var ac = new LabelledActivation(cx, "");
+                    var na = e._Obey(ac, null);
+                    if (na == ac && ac.signal != null)
+                        ac.signal.Throw(ac);
+                    cx = na.SlideDown();
+                } */
                 //      cx.valueType = e.defpos;
                 if (tok == Qlx.SEMICOLON)
                     Next();
@@ -2302,7 +2309,7 @@ namespace Pyrrho.Level4
             GqlNode? an = null;
             var b = new Ident(this);
             if (cx.obs[cx.names[b.ident]] is GqlNode nb)
-                r = new GqlReference(cx,b.uid,nb);
+                r = new GqlReference(cx,b.uid,nb,ab);
             long id = -1L;
             var ahead = CList<long>.Empty;
             if (ab == Qlx.LBRACK)

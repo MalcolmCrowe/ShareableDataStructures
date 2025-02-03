@@ -81,11 +81,12 @@ namespace Pyrrho.Level3
             if (cx.role==null || infos[cx.role.defpos] is not ObInfo oi
              || !oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105").Add(Qlx.EXECUTE);
-            var a = cx.GetActivation();
+            var a = cx.GetCalledActivation();
             var vr = (QlValue?)cx.obs[var]; // for a constructor, vr is null!
             if (cx.db.objects[udType.defpos] is not UDType ut)
                 return cx;
-            a.var = vr;
+            if (a != null)
+                a.var = vr;
             cx.Add(ut.Instance(ut.defpos, cx));
             var targ = vr?.Eval(cx) ?? ut.defaultValue;
             for (var b = ut.representation.First(); b != null; b = b.Next())

@@ -67,7 +67,7 @@ namespace Pyrrho.Level3
             var bs = cx.result;
             var ns = cx.names;
             var bi = cx.binding;
-            var act = new Activation(cx,label);
+            var act = new LabelledActivation(cx,label);
             for (var eb = stms.First(); eb is not null; eb = eb.Next())
             {
                 act.result = bs;
@@ -81,7 +81,7 @@ namespace Pyrrho.Level3
                         el += b.value();
                     for (var b = next; b is not null; b = b.Next())
                         el += b.value();
-                    act = (Activation)e._Obey(act, el.First());
+                    act = (LabelledActivation)e._Obey(act, el.First());
                 }
             }
             act.signal?.Throw(cx);
@@ -96,7 +96,7 @@ namespace Pyrrho.Level3
                 return _Obey(ax,next);
             else
             {
-                var a = new Activation(cx,"");
+                var a = new LabelledActivation(cx,"");
                 var r = _Obey(a,next);
                 cx = a.SlideDown();
                 return r;
@@ -277,9 +277,9 @@ namespace Pyrrho.Level3
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             if (cx.obs[result] is RowSet rs)
-                cx.result = rs.Build(cx);
+                cx.result = rs;
             return base._Obey(cx,next);
-        }
+        } 
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -374,7 +374,7 @@ namespace Pyrrho.Level3
             var bs = cx.result;
             var ns = cx.names;
             var bi = cx.binding;
-            var act = new Activation(cx, label ?? "");
+            Context act = new LabelledActivation(cx, label ?? "");
             for (var eb = stms.First(); eb is not null; eb = eb.Next())
             {
                 act.result = bs;
@@ -388,10 +388,10 @@ namespace Pyrrho.Level3
                         el += b.value();
                     for (var b = next; b is not null; b = b.Next())
                         el += b.value();
-                    act = (Activation)e._Obey(act, el.First());
+                    act = e._Obey(act, el.First());
                 }
             }
-            act.signal?.Throw(cx);
+            (act as LabelledActivation)?.signal?.Throw(cx);
             cx.db = act.db;
             return act.SlideDown();
         }
@@ -1074,7 +1074,7 @@ namespace Pyrrho.Level3
 		public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
 		{
             cx.exec = this;
-            var a = (Activation)cx;
+            var a = (LabelledActivation)cx;
             a.saved = new ExecState(cx,cx.tr??throw new PEException("PE49204"));
             for (var c =conds.First();c is not null;c=c.Next())
                 if (c.value() is string h)
@@ -1191,10 +1191,10 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context _Obey(Context cx,ABookmark<int,long>? next= null)
         {
-                Activation? definer = null;
+                LabelledActivation? definer = null;
                 for (Context? p = cx; definer == null && p != null; p = p.next)
                     if (p.cxid == hdefiner)
-                        definer = p as Activation;
+                        definer = p as LabelledActivation;
                 if (hdlr?.htype == Qlx.UNDO)
                 {
                     NestedStatement? cs = null;
@@ -1209,7 +1209,7 @@ namespace Pyrrho.Level3
                 ((Executable?)cx.obs[hdlr?.action??-1L])?._Obey(cx,next);
                 if (hdlr?.htype == Qlx.EXIT && definer?.next is Context nx)
                     return nx;
-                var a = (Activation)cx;
+                var a = (LabelledActivation)cx;
                 a.signal?.Throw(cx);
             return cx;
         }
@@ -1707,7 +1707,7 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = cx.GetCalledActivation(); // from the top of the stack each time
             a.exec = this;
             a.val = cx.obs[ret]?.Eval(cx) ?? TNull.Value;
             cx = a.SlideDown();
@@ -2520,17 +2520,17 @@ namespace Pyrrho.Level3
         /// <param name="tr">the transaction</param>
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var a = (Activation)cx; 
+            var a = (LabelledActivation)cx; 
             a.exec = this;
             var na = cx;
             while (na==cx && a.signal == null && ((QlValue?)cx.obs[search])?.Matches(cx)==true)
             {
-                var lp = new Activation(cx, label ?? "") { cont = a, brk = a };
+                var lp = new LabelledActivation(cx, label ?? "") { cont = a, brk = a };
                 if (cx.obs[what] is Executable we)
                     na = we._Obey(lp);
                 if (na == lp)
                     na = cx;
-                a = (Activation)na.SlideDown();
+                a = (LabelledActivation)na.SlideDown();
                 a.signal = lp.signal;
             }
             return a;
@@ -2638,10 +2638,10 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx;
             a.exec = this;
-            var act = new Activation(cx,label??"");
+            var act = new LabelledActivation(cx,label??"");
             for (; ;)
             {
-                act = (Activation)(((cx.obs[what] as Executable)?._Obey(act))??act);
+                act = (LabelledActivation)(((cx.obs[what] as Executable)?._Obey(act))??act);
                 act.signal?.Throw(act);
                 if (((QlValue?)cx.obs[search])?.Matches(act)!=false)
                     break;
@@ -2729,7 +2729,7 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var a = (Activation)cx; // from the top of the stack each time
+            var a = (LabelledActivation)cx; // from the top of the stack each time
             a.exec = this;
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
@@ -2811,8 +2811,8 @@ namespace Pyrrho.Level3
         {
             var a = (Activation)cx; // from the top of the stack each time
             a.exec = this;
-            var act = new Activation(cx,label??"");
-            var lp = new Activation(act,"");
+            var act = new LabelledActivation(cx,label??"");
+            var lp = new LabelledActivation(act,"");
             var na = lp;
             while(na==lp)
             {
@@ -2820,14 +2820,14 @@ namespace Pyrrho.Level3
                 lp.cont = act;
                 var sb = stms.First();
                 if (cx.obs[sb?.value()??-1L] is Executable se)
-                na = (Activation)se.Obey(lp,sb?.Next());
+                na = (LabelledActivation)se.Obey(lp,sb?.Next());
                 if (na==lp)
                     lp.signal?.Throw(a);
             }
             if (na == lp)
             {
                 act.signal?.Throw(a);
-                act = (Activation)lp.SlideDown();
+                act = (LabelledActivation)lp.SlideDown();
             }
             return act.SlideDown();
         }
@@ -3009,7 +3009,7 @@ namespace Pyrrho.Level3
             cx.exec = this;
             if (cx.obs[sel] is RowSet qs)
             {
-                var ac = new Activation(cx, label ?? "");
+                var ac = new LabelledActivation(cx, label ?? "");
                 ac.Add(qs);
                 for (var rb = qs.First(ac); rb != null; rb = rb.Next(ac))
                 {
@@ -3617,7 +3617,7 @@ namespace Pyrrho.Level3
         /// <param name="tr">the transaction</param>
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = cx.GetLabelledActivation(); // from the top of the stack each time
             a.exec = this;
             if (cx.tr == null)
                 return cx;
@@ -3633,7 +3633,7 @@ namespace Pyrrho.Level3
                         dia += (s.key(), sv.Eval(cx));
                 cx.db += (Transaction.Diagnostics, dia);
                 Handler? h = null;
-                Activation? cs;
+                LabelledActivation? cs;
                 for (cs = a; h == null && cs != null;)
                 {
                     h = cs.exceptions[signal];
@@ -3645,12 +3645,12 @@ namespace Pyrrho.Level3
                         var c = cs.next;
                         while (c != null && c is not Activation)
                             c = c.next;
-                        cs = c as Activation;
+                        cs = c as LabelledActivation;
                     }
                 }
                 if (h == null || sclass == "25" || sclass == "40" || sclass == "2D") // no handler or uncatchable transaction errors
                 {
-                    for (; cs != null && a != cs; a = cx.GetActivation())
+                    for (; cs != null && a != cs; a = cx.GetLabelledActivation())
                         cx = a;
                     a.signal = new Signal(defpos, signal, objects);
                 }
@@ -3747,7 +3747,7 @@ namespace Pyrrho.Level3
         {
             if (cx.tr == null)
                 return cx;
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = cx.GetLabelledActivation(); // from the top of the stack each time
             if (stype == Qlx.RESIGNAL && !cx.tr.diagnostics.Contains(Qlx.RETURNED_SQLSTATE))
                 throw new DBException("0K000").ISO();
             string sclass = signal[0..2];
@@ -3766,7 +3766,7 @@ namespace Pyrrho.Level3
             if (cx.db is not null)
                 cx.db += (Transaction.Diagnostics, dia);
             Handler? h = null;
-            Activation? cs;
+            LabelledActivation? cs;
             for (cs = a; h == null && cs != null;)
             {
                 h = cs.exceptions[signal];
@@ -3778,12 +3778,12 @@ namespace Pyrrho.Level3
                     var c = cs.next;
                     while (c != null && c is not Activation)
                         c = c.next;
-                    cs = c as Activation;
+                    cs = c as LabelledActivation;
                 }
             }
             if (h == null || sclass == "25" || sclass == "40" || sclass == "2D") // no handler or uncatchable transaction errors
             {
-                for (; cs != null && a != cs; a = cx.GetActivation())
+                for (; cs != null && a != cs; a = cx.GetLabelledActivation())
                     cx = a;
                 a.signal = this;
             }
@@ -4001,7 +4001,7 @@ namespace Pyrrho.Level3
         /// <param name="tr">The transaction</param>
 		public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var a = cx.GetActivation(); // from the top of the stack each time
+            var a = cx.GetLabelledActivation(); // from the top of the stack each time
             a.exec = this;
             if (((RowSet?)cx.obs[sel])?.First(cx) is Cursor rb)
             {
@@ -4931,7 +4931,7 @@ namespace Pyrrho.Level3
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
             var ac
-                = new Activation(cx, "Match")
+                = new LabelledActivation(cx, "Match")
                 {
                     binding = cx.binding,
                     result = cx.result
@@ -5408,7 +5408,7 @@ namespace Pyrrho.Level3
             if (df != null && !Done(cx))
                 DbNode(cx, new NodeStep(be.mode, xn, df, 
                     new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._ef)),
-                     (xn is GqlEdge && xn is not GqlPath) ? xn.tok : tok, pd);
+                     (xn is GqlEdge || xn is GqlReference) ? xn.tok : tok, pd);
         }
         static BTree<long,TableRow> Traverse(Context cx,MatchStatement ms,GqlNode xn, BTree<long,(int,Domain)> tr,
             TNode pd,NodeType pn,CTree<Domain,int> ctr,BTree<long,TableRow>ds)

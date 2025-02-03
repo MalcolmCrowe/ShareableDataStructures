@@ -6188,7 +6188,7 @@ namespace Pyrrho.Level3
             if (cx.db.objects[p] is not Method me)
                 throw new DBException("42108", Uid(defpos));
             var oc = cx.values;
-            var act = new Activation(cx,name??Uid(defpos));
+            var act = new CalledActivation(cx,me);
             var proc = (Method)me.Instance(defpos,act);
             var r = proc.Exec(cx, var, parms).val;
             cx.values = oc;
@@ -11096,15 +11096,16 @@ cx.obs[high] is not QlValue hi)
             DocValue = -477,    // CTree<string,QlValue> 
             IdValue = -480,     // long             QlValue of Int
             _Label = -360,      // GqlLabel (a subclass of Domain, deals with label sets etc)
+            PrevTok = -232,     // Qlx
             State = -245;       // CTree<long,TGParam> tgs in this GqlNode  (always empty for GraphInsertStatement)
         public CTree<string, QlValue> docValue => (CTree<string,QlValue>)(mem[DocValue]??CTree<string,QlValue>.Empty);
         public long idValue => (long)(mem[IdValue] ?? -1L);
-        public Domain label => (Domain)(mem[_Label] ?? GqlLabel.Empty); 
+        public Domain label => (Domain)(mem[_Label] ?? GqlLabel.Empty);
+        internal Qlx tok => (Qlx)(mem[PrevTok] ?? Qlx.Null);
         public CTree<long, bool> search => // can occur in Match GraphExp
             (CTree<long, bool>)(mem[RowSet._Where] ?? CTree<long, bool>.Empty);
         public CTree<long, TGParam> state =>
             (CTree<long, TGParam>)(mem[State] ?? CTree<long, TGParam>.Empty);
-        public Qlx tok => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.Null);
         public BTree<long,Names> defs => 
             (BTree<long,Names>)(mem[ObInfo.Defs] ?? BTree<long,Names>.Empty);
         public GqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<string, QlValue> d,
@@ -11558,6 +11559,7 @@ cx.obs[high] is not QlValue hi)
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            if (tok != Qlx.Null) { sb.Append(' '); sb.Append(tok); }
             if (idValue > 0)
             { sb.Append(" Id="); sb.Append(Uid(idValue)); }
             if (label is not NodeType)
@@ -11605,10 +11607,11 @@ cx.obs[high] is not QlValue hi)
     }
     internal class GqlReference : GqlNode
     {
-        internal const long RefersTo = -452; // long GqlNode
+        internal const long 
+            RefersTo = -452; // long GqlNode
         internal long refersTo => (long)(mem[RefersTo] ?? -1L);
-        internal GqlReference(Context cx,long dp, GqlNode n)
-            : this(dp, n.mem + (RefersTo, n.defpos)) 
+        internal GqlReference(Context cx,long dp, GqlNode n, Qlx pr=Qlx.NO)
+            : this(dp, n.mem + (RefersTo, n.defpos)+ (PrevTok,pr) )
         {
             cx.names += (n.name ?? throw new PEException("PE40431"), n.defpos);
         }
@@ -11665,7 +11668,6 @@ cx.obs[high] is not QlValue hi)
             LeavingValue = -478;   // long QlValue
         public long arrivingValue => (long)(mem[ArrivingValue]??-1L);
         public long leavingValue => (long)(mem[LeavingValue]??-1L);
-        public Qlx direction => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.NO); // ARROWBASE or ARROW
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, Qlx t, long i, long l, long a,
             CTree<string, QlValue> d, CTree<long, TGParam> tgs, Domain? dm = null, BTree<long, object>? m = null)
             : base(nm, ch, cx, i, d, tgs, _Type(dm, cx, d, m, l, a), _Mem(cx, d, tgs, dm, m, nm, i, l, a, t))
@@ -11726,7 +11728,7 @@ cx.obs[high] is not QlValue hi)
                 m += (LeavingValue, l);
             if (a > 0)
                 m += (ArrivingValue, a);
-            m += (SqlValueExpr.Op, t);
+            m += (PrevTok, t);
             return m;
         }
         public static GqlEdge operator+(GqlEdge e,(long,object)x)
@@ -11935,7 +11937,7 @@ cx.obs[high] is not QlValue hi)
             var r = this;
             var oan = an;
             if (an.state[an.defpos] is TGParam lg)
-                if (direction == Qlx.ARROWBASE)
+                if (tok == Qlx.ARROWBASE)
                 {
                     tgs += (-(long)Qlx.ARROW, lg);
                     r += (ArrivingValue, an.defpos);
@@ -12188,7 +12190,7 @@ cx.obs[high] is not QlValue hi)
             for (var b = pattern.Last(); b != null && last is null; b = b.Next())
                 last = cx.obs[b.value()] as GqlEdge;
             if (an?.state[an.defpos] is TGParam lg)
-                if (direction == Qlx.ARROWBASE)
+                if (tok == Qlx.ARROWBASE)
                 {
                     tgs += (-(long)Qlx.ARROW, lg);
                     if (last is not null)

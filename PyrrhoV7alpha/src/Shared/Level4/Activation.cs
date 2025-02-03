@@ -20,50 +20,23 @@ namespace Pyrrho.Level4
     /// and nested declaration contexts (such as Show Statements etc). Activations always run
     /// with definer's privileges.
     /// </summary>
-    internal class Activation : Context
+    internal abstract class Activation : Context
     {
         internal readonly string? label;
-        /// <summary>
-        /// Exception handlers defined for this block
-        /// </summary>
-        public BTree<string, Handler> exceptions =BTree<string, Handler>.Empty;
-        /// <summary>
-        /// The current signal if any
-        /// </summary>
-        public Signal? signal;
-        /// <summary>
-        /// This is for implementation of the UNDO handler
-        /// </summary>
-        public ExecState? saved;
-        /// <summary>
-        /// Support for loops
-        /// </summary>
-        public Activation? cont;
-        public Activation? brk;
-        // for method calls
-        public QlValue? var = null; 
         /// <summary>
         /// Constructor: a new activation for a given named block
         /// </summary>
         /// <param name="cx">The context</param>
         /// <param name="n">The block name</param>
-		public Activation(Context cx, string n) 
-            : base(cx)
+		public Activation(Context cx, string? label=null) : base(cx)
         {
-            label = n;
+            this.label = label;
         }
-        /// <summary>
-        /// Constructor: a new activation for a Procedure. See CalledActivation constructor.
-        /// </summary>
-        /// <param name="cx">The current context</param>
-        /// <param name="pr">The procedure</param>
-        /// <param name="n">The headlabel</param>
-        protected Activation(Context cx,DBObject pr)
-            : base(cx,(Role)(cx.db.objects[pr.definer]??throw new PEException("PE639")),
-                  cx.user??throw new PEException("PE638"))
+        protected Activation(Context cx, DBObject pr) 
+            : base(cx, (Role)(cx.db.objects[pr.definer] ?? throw new PEException("PE639")),
+                  cx.user ?? throw new PEException("PE638"))
         {
-            label = (pr.infos[pr.definer]??throw new PEException("PE637")).name;
-            next = cx;
+            label = pr.infos[pr.definer]?.name; 
         }
         internal override Context SlideDown()
         {
@@ -93,19 +66,6 @@ namespace Pyrrho.Level4
         {
             sb.Append(" " + cxid);
         }
-        /// <summary>
-        /// flag NOT_FOUND if there is a handler for it
-        /// </summary>
-        internal override void NoData()
-        {
-            if (tr == null)
-                throw new PEException("PE635");
-            if (exceptions.Contains("02000"))
-                new Signal(tr.uid,"02000",cxid).Obey(this);
-            else if (exceptions.Contains("NOT_FOUND"))
-                new Signal(tr.uid,"NOT_FOUND", cxid).Obey(this);
-            else next?.NoData();
-        }
         internal virtual TypedValue Ret()
         {
             return val;
@@ -117,8 +77,65 @@ namespace Pyrrho.Level4
             return next?.FindCx(c) ?? throw new PEException("PE556");
         }
     }
+    internal class LabelledActivation : Activation
+    {
+        /// <summary>
+        /// Exception handlers defined for this block
+        /// </summary>
+        public BTree<string, Handler> exceptions = BTree<string, Handler>.Empty;
+        /// <summary>
+        /// The current signal if any
+        /// </summary>
+        public Signal? signal;
+        /// <summary>
+        /// This is for implementation of the UNDO handler
+        /// </summary>
+        public ExecState? saved;
+        /// <summary>
+        /// Support for loops
+        /// </summary>
+        public Activation? cont;
+        public Activation? brk;
+        /// <summary>
+        /// Constructor: a new activation for a given named block
+        /// </summary>
+        /// <param name="cx">The context</param>
+        /// <param name="n">The block name</param>
+		public LabelledActivation(Context cx, string n): base(cx, n)
+        {  }
+        /// <summary>
+        /// Constructor: a new activation for a Procedure. See CalledActivation constructor.
+        /// </summary>
+        /// <param name="cx">The current context</param>
+        /// <param name="pr">The procedure</param>
+        /// <param name="n">The headlabel</param>
+        protected LabelledActivation(Context cx, DBObject pr)
+            : base(cx,pr)
+        { }
+        /// <summary>
+        /// flag NOT_FOUND if there is a handler for it
+        /// </summary>
+        internal override void NoData()
+        {
+            if (tr == null)
+                throw new PEException("PE635");
+            if (exceptions.Contains("02000"))
+                new Signal(tr.uid, "02000", cxid).Obey(this);
+            else if (exceptions.Contains("NOT_FOUND"))
+                new Signal(tr.uid, "NOT_FOUND", cxid).Obey(this);
+            else next?.NoData();
+        }
+        internal override Context SlideDown()
+        {
+            if (next!=null)
+                next.obs = obs;
+            return base.SlideDown();
+        }
+    }
     internal class CalledActivation : Activation
     {
+        // for method calls
+        public QlValue? var = null;
         internal Procedure? proc = null;
         internal Method? cmt = null;
         internal Domain? rdt = null;
