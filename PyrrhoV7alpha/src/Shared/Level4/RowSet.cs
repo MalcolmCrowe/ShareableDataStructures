@@ -1736,8 +1736,10 @@ namespace Pyrrho.Level4
     internal class BindingRowSet : RowSet
     {
         internal const long
-            Builder = -152; // long Executable (probably a MatchStatement)
+            Builder = -152, // long Executable (probably a MatchStatement)
+            PrevBinds = -251; // RowSet
         internal long builder => (long)(mem[Builder] ?? -1L);
+        internal Domain prevBinds => (Domain)(mem[PrevBinds] ?? Domain.Null);
         internal MTree? mt => (MTree?)mem[Level3.Index.Tree];
         internal int cardinality => rows.Length;
         internal BindingRowSet(Context cx, long dp, Domain dm)
@@ -1753,16 +1755,44 @@ namespace Pyrrho.Level4
         {
             return new BindingRowSet(sr.defpos, sr.mem + x);
         }
+        /// <summary>
+        /// Add a new binding to the BindingRowSet.
+        /// The complication here comes from iterated Match, where there may be an
+        /// existing binding overtlapping with the new one.
+        /// </summary>
+        /// <param name="sr"></param>
+        /// <param name="x"></param>
+        /// <returns></returns>
         public static BindingRowSet operator +(BindingRowSet sr, (Context, TRow) x)
         {
             var (cx, r) = x;
             var k = CList<TypedValue>.Empty;
+            var kp = CList<TypedValue>.Empty;
             for (var b = sr.First(); b != null; b = b.Next())
+            {
                 if (b.value() is long p)
                     k += r[p];
+                if (sr.prevBinds.representation.Contains(p)) // key for previous bindingRowSet
+                    kp += r[p];
+                else
+                    kp += TNull.Value;
+            }
             if (sr.mt is null || sr.mt.Contains(k))
                 return sr;
-            sr = sr + (_Rows, sr.rows + r) + (Level3.Index.Tree, sr.mt + (k, 0, sr.rows.Count));
+            // Removing the previous one is annoying, but it just might be the only thing in the
+            // bindingrowset
+            var mt = sr.mt;
+            var inf = sr.mt.info;
+            var fk = sr.mt.nullsAndDuplicates;
+            var ln = sr.rows.Count;
+            if (sr.mt?.Contains(kp) == true)
+                Level3.MTree.Remove(ref mt, kp, 0); // note mt may now be null
+            if (mt == null)
+                mt = new MTree(inf, fk, k, 0, ln);
+            else
+                mt += (k, 0, ln);
+            sr += (_Rows, sr.rows + r);
+            sr += (Level3.Index.Tree, mt);
             cx.Add(sr);
             return sr;
         }
@@ -7706,7 +7736,7 @@ namespace Pyrrho.Level4
                 for (var i = 0; i < dt.Length; i++)
                     if (dt[i] is long n)
                     {
-                        var c = left[n].CompareTo(right[n]);
+                        var c = left[i].CompareTo(right[i]);
                         if (c != 0)
                             return c;
                     }

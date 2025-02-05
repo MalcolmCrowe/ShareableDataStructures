@@ -521,22 +521,31 @@ namespace Pyrrho.Level3
             ABookmark<int, long>? em = null;
             var bd = CTree<long,Domain>.Empty;
             var br = CList<long>.Empty;
-            // Accumulate BindingSets if we have multip[le MatchStatements
+            MatchStatement? ms = null;
+            var qr = -1L;
+            // Accumulate BindingSets if we have multiple MatchStatements
             for (var b = ef; b != null; b = b.Next())
+            {
                 if (cx.obs[b.value()] is MatchStatement m && cx.obs[m.bindings] is BindingRowSet bs)
                 {
+                    ms = m;
                     for (var c = bs.rowType.First(); c != null; c = c.Next())
                         if (!bd.Contains(c.value()))
                             br += c.value();
                     bd += bs.representation;
                     if (bd.Count > bs.representation.Count)
-                        cx.Add(new BindingRowSet(cx,bs.defpos,
+                        cx.Add(new BindingRowSet(cx, bs.defpos,
                             bs + (Domain.RowType, br) + (Domain.Representation, bd)));
                 }
+                if (cx.obs[b.value()] is QueryStatement qs)
+                    qr = qs.result;
+            }
+            if (qr >= 0 && ms is not null)
+                cx.Add(ms + (QueryStatement.Result, qr));
             // Fix the execution order if we have CompositeQueries (UNION/EXCEPT/INTERSECT)
             if (ef is not null && cx.obs[ef.value()] is Executable e)
             {
-                if (e is MatchStatement ms && en is not null
+                if (e is MatchStatement && en is not null
                     && cx.obs[en.value()] is CompositeQueryStatement)
                 { em = en;  en = null;  }
                 cx = e._Obey(cx, en);
@@ -4838,6 +4847,10 @@ namespace Pyrrho.Level3
                 cx.NowTry();
             return m;
         }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new MatchStatement(defpos, m);
+        }
         public static MatchStatement operator +(MatchStatement et, (long, object) x)
         {
             var d = et.depth;
@@ -4958,6 +4971,13 @@ namespace Pyrrho.Level3
                 truncator += (b.key(), (il, od));
             }
             var pre = ((Transaction)ac.db).physicals.Count;
+            // prepare the outgoing rowset: can include rows from the incoming rowset
+            if (cx.obs[bindings] is BindingRowSet ers && cx.result is BindingRowSet pr)
+            {
+                for (var b = pr.First(cx); b != null; b = b.Next(cx))
+                    ers += (cx, new TRow(ers, b.values));
+                ac.Add(ers + (BindingRowSet.PrevBinds,pr));
+            }
             // When we reach the end of the match expression,
             // we will obey the following statements up to an orderby/page statement. 
             // first identify these:
@@ -5013,9 +5033,10 @@ namespace Pyrrho.Level3
             ac.SlideDown();
             cx.obs = ac.obs;
             cx.db = ac.db;
-            cx.result = (cx.obs[cx.result?.defpos??-1L] as RowSet)??cx.result;
             if (cx.obs[ef?.value() ?? -1L] is Executable fe)
                 cx = fe._Obey(cx, ef?.Next());
+            if (result > 0 && cx.obs[result] is Domain cr)
+                cx.result = cr;
             return cx;
         }
         internal RowSet? DoExclusions(RowSet? rs,Context ac,Context cx)
@@ -5313,10 +5334,9 @@ namespace Pyrrho.Level3
                 var uid = cx.GetUid();
                 var rr = new TRow(ers, cx.binding);
                 ers += (cx, rr);
-                cx.Add(ers);
+                cx.result = (Domain)cx.Add(ers);
                 cx.val = TNull.Value;
                 cx.values += cx.binding;
-                cx.result ??= ers;
                 if (cx.obs[ef?.value()??-1L] is Executable bd)
                     cx = bd._Obey(cx, ef?.Next());
                 if (flags == Flags.None)

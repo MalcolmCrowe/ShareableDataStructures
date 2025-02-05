@@ -351,7 +351,7 @@ namespace Pyrrho.Level3
         /// <param name="k">The key to remove</param>
         public static void Remove(ref MTree? t, CList<TypedValue> k, int off)
         {
-            if (t==null || !t.Contains(k) || t.impl==null)// care: t is immutable
+            if (t==null || t.impl==null)// care: t is immutable
                 return;
             var st = t.impl;
             if (k[off] is not TypedValue head)
