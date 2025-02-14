@@ -106,8 +106,8 @@ namespace Pyrrho.Level3
             for (var b = ids?.First(); b != null; b = b.Next())
             {
                 var c = b.key(); // a view column id
-                var vx = b.value();
-                var qx = ods[c]; // a reference in q to this
+                var vx = b.value().Item2;
+                var qx = ods[c].Item2; // a reference in q to this
                 if (vx == qx || qx<0)
                     continue;
                 if (qx >= 0 && cx.obs[qx] is QlValue ov && cx.obs[vx] is QlValue tv)
@@ -479,7 +479,7 @@ namespace Pyrrho.Level3
             var un = Names.Empty;
             for (var b = cx.undefined.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlReview sr)
-                    un += (sr.NameFor(cx), sr.defpos);
+                    un += (sr.NameFor(cx), (lp,sr.defpos));
             var nm = CTree<long, string>.Empty;
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long k)
@@ -487,18 +487,18 @@ namespace Pyrrho.Level3
                     var nk = cx.Fix(k);
                     var n = namesMap[k] ?? "";
                     var dm = representation[k] ?? Null;
-                    if (un[n] is long up && up!=-1L)
+                    if (un[n].Item2 is long up && up!=-1L)
                     {
                         nk = up;
                         cx.undefined -= up;
                     } 
-                    var sv = cx.obs[ns[n]] as QlValue??
+                    var sv = cx.obs[ns[n].Item2] as QlValue??
                         (QlValue)cx.Add(new QlValue(new Ident(n, nk),BList<Ident>.Empty, cx, dm));
                     nk = sv.defpos;
                     rs += (nk, dm);
                     rt += nk;
                     nm += (nk, n);
-                    ns += (n, nk);
+                    ns += (n, (lp,nk));
                     cx.Add(sv);
                 }
             cx.names += ns;
@@ -514,7 +514,7 @@ namespace Pyrrho.Level3
             if (ur is not null)
                 for (var b = ur.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.obs[p] is QlValue sv && sv.name is string sn
-                        && cx.obs[cx.names[sn]] is QlValue sq && sv.dbg!=sq.dbg)
+                        && cx.obs[cx.names[sn].Item2] is QlValue sq && sv.dbg!=sq.dbg)
                         cx.Replace(sv, sq);
             cx.result = r;
             return cx.Add(r);
@@ -531,8 +531,8 @@ namespace Pyrrho.Level3
                 for (var b = rrs.names.First(); b != null; b = b.Next())
                 {
                     var c = b.key(); // a view column id
-                    var qx = b.value();
-                    var vx = cx.names[c]; // a reference in q to this
+                    var qx = b.value().Item2;
+                    var vx = cx.names[c].Item2; // a reference in q to this
                     if (vx == qx || qx <0)
                         continue;
                     if (vx > 0 && qx > 0 && qx!=vx &&  // substitute the references for the instance columns

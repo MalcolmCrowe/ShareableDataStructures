@@ -52,7 +52,7 @@ namespace Pyrrho.Level4
         public static SystemTable operator+(SystemTable s,SystemTableColumn c)
         {
             var oi = s.infos[s.role]??throw new PEException("PE010100");
-            oi += (ObInfo._Names, oi.names+(c.name,c.defpos));
+            oi += (ObInfo._Names, oi.names+(c.name,(0L,c.defpos)));
             return s + (SysCols, s.sysCols + (c.defpos, c)) + (Infos, s.infos+(s.role,oi))
                 + (InstanceRowSet.SRowType, s.sRowType + c.defpos)
                 + (RowType, s.rowType + c.defpos)
@@ -5192,16 +5192,16 @@ namespace Pyrrho.Level4
             /// Enumerators for implementation
             /// </summary>
             readonly ABookmark<long, object> _outer;
-            readonly ABookmark<string,long>? _inner;
+            readonly ABookmark<string,(long,long)>? _inner;
             /// <summary>
             /// create the Sys$Column enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnBookmark(Context _cx, SystemRowSet res, int pos, ABookmark<long, object> outer,
-                ABookmark<string,long> inner)
-                : base(_cx,res, pos, inner.value(),((DBObject)outer.value()).lastChange,
-                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value(),
-                          _cx._Dom(inner.value()) ?? throw new PEException("PE0485")))
+                ABookmark<string,(long,long)> inner)
+                : base(_cx,res, pos, inner.value().Item2,((DBObject)outer.value()).lastChange,
+                      _Value(_cx,res,outer.value(),(int)inner.position(),inner.value().Item2,
+                          _cx._Dom(inner.value().Item2) ?? throw new PEException("PE0485")))
             {
                 _outer = outer;
                 _inner = inner;
@@ -5365,16 +5365,16 @@ namespace Pyrrho.Level4
             /// 3 enumerators for implementation!
             /// </summary>
             readonly ABookmark<long,bool> _inner;
-            readonly ABookmark<string,long> _middle;
+            readonly ABookmark<string,(long,long)> _middle;
             readonly ABookmark<long,object> _outer;
             /// <summary>
             /// create the Sys$ColumnCheck enumerator
             /// </summary>
             /// <param name="r">the rowset</param>
             RoleColumnCheckBookmark(Context cx, SystemRowSet res,int pos,ABookmark<long,object>outer,
-                ABookmark<string,long> middle,ABookmark<long,bool> inner)
+                ABookmark<string,(long,long)> middle,ABookmark<long,bool> inner)
                 : base(cx,res,pos,inner.key(),((DBObject?)cx.db.objects[inner.key()])?.lastChange??-1L,
-                      _Value(cx,res,outer.value(),middle.value(),inner.key()))
+                      _Value(cx,res,outer.value(),middle.value().Item2,inner.key()))
             {
                 _outer = outer;
                 _middle = middle;
@@ -5389,7 +5389,7 @@ namespace Pyrrho.Level4
                     if (outer.value() is Table tb && tb.infos[ro.defpos] is ObInfo oi)
                         for (var middle = oi.names.First(); middle != null;
                                 middle = middle.Next())
-                        if (middle.value() is long p && cx.db.objects[p] is TableColumn tc
+                        if (middle.value().Item2 is long p && cx.db.objects[p] is TableColumn tc
                                 && tc.infos[ro.defpos] is not null)
                                 for (var inner = tc.checks.First(); inner != null;
                                         inner = inner.Next())
@@ -5440,7 +5440,7 @@ namespace Pyrrho.Level4
                         continue;
                     }
                     if (middle != null && (middle = middle.Next()) != null)
-                        if (middle.value() is long p && _cx.db.objects[p] is TableColumn tc &&
+                        if (middle.value().Item2 is long p && _cx.db.objects[p] is TableColumn tc &&
                             tc.infos[ro.defpos] is not null)
                         {
                             inner = tc.checks.First();

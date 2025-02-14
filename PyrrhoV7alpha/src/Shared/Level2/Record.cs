@@ -89,8 +89,6 @@ namespace Pyrrho.Level2
         protected Record(Type t, long tp, CTree<long, TypedValue> fl, long pp,
             Context cx) : base(t, pp)
         {
-            if (pp == fl[324L]?.ToLong() || pp>cx.db.nextPos)
-                ;
             if (cx.tr == null || cx.db.user == null)
                 throw new DBException("42105").Add(Qlx.USER);
             tabledefpos = tp;

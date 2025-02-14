@@ -370,7 +370,7 @@ namespace Pyrrho.Level3
                         qv = sc.Resolve(cx);
                     if (qv is null)
                         for (var c = uo.chain?.First(); ns.Count != 0L && c != null; c = c.Next())
-                            if (c.value() is Ident id && cx.obs[ns[id.ident]] is DBObject q)
+                            if (c.value() is Ident id && cx.obs[ns[id.ident].Item2] is DBObject q)
                             {
                                 qv = q;
                                 ns = cx.defs[q.defpos] ?? Names.Empty;
@@ -675,7 +675,7 @@ namespace Pyrrho.Level3
                             if (ss != CList<long>.Empty)
                             {
                                 var fd = new Domain(cx.GetUid(), cx, f.kind, f.representation, ss);
-                                f = new SelectedRowSet(cx, f, f);
+                                f = new SelectedRowSet(cx, 0L, f, f);
                                 break;
                             }
                         }
@@ -730,7 +730,7 @@ namespace Pyrrho.Level3
                             if (ss != CList<long>.Empty)
                             {
                                 var fd = new Domain(cx.GetUid(), cx, f.kind, f.representation, ss);
-                                f = new SelectedRowSet(cx, fd, f);
+                                f = new SelectedRowSet(cx, 0L, fd, f);
                                 break;
                             }
                             var ix = ta.FindPrimaryIndex(cx);
@@ -827,7 +827,7 @@ namespace Pyrrho.Level3
                         vs += (p, v);
                 rws += (cx.GetUid(), new TRow(rs, vs));
             }
-            var ers = new ExplicitRowSet(cx.GetUid(), cx, rs, rws);
+            var ers = new ExplicitRowSet(0L, cx.GetUid(), cx, rs, rws);
             cx.Add(ers);
             if (ers.First(cx) is Cursor cu)
             {

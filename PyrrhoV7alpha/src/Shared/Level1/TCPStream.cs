@@ -1011,7 +1011,7 @@ namespace Pyrrho.Level1
                     break;
                 case Qlx.PASSWORD: PutString("********"); break;
                 case Qlx.POSITION:
-                    PutString(tv.ToString()); break;
+                    PutString(DBObject.Uid(tv.ToLong()??0L)); break;
                 case Qlx.DATE:
                     {
                         if (tv.ToLong() is long tl)

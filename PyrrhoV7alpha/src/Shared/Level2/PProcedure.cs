@@ -164,7 +164,7 @@ namespace Pyrrho.Level2
             if (pr is not null)
             { 
                 psr.cx.AddParams(pr);
-                psr.cx.anames = psr.cx.names+(n.ident, ppos);
+                psr.cx.anames = psr.cx.names+(n.ident, (0L,ppos));
                 rdr.context.defs += (ppos, pr.names);
                 rdr.context.Add(pr);
             }
@@ -188,7 +188,7 @@ namespace Pyrrho.Level2
             var ns = Names.Empty;
             for (var b = dataType.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long q && framing.obs[q] is QlValue v &&  v.name is string n)
-                    ns += (n, q);
+                    ns += (n, (0L,q));
             oi += (ObInfo._Names, ns);
             var pr = new Procedure(this, 
                 BTree<long, object>.Empty + (DBObject.Definer, ro.defpos)

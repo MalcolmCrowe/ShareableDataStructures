@@ -9,6 +9,7 @@ using static System.Net.Mime.MediaTypeNames;
 using System.Reflection.Metadata;
 using System.Numerics;
 using System.Xml;
+using static Pyrrho.Level4.BindingRowSet;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -277,7 +278,7 @@ namespace Pyrrho.Level3
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             if (cx.obs[result] is RowSet rs)
-                cx.result = rs;
+                cx.result = rs.Build(cx);
             return base._Obey(cx,next);
         } 
         public override string ToString()
@@ -521,27 +522,6 @@ namespace Pyrrho.Level3
             ABookmark<int, long>? em = null;
             var bd = CTree<long,Domain>.Empty;
             var br = CList<long>.Empty;
-            MatchStatement? ms = null;
-            var qr = -1L;
-            // Accumulate BindingSets if we have multiple MatchStatements
-            for (var b = ef; b != null; b = b.Next())
-            {
-                if (cx.obs[b.value()] is MatchStatement m && cx.obs[m.bindings] is BindingRowSet bs)
-                {
-                    ms = m;
-                    for (var c = bs.rowType.First(); c != null; c = c.Next())
-                        if (!bd.Contains(c.value()))
-                            br += c.value();
-                    bd += bs.representation;
-                    if (bd.Count > bs.representation.Count)
-                        cx.Add(new BindingRowSet(cx, bs.defpos,
-                            bs + (Domain.RowType, br) + (Domain.Representation, bd)));
-                }
-                if (cx.obs[b.value()] is QueryStatement qs)
-                    qr = qs.result;
-            }
-            if (qr >= 0 && ms is not null)
-                cx.Add(ms + (QueryStatement.Result, qr));
             // Fix the execution order if we have CompositeQueries (UNION/EXCEPT/INTERSECT)
             if (ef is not null && cx.obs[ef.value()] is Executable e)
             {
@@ -860,7 +840,7 @@ namespace Pyrrho.Level3
                 r += (AssignmentStatement.Val, vl);
             return r;
         }
-        internal override QlValue Having(Context c, Domain dm)
+        internal override QlValue Having(Context c, Domain dm, long ap)
         {
             return this;
         }
@@ -1389,16 +1369,16 @@ namespace Pyrrho.Level3
                 }
                 else if (vb is SqlField sf && cx._Ob(sf.from)?.Eval(cx) is TNode nf
                     && nf.dataType is Table tf && tf._PathDomain(cx).infos[cx.role.defpos] is ObInfo fi
-                    && cx._Ob(fi.names[sf.name ?? ""]) is TableColumn tc
+                    && cx._Ob(fi.names[sf.name ?? ""].Item2) is TableColumn tc
                     && tc.domain.Coerce(cx, tv) is TypedValue v3)
                 {
                     cx.Add(new Update(nf.tableRow, tf.defpos, new CTree<long, TypedValue>(tc.defpos, v3),
                         cx.db.nextPos, cx));
                     cx.val = v3;
                 }
-                else if (vb is SqlReview sr && sr.chain?[0] is Ident id && cx.names[id.ident] is long cp
+                else if (vb is SqlReview sr && sr.chain?[0] is Ident id && cx.names[id.ident].Item2 is long cp
                     && cx.values[cp] is TNode tn && sr.chain?[1] is Ident ci
-                    && tn.dataType is Table tt && tt.names[ci.ident] is long cc
+                    && tn.dataType is Table tt && tt.names[ci.ident].Item2 is long cc
                     && tt.representation[cc] is Domain d4 && d4.Coerce(cx, tv) is TypedValue v4)
                 {
                     cx.Add(new Update(tn.tableRow, tt.defpos, new CTree<long, TypedValue>(cc, v4),
@@ -1717,7 +1697,7 @@ namespace Pyrrho.Level3
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             var a = cx.GetCalledActivation(); // from the top of the stack each time
-            a.exec = this;
+            a.exec = this??EmptyStatement.Empty;
             a.val = cx.obs[ret]?.Eval(cx) ?? TNull.Value;
             cx = a.SlideDown();
             if (cx.result is ExplicitRowSet es && es.CanTakeValueOf(a.val.dataType))
@@ -2882,47 +2862,29 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            var vl = cx.val??cx._Ob(list)?.Eval(cx) as TList;
+            var vl = (cx.val is not null && cx.val!=TNull.Value)?cx.val:cx._Ob(list)?.Eval(cx);
             var vb = cx._Ob(vbl) as QlValue ?? throw new DBException("PE10602");
-            if (vl?.dataType.Length!=1) throw new DBException("PE10603");
-            var n = vl.Cardinality();
-            if (n==0)
-                return cx;
-            var fe = vl[0];
-            if (/* vb.domain.kind != Qlx.CONTENT ||*/ fe is null) throw new DBException("42000").Add(Qlx.FOR_STATEMENT); // should be unbound
-            /*         var rt = cx.result?.rowType ?? CList<long>.Empty;
-                     var rs = cx.result?.representation ?? CTree<long, Domain>.Empty;
-                     rt += vbl;
-                     rs += (vbl, fe.dataType);
-                     if (col > 0)
-                     {
-                         rt += col;
-                         rs += (col, Domain.Int);
-                     }
-                     var rd = new Domain(-1L, cx, Qlx.TABLE, rs, rt); */
-            var rd = domain;
-            var bl = BList<(long, TRow)>.Empty;
-            for (var i = 0; i < n; i++)
-            {
-                var vs = new CTree<long, TypedValue>(vbl, vl?[i] ?? TNull.Value);
-                switch (op)
+            if (vl is TMultiset tm)
+                for (var b = vl.First(); b != null; b = b.Next())
                 {
-                    case Qlx.ORDINALITY: vs += (col, new TInt(i + 1)); break;
-                    case Qlx.OFFSET: vs += (col, new TInt(i)); break;
+                    cx.binding += (vbl, b.Value());
+                    if (next is not null && cx.obs[next.value()] is Executable e)
+                        cx = e._Obey(cx, next.Next());
                 }
-                if (cx.result is null)
-                    bl += (cx.GetUid(), new TRow(rd, vs)); 
-                else if (cx.result is BindingRowSet br)
-                    for (var b = br.First(cx); b != null; b = (BindingRowSet.Bindings?)b.Next(cx))
-                        bl += (cx.GetUid(), new TRow(rd, vs + b.values)); 
-                else
-                    for (var b = (cx.result as RowSet)?.First(cx); b != null; b = b.Next(cx))
-                        bl += (cx.GetUid(), new TRow(rd, vs + b.values)); 
-            }
-            var bs = new ExplicitRowSet(cx.GetUid(), cx, rd, bl); 
-            cx.result = bs;
-            if (next is not null && cx.obs[next.value()] is Executable e)
-                cx = e._Obey(cx, next.Next());
+            else if (vl is TArray ta)
+                for (var i=0;i<ta.Length;i++)
+                {
+                    cx.binding += (vbl, ta[i]??TNull.Value);
+                    if (next is not null && cx.obs[next.value()] is Executable e)
+                        cx = e._Obey(cx, next.Next());
+                }
+            else if (vl is TList tl)
+                for (var i = 0; i < tl.Length; i++)
+                {
+                    cx.binding += (vbl, tl[i] ?? TNull.Value);
+                    if (next is not null && cx.obs[next.value()] is Executable e)
+                        cx = e._Obey(cx, next.Next());
+                }
             return cx;
         }
         public override string ToString()
@@ -4018,7 +3980,7 @@ namespace Pyrrho.Level3
                 for (var b = outs.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.obs[p] is QlValue sv)
                         a.AddValue(sv, rb[b.key()]);
-                a.result = new TrivialRowSet(a.GetUid(), a, rb);
+                a.result = new TrivialRowSet(scope,a.GetUid(), a, rb);
             }
             else
                 a.NoData();
@@ -4554,7 +4516,7 @@ namespace Pyrrho.Level3
                                 }
                                 if (nm == "" && cx.db.objects[cx.role.unlabelledEdgeTypesInfo[pn] ?? -1L] is EdgeType eu)
                                     et = eu;
-                                et ??= (EdgeType)ed._NodeType(cx, Domain.EdgeType);
+                                et ??= (EdgeType)ed._NodeType(cx, Domain.EdgeType, 0L);
                                 ed.Create(cx, et, defpos);
                             }
                             else
@@ -4661,6 +4623,7 @@ namespace Pyrrho.Level3
                 throw new DBException("02000");
             var nr = BList<(long,TRow)>.Empty;
             var ro = cx.result;
+            var ap = (long)(mem[Scope] ?? 0L);
             var od = (mem[RowSet.RowOrder] as Domain)?? Domain.Row;
             if (od.Length>0)
                 rs = rs.Sort(cx, od, false);
@@ -4673,7 +4636,7 @@ namespace Pyrrho.Level3
             }
             for (var b = rs.First(cx); b != null; b = b.Next(cx))
                 nr += (b._pos, b);
-            var nb = new ExplicitRowSet(rs.defpos, cx, rs, nr);
+            var nb = new ExplicitRowSet(ap,rs.defpos, cx, rs, nr);
             if (ro is TableRowSet ts)
                 nb += (TableRowSet._Index, ts.index);
             cx.Add(nb);
@@ -4709,8 +4672,9 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
+            var ap = (long)(mem[Scope] ?? 0L);
             var bt = cx.result
-                ?? new ExplicitRowSet(cx.GetUid(), cx, Domain.Row, new BList<(long, TRow)>((cx.GetUid(), TRow.Empty)));
+                ?? new ExplicitRowSet(ap,cx.GetUid(), cx, Domain.Row, new BList<(long, TRow)>((cx.GetUid(), TRow.Empty)));
             var nr = BList<(long, TRow)>.Empty;
             if (mem[RowSet._Where] is CTree<long, bool> wh)
             {
@@ -4727,7 +4691,7 @@ namespace Pyrrho.Level3
                 for (var b = bu.First(cx); b != null; b = b.Next(cx) as BindingRowSet.Bindings)
                     if (b.Matches(cx))
                         nr += (b._pos, b);
-            var nb = new ExplicitRowSet(bt.defpos, cx, bt, nr);
+            var nb = new ExplicitRowSet(ap,bt.defpos, cx, bt, nr);
             cx.Add(nb);
             cx.result = nb;
             if (next is not null && cx.obs[next.value()] is Executable e)
@@ -4818,7 +4782,7 @@ namespace Pyrrho.Level3
                 ch = true;
             }
             if (cx.obs[(long)(m[BindingTable] ?? -1L)] is BindingRowSet bs)
-                cx.Add(bs + (BindingRowSet.Builder, dp));
+                cx.Add(bs + (Builder, dp));
             m += (Gql, GQL.MatchStatement);
             m += (GDefs, gs);
             if (tg is not null)
@@ -4827,22 +4791,8 @@ namespace Pyrrho.Level3
             for (var b = gs.First(); b != null && f == Flags.None; b = b.Next())
                 if (b.value().value != "")
                     f |= Flags.Bindings;
-/*            if (cx.obs[st] is Executable e)
-            {
-                f |= Flags.Body;
-                if (e.domain.rowType != CList<long>.Empty)
-                    f |= Flags.Return;
-                m += (Procedure.Body, st);
-            } */
             m += (MatchFlags, f);
-     //       m += (ReturnStatement.Ret, re);
             m += (MatchList, ge);
- /*           for (var b = ge.First(); b != null; b = b.Next())
-                if (cx.obs[b.value() ?? -1L] is GqlMatch sm)
-                    for (var c = sm.matchAlts.First(); c != null; c = c.Next())
-                        if (cx.obs[c.value() ?? -1L] is GqlMatchAlt sa && gs[sa.pathId] is TGParam p
-                                && cx.obs[p.uid] is QlValue sv)
-                            sv.AddFrom(cx, sa.defpos); */
             if (ch)
                 cx.NowTry();
             return m;
@@ -4912,6 +4862,7 @@ namespace Pyrrho.Level3
         /// <returns>the context</returns>
         public override Context _Obey(Context cx, ABookmark<int, long>? ef = null)
         {
+            cx.binding += cx.values;
             for (var b = cx.undefined.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlReview sr)
                 {
@@ -4920,7 +4871,7 @@ namespace Pyrrho.Level3
                     string? nm = null;
                     long? t = null; 
                     for (var c = sr.chain?.First(); c != null; c = c.Next())
-                        if (c.value() is Ident id && ns[id.ident] is long cp
+                        if (c.value() is Ident id && ns[id.ident].Item2 is long cp
                             && cx._Ob(cp) is DBObject nv)
                         {
                             t ??= cp;
@@ -4940,11 +4891,10 @@ namespace Pyrrho.Level3
                         v += (_Alias, sr.alias);
                     cx.undefined -= sr.defpos;
                     cx.Replace(sr, v);
-                } 
+                }
             // Graph expression and Database agree on the set of NodeType and EdgeTypes
             // Traverse the given graphs, binding as we go
-            var ac
-                = new LabelledActivation(cx, "Match")
+            var ac = new LabelledActivation(cx, "Match")
                 {
                     binding = cx.binding,
                     result = cx.result
@@ -4953,11 +4903,11 @@ namespace Pyrrho.Level3
             for (var b = truncating.First(); b != null; b = b.Next())
             {
                 var (i, d) = b.value();
-                if ((ac.obs[i] as QlValue)?.Eval(cx) is not TInt lm || (ac.obs[d] as QlValue)?.Eval(cx) is not TChar qs) throw new PEException("PE60801");
+                if ((ac.obs[i] as QlValue)?.Eval(cx) is not TInt lm || (ac.obs[d] as QlValue)?.Eval(cx) is not TChar qc) throw new PEException("PE60801");
                 var il = lm.ToInt() ?? throw new PEException("PE60802");
-                var pd = new Parser(cx, qs.ToString());
+                var pd = new Parser(cx, qc.ToString());
                 if (cx.db.objects[b.key()] is NodeType nt)
-                    pd.cx.AddDefs(nt);
+                    pd.cx.AddDefs(0L,nt);
                 var rt = BList<DBObject>.Empty;
                 while (pd.tok == Qlx.Id)
                 {
@@ -4976,20 +4926,18 @@ namespace Pyrrho.Level3
             {
                 for (var b = pr.First(cx); b != null; b = b.Next(cx))
                     ers += (cx, new TRow(ers, b.values));
-                ac.Add(ers + (BindingRowSet.PrevBinds,pr));
+                if (cx.obs[ef?.value() ?? -1L] is OrderAndPageStatement os)
+                    ers += (RowSetSection.Size, os.size);
+                ac.Add(ers + (PrevBinds,pr));
             }
             // When we reach the end of the match expression,
-            // we will obey the following statements up to an orderby/page statement. 
+            // we will obey the following statements up to a query statement 
             // first identify these:
             var fs = CList<long>.Empty;
             while (ef?.value() is long ep)
             {
-                if (cx.obs[ep] is OrderAndPageStatement op)
-                {
-                    if (op.size>0)
-                        cx.size += (defpos, op.size);
+                if (cx.obs[ep] is QueryStatement op)
                     break;
-                }
                 fs += ep;
                 ef = ef.Next();
             }
@@ -4997,16 +4945,16 @@ namespace Pyrrho.Level3
             _step = 0;
             var gf = matchList.First();
             if (ac.obs[gf?.value() ?? -1L] is GqlMatch sm)
-                for (var ab = sm.matchAlts.First(); ab!= null; ab = ab.Next())
+                for (var ab = sm.matchAlts.First(); ab != null; ab = ab.Next())
                     if (ac.obs[ab.value()] is GqlMatchAlt sa)
                     {
                         var xf = sa.matchExps.First();
                         if (gf is not null && xf is not null)
-                            ExpNode(ac, new ExpStep(sa.mode, xf, ab.Next(), 
-                                new GraphStep(sa.mode, gf.Next(), new EndStep(this, ff),ff),ff), Qlx.Null, null, null);
+                            ExpNode(ac, new ExpStep(sa.mode, xf, ab.Next(),
+                                new GraphStep(sa.mode, gf.Next(), new EndStep(this, ff), ff), ff), Qlx.Null, null, null);
                     }
-            // The binding set of the match and some or all its following statements is now done
             cx.obs = ac.obs;
+            cx.result = cx.obs[bindings] as RowSet;
             var ps = ((Transaction)ac.db).physicals;
             if (ac.paths!=CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>>.Empty
                     && DoExclusions(cx.result as RowSet, ac, cx) is RowSet rs)
@@ -5031,12 +4979,11 @@ namespace Pyrrho.Level3
             if (then != CList<long>.Empty)
                 ObeyList(new CList<CList<long>>(then), "", ef, ac);
             ac.SlideDown();
+            cx.funcs = ac.funcs;
             cx.obs = ac.obs;
             cx.db = ac.db;
             if (cx.obs[ef?.value() ?? -1L] is Executable fe)
                 cx = fe._Obey(cx, ef?.Next());
-            if (result > 0 && cx.obs[result] is Domain cr)
-                cx.result = cr;
             return cx;
         }
         internal RowSet? DoExclusions(RowSet? rs,Context ac,Context cx)
@@ -5057,7 +5004,7 @@ namespace Pyrrho.Level3
                             skip:;
                             }
                         }
-                    var ers = new ExplicitRowSet(ac.GetUid(), ac, ba, bl);
+                    var ers = new ExplicitRowSet(rs.scope,ac.GetUid(), ac, ba, bl);
                     ac.Add(ers);
                     cx.Add(ers);
                     rs = ers;
@@ -5335,7 +5282,7 @@ namespace Pyrrho.Level3
                 var rr = new TRow(ers, cx.binding);
                 ers += (cx, rr);
                 cx.result = (Domain)cx.Add(ers);
-                cx.val = TNull.Value;
+                    cx.val = TNull.Value;
                 cx.values += cx.binding;
                 if (cx.obs[ef?.value()??-1L] is Executable bd)
                     cx = bd._Obey(cx, ef?.Next());
@@ -5743,7 +5690,7 @@ namespace Pyrrho.Level3
             var nd = dn._Names(cx);
             cx.values += dn.tableRow.vals;
             for (var b = xn.label.names.First(); b != null; b = b.Next())
-                if (b.value() is long xu && nd[b.key()] is long nu && nu > 0L
+                if (b.value().Item2 is long xu && nd[b.key()].Item2 is long nu && nu > 0L
                     && nu != xu)
                     cx.values += (xu, cx.values[nu] ?? TNull.Value);
             if (xn.state != CTree<long, TGParam>.Empty && dn.dataType is NodeType nt)
@@ -5753,7 +5700,7 @@ namespace Pyrrho.Level3
                     for (var b = xn.docValue?.First(); b != null; b = b.Next())
                         if (gDefs[b.value().defpos] is TGParam tg
                             && b.key() is string n
-                            && ns?[n] is long np
+                            && ns?[n].Item2 is long np
                             && (dn.tableRow.vals[np]??cx._Ob(np)?.Eval(cx)) is TypedValue tv)
                         {
                             if (tg.type.HasFlag(TGParam.Type.Group))

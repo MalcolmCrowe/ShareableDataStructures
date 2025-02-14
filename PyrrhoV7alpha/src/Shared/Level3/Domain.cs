@@ -261,7 +261,7 @@ namespace Pyrrho.Level3
                 rs += (v.defpos, v.domain);
                 cs += v.defpos;
                 if (v.name is string s && s != "")
-                    ns += (s, v.defpos);
+                    ns += (s, (0L,v.defpos));
                 if (v is QlValue sv)
                     ag += sv.IsAggregation(cx, CTree<long, bool>.Empty);
             }
@@ -393,7 +393,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             for (var b = rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && (cx.obs[p] ?? representation[p]) is QlValue tc)
                 {
-                    var nc = new QlInstance(cx.GetUid(), cx, tc.name ?? tc.NameFor(cx), dp, tc,
+                    var nc = new QlInstance(ap,cx.GetUid(), cx, tc.name ?? tc.NameFor(cx), dp, tc,
                         BTree<long, object>.Empty);
                     nc = (QlInstance)cx.Add(nc);
                     rt += nc.defpos;
@@ -401,7 +401,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     rs += (nc.defpos, nc.domain);
                     tr += (tc.defpos, nc.defpos);
                     ds += (tc.defpos,tc.domain.names);
-                    ns += (nc.alias ?? nc.name ?? "", nc.defpos);
+                    ns += (nc.alias ?? nc.name ?? "", (0L, nc.defpos));
                 }
             return (rt, rs, sr, tr, ns, ds);
         }
@@ -2424,9 +2424,9 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                                 .Add(Qlx.COLUMN_NAME, new TChar(n));
                                         unnamedOk = false;
                                         var nms = infos[definer]?.names;
-                                        if (nms?[n] is long np && np != p)
+                                        if (nms?[n].Item2 is long np && np != p)
                                             p = np;
-                                        if (nms?[n.ToUpper()] is long mp && mp != p)
+                                        if (nms?[n.ToUpper()].Item2 is long mp && mp != p)
                                             p = mp;
                                     }
                                     lx.White();
@@ -5398,14 +5398,14 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     r += u.AllCols(u.subtypes,cx); 
             for (var b = t?.rowType.First(); b != null; b = b.Next())// top levels overwrite lower
                 if (cx._Ob(b.value()) is TableColumn tc)
-                    r += (tc.NameFor(cx), tc.defpos);
+                    r += (tc.NameFor(cx), (0L, tc.defpos));
             return r; 
         }
         internal CTree<long,Domain> HierarchyRepresentation(Context cx)
         {
             var r = CTree<long, Domain>.Empty;
             for (var b = HierarchyCols(cx).First(); b != null; b = b.Next())
-                if (cx._Ob(b.value()) is DBObject o)
+                if (cx._Ob(b.value().Item2) is DBObject o)
                     r += (o.defpos, o.domain);
             return r;
         }

@@ -187,7 +187,7 @@ namespace Pyrrho.Level4
         internal (DBObject?,Ident?) Lookup(Ident n)
         {
             var p = names[n.ToString()];
-            if (p!=0L && _Ob(p) is DBObject ob)
+            if (p.Item2!=0L && _Ob(p.Item2) is DBObject ob)
                 return (ob, null);
             var (o, s) = Lookup(names, n);
             if (o is null && defs[Lookup(n.ident)?.defpos ?? -1L] is Names f && n.sub is not null)
@@ -196,34 +196,34 @@ namespace Pyrrho.Level4
         }
         internal DBObject? Lookup(string n)
         {
-            return _Ob(names[n]);
+            return _Ob(names[n].Item2);
         }
         internal DBObject? Lookup(Names ns,string n)
         {
-            return ns.Contains(n)?_Ob(ns[n]):null;
+            return ns.Contains(n)?_Ob(ns[n].Item2):null;
         }
         internal DBObject? Lookup(BTree<long,Names> s, string n)
         {
             for (var b = s.Last(); b != null; b = b.Previous())
                 if (b.value() is Names t
-                    && t.Contains(n) && _Ob(t[n]) is DBObject ob)
+                    && t.Contains(n) && _Ob(t[n].Item2) is DBObject ob)
                     return ob;
             return null;
         }
         internal (DBObject?, Ident?) Lookup(Names t, Ident n,long f=-1L)
         {
-            var p = t[n.ident];
+            var p = t[n.ident].Item2;
             if (p!=0L && _Ob(p) is DBObject ob)
             {
                 var ns = defs[ob.defpos]??ob.names;
                 if (ob is GqlNode g)
                 {
                     if (n.sub?.ToString() is string nm
-                    && g.domain is Domain gd && gd.names[nm] is long np
+                    && g.domain is Domain gd && gd.names[nm].Item2 is long np
                     && gd.representation[np] is Domain dt)
                         return (Add(new SqlField(n.uid, nm, -1, g.defpos, dt, g.defpos)), null);
                     if (n.sub?.ident == "POSITION")
-                        return (Add(new SqlFunction(n.uid, this, Qlx.POSITION, g, null, null, Qlx.NO)), null);
+                        return (Add(new SqlFunction(n.lp, n.uid, this, Qlx.POSITION, g, null, null, Qlx.NO)), null);
                 }
                 if (ob is QlValue || ob is RowSet || ob is Procedure)
                 { 
@@ -234,7 +234,7 @@ namespace Pyrrho.Level4
                 else
                 {
                     var nf = GetUid();
-                    var q = new QlInstance(nf, this, n.ident, f, ob);
+                    var q = new QlInstance(n.lp, nf, this, n.ident, f, ob);
                     Add(q);
                     ns = ob.domain.infos[role.defpos]?.names ?? Names.Empty;
                     if (ns != Names.Empty && n.sub is Ident ps)
@@ -250,8 +250,8 @@ namespace Pyrrho.Level4
             for (var b = ns.First(); b != null; b = b.Next())
             {
                 var p = b.value();
-                if (done[p] is DBObject nb)
-                    r += (b.key(), nb.defpos);
+                if (done[p.Item2] is DBObject nb)
+                    r += (b.key(), (p.Item1,nb.defpos));
                 else
                     r += (b.key(), p);
             }
@@ -576,7 +576,7 @@ namespace Pyrrho.Level4
         internal int _DepthTsl(Names? t, int d)
         {
             for (var b = t?.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                if (b.value().Item2 is long p)
                     d = _DepthV(p, d);
             return d;
         }
@@ -622,26 +622,6 @@ namespace Pyrrho.Level4
             for (var b = t?.First(); b != null; b = b.Next())
                 d = _DepthTVX(b.value(), _DepthV(b.key(), d));
             return d;
-        }
-        // define an object at a lower level (happens with select statement)
-        internal void Define(long lp,DBObject ob)
-        {
-            var nn = BTree<long,Names>.Empty;
-            for (var b = defs.First(); b != null && b.key() < lp; b = b.Next())
-            {
-                var k = b.key();
-                var u = b.value();
-                if (k == lp)
-                    nn += (k, u + (ob.name, ob.defpos));
-                else if (u.Contains(ob.name) && obs[u[ob.name]] is SqlReview ud)
-                {
-                    Replace(ud, ob);
-                    nn += (k, u - ob.name);
-                }
-                else
-                    nn += (k, u);
-            }
-            defs = nn;
         }
         internal BTree<long, QlValue> Map(CList<long> s)
         {
@@ -784,7 +764,7 @@ namespace Pyrrho.Level4
                         rs += (b.key(), dm);
                     }
                     if (ob is QlValue)
-                        cx.Add(nm, ob);
+                        cx.Add(nm, ic.lp,ob);
                 }
       //     if (tb != null)
       //          cx.Add(tb + (Table.TableCols, rs));
@@ -1385,13 +1365,13 @@ namespace Pyrrho.Level4
             var ch = false;
             for (var b = wh.First(); b != null; b = b.Next())
             {
-                var p = b.value();
+                var (ap,p) = b.value();
                 var k = b.key();
                 var nb = done[p];
                 var nk = nb?.alias ?? k;
                 var np = nb?.defpos ?? p;
                 ch = ch || p != np || k != nk;
-                r += (nk,np);
+                r += (nk,(ap,np));
             }
             return ch ? r : wh;
         }
@@ -1751,14 +1731,14 @@ namespace Pyrrho.Level4
             }
             return Fix(p);
         }
-        internal void AddDefs(Domain dm)
+        internal void AddDefs(long ap,Domain dm)
         {
-            names += (dm.NameFor(this), dm.defpos);
+            names += (dm.NameFor(this), (ap,dm.defpos));
             if (dm.infos[role.defpos] is ObInfo di)
             {
                 for (var b = dm.rowType.First(); b != null; b = b.Next())
                     if (db.objects[b.value()] is Domain cd)
-                        AddDefs(cd);
+                        AddDefs(ap,cd);
                 defs += (dm.defpos, di.names);
             }
         }
@@ -1818,7 +1798,7 @@ namespace Pyrrho.Level4
             if (ob.infos[role.defpos] is ObInfo ti)
                 for (var b = ti.names.First(); b != null; b = b.Next())
                     if (Lookup(b.key()) is ForwardReference fr
-                            && b.value() is long dp
+                            && b.value().Item2 is long dp
                             && ob.representation[dp] is UDType)
                     {
                         for (var c = fr.subs.First(); c != null; c = c.Next())
@@ -1827,11 +1807,11 @@ namespace Pyrrho.Level4
                         obs -= fr.defpos;
                     }
         }
-        internal void Add(string name,DBObject ob)
+        internal void Add(string name,long ap,DBObject ob)
         {
             if (name == null)
                 return;
-            names += (name, ob.defpos);
+            names += (name, (ap,ob.defpos));
             var ns = (ob.defpos >= Transaction.TransPos) ? ob.names : ob.infos[role.defpos]?.names;
             if (ns?.Count > 0 && !defs.Contains(ob.defpos))
                 defs += (ob.defpos, ns);
@@ -1839,8 +1819,8 @@ namespace Pyrrho.Level4
         internal void Add(Names ns)
         {
             for (var b = ns.First(); b != null; b = b.Next())
-                if (_Ob(b.value()) is DBObject ob && !names.Contains(b.key()))
-                    Add(b.key(), ob);
+                if (_Ob(b.value().Item2) is DBObject ob && !names.Contains(b.key()))
+                    Add(b.key(), b.value().Item1,ob);
         }
         internal void AddParams(Procedure pr)
         {
@@ -1850,11 +1830,11 @@ namespace Pyrrho.Level4
                 for (var b = pr.ins.First(); b != null; b = b.Next())
                     if (b.value() is long p && obs[p] is FormalParameter pp) {
                         var pn = new Ident(pp.NameFor(this), 0);
-                        names += (pp.NameFor(this), pp.defpos);
+                        names += (pp.NameFor(this), (pn.lp,pp.defpos));
                         values += (p, TNull.Value); // for KnownBy
                         Add(pp);
                     }
-                names += (oi.name, pr.defpos);
+                names += (oi.name, (0L,pr.defpos));
                 defs += (pr.defpos, names-oi.name);
             }
         }
@@ -2473,8 +2453,8 @@ namespace Pyrrho.Level4
         {
             var r = Names.Empty;
             for (var b = cs.First(); b != null; b = b.Next())
-            if (b.value() is long p)
-                r += (b.key(), Fix(p));
+            if (b.value().Item2 is long p)
+                r += (b.key(), (b.value().Item1,Fix(p)));
             return r;
         }
         internal BList<(long,long)> FixLll(BList<(long,long)> cs)
@@ -2910,15 +2890,25 @@ namespace Pyrrho.Level4
                 t1 += (key, t2);
                 cx.funcs += (sf.from, t1);  // prevent stack oflow
                 var dm = (ws.order!=Domain.Row)?ws.order:ws.partition;
-                if (dm != null && cx.obs[sf.from] is RowSet fm
-                    && cx.obs[fm.source] is RowSet sce)
+                if (dm != null)
                 {
                     wtree = new RTree(dp, cx, dm,
-                       TreeBehaviour.Allow, TreeBehaviour.Allow);
-                    for (var e = sce.First(cx); e != null; e = e.Next(cx))
+                        TreeBehaviour.Allow, TreeBehaviour.Allow);
+                    if (cx.obs[sf.from] is RowSet fm && cx.obs[fm.source] is RowSet sce)
+                    {
+                        for (var e = sce.First(cx); e != null; e = e.Next(cx))
+                        {
+                            var vs = CTree<long, TypedValue>.Empty;
+                            cx.cursors += (dp, e);
+                            for (var b = dm.rowType.First(); b != null; b = b.Next())
+                                if (b.value() is long p && cx.obs[p] is QlValue s)
+                                    vs += (s.defpos, s.Eval(cx));
+                            var rw = new TRow(dm, vs);
+                            RTree.Add(ref wtree, rw, cx.cursors);
+                        }
+                    } else // use cx.binding
                     {
                         var vs = CTree<long, TypedValue>.Empty;
-                        cx.cursors += (dp, e);
                         for (var b = dm.rowType.First(); b != null; b = b.Next())
                             if (b.value() is long p && cx.obs[p] is QlValue s)
                                 vs += (s.defpos, s.Eval(cx));

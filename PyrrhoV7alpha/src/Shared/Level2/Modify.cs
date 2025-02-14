@@ -118,7 +118,7 @@ namespace Pyrrho.Level2
             cx.depths = BTree<int,ObTree>.Empty;
             // instantiate everything we may need
             var odt = pr.udType;
-            cx.AddDefs(odt);
+            cx.AddDefs(0L,odt);
             cx.defs += (odt.defpos, odt.names);
             if (odt.infos[cx.role.defpos] is ObInfo ti)
                 cx.Add(ti.names);
@@ -129,7 +129,7 @@ namespace Pyrrho.Level2
                 {
                     if (psr.cx.obs[k] is not FormalParameter p || p.name == null)
                         throw new DBException("3E006");
-                    psr.cx.Add(p.name, p);
+                    psr.cx.Add(p.name, 0L,p);
                 }
             cx.Install(pr);
             // and parse the body

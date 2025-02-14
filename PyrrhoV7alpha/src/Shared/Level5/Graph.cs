@@ -67,10 +67,10 @@ namespace Pyrrho.Level5
         { }
         public NodeType(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        internal NodeType(long dp, string nm, UDType dt, BTree<long,object> m, Context cx)
-            : base(dp, _Mem(nm, dt, m, cx))
+        internal NodeType(long lp,long dp, string nm, UDType dt, BTree<long,object> m, Context cx)
+            : base(dp, _Mem(nm, lp, dt, m, cx))
         { }
-        static BTree<long, object> _Mem(string nm, UDType dt, BTree<long,object>m, Context cx)
+        static BTree<long, object> _Mem(string nm, long lp, UDType dt, BTree<long,object>m, Context cx)
         {
             var r = m + dt.mem + (Kind, Qlx.NODETYPE) -EdgeType.LeaveIx - EdgeType.ArriveIx;
             r += (ObInfo.Name, nm);
@@ -98,8 +98,8 @@ namespace Pyrrho.Level5
                             {
                                 rt += p;
                                 rs += (p, rd);
-                                ns += (cn,p);
-                                nn += (cn, p);
+                                ns += (cn,(lp,p));
+                                nn += (cn, (lp,p));
                             }
                     }
             }
@@ -351,7 +351,7 @@ namespace Pyrrho.Level5
         }
         internal override (DBObject?, Ident?) _Lookup(long lp, Context cx, Ident ic, Ident? n, DBObject? r)
         {
-            if (infos[cx.role.defpos] is ObInfo oi && cx._Ob(oi.names[ic.ident]) is DBObject ob)
+            if (infos[cx.role.defpos] is ObInfo oi && cx._Ob(oi.names[ic.ident].Item2) is DBObject ob)
             {
                 if (n is Ident ni)
                     switch (ni.ident)
@@ -361,7 +361,7 @@ namespace Pyrrho.Level5
                         default:
                             return ob._Lookup(n.uid, cx, n, n.sub, null);
                     }
-                return (new QlInstance(cx.GetUid(), cx, ic.ident, lp, ob), null);
+                return (new QlInstance(ic.lp, cx.GetUid(), cx, ic.ident, lp, ob), null);
             }
             return base._Lookup(lp, cx, ic, n, r);
         }
@@ -584,7 +584,7 @@ namespace Pyrrho.Level5
             var sn = BTree<string, long?>.Empty; // properties we are adding
                                                  // check contents of ls
                                                  // ls comes from inline properties in graph create or from ParseRowTypeSpec default value
-            var io = names.Contains("ID")?cx.obs[infos[cx.role.defpos]?.names["ID"]??-1L]
+            var io = names.Contains("ID")?cx.obs[infos[cx.role.defpos]?.names["ID"].Item2??-1L]
                 ?? ls["ID"] ?? ((id is not null) ? new SqlLiteral(cx.GetUid(), id, TChar.Empty, Char) : null):null;
             var ii = io?.defpos ?? -1L;
             if (io is not null)
@@ -641,15 +641,15 @@ namespace Pyrrho.Level5
                     rt += pc.ppos;
                     rs += (pc.ppos, d);
                     var cn = new Ident(n, pc.ppos);
-                    uds += (cn.ident, pc.ppos);
-                    cx.Add(ut.name, this);
+                    uds += (cn.ident,(cn.lp, pc.ppos));
+                    cx.Add(ut.name,_ap,this);
                     sn += (n, pc.ppos);
                 }
             }
             cx.Add(ut);
             cx.db += ut;
             if (id is not null)
-                uds += (id, ut.idCol);
+                uds += (id, (_ap,ut.idCol));
             // update defs for inherited properties
             for (var b = ut.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.db.objects[p] is TableColumn uc
@@ -659,9 +659,9 @@ namespace Pyrrho.Level5
                 {
                     rt += p;
                     rs += (p, ut.representation[p] ?? Domain.Char);
-                    uds += (sc, p);
+                    uds += (sc, (_ap,p));
                 }
-            cx.Add(tn, this);
+            cx.Add(tn, _ap, this);
             ut += (RowType, rt);
             ut += (Representation, rs);
             for (var b = ut.super.First(); b != null; b = b.Next())
@@ -673,7 +673,7 @@ namespace Pyrrho.Level5
                     ri += (p, b.key());
             for (var b = sn.First(); b != null; b = b.Next())
                 if (b.value() is long q && ri[q] is int i)
-                    uds += (b.key(), q);
+                    uds += (b.key(), (_ap,q));
             ut += (Infos, new BTree<long, ObInfo>(cx.role.defpos,
                 new ObInfo(ut.name, Grant.AllPrivileges)
                 + (ObInfo._Names, uds)));
@@ -706,7 +706,7 @@ namespace Pyrrho.Level5
                     PColumn.GraphFlags.None, -1L, -1L, cx.db.nextPos, cx, true);
                     r = (NodeType?)cx.Add(nc)
                         ?? throw new DBException("42105");
-                    ni += (ObInfo._Names, ni.names + (b.key(), nc.defpos));
+                    ni += (ObInfo._Names, ni.names + (b.key(), (ap,nc.defpos)));
                     r += (Infos, r.infos+(cx.role.defpos,ni));
                     r += (ObInfo._Names, ni.names);
                     cx.Add(r);
@@ -781,7 +781,7 @@ namespace Pyrrho.Level5
             };
             var ns = ut.infos[cx.role.defpos]?.names;
             var cd = se ? new TSet(sd).dataType : sd;
-            if (id is null && cp == IdCol && ns?["ID"] is long p
+            if (id is null && cp == IdCol && ns?["ID"].Item2 is long p
                 && cx._Ob(p) is TableColumn)
             {
                 id = "ID";
@@ -789,7 +789,7 @@ namespace Pyrrho.Level5
             }
             if (id is not null)
             {
-                if (ns?.Contains(id) == true && ns?[id] is long pp)
+                if (ns?.Contains(id) == true && ns?[id].Item2 is long pp)
                 {
                     pc = (PColumn3?)((Transaction)cx.db).physicals[pp];
                     tc = (TableColumn?)(cx._Ob(pp));
@@ -1459,12 +1459,12 @@ namespace Pyrrho.Level5
         public GqlLabel(long dp, Context? cx, long lf, long rg, BTree<long, object>? m = null)
             : base(dp, _Mem(cx, m, lf, rg)) { }
         internal GqlLabel(Ident id, Context cx,NodeType? lt = null, NodeType? at = null, BTree<long,object>? m = null)
-            : this(id.uid, id.ident, cx, lt?.defpos, at?.defpos, m) { }
-        internal GqlLabel(long dp, string nm,  Context cx, long? lt = null, long? at = null, 
+            : this(id.lp, id.uid, id.ident, cx, lt?.defpos, at?.defpos, m) { }
+        internal GqlLabel(long lp, long dp, string nm,  Context cx, long? lt = null, long? at = null, 
             BTree<long,object>? m=null)
-            : this(dp, _Mem(cx, nm, lt, at, m))
+            : this(dp, _Mem(cx, nm, lp, lt, at, m))
         {
-            cx.dnames += (nm, dp);
+            cx.dnames += (nm, (lp,dp));
         }
         GqlLabel() : this(-1L, null, -1L, -1L) { }
         internal GqlLabel(long dp, BTree<long, object> m) : base(dp, m)
@@ -1479,10 +1479,10 @@ namespace Pyrrho.Level5
                 var rn = ro.infos[cx.role.defpos]?.names ?? ro.names;
                 var rt = ro.rowType;
                 for (var b = ln.First(); b != null; b = b.Next())
-                    if (ln[b.key()] is long lp)
+                    if (ln[b.key()].Item2 is long lp)
                     {
                         var ld = lo.representation[lp];
-                        var rd = ro.representation[rn[b.key()]];
+                        var rd = ro.representation[rn[b.key()].Item2];
                         if (ld is not null && rd is not null && ld.CompareTo(rd) != 0)
                             throw new DBException("22G12", ln);
                         if (!ro.representation.Contains(lp))
@@ -1494,7 +1494,7 @@ namespace Pyrrho.Level5
             }
             return m + (QlValue.Left, lf) + (QlValue.Right, rg);
         }
-        static BTree<long, object> _Mem(Context cx, string id, long? lt, long? at, BTree<long,object>?m)
+        static BTree<long, object> _Mem(Context cx, string id, long ap, long? lt, long? at, BTree<long,object>?m)
         {
             m ??= BTree<long, object>.Empty;
             m = m + (ObInfo.Name, id);
@@ -1528,7 +1528,7 @@ namespace Pyrrho.Level5
             if (sd is not null)
             {
                 m = m + (_Domain, sd) + (Kind, sd.kind);
-                cx.AddDefs(sd);
+                cx.AddDefs(ap,sd);
             }
             else
                 m += (_Domain, dt);
@@ -1758,9 +1758,9 @@ namespace Pyrrho.Level5
         public bool arrivingEnds => (bool)(mem[ArrivingEnds] ?? false);
         public Domain arriveColDomain => (Domain)(mem[ArriveColDomain] ?? Int);
         public bool undirected => (bool)(mem[QuantifiedPredicate.Between] ?? false);
-        internal EdgeType(long dp, string nm, UDType dt, BTree<long,object> m, Context cx, 
+        internal EdgeType(long lp,long dp, string nm, UDType dt, BTree<long,object> m, Context cx, 
             TMetadata? md = null)
-            : base(dp, nm, dt, _Mem(m, md, cx), cx)
+            : base(lp, dp, nm, dt, _Mem(m, md, cx), cx)
         { }
         internal EdgeType(Qlx t) : base(t)
         { }
@@ -1838,7 +1838,7 @@ namespace Pyrrho.Level5
                         return et; // will be sorted out by ChooseEnds
                     var md = TMetadata.Empty + (Qlx.ARROW, new TChar(na.domain.name))
                         + (Qlx.RARROW, new TChar(nl.domain.name));
-                    var ne = new EdgeType(cx.GetUid(), name, EdgeType, n.mem, cx,md);
+                    var ne = new EdgeType(ap, cx.GetUid(), name, EdgeType, n.mem, cx,md);
                     et = ne.Build(cx, n, ap, null, md);
                 }
                 var ls = n.docValue;
@@ -1850,7 +1850,7 @@ namespace Pyrrho.Level5
                     var pp = cx.db.nextPos;
                     var pi = new Ident(pp.ToString(), pp);
                     var xt = (Domain)cx.Add(et + (LeavingType,
-                        new NodeType(cx.GetUid(), pi.ident, TypeSpec, el.mem, cx).defpos));
+                        new NodeType(ap, cx.GetUid(), pi.ident, TypeSpec, el.mem, cx).defpos));
                     cx.Add(xt);
                 }
                 if (ea.infos[cx.role.defpos] is ObInfo ai
@@ -1861,7 +1861,7 @@ namespace Pyrrho.Level5
                     var pp = cx.db.nextPos;
                     var pi = new Ident(pp.ToString(), pp);
                     var xt = (Domain)cx.Add(et + (ArrivingType,
-                        new NodeType(cx.GetUid(), pi.ident, TypeSpec, ea.mem, cx).defpos));
+                        new NodeType(ap, cx.GetUid(), pi.ident, TypeSpec, ea.mem, cx).defpos));
                     cx.Add(xt);
                 }
             }
@@ -2273,8 +2273,8 @@ namespace Pyrrho.Level5
     /// </summary>
     internal class JoinedNodeType : NodeType
     {
-        internal JoinedNodeType(long dp, string nm, UDType dt, BTree<long,object> m, Context cx) 
-            : base(dp, nm, dt, m, cx)
+        internal JoinedNodeType(long lp, long dp, string nm, UDType dt, BTree<long,object> m, Context cx) 
+            : base(lp, dp, nm, dt, m, cx)
         {
             var oi = new ObInfo(nm, Grant.AllPrivileges);
             var ns = Names.Empty;
@@ -2331,7 +2331,7 @@ namespace Pyrrho.Level5
                 {
                     var np = cx.GetUid();
                     var m = new BTree<long, object>(GqlNode._Label,
-                        cx.Add(new GqlLabel(cx.GetUid(),nt.name,cx)));
+                        cx.Add(new GqlLabel(ap,cx.GetUid(),nt.name,cx)));
                     var nd = new GqlNode(new Ident(Uid(np), np), CList<Ident>.Empty, cx,
                         -1L, x.docValue, x.state, nt, m);
                     nd.Create(cx, nt, ap, false);
@@ -2381,14 +2381,14 @@ namespace Pyrrho.Level5
     /// </summary>
     internal class GraphType : Domain
     {
-        internal GraphType(PGraphType pg, Context cx)
-            : this(pg.ppos, _Mem(pg,cx))
+        internal GraphType(PGraphType pg, Context cx, long ap)
+            : this(pg.ppos, _Mem(pg,cx, ap))
         { }
         public GraphType(long dp, BTree<long, object> m) : base(dp, m)
         { }
         public GraphType(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
         {  }
-        static BTree<long,object> _Mem(PGraphType pg,Context cx)
+        static BTree<long,object> _Mem(PGraphType pg,Context cx,long ap)
         {
             var r = BTree<long, object>.Empty;
             r += (Graph.Iri, pg.iri);
@@ -2399,7 +2399,7 @@ namespace Pyrrho.Level5
             var ns = Names.Empty;
             for (var b = pg.types.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is UDType ut)
-                    ns += (ut.name, b.key());
+                    ns += (ut.name, (ap,b.key()));
             oi += (ObInfo._Names, ns);
             r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
             return r;
@@ -2432,12 +2432,12 @@ namespace Pyrrho.Level5
         internal CTree<long,bool> graphTypes => 
             (CTree<long,bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
         internal string iri => (string)(mem[Iri]??"");
-        internal Graph(PGraph pg,Context cx)
-            : base(pg.ppos,_Mem(cx,pg))
+        internal Graph(PGraph pg,Context cx,long ap)
+            : base(pg.ppos,_Mem(cx,pg,ap))
         { }
         public Graph(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long,object> _Mem(Context cx,PGraph ps)
+        static BTree<long,object> _Mem(Context cx,PGraph ps,long ap)
         {
             var r = BTree<long, object>.Empty
                 + (Nodes, ps.records) + (Iri, ps.iri) + (GraphTypes, ps.types ?? CTree<long, bool>.Empty);
@@ -2452,7 +2452,7 @@ namespace Pyrrho.Level5
             var ns = Names.Empty;
             for (var b = ps.types?.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is UDType ut)
-                    ns += (ut.name, b.key());
+                    ns += (ut.name, (ap,b.key()));
             oi += (ObInfo._Names, ns);
             r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
             return r;

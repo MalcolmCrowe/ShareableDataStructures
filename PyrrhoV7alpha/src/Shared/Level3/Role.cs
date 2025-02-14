@@ -389,12 +389,12 @@ namespace Pyrrho.Level3
             var ns = Names.Empty;
             var ch = false;
             for (var b = names.First(); b != null; b = b.Next())
-                if (b.value() is long p)
+                if (b.value().Item2 is long p)
                 {
                     p = cx.Fix(p);
-                    if (p != b.value())
+                    if (p != b.value().Item2)
                         ch = true;
-                    ns += (b.key(), p);
+                    ns += (b.key(), (b.value().Item1,p));
                 }
             if (ch)
                 r += (_Names, ns);
@@ -430,8 +430,8 @@ namespace Pyrrho.Level3
         {
             for (var b = ns.First(); b != null; b = b.Next())
             {
-                if (b.value()==was)
-                    ns += (b.key(),now);
+                if (b.value().Item2 ==was)
+                    ns += (b.key(),(b.value().Item1,now));
             }
             return ns;
         }

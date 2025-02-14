@@ -207,7 +207,7 @@ namespace Pyrrho.Level2
                             ns += (r.defpos, nt.Node(cx, t));
                     }
                 }
-            var g = new Graph(this,cx);
+            var g = new Graph(this,cx,0L);
             cx.db += g;
             var ro = cx.role;
             ro += (Role.Graphs, ro.graphs + (name, ppos));
@@ -306,7 +306,7 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx)
         {
             var ns = CTree<long, TNode>.Empty;
-            var g = new GraphType(this, cx);
+            var g = new GraphType(this, cx, 0L);
             cx.db += g;
             var ro = cx.role;
             ro += (Role.Graphs, ro.graphs + (name, ppos));

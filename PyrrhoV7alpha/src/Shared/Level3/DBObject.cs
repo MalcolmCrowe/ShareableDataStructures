@@ -45,7 +45,7 @@ namespace Pyrrho.Level3
             Infos = -126, // BTree<long,ObInfo> Role
             LastChange = -68, // long (formerly called Ppos)
             Owner = -59, // long
-            Scope = -330, // long current lexical scope 
+            Scope = -330, // long current lexical scope (from LexLp(), not LexDp())
             Sensitive = -69; // bool
         /// <summary>
         /// During transaction execution, many DBObjects have aliases.
@@ -74,6 +74,7 @@ namespace Pyrrho.Level3
         public TMetadata metadata => (TMetadata)(mem[ObInfo._Metadata] ?? TMetadata.Empty);
         internal BList<Ident>? chain => (BList<Ident>?)mem[Chain];
         public virtual Domain domain => (Domain)(mem[_Domain] ?? Domain.Null);
+        public long scope => (long)(mem[Scope] ?? 0L);
         /// <summary>
         /// This tree does not include indexes/columns/rows for tables
         /// or other obvious structural dependencies
@@ -533,7 +534,7 @@ namespace Pyrrho.Level3
         internal virtual RowSet RowSets(Ident id,Context cx, Domain q, long fm, long ap, 
             Grant.Privilege pr=Grant.Privilege.Select,string? a=null,TableRowSet? ur = null)
         {
-            return new TrivialRowSet(id.uid, cx, new TRow(q, cx.values),a);
+            return new TrivialRowSet(ap, id.uid, cx, new TRow(q, cx.values),a);
         }
         /// <summary>
         /// Creates new instances of objects in framing lists.
@@ -757,13 +758,13 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    internal class Names : BTree<string,long>
+    internal class Names : BTree<string,(long,long)>
     {
         public new readonly static Names Empty = new();
         internal Names() : base(null) { }
-        internal Names(string k, long v) : base(k, v) { }
-        internal Names(Bucket<string, long> b) : base(b) { }
-        public static Names operator +(Names tree, (string, long) v)
+        internal Names(string k, (long,long)v) : base(k, v) { }
+        internal Names(Bucket<string, (long,long)> b) : base(b) { }
+        public static Names operator +(Names tree, (string, (long, long)) v)
         {
             var (p, x) = v;
             return (p=="" || p is null) ? tree : (Names)tree.Add(p, x);
@@ -782,25 +783,25 @@ namespace Pyrrho.Level3
                 a -= c.key();
             return a;
         }
-        public new long this[string n]
+        public new (long,long) this[string n]
         {
-            get { var p = base[n]; return (p != 0L) ? p : -1L; }
+            get { var (ap,p) = base[n]; return (ap,(p != 0L) ? p : -1L); }
         }
         
-        protected override ATree<string, long> Add(string k, long v)
+        protected override ATree<string, (long,long)> Add(string k, (long,long)x)
         {
             if (root is not null && Contains(k))
-                return new Names(root.Update(this, k, v));
-            return Insert(k, v);
+                return new Names(root.Update(this, k, x));
+            return Insert(k, x);
         }
-        public override ATree<string, long> Add(ATree<string, long> a)
+        public override ATree<string, (long, long)> Add(ATree<string, (long, long)> a)
         {
             var tree = this;
             for (var b = a?.First(); b != null; b = b.Next())
                 tree = (Names)tree.Add(b.key(), b.value());
             return tree;
         }
-        protected override ATree<string, long> Insert(string k, long v) // this does not contain k
+        protected override ATree<string, (long, long)> Insert(string k, (long, long) v) // this does not contain k
         {
             if (root == null || root.total == 0)  // empty BTree
                 return new Names(k, v);
@@ -808,14 +809,14 @@ namespace Pyrrho.Level3
                 return new Names(root.Split()).Add(k, v);
             return new Names(root.Add(this, k, v));
         }
-        internal override ATree<string, long> Update(string k, long v) // this Contains k
+        internal override ATree<string, (long, long)> Update(string k, (long, long) v) // this Contains k
         {
             if (root == null || !Contains(k))
                 throw new Exception("PE01");
             return new Names(root.Update(this, k, v));
         }
 
-        internal override ATree<string, long> Remove(string k)
+        internal override ATree<string, (long, long)> Remove(string k)
         {
             if (root == null || !Contains(k))
                 return this;
@@ -833,8 +834,10 @@ namespace Pyrrho.Level3
                 if (k is not null)
                 {
                     sb.Append(cm); cm = ", ";
-                    sb.Append(k); sb.Append('=');
-                    sb.Append(DBObject.Uid(v));
+                    sb.Append(k); sb.Append("=(");
+                    sb.Append(v.Item1); 
+                    sb.Append(','); sb.Append(DBObject.Uid(v.Item2));
+                    sb.Append(')');
                 }
             }
             if (cm != "(")
@@ -890,7 +893,6 @@ namespace Pyrrho.Level3
         /// <param name="cx"></param>
         /// <param name="sr">The source rowset for rs</param>
         /// <param name="m">Proposed details for rs, may be updated</param>
-        /// <param name="ap">Proposed defpos of rs</param>
         /// <returns>an empty list as no candidate objects will replace U, and an update to m</returns>
         internal override (BList<DBObject>, BTree<long,object>) Resolve(Context cx, RowSet sr, 
             BTree<long,object> m, long ap)
@@ -903,7 +905,7 @@ namespace Pyrrho.Level3
             {
                 for (var b = domain.rowType.First(); b != null; b = b.Next())
                     if (cx.obs[b.value()] is DBObject c && c.defpos>ap)
-                        (_, m) = c.Resolve(cx, sr, m, ap); // will test if c.defpos>rs.defpos
+                        (_, m) = c.Resolve(cx, sr, m, ap); // will test if c.defpos>ap
             }
             return (BList<DBObject>.Empty,m);
         }

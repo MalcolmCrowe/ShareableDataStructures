@@ -302,7 +302,7 @@ namespace Pyrrho.Level2
             if (name == "ID" && table is NodeType)
                 table += (NodeType.IdCol, defpos);
             var ti = table.infos[cx.role.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME);
-            ti += (ObInfo._Names, ti.names + (name, ppos));
+            ti += (ObInfo._Names, ti.names + (name, (0L,ppos)));
             if (dataType.infos[cx.role.defpos]?.names is Names ss && ss!=Names.Empty)
                 ti += (ObInfo.Defs, ti.defs + (tc.defpos, ss));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
@@ -340,7 +340,7 @@ namespace Pyrrho.Level2
             cx.Install(tc);
             cx.obs += (table.defpos, table);
             cx.db += table;
-            cx.AddDefs(table);
+            cx.AddDefs(0L,table);
             return table;
         }
     }
@@ -468,9 +468,9 @@ namespace Pyrrho.Level2
                     if (b.value() is long p && cx.db.objects[p] is TableColumn tc)
                     {
                         var nm = tc.NameFor(cx)??"";
-                        var rv = new QlInstance(cx.GetUid(), cx, nm, -1L, tc.defpos);
+                        var rv = new QlInstance(0L,cx.GetUid(), cx, nm, -1L, tc.defpos);
                         cx.Add(rv);
-                        cx.Add(nm, rv);
+                        cx.Add(nm, 0L, rv);
                     }
                 var sv = psr.ParseSqlValue((DBObject._Domain,dataType));
                 psr.cx.Add(sv);

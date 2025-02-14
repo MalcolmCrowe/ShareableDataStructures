@@ -116,7 +116,7 @@ namespace Pyrrho.Level2
         {
             if (udt is null)
                 throw new PEException("PE42126");
-            rdr.context.AddDefs(udt);
+            rdr.context.AddDefs(0L, udt);
             base.OnLoad(rdr);
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)

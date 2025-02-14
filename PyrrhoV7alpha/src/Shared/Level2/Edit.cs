@@ -263,13 +263,13 @@ namespace Pyrrho.Level2
                 {
                     var hc = uD.HierarchyCols(cx,defpos);
                     for (var b = hierCols.First(); b != null; b = b.Next())
-                        if (hc[b.key()] is long ep && ep > 0 && b.value() is long np) 
+                        if (hc[b.key()].Item2 is long ep && ep > 0 && b.value().Item2 is long np) 
                         {
                             var q = Math.Min(np, ep);
                             var nq = Math.Max(np, ep);
                             nq = cx.uids[nq] ?? nq;
                             cx.MergeColumn(nq, q); // ShallowReplace does the work
-                            ss += (b.key(), q);
+                            ss += (b.key(), (b.value().Item1, q));
                             var cd = ((cx.db.objects[nq]??cx.db.objects[q]) is TableColumn tc
                             && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string n) ? tc.domain
                             : throw new PEException("PE20932");

@@ -170,8 +170,8 @@ namespace Pyrrho.Level2
             for (var b = dt.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && rdr.context.NameFor(p) is string n)
                 {
-                    ns += (n, p);
-                    nn += (n, p);
+                    ns += (n, (0L,p));
+                    nn += (n, (0L,p));
                 }
             m = m + (ObInfo.Name, name) + (Domain.Kind, k);
             if (dt.super.Count > 0)
@@ -182,14 +182,14 @@ namespace Pyrrho.Level2
                 var ui = un1.infos[rdr.context.role.defpos];
                 var rs = dt.representation;
                 for (var b = ui?.names.First(); b != null; b = b.Next())
-                    if (ns[b.key()] is long p && p > dt.defpos)
+                    if (ns[b.key()].Item2 is long p && p > dt.defpos)
                     {
                         rs -= p;
                         ns -= b.key();
                     }
                 var tr = CList<long>.Empty;
                 for (var b = ns.First(); b != null; b = b.Next())
-                    tr += b.value();
+                    tr += b.value().Item2;
                 var nrt = CList<long>.Empty;
                 if (dt != null)
                     m += (Domain.Representation, rs);
@@ -281,7 +281,7 @@ namespace Pyrrho.Level2
             var ro = cx.role;
             var un = CTree<Domain, bool>.Empty;
             var ps = CTree<long, Domain>.Empty;
-            var pn = CTree<string, long>.Empty;
+            var pn = BTree<string, (long,long)>.Empty;
             var pt = CList<long>.Empty;
             for (var b = under.First(); b != null; b = b.Next())
                 if (b.key() is UDType so)
@@ -323,7 +323,7 @@ namespace Pyrrho.Level2
                 if (cx.NameFor(b.key()) is string n && !pn.Contains(n))
                 {
                     ps += (b.key(), b.value());
-                    pn += (n, b.key());
+                    pn += (n, (0L,b.key()));
                     pt += b.key();
                 }
             if (pt.CompareTo(dataType.rowType)!=0 || ps.CompareTo(dataType.representation)!=0)

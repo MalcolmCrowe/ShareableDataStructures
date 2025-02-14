@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Numerics;
+using System.Runtime;
 using System.Text;
 using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -167,8 +168,8 @@ namespace Pyrrho.Level4
         /// <param name="dp">The uid for the RowSet</param>
         /// <param name="cx">The processing environment</param>
         /// <param name="m">The properties tree</param>
-        protected RowSet(long dp, Context cx, BTree<long, object> m)
-            : base(dp, _Mem(dp, cx, m))
+        protected RowSet(long ap, long dp, Context cx, BTree<long, object> m)
+            : base(dp, _Mem(dp, cx, m)+(Scope,ap))
         {
             cx.Add(this);
         }
@@ -322,7 +323,7 @@ namespace Pyrrho.Level4
                         return (ob, n.sub);
                     }
                     if (co is UDType ut && ut.infos[cx.role.defpos] is ObInfo ui && n is not null
-                        && cx.db.objects[ui.names[n.ident]] is DBObject so)
+                        && cx.db.objects[ui.names[n.ident].Item2] is DBObject so)
                     {
                         var ob = new SqlField(lp, ic.ident + "." + n.ToString(), -1, p,
                             ut.representation[so.defpos] ?? Content, so.defpos);
@@ -1794,6 +1795,33 @@ namespace Pyrrho.Level4
             sr += (_Rows, sr.rows + r);
             sr += (Level3.Index.Tree, mt);
             cx.Add(sr);
+            var ags = sr.aggs;
+            cx.groupCols += (sr.defpos, sr.groupCols);
+            if (ags != CTree<long, bool>.Empty)
+            {
+                var nr = (BindingRowSet)cx.Add(sr + (SelectRowSet.Building, true));
+                cx.obs += (sr.defpos, nr); // doesn't change depth
+                cx.funcs += (sr.defpos, BTree<TRow, BTree<long, Register>>.Empty);
+                var rb = cx.binding;
+                if (nr.groupings.Count == 0)
+                    for (var b0 = ags.First(); b0 != null; b0 = b0.Next())
+                    {
+                        if (cx.obs[b0.key()] is SqlFunction sf0)
+                            sf0.AddIn(TRow.Empty, cx);
+                    }
+                else for (var g = nr.groupings.First(); g != null; g = g.Next())
+                        if (g.value() is long p && cx.obs[p] is Domain gg)
+                        {
+                            var vals = CTree<long, TypedValue>.Empty;
+                            for (var gb = gg.rowType.First(); gb != null; gb = gb.Next())
+                                if (gb.value() is long gp && cx.obs[gp] is QlValue v)
+                                    vals += (gp, v.Eval(cx));
+                            var key = new TRow(nr.groupCols, vals);
+                            for (var b1 = ags.First(); b1 != null; b1 = b1.Next())
+                                if (cx.obs[b1.key()] is SqlFunction sf1)
+                                    sf1.AddIn(key, cx);
+                        }
+            }
             return sr;
         }
         internal override Basis New(BTree<long, object> m)
@@ -1916,10 +1944,10 @@ namespace Pyrrho.Level4
         internal const long
             Singleton = -405; //TRow
         internal TRow row => (TRow)(mem[Singleton] ?? TRow.Empty);
-        internal TrivialRowSet(Context cx, Domain dm)
-            : this(cx.GetUid(), cx, new TRow(dm)) { }
-        internal TrivialRowSet(long dp, Context cx, TRow r, string? a = null)
-            : base(dp, cx, _Mem(dp, cx, r.dataType, a) + (Singleton, r)
+        internal TrivialRowSet(Context cx, long ap, Domain dm)
+            : this(ap, cx.GetUid(), cx, new TRow(dm)) { }
+        internal TrivialRowSet(long ap, long dp, Context cx, TRow r, string? a = null)
+            : base(ap, dp, cx, _Mem(dp, cx, r.dataType, a) + (Singleton, r)
                   + (Asserts, Assertions.ProvidesTarget))
         {
             cx.Add(this);
@@ -1930,7 +1958,7 @@ namespace Pyrrho.Level4
             var ns = Names.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.NameFor(p) is string n)
-                    ns += (n, p);
+                    ns += (n, (0L, p));
             var r = dm.mem + (ObInfo._Names, ns);
             if (a != null)
                 r = r + (_Alias, a) + (_Ident, new Ident(a, dp));
@@ -2062,10 +2090,11 @@ namespace Pyrrho.Level4
         /// <summary>
         /// If all uids of dm are uids of r.domain (maybe in different order)
         /// </summary>
-        internal SelectedRowSet(Context cx, Domain dm, RowSet r)
+        internal SelectedRowSet(Context cx, long ap, Domain dm, RowSet r)
                 : base(cx.GetUid(), _Mem(cx, dm, r) + (_Source, r.defpos)
                      + (RSTargets, new BTree<long, long?>(r.target, r.defpos))
-                     + (Asserts, r.asserts) + (ISMap, r.iSMap) + (SIMap, r.sIMap))
+                     + (Asserts, r.asserts) + (ISMap, r.iSMap) + (SIMap, r.sIMap)
+                     + (Scope,ap))
         {
             cx.Add(this);
             r.AddFrom(cx, defpos);
@@ -2078,7 +2107,7 @@ namespace Pyrrho.Level4
             var ns = Names.Empty;
             for (var b = dm.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p && cx.NameFor(p) is string n)
-                    ns += (n, p);
+                    ns += (n, (0L, p));
             return m + (ObInfo._Names, ns);
         }
         public static SelectedRowSet operator +(SelectedRowSet et, (long, object) x)
@@ -2244,16 +2273,17 @@ namespace Pyrrho.Level4
         /// Query environment can supply values for the select tree but source columns
         /// should bind more closely.
         /// </summary>
-        internal SelectRowSet(long lp, Context cx, Domain dm, RowSet r, BTree<long, object>? m = null)
-            : base(lp, _Mem(cx, lp, dm, r, m)) //  not p, cx, _Mem..
+        internal SelectRowSet(long ap, long lp, Context cx, Domain dm, RowSet r, BTree<long, object>? m = null)
+            : base(lp, _Mem(cx, ap, lp, dm, r, m)) //  not p, cx, _Mem..
         {
             cx.Add(this);
         }
         protected SelectRowSet(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long, object> _Mem(Context cx, long dp, Domain dm, RowSet r, BTree<long, object>? m)
+        static BTree<long, object> _Mem(Context cx, long ap, long dp, Domain dm, RowSet r, BTree<long, object>? m)
         {
             m ??= BTree<long, object>.Empty;
+            m += (Scope, ap);
             var gr = (long)(m[Group] ?? -1L);
             if (gr >= 0)
             {
@@ -2320,7 +2350,7 @@ namespace Pyrrho.Level4
                     if (v is not QlInstance && v is not SqlLiteral)
                         a &= ~(Assertions.MatchesTarget | Assertions.ProvidesTarget
                         | Assertions.SimpleCols);
-                    ns += (v.NameFor(cx), v.defpos);
+                    ns += (v.NameFor(cx), (0L, v.defpos));
                 }
             return cx.DoDepth(m + dm.mem + (_Source, r.defpos) + (RSTargets, r.rsTargets) + (Asserts, a)
                 //+ (QlValue.SelectDepth, cx.sD) 
@@ -2372,6 +2402,7 @@ namespace Pyrrho.Level4
             if (nv is not null && no != nv && no is not null && names is Names ns
                 && names.Contains(no))
             {
+                var x = names[no];
                 ns = ns + (nv, names[no]) - no;
                 r += (cx, ObInfo._Names, ns);
             }
@@ -2429,7 +2460,13 @@ namespace Pyrrho.Level4
                 }
             }
             if (mm[Aggs] is CTree<long, bool> t)
-                am += (Aggs, aggs + t);
+            {
+                var nt = aggs;
+                for (var b = t.First(); b != null; b = b.Next())
+                    if ((cx.obs[b.key()]?.scope??0L)>=scope)
+                        nt += (b.key(),b.value());
+                am += (Aggs, nt);
+            }
             if (mm[Having] is CTree<long, bool> h && h != CTree<long, bool>.Empty)
                 am += (Having, having + h);
             var pm = mm - Aggs - Group - Groupings - GroupCols - Having;
@@ -2676,31 +2713,34 @@ namespace Pyrrho.Level4
                     cx.values += (defpos, sg);
                     return (RowSet)cx.Add(this + (_Built, true) + (_Rows, new CList<TRow>(sg)));
                 }
-                var r = (SelectRowSet)cx.Add(this + (Building, true));
-                cx.obs += (defpos, r); // doesn't change depth
-                cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
-                sce = sce.Build(cx);
                 var nrest = sce is not RestRowSet && sce is not RestRowSetUsing;
-                if (nrest)
-                    for (var rb = sce.First(cx); rb != null; rb = rb.Next(cx))
-                        if (r.groupings.Count == 0)
-                            for (var b0 = ags.First(); b0 != null; b0 = b0.Next())
-                            {
-                                if (cx.obs[b0.key()] is SqlFunction sf0)
-                                    sf0.AddIn(TRow.Empty, cx);
-                            }
-                        else for (var g = r.groupings.First(); g != null; g = g.Next())
-                                if (g.value() is long p && cx.obs[p] is Grouping gg)
+                var r = (SelectRowSet)cx.Add(this + (Building, true));
+                if (sce is not BindingRowSet)
+                {
+                    cx.obs += (defpos, r); // doesn't change depth
+                    cx.funcs += (defpos, BTree<TRow, BTree<long, Register>>.Empty);
+                    sce = sce.Build(cx);
+                    if (nrest)
+                        for (var rb = sce.First(cx); rb != null; rb = rb.Next(cx))
+                            if (r.groupings.Count == 0)
+                                for (var b0 = ags.First(); b0 != null; b0 = b0.Next())
                                 {
-                                    var vals = CTree<long, TypedValue>.Empty;
-                                    for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
-                                        if (gb.value() is long gp && cx.obs[gp] is QlValue v)
-                                            vals += (gp, v.Eval(cx));
-                                    var key = new TRow(r.groupCols, vals);
-                                    for (var b1 = ags.First(); b1 != null; b1 = b1.Next())
-                                        if (cx.obs[b1.key()] is SqlFunction sf1)
-                                            sf1.AddIn(key, cx);
+                                    if (cx.obs[b0.key()] is SqlFunction sf0)
+                                        sf0.AddIn(TRow.Empty, cx);
                                 }
+                            else for (var g = r.groupings.First(); g != null; g = g.Next())
+                                    if (g.value() is long p && cx.obs[p] is Grouping gg)
+                                    {
+                                        var vals = CTree<long, TypedValue>.Empty;
+                                        for (var gb = gg.keys.First(); gb != null; gb = gb.Next())
+                                            if (gb.value() is long gp && cx.obs[gp] is QlValue v)
+                                                vals += (gp, v.Eval(cx));
+                                        var key = new TRow(r.groupCols, vals);
+                                        for (var b1 = ags.First(); b1 != null; b1 = b1.Next())
+                                            if (cx.obs[b1.key()] is SqlFunction sf1)
+                                                sf1.AddIn(key, cx);
+                                    }
+                }
                 var rws = CList<TRow>.Empty;
                 var fd = cx.funcs[defpos];
                 for (var b = fd?.First(); b != null; b = b.Next())
@@ -2758,7 +2798,7 @@ namespace Pyrrho.Level4
                 var rws = BList<(long, TRow)>.Empty;
                 for (var b = rows.First(); b != null; b = b.Next())
                     rws += ((b.key(), b.value()));
-                var ers = new ExplicitRowSet(cx.GetUid(), cx, this - _Rows, rws);
+                var ers = new ExplicitRowSet(scope,cx.GetUid(), cx, this - _Rows, rws);
                 return ers.Sort(cx, os, dct);
             }
             return base.Sort(cx, os, dct);
@@ -2899,13 +2939,13 @@ namespace Pyrrho.Level4
         internal CList<long> sRowType =>
             (CList<long>?)mem[SRowType] ?? CList<long>.Empty;
         internal override Assertions Requires => Assertions.SimpleCols;
-        protected InstanceRowSet(long dp, Context cx, BTree<long, object> m)
-            : base(dp, _Mem1(cx, m))
+        protected InstanceRowSet(long dp, Context cx, long ap, BTree<long, object> m)
+            : base(dp, _Mem1(cx, ap, m))
         { }
         protected InstanceRowSet(long dp, BTree<long, object> m)
             : base(dp, m)
         { }
-        static BTree<long, object> _Mem1(Context cx, BTree<long, object> m)
+        static BTree<long, object> _Mem1(Context cx, long ap, BTree<long, object> m)
         {
             m ??= BTree<long, object>.Empty;
             var rt = (CList<long>)(m[RowType] ?? CList<long>.Empty);
@@ -2925,7 +2965,7 @@ namespace Pyrrho.Level4
                     sim += (sp, ip);
                     if (cx.obs[ip] is QlValue sv)
                     {
-                        ns += (ob.alias ?? sv.name ?? "", ip);
+                        ns += (ob.alias ?? sv.name ?? "", (ap,ip));
                         nr += (ip, sv.domain);
                         nt += ip;
                     }
@@ -3042,7 +3082,7 @@ namespace Pyrrho.Level4
         /// Constructor: a rowset defined by a base table
         /// </summary>
         internal TableRowSet(long lp,Context cx, long t, long ap, BTree<long,object>? m = null)
-            : base(lp, cx, _Mem(lp,cx,t,m,ap))
+            : base(lp, cx, ap, _Mem(lp,cx,t,m,ap))
         {
             cx.Add(this);
         }
@@ -3068,9 +3108,9 @@ namespace Pyrrho.Level4
              * instance QlValues needed to satisfy existing references: we will add others later as required
              */
             var tn = new Ident(n, dp);
-            cx.names += (n, dp);
+            cx.names += (n, (ap,dp));
             if (m[_Alias] is string a && a != "")
-                cx.names += (a, dp);
+                cx.names += (a, (ap,dp));
             var rt = CList<long>.Empty;        // our total row type
             var rs = CTree<long, Domain>.Empty; // our total row type representation
             var sr = CList<long>.Empty;        // our total SRow type
@@ -3104,7 +3144,7 @@ namespace Pyrrho.Level4
            // cx.AddDefs(tn, rt, (string?)m[_Alias]);
             if (rt.Length==0) // add POSITION
             {
-                var ps = new SqlFunction(cx.GetUid(), cx, Qlx.POSITION, null, null, null, Qlx.NO);
+                var ps = new SqlFunction(ap, cx.GetUid(), cx, Qlx.POSITION, null, null, null, Qlx.NO);
                 ps += (_From, dp);
                 cx.Add(ps);
                 rt += ps.defpos;
@@ -3839,7 +3879,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="r">a source rowset</param>
         internal DistinctRowSet(Context cx,RowSet r) 
-            : base(cx.GetUid(),cx,_Mem(cx,r)+(_Source,r.defpos)
+            : base(r.scope,cx.GetUid(),cx,_Mem(cx,r)+(_Source,r.defpos)
                   +(Table.LastData,r.lastData)+(_Where,r.where)
                   +(_Matches,r.matches)
                   +(ObInfo._Names, r.names))
@@ -3994,7 +4034,7 @@ namespace Pyrrho.Level4
             : this(cx.GetUid(), cx, r, os, dct)
         { }
         internal OrderedRowSet(long dp, Context cx, RowSet r, Domain os, bool dct)
-            : base(dp, cx, cx.DoDepth(r.mem -Aggs + (_Source, r.defpos)
+            : base(r.scope, dp, cx, cx.DoDepth(r.mem -Aggs + (_Source, r.defpos)
                  + (RSTargets, r.rsTargets) + (RowOrder, os) + (Level3.Index.Keys, os)
                  + (Table.LastData, r.lastData) + (ObInfo.Name, r.name??"")
                  + (ISMap, r.iSMap) + (SIMap,r.sIMap)
@@ -4074,6 +4114,8 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Build(Context cx)
         {
+            if (this.tree?.Count>0 && cx.cursors==BTree<long,TRow>.Empty) // hack for lateral
+                return this;
             var sce = (RowSet?)cx.obs[source] ?? throw new DBException("42105").Add(Qlx.TABLE);
             var tree = new RTree(sce.defpos, cx, keys,
                 distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, TreeBehaviour.Allow);
@@ -4488,7 +4530,7 @@ namespace Pyrrho.Level4
         internal CList<long> sqlRows =>
             (CList<long>?)mem[SqlRows]??CList<long>.Empty;
         internal SqlRowSet(long dp, Context cx, Domain xp, CList<long> rs)
-            : base(dp, cx, _Mem(cx, xp) + (SqlRows, rs))
+            : base(xp.scope, dp, cx, _Mem(cx, xp) + (SqlRows, rs))
         {
             cx.Add(this);
         }
@@ -4498,7 +4540,7 @@ namespace Pyrrho.Level4
             var ns = Names.Empty;
             for (var b = dm.Needs(cx).First(); b != null; b = b.Next())
                 if (cx.NameFor(b.key()) is string n)
-                    ns += (n, b.key());
+                    ns += (n, (0L,b.key()));
             return dm.mem + (ObInfo._Names, ns) + (Asserts, Assertions.AssignTarget);
         }
         internal override Basis New(BTree<long, object> m)
@@ -4665,8 +4707,8 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="rt">a row type</param>
         /// <param name="r">a a set of TRows from q</param>
-        internal ExplicitRowSet(long dp,Context cx,Domain dt,BList<(long,TRow)>r)
-            : base(dp, _Mem(cx,dt,r))
+        internal ExplicitRowSet(long ap, long dp,Context cx,Domain dt,BList<(long,TRow)>r)
+            : base(dp, _Mem(cx,dt,r)+(Scope,ap))
         {
             cx.Add(this);
         }
@@ -4853,15 +4895,15 @@ namespace Pyrrho.Level4
     internal class ProcRowSet : RowSet
     {
         internal long call => (long)(mem[CallStatement.Call]??-1L);
-        internal ProcRowSet(SqlCall ca, Context cx) 
-            :base(cx.GetUid(),cx,
+        internal ProcRowSet(SqlCall ca, long ap, Context cx) 
+            :base(ap,cx.GetUid(),cx,
                  _Mem(cx,cx.db.objects[ca.procdefpos] as Procedure??throw new DBException("42000","ProcRowSet"))
                  +(CallStatement.Call,ca.defpos))
         {
             cx.Add(this);
         }
-        internal ProcRowSet(Context cx,Procedure pr)
-            : base(cx.GetUid(), cx,  _Mem(cx, pr))
+        internal ProcRowSet(Context cx,long ap,Procedure pr)
+            : base(ap, cx.GetUid(), cx,  _Mem(cx, pr))
         {
             cx.Add(this);
         }
@@ -5071,7 +5113,7 @@ namespace Pyrrho.Level4
         internal CTree<long, bool> foreignKeys =>
             (CTree<long, bool>?)mem[ForeignKeys] ?? CTree<long, bool>.Empty;
         internal TransitionRowSet(TargetActivation cx, TableRowSet ts, RowSet data)
-            : base(cx.GetUid(), cx,_Mem(cx, ts, data)+(_Where,ts.where)+(_Data,data.defpos)
+            : base(data.scope,cx.GetUid(), cx,_Mem(cx, ts, data)+(_Where,ts.where)+(_Data,data.defpos)
                   +(Matching,ts.matching))
         {
             cx.Add(this);
@@ -5578,7 +5620,7 @@ namespace Pyrrho.Level4
         /// <param name="trs"></param>
         internal TransitionTableRowSet(long dp, Context cx, TransitionRowSet trs, 
             TransitionTable tt,bool old)
-            : base(dp, cx, _Mem(cx, trs, tt, old)
+            : base(trs.scope,dp, cx, _Mem(cx, trs, tt, old)
                   + (RSTargets, trs.rsTargets) + (Target,trs.target))
         {
             cx.Add(this);
@@ -6142,7 +6184,7 @@ namespace Pyrrho.Level4
             var vs = BList<DBObject>.Empty; // the resolved select tree in query rowType order
             var vd = CList<long>.Empty;
             var qn = q?.Needs(cx, -1L, CTree<long, bool>.Empty);
-            cx.names += (vw.NameFor(cx), lp);
+            cx.names += (vw.NameFor(cx), (0L,lp));
             int d;
             var nm = CTree<long, string>.Empty;
             var mn = Names.Empty;
@@ -6157,7 +6199,7 @@ namespace Pyrrho.Level4
                 {
                     vd += p;
                     nm += (p, ns);
-                    mn += (ns, p);
+                    mn += (ns, (lp,p));
                 }
             for (var b = vw.rowType.First(); b != null; b = b.Next())
                 if (b.value() is long p&& cx.obs[p] is QlValue sc && !vs.Has(sc)
@@ -7612,7 +7654,7 @@ namespace Pyrrho.Level4
         /// <param name="b">the right operand</param>
         /// <param name="q">true if DISTINCT specified</param>
         internal CompositeRowSet(long dp, Context cx, Domain q, RowSet a, RowSet b, bool d, Qlx op)
-            : base(dp, cx, _Mem(q, a, b) + (Distinct, d) + (SqlValueExpr.Op, op)
+            : base(a.scope,dp, cx, _Mem(q, a, b) + (Distinct, d) + (SqlValueExpr.Op, op)
                   + (_Left, a.defpos) + (_Right, b.defpos))
         {
             if (q.Length == 0)

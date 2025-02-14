@@ -61,16 +61,16 @@ namespace Pyrrho.Level4
         /// Important: we have already identified the references and aliases in the select tree.
         /// </summary>
         /// <param name="j">The Join part</param>
-		public JoinRowSet(long dp,Context cx, RowSet lr, Qlx k,RowSet rr,
+		public JoinRowSet(long dp,Context cx, RowSet lr, Qlx k,RowSet rr,long ap,
             BTree<long,object>? m = null)
-            : base(dp, cx, _Mem(cx,m,k,lr,(RowSet)cx.Add(rr+(_From,dp))))
+            : base(lr.scope,dp, cx, _Mem(cx,m,k,lr,(RowSet)cx.Add(rr+(_From,dp)),ap))
         {
             cx.Add(this);
         }
         protected JoinRowSet(long dp, BTree<long, object> m) : base(dp, m)
         { }
         static BTree<long,object> _Mem(Context cx, BTree<long, object>? m,
-            Qlx k,RowSet lr, RowSet rr)
+            Qlx k,RowSet lr, RowSet rr,long ap)
         {
             m ??= BTree<long, object>.Empty;
             m += (JoinKind, (k==Qlx.COMMA)?Qlx.CROSS:k);
@@ -85,10 +85,10 @@ namespace Pyrrho.Level4
             var lc = CTree<long,bool>.Empty; // left columns to rename (true) or drop (false)
             var rc = CTree<long,bool>.Empty; // right columns to rename (true) or drop (false)
             for (var b = lr.names.First(); b != null; b = b.Next())
-                if (b.value() is long lp)
+                if (b.value().Item2 is long lp)
                 {
                     var n = b.key();
-                    var rk = rr.names[n];
+                    var rk = rr.names[n].Item2;
                     ns += (lp, n);
                     if (rk!=-1L)
                     {
@@ -98,7 +98,7 @@ namespace Pyrrho.Level4
                     } 
                 }
             for (var b = rr.names.First(); b != null; b = b.Next())
-                if (b.value() is long rp)
+                if (b.value().Item2 is long rp)
                     ns += (rp, b.key());
             // Step 2: consider NATURAL and USING
             if (cm!=CTree<string,(long,long)>.Empty)
@@ -146,7 +146,7 @@ namespace Pyrrho.Level4
                     if (((!lc.Contains(sv.defpos)) || lc[sv.defpos]) && !cm.Contains(n))
                     {
                         ls += n;
-                        nn += (n, sv.defpos);
+                        nn += (n, (ap,sv.defpos));
                         cs += sv.defpos;
                     }
                     else if (cm.Contains(n))
@@ -157,11 +157,11 @@ namespace Pyrrho.Level4
                             var nl = sv + (_Alias, ln);
                             cx.Replace(sv, nl);
                             ls += ln;
-                            nn += (ln, sv.defpos);
+                            nn += (ln, (ap,sv.defpos));
                         }
                         else
                         {
-                            nn += (n, sv.defpos);
+                            nn += (n, (ap,sv.defpos));
                             ls += n;
                         }
                         cs += sv.defpos;
@@ -178,7 +178,7 @@ namespace Pyrrho.Level4
                     if (((!rc.Contains(rv.defpos)) || rc[rv.defpos]) && !cm.Contains(n))
                     {
                         rs += n;
-                        nn += (n, rv.defpos);
+                        nn += (n, (ap,rv.defpos));
                         cs += rv.defpos;
                     }
                     else if (cm.Contains(n))
@@ -189,11 +189,11 @@ namespace Pyrrho.Level4
                             var nr = rv + (_Alias, rn);
                             cx.Replace(rv, nr);
                             rs += rn;
-                            nn += (rn, rv.defpos);
+                            nn += (rn, (ap,rv.defpos));
                         }
                         else
                         {
-                            nn += (n, rv.defpos);
+                            nn += (n, (ap,rv.defpos));
                             rs += n;
                         }
                         cs += rv.defpos;
@@ -237,7 +237,7 @@ namespace Pyrrho.Level4
                         var mm = Math.Min(le, ri);
                         if (cx.NameFor(le) is string li && cx.NameFor(ri) == li
                             && cx._Ob(mm) is DBObject mo)
-                            cx.Add(li, mo);
+                            cx.Add(li, ap, mo);
                     }
                 lr = lr.Sort(cx, lo, false);
                 rr = rr.Sort(cx, ro, false);

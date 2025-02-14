@@ -31,8 +31,8 @@ namespace Pyrrho.Level4
         internal Ident(Parser psr)
         {
             var lx = psr.lxr;
-            lp = lx.Position;
             uid = psr.LexDp();
+            lp = (uid>=Transaction.Executables&&uid<Transaction.HeapStart)?lx.pos:lx.Position;
             ident = ((lx.tok == Qlx.Id && lx.val is not null)? lx.val.ToString() : DBObject.Uid(uid));
             if (lx.tgs[uid] is TGParam gp)
                 lx.tgs += (lp, new TGParam(uid, gp.value, gp.dataType, gp.type, gp.from));

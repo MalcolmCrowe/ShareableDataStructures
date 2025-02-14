@@ -246,11 +246,11 @@ namespace Pyrrho.Level3
             {
                 for (var b = fm.rowType.First(); b != null; b = b.Next())
                     if (b.value() is long p && cx.NameFor(p) is string nm)
-                        ns += (nm, p);
+                        ns += (nm, (ic.lp,p));
                 cx.Add(fm + (ObInfo._Names, ns));
             }
             cx.defs += (ic.uid, ns);
-            cx.Add(ic.ident,fm);
+            cx.Add(ic.ident,ic.lp,fm);
         }
         protected TransitionTable(long dp, BTree<long, object> m) : base(dp, m) { }
         public static TransitionTable operator +(TransitionTable et, (long, object) x)

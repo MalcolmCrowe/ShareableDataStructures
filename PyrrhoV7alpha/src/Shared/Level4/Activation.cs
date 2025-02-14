@@ -51,6 +51,7 @@ namespace Pyrrho.Level4
             next.val = val;
             next.nextHeap = Math.Max(next.nextHeap,nextHeap);
             next.result = result;
+            next.binding = binding;
             if (next.next is Context nx)
                 nx.lastret = next.lastret;
             if (db != next.db)
@@ -127,8 +128,12 @@ namespace Pyrrho.Level4
         }
         internal override Context SlideDown()
         {
-            if (next!=null)
+            if (next != null)
+            {
                 next.obs = obs;
+                next.binding = binding;
+                next.funcs = funcs;
+            }
             return base.SlideDown();
         }
     }
@@ -324,7 +329,7 @@ namespace Pyrrho.Level4
                         if (c.value() is long p && cx.obs[p] is QlValue sc 
                             && sc.infos[role.defpos] is ObInfo ci)
                         {
-                            sc = new QlInstance(GetUid(), cx, ci?.name ?? sc?.alias ?? sc?.name ?? "", cp, p);
+                            sc = new QlInstance(0L,GetUid(), cx, ci?.name ?? sc?.alias ?? sc?.name ?? "", cp, p);
                             Add(sc);
                             vs += sc;
                             tr += (p, sc.defpos);

@@ -132,7 +132,7 @@ namespace Pyrrho.Level3
             var ns = oi.names;
             tc += (TableColumn.Seq, tb.Length);
             if (ci.name != null)
-                ns += (ci.name,tc.defpos);
+                ns += (ci.name,(0L, tc.defpos));
             cx.Add(tc);
             oi += (ObInfo._Names, ns);
             if (!tb.representation.Contains(tc.defpos))
@@ -374,12 +374,12 @@ ColsFrom(Context cx, long dp,CList<long> rt, CTree<long, Domain> rs, CList<long>
                 {
                     var nm = ob.NameFor(cx);
                     var nn = nm ?? ob.alias;
-                    var rv = cx._Ob(cx.names[nn ?? ""]) as SqlReview;
+                    var rv = cx._Ob(cx.names[nn ?? ""].Item2) as SqlReview;
                     var m = rv?.mem??BTree<long, object>.Empty;
                     if (ob is TableColumn tc)
                     {
                         m += (_Domain, tc.domain);
-                        var qv = new QlInstance(rv?.defpos??cx.GetUid(), cx, nm??"", dp, tc,m);
+                        var qv = new QlInstance(ap,rv?.defpos??cx.GetUid(), cx, nm??"", dp, tc,m);
                         rt += qv.defpos;
                         sr += ob.defpos;
                         rs += (qv.defpos, qv.domain);
@@ -408,13 +408,13 @@ ColsFrom(Context cx, long dp,CList<long> rt, CTree<long, Domain> rs, CList<long>
                         sr += ob.defpos;
                         rs += (ob.defpos, ob.domain);
                         tr += (ob.defpos, ob.defpos);
-                        ns += (nn ?? ("Col" + j), ob.defpos);
+                        ns += (nn ?? ("Col" + j), (ap,ob.defpos));
                     }
                     j++;
                     if (nm != null && ob is QlValue)
                     {
-                        ns += (nm, ob.defpos);
-                        cx.Add(nm, ob);
+                        ns += (nm, (ap,ob.defpos));
+                        cx.Add(nm, ap, ob);
                     }
          //           else
          //               throw new DBException("42105");

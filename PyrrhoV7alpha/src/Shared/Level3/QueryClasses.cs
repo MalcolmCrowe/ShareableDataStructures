@@ -289,12 +289,11 @@ namespace Pyrrho.Level3
             (CList<Grouping>)(mem[Groups]?? CList<Grouping>.Empty);
         /// <summary>
         /// the names for this grouping.
-        /// See QlValue.IsNeeded for where the ref gp parameter is used.
         /// </summary>
         internal CTree<long,int> members => 
             (CTree<long,int>)(mem[Members]??CTree<long,int>.Empty);
         internal Domain keys =>
-            (Domain)(mem[Index.Keys]??Domain.Null);
+            (Domain)(mem[Index.Keys]??Null);
         internal Grouping(Context cx,BTree<long,object>?m= null)
             :base(cx.GetUid(),_Mem(cx,m))
         { }
