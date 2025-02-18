@@ -483,16 +483,16 @@ namespace Pyrrho.Level4
                 return d;
             return (obs[q] is DBObject ob) ? Math.Max(ob.depth + 1, d) : d;
         }
-        internal int _DepthBV(CList<long>? t, int d)
+        internal int _DepthLl(CList<long>? t, int d)
         {
             for (var b = t?.First(); b != null; b = b.Next())
                 d = _DepthV(b.value(), d);
             return d;
         }
-        internal int _DepthBBV(CList<CList<long>>?t, int d)
+        internal int _DepthLLl(CList<CList<long>>?t, int d)
         {
             for (var b = t?.First(); b != null; b = b.Next())
-                d = _DepthBV(b.value(), d);
+                d = _DepthLl(b.value(), d);
             return d;
         }
         internal int _DepthTUb(CTree<UpdateAssignment, bool>? t, int d)
@@ -915,19 +915,19 @@ namespace Pyrrho.Level4
                 {
                     HandlerStatement.Action => Math.Max(((HandlerStatement)o).depth, d),
                     Domain.Aggs => _DepthTVX((CTree<long, bool>)o, d),
-                    SqlValueArray._Array => _DepthBV((CList<long>)o, d),
+                    SqlValueArray._Array => _DepthLl((CList<long>)o, d),
                     RowSet.Assig => _DepthTUb((CTree<UpdateAssignment, bool>)o, d),
-                    SqlCall.Parms => _DepthBV((CList<long>)o, d),
+                    SqlCall.Parms => _DepthLl((CList<long>)o, d),
                     SqlCaseSimple.Cases => _DepthBPVV((BList<(long, long)>)o, d),
                     Domain.DefaultRowValues => _DepthTVX((CTree<long, TypedValue>)o, d),
-                    ConditionalStatement.Else => _DepthBV((CList<long>)o, d),
-                    ConditionalStatement.Elsif => _DepthBV((CList<long>)o, d),
+                    ConditionalStatement.Else => _DepthLl((CList<long>)o, d),
+                    ConditionalStatement.Elsif => _DepthLl((CList<long>)o, d),
                     ExplicitRowSet.ExplRows => _DepthBPVX((BList<(long, TRow)>)o, d),
                     RowSet.Filter => _DepthTVX((CTree<long, TypedValue>)o, d),
                     SqlFunction.Filter => _DepthTVX((CTree<long, bool>)o, d),
                     TransitionRowSet.ForeignKeys => _DepthTVX((CTree<long, bool>)o, d),
                     TableColumn.Generated => _DepthG((GenerationRule)o, d),
-                    RowSet.Groupings => _DepthBV((CList<long>)o, d),
+                    RowSet.Groupings => _DepthLl((CList<long>)o, d),
                     RowSet.GroupIds => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.Having => _DepthTVX((CTree<long, bool>)o, d),
                     Table.Indexes => _DepthTDTVb((CTree<Domain, CTree<long, bool>>)o, d),
@@ -935,7 +935,7 @@ namespace Pyrrho.Level4
                     JoinRowSet.JoinCond => _DepthTVX((CTree<long, bool>)o, d),
                     JoinRowSet.JoinUsing => _DepthTVV((BTree<long, long?>)o, d),
                     GetDiagnostics.List => _DepthTVX((CTree<long, Qlx>)o, d),
-                    MultipleAssignment.List => _DepthBV((CList<long>)o, d),
+                    MultipleAssignment.List => _DepthLl((CList<long>)o, d),
                     RowSet._Matches => _DepthTVX((CTree<long, TypedValue>)o, d),
                     RowSet.Matching => _DepthTVTVb((CTree<long, CTree<long, bool>>)o, d),
                     Grouping.Members => _DepthTVX((CTree<long, int>)o, d),
@@ -943,35 +943,35 @@ namespace Pyrrho.Level4
                     RestView.NamesMap => _DepthTVX((CTree<long, string>)o, d),
                     Domain.NodeTypes => _DepthTDb((CTree<Domain, bool>)o, d),
                     JoinRowSet.OnCond => _DepthTVV((BTree<long, long?>)o, d),
-                    FetchStatement.Outs => _DepthBV((CList<long>)o, d),
-                    PreparedStatement.QMarks => _DepthBV((CList<long>)o, d),
+                    FetchStatement.Outs => _DepthLl((CList<long>)o, d),
+                    PreparedStatement.QMarks => _DepthLl((CList<long>)o, d),
                     SelectRowSet.RdCols => _DepthTVX((CTree<long, bool>)o, d),
                     RowSet.Referenced => _DepthTVX((CTree<long, bool>)o, d),
                     Level3.Index.References => _DepthTVBt((BTree<long, BList<TypedValue>>)o, d),
                     Domain.Representation => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.RestRowSetSources => _DepthTVX((CTree<long, bool>)o, d),
-                    Domain.RowType => _DepthBV((CList<long>)o, d),
+                    Domain.RowType => _DepthLl((CList<long>)o, d),
                     SignalStatement.SetList => _DepthTXV((BTree<Qlx, long?>)o, d),
-                    GroupSpecification.Sets => _DepthBV((CList<long>)o, d),
+                    GroupSpecification.Sets => _DepthLl((CList<long>)o, d),
                     RowSet.SIMap => _DepthTXV((BTree<long, long?>)o, d),
-                    SqlRowSet.SqlRows => _DepthBV((CList<long>)o, d),
-                    InstanceRowSet.SRowType => _DepthBV((CList<long>)o, d),
-                    NestedStatement.Stms => _DepthBV((CList<long>)o, d),
+                    SqlRowSet.SqlRows => _DepthLl((CList<long>)o, d),
+                    InstanceRowSet.SRowType => _DepthLl((CList<long>)o, d),
+                    NestedStatement.Stms => _DepthLl((CList<long>)o, d),
                     ForwardReference.Subs => _DepthTVX((CTree<long, bool>)o, d),
-                    ConditionalStatement.Then => _DepthBV((CList<long>)o, d),
+                    ConditionalStatement.Then => _DepthLl((CList<long>)o, d),
                     Domain.UnionOf => _DepthTDb((CTree<Domain, bool>)o, d),
-                    RestRowSetUsing.UsingCols => _DepthBV((CList<long>)o, d),
+                    RestRowSetUsing.UsingCols => _DepthLl((CList<long>)o, d),
                     RowSet.UsingOperands => _DepthTVV((BTree<long, long?>)o, d),
                     AssignmentStatement.Val => Math.Max(((AssignmentStatement)o).depth, d),
                     AssignmentStatement.Vbl => Math.Max(((AssignmentStatement)o).depth, d),
-                    WhileStatement.What => _DepthBV((CList<long>)o, d),
-                    SimpleCaseStatement.Whens => _DepthBV((CList<long>)o, d),
+                    WhileStatement.What => _DepthLl((CList<long>)o, d),
+                    SimpleCaseStatement.Whens => _DepthLl((CList<long>)o, d),
                     RowSet._Where => _DepthTVX((CTree<long, bool>)o, d),
-                    QuantifiedPredicate.Vals => _DepthBV((CList<long>)o, d),
-                    MatchStatement.MatchList => _DepthBV((CList<long>)o, d),
+                    QuantifiedPredicate.Vals => _DepthLl((CList<long>)o, d),
+                    MatchStatement.MatchList => _DepthLl((CList<long>)o, d),
                     MatchStatement.Truncating => _DepthTlPiD((BTree<long, (int, Domain)>)o, d),
-                    GqlMatch.MatchAlts => _DepthBV((CList<long>)o, d),
-                    GqlMatchAlt.MatchExps => _DepthBV((CList<long>)o, d),
+                    GqlMatch.MatchAlts => _DepthLl((CList<long>)o, d),
+                    GqlMatchAlt.MatchExps => _DepthLl((CList<long>)o, d),
                     _ => Math.Max(d, 1)
                 };
             return d;

@@ -104,7 +104,7 @@ namespace Pyrrho.Level3
             if (e.mem[p] == o)
                 return e;
             if (p == UpdateCols)
-                m += (_Depth, cx._DepthBV(e.cols, d));
+                m += (_Depth, cx._DepthLl(e.cols, d));
             else
             if (o is long q && cx.obs[q] is DBObject ob)
             {

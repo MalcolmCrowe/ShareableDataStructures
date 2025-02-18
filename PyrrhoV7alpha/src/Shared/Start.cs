@@ -573,7 +573,7 @@ namespace Pyrrho
                                 BTree<long, TargetActivation>? ans = null;
                                 CTree<long, TypedValue> old=CTree<long,TypedValue>.Empty, vs;
                                 vs = f.Parse(cx, ss[2]);
-                                var data = new TrivialRowSet(cx.GetUid(), cx, new TRow(f, vs));
+                                var data = new TrivialRowSet(0L,cx.GetUid(), cx, new TRow(f, vs));
                                 ans = f.Insert(cx, data, f);
                                 if (data.First(cx) is Cursor ib)
                                 {
@@ -1532,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(05 Feb 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(18 Feb 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

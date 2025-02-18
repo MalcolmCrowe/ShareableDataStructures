@@ -3615,7 +3615,7 @@ namespace Pyrrho.Level3
             cx.Add(this);
         }
         public SqlRow(long dp, Context cx, Domain xp, CList<long> vs, BTree<long, object>? m = null)
-            : base(dp, _Inf(cx, m, xp, vs) + (_Depth,cx._DepthBV(vs,xp.depth+1)))
+            : base(dp, _Inf(cx, m, xp, vs) + (_Depth,cx._DepthLl(vs,xp.depth+1)))
         {
             cx.Add(this);
         } 
@@ -4080,7 +4080,7 @@ namespace Pyrrho.Level3
         internal CList<long> rows =>
             (CList<long>?)mem[_Rows]?? CList<long>.Empty;
         public SqlRowArray(long dp,Context cx,Domain ap,CList<long> rs) 
-            : base(dp, BTree<long,object>.Empty+(_Domain,ap)+(_Rows, rs)+(_Depth,cx._DepthBV(rs,ap.depth+1)))
+            : base(dp, BTree<long,object>.Empty+(_Domain,ap)+(_Rows, rs)+(_Depth,cx._DepthLl(rs,ap.depth+1)))
         {
             cx.Add(this);
         }
@@ -4111,7 +4111,7 @@ namespace Pyrrho.Level3
             {
                 case _Rows:
                     {
-                        m += (_Depth,cx._DepthBV((CList<long>)ob,et.depth));
+                        m += (_Depth,cx._DepthLl((CList<long>)ob,et.depth));
                         break;
                     }
                 case Domain.Aggs:
@@ -4507,7 +4507,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">the context</param>
         /// <param name="a">the array</param>
         public SqlValueArray(long dp,Context cx,Domain xp,CList<long> v)
-            : base(dp,xp.mem+(_Array,v)+(_Domain,xp)+(_Depth,cx._DepthBV(v,xp.depth+1)))
+            : base(dp,xp.mem+(_Array,v)+(_Domain,xp)+(_Depth,cx._DepthLl(v,xp.depth+1)))
         {
             cx.Add(this);
         }
@@ -4537,7 +4537,7 @@ namespace Pyrrho.Level3
             switch (dp)
             {
                 case _Array:
-                    m += (_Depth, cx._DepthBV((CList<long>)ob,et.depth));
+                    m += (_Depth, cx._DepthLl((CList<long>)ob,et.depth));
                     break;
                 case Domain.Aggs:
                     m += (_Depth, cx._DepthTVX((CTree<long,bool>)ob, et.depth));
@@ -4800,7 +4800,7 @@ namespace Pyrrho.Level3
         /// <param name="a">the array</param>
         public SqlValueMultiset(long dp, Context cx, Domain xp, CList<long> v)
             : base(dp, xp.mem + (MultiSqlValues, v)
-                  +(_Depth,cx._DepthBV(v,xp.depth+1)))
+                  +(_Depth,cx._DepthLl(v,xp.depth+1)))
         {
             cx.Add(this);
         }
@@ -4830,7 +4830,7 @@ namespace Pyrrho.Level3
             switch(dp)
             {
                 case MultiSqlValues:
-                    m += (_Depth, cx._DepthBV((CList<long>)ob, et.depth));
+                    m += (_Depth, cx._DepthLl((CList<long>)ob, et.depth));
                     break;
                 case Domain.Aggs:
                     m += (_Depth, cx._DepthTVX((CTree<long, bool>)ob, et.depth));
@@ -5050,7 +5050,7 @@ namespace Pyrrho.Level3
         /// <param name="v">the elements</param>
         public SqlValueSet(long dp, Context cx, Domain xp, CList<long> v)
             : base(dp, xp.mem + (Elements, v)
-                  +(_Depth,cx._DepthBV(v,xp.depth+1)))
+                  +(_Depth,cx._DepthLl(v,xp.depth+1)))
         {
             cx.Add(this);
         }
@@ -5083,7 +5083,7 @@ namespace Pyrrho.Level3
                     m += (_Depth, cx._DepthTVX((CTree<long, bool>)ob, et.depth));
                     break;
                 case Elements:
-                    m += (_Depth, cx._DepthBV((CList<long>)ob, et.depth));
+                    m += (_Depth, cx._DepthLl((CList<long>)ob, et.depth));
                     break;
                 default:
                     {
@@ -5775,7 +5775,7 @@ namespace Pyrrho.Level3
                     m += (_Depth, cx._DepthTVX((CTree<long,bool>)o, s.depth));
                     break;
                 case Parms:
-                    m += (_Depth, cx._DepthBV((CList<long>)o, s.depth));
+                    m += (_Depth, cx._DepthLl((CList<long>)o, s.depth));
                     break;
                 case ProcDefPos:
                 case Var:
@@ -5975,7 +5975,7 @@ namespace Pyrrho.Level3
                     m += (_Depth, cx._DepthTVX((CTree<long, bool>)o, s.depth));
                     break;
                 case Parms:
-                    m += (_Depth, cx._DepthBV((CList<long>)o, s.depth));
+                    m += (_Depth, cx._DepthLl((CList<long>)o, s.depth));
                     break;
                 case ProcDefPos:
                 case Var:
@@ -6104,7 +6104,7 @@ namespace Pyrrho.Level3
                     m += (_Depth, cx._DepthTVX((CTree<long, bool>)o, s.depth));
                     break;
                 case Parms:
-                    m += (_Depth, cx._DepthBV((CList<long>)o, s.depth));
+                    m += (_Depth, cx._DepthLl((CList<long>)o, s.depth));
                     break;
                 case ProcDefPos:
                 case Var:
@@ -6331,7 +6331,7 @@ namespace Pyrrho.Level3
                 }
             return BTree<long, object>.Empty + (_Domain, u)
                   + (Sce, cx._Add(new SqlRow(ap, cx, u, ps)).defpos)
-                  + (_Depth,cx._DepthBV(ps,u.depth+1));
+                  + (_Depth,cx._DepthLl(ps,u.depth+1));
         }
         public static SqlDefaultConstructor operator +(SqlDefaultConstructor et, (long, object) x)
         {
@@ -9647,7 +9647,7 @@ cx.obs[high] is not QlValue hi)
             switch (dp)
             {
                 case QuantifiedPredicate.Vals:
-                    m += (_Depth,cx._DepthBV((CList<long>)ob, et.depth));
+                    m += (_Depth,cx._DepthLl((CList<long>)ob, et.depth));
                     break;
                 default:
                     {
@@ -11471,11 +11471,13 @@ cx.obs[high] is not QlValue hi)
         /// <param name="cx"></param>
         /// <param name="n"></param>
         /// <returns></returns>
-        internal bool CheckProps(Context cx, MatchStatement ms, TNode n)
+        internal virtual bool CheckProps(Context cx, MatchStatement ms, TNode n)
         {
             //       if (this is not GqlEdge && n is TEdge)
             //           return false;
             if (cx.binding[idValue] is TNode ni && ni.id.CompareTo(n.id) != 0)
+                return false;
+            if (this is GqlReference gr && cx.binding[gr.refersTo] != n)
                 return false;
             cx.values += n.tableRow.vals;
             var ns = n._Names(cx);

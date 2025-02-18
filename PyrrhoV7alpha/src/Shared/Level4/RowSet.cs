@@ -258,10 +258,10 @@ namespace Pyrrho.Level4
                 case SelectRowSet.RdCols:
                 case Referenced:
                 case RestRowSetSources:
-                case _Where:
+                case _Where: m += (_Depth, cx._DepthTVX((CTree<long,bool>)o,d));break;
                 case InstanceRowSet.SRowType:
                 case SqlRowSet.SqlRows:
-                case Groupings: m += (_Depth, cx._DepthBV((CList<long>)o, d)); break;
+                case Groupings: m += (_Depth, cx._DepthLl((CList<long>)o, d)); break;
                 case GroupIds: m += (_Depth, cx._DepthTVD((CTree<long, Domain>)o, d)); break;
                 case ISMap:
                 case RSTargets:
@@ -1944,6 +1944,8 @@ namespace Pyrrho.Level4
         internal const long
             Singleton = -405; //TRow
         internal TRow row => (TRow)(mem[Singleton] ?? TRow.Empty);
+        internal static TrivialRowSet Static = new();
+        TrivialRowSet():this(--_uid,new BTree<long, object>(Singleton, TRow.Empty)) { }
         internal TrivialRowSet(Context cx, long ap, Domain dm)
             : this(ap, cx.GetUid(), cx, new TRow(dm)) { }
         internal TrivialRowSet(long ap, long dp, Context cx, TRow r, string? a = null)
@@ -2870,6 +2872,8 @@ namespace Pyrrho.Level4
                 for (var bmk = sce?.First(cx);
                     bmk != null; bmk = bmk.Next(cx))
                 {
+                    if (sce is BindingRowSet)
+                        cx.binding = bmk.values;
                     var rb = new SelectCursor(cx, srs, bmk, 0);
                     if (rb.Matches(cx))
                         return rb;

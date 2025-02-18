@@ -339,6 +339,9 @@ namespace Pyrrho.Level4
         public Executable ParseStatement(params (long, object)[] m)
         {
             var mm = BTree<long, object>.New(m);
+            if (mm.Contains(CallStatement.Optional) &&
+                !Match(Qlx.CALL, Qlx.MATCH, Qlx.LBRACE, Qlx.LPAREN, Qlx.BEGIN))
+                throw new DBException("42000", "OPTIONAL");
             var xp = mm[DBObject._Domain] as Domain ?? Domain.Null;
             var lp = LexDp();
             if (StartStatement())
@@ -402,15 +405,25 @@ namespace Pyrrho.Level4
                     case Qlx.LET: return ParseLet();
                     case Qlx.LIMIT: goto case Qlx.ORDER;
                     case Qlx.LOOP: return ParseLoopStatement();
-                    case Qlx.MATCH: return ParseMatchStatement();
+                    case Qlx.LPAREN: goto case Qlx.BEGIN;
+                    case Qlx.MATCH: return ParseMatchStatement(m);
                     case Qlx.NODETACH: goto case Qlx.DELETE;
                     case Qlx.OFFSET: goto case Qlx.ORDER;
                     case Qlx.OPEN: return ParseOpenStatement();
-                    case Qlx.OPTIONAL: // TBD
-                        Next();
-                        if (tok == Qlx.CALL) goto case Qlx.CALL;
-                        if (tok == Qlx.MATCH) goto case Qlx.MATCH;
-                        break;
+                    case Qlx.OPTIONAL:
+                        {
+                            Next();
+                            mm += (CallStatement.Optional, true);
+                            m = mm.ToArray();
+                            if (tok == Qlx.MATCH)
+                                return ParseMatchStatement(m);
+                            if (tok == Qlx.CALL)
+                                return ParseCallStatement(m);
+                            var bb = Mustbe(Qlx.LPAREN, Qlx.LBRACE);
+                            var ms = ParseMatchStatement(m);
+                            Mustbe((bb == Qlx.LPAREN) ? Qlx.RPAREN : Qlx.RBRACE);
+                            return ms;
+                        }
                     case Qlx.ORDER: return ParseOrderAndPage();
                     case Qlx.PROPERTY:
                         Next();
@@ -2578,8 +2591,9 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <returns></returns>
         /// <exception cref="DBException"></exception>
-        internal Executable ParseMatchStatement()
+        internal Executable ParseMatchStatement(params (long, object)[] m)
         {
+            var mm = BTree<long, object>.New(m);
             var olddefs = cx.defs; 
             var oldlocals = cx.bindings;
             var lp = LexLp();
@@ -2614,24 +2628,29 @@ namespace Pyrrho.Level4
             // state M18
             cx.ParsingMatch = false;
             var (ers, ns) = BindingTable(cx, lp, tgs, svgs);
-            var m = ers.mem;
-            m += (ObInfo._Names, ns);
-            m += (MatchStatement.MatchFlags, flags);
-            m += (MatchStatement.BindingTable, ers.defpos);
-            m += (DBObject._Domain, ers);
+            mm += ers.mem;
+            mm += (ObInfo._Names, ns);
+            mm += (MatchStatement.MatchFlags, flags);
+            mm += (MatchStatement.BindingTable, ers.defpos);
+            mm += (DBObject._Domain, ers);
             if (Match(Qlx.WHERE) && ParseWhereClause() is CTree<long, bool> wh) // GQL-169
-                m += (RowSet._Where, wh);
-            BindingRowSet rr = ers;
+                mm += (RowSet._Where, wh);
             cx.Add(ers);
             cx.result = ers;
-            var ms = new MatchStatement(cx, tg, tgs, svgs, m);
+            if (tok == Qlx.MATCH)
+            {
+                mm += (ConditionalStatement.Then, new CList<long>(ParseMatchStatement(m).defpos));
+                mm += (MatchStatement.BindingTable, cx.result.defpos);
+            }
+            var ms = new MatchStatement(cx, tg, tgs, svgs, mm);
             cx.Add(ms);
             return ms;
         }
         internal static (BindingRowSet, Names) BindingTable(Context cx, long ap, CTree<long, TGParam> gs, CList<long> svgs)
         {
-            var rt = CList<long>.Empty;
-            var re = CTree<long, Domain>.Empty;
+            var incoming = cx.result as RowSet ?? TrivialRowSet.Static;
+            var rt = incoming.rowType;
+            var re = incoming.representation;
             var ns = Names.Empty;
             var ds = CTree<long, Domain>.Empty;
             for (var a = svgs.First(); a != null; a = a.Next())
@@ -4793,11 +4812,6 @@ namespace Pyrrho.Level4
                 Mustbe(Qlx.Id);
             return n.ToString();
         }
-        /// <summary>
-		/// NestedStatement = Label BEGIN [XMLDec] Statements END .
-        /// </summary>
-        /// <param name="n">the label</param>
-        /// <returns>the Executable valueType of the parse</returns>
 		NestedStatement ParseNestedStatement(params (long, object)[] m)
         {
             var cs = new NestedStatement(LexDp(), cx, CList<CList<long>>.Empty, m);
@@ -4806,6 +4820,7 @@ namespace Pyrrho.Level4
             var lp = LexDp();
             if (Match(Qlx.TRANSACTION))
                 throw new DBException("22G01", "Nested transactions are not supported").ISO();
+            var mm = BTree<long, object>.New(m);
             var r = CList<CList<long>>.Empty;
             var rr = CList<long>.Empty;
             while (tok != et && StartStatement() && ParseStatement(m) is Executable a)
@@ -7958,7 +7973,7 @@ namespace Pyrrho.Level4
                     break;
                 case Qlx.WITH:
                 case Qlx.MATCH:
-                    ParseMatchStatement();
+                    ParseMatchStatement(m);
                     qs = (RowSet)(cx.result ?? new TrivialRowSet(cx, ap, Domain.Row));
                     break;
                 case Qlx.VALUES:
@@ -9388,7 +9403,7 @@ namespace Pyrrho.Level4
             var mm = BTree<long, object>.New(m);
             var xp = mm[DBObject._Domain] as Domain ?? Domain.Content;
             if (Match(Qlx.MATCH))
-                return (QlValue)cx.Add(new QlMatchValue(cx,ParseMatchStatement(),xp));
+                return (QlValue)cx.Add(new QlMatchValue(cx,ParseMatchStatement(m),xp));
             if (Match(Qlx.PERIOD))
             {
                 Next();
