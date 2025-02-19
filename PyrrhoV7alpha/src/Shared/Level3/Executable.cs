@@ -4988,6 +4988,7 @@ namespace Pyrrho.Level3
             cx.db = ac.db;
             if (cx.obs[ef?.value() ?? -1L] is Executable fe)
                 cx = fe._Obey(cx, ef?.Next());
+            cx.funcs = ac.funcs;
             return cx;
         }
         internal RowSet? DoExclusions(RowSet? rs,Context ac,Context cx)
