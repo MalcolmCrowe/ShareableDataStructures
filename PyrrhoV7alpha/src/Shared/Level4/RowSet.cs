@@ -1910,6 +1910,7 @@ namespace Pyrrho.Level4
                 _rs = rs;
                 _mb = mb;
                 cx.values += values;
+                cx.binding += values;
             }
             internal static Bindings? New(Context cx, BindingRowSet rs)
             {
@@ -2868,33 +2869,39 @@ namespace Pyrrho.Level4
             }
             internal static SelectCursor? New(Context cx, SelectRowSet srs)
             {
+                var ob = cx.binding;
                 var sce = (RowSet?)cx.obs[srs.source];
                 for (var bmk = sce?.First(cx);
                     bmk != null; bmk = bmk.Next(cx))
                 {
-                    if (sce is BindingRowSet)
-                        cx.binding = bmk.values;
                     var rb = new SelectCursor(cx, srs, bmk, 0);
                     if (rb.Matches(cx))
                         return rb;
                 }
                 cx.funcs -= srs.defpos;
+                cx.binding = ob;
                 return null;
             }
             internal static SelectCursor? New(SelectRowSet srs, Context cx)
             {
+                var ob = cx.binding;
                 for (var bmk = ((RowSet?)cx.obs[srs.source])?.Last(cx);
                       bmk != null; bmk = bmk.Previous(cx))
                 {
                     var rb = new SelectCursor(cx, srs, bmk, 0);
                     if (rb.Matches(cx))
+                    {
+                        cx.binding = ob;
                         return rb;
+                    }
                 }
                 cx.funcs -= srs.defpos;
+                cx.binding = ob;
                 return null;
             }
             protected override Cursor? _Next(Context cx)
             {
+                var ob = cx.binding;
                 for (var bmk = _bmk?.Next(cx);
                     bmk != null; bmk = bmk.Next(cx))
                 {
@@ -2902,13 +2909,17 @@ namespace Pyrrho.Level4
                     for (var b = rb._dom.representation.First(); b != null; b = b.Next())
                         (cx.obs[b.key()] as QlValue)?.OnRow(cx, rb);
                     if (rb.Matches(cx))
+                    {
+                        cx.binding = ob;
                         return rb;
+                    }
                 }
                 cx.funcs -= _srs.defpos;
                 return null;
             }
             protected override Cursor? _Previous(Context cx)
             {
+                var ob = cx.binding;
                 for (
                     var bmk = _bmk?.Previous(cx);
                     bmk != null; bmk = bmk.Previous(cx))
@@ -2917,9 +2928,13 @@ namespace Pyrrho.Level4
                     for (var b = rb._dom.representation.First(); b != null; b = b.Next())
                         ((QlValue?)cx.obs[b.key()])?.OnRow(cx, rb);
                     if (rb.Matches(cx))
+                    {
+                        cx.binding = ob;
                         return rb;
+                    }
                 }
                 cx.funcs -= _srs.defpos;
+                cx.binding = ob;
                 return null;
             }
             internal override BList<TableRow> Rec()

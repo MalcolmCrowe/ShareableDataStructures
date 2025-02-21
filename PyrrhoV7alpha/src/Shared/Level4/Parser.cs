@@ -2479,7 +2479,7 @@ namespace Pyrrho.Level4
                     {
                         // for GqlNode, use available type information from the previous node 
                         Qlx.LPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st,
-                                    cx.db.objects[((lt == Qlx.RARROW) ? LastEdge(ln, tgs)?.leavingType : LastEdge(ln, tgs)?.arrivingType) ?? -1L] as Domain, m),
+                                    (lt==Qlx.LPAREN)?null:cx.db.objects[((lt == Qlx.RARROW) ? LastEdge(ln, tgs)?.leavingType : LastEdge(ln, tgs)?.arrivingType) ?? -1L] as Domain, m),
                         Qlx.ARROWBASE => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, le, -1L, dc, st, dm, m),
                         Qlx.RARROW => new GqlEdge(b, BList<Ident>.Empty, cx, ab, id, -1L, le, dc, st, dm, m),
                         _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))

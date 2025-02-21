@@ -1009,10 +1009,12 @@ namespace Pyrrho.Common
         {
             content = c;
         }
-        internal TDocArray(Context _cx, RowSet rs) :base(Domain.DocArray)
+        internal TDocArray(Context cx, RowSet rs) :base(Domain.DocArray)
         {
-            for (var a = rs.First(_cx); a != null; a = a.Next(_cx))
-                Add(new TDocument(_cx,a));
+            var fo = cx.funcs;
+            for (var a = rs.First(cx); a != null; a = a.Next(cx))
+                Add(new TDocument(cx,a));
+            cx.funcs = fo;
         }
         internal TDocArray(Domain dt, BList<TypedValue>t) : base(dt)
         {

@@ -5340,8 +5340,8 @@ namespace Pyrrho.Level3
             //    else if (xn.Eval(ac) is TNode nn)
             //        ds += (xn.defpos, nn.tableRow);
             else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr
-                && ((pd is TEdge te)?((tok==Qlx.ARROWBASE && te.arriving.ToLong()==tr.defpos)
-                || (tok==Qlx.RARROW && te.leaving.ToLong()==tr.defpos)):true))
+                && ((pd is TEdge te) ? ((tok == Qlx.ARROWBASE && te.arriving.ToLong() == tr.defpos)
+                || (tok == Qlx.RARROW && te.leaving.ToLong() == tr.defpos)) : true))
                 ds += (gr.refersTo, tr.tableRow);
             else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj)
             {
@@ -5352,17 +5352,19 @@ namespace Pyrrho.Level3
                                        is TableRow jn)
                         ds += (jn.defpos, jn);
             }
-            else if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos
-                && ((tok == Qlx.ARROWBASE) ?
+            else if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos)
+            {
+                if (((tok == Qlx.ARROWBASE) ?
                 (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
                 : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
                is TableRow tn)
                 ds += (tn.defpos, tn);
+            }
             else if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
                 if (pd.dataType is EdgeType et &&
-                    cx.db.objects[(tok == Qlx.ARROWBASE) ? et.leavingType : et.arrivingType] is NodeType pn
-                    && pn.Schema(cx) is TableRow ts)
+                    cx.db.objects[(tok == Qlx.ARROWBASE) ? et.leavingType : et.arrivingType] is NodeType qn
+                    && qn.Schema(cx) is TableRow ts)
                     ds += (ts.defpos, ts);
                 else if (pd.dataType is NodeType pg)
                 {
@@ -5374,7 +5376,7 @@ namespace Pyrrho.Level3
                             ds += (tq.defpos, tq);
                 }
             }
-            else if (pd is not null && pd.dataType is NodeType pn)// && pn is not EdgeType) // an edge attached to the TNode pd
+            if (pd is not null && pd.dataType is NodeType pn)// && pn is not EdgeType) // an edge attached to the TNode pd
             {
                 var ctr = CTree<Domain, int>.Empty;
                 var tg = truncator != CTree<long, (int, Domain)>.Empty;
@@ -5382,8 +5384,8 @@ namespace Pyrrho.Level3
                 for (var b = pn.super.First(); b != null; b = b.Next())
                     if (cx._Ob(b.key().defpos) is NodeType ps)
                         ds = Traverse(cx, this, xn, truncator, pd, ps, ctr, ds);
-            }
-            else // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
+            } // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
+            else
                 ds = xn.For(cx, this, xn, ds);
             var df = ds.First();
             if (df == null && optional)
@@ -5410,7 +5412,7 @@ namespace Pyrrho.Level3
                 {
                     if (xn.label.kind == Qlx.UNION && !xn.label.unionOf.Contains(rt))
                         continue;
-                    if (pd.defpos == pd.dataType.defpos) // schmema flag
+                    if (pd.defpos == pd.dataType.defpos) // schema flag
                     {
                         ds += (rt.defpos, rt.Schema(cx));
                         continue;
@@ -5663,7 +5665,7 @@ namespace Pyrrho.Level3
                     break;
                 ns = ns?.Next();
             }
-            if (!anymatch)
+            if (optional && !anymatch)
                 bn.next.Next(cx, null, (tok == Qlx.WITH) ? Qlx.Null : tok, bn.xn, dn, false);
             if (ot is not null)
                 cx.binding += (-1L, ot[0]);
