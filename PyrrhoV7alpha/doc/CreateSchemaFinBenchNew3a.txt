@@ -1,0 +1,361 @@
+// Version: timestamp'2025-02-22 17:40:00'
+create schema /ldbc
+
+// version table
+create table version (createtime timestamp)
+insert into version values (timestamp'2025-02-22 20:05:00')
+
+// create node and edge types
+
+[ create graph type /ldbc/FinBench_FL3 {
+node LegalEntity {id::int,name::string,isBlocked::boolean,
+  country::string, city::string},
+node Medium {id::int, type::String, Issuer::string, issued::timestamp, isBlocked::boolean,
+  lastLogin::timestamp, riskLevel::string},
+directed edge uses connecting (LegalEntity to Medium),
+directed edge contract {type::string,amount::decimal,currency::string,createTime::timestamp}    
+  connecting (LegalEntity to LegalEntity),
+node Account {id::int,accntType::string, bankName::string, isBlocked::boolean, currency::string,
+  created::timestamp, lastLogin::timestamp, accntLevel::string, Balance::decimal},
+node Branch {Id::int, BIC::String, Location::String, phone::string, email::string},
+node SignIn {id::int, location::String, signin::timestamp, signout::timestamp, via::String},
+directed edge has connecting (Branch to Account),
+directed edge with_ connecting (SignIn to Medium),
+directed edge transfer {id::int, type::string, 
+  amount::decimal,currency::string,execTime::timestamp}  
+  connecting (Account to Account),
+directed edge usedFor connecting (SignIn to transfer), //instead of tenary edge 
+directed edge activatedFor connecting (Medium to Account),
+directed edge owns connecting (LegalEntity to Account) }
+] 
+
+// create subtypes of LegalEntity
+
+create type Company under LegalEntity as (Business char, Description char, URL char, founded timestamp) 
+create type Person under LegalEntity as (Birthday timestamp, gender char)
+
+// create subtypes of Account
+create type POS under account as (PosLocation char) 
+create type ATM under account as (AtmLocation char) 
+create type Loan under account as (loanAmnt decimal, Interest decimal(5,2), Rate decimal)
+create type Custodial under account as (ISIN char, quantity decimal) 
+
+// fill Graph DB
+// #############
+// insert Person and Company nodes as LegalEntity
+
+ insert into Person values (1, 'Hans Dampf', false, 'Germany', 'Stuttgart', '1970-03-09', 'male')
+ insert into Person values (2, 'Ferry Porsche', false, 'Germany', 'Zuffenhausen', '1909-09-19', 'male')
+ insert into Person values (3, 'Albert Fezer', false, 'Germany', 'Esslingen', '1899-06-25', 'male')
+ insert into Person values (4, 'Gottlieb Stoll', false, 'Germany', 'Holzmaden', '1897-05-18', 'male')
+ insert into Person values (11, 'Bertha Alber', false, 'Germany', 'Pforzheim', '1994-05-03', 'female')
+ insert into Person values (12, 'Eva Voges', false, 'Germany', 'Ulm', '1949-11-03', 'female')
+ insert into Person values (15, 'Vera König', false, 'Germany', 'Stetten', '1955-01-03', 'female')
+ insert into Person values (16, 'Bernd Lass', false, 'Germany', 'Karlsruhe', '1980-04-23', 'male')
+insert into Company values (13, 'Bosch GmbH', false, 'Germany', 'Leinfelden', 'parts & appliances', 'car parts & domestic appl. manufacturer', 'http://www.bosch.com', '1886-01-01')
+insert into Company values (14, 'Hermle AG', false, 'Germany', 'Gosheim', 'CNC Milling', 'CNC milling manufacturer', 'http://www.porsche.com', '1931-01-01')
+insert into Company values (5, 'Karl Storz GmbH', false, 'Germany', 'Tuttlingen', 'medical instruments', 'human & veterinary medicine tools', 'http://www.karlstorz.com', '1945-01-01')
+ insert into Company values (6, 'Daimler AG', false, 'Germany', 'Untertürkheim', 'automobile', 'automobile manufacturer', 'http://www.mercedes-benz.de','1883-01-01')
+ insert into Company values (7, 'Stihl AG', false, 'Germany', 'Waiblingen', 'sawing tools', 'sawing equipment manufacturer','http://www.stihl.de','1926-01-01')
+ insert into Company values (8, 'Festo AG', false, 'Germany', 'Esslingen', 'construction tools','Tool manufacturer','https//www.festo.com', '1925-01-01')
+ insert into Company values (9, 'Deutsche Bank', false, 'Germany', 'Frankfurt a. Main', 'Banking Service','Retail and Investment Bank','https://www.deutsche-bank.de/', '1870-03-10')
+ insert into Company values (20, 'Café Post', false, 'Germany', 'Sendlingen', 'Café & Bakery','Gastronomy','https://www.cafe-post.de/', '1990-03-10')
+ insert into Company values (21, 'Hettlage', false, 'Germany', 'Ulm', 'clothing retail','textile trading company','https://www.hettlage.de/', '1964-03-10')
+ insert into Company values (22, 'Hotel Münster', false, 'Germany', 'Ulm', 'hotel','Hotel business','https://www.hotel-muenster.de/', '1995-03-21')
+ insert into Company values (23, 'Breuninger Stgt.', false, 'Germany', 'Stuttgart', 'department store','Retail business','https://www.breuninger.de/', '1982-11-01')
+
+// insert contract edges
+[ match (e1:LegalEntity {id:1}), (e2:LegalEntity {id:2}), 
+create (e1)-[:contract {Type:'guarantee', amount:20000.0, currency:'Euro', createTime:timestamp'1990-11-18 17:44:00'}]->(e2) ]
+
+[ match (e1:LegalEntity {id:3}), (e2:LegalEntity {id:4}), 
+insert (e1)-[:contract {Type:'guarantee', amount:10000.0, currency:'Euro', createTime:timestamp'1924-11-17 11:22:00'}]->(e2) ]
+
+[ match (e1:LegalEntity {id:3}), (e2:LegalEntity {id:5}), 
+insert (e1)-[:contract {Type:'invest', amount:50000.0, currency:'€', createTime:timestamp'1954-10-18 10:44:00'}]->(e2) ]
+
+[ match (e1:LegalEntity {id:6}), (e2:LegalEntity {id:7}), 
+insert (e1)-[:contract {Type:'invest', amount:200000.0, currency:'€', createTime:timestamp'2024-11-20 09:11:00'}]->(e2) ]
+
+[ match (e1:Legalentity {id:5}), (e2:Legalentity {id:12}), 
+insert(e1)-[:contract {type:'guarantee', amount:100000.00, currency:'€', 
+createTime:timestamp'1977-10-22 10:25:00'} ]->(e2) ]
+
+[ match (e1:Legalentity {id:3}), (e2:Legalentity {id:2}), 
+insert(e1)-[:contract {type:'guarantee', amount:1000000.00, currency:'Euro', 
+createTime:timestamp'1948-11-06 10:25:00'} ]->(e2) ]
+
+[ match (e1:Legalentity {id:2}), (e2:Legalentity {id:13}), 
+insert(e1)-[:contract {type:'invest', amount:200000.00, currency:'€', 
+createTime:timestamp'2024-11-01 14:15:00'} ]->(e2) ]
+
+[ match (e1:Legalentity {id:4}), (e2:Legalentity {id:8}), 
+insert(e1)-[:contract {type:'invest', amount:5000000.00, currency:'€', 
+createTime:timestamp'2024-10-01 16:05:00'} ]->(e2) ]
+
+// insert Branch nodes
+
+insert into Branch values (1, 'YUINDEFF','Frankfurt', '0711/349578', 'h.dampf@web.de')
+insert into Branch values (2, 'DEUTDESS641','DB Tübingen', '07071/2030', 'k.mayer@web.de')
+insert into Branch values (3, 'DEUTDEDBSTG','Stuttgart', '0711/349578', 'r.schulz@DBank.de')
+insert into Branch values (4, 'SOLADES1TUB','Tübingen', '0711/349578', 'f.mayer@gmail.de')
+insert into Branch values (5, 'GENODEF1S10','Berlin', '030/3495780', 'k.breme@web.de')
+insert into Branch values (6, 'SOLADES1ULM','Cafe Post, Ulm', '07321/349578', 'w.abel@kskUlm.de')
+insert into Branch values (7, 'GENODEF1S02','Karlsruhe', '0721/74932', 'kontakt@sparda-bw.de')
+insert into Branch values (8, 'DEUTDEDBSTG','Airport Stgt', '0711/349578', 'k.mayer@web.de')
+insert into Branch values (9, 'SOLADES1ULM','Hotel Münster, Ulm', '07321/344478', 'k.kurz@web.de')
+insert into Branch values (10,'GSESMTMTXXX','Frankfurt', '03021/549578', 'gshares@debeka.de')
+insert into Branch values (11,'DRESDEFXXXX','Dresden', '069/58008000', 'a.kunz@web.de')
+insert into Branch values (12,'UBSWCHZH82A','Schaffhausen', '+41 52 6337777', 'info@ubs.com')
+insert into Branch values (13,'BNPAFRPPXXX','Paris', '+33 52 6337777', 'info@bnp.com')
+insert into Branch values (14,'INGDDEFFXXX','Frankfurt', '069/50509069', 'info@ing.de') 
+insert into Branch values (15,'CRESCHZZ80A','Zürich', '+41 44 3339911', 'info@c-suisse.com')
+insert into Branch values (16,'SOLADES1ULM','Ulm', '07321/349578', 'w.abel@kskUlm.de')
+
+
+// insert POS, ATM, Checking, Custodial, and Loan nodes as Account.
+
+insert into Custodial values (1, 'custodial account', 'Union Invest', false,'€','2024-10-11',  '2024-11-09', 'Silver level',  2451.33, 'EU0009658145',240.5)
+insert into ATM values (2, 'ATM / SB account', 'Deutsche Bank', false,'€','1949-10-11', '2024-11-08', 'ATM safe', 6000.00, 'Am Lustnauer Tor, Tübingen')
+insert into Account values (22, 'retirement account', 'Deutsche Bank', false,'€','2024-10-11', '2024-11-08', 'Basic level',  600.00)
+insert into Custodial values (3, 'custodial account', 'Global ETF', false,'€','1965-10-11', '1992-11-09', 'Silver level', 3803.94, 'DE000BAY0017', 185.5)
+insert into Loan values (4, 'loan account', 'KSK Tübingen', false,'€','2024-10-11', '2024-11-08', 'Mortgage level', 14000.0, 20000, 3.4, 500.0)
+insert into Account values (5, 'checking account', 'KSK Tübingen', false,'€','2024-10-18', '2024-11-18', 'Gold level',  18975.45)
+insert into Loan values (6, 'loan account', 'Sparda Berlin', false,'€','2024-10-18', '2024-11-18', 'Mortgage level', 40000.0, 200000, 3.1, 900.0)
+insert into POS values (15, 'POS account', 'KSK Ulm', false,'€','2023-10-18', '2024-09-18', 'POS Gold', 189.45, 'Café Post, Sendlingen')
+insert into POS values (16, 'POS account', 'Sparda BW', false,'€','2023-11-19', '2024-09-28', 'POS silver', 489.95,'Hettlage, Ulm')
+insert into Account values (26, 'checking account', 'Sparda BW', false,'€','2023-11-19', '2024-09-28', 'Basic level', 89.95)
+insert into ATM values (17, 'ATM / SB account', 'Deutsche Bank', false,'€','2024-10-11', '2024-11-08', 'ATM medium risk', 2600.00, 'Königstr. 11, Stuttgart' )
+insert into Account values (27, 'checking account', 'Deutsche Bank', false,'€','2024-10-11', '2024-11-08', 'Basic level', 1600.90)
+insert into POS values (18, 'POS account', 'KSK Ulm', false,'€','2023-10-18', '2024-09-18', 'POS Gold', 500.00, 'Hotel Münster, Ulm')
+insert into Account values (28, 'checking account', 'KSK Ulm', false,'€','2023-10-18','2024-09-18', 'Gold level', 189.45)
+insert into Account values (31, 'checking account', 'KSK Tübingen', false,'€','2024-10-18', '2024-11-18', 'Silver level',  12000.0)
+insert into Account values (32, 'POS account', 'Deutsche Bank Stgt.', false,'€','1982-10-28', '2024-12-18', 'Silver level',  120362.94)
+insert into Account values (33, 'checking account', 'Ing DiBa', false,'€','1989-10-08', '2024-11-28', 'Silver level',  12362.04)
+insert into Account values (34, 'credit card', 'Amex', false,'€','1989-10-08', '2024-11-28', 'green level',  1280.04)
+
+// insert more Account and Medium (1,2,3, 20,21,22) nodes
+
+[insert (a1:Account{id:11, accntType:'saving account', BankName:'Global Shares', isBlocked:false, Currency:'€', created:timestamp'2010-10-17', lastLogin:timestamp'2024-11-17', accntLevel:'Gold level', Balance:12500.0}),
+ (a2:Loan{id:12, accntType:'loan account', BankName:'Ing DiBa',isBlocked:false, Currency:'€', created:timestamp'2024-10-11', lastLogin:timestamp'2024-11-16', accntLevel:'Basic level', Balance:25000.0, loanAmnt:60000, Interest:4.5, rate:1500.00}),
+(m:Medium {id:2,type:'debitCard', Issuer:'Ing DiBa', issued:timestamp'1955-11-01', isBlocked:false, lastLogin:timestamp'2024-11-10', riskLevel:'moderate risk'}) ]
+
+[insert (a1:Account{id:7, accntType:'checking account',BankName:'Dresdener Bank', isBlocked:false, Currency:'€', created:timestamp'2024-10-18', lastLogin:timestamp'2024-11-18', accntLevel:'Gold level', Balance:12075.85}),
+ (a2:Loan{id:8, accntType:'loan account', BankName:'Credit Swiss',isBlocked:false,Currency:'€',created:timestamp'2024-10-10', lastLogin:'2024-11-18', accntLevel:'Basic level',Balance:30000, loanAmnt:50000, Interest:4.9, rate:600.0}),
+(m:Medium {id:1, type:'creditCard',Issuer:'Amex', issued:timestamp'2024-11-01', isBlocked:false, lastLogin:timestamp'2024-10-20 12:44:15', riskLevel:'moderate risk'}) ]
+
+[insert (a1:Custodial{id:13, accntType:'custodial account', BankName:'IBM stock, UBS', isBlocked:false, Currency:'€', created:timestamp'2024-10-17',  lastLogin:'2024-11-17', accntLevel:'Gold level',Balance:17050.49, ISIN:'US4592001014', quantity:1250.0}),
+ (a2:Loan{id:14, accntType:'loan account',BankName:'BNP', isBlocked:false,Currency:'€',created:timestamp'2024-10-11', lastLogin:timestamp'2024-11-16', accntLevel:'Basic level',Balance:20000, loanAmnt:60000, Interest:2.9, rate:200.0}),
+(m:Medium {id:3,type:'debitCard',Issuer:'Ing DiBa', issued:timestamp'2024-11-01', isBlocked:false, lastLogin:timestamp'2024-11-10', riskLevel:'moderate risk'}) ]
+
+// medium 20 bis 23
+[ insert (:Medium {id:20,type:'debitCard',Issuer:'KSK Ulm', issued:timestamp'2023-10-22', isBlocked:false,   lastLogin:timestamp'2024-11-10', riskLevel:'moderate risk'}),
+  (:Medium {id:21,type:'debitCard',Issuer:'Sparda BW', issued:timestamp'2023-11-22', isBlocked:false, lastLogin:timestamp'2024-11-10', riskLevel:'low risk'}),
+  (:Medium {id:22,type:'debitCard',Issuer:'KSK Ulm', issued:timestamp'2023-10-22', isBlocked:false, lastLogin:timestamp'2024-11-10', riskLevel:'moderate risk'}), 
+   (:Medium {id:23,type:'debitCard',Issuer:'Sparda BW', issued:timestamp'2023-10-23', isBlocked:false, lastLogin:timestamp'2024-12-10', riskLevel:'low risk'})]
+
+
+// Connect Bank(POS/ATM) with Branch(Location)
+[match (a:Account {id:1}), (b:Branch {id:1}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:2}), (b:Branch {id:2}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:22}), (b:Branch {id:2}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:3}), (b:Branch {id:3}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:4}), (b:Branch {id:4}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:5}), (b:Branch {id:4}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:6}), (b:Branch {id:5}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:15}), (b:Branch {id:16}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:16}), (b:Branch {id:7}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:17}), (b:Branch {id:8}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:26}), (b:Branch {id:7}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:27}), (b:Branch {id:2}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:28}), (b:Branch {id:6}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:18}), (b:Branch {id:9}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:11}), (b:Branch {id:10}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:12}), (b:Branch {id:14}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:7}), (b:Branch {id:11}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:8}), (b:Branch {id:15}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:13}), (b:Branch {id:12}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:14}), (b:Branch {id:13}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:31}), (b:Branch {id:4}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:32}), (b:Branch {id:3}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:33}), (b:Branch {id:14}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:34}), (b:Branch {id:13}), create (a)<-[:has]- (b) ]
+
+// insert Transfer nodes (work-around for ternary edge Transfer)
+
+[match (a1:Account {id:34}), (a2:Account {id:8}), create (a1)-[t:Transfer{id:1, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-17 07:45:30', type:'repay'}]-> (a2) ]
+
+[match (a1:Account {id:33}), (a2:Account {id:8}), create (a1)-[t:Transfer{id:2, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-18 09:45:10', type:'repay'}]-> (a2) ]
+
+[ match (a1:Account {id:1}), (a2:Account {id:12}), create (a1)-[t:Transfer{id:3, amount:4050.0, Currency:'€', execTime:timestamp'2024-10-19 07:45:30', type:'repay'}]-> (a2)]
+
+[match (a1:Account {id:1}), (a2:Account {id:5}), create (a1)-[t:Transfer{id:4, amount:7999.0, Currency:'€', execTime:timestamp'2024-10-20 09:30:05', type:'shop payment'}]-> (a2) ]
+
+[match (a1:Account {id:3}), (a2:Account {id:5}), create (a1)-[t:Transfer{id:5, amount:11000.0, Currency:'€', execTime:timestamp'2024-10-20 12:44:50', type:'transfer'}]-> (a2) ]
+
+[ match (a1:Account {id:4}), (a2:Account {id:14}), create (a1)-[t:Transfer{id:6, amount:466.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:48',type:'repay'}]-> (a2)]
+
+[ match (a1:Account {id:5}), (a2:Account {id:28}), create (a1)-[t:Transfer{id:7, amount:495.0, Currency:'€', execTime:timestamp'2024-10-22 09:46:00',type:'deposit'}]-> (a2)]
+
+[ match (a1:Account {id:6}), (a2:Account {id:2}), create (a1)-[t:Transfer{id:8, amount:466.0, Currency:'€', execTime:timestamp'2024-10-23 07:45:33',type:'withdraw'}]-> (a2)]
+
+[ match (a1:Account {id:4}), (a2:Account {id:18}), create (a1)-[t:Transfer{id:9, amount:1412.0, Currency:'€', execTime:timestamp'2024-10-25 09:44:57',type:'shop payment'}]-> (a2)]
+
+[ match (a1:Account {id:7}), (a2:Account {id:27}), create (a1)-[t:Transfer{id:10, amount:3000.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'cash deposit'}]-> (a2)]
+
+[ match (a1:Account {id:26}), (a2:Account {id:12}), create (a1)-[t:Transfer{id:11, amount:4000.0, Currency:'€', execTime:timestamp'2024-12-20 09:46:43',type:'repay'}]-> (a2)]
+
+// without signIn
+[ match (a1:Account {id:34}), (a2:Account {id:16}), create (a1)-[t:Transfer{id:12, amount:399.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'shop payment'}]-> (a2)]
+
+// insert more Medium nodes 4 bis 11
+
+[ insert (:Medium {id:4,type:'debitCard',Issuer:'Ing DiBa', issued:timestamp'2024-11-01', isBlocked:false, lastLogin:timestamp'2024-11-10', riskLevel:'moderate risk'}),
+ (:Medium {id:5,type:'creditCard',Issuer:'Deutsche Bank', issued:timestamp'2024-11-02', isBlocked:false, lastLogin:timestamp'2024-11-11', riskLevel:'high risk'}),
+(:Medium {id:6,type:'debitCard',Issuer:'KSK Tübingen', issued:timestamp'2024-11-03', isBlocked:false, lastLogin:timestamp'2024-11-13', riskLevel:'low risk'}),
+ (:Medium {id:7,type:'custodial card',Issuer:'Union Invest', issued:timestamp'2024-11-04', isBlocked:false, lastLogin:timestamp'2024-11-14', riskLevel:'severe risk'}),
+(:Medium {id:8,type:'brokerage account',Issuer:'Santander', issued:timestamp'2024-11-05', isBlocked:true, lastLogin:timestamp'2024-11-15', riskLevel:'critical risk'}),
+ (:Medium {id:9,type:'creditCard',Issuer:'Ing DiBa', issued:timestamp'2024-11-01', isBlocked:false, lastLogin:timestamp'2024-11-10', riskLevel:'very high risk'}),
+(:Medium {id:10,type:'debitCard',Issuer:'Raiffeisen Bank', issued:timestamp'2024-11-06', isBlocked:false, lastLogin:timestamp'2024-11-16', riskLevel:'low risk'}),
+ (:Medium {id:11,type:'internet account',Issuer:'Ing DiBa', issued:timestamp'1888-11-07', isBlocked:false, lastLogin:timestamp
+'2024-11-17', riskLevel:'extreme risk'}) ]
+
+// insert uses edges
+
+[ match (m:Medium {id:1}), (e:LegalEntity {id:1}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:23}), (e:LegalEntity {id:16}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:2}), (e:LegalEntity {id:2}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:3}), (e:LegalEntity {id:3}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:4}), (e:LegalEntity {id:4}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:5}), (e:LegalEntity {id:5}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:6}), (e:LegalEntity {id:6}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:7}), (e:LegalEntity {id:7}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:8}), (e:LegalEntity {id:8}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:11}), (e:LegalEntity {id:11}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:9}), (e:LegalEntity {id:1}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:10}), (e:LegalEntity {id:1}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:20}), (e:LegalEntity {id:20}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:21}), (e:LegalEntity {id:21}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:22}), (e:LegalEntity {id:22}), create (e)-[:uses]->(m)]
+
+// insert activatedFor edges
+
+[ match (m:Medium {id:1}), (e:Account {id:3}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:1}), (e:Account {id:11}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:1}), (e:Account {id:34}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:2}), (e:Account {id:33}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:3}), (e:Account {id:1}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:4}), (e:Account {id:4}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:6}), (e:Account {id:6}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:5}), (e:Account {id:5}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:7}), (e:Account {id:7}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:8}), (e:Account {id:8}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:11}), (e:Account {id:31}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:9}), (e:Account {id:1}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:10}), (e:Account {id:1}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:20}), (e:Account {id:15}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:21}), (e:Account {id:16}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:22}), (e:Account {id:18}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:23}), (e:Account {id:26}), create (m)-[:activatedFor]->(e)]
+
+// insert owns edges
+
+[ match (m:LegalEntity {id:1}), (e:Account {id:3}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:1}), (e:Account {id:11}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:2}), (e:Account {id:33}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:9}), (e:Account {id:2}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:3}), (e:Account {id:1}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:4}), (e:Account {id:4}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:5}), (e:Account {id:5}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:6}), (e:Account {id:6}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:7}), (e:Account {id:7}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:8}), (e:Account {id:8}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:9}), (e:Account {id:17}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:11}), (e:Account {id:31}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:12}), (e:Account {id:12}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:13}), (e:Account {id:13}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:14}), (e:Account {id:14}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:20}), (e:Account {id:15}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:21}), (e:Account {id:16}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:22}), (e:Account {id:18}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:23}), (e:Account {id:32}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:15}), (e:Account {id:22}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:16}), (e:Account {id:26}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:14}), (e:Account {id:27}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:21}), (e:Account {id:28}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:16}), (e:Account {id:34}), create (m)-[:owns]->(e)]
+
+// insert SignIn nodes
+
+[insert (:SignIn{id:1, location:'UBS Zürich, ATM', signin:timestamp'2024-10-17 07:44:15', signout:timestamp'2024-10-17 07:46:05', Via:'ATM'}),
+(:SignIn{id:2, location:'Frankfurt, Home PC', signin:timestamp'2024-10-18 09:44:15', signout:timestamp'2024-10-18 09:46:05', Via:'Home PC'}),
+(:SignIn{id:3, location:'DB Frankfurt, ATM', signin:timestamp'2024-10-19 07:44:15', signout:timestamp'2024-10-19 07:46:05', Via:'ATM'}),
+(:SignIn{id:4, location:'Stuttgart, Breuninger', signin:timestamp'2024-10-20 09:44:15', signout:timestamp'2024-10-20 09:45:05', Via:'POS'}),
+(:SignIn{id:5, location:'Stuttgart, Staatsgalerie', signin:timestamp'2024-10-20 12:44:15', signout:timestamp'2024-10-20 12:45:05', Via:'POS'}) ]
+
+[insert (:SignIn{id:6, location:'Voba Tübingen, ATM', signin:timestamp'2024-10-21 07:44:15', signout:timestamp'2024-10-21 07:46:05', Via:'ATM'}),
+(:SignIn{id:7, location:'Berlin, Home PC', signin:timestamp'2024-10-22 09:44:15', signout:timestamp'2024-10-22 09:46:05', Via:'Home PC'}),
+(:SignIn{id:8, location:'BNP Paris, ATM', signin:timestamp'2024-10-23 07:44:15', signout:timestamp'2024-10-23 07:46:05', Via:'ATM'}),
+(:SignIn{id:9, location:'Stuttgart, Breuninger', signin:timestamp'2024-10-25 09:44:15', signout:timestamp'2024-10-25 09:45:05', Via:'POS'}),
+(:SignIn{id:10, location:'Stuttgart, Wilhelma', signin:timestamp'2024-10-26 12:44:15', signout:timestamp'2024-10-26 12:45:05', Via:'POS'}),
+(:SignIn{id:11, location:'BNP Paris, ATM', signin:timestamp'2024-10-26 07:44:15', signout:timestamp'2024-10-26 07:46:05', Via:'ATM'}),
+(:SignIn{id:12, location:'Stuttgart, Breuninger', signin:timestamp'2024-10-27 09:44:15', signout:timestamp'2024-10-27 09:45:05', Via:'POS'}),
+(:SignIn{id:13, location:'Ludwigsburg, Porsche', signin:timestamp'2024-10-26 12:44:15', signout:timestamp'2024-10-26 12:45:05', Via:'POS'}),
+(:SignIn{id:14, location:'Tübingen, home PC', signin:timestamp'2024-10-20 17:44:15', signout:timestamp'2024-10-20 17:46:05', Via:'home PC'}) ]
+
+[ insert (:SignIn{id:23, location:'Karlsruhe, home PC', signin:timestamp'2024-12-20 09:44:15', signout:timestamp'2024-12-20 09:48:19', Via:'home PC'}),
+  (:SignIn{id:24, location:'Tübingen, home PC', signin:timestamp'2024-10-20 17:44:15', signout:timestamp'2024-10-20 17:46:05', Via:'home PC'}) ]
+
+// insert with_ edges
+
+[ match (m:Medium {id:1}), (s:SignIn {id:1}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:1}), (s:SignIn {id:5}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:2}), (s:SignIn {id:2}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:3}), (s:SignIn {id:4}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:3}), (s:SignIn {id:3}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:4}), (s:SignIn {id:6}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:5}), (s:SignIn {id:7}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:6}), (s:SignIn {id:8}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:7}), (s:SignIn {id:24}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:4}), (s:SignIn {id:9}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:8}), (s:SignIn {id:14}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:21}), (s:SignIn {id:10}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:9}), (s:SignIn {id:11}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:10}), (s:SignIn {id:12}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:11}), (s:SignIn {id:13}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:23}), (s:SignIn {id:23}), create (m)<-[:with_]-(s)]
+
+// insert usedFor edges ((work-around for ternary edge Transfer)
+
+[ match (s:SignIn {id:1}), (t:Transfer {id:1}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:2}), (t:Transfer {id:2}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:3}), (t:Transfer {id:3}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:4}), (t:Transfer {id:4}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:5}), (t:Transfer {id:5}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:6}), (t:Transfer {id:6}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:7}), (t:Transfer {id:7}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:8}), (t:Transfer {id:8}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:9}), (t:Transfer {id:9}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:24}), (t:Transfer {id:10}), create (s)-[:usedFor]->(t) ]
+[ match (s:SignIn {id:23}), (t:Transfer {id:11}), create (s)-[:usedFor]->(t) ]
+
+// Inserting consistent money transfers via signin
+
+[match (m:medium {id:2}), (a:account {id:33}), (b:account {id:5})
+insert (m)<-[:with_]-(s:signin {id:15,location:'Stgt, Home PC', signin:timestamp'2024-01-06 20:10:00', signout:timestamp'2024-01-06 20:18:05', Via:'Home PC' }),
+(a)-[t:transfer {id:13, type:'transfer',amount:234.0, currency:'€', exectime:timestamp'2024-01-06 20:14:00'}]->(b), 
+insert (s)-[:usedFor]->(t) ]
+
+[match (m:medium {id:11}), (a:account {id:31}), (b:account {id:16}), (s:signin {id:13})
+Insert (a)-[t:transfer {id:14, type:'shop payment',amount:654.0, currency:'€', exectime:timestamp'2024-01-07 11:04:12'}]->(b),
+insert (s)-[:usedFor]->(t) ]
+
+[match (m:medium {id:11}), (a:account {id:31}), (b1:account {id:14}), (b2:account {id:8}),  
+insert (m)<-[:with_]-(s:signin {id:25,location:'Stgt, Home PC', signin:timestamp'2024-10-20 17:50:25', signout:timestamp'2024-10-20 18:00:11', Via:'Home PC' }),
+(a)-[t1:transfer {id:15, type:'transfer',amount:800.0, currency:'€', exectime:timestamp'2024-10-20 17:55:23'}]->(b1), 
+(a)-[t2:transfer {id:16, type:'transfer',amount:499.0, currency:'€', exectime:timestamp'2024-10-20 17:59:44'}]->(b2), 
+insert (s)-[:usedFor]->(t1), (s)-[:usedFor]->(t2)]
+
+
+// #################################################
+
