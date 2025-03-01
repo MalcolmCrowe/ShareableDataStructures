@@ -1767,15 +1767,15 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.EDGETYPE:
                     {
                         if (a is TNode na && b is TNode nb
-                            && a.dataType is NodeType ta && b.dataType is NodeType tb)
+ /*                           && a.dataType is NodeType ta && b.dataType is NodeType tb)
                         {
                             c = ta.defpos.CompareTo(tb.defpos);
                             if (c != 0)
-                                break;
+                                break; */ )
                             c = na.tableRow.defpos.CompareTo(nb.tableRow.defpos);
                             return c;
-                        }
-                        throw new DBException("22004").ISO();
+/*                        }
+                        throw new DBException("22004").ISO(); */
                     }
                 case Qlx.ROW:
                     {

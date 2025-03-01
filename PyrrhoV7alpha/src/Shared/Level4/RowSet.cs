@@ -1898,6 +1898,8 @@ namespace Pyrrho.Level4
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(rows);
+            for (var b = tree?.First(); b != null; b = b.Next())
+            { sb.Append(' '); sb.Append(b.Value()); }
             return sb.ToString();
         }
         public class Bindings : Cursor
@@ -4049,14 +4051,15 @@ namespace Pyrrho.Level4
         internal RTree? rtree => (RTree?)mem[_RTree];
         internal Domain order => (Domain)(mem[Level3.Index.Keys] ?? Domain.Row);
         internal override Assertions Requires => Assertions.MatchesTarget;
-        internal OrderedRowSet(Context cx, RowSet r, Domain os, bool dct)
-            : this(cx.GetUid(), cx, r, os, dct)
+        internal OrderedRowSet(Context cx, RowSet r, Domain os, bool dct, CTree<long,bool>? ambient=null)
+            : this(cx.GetUid(), cx, r, os, dct, ambient??CTree<long,bool>.Empty)
         { }
-        internal OrderedRowSet(long dp, Context cx, RowSet r, Domain os, bool dct)
+        internal OrderedRowSet(long dp, Context cx, RowSet r, Domain os, bool dct,
+            CTree<long,bool> ambient)
             : base(r.scope, dp, cx, cx.DoDepth(r.mem -Aggs + (_Source, r.defpos)
                  + (RSTargets, r.rsTargets) + (RowOrder, os) + (Level3.Index.Keys, os)
                  + (Table.LastData, r.lastData) + (ObInfo.Name, r.name??"")
-                 + (ISMap, r.iSMap) + (SIMap,r.sIMap)
+                 + (ISMap, r.iSMap) + (SIMap,r.sIMap) + (Ambient,ambient)
                  + (ObInfo._Names,r.names) + (Distinct, dct)))
         {
             cx.Add(this);
@@ -4118,6 +4121,10 @@ namespace Pyrrho.Level4
             if (os.CompareTo(rowOrder)==0) // skip if same
                 return this;
             return (RowSet)cx.Add((RowSet)New(mem + (OrdSpec, os)) + (RowOrder, os));
+        }
+        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
+        {
+            return base._Replace(cx, so, sv);
         }
         internal override DBObject New(long dp, BTree<long,object>m)
         {
@@ -7824,7 +7831,7 @@ namespace Pyrrho.Level4
                     return null;
                 var lr = (lf != null) ? new TRow(lf, r) : null;
                 var rr = (rf != null) ? new TRow(rf, r) : null;
-                var c = _compare(r, lf, rf);
+                var c = _compare(r, lr, rr);
                 if (lu && ru && c < 0)
                     ru = false;
                 if (lu && ru && c > 0)
@@ -7845,7 +7852,7 @@ namespace Pyrrho.Level4
                     return null;
                 var lr = (lf != null) ? new TRow(lf, _rowSet) : null;
                 var rr = (rf != null) ? new TRow(rf, _rowSet) : null;
-                var c = _compare(_rowSet, lf, rf);
+                var c = _compare(_rowSet, lr, rr);
                 if (lu && ru && c < 0)
                     ru = false;
                 if (lu && ru && c > 0)
@@ -7883,7 +7890,7 @@ namespace Pyrrho.Level4
                     var rr = (rf != null) ? new TRow(rf, r) : null;
                     if (rf != null)
                     {
-                        var c = _compare(r, lf, rf);
+                        var c = _compare(r, lr, rr);
                         if (c > 0)
                         {
                             rf = rf?.Next(cx);
@@ -7896,7 +7903,8 @@ namespace Pyrrho.Level4
                             continue;
                         }
                     }
-                    return new ExceptCursor(r, 0, lf, rf, lr, rr, true, false);
+                    var cu = new ExceptCursor(r, 0, lf, rf, lr, rr, true, false);
+                    return cu;
                 }
             }
             /// <summary>
@@ -7915,7 +7923,7 @@ namespace Pyrrho.Level4
                     var rr = (rf != null) ? new TRow(rf, _rowSet) : null;
                     if (rf != null)
                     {
-                        var c = _compare(_rowSet, lf, rf);
+                        var c = _compare(_rowSet, lr, rr);
                         if (c > 0)
                         {
                             rf = rf?.Next(cx);
@@ -7928,7 +7936,8 @@ namespace Pyrrho.Level4
                             continue;
                         }
                     }
-                    return new ExceptCursor(_rowSet, _pos + 1, lf, rf, lr, rr, true, false);
+                    var cu = new ExceptCursor(_rowSet, _pos + 1, lf, rf, lr, rr, true, false);
+                    return cu;
                 }
             }
             protected override Cursor? _Previous(Context _cx)
@@ -7960,7 +7969,7 @@ namespace Pyrrho.Level4
                         return null;
                     var lr = new TRow(lf, r);
                     var rr = new TRow(rf, r);
-                    var c = _compare(r, lf, rf);
+                    var c = _compare(r, lr, rr);
                     if (c > 0)
                     {
                         rf = rf?.Next(cx);
@@ -7988,7 +7997,7 @@ namespace Pyrrho.Level4
                         return null;
                     var lr = new TRow(lf, _rowSet);
                     var rr = new TRow(rf, _rowSet);
-                    var c = _compare(_rowSet, lf, rf);
+                    var c = _compare(_rowSet, lr, rr);
                     if (c > 0)
                     {
                         rf = rf?.Next(cx);

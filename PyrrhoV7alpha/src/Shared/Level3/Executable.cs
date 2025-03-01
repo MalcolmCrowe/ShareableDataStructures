@@ -11,6 +11,7 @@ using System.Numerics;
 using System.Xml;
 using static Pyrrho.Level4.BindingRowSet;
 using System.Runtime.InteropServices;
+using System.ComponentModel;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -279,7 +280,10 @@ namespace Pyrrho.Level3
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             if (cx.obs[result] is RowSet rs)
+            {
                 cx.result = rs.Build(cx);
+                return cx;
+            }
             return base._Obey(cx,next);
         } 
         public override string ToString()
@@ -526,15 +530,15 @@ namespace Pyrrho.Level3
             var br = CList<long>.Empty;
             // Fix the execution order if we have CompositeQueries (UNION/EXCEPT/INTERSECT)
             if (ef is not null && cx.obs[ef.value()] is Executable e)
-            {
+/*            {
                 if (e is MatchStatement && en is not null
                     && cx.obs[en.value()] is CompositeQueryStatement)
-                { em = en;  en = null;  }
+                { em = en;  en = null;  } */
                 cx = e._Obey(cx, en);
-            }
+            /*}  */
             if (em==null && next != null && cx.obs[next.value()] is Executable ne)
                 cx = ne._Obey(cx, next.Next());
-            else if (em!=null && cx.obs[em.value()] is CompositeQueryStatement ce) // prepend em to next
+/*            else if (em!=null && cx.obs[em.value()] is CompositeQueryStatement ce) // prepend em to next
             {
                 var cn = CList<long>.Empty;
                 for (var b = em.Next(); b != null; b = b.Next())
@@ -542,9 +546,9 @@ namespace Pyrrho.Level3
                 for (var b = next; b != null; b = b.Next())
                     cn += b.value();
                 cx = ce._Obey(cx, cn.First());
-            }
+            }*/
             return cx;
-        }
+        } 
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
@@ -2159,27 +2163,110 @@ namespace Pyrrho.Level3
     internal class CompositeQueryStatement : QueryStatement
     {
         public Qlx op => (Qlx)(mem[SqlValueExpr.Op] ?? Qlx.NO);
-        public long left => (long)(mem[QlValue.Left] ?? -1L);
-        public long right => (long)(mem[QlValue.Right] ?? -1L);
+        public long left => (long)(mem[QlValue.Left] ?? -1L); // ROWSET
+        public long right => (long)(mem[QlValue.Right] ?? -1L); // EXECUTABLE
         public CompositeQueryStatement(long dp, Context cx, Qlx opr, long lf, long rg)
-            : this(dp, BTree<long,object>.Empty + (Gql, GQL.CompositeQueryStatement)
-                  + (QlValue.Left, lf) + (QlValue.Right, rg) + (SqlValueExpr.Op, opr)
-                  + (Result,cx.GetUid()))
+            : this(dp, _Mem(cx, dp, opr, lf, rg))
+        { }
+        static BTree<long, object> _Mem(Context cx, long dp, Qlx opr, long lf, long rg)
         {
-            if (cx.obs[lf] is not RowSet rl || !(cx.obs[rg] is MatchStatement ms
-                && cx.obs[ms.bindings] is RowSet rs))
+            var r = BTree<long, object>.Empty + (Gql, GQL.CompositeQueryStatement)
+                  + (QlValue.Left, lf) + (QlValue.Right, rg) + (SqlValueExpr.Op, opr);
+            var re = cx.GetUid();
+            r += (Result, re);
+            if (cx.obs[lf] is not RowSet fl || cx.result is not RowSet fr)
                 throw new DBException("42000");
-            var lb = rl.rowType.First();
-            var rb = rs.rowType.First();
-            var er = opr switch 
-            { Qlx.UNION => "22104", Qlx.INTERSECT=>"22105", Qlx.EXCEPT=>"22106",_=>"42000"};
-            for (; lb != null && rb != null; lb = lb.Next(), rb = rb.Next())
-                if (rl.representation[lb.value()]?.kind != rs.representation[rb.value()]?.kind)
-                    throw new DBException(er);
-            if (lb != null || rb != null) throw new DBException(er);
+            // We need to identify what to do with these factors,
+            // making reasonable efforts to make them compatible.
+            // (We prepare for this by ensuring build properties are remembered by rowsets)
+            // In the end we want them to agree on domain including ordering
+            // Common aggregations and limits are applied to the result
+            // Return statement, ordering, limits on one factor apply to both
+            // Limit, offset if given on both factors may differ
+            var lt = fl.rowType;
+            var ls = fl.representation;
+            var lo = fl.rowOrder;
+            var la = fl.aggs;
+            var lz = (int)(fl.mem[RowSetSection.Size] ?? 0);
+            var lk = (int)(fl.mem[RowSetSection.Offset] ?? 0);
+            var ln = fl.names;
+            var lp = CTree<long, int>.Empty;
+            for (var b = lt.First(); b != null; b = b.Next())
+                lp += (b.value(), b.key());
+            var li = CTree<string, bool>.Empty;
+            var lc = CTree<string, int>.Empty;
+            for (var b = ln.First(); b != null; b = b.Next())
+            {
+                lc += (b.key(), lp[b.value().Item2]);
+                li += (b.key(), true);
+            }
+            var rt = fr.rowType;
+            var rs = fr.representation;
+            var ro = fr.rowOrder;
+            var ra = fr.aggs;
+            var rz = (int)(fr.mem[RowSetSection.Size] ?? 0);
+            var rk = (int)(fr.mem[RowSetSection.Offset] ?? 0);
+            var rn = fr.names;
+            var rp = CTree<long, int>.Empty;
+            for (var b = rt.First(); b != null; b = b.Next())
+                rp += (b.value(), b.key());
+            var ri = CTree<string, bool>.Empty;
+            var rc = CTree<string, int>.Empty;
+            for (var b = rn.First(); b != null; b = b.Next())
+                rc += (b.key(), rp[b.value().Item2]);
+            if (lc.CompareTo(rc) != 0) // the match is not exact
+            {
+                // is it just the column positions? if so, change the second
+                if (li.CompareTo(ri) == 0)
+                {
+                    rt = lt;
+                    cx.obs += (rg, fr + (Domain.RowType, rt));
+                    rc = lc;
+                }
+            }
+            // At this stage the factors have the same Domain fr. Make sure ordering is okay
+            if (ro.Length < fr.Length)
+            {
+                fr = fr.Sort(cx, fr, true);
+                cx.Add(fr);
+                r += (QlValue.Right, fr.defpos);
+                ro = fr;
+            }
+            if (lo.Length < fl.Length)
+            {
+                fl = fl.Sort(cx, fl, true);
+                cx.Add(fl);
+                r += (QlValue.Left, fl.defpos);
+                lo = fr;
+            }
+            // At this stage they must agree on rowType, representation, ordering, names
+            var er = opr switch
+            { Qlx.UNION => "22104", Qlx.INTERSECT => "22105", Qlx.EXCEPT => "22106", _ => "42000" };
+            if (lc.CompareTo(rc) != 0)
+            {
+                var lb = lt.First();
+                var rb = rt.First();
+                for (; lb != null && rb != null; lb = lb.Next(), rb = rb.Next())
+                    if (ls[lb.value()]?.kind != rs[rb.value()]?.kind)
+                        throw new DBException(er);
+                if (lb != null || rb != null) throw new DBException(er);
+                lb = lo.rowType.First();
+                rb = ro.rowType.First();
+                for (; lb != null && rb != null; lb = lb.Next(), rb = rb.Next())
+                    if (lo.representation[lb.value()]?.kind != ro.representation[rb.value()]?.kind)
+                        throw new DBException(er);
+                if (lb != null || rb != null) throw new DBException(er);
+            }
+            var cr = new CompositeRowSet(re, cx, fr, fl, fr, true, opr);
+            cx.Add(cr);
+            return r;
         }
         protected CompositeQueryStatement(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static CompositeQueryStatement operator+(CompositeQueryStatement cs,(long,object) x)
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new CompositeQueryStatement(dp,m);
+        }
+        public static CompositeQueryStatement operator +(CompositeQueryStatement cs, (long, object) x)
         {
             return (CompositeQueryStatement)cs.New(cs.defpos, cs.mem + x);
         }
@@ -2187,11 +2274,26 @@ namespace Pyrrho.Level3
         {
             var rl = (cx.obs[left] as RowSet) ?? throw new DBException("42105");
             var er = (cx.obs[right] as Executable) ?? throw new DBException("42105");
-            cx = er._Obey(cx, next) ?? throw new DBException("42105");
-            var rg = cx.obs[(er as MatchStatement)?.bindings??-1L] as RowSet;
-            rg ??= cx.result as RowSet ?? throw new DBException("42105");
-            var cr = new CompositeRowSet(cx.GetUid(), cx, rl, rl, rg, true, op);
-            cx.result = (RowSet)cx.Add(cr);
+            cx = er._Obey(cx, null) ?? throw new DBException("42105");
+            var rr = cx.result as RowSet ?? throw new DBException("42105");
+            cx.result = new CompositeRowSet(cx.GetUid(), cx, rl, rl, rr, true, op);
+            var bl = BList<(long, TRow)>.Empty;
+            for (var b = (cx.result as RowSet)?.First(cx); b != null; b = b.Next(cx))
+                bl += (b._pos, b);
+            if (cx.obs[next?.value() ?? -1] is Executable fe)
+            {
+                var dp = -1L;
+                if (fe is QueryStatement qs)
+                {
+                    dp = qs.result;
+                    while (cx.obs[dp] is RowSet rs && rs.source > 0L)
+                        dp = rs.source;
+                }
+                var r = new ExplicitRowSet(0L, dp, cx, rl, bl) + (ObInfo._Names, rl.names);
+                cx.result = r;
+                cx.Add(r);
+                cx = fe._Obey(cx, next?.Next());
+            }
             return cx;
         }
         public override string ToString()
@@ -4626,31 +4728,20 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
-            if (cx.result is not RowSet rs)
+            if (cx.result is not RowSet sr)
                 throw new DBException("02000");
-            var nr = BList<(long,TRow)>.Empty;
-            var ro = cx.result;
-            var ap = (long)(mem[Scope] ?? 0L);
-            var od = (mem[RowSet.RowOrder] as Domain)?? Domain.Row;
-            if (od.Length>0)
-                rs = rs.Sort(cx, od, false);
+            var nr = BList<(long, TRow)>.Empty;
+            var od = (mem[RowSet.RowOrder] as Domain) ?? Domain.Row;
+            var rs = sr.Sort(cx, od, false);
             var ff = (int)(mem[RowSetSection.Offset] ?? 0);
             var lm = (int)(mem[RowSetSection.Size] ?? 0);
             if (ff != 0 || lm != 0)
-            {
                 rs = new RowSetSection(cx, rs, ff, lm);
-                cx.result = rs;
-            }
             for (var b = rs.First(cx); b != null; b = b.Next(cx))
                 nr += (b._pos, b);
-            var nb = new ExplicitRowSet(ap,rs.defpos, cx, rs, nr);
-            if (ro is TableRowSet ts)
-                nb += (TableRowSet._Index, ts.index);
+            var nb = new ExplicitRowSet(sr.scope,sr.defpos, cx, sr, nr);
             cx.Add(nb);
             cx.result = nb;
-            cx.size += (rs.defpos, lm);
-            if (next is not null && cx.obs[next.value()] is Executable e)
-                cx = e._Obey(cx, next.Next());
             return cx;
         }
         public override string ToString()
