@@ -495,6 +495,7 @@ namespace Pyrrho.Level4
                     case Qlx.WHEN: return ParseConditionalStmt(m);
                     case Qlx.WHERE: goto case Qlx.FILTER;
                     case Qlx.WITH: goto case Qlx.MATCH; // wow
+                    case Qlx.YIELD: return ParseSelectStatement(m);
                 }
             throw new DBException("42000");
         }
@@ -509,7 +510,7 @@ namespace Pyrrho.Level4
                 Qlx.OFFSET, Qlx.OPEN, Qlx.OPTIONAL, Qlx.ORDER, Qlx.PROPERTY, Qlx.REPEAT,
                 Qlx.REMOVE, Qlx.RESIGNAL, Qlx.RETURN, Qlx.REVOKE, Qlx.ROLLBACK, Qlx.SELECT,
                 Qlx.SET, Qlx.SIGNAL, Qlx.SKIP, Qlx.TABLE, Qlx.UNION, Qlx.UPDATE, Qlx.USE, Qlx.VALUE,
-                Qlx.VALUES, Qlx.WHEN, Qlx.WHERE, Qlx.WHILE, Qlx.WITH) || Match(Qlx.Id);
+                Qlx.VALUES, Qlx.WHEN, Qlx.WHERE, Qlx.WHILE, Qlx.WITH, Qlx.YIELD) || Match(Qlx.Id);
         }
         byte MustBeLevelByte()
         {
@@ -7994,6 +7995,7 @@ namespace Pyrrho.Level4
                     Mustbe(Qlx.RPAREN);
                     break;
                 case Qlx.RETURN:
+                case Qlx.YIELD:
                 case Qlx.SELECT: // query specification
                     qs = ParseQueryExpression(m);
                     break;
@@ -8153,7 +8155,7 @@ namespace Pyrrho.Level4
             var mm = BTree<long, object>.New(m);
             var xp = mm[DBObject._Domain] as Domain ?? Domain.Content;
             var id = new Ident(this);
-            Mustbe(Qlx.SELECT, Qlx.RETURN);
+            Mustbe(Qlx.SELECT, Qlx.RETURN, Qlx.YIELD);
             var on = cx.names;
             var lp = LexDp();
             var d = ParseDistinctClause();
@@ -9103,6 +9105,7 @@ namespace Pyrrho.Level4
             var i = 1;
             while (Match(Qlx.COMMA))
             {
+                Next();
                 cn = ParseIdent();
                 t += (Grouping.Members, t.members + (cn.uid, i++));
             }

@@ -1137,7 +1137,7 @@ namespace Pyrrho.Level4
                 return true;
             for (var b = rowType.First(); b != null // && b.key()<ds
                     ; b = b.Next())
-                if (b.value() == rp)
+                if (b.value() == rp || cx.obs[b.value()]?.Operands(cx).Contains(rp)==true)
                     return true;
             if (ambient && cx.obs[rp] is QlValue sv
                 && (sv.from < defpos || sv.defpos < defpos))// && sv.selectDepth<selectDepth)
@@ -2437,6 +2437,10 @@ namespace Pyrrho.Level4
             if (cx.obs[valueSelect] is QlValue svs && cx.obs[svs.from] is RowSet es)
                 for (var b = es.Sources(cx).First(); b != null; b = b.Next())
                     if (cx._Dom(b.key())?.representation.Contains(rp) == true)
+                        return true;
+            if (cx.obs[source] is RowSet ss)
+                for (var b = aggs.First(); b != null; b = b.Next())
+                    if (cx.obs[b.key()] is QlValue q && q.Operands(cx).Contains(rp))
                         return true;
             return base.Knows(cx, rp, ambient);
         }

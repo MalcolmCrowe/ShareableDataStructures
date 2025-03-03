@@ -107,6 +107,8 @@ namespace Pyrrho.Common
                 return new TInteger(lj.ivalue + rj.ivalue);
             if (left is TNumeric ln && right is TNumeric rn)
                 return new TNumeric(ln.value + rn.value);
+            if (left is TReal lr && right is TReal rr)
+                return new TReal(lr?.ToDouble()??0 + rr?.ToDouble()??0);
             throw new PEException("PE40601");
         }
         public static TypedValue operator /(TypedValue left, int right)
@@ -117,6 +119,8 @@ namespace Pyrrho.Common
                 return new TInteger(lj.ivalue/new Integer(right));
             if (left is TNumeric ln)
                 return new TNumeric(ln.value/new Numeric(right));
+            if (left is TReal lr)
+                return new TReal((lr?.ToDouble() ?? 0)/right);
             throw new PEException("PE40603");
         }
         internal virtual bool Contains(TypedValue e)
