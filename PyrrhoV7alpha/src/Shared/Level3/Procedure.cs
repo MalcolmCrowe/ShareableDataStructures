@@ -104,6 +104,7 @@ namespace Pyrrho.Level3
             if (infos[cx.role.defpos] is not ObInfo oi
                 || !oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105").Add(Qlx.EXECUTE);
+            var ro = cx.result;
             cx.Add(framing);
             var n = ins.Length;
             var acts = new TypedValue[n];
@@ -121,13 +122,17 @@ namespace Pyrrho.Level3
             {
                 cx.obs += act.obs;
                 cx.nextHeap = act.nextHeap;
+                cx.funcs = act.funcs;
                 cx.result = act.result;
             }
             var r = act.Ret();
             if (r is TList)
+            {
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());
+                cx.result = ro;
+            }
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
                 if (b.value() is long bp && act.obs[bp] is FormalParameter p)

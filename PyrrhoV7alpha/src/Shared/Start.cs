@@ -1225,11 +1225,11 @@ namespace Pyrrho
                 case Qlx.NODETYPE:
                     if (tv.dataType is NodeType nt && tv is not TNode)
                         return lc + 1 + StringLength(nt.Describe(cx));
-                    return lc+1 + StringLength(((TNode)tv).tableRow.vals.ToString());
+                    return lc+1 + StringLength(((TNode)tv).ToString(cx));
                 case Qlx.EDGETYPE:
                     if (tv.dataType is EdgeType et && tv is not TNode)
                         return lc + 1 + StringLength(et.Describe(cx));
-                    return lc + 1 + StringLength(((TNode)tv).tableRow.vals.ToString());
+                    return lc + 1 + StringLength(((TNode)tv).ToString(cx));
             }
             return lc + 1 + StringLength(o);
         }
@@ -1532,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(03 March 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(05 March 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

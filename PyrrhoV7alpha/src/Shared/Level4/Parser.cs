@@ -9100,14 +9100,16 @@ namespace Pyrrho.Level4
         Grouping ParseGroupingSet()
         {
             var cn = ParseIdent();
+            var u = cx.names[cn.ident].Item2;
             var t = new Grouping(cx, BTree<long, object>.Empty
-                + (Grouping.Members, new CTree<long, int>(cn.uid, 0)));
+                + (Grouping.Members, new CTree<long, int>(u, 0)));
             var i = 1;
             while (Match(Qlx.COMMA))
             {
                 Next();
                 cn = ParseIdent();
-                t += (Grouping.Members, t.members + (cn.uid, i++));
+                u = cx.names[cn.ident].Item2;
+                t += (Grouping.Members, t.members + (u, i++));
             }
             Mustbe(Qlx.RPAREN);
             return (Grouping)cx.Add(t);

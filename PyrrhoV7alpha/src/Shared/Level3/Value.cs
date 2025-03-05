@@ -2080,6 +2080,12 @@ namespace Pyrrho.Level3
                             dm = dl;
                         else if (dr.kind == Qlx.INTERVAL && (dl.kind == Qlx.INTEGER || dl.kind == Qlx.NUMERIC))
                             dm = dr;
+                        else if (dl.kind == Qlx.REAL || dr.kind == Qlx.NUMERIC)
+                            dm = Domain.Real;
+                        else if (dl.kind == Qlx.NUMERIC || dr.kind == Qlx.REAL)
+                            dm = Domain.Real;
+                        else if (dl.kind == Qlx.REAL || dr.kind == Qlx.REAL)
+                            dm = Domain.Real;
                         else if (left != null)
                             dm = left.FindType(cx, Domain.UnionNumeric);
                         break;
@@ -2437,6 +2443,12 @@ namespace Pyrrho.Level3
                     {
                         if (dl.kind == Qlx.NUMERIC || dr.kind == Qlx.NUMERIC)
                             dm = Domain._Numeric;
+                        else if (dl.kind == Qlx.REAL || dr.kind == Qlx.NUMERIC)
+                            dm = Domain.Real;
+                        else if (dl.kind == Qlx.NUMERIC || dr.kind == Qlx.REAL)
+                            dm = Domain.Real;
+                        else if (dl.kind == Qlx.REAL || dr.kind == Qlx.REAL)
+                            dm = Domain.Real;
                         else if (dl.kind == Qlx.INTERVAL && (dr.kind == Qlx.INTEGER || dr.kind == Qlx.NUMERIC))
                             dm = dl;
                         else if (dr.kind == Qlx.INTERVAL && (dl.kind == Qlx.INTEGER || dl.kind == Qlx.NUMERIC))
@@ -6019,7 +6031,19 @@ namespace Pyrrho.Level3
             var ac = proc.Exec(cx, parms);
             var r = ac.val ?? domain.defaultValue;
             cx.values = oc;
-            return r;
+            if (r is TList && cx.result is RowSet ps)
+            {
+                cx.values += (defpos, r);
+                cx.result = ps + (RowSet._Built, true);
+                cx.obs += (defpos, cx.result);
+                return r;
+            }
+            else
+                cx.result = ac.result;
+            cx.funcs = ac.funcs;
+            if (cx.result is RowSet rs && rs is not EmptyRowSet)
+                r = rs.First(cx);
+            return r??TNull.Value;
         }
         internal override void Eqs(Context cx,ref Adapters eqs)
         {

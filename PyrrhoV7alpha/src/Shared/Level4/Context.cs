@@ -2205,7 +2205,7 @@ namespace Pyrrho.Level4
                         if (obs[p] is QlValue v && v.KnownBy(this, rs))
                             gc += (p, _Dom(p));
                         if (obs[p] is Grouping gg)
-                            for (var c = gg.keys.First(); c != null; c = c.Next())
+                            for (var c = gg.rowType.First(); c != null; c = c.Next())
                                 if (c.value() is long cp && _Ob(cp) is QlValue ce)
                                 {
                                     if (dm.representation.Contains(cp) ||

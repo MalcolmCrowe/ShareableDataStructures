@@ -2812,17 +2812,22 @@ namespace Pyrrho.Level4
             }
             return base.Sort(cx, os, dct);
         }
-        public override Cursor? First(Context _cx)
+        public override Cursor? First(Context cx)
         {
-            var r = (SelectRowSet)Build(_cx);
-            _cx.rdC += rdCols;
+            if (cx.obs[source] is TrivialRowSet ps && ps.rowType.CompareTo(rowType) == 0)
+            {
+                cx.result = ps;
+                return ps.First(cx);
+            }
+            var r = (SelectRowSet)Build(cx);
+            cx.rdC += rdCols;
             if (aggs != CTree<long, bool>.Empty)
             {
                 if (groupings == CList<long>.Empty)
-                    return EvalBookmark.New(_cx, r);
-                return GroupingBookmark.New(_cx, r);
+                    return EvalBookmark.New(cx, r);
+                return GroupingBookmark.New(cx, r);
             }
-            return SelectCursor.New(_cx, r);
+            return SelectCursor.New(cx, r);
         }
         protected override Cursor? _First(Context cx)
         {
@@ -4941,8 +4946,8 @@ namespace Pyrrho.Level4
         static BTree<long, object> _Mem(Context cx, Procedure pr)
         {
             var dp = cx.GetPrevUid();
-            if (pr.domain.Length == 0 || pr.NameFor(cx) is not string n)
-                throw new DBException("42000","Void?");
+            if (pr.NameFor(cx) is not string n)
+                throw new DBException("42105");
             var tn = new Ident(n, dp);
             var rt = CList<long>.Empty;        // our total row type
             var rs = CTree<long, Domain>.Empty; // our total row type representation
@@ -4992,13 +4997,18 @@ namespace Pyrrho.Level4
         }
         internal override RowSet Build(Context cx)
         {
+            if ((bool)(mem[_Built]??false))
+                return this;
             var fc = (SqlProcedureCall)(cx._Ob(call) ?? throw new DBException("42105").Add(Qlx.PROCEDURE));
+            cx.result = this;
             cx.values += (defpos,fc.Eval(cx));
             return (RowSet)cx.Add(this+(_Built,true));
         }
         protected override Cursor? _First(Context cx)
         {
             var v = cx.values[defpos];
+            if (v is not TList)
+                return v as Cursor;
             return (v==null || v==TNull.Value)?null:ProcRowSetCursor.New(cx, this, (TList)v);
         }
         protected override Cursor? _Last(Context cx)
