@@ -749,20 +749,20 @@ namespace Pyrrho.Common
     
     internal class TList : TypedValue
     {
-        internal readonly BList<TypedValue> list; 
+        internal readonly CList<TypedValue> list; 
         internal TList(Domain dt, params TypedValue[] a) 
             : base(new Domain(-1L,Qlx.ARRAY,dt)) 
         { 
-            var ts = BList<TypedValue>.Empty;
+            var ts = CList<TypedValue>.Empty;
             foreach (var x in a)
                 ts += x;
             list = ts;
         }
-        internal TList(Domain dt, BList<TypedValue> a) : base(dt) { list = a; }
+        internal TList(Domain dt, CList<TypedValue> a) : base(dt) { list = a; }
         internal override TypedValue Fix(Context cx)
         {
             return new TList((Domain)dataType.Fix(cx),
-                cx.FixBV(list));
+                cx.FixLV(list));
         }
         public static TList operator+(TList ar,TypedValue v)
         {

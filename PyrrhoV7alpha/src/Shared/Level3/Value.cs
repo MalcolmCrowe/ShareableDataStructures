@@ -4267,7 +4267,7 @@ namespace Pyrrho.Level3
         }
         internal override TypedValue _Eval(Context cx)
         {
-            var vs = BList<TypedValue>.Empty;
+            var vs = CList<TypedValue>.Empty;
             for (var b=rows.First(); b is not null; b=b.Next())
                 if (b.value() is long p && cx.obs[p] is QlValue v)
                 vs += v.Eval(cx);
@@ -4457,7 +4457,7 @@ namespace Pyrrho.Level3
         internal override TypedValue _Eval(Context cx)
         {
             var q = (RowSet?)cx.obs[aqe] ?? throw new PEException("PE1701");
-            var va = BList<TypedValue>.Empty;
+            var va = CList<TypedValue>.Empty;
             var et = domain.elType;
             var nm = q.name;
             for (var rb=q.First(cx);rb!= null;rb=rb.Next(cx))
@@ -4697,7 +4697,7 @@ namespace Pyrrho.Level3
                             ar += v;
                 return new TList(domain, ar);
             }
-            var vs = BList<TypedValue>.Empty;
+            var vs = CList<TypedValue>.Empty;
             for (var b = array?.First(); b != null; b = b.Next())
                 if (b.value() is long p)
                     vs += cx.obs[p]?.Eval(cx) ?? domain.defaultValue;
@@ -5318,7 +5318,7 @@ namespace Pyrrho.Level3
                 case Qlx.NO:
                 case Qlx.LIST:
                     {
-                        var rl = BList<TypedValue>.Empty;
+                        var rl = CList<TypedValue>.Empty;
                         for (var b = rs?.First(cx); b != null; b = b.Next(cx))
                             rl += b;
                         return new TList(domain, rl);
@@ -5476,7 +5476,7 @@ namespace Pyrrho.Level3
                 //        cx.funcs -= ers.defpos;
                 return r;
             }
-            var rs = BList<TypedValue>.Empty;
+            var rs = CList<TypedValue>.Empty;
             for (var b = re.First(cx); b != null; b = b.Next(cx))
                 rs += b;
             var rl = new TList(domain, rs);
@@ -5737,6 +5737,7 @@ namespace Pyrrho.Level3
         /// The tree of actual parameters
         /// </summary>
 		public CList<long> parms => (CList<long>)(mem[Parms] ?? CList<long>.Empty);
+        public long queryResult => (long)(mem[QueryStatement.Result]??-1L);
         public SqlCall(long lp, Context cx, Procedure pr, CList<long> acts, long tg=-1L)
         : base(lp, _Mem(lp,cx,pr) + (Parms, acts) + (ProcDefPos,pr.defpos) 
               + (Var,tg)+(_Domain,pr.domain))
@@ -5759,6 +5760,8 @@ namespace Pyrrho.Level3
                     + (CallStatement.Call, dp);
                 cx.Add(prs);
                 m += (Infos, proc.infos);
+                if (proc.domain.kind == Qlx.TABLE)
+                    m += (QueryStatement.Result, prs.defpos);
             }
             return m;
         }
@@ -5904,7 +5907,8 @@ namespace Pyrrho.Level3
             if (cx.db.objects[procdefpos] is not Procedure proc
                 || proc.infos[proc.definer] is not ObInfo pi || pi.name is null)
                 throw new PEException("PE6840");
-            var prs = new ProcRowSet(this, ap, cx) + (RowSet.Target, procdefpos) + (ObInfo.Name, pi.name);
+            var prs = cx.obs[queryResult] as ProcRowSet
+                ??(new ProcRowSet(this, ap, cx) + (RowSet.Target, procdefpos) + (ObInfo.Name, pi.name));
             cx.Add(prs);
             return prs;
         }
@@ -5939,6 +5943,10 @@ namespace Pyrrho.Level3
                     sb.Append(Uid(p));
                 }
             sb.Append(')');
+            if (queryResult>0)
+            {
+                sb.Append(" queryResult");sb.Append(Uid(queryResult));
+            }
             return sb.ToString();
         }
     }
@@ -6031,18 +6039,12 @@ namespace Pyrrho.Level3
             var ac = proc.Exec(cx, parms);
             var r = ac.val ?? domain.defaultValue;
             cx.values = oc;
-            if (r is TList && cx.result is RowSet ps)
+            if (r is TList tl && cx.obs[queryResult] is ProcRowSet ps)
             {
                 cx.values += (defpos, r);
-                cx.result = ps + (RowSet._Built, true);
-                cx.obs += (defpos, cx.result);
-                return r;
+                cx.result = (RowSet)cx.Add(ps + (RowSet._Built, true) + (ProcRowSet.TableResult,tl));
             }
-            else
-                cx.result = ac.result;
             cx.funcs = ac.funcs;
-            if (cx.result is RowSet rs && rs is not EmptyRowSet)
-                r = rs.First(cx);
             return r??TNull.Value;
         }
         internal override void Eqs(Context cx,ref Adapters eqs)

@@ -1997,9 +1997,12 @@ namespace Pyrrho.Level4
                 m = rs._Depths(cx, m, d, p, o);
             return (TrivialRowSet)rs.New(m + (p, o));
         }
-        protected override Cursor? _First(Context _cx)
+        protected override Cursor? _First(Context cx)
         {
-            return new TrivialCursor(_cx, this);
+            if (rowType.Length == 1 && cx.obs[rowType.First()?.value() ?? -1L] is SqlCall sc
+                && cx.obs[sc.queryResult] is ProcRowSet ps)
+                return ps.First(cx);
+            return new TrivialCursor(cx, this);
         }
         protected override Cursor? _Last(Context _cx)
         {
@@ -4929,21 +4932,24 @@ namespace Pyrrho.Level4
     }
     internal class ProcRowSet : RowSet
     {
+        internal const long
+             TableResult = -202; // TList
+        public TList? tableResult => (TList?)mem[TableResult];
         internal long call => (long)(mem[CallStatement.Call]??-1L);
         internal ProcRowSet(SqlCall ca, long ap, Context cx) 
             :base(ap,cx.GetUid(),cx,
-                 _Mem(cx,cx.db.objects[ca.procdefpos] as Procedure??throw new DBException("42000","ProcRowSet"))
-                 +(CallStatement.Call,ca.defpos))
+                 _Mem(cx,ca,cx.db.objects[ca.procdefpos] as Procedure
+                     ??throw new DBException("42000","ProcRowSet")))
         {
             cx.Add(this);
         }
-        internal ProcRowSet(Context cx,long ap,Procedure pr)
-            : base(ap, cx.GetUid(), cx,  _Mem(cx, pr))
+        internal ProcRowSet(Context cx,long ap, Procedure pr)
+            : base(ap, cx.GetUid(), cx,  _Mem(cx, null, pr))
         {
             cx.Add(this);
         }
         protected ProcRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long, object> _Mem(Context cx, Procedure pr)
+        static BTree<long, object> _Mem(Context cx, SqlCall? ca, Procedure pr)
         {
             var dp = cx.GetPrevUid();
             if (pr.NameFor(cx) is not string n)
@@ -4964,6 +4970,12 @@ namespace Pyrrho.Level4
                 + (_Ident, tn) + (RSTargets, new BTree<long, long?>(pr.defpos, dp));
             r = cx.DoDepth(r);
             r += (Asserts, (Assertions)(_Mem(dp, cx, r)[Asserts] ?? Assertions.None));
+            if (ca is not null)
+            {
+                r += (CallStatement.Call, ca.defpos);
+                if (pr.domain.kind==Qlx.TABLE)
+                    cx.Add(ca + (QueryStatement.Result, dp));
+            }
             return r;
         }
         public static ProcRowSet operator +(ProcRowSet et, (long, object) x)
@@ -5000,16 +5012,16 @@ namespace Pyrrho.Level4
             if ((bool)(mem[_Built]??false))
                 return this;
             var fc = (SqlProcedureCall)(cx._Ob(call) ?? throw new DBException("42105").Add(Qlx.PROCEDURE));
-            cx.result = this;
             cx.values += (defpos,fc.Eval(cx));
-            return (RowSet)cx.Add(this+(_Built,true));
+            var r = cx.obs[defpos] as ProcRowSet ?? throw new PEException("PE40551");
+            return (RowSet)cx.Add(r+(_Built,true));
         }
         protected override Cursor? _First(Context cx)
         {
+            if (tableResult is TList tl)
+                cx.values += (defpos, tl);
             var v = cx.values[defpos];
-            if (v is not TList)
-                return v as Cursor;
-            return (v==null || v==TNull.Value)?null:ProcRowSetCursor.New(cx, this, (TList)v);
+            return (v == null || v == TNull.Value) ? null : ProcRowSetCursor.New(cx, this, (TList)v);
         }
         protected override Cursor? _Last(Context cx)
         {

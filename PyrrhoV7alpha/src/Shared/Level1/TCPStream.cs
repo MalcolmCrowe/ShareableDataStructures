@@ -725,6 +725,13 @@ namespace Pyrrho.Level1
             int m = result.display;
             if (m == 0)
                 m = dt.Length;
+            if (result.Length == 1 && cx.obs[result.First()?.value() ?? -1L] is SqlCall sc
+                && cx.obs[sc.queryResult] is ProcRowSet ps)
+            {
+                result = ps;
+                dt = ps.rowType;
+                m = dt.Length;
+            }
             PutInt((m>0)?m:1);
             if (m > dt.Length)
             {

@@ -1083,7 +1083,7 @@ namespace Pyrrho
             client.Close();
         }
         /// <summary>
-        /// Send a block of obs as part of a stream of rows
+        /// Send a block of data as part of a stream of rows
         /// </summary>
         internal void ReaderData()
         {
@@ -1532,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(05 March 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(06 March 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

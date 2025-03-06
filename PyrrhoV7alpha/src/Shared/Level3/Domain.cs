@@ -914,7 +914,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     {
                         var dp = rdr.GetLong();
                         var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
-                        var vs = BList<TypedValue>.Empty;
+                        var vs = CList<TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
                             vs += el.Get(log, rdr, pp);
@@ -2526,7 +2526,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 throw new PEException("PE3040");
             if (kind == Qlx.SENSITIVE)
                 return new TSensitive(this, elType?.ParseList(lx)??TNull.Value);
-            var vs = BList<TypedValue>.Empty;
+            var vs = CList<TypedValue>.Empty;
             var end = ')';
             switch(lx.ch)
             {
@@ -3507,7 +3507,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         var dr = dt + (Kind, Qlx.ROW);
                         if (cx.groupCols[defpos] is Domain dn)
                             cx.groupCols += (dr.defpos, dn);
-                        var va = BList<TypedValue>.Empty;
+                        var va = CList<TypedValue>.Empty;
                         foreach (var o in da.items)
                             va += dr.Coerce(cx, o);
                         return Check(new TList(dt, va));
@@ -3516,7 +3516,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.ARRAY:
                     if (ob is DocArray db && elType is not null)
                     {
-                        var va = BList<TypedValue>.Empty;
+                        var va = CList<TypedValue>.Empty;
                         foreach (var o in db.items)
                             va += elType.Coerce(cx, o);
                         return Check(new TList(elType, va));

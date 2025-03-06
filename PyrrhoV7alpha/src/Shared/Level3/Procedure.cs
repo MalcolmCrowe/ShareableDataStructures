@@ -99,12 +99,11 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context: should be an isolated Activation</param>
         /// <param name="actIns">The actual parameters</param>
         /// <returns>The Context, possibly modified</returns>
-        public Context Exec(Context cx, CList<long> actIns)
+        public Context Exec(Context cx, CList<long> actIns, SqlCall? ca = null)
         {
             if (infos[cx.role.defpos] is not ObInfo oi
                 || !oi.priv.HasFlag(Grant.Privilege.Execute))
                 throw new DBException("42105").Add(Qlx.EXECUTE);
-            var ro = cx.result;
             cx.Add(framing);
             var n = ins.Length;
             var acts = new TypedValue[n];
@@ -131,7 +130,16 @@ namespace Pyrrho.Level3
                 for (var b = act.values.First(); b != null; b = b.Next())
                     if (!cx.values.Contains(b.key()))
                         cx.values += (b.key(), b.value());
-                cx.result = ro;
+            } else 
+            {
+                var rr = CList<TypedValue>.Empty;
+                if (cx.result is RowSet cs && domain.kind == Qlx.TABLE)
+                {
+                    for (var b = cs?.First(cx); b != null; b = b.Next(cx))
+                        if (b is not null)
+                            rr += b;
+                    r = new TList(cx.result, rr);
+                }
             }
             i = 0;
             for (var b = ins.First(); b != null; b = b.Next(), i++)
@@ -161,6 +169,8 @@ namespace Pyrrho.Level3
                     if (m == Qlx.INOUT || m == Qlx.OUT)
                         cx.AddValue(x, acts[i]);
                 }
+            if (ca is not null && cx.obs[ca.queryResult] is RowSet cr)
+                cx.result = cr;
             return cx;
         }
         internal override void Modify(Context cx, Modify m)

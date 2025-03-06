@@ -3572,7 +3572,7 @@ namespace Pyrrho.Level3
             var ac = new Context(cx, cx._Ob(proc.definer) as Role ?? throw new DBException("42108"),
                 cx.user ?? throw new DBException("42108"));
             var oc = cx.values;
-            var a = proc?.Exec(ac, sc.parms) ?? ac;
+            var a = proc?.Exec(ac, sc.parms, sc) ?? ac;
             cx = a.SlideDown();
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());

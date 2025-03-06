@@ -2311,9 +2311,9 @@ namespace Pyrrho.Level4
             }
             return ch ? r : us;
         }
-        internal BList<TypedValue> FixBV(BList<TypedValue> key)
+        internal CList<TypedValue> FixLV(CList<TypedValue> key)
         {
-            var r = BList<TypedValue>.Empty;
+            var r = CList<TypedValue>.Empty;
             var ch = false;
             for (var b = key.First(); b != null; b = b.Next())
                 if (b.value() is TypedValue p)
