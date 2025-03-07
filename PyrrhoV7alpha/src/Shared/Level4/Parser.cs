@@ -5642,10 +5642,11 @@ namespace Pyrrho.Level4
             var ob = Identify(ic, il, xp);
             if (ob is not QlValue)
             {
+                var np = (long)(mm[DBObject._From] ?? -1L);
                 if (ob is TableColumn tc)
-                    ob = new QlInstance(ic, cx, lp, tc.defpos);
+                    ob = new QlInstance(ic, cx, np, tc.defpos);
                 else if (cx.bindings.Contains(ob.defpos))
-                    ob = new QlInstance(ic, cx, lp, ob.defpos);
+                    ob = new QlInstance(ic, cx, np, ob.defpos);
                 else
                     throw new DBException("42112", ic.ident);
             }
