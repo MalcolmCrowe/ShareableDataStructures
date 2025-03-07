@@ -5430,10 +5430,17 @@ namespace Pyrrho.Level3
                 ds += (xn.defpos, pd.tableRow);
             //    else if (xn.Eval(ac) is TNode nn)
             //        ds += (xn.defpos, nn.tableRow);
-            else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr
-                && ((pd is TEdge te) ? ((tok == Qlx.ARROWBASE && te.arriving.ToLong() == tr.defpos)
-                || (tok == Qlx.RARROW && te.leaving.ToLong() == tr.defpos)) : true))
-                ds += (gr.refersTo, tr.tableRow);
+            else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr)
+            {
+                if ((pd is TEdge te) ? ((tok == Qlx.ARROWBASE && te.arriving.ToLong() == tr.defpos)
+                || (tok == Qlx.RARROW && te.leaving.ToLong() == tr.defpos)) : true)
+                    ds += (gr.refersTo, tr.tableRow);
+                if (pd is TNode pl && tr is TEdge ae)
+                {
+                    if (tok == Qlx.ARROWBASE && pl.defpos != ae.leaving.ToLong()) return;
+                    if (tok == Qlx.RARROW && pl.defpos != ae.arriving.ToLong()) return;
+                }
+            }
             else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj)
             {
                 for (var b = dj.First(); b != null; b = b.Next())
@@ -5449,7 +5456,7 @@ namespace Pyrrho.Level3
                 (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
                 : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
                is TableRow tn)
-                ds += (tn.defpos, tn);
+                    ds += (tn.defpos, tn);
             }
             else if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
