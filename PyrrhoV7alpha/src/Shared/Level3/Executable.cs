@@ -4732,7 +4732,7 @@ namespace Pyrrho.Level3
                 throw new DBException("02000");
             var nr = BList<(long, TRow)>.Empty;
             var od = (mem[RowSet.RowOrder] as Domain) ?? Domain.Row;
-            var rs = sr.Sort(cx, od, false);
+            var rs = (od.Length==0)?sr:sr.Sort(cx, od, false);
             var ff = (int)(mem[RowSetSection.Offset] ?? 0);
             var lm = (int)(mem[RowSetSection.Size] ?? 0);
             if (ff != 0 || lm != 0)
