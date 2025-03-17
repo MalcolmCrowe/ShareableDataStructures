@@ -1423,7 +1423,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             if (obj is null)
                 return 1;
             var that = (Domain)obj;
-            if (defpos > 0L && that.defpos>0L)
+            //            if ((defpos > 0L && that.defpos>0L)|| (defpos < -1L && that.defpos < -1L))
+            if (defpos > 0L && that.defpos > 0L)
                 return defpos.CompareTo(that.defpos);
             if (obj.GetType() == typeof (Domain) && that.GetType() != typeof(Domain))
                 return -1;

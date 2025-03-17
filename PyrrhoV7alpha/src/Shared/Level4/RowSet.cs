@@ -338,7 +338,7 @@ namespace Pyrrho.Level4
         }
         internal virtual RowSet Sort(Context cx, Domain os, bool dct)
         {
-            if (os.CompareTo(rowOrder) == 0) // skip if current rowOrder already finer
+            if (os.CompareTo(rowOrder) == 0 && rowOrder!=Row) // skip if current rowOrder already finer
                 return this;
             return new OrderedRowSet(cx, this, os, dct);
         }

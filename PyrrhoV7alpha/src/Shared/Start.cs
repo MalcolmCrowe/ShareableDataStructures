@@ -286,7 +286,11 @@ namespace Pyrrho
                             goto _return;
                         // Get names of local databases
                         case Protocol.GetFileNames:
-                            tcp.PutFileNames(); break;
+                            {
+                                var bf = tcp.PutFileNames(TCPStream.BBuf.Empty);
+                                tcp.Write(bf, 0, int.MaxValue);
+                            }
+                            break;
                         // set the current reader
                         case Protocol.ResetReader:
                             rb = ((RowSet?)cx?.result)?.First(cx);
@@ -617,7 +621,8 @@ namespace Pyrrho
                                             {
                                                 tcp.PutString(an);
                                                 tcp.PutInt(dt.Typecode());
-                                                tcp.PutData(cx, vs[a] ?? TNull.Value, dt);
+                                                var bb = TCPStream.BBuf.Empty + (cx, dt, vs[a] ?? TNull.Value);
+                                                tcp.Write(bb, 0, bb.m.Length);
                                             }
                                         }
                                     tcp.PutLong(ep);
@@ -707,7 +712,8 @@ namespace Pyrrho
                                         {
                                             tcp.PutString(an);
                                             tcp.PutInt(dt.Typecode());
-                                            tcp.PutData(cx, vs?[a] ?? TNull.Value, dt);
+                                            var bb = TCPStream.BBuf.Empty + (cx, dt, vs?[a] ?? TNull.Value);
+                                            tcp.Write(bb,0,bb.m.Length);
                                         }
                                     tcp.PutLong(ep ?? -1L);
                                     tcp.Write(Responses.Done);
@@ -1083,7 +1089,11 @@ namespace Pyrrho
             client.Close();
         }
         /// <summary>
-        /// Send a block of data as part of a stream of rows
+        /// Send a block of data as part of a stream of cells.
+        /// We send as many cells as will fit in a 2048-byte block, 
+        /// we will prefix the cells by 4 bytes saying how many cells are in the block.
+        /// Any cell that is larger than 2048 bytes is sent in smaller pieces.
+        /// For other cells we use class BBuf to collect as many cells as will fit.
         /// </summary>
         internal void ReaderData()
         {
@@ -1096,15 +1106,14 @@ namespace Pyrrho
                 lookAheadDone = true;
                 nextCell = null;
             }
+            // The protocol response byte is either ReaderData or NoData
             if (rb is null)
             {
                 tcp.Write(Responses.NoData);
                 return;
             }
             tcp.Write(Responses.ReaderData);
-            tcp.ncells = 1; // we will very naughtily poke this into the write buffer later (at offset 3)
-            // for now we announce that we will send one cell: we always send at least one cell
-            tcp.PutInt(1);
+            tcp.ncells = 1;
             var domains = BTree<int, Domain>.Empty;
             var i = 0;
             if (rb.columns is CList<long> co)
@@ -1124,7 +1133,8 @@ namespace Pyrrho
             if (nextCol == ds)
                 lookAheadDone = false;
             var (rv, rc) = TCPStream.Check(cx, rb);
-            tcp.PutCell(cx, dc, nextCell, rv, rc);
+            var bbuf = TCPStream.BBuf.Empty;
+            bbuf += (cx, dc, nextCell, rv ?? "", rc ?? "");
             for (; ; )
             {
                 if (nextCol == ds)
@@ -1140,29 +1150,19 @@ namespace Pyrrho
                     (rv, rc) = TCPStream.Check(cx, rb);
                 }
                 nextCell = rb[nextCol] ?? throw new PEException("PE0110");
-                int len = DataLength(cx, nextCell, rv, rc);
                 dc = domains[nextCol] ?? throw new PEException("PE1405");
-                if (dc.CompareTo(nextCell.dataType) != 0)
-                {
-                    var nm = rb.NameFor(cx, nextCol);
-                    nm ??= nextCell.dataType.ToString();
-                    len += 4 + StringLength(nm);
-                }
-                if (tcp.wcount + len + 1 >= TCPStream.bSize)
+                var nbuf = bbuf + (cx, dc, nextCell, rv ?? "", rc ?? "");
+                if (nbuf.m.Length + 7 >= TCPStream.bSize)
                     break;
-                tcp.PutCell(cx, dc, nextCell, rv, rc);
+                bbuf = nbuf;
                 if (++nextCol == ds)
                     lookAheadDone = false;
                 tcp.ncells++;
             }
-            // naughty naughty: update ncells
-            if (tcp.ncells != 1)
-            {
-                int owc = tcp.wcount;
-                tcp.wcount = 3;
-                tcp.PutInt(tcp.ncells);
-                tcp.wcount = owc;
-            }
+            tcp.wcount = 3;
+            tcp.PutInt(tcp.ncells);
+            // Finally add BBuf's bytes to the Buffer
+            tcp.Write(bbuf, 0, bbuf.m.Length);
         }
         int DataLength(Context cx, TypedValue tv, string? rv = null, string? rc = null)
         {
@@ -1235,6 +1235,7 @@ namespace Pyrrho
         }
         static int StringLength(object? o)
         {
+
             return o == null ? 6 : 4 + Encoding.UTF8.GetBytes(o.ToString()??"").Length;
         }
         static int TypeLength(Domain t)
@@ -1532,7 +1533,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(07 March 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(17 March 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

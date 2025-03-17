@@ -5,6 +5,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Security;
 using Pyrrho.Level5;
+using System.Numerics;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -16,8 +17,11 @@ using Pyrrho.Level5;
 namespace Pyrrho.Level1
 {
     /// <summary>
-    /// On the network there are
-    /// serious advantages in making all messages exactly the same size.
+    /// On the network there are serious advantages in making all messages exactly the same size.
+    /// Every server-client message is exactly 2048 bytes. 
+    /// The first 2 bytes are the number of bytes in the rest of the message: 
+    /// placed there by the Flush method (and not until then),
+    /// there is always at least a Pyrrho.Responses byte.
     /// </summary>
     internal class TCPStream : Stream
     {
@@ -34,7 +38,352 @@ namespace Pyrrho.Level1
         {
             // first 2 bytes indicate how many following bytes are good
             internal byte[] bytes = new byte[bSize];
-            internal ManualResetEvent wait = new (true);
+            internal ManualResetEvent wait = new(true);
+        }
+        /// <summary>
+        /// BBuf is a shareable class for assembling data to send to the client.
+        /// Shareable not because it will be shared, but so that we can try to
+        /// add another cell to the BBuf and simply discard a failed attempt.
+        /// This happens in PyrrhoServer.ReaderData, where there is a comment about why.
+        /// </summary>
+        internal class BBuf
+        {
+            public readonly BList<byte> m;
+            public static BBuf Empty = new(BList<byte>.Empty);
+            public BBuf(BList<byte> b) { m = b; }
+            public static BBuf operator+(BBuf b,byte[] x)
+            {
+                for (var i = 0; i < x.Length; i++)
+                    b += x[i];
+                return b;
+            }
+            public static BBuf operator+(BBuf b,byte x)
+            {
+                return new BBuf(b.m+x);
+            }
+            public static BBuf operator+(BBuf b,string n)
+            {
+                byte[] x = Encoding.UTF8.GetBytes(n);
+                b += x.Length;
+                return b + x;
+            }
+            public static BBuf operator+(BBuf bb,int n)
+            {
+                byte[] b = [(byte)(n >> 24), (byte)(n >> 16), 
+                    (byte)(n >> 8), (byte)n];
+                return bb + b;
+            }
+            public static BBuf operator +(BBuf bb, long n)
+            {
+                byte[] b =
+                [
+                    (byte)(n >> 56),
+                    (byte)(n >> 48),
+                    (byte)(n >> 40),
+                    (byte)(n >> 32),
+                    (byte)(n >> 24),
+                    (byte)(n >> 16),
+                    (byte)(n >> 8),
+                    (byte)n,
+                ];
+                return bb + b;
+            }
+            public static BBuf operator +(BBuf bb, Integer n)
+            {
+                return bb + n.ToString();
+            }
+            public static BBuf operator +(BBuf bb, Numeric n)
+            {
+                return bb + n.ToString();
+            }
+            public static BBuf operator +(BBuf bb, DateTime d)
+            {
+                return bb + d.Ticks;
+            }
+            public static BBuf operator +(BBuf bb, TimeSpan d)
+            {
+                return bb + d.Ticks;
+            }
+            public static BBuf operator +(BBuf bb, Interval v)
+            {
+                bb += v.yearmonth ? (byte)1 : (byte)0;
+                return v.yearmonth? bb + v.years + v.months : bb + v.ticks;
+            }
+            public static BBuf operator+(BBuf bb,(Context,TRow)x)
+            {
+                var (cx, r) = x;
+                var n = r.Length;
+                bb += n;
+                var j = 0;
+                for (var b = r.columns.First(); b != null; b = b.Next(), j++)
+                    if (b.value() is long p && cx._Dom(p) is Domain d)
+                    {
+                        bb += Domain.NameFor(cx, p, b.key());
+                        var c = r[p];
+                        if (c is TList ta && ta.Length >= 1)
+                            c = ta[0];
+                        c = d.Coerce(cx, c);
+                        bb += d.name;
+                        bb += d.Typecode(); // other flags are 0
+                        bb += (cx, d, c);
+                    }
+                return bb;
+            }
+            public static BBuf operator+(BBuf bb,(Context,TArray)x)
+            {
+                var (cx, ta) = x;
+                bb += "ARRAY";
+                int n = ta.Length;
+                var et = ta.dataType.elType ?? throw new DBException("22G03");
+                bb += et.name ?? et.ToString();
+                bb += et.Typecode();
+                bb += n;
+                for (var b = ta.array.First(); b != null; b = b.Next())
+                    bb += (cx, et, b.value());
+                return bb;
+            }
+            public static BBuf operator +(BBuf bb, (Context, TList) x)
+            {
+                var (cx, tl) = x;
+                bb += "ARRAY";  // not LIST
+                int n = tl.Length;
+                var et = tl.dataType.elType ?? throw new DBException("22G03");
+                bb += et.ToString();
+                bb += et.Typecode();
+                bb += n;
+                for (var b = tl.list.First(); b != null; b = b.Next())
+                    bb += (cx, et, b.value());
+                return bb;
+            }
+            public static BBuf operator +(BBuf bb, (Context, TMultiset) x)
+            {
+                var (cx, m) = x;
+                bb += "MULTISET";
+                var et = m.dataType.elType ?? throw new DBException("22G03");
+                bb += et.ToString();
+                bb += et.Typecode();
+                bb += (int)m.Count;
+                for (var e = m.First(); e != null; e = e.Next())
+                    bb += (cx, et, e.Value());
+                return bb;
+            }
+            public static BBuf operator +(BBuf bb, (Context, TSet) x)
+            {
+                var (cx, m) = x;
+                bb += "SET";
+                var et = m.dataType.elType ?? throw new DBException("22G03");
+                bb += et.ToString();
+                bb += et.Typecode();
+                bb += (int)m.tree.Count;
+                for (var e = m.First(); e != null; e = e.Next())
+                    bb += (cx, et, e.Value());
+                return bb;
+            }
+            public static BBuf operator+(BBuf b,(Context,Domain,TypedValue)x)
+            {
+                var (cx, dt, tv) = x;
+                if (tv == TNull.Value)
+                    return b + (byte)0;
+                if (dt.CompareTo(tv.dataType) == 0 || tv.dataType is NodeType)
+                    b += (byte)1;
+                else if (dt is UDType ut && ut.prefix is string pf)
+                {
+                    b += (byte)5;
+                    b += pf;
+                    b += tv.dataType.name;
+                    b += tv.dataType.Typecode();
+                }
+                else if (dt is UDType vt && vt.suffix is string sf)
+                {
+                    b += (byte)6;
+                    b += sf;
+                    b += tv.dataType.name;
+                    b += tv.dataType.Typecode();
+                }
+                else if (tv is TTypeSpec)
+                {
+                    b += (byte)2;
+                    b += "CHAR";
+                    b += Domain.Char.Typecode();
+                }
+                else
+                {
+                    b += (byte)2;
+                    b += tv.dataType.name;
+                    b += tv.dataType.Typecode();
+                }
+                switch (tv.dataType.kind)
+                {
+                    case Qlx.Null: break;
+                    case Qlx.SENSITIVE:
+                        return b+(cx, dt, ((TSensitive)tv).value);
+                    case Qlx.BOOLEAN:
+                        return b + ((tv.ToBool() is bool a) ? (a ? 1 : 0) : -1);
+                    case Qlx.INTEGER:
+                        {
+                            if (tv is TInteger ti)
+                                return b+ti.ivalue;
+                            var iv = (TInt)tv;
+                            if (iv.ToInt() is int v)
+                                return b+new Integer((long)v);
+                            return b+new Integer(iv.value);
+                        }
+                    case Qlx.NUMERIC:
+                        {
+                            Numeric v;
+                            if (tv is TNumeric nv)
+                                v = nv.value;
+                            else if (tv.ToLong() is long lv)
+                                v = new Numeric(lv);
+                            else if (tv.ToDouble() is double dv)
+                                v = new Numeric(dv);
+                            else break;
+                            return b+v;
+                        }
+                    case Qlx.REAL:
+                        {
+                            Numeric v;
+                            if (tv is TNumeric nv)
+                                v = nv.value;
+                            else if (tv.ToDouble() is double dv)
+                                v = new Numeric(dv);
+                            return b+v.DoubleFormat();
+                        }
+                    case Qlx.NCHAR:
+                    case Qlx.CLOB:
+                    case Qlx.NCLOB:
+                    case Qlx.LEVEL:
+                    case Qlx.CHAR:
+                        return b + tv.ToString();;
+                    case Qlx.PASSWORD: 
+                        return b+"********"; 
+                    case Qlx.POSITION:
+                        return b+DBObject.Uid(tv.ToLong() ?? 0L);
+                    case Qlx.DATE:
+                        {
+                            if (tv.ToLong() is long tl)
+                                return b + new DateTime(tl);
+                            else if (tv is TDateTime td) // backward compatibility
+                                return b + td.value;
+                            break;
+                        }
+                    case Qlx.TIME:
+                        {
+                            if (tv.ToLong() is long tt)
+                                return b + new TimeSpan(tt);
+                            else if (tv is TTimeSpan sp && sp.value is TimeSpan s)
+                                return b+s;
+                            throw new PEException("PE42161");
+                        }
+                    case Qlx.TIMESTAMP:
+                        {
+                            if (tv.ToLong() is long ts)
+                                return b + new DateTime(ts);
+                            else if (tv is TDateTime d)
+                                return b+d.value;
+                            throw new PEException("PE42162");
+                        }
+                    case Qlx.DOCUMENT:
+                        {
+                            if (tv is TDocument d)
+                                return b += d.ToBytes(null);
+                            throw new PEException("PE42163");
+                        }
+                    case Qlx.DOCARRAY:
+                        {
+                            if (tv is TDocArray d)
+                                return b += d.ToBytes();
+                            throw new PEException("PE42164");
+                        }
+                    case Qlx.OBJECT: return b += tv.ToString(); 
+                    case Qlx.BLOB:
+                        {
+                            if (tv is TBlob d)
+                                return b+d.value;
+                            throw new PEException("PE42165");
+                        }
+                    case Qlx.REF:
+                    case Qlx.ROW: return b +(cx, (TRow)tv); 
+                    case Qlx.ARRAY: return b+(cx, (TArray)tv);
+                    case Qlx.SET:
+                        {
+                            if (tv is TSet d)
+                                return b+(cx, d);
+                            throw new PEException("PE42166");
+                        }
+                    case Qlx.MULTISET:
+                        {
+                            if (tv is TMultiset d)
+                                return b+(cx, d);
+                            throw new PEException("PE42166");
+                        }
+                    case Qlx.INTERVAL:
+                        {
+                            if (tv is TInterval d)
+                                return b+d.value;
+                            throw new PEException("PE42168");
+                        }
+                    case Qlx.NODETYPE:
+                    case Qlx.EDGETYPE:
+                        if (tv is TRow && tv.dataType is NodeType nt)
+                            return b+nt.Describe(cx);
+                        else if (tv is TNode tn)
+                            return b+tn.Cast(cx, dt).ToString(cx);
+                        break;
+                    case Qlx.TYPE:
+                        if (tv.dataType is UDType u && cx.db.objects[u.defpos] is UDType ut)// may be different!
+                        {
+                            var tf = ut.rowType.First();
+                            if (ut.prefix != null)
+                            {
+                                if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
+                                    tv = nv;
+                                return b+ (ut.prefix + tv.ToString());
+                            }
+                            if (ut.suffix is not null)
+                            {
+                                if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
+                                    tv = nv;
+                                return b+(tv.ToString() + ut.suffix);
+                            }
+                            if (tv is TTypeSpec tt)
+                            {
+                                return b+tt._dataType.name;
+                            }
+                        }
+                        goto case Qlx.ROW;
+                    case Qlx.TYPE_URI: 
+                    default:
+                        return b + tv.ToString();
+                }
+                return b;
+            }
+            public static BBuf operator+ (BBuf b, (Context,Domain,TypedValue,string,string)x)
+            {
+                var (cx, dt, p, rv, rc) = x;
+                p = dt.Coerce(cx,p);
+                if (rv.Length>0)
+                {
+                    b += (byte)3;
+                    b += rv;
+                }
+                if (rc.Length>0)
+                {
+                    b += (byte)4;
+                    b += rc;
+                }
+                return b+(cx, dt, p);
+            }
+            public static BBuf operator +(BBuf bb, Exception x)
+            {
+                var e = (DBException)x;
+                bb += (byte)Responses.Warning;
+                bb += e.signal;
+                bb += e.objects.Length;
+                for (int i = 0; i < e.objects.Length; i++)
+                    bb += e.objects[i]?.ToString() ?? "";
+                return bb;
+            }
         }
         /// <summary>
         /// The array of write buffers
@@ -94,6 +443,12 @@ namespace Pyrrho.Level1
             tName = Thread.CurrentThread.Name;
             crypt = new Crypt(this);
         }
+        public void Write(BBuf bf,int offset,int count)
+        {
+            int j = 0;
+            for (var b=bf.m.PositionAt(offset);j<count && b!=null;b=b.Next(),j++)
+                WriteByte(b.value());
+        }
         /// <summary>
         /// Get a byte from the stream: if necessary refill the buffer from the network
         /// </summary>
@@ -111,7 +466,6 @@ namespace Pyrrho.Level1
                 rpos = 2;
                 rcount = 0;
                 rx = 0;
-
                 rbuf.wait = new ManualResetEvent(false);
                 int x = rcount;
                 client.BeginReceive(rbuf.bytes, 0, bSize, 0, new AsyncCallback(Callback), rbuf);
@@ -282,6 +636,7 @@ namespace Pyrrho.Level1
             rpos = rcount + 2;
         }
         bool exception = false;
+        static int flushcount = 0;
         /// <summary>
         /// Flush the buffers to the network
         /// </summary>
@@ -455,7 +810,7 @@ namespace Pyrrho.Level1
             catch (Exception ex) { return ex; }
         }
         /// <summary>
-        /// obs transfer API
+        /// data transfer API
         /// </summary>
         /// <param name="n">a Unicode string for the stream</param>
         internal void PutString(string n)
@@ -567,115 +922,10 @@ namespace Pyrrho.Level1
             b[7] = (byte)n;
             Write(b, 0, 8);
         }
-
-        /// <summary>
-        /// Send a SqlRow to the client.
-        /// </summary>
-        /// <param name="rt">the structured type</param>
-        /// <param name="r">the row to send</param>
-        internal void PutRow(Context _cx, TRow r)
-        {
-            var n = r.Length;
-            PutInt(n);
-            var j = 0;
-            for (var b = r.columns.First(); b != null; b = b.Next(), j++)
-                if (b.value() is long p && _cx._Dom(p) is Domain d)
-                {
-                    PutString(Domain.NameFor(_cx, p, b.key()));
-                    var c = r[p];
-                    if (c is TList ta && ta.Length >= 1)
-                        c = ta[0];
-                    c = d.Coerce(_cx, c);
-                    PutString(d.name);
-                    PutInt(d.Typecode()); // other flags are 0
-                    PutCell(_cx, d, c);
-                }
-        }
-        /// <summary>
-        /// Send an Array value to the client
-        /// </summary>
-        /// <param name="a">the Array</param>
-        internal void PutArray(Context _cx, TypedValue a)
-        {
-            PutString("ARRAY");
-            if (a is TArray ta)
-            {
-                int n = ta.Length;
-                var et = a.dataType.elType ?? throw new DBException("22G03");
-                PutString(et.name??et.ToString());
-                PutInt(et.Typecode());
-                PutInt(n);
-                for (var b = ta.array.First(); b != null; b = b.Next())
-                    PutCell(_cx, et, b.value());
-            } else if (a is TList tl)
-            {
-                int n = tl.Length;
-                var et = tl.dataType.elType ?? throw new DBException("22G03");
-                PutString(et.ToString());
-                PutInt(et.Typecode());
-                PutInt(n);
-                for (var b = tl.list.First(); b != null; b = b.Next())
-                    PutCell(_cx, et, b.value());
-            }
-        }
-        /// <summary>
-        /// send a Multiset to the client
-        /// </summary>
-        /// <param name="m">the Multiset</param>
-        internal void PutMultiset(Context cx, TMultiset m)
-        {
-            PutString("MULTISET");
-            var et = m.dataType.elType ?? m.dataType ?? Domain.Content;
-            PutString(et.ToString());
-            PutInt(et.Typecode());
-            PutInt((int)m.Count);
-            for (var e = m.First(); e != null; e = e.Next())
-                PutCell(cx, et, e.Value());
-        }
-        /// <summary>
-        /// send a Set to the client
-        /// </summary>
-        /// <param name="m">the Multiset</param>
-        internal void PutSet(Context cx, TSet m)
-        {
-            PutString("SET");
-            var et = m.dataType.elType ?? m.dataType ?? Domain.Content;
-            PutString(et.ToString());
-            PutInt(et.Typecode());
-            PutInt((int)m.tree.Count);
-            for (var e = m.First(); e != null; e = e.Next())
-                PutCell(cx, et, e.Value());
-        }
-        /// <summary>
-        /// Send a Table to the client
-        /// </summary>
-        /// <param name="r">the RowSet</param>
-        internal void PutTable(Context cx, RowSet r)
-        {
-            PutString("TABLE");
-            PutRowType(cx);
-            int n = 0;
-            for (var e = r.First(cx); e != null; e = e.Next(cx))
-                n++;
-            PutInt(n);
-            for (var e = r.First(cx); e != null; e = e.Next(cx))
-                for (var b = r.rowType.First(); b != null; b = b.Next())
-                    if (b.value() is long p && cx._Dom(p) is Domain dt)
-                        PutCell(cx, dt, e[b.key()]);
-        }
-        /// <summary>
-        /// Send an array of bytes to the client (e.g. a blob)
-        /// </summary>
-        /// <param name="b">the byte array</param>
-        internal void PutBytes(byte[] b)
-        {
-            PutInt(b.Length);
-            Write(b, 0, b.Length);
-        }
         /// <summary>
         /// Send the tree of filename to the client
         /// </summary>
-        internal void PutFileNames()
+        internal BBuf PutFileNames(BBuf b)
         {
             string[] files;
             files = Directory.GetFiles(Directory.GetCurrentDirectory());
@@ -694,12 +944,12 @@ namespace Pyrrho.Level1
                     continue;
                 ar.Add(s[..n]);
             }
-            WriteByte((byte)Responses.Files);
-            PutInt(ar.Count);
+            b +=(byte)Responses.Files;
+            b += ar.Count;
             for (int j = 0; j < ar.Count; j++)
-                PutString(ar[j]);
+                b += ar[j];
+            return b;
         }
-
         /// <summary>
         /// Send a valueType rowType to the client
         /// </summary>
@@ -897,239 +1147,7 @@ namespace Pyrrho.Level1
             return (rb._Rvv(cx).ToString(),rc);
         }
         /// <summary>
-        /// Send a data cell.
-        /// Normal valueType of SELECT in client-server comms.
-        /// Used in server-server comms to collect traversal conditions,
-        /// and thus reduce the amount of data transferred
-        /// </summary>
-        /// <param name="nt"></param>
-        /// <param name="tv"></param>
-        internal void PutCell(Context _cx, Domain dt, TypedValue p, string? rv=null, string? rc=null)
-        {
-            p = dt.Coerce(_cx, p);
-            if (rv is not null)
-            {
-                WriteByte(3);
-                PutString(rv);
-            } 
-            if (rc is not null)
-            {
-                WriteByte(4);
-                PutString(rc);
-            }
-
-            if (p == TNull.Value)
-            {
-                WriteByte(0);
-                return;
-            }
-            if (dt.CompareTo(p.dataType)==0 || p.dataType is NodeType)
-                WriteByte(1);
-            else if (dt is UDType ut && ut.prefix is string pf)
-            {
-                WriteByte(5);
-                PutString(pf);
-                PutString(p.dataType.name);
-                PutInt(p.dataType.Typecode());
-            }
-            else if (dt is UDType vt && vt.suffix is string sf)
-            {
-                WriteByte(6);
-                PutString(sf);
-                PutString(p.dataType.name);
-                PutInt(p.dataType.Typecode());
-            }
-            else if (p is TTypeSpec)
-            {
-                WriteByte(2);
-                PutString("CHAR");
-                PutInt(Domain.Char.Typecode());
-            }
-            else
-            {
-                WriteByte(2);
-                PutString(p.dataType.name);
-                PutInt(p.dataType.Typecode());
-            }
-            PutData(_cx,p,dt);
-        }
-        /// <summary>
-        /// Send obs cell contents.
-        /// Normal valueType of SELECT in client-server comms.
-        /// </summary>
-        /// <param name="tv"></param>
-        internal void PutData(Context _cx, TypedValue tv, Domain dt)
-        {
-            switch (tv.dataType.kind)
-            {
-                case Qlx.Null: break;
-                case Qlx.SENSITIVE:
-                    PutData(_cx, ((TSensitive)tv).value, dt);
-                    break;
-                case Qlx.BOOLEAN:
-                    {
-                        PutInt((tv.ToBool() is bool b)?(b?1:0):-1);
-                        break;
-                    }
-                case Qlx.INTEGER:
-                    {
-                        if (tv is TInteger ti)
-                            PutInteger(ti.ivalue);
-                        else
-                        {
-                            var iv = (TInt)tv;
-                            if (iv.ToInt() is int v)
-                                PutInteger(new Integer((long)v));
-                            else
-                                PutInteger(new Integer(iv.value));
-                        }
-                    }
-                    break;
-                case Qlx.NUMERIC:
-                    {
-                        Numeric v;
-                        if (tv is TNumeric nv)
-                            v = nv.value;
-                        else if (tv.ToLong() is long lv)
-                            v = new Numeric(lv);
-                        else if (tv.ToDouble() is double dv)
-                            v = new Numeric(dv);
-                        else break;
-                        PutNumeric(v);
-                    }
-                    break;
-                case Qlx.REAL:
-                    {
-                        Numeric v;
-                        if (tv is TNumeric nv)
-                            v = nv.value;
-                        else if (tv.ToDouble() is double dv)
-                            v = new Numeric(dv);
-                        else break;
-                        PutReal(v);
-                    }
-                    break;
-                case Qlx.NCHAR:
-                case Qlx.CLOB: 
-                case Qlx.NCLOB: 
-                case Qlx.LEVEL:
-                case Qlx.CHAR:
-                    PutString(tv.ToString());
-                    break;
-                case Qlx.PASSWORD: PutString("********"); break;
-                case Qlx.POSITION:
-                    PutString(DBObject.Uid(tv.ToLong()??0L)); break;
-                case Qlx.DATE:
-                    {
-                        if (tv.ToLong() is long tl)
-                            PutDateTime(new DateTime(tl));
-                        else if (tv is TDateTime td) // backward compatibility
-                            PutDateTime(td.value);
-                        break;
-                    }
-                case Qlx.TIME:
-                    {
-                        if (tv.ToLong() is long tt)
-                            PutTimeSpan(new TimeSpan(tt));
-                        else if (tv is TTimeSpan sp && sp.value is TimeSpan s)
-                            PutTimeSpan(s);
-                        else throw new PEException("PE42161");
-                        break;
-                    }
-                case Qlx.TIMESTAMP:
-                    {
-                        if (tv.ToLong() is long ts)
-                            PutDateTime(new DateTime(ts));
-                        else if (tv is TDateTime d)
-                            PutDateTime(d.value);
-                        else throw new PEException("PE42162");
-                        break;
-                    }
-                case Qlx.DOCUMENT:
-                    {
-                        if (tv is TDocument d)
-                            PutBytes(d.ToBytes(null));
-                        else throw new PEException("PE42163");
-                        break;
-                    }
-                case Qlx.DOCARRAY:
-                    {
-                        if (tv is TDocArray d)
-                            PutBytes(d.ToBytes());
-                        else throw new PEException("PE42164");
-                        break;
-                    }
-                case Qlx.OBJECT: PutString(tv.ToString()); break;
-                case Qlx.BLOB:
-                    {
-                        if (tv is TBlob d)
-                            PutBytes(d.value);
-                        else throw new PEException("PE42165");
-                        break;
-                    }
-                case Qlx.REF:
-                case Qlx.ROW: PutRow(_cx, (TRow)tv); break; // different!
-                case Qlx.ARRAY: PutArray(_cx, tv); break;
-                case Qlx.SET:
-                    {
-                        if (tv is TSet d)
-                            PutSet(_cx, d);
-                        else throw new PEException("PE42166");
-                        break;
-                    }
-                case Qlx.MULTISET:
-                    {
-                        if (tv is TMultiset d)
-                            PutMultiset(_cx, d);
-                        else throw new PEException("PE42166");
-                        break;
-                    }
-                case Qlx.INTERVAL:
-                    {
-                        if (tv is TInterval d)
-                        PutInterval(d.value);
-                        else throw new PEException("PE42168");
-                        break;
-                    }
-                case Qlx.NODETYPE:
-                case Qlx.EDGETYPE:
-                    if (tv is TRow && tv.dataType is NodeType nt)
-                        PutString(nt.Describe(_cx));
-                    else if (tv is TNode tn)
-                        PutString(tn.Cast(_cx,dt).ToString(_cx));
-                    break;
-                case Qlx.TYPE: 
-                    if (tv.dataType is UDType u && _cx.db.objects[u.defpos] is UDType ut)// may be different!
-                    {
-                        var tf = ut.rowType.First();
-                        if (ut.prefix != null)
-                        {
-                            if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
-                                tv = nv;
-                            PutString(ut.prefix + tv.ToString());
-                            break;
-                        }
-                        if (ut.suffix is not null)
-                        {
-                            if (tf != null && tv is TRow tr && tr.values[tf.value()] is TypedValue nv)
-                                tv = nv;
-                            PutString(tv.ToString()+ut.suffix);
-                            break;
-                        }
-                        if (tv is TTypeSpec tt)
-                        {
-                            PutString(tt._dataType.name);
-                            break;
-                        }
-                    }
-                    goto case Qlx.ROW;
-                case Qlx.TYPE_URI: PutString(tv.ToString()); break;
-                default:
-                    PutString(tv.ToString()); break;
-            }
-        }
-        /// <summary>
-        /// obs transfer API
+        /// data transfer API
         /// </summary>
         /// <returns>a tree of strings from the stream</returns>
         internal string[] GetStrings()
