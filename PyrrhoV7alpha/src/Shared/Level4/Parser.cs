@@ -9154,7 +9154,10 @@ namespace Pyrrho.Level4
         CTree<long, bool>? _ParseWhereClause(long ap = -1L)
         { 
             cx.done = ObTree.Empty;
+            var ro = cx.result;
             var left = ParseSqlValue((DBObject._Domain,Domain.Bool),(DBObject._From,ap));
+            if (ap>=0)
+                cx.result = ro;
             return cx.FixTlb(Disjoin(left.defpos)); 
         }
         /// <summary>

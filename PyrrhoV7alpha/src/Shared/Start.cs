@@ -436,6 +436,8 @@ namespace Pyrrho
                                         pl++;
                                 if (cx.result is not null && ((Transaction)db).physicals.Count<=pl)
                                 {
+                                    if (cx.result is RowSet)
+                                        cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
                                     tcp.PutRowType(cx);
                                     rb = null;
                                     if (cx.result is RowSet res)
@@ -484,6 +486,8 @@ namespace Pyrrho
                                 }
                                 else
                                 {
+                                    if (cx.result is RowSet)
+                                        cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
                                     tcp.Write(Responses.TableData);
                                     tcp.PutRowType(cx);
                                     rb = null;
@@ -1000,31 +1004,17 @@ namespace Pyrrho
                 Console.WriteLine("(" + cid + ") Ends with " + p);
             tcp?.Close();
         }
- /*       static DateTime startTrace;
-        internal static bool tracing = false;
-        internal static void Debug(int a, string m) // a=0 start, 1-continue, 2=stop
+        RowSet CheckPathGrouping(Context cx, RowSet rs)
         {
-            TimeSpan t;
-            switch (a)
-            {
-                case 0:
-                    tracing = true;
-                    startTrace = DateTime.Now;
-                    Console.WriteLine("Start " + m);
-                    break;
-                case 1:
-                    if (!tracing)
-                        return;
-                    t = DateTime.Now - startTrace;
-                    Console.WriteLine(m + " " + t.TotalMilliseconds);
-                    break;
-                case 2:
-                    tracing = false;
-                    t = DateTime.Now - startTrace;
-                    Console.WriteLine(m + " " + t.TotalMilliseconds + " Stop " + m);
-                    break;
-            }
-        } */
+            var rp = rs.representation;
+            for (var b = rs.First(); b != null; b = b.Next())
+                if (b.value() is long p && rs.representation[p] is Domain dm &&
+                    cx.obs[p] is GqlNode g && g.state[p]?.type.HasFlag(TGParam.Type.Group) == true)
+                        rp += (p,new Domain(-1L, Qlx.ARRAY, dm));
+            if (rp != rs.representation)
+                return rs + (Domain.Representation, rp);
+            return rs;
+        }
         static BTree<string, string> GetConnectionString(TCPStream tcp)
         {
             var dets = BTree<string, string>.Empty;
@@ -1533,7 +1523,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(17 March 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(20 March 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }
