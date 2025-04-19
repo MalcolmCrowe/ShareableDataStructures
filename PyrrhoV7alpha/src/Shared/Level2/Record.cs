@@ -46,6 +46,7 @@ namespace Pyrrho.Level2
         public virtual Level classification => _classification;
         public long subType = -1L;
         public override long _table => tabledefpos;
+        // For JoinedNodeTypes, we may have record hierarchies with more entries than nodetype hierarchies
         protected CTree<long,bool> suT = CTree<long,bool>.Empty;
         protected CTree<long,bool> sbT = CTree<long,bool>.Empty;
         public override CTree<long, bool> supTables => suT;
@@ -65,14 +66,6 @@ namespace Pyrrho.Level2
                 if (!Committed(wr, b.key())) return b.key();
             for (var b = fields.PositionAt(0); b != null; b = b.Next())
                 if (!Committed(wr, b.key())) return b.key();
-            for (var b = suT.First(); b != null; b = b.Next())
-                if (tr.objects[b.key()] is EdgeType et)
-                {
-                    if (fields[et.leavingType] is TInt lt &&
-                        !Committed(wr, lt.value)) return lt.value;
-                    if (fields[et.arrivingType] is TInt at &&
-                        !Committed(wr, at.value)) return at.value;
-                }
             return -1;
         }
         public Record(long tb, CTree<long, TypedValue> fl, long pp, Context cx)
@@ -81,7 +74,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Record (INSERT) from the Parser
         /// </summary>
-        /// <param name="t">The Record or UpdatePost type</param>
+        /// <param name="t">The Record or Update type</param>
         /// <param name="tb">The defining position of the table</param>
         /// <param name="fl">The field values</param>
         /// <param name="tb">The physical database</param>
@@ -363,35 +356,26 @@ namespace Pyrrho.Level2
                 throw new PEException("PE6900");
             tt += now;
             if (tt is EdgeType et)
-            {
-                if (now.vals[et.leaveCol] == TNull.Value || now.vals[et.arriveCol] == TNull.Value)
-                    throw new PEException("PE6901");
-                if (et.FindPrimaryIndex(cx) is null)
-                {
-                    if (cx._Od(et.leavingType) is NodeType lt
-                       && now.vals[et.leaveCol] is TInt tl && tl.ToLong() is long li)
+                for (var b = et.connects.First(); b != null; b = b.Next())
+                    if (b.key() is TConnector tc)
                     {
-                        var cn = lt.sindexes[li] ?? CTree<long, CTree<long, bool>>.Empty;
-                        var cc = cn[et.leaveCol] ?? CTree<long, bool>.Empty;
-                        cc += (now.defpos, true);
-                        cn += (et.leaveCol, cc);
-                        lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
-                        cx.Add(lt);
-                        cx.db += lt;
+                        if (now.vals[tc.cp] == TNull.Value)
+                            throw new PEException("PE6901");
+                        if (et.FindPrimaryIndex(cx) is null)
+                        {
+                            if (cx._Ob(tc.ct) is NodeType lt
+                               && now.vals[tc.cp] is TInt tl && tl.ToLong() is long li)
+                            {
+                                var cn = lt.sindexes[li] ?? CTree<long, CTree<long, bool>>.Empty;
+                                var cc = cn[tc.cp] ?? CTree<long, bool>.Empty;
+                                cc += (now.defpos, true);
+                                cn += (tc.cp, cc);
+                                lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
+                                cx.Add(lt);
+                                cx.db += lt;
+                            }
+                        }
                     }
-                    if (cx._Od(et.arrivingType) is NodeType at
-                        && now.vals[et.arriveCol] is TInt ta && ta.ToLong() is long ai)
-                    {
-                        var cn = at.sindexes[ai] ?? CTree<long, CTree<long, bool>>.Empty;
-                        var cc = cn[et.arriveCol] ?? CTree<long, bool>.Empty;
-                        cc += (now.defpos, true);
-                        cn += (et.arriveCol, cc);
-                        at += (Table.SysRefIndexes, at.sindexes + (ai, cn));
-                        cx.Add(at);
-                        cx.db += at;
-                    }
-                }
-            }
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x
@@ -415,7 +399,7 @@ namespace Pyrrho.Level2
             // If this is a record for an unlabelled node or edge type, check we have a note of the type
             if (tt is NodeType nt)
             {
-                if (nt.label.kind == Qlx.Null && nt.name == "")
+                if (nt.labels == CTree<string,bool>.Empty && nt.name == "")
                 {
                     var ps = CTree<long, bool>.Empty;
                     for (var b = nt.representation.First(); b != null; b = b.Next())

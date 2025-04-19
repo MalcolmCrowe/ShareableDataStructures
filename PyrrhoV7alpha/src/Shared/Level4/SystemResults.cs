@@ -1637,9 +1637,7 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "NotNull", Bool,0);
             t+=new SystemTableColumn(t, "Generated", Char,0);
             t+=new SystemTableColumn(t, "Update", Position,0);
-            t += new SystemTableColumn(t, "Flags", Char, 0);
-            t += new SystemTableColumn(t, "RefIndex", Position, 0);
-            t += new SystemTableColumn(t, "ToType", Position, 0);
+            t += new SystemTableColumn(t, "Connector", Char, 0);
             t.AddIndex("Pos");
             t.Add();
         }
@@ -1765,9 +1763,7 @@ namespace Pyrrho.Level4
                     TBool.For(c.notNull),
                     new TChar(c.generated.ToString()),
                     Display(c.upd.ToString()),
-                    new TChar(c.flags.ToString()),
-                    Pos(c.index),
-                    Pos(c.toType));
+                    new TChar(c.connector.ToString()));
             }
          }
         /// <summary>
@@ -4417,7 +4413,7 @@ namespace Pyrrho.Level4
                     if (tbm.value() is not TableRow rw
                         || cx.db.GetD(rw.ppos) is not Physical ph)
                         throw new PEException("PE42120");
-                    return (rw.defpos, rw.ppos, new TRow(res, Pos(rw.ppos),
+                    return (rw.defpos, rw.ppos, new TRow(res, Pos(rw.defpos),
                         new TChar(rw.GetType().Name),
                         new TChar(rw.classification.ToString()),
                         Pos(ph.trans)));
@@ -6985,12 +6981,12 @@ namespace Pyrrho.Level4
                 var tn = 0; // node count
                 var te = 0; // edge count
                 var ps = CTree<long, Domain>.Empty; // properties
-                var ls = CTree<Domain, bool>.Empty; // labels
-                var ll = CTree<CTree<Domain, bool>,bool>.Empty; // label sets
+                var ls = CTree<string, bool>.Empty; // labels
+                var ll = CTree<CTree<string, bool>,bool>.Empty; // label sets
                 for (var b = ro.dbobjects.First(); b != null; b = b.Next())
                     if (b.value() is long p && p >= 0 && cx.db.objects[p] is NodeType t)
                     {
-                        var ts = t.label.OnInsert(cx,0L);
+                        var ts = t.labels;
                         ls += ts;
                         ll += (ts, true);
                         ps += t.representation;
@@ -7090,14 +7086,14 @@ namespace Pyrrho.Level4
             t.Add();
         }
         internal class RoleGraphLabelBookmark(Context cx, SystemRowSet r, int pos,
-            ABookmark<long, object> obmk, ABookmark<long, bool> mbmk, ABookmark<Domain, bool> bmk,
+            ABookmark<long, object> obmk, ABookmark<long, bool> mbmk, ABookmark<string, bool> bmk,
             DBObject g, NodeType nt, string lb) : SystemBookmark(cx, r, pos, nt.defpos, nt.defpos, _Value(r, g, nt, lb))
         {
             readonly ABookmark<long, object> _obmk = obmk;
             readonly DBObject _g = g;
             readonly ABookmark<long,bool> _mbmk = mbmk;
             readonly NodeType _nt = nt;
-            readonly ABookmark<Domain, bool> _bmk = bmk;
+            readonly ABookmark<string, bool> _bmk = bmk;
 
             internal static RoleGraphLabelBookmark? New(Context cx, SystemRowSet res)
             {
@@ -7106,25 +7102,23 @@ namespace Pyrrho.Level4
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is NodeType e)
-                                for (var d = e.label.OnInsert(cx,0L).First(); d != null; d = d.Next())
-                                    if (d.key() is NodeType f)
-                                    {
-                                        var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, g, e, f.name);
-                                        if (rb.Match(res) && Eval(res.where, cx))
-                                            return rb;
-                                    }
+                                for (var d = e.labels.First(); d != null; d = d.Next())
+                                {
+                                    var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, g, e, d.key());
+                                    if (rb.Match(res) && Eval(res.where, cx))
+                                        return rb;
+                                }
                         }
                     else if (b.value() is GraphType gt)
                         for (var c = gt.constraints.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is NodeType e)
-                                for (var d = e.label.OnInsert(cx,0L).First(); d != null; d = d.Next())
-                                    if (d.key() is NodeType f)
-                                    {
-                                        var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, gt, e, f.name);
-                                        if (rb.Match(res) && Eval(res.where, cx))
-                                            return rb;
-                                    }
+                                for (var d = e.labels.First(); d != null; d = d.Next())
+                                {
+                                    var rb = new RoleGraphLabelBookmark(cx, res, 0, b, c, d, gt, e, d.key());
+                                    if (rb.Match(res) && Eval(res.where, cx))
+                                        return rb;
+                                }
                         }
                 return null;
             }
@@ -7138,9 +7132,9 @@ namespace Pyrrho.Level4
                 for (; obmk != null;)
                 {
                     for (var c = bmk?.Next(); c != null; c = c.Next())
-                        if (mbmk!=null && c.key() is NodeType e)
+                        if (mbmk!=null)
                         {
-                            var rb = new RoleGraphLabelBookmark(cx, res, _pos + 1, obmk, mbmk, c, g, nt, e.name);
+                            var rb = new RoleGraphLabelBookmark(cx, res, _pos + 1, obmk, mbmk, c, g, nt, c.key());
                             if (rb.Match(res) && Eval(res.where, cx))
                                 return rb;
                         }
@@ -7148,7 +7142,7 @@ namespace Pyrrho.Level4
                         if (cx.obs[mbmk.key()] is NodeType n)
                         {
                             nt = n;
-                            bmk = n.label.OnInsert(cx,0L).First();
+                            bmk = n.labels?.First();
                             goto next;
                         }
                     for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
@@ -7470,11 +7464,11 @@ namespace Pyrrho.Level4
                 return new TRow(rs,
                     Pos(nt.defpos),
                     new TChar(cx.NameFor(nt.defpos)??""),
-                    new TChar(cx.NameFor(nt.leavingType)??""),
-                    new TChar(cx.NameFor(nt.arrivingType)??""),
+                    new TChar(""),
+                    new TChar(""),
                     new TChar((nt.idCol>0)?cx.NameFor(nt.idCol)??"":""),
-                    new TChar(cx.NameFor(nt.leaveCol)??""),
-                    new TChar(cx.NameFor(nt.arriveCol)??""));
+                    new TChar(""),
+                    new TChar(""));
             }
         }
         /// <summary>

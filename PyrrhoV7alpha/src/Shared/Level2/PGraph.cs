@@ -21,21 +21,18 @@ namespace Pyrrho.Level2
     {
         internal PNodeType(string nm,PType pt,NodeType dm,Context cx)
             :base(Type.PNodeType,nm,dm+(ObInfo.Name,nm),dm.super,-1L,pt.ppos,cx)
-        {
-            dm.AddNodeOrEdgeType(cx);
-        }
+        { }
         protected PNodeType(Type t, string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx)
-            : base(t,nm,nt + (ObInfo.Name, nm), un,ns, pp,cx) 
-        { 
-            if (nt is not EdgeType)
-                nt.AddNodeOrEdgeType(cx);
+            : base(t, nm, (NodeType)nt.New(pp, nt.mem + (ObInfo.Name, nm)), un, ns, pp, cx)
+        {
+            ((NodeType)dataType).AddNodeOrEdgeType(cx);
         }
         public PNodeType(string nm, NodeType nt, CTree<Domain,bool> un, long ns, long pp, Context cx,
             bool ifN = false)
-            : base(Type.PNodeType, nm, nt + (ObInfo.Name, nm), un, ns, pp, cx) 
+            : base(Type.PNodeType, nm, (NodeType)nt.New(pp, nt.mem + (ObInfo.Name, nm)), un, ns, pp, cx)
         {
             ifNeeded = ifN;
-            nt.AddNodeOrEdgeType(cx);
+            ((NodeType)dataType).AddNodeOrEdgeType(cx);
         }
         public PNodeType(Reader rdr) : base(Type.PNodeType, rdr) 
         { }
@@ -65,26 +62,21 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class PEdgeType : PNodeType
     {
-        public long leavingType;
-        public long arrivingType;
+        public long leavingType = -1L;
+        public long arrivingType = -1L;
         public override long Dependent(Writer wr, Transaction tr)
         {
             return base.Dependent(wr, tr);
         }
-        public PEdgeType(string nm, EdgeType nt, CTree<Domain, bool> un, long ns, 
-            long lt, long at, long pp, Context cx, bool IfN=false) 
+        internal PEdgeType(string nm, PType pt, NodeType dm, Context cx)
+    : base(Type.PEdgeType, nm, dm + (ObInfo.Name, nm), dm.super, -1L, pt.ppos, cx)
+        { }
+        public PEdgeType(string nm, EdgeType nt, CTree<Domain, bool> un, long ns,
+            long pp, Context cx, bool IfN = false)
             : base(Type.PEdgeType, nm, nt, un, ns, pp, cx) 
         {
             ifNeeded = IfN;
-            if (lt <= 0 || at <= 0)
-                throw new PEException("PE20801");
-            leavingType = lt;
-            arrivingType = at;
             nt = (EdgeType)dataType;
-            nt = nt + (EdgeType.LeavingType, lt) + (EdgeType.ArrivingType, at);
-            for (var b = un.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key().defpos] is EdgeType et)
-                    nt = nt + (EdgeType.LeaveCol, et.leaveCol) + (EdgeType.ArriveCol, et.arriveCol);
             cx.Add(nt);
             dataType = nt;
             nt.AddNodeOrEdgeType(cx);
@@ -94,8 +86,6 @@ namespace Pyrrho.Level2
         protected PEdgeType(Type t, Reader rdr) : base(t, rdr) { }
         protected PEdgeType(PEdgeType x, Writer wr) : base(x, wr) 
         {
-            leavingType = wr.cx.Fix(x.leavingType);
-            arrivingType = wr.cx.Fix(x.arrivingType);
             dataType = (Domain)dataType.Fix(wr.cx);
         }
         protected override Physical Relocate(Writer wr)
@@ -118,13 +108,8 @@ namespace Pyrrho.Level2
             arrivingType = rdr.GetLong();
             base.Deserialise(rdr);
             var et = (EdgeType)dataType;
-            et = et + (EdgeType.LeavingType,leavingType) + (EdgeType.ArrivingType,arrivingType);
             et.Fix(rdr.context); // add this edge type to the catalogue
             dataType = et;
-        }
-        public override string ToString()
-        {
-            return base.ToString() + "(" + DBObject.Uid(leavingType) + "," + DBObject.Uid(arrivingType)+")";
         }
     }
     internal class PGraph : Physical

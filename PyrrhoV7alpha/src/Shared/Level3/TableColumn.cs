@@ -1,14 +1,8 @@
-using System;
 using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
-using System.Configuration;
-using System.Runtime.CompilerServices;
-using System.Xml.Linq;
-using System.Xml.Schema;
-using System.Net;
-using System.Xml;
+using Pyrrho.Level5;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -28,7 +22,7 @@ namespace Pyrrho.Level3
         internal const long
             Checks = -268,  // CTree<long,bool> Check
             Generated = -269, // GenerationRule (C)
-            GraphFlag = -391, // PColumn.GraphFlags
+            Connector = -391, // TConnector
             Seq = -344, // int column position in this table
             _Table = -270, // long
             UpdateAssignments = -271, // CTree<UpdateAssignment,bool>
@@ -39,7 +33,7 @@ namespace Pyrrho.Level3
         public int seq => (int)(mem[Seq] ?? -1);
         public long tabledefpos => (long)(mem[_Table] ?? -1L);
         public bool notNull => (bool)(mem[Domain.NotNull] ?? false);
-        public CTree<UpdateAssignment,bool> update =>
+         public CTree<UpdateAssignment,bool> update =>
             (CTree<UpdateAssignment,bool>?)mem[UpdateAssignments] 
             ?? CTree<UpdateAssignment,bool>.Empty;
         public string? updateString => (string?)mem[UpdateString];
@@ -48,7 +42,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// These properties are used for special columns in the Typed Graph Model
         /// </summary>
-        public PColumn.GraphFlags flags => (PColumn.GraphFlags)(mem[GraphFlag] ?? PColumn.GraphFlags.None);
+        public TypedValue tc => (TypedValue)(mem[Connector] ?? TNull.Value);
         public long toType => (long)(mem[Index.RefTable] ?? -1L);
         public long index => (long)(mem[Index.RefIndex] ?? -1L);
         /// <summary>
@@ -115,12 +109,8 @@ namespace Pyrrho.Level3
                 r += (Domain.Default, c.dv);
             if (c.ups!="")
                 r = r + (UpdateString, c.ups) + (UpdateAssignments, c.upd);
-            if (c.flags!=0)
-                r = r + (GraphFlag,c.flags) + (Index.RefIndex,c.index);
-            if (c.flags.HasFlag(PColumn.GraphFlags.LeaveCol)) 
-                r += (Index.RefTable, c.toType);
-            if (c.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
-                r += (Index.RefTable, c.toType);
+            if (c.connector is TConnector cc && cc.q!=Qlx.Null)
+                r = r + (Connector,cc);
             return r;
         }
         internal override Basis New(BTree<long, object> m)
@@ -166,6 +156,9 @@ namespace Pyrrho.Level3
             var nu = cx.FixTub(update);
             if (nu != update)
                 r += (UpdateAssignments, nu);
+            var tt = tc.Fix(cx);
+            if (tt != tc)
+                r += (Connector, tt);
             return r;
         }
         internal override DBObject Add(Check ck, Database db)
@@ -284,11 +277,14 @@ namespace Pyrrho.Level3
         internal override void Note(Context cx, StringBuilder sb, string pre = "  ")
         {
             sb.Append(pre);
-            switch (flags)
+            if (tc is TConnector cc)
+            switch (cc.q)
             {
-                case PColumn.GraphFlags.IdCol: sb.Append("[Identity]"); break;
-                case PColumn.GraphFlags.LeaveCol: sb.Append("[Leaving]"); break;
-                case PColumn.GraphFlags.ArriveCol: sb.Append("[Arriving]"); break;
+                case Qlx.ID:
+                case Qlx.FROM:
+                case Qlx.WITH:
+                case Qlx.TO:
+                    sb.Append(cc.q); break;
             }
             if (pre == "  ")
             {
@@ -324,12 +320,8 @@ namespace Pyrrho.Level3
                 sb.Append(" UpdateString="); sb.Append(updateString);
                 sb.Append(" Update:"); sb.Append(update);
             }
-            if (flags.HasFlag(PColumn.GraphFlags.IdCol))
-                sb.Append(" IdCol");
-            else if (flags.HasFlag(PColumn.GraphFlags.ArriveCol))
-                sb.Append(" ArriveCol[" + Uid(toType) + "]");
-            else if (flags.HasFlag(PColumn.GraphFlags.LeaveCol))
-                sb.Append(" LeaveCol[" + Uid(toType) + "]");
+            if (tc is TConnector cc && cc.q!=Qlx.Null)
+                sb.Append(" "+cc.q);
             return sb.ToString();
         }
     }
@@ -470,18 +462,18 @@ namespace Pyrrho.Level3
             prev = rc.ppos;
             vals = rc.fields;
         }
-        public TableRow(Update up, Context cx, TableRow old, Level? lv=null)
+        public TableRow(Update up, Context cx, TableRow? old, Level? lv=null)
         {
             up.Check(cx);
             defpos = up.defpos;
             time = up.time;
             user = (cx.user ?? User.None).defpos;
             tabledefpos = up.tabledefpos;
-            classification = lv ?? old.classification ?? Level.D;
+            classification = lv ?? old?.classification ?? Level.D;
             subType = up.subType;
             ppos = up.ppos;
             prev = up.prev;
-            var v = old.vals;
+            var v = old?.vals??CTree<long,TypedValue>.Empty;
             for (var b = up.fields.First(); b != null; b = b.Next())
                 if (b.value() == TNull.Value)
                     v -= b.key();

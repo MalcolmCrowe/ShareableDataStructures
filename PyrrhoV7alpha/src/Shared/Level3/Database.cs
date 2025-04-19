@@ -143,7 +143,6 @@ namespace Pyrrho.Level3
         internal readonly long length;
         public override long lexeroffset => length;
         internal const long
-            Arriving = -469, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Catalog = -247, // BTree<string,long?> DBObject
             Curated = -53, // long
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
@@ -151,7 +150,6 @@ namespace Pyrrho.Level3
             JoinedNodes = -430,// CTree<long,CTree<Domain,bool>> JoinedNodeType
             KeyLabels = -461, // BTree<CTree<string,bool>,long?> NodeType 
             LastModified = -279, // DateTime
-            Leaving = -466, // CTree<long,CTree<long,bool>> TNode,TEdge 7.03
             Levels = -56, // BTree<Level,long?>
             LevelUids = -57, // BTree<long,Level>
             Log = -188,     // BTree<long,Physical.Type>

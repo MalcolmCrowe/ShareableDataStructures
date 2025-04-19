@@ -1,4 +1,5 @@
 using System.Net;
+using System.Runtime.CompilerServices;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level1;
@@ -121,6 +122,7 @@ namespace Pyrrho.Level4
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
         internal CTree<long, TypedValue> binding = CTree<long, TypedValue>.Empty;
         internal BTree<long, long?> newnodes = BTree<long, long?>.Empty;
+        internal BTree<string, long?> newEdges = BTree<string, long?>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
         /// We only send versioned information if 
@@ -167,6 +169,7 @@ namespace Pyrrho.Level4
             anames = cx.anames;
             defs = cx.defs;
             names = cx.names;
+            newEdges = cx.newEdges;
             depths = cx.depths;
             obs = cx.obs;
             cursors = cx.cursors;
@@ -395,7 +398,7 @@ namespace Pyrrho.Level4
             if (rs.StatusCode == HttpStatusCode.OK)
             {
                 var e = rs.Headers.ETag?.ToString() ?? "";
-                if (e != "" && e != etag)
+                if (e != "\"\"" && e != etag)
                     throw new DBException("40082");
             }
             else
@@ -623,6 +626,18 @@ namespace Pyrrho.Level4
                 d = _DepthTVX(b.value(), _DepthV(b.key(), d));
             return d;
         }
+        internal int _DepthTlTDD(CTree<long,CTree<Domain,Domain>>t,int d)
+        {
+            for (var b = t?.First(); b != null; b = b.Next())
+                d = Math.Max(_DepthTDD(b.value(),d)+1, d);
+            return d;
+        }
+        internal int _DepthTDD(CTree<Domain,Domain>t,int d)
+        {
+            for (var b = t?.First(); b != null; b = b.Next())
+                d = Math.Max(b.key().depth,Math.Max(b.value().depth, d));
+            return d;
+        }
         internal BTree<long, QlValue> Map(CList<long> s)
         {
             var r = BTree<long, QlValue>.Empty;
@@ -815,27 +830,6 @@ namespace Pyrrho.Level4
                     return false;
             return mb == null && pb == null;
         }
-        internal Domain _Dom(Domain dm, long p, Domain d)
-        {
-            var rs = dm.representation;
-            if (rs[p] == d)
-                return dm;
-            if (dm.defpos < Transaction.Executables)
-            {
-                var nd = (Domain)dm.Relocate(GetUid());
-                if (nd is EdgeType ne && nd.defpos != dm.defpos)
-                    ne.Fix(this);
-                dm = nd;
-            }
-            var rt = dm.rowType;
-            if (!rt.Has(p))
-                rt += p;
-            dm =(Domain)dm.New(dm.mem+ (Domain.Representation, rs + (p, d))
-                + (Domain.RowType, rt));
-            if (db.Find(dm) is Domain r)
-                return r;
-            return (Domain)Add(dm);
-        }
         internal Domain _Dom(long dp, params (long, object)[] xs)
         {
             var ob = (obs[dp] ?? (DBObject?)db.objects[dp]);
@@ -948,6 +942,7 @@ namespace Pyrrho.Level4
                     SelectRowSet.RdCols => _DepthTVX((CTree<long, bool>)o, d),
                     RowSet.Referenced => _DepthTVX((CTree<long, bool>)o, d),
                     Level3.Index.References => _DepthTVBt((BTree<long, BList<TypedValue>>)o, d),
+                    Table.RefIndexes => _DepthTlTDD((CTree<long,CTree<Domain,Domain>>)o,d),
                     Domain.Representation => _DepthTVD((CTree<long, Domain>)o, d),
                     RowSet.RestRowSetSources => _DepthTVX((CTree<long, bool>)o, d),
                     Domain.RowType => _DepthLl((CList<long>)o, d),
@@ -1855,23 +1850,6 @@ namespace Pyrrho.Level4
             }
             return rp;
         }
-        internal long UnlabelledEdgeSuper(long lt,long at,CTree<string, bool> ps)
-        {
-            var rp = -1L;
-            int n = 0;
-            for (var b = role.unlabelledEdgeTypesInfo.First(); b != null; b = b.Next())
-            {
-                var nn = 0;
-                for (var c = b.key().First(); c != null; c = c.Next())
-                    if (ps.Contains(c.key()))
-                        nn++;
-                if (nn > n && b.value() is long p)
-                {
-                    rp = p; n = nn;
-                }
-            }
-            return rp;
-        }
         internal NodeType FindOrCreate(CTree<Domain,bool>ts)
         {
             var kind = ts.First()?.key()?.kind ?? Qlx.NODETYPE;
@@ -1884,38 +1862,6 @@ namespace Pyrrho.Level4
             db += (Database.Types, db.types + (u, nst));
             return u;
         }
-        internal NodeType FindOrCreate(CTree<long, bool> ts)
-        {
-            var kind = Qlx.NODETYPE;
-            var ds = CTree<Domain,bool>.Empty;
-            for (var b = ts.First(); b != null; b = b.Next())
-                if (db.objects[b.key()] is NodeType n)
-                {
-                    ds += (n, true);
-                    kind = n.kind;
-                }
-            var u = new NodeType(-1L, BTree<long, object>.Empty + (Domain.Kind, kind) + (Domain.NodeTypes, ds));
-            if (db.objects[db.types[u] ?? -1L] is NodeType nt)
-                return nt;
-            var nst = db.nextStmt;
-            u = (NodeType)u.Relocate(nst);
-            db += (Database.NextStmt, nst + 1);
-            db += (Database.Types, db.types + (u, nst));
-            return u;
-        }
-        internal NodeType? Find(CTree<Domain, bool> ts)
-        {
-            var kind = ts.First()?.key()?.kind ?? Qlx.NODETYPE;
-            var u = new NodeType(-1L, BTree<long, object>.Empty + (Domain.Kind, kind) + (Domain.NodeTypes, ts));
-            return db.objects[db.types[u] ?? -1L] as NodeType;
-        }
-        internal CTree<Domain, bool> NodeTypes(long dp)
-        {
-            var d = db.objects[dp] as NodeType ?? throw new PEException("PE50401");
-            if (d.nodeTypes.Count > 1)
-                return d.nodeTypes;
-            return new CTree<Domain, bool>(d, true);
-        }
         internal NodeType? FindNodeType(string nm,CTree<string,QlValue> dc)
         {
             if (nm != "")
@@ -1925,29 +1871,14 @@ namespace Pyrrho.Level4
                 pn += (b.key(), true);
             return db.objects[role.unlabelledNodeTypesInfo[pn] ?? -1L] as NodeType;
         }
-        internal CTree<Domain,bool> FindEdgeType(string nm, long lt, long at, CTree<string, QlValue> dc,
-            BTree<long,object> m, TMetadata md)
+        internal EdgeType? FindEdgeType(string nm, CTree<string, QlValue> dc)
         {
-            var r = CTree<Domain, bool>.Empty;
-            if (nm != "" && role.edgeTypes[nm] is long el) 
-            {
-                EdgeType? et = null;
-                if (db.objects[el] is EdgeType ee
-                    && ee.leavingType == lt && ee.arrivingType == at)
-                    et = ee;
-                if (db.objects[el] is Domain eu && eu.kind == Qlx.UNION)
-                    for (var c = eu.unionOf.First(); et is null && c != null; c = c.Next())
-                        if (db.objects[c.key().defpos] is EdgeType ef
-                            && ef.leavingType == lt && ef.arrivingType == at)
-                            et = ef;
-                return (et is null)?r : r+(et.Build(this,null,0L,m,md), true);
-            }
+            if (nm != "")
+                return db.objects[role.edgeTypes[nm] ?? -1L] as EdgeType;
             var pn = CTree<string, bool>.Empty;
             for (var b = dc.First(); b != null; b = b.Next())
                 pn += (b.key(), true);
-            if (db.objects[role.unlabelledEdgeTypesInfo[pn] ?? -1L] is EdgeType ut && ut.name==nm) 
-                r +=(ut.Build(this,null,0L,m,md), true);
-            return r;
+            return db.objects[role.unlabelledEdgeTypesInfo[pn] ?? -1L] as EdgeType;
         }
         internal string? NameFor(long p)
         {

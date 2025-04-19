@@ -49,6 +49,13 @@ namespace Pyrrho.Level2
             if (cx.db.objects[tb] is Table ta)
                 sbT = ta.subtypes;
         }
+        public Update(long old, long tb, CTree<long, TypedValue> fl, long pp,Context cx)
+            : base(Type.Update,tb,fl,pp,cx)
+        {
+            _defpos = old;
+            prev = old;
+            prevrec = null;
+        }
         public Update(Reader rdr) : base(Type.Update, rdr) { }
         protected Update(Type t, Reader rdr) : base(t, rdr) 
         {  }
@@ -176,8 +183,6 @@ namespace Pyrrho.Level2
                 prevrec = tr;
                 tb.Update(cx, prevrec, fields);
             }
-            if (prevrec is null)
-                throw new PEException("PE00809");
             Check(cx);
             return new TableRow(this, cx, prevrec);
         }
@@ -212,45 +217,35 @@ namespace Pyrrho.Level2
         internal override Table AddRow(Table tt, TableRow now, Context cx)
         {
             tt += now;
-            if (prevrec is null) throw new PEException("PE40408");
+            var pr = prevrec?.vals ?? CTree<long, TypedValue>.Empty;
             if (tt is EdgeType et)
-            {
-                if (now.vals[et.leaveCol] == TNull.Value || now.vals[et.arriveCol] == TNull.Value)
-                    throw new PEException("PE6901");
-                if (et.FindPrimaryIndex(cx) is null)
-                {
-                    if (cx._Od(et.leavingType) is NodeType lt
-                        && prevrec.vals[et.leaveCol] is TInt ol && ol.ToLong() is long lo
-                       && now.vals[et.leaveCol] is TInt tl && tl.ToLong() is long li
-                       && lo!=li)
+                for (var b = et.connects.First(); b != null; b = b.Next())
+                    if (b.key() is TConnector tc)
                     {
-                        var cn = (lt.sindexes-lo)[li] ?? CTree<long, CTree<long, bool>>.Empty;
-                        var cc = cn[et.leaveCol] ?? CTree<long, bool>.Empty;
-                        cc += (now.defpos, true);
-                        cn += (et.leaveCol, cc);
-                        lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
-                        cx.Add(lt);
-                        cx.db += lt;
+                        if (now.vals[tc.cp] == TNull.Value)
+                            throw new PEException("PE6902");
+                        if (et.FindPrimaryIndex(cx) is null)
+                        {
+                            if (cx._Ob(tc.ct) is NodeType lt
+                                && now.vals[tc.cp] is TInt tl && tl.ToLong() is long li)
+                            {
+                                var ls = lt.sindexes;
+                                if (prevrec?.vals[tc.cp] is TInt ol && ol.ToLong() is long lo && lo != li)
+                                    ls -= lo;
+                                var cn = ls[li] ?? CTree<long, CTree<long, bool>>.Empty;
+                                var cc = cn[tc.cp] ?? CTree<long, bool>.Empty;
+                                cc += (now.defpos, true);
+                                cn += (tc.cp, cc);
+                                lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
+                                cx.Add(lt);
+                                cx.db += lt;
+                            }
+                        }
                     }
-                    if (cx._Od(et.arrivingType) is NodeType at
-                        && prevrec.vals[et.leaveCol] is TInt oa && oa.ToLong() is long ao
-                        && now.vals[et.arriveCol] is TInt ta && ta.ToLong() is long ai
-                        && ao!=ai)
-                    {
-                        var cn = (at.sindexes-ao)[ai] ?? CTree<long, CTree<long, bool>>.Empty;
-                        var cc = cn[et.arriveCol] ?? CTree<long, bool>.Empty;
-                        cc += (now.defpos, true);
-                        cn += (et.arriveCol, cc);
-                        at += (Table.SysRefIndexes, at.sindexes + (ai, cn));
-                        cx.Add(at);
-                        cx.db += at;
-                    }
-                }
-            }
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x
-                        && x.MakeKey(prevrec.vals) is CList<TypedValue> ok
+                        && x.MakeKey(pr) is CList<TypedValue> ok
                         && x.MakeKey(now.vals) is CList<TypedValue> nk
                         && ok.CompareTo(nk) != 0)
                     {

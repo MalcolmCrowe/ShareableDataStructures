@@ -1273,8 +1273,7 @@ namespace Pyrrho.Common
             for (var b = values.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is TableColumn tc && tc.infos[cx.role.defpos]?.name is string nm)
                 {
-                    if (tc.flags.HasFlag(Level2.PColumn.GraphFlags.LeaveCol)
-                        || tc.flags.HasFlag(Level2.PColumn.GraphFlags.ArriveCol))
+                    if (tc.tc is TConnector cc && cc.q!=Qlx.Null)
                         continue;
                     str.Append(cm); cm = ',';
                     str.Append(nm); str.Append('=');
@@ -1282,12 +1281,6 @@ namespace Pyrrho.Common
                 }
             if (cm == ',')
                 str.Append(')');
-            if (dataType is EdgeType et)
-            {
-                str.Append(" CONNECTS ("); str.Append(cx.NameFor(et.leavingType));
-                str.Append(") TO ("); str.Append(cx.NameFor(et.arrivingType));
-                str.Append(')');
-            }
             return str.ToString();
         }
         internal override TypedValue[] ToArray()

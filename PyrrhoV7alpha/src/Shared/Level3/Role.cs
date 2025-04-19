@@ -55,7 +55,7 @@ namespace Pyrrho.Level3
     {
         internal const long
             DBObjects = -248, // BTree<string,long?> Domain/Table/View etc by name
-            EdgeTypes = -128, // BTree<string,long?>> Labelled EdgeType/Result by name
+            EdgeTypes = -128, // BTree<string,long?>> Labelled EdgeType by name
             Graphs = -357,    // BTree<string,long?> Labelled Graph by name
             NodeTypes = -115, // BTree<string,long?> Labelled NodeType by name
             PropertyNames = -243, // CTree<string,CTree<long,bool>> Domains by child names

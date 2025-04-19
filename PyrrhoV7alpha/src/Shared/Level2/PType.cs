@@ -37,7 +37,7 @@ namespace Pyrrho.Level2
         {
             name = nm;
             var dm1 = (t == Type.EditType) ? dm : (Domain)dm.Relocate(pp);
-            if (dm1 is EdgeType ne && dm1.defpos != dm.defpos && ne.leavingType > 0 && ne.arrivingType > 0)
+            if (dm1 is EdgeType ne && dm1.defpos != dm.defpos)
                 ne.Fix(cx);
             var rt = CList<long>.Empty;
             var rs = CTree<long,Domain>.Empty;
@@ -388,8 +388,6 @@ namespace Pyrrho.Level2
                     && cx.db.objects.Contains(pe.leavingType)
                     && cx.db.objects.Contains(pe.arrivingType))
                 {
-                    et += (EdgeType.LeavingType, pe.leavingType);
-                    et += (EdgeType.ArrivingType, pe.arrivingType);
                     nt = et;
                 }
                 nt.AddNodeOrEdgeType(cx);

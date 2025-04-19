@@ -312,45 +312,17 @@ namespace Pyrrho.Level2
             }
             var cs = CList<long>.Empty;
             var kc = tb.keyCols;
-            var fl = PColumn.GraphFlags.None;
+            var fl = false;
             for (var b = x.keys.First(); b != null; b = b.Next())
                 if (b.value() is long tc)
                 {
                     cs += tc;
                     var c = (cx.db.objects[tc] as TableColumn) ?? throw new PEException("PE1437");
                     cx.Add(c);
-                    fl |= c.flags;
+                    fl = c.tc is TConnector cc && cc.q == Qlx.ID;
                     kc += (tc, true);
                 }
-            if (fl.HasFlag(PColumn.GraphFlags.IdCol))
-                tb += (NodeType.IdIx, x.defpos);
             var dp = defpos;
-            if (fl.HasFlag(PColumn.GraphFlags.LeaveCol))
-            {
-                if (tb.leavingType <= 0)
-                    tb += (EdgeType.LeavingType, x.reftabledefpos);
-                tb += (EdgeType.LeaveIx, x.defpos);
-                for (var b = tb.subtypes.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is EdgeType st)
-                    {
-                        st += (EdgeType.LeaveIx, x.defpos);
-                        cx.db += (st.defpos, st);
-                        cx.obs += (st.defpos, st);
-                    }
-            }
-            if (fl.HasFlag(PColumn.GraphFlags.ArriveCol))
-            {
-                if (tb.arrivingType <= 0)
-                    tb += (EdgeType.ArrivingType, x.reftabledefpos);
-                tb += (EdgeType.ArriveIx, x.defpos);
-                for (var b = tb.subtypes.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is EdgeType st)
-                    {
-                        st += (EdgeType.ArriveIx, x.defpos);
-                        cx.db += (st.defpos, st);
-                        cx.obs += (st.defpos, st);
-                    }
-            }
             tb += (Table.KeyCols, kc);
             tb += (DBObject.LastChange, defpos);
             cx.Install(tb);

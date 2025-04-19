@@ -169,8 +169,8 @@ namespace Pyrrho.Level4
                 for (var c = (b.value() as Cursor)?.Rec()?.First(); c != null; c = c.Next())
                 {
                     var d = c.value();
-                    if (!s.Contains(d.ppos))
-                        s += (d.ppos, d);
+                    if (!s.Contains(d.defpos))
+                        s += (d.defpos, d);
                 }
             for (var b = s.First(); b != null; b = b.Next())
                 r += b.value();

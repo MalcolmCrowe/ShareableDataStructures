@@ -773,7 +773,7 @@ insert into person values('Joe'),('Mary')
 select count(*) from married
 match ({name:'Joe'})<-[:married]-(x)
 [CREATE
-(:Product:WoodScrew {spec:'16/8x4'}),(:Product: WallPlug{spec:'18cm'}),
+(:WoodScrew=>Product {spec:'16/8x4'}),(:WallPlug=>Product {spec:'18cm'}),
 (Joe:Customer {Name:'Joe Edwards', Address:'10 Station Rd.'}),
 (Joe)-[:Ordered {"Date":date'2002-11-22'} ]->(:"Order"{id:201})]
 [MATCH (O:"Order"{id:201})
@@ -797,7 +797,7 @@ MATCH (n:Person)<-[:married{since:dt}]-() RETURN n.name,dt
 [MATCH (e:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),
 (e)-[r:owns ]->(d),(d)-[r2:owned_by]->(e)]
 MATCH (d:Dog {name: 'Rex'})-[r:owned_by]->() DELETE r
-MATCH (k{name:'Karin'}),()-[o:owns ]->({name:'Rex'}) SET o.leaving=k
+MATCH (k{name:'Karin'}),()-[o:owns ]->({name:'Rex'}) SET o."FROM"=k
 select count(*) from owned_by
 MATCH (n)-[:owns]->(d) RETURN n.name,d.name as dog
 

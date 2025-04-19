@@ -149,10 +149,7 @@ namespace Pyrrho.Level3
         internal Executable Check(GQL w030)
         {
             if (w030 != GQL.None && w030 != gql)
-            switch(gql)
-            {
-                default: throw new DBException("42161", w030);
-            }
+                throw new DBException("42161", w030);
             return this;
         }
     }
@@ -4131,10 +4128,12 @@ namespace Pyrrho.Level3
     {
         internal const long
             InsCols = -241, // Domain
+            NewEdge = -466, // long Record 
             Value = -156; // long RowSet
         internal long source => (long)(mem[RowSet._Source] ?? -1L);
         public long value => (long)(mem[Value] ?? -1L);
         public Domain insCols => (Domain)(mem[InsCols]??Domain.Row); // tablecolumns (should be specified)
+        public long newEdge => (long)(mem[NewEdge] ?? -1L);// allows values to be added to an edge
         /// <summary>
         /// Constructor: an INSERT statement from the parser.
         /// </summary>
@@ -4213,6 +4212,7 @@ namespace Pyrrho.Level3
         }
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
+            cx.exec = this;
             if (cx.obs[source] is RowSet tg && cx.obs[value] is RowSet data)
             {
                 var ts = BTree<long, TargetActivation>.Empty;
@@ -4288,7 +4288,7 @@ namespace Pyrrho.Level3
                 var qs = new QuerySearch(cx.GetUid(), ts);
                 cx.Add(qs);
                 if (detach)
-                    cx.parse = cx.parse | ExecuteStatus.Detach;
+                    cx.parse |= ExecuteStatus.Detach;
                 qs._Obey(cx);
             } 
             return cx;
@@ -4528,38 +4528,6 @@ namespace Pyrrho.Level3
         { }
         public GraphInsertStatement(long dp, BTree<long, object>? m = null) : base(dp, m??BTree<long,object>.Empty)
         { }
-        public static GraphInsertStatement operator +(GraphInsertStatement et, (long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is DBObject bb && dp != _Depth)
-            {
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (GraphInsertStatement)et.New(m + x);
-        }
-
-        public static GraphInsertStatement operator +(GraphInsertStatement e, (Context, long, object) x)
-        {
-            var d = e.depth;
-            var m = e.mem;
-            var (cx, p, o) = x;
-            if (e.mem[p] == o)
-                return e;
-            else
-            if (o is long q && cx.obs[q] is DBObject ob)
-            {
-                d = Math.Max(ob.depth + 1, d);
-                if (d > e.depth)
-                    m += (_Depth, d);
-            }
-            return (GraphInsertStatement)e.New(m + (p, o));
-        }
 
         internal override DBObject New(long dp, BTree<long, object> m)
         {
@@ -4579,28 +4547,29 @@ namespace Pyrrho.Level3
             for (var b = graphExps.First(); b != null; b = b.Next())
                 if (b.value() is CList<GqlNode> ge)
                 {
+                    var gb = ge.First();
+                    var se = gb?.value() is GqlEdge;
                     // Do the nodes first and then the edges
-                    for (var gb = ge.First(); gb != null; gb = gb.Next())
+                    for (; gb != null; gb = gb.Next())
                         if (gb.value() is GqlNode nd && nd is not GqlEdge && nd is not GqlReference)
                         //&& cx.db.objects[nd.domain.defpos] is NodeType nt)
                         {
                             nd.label.OnInsert(cx, nd.defpos); // for side effects
-                            nd.Create(cx, (NodeType)nd.domain, defpos);
+                            nd.Create(cx, (NodeType)nd.domain, defpos, nd.docValue);
                         }
                     TNode? bn = null;
                     GqlEdge? ed = null;
-                    for (var gb = ge.First(); gb != null; gb = gb.Next())
+                    GqlNode? bv = null;
+                    for (gb = ge.First(); gb != null; gb = gb.Next())
                         if (gb.value() is GqlNode g)
                         {
                             if (g is GqlEdge edge)
                                 ed = edge;
-                            else if (ed is not null && bn is not null && g.Eval(cx) is TNode nn)
+                            else if (ed is not null && ((se == true) || bn is not null) && g.Eval(cx) is TNode nn)
                             {
                                 var el = cx.obs[ed.label.defpos] as Domain ?? ed.label;
                                 var nm = (el.kind == Qlx.EDGETYPE) ?
                                     (el is GqlLabel) ? (el.name ?? el.domain.name) : el.name : "";
-                                var ln = (ed.tok == Qlx.ARROWBASE) ? bn : nn;
-                                var an = (ed.tok == Qlx.ARROWBASE) ? nn : bn;
                                 var pn = CTree<string, bool>.Empty;
                                 for (var pb = ed.docValue.First(); pb != null; pb = pb.Next())
                                     pn += (pb.key(), true);
@@ -4612,8 +4581,7 @@ namespace Pyrrho.Level3
                                     else if (ew.kind == Qlx.UNION)
                                     {
                                         for (var c = ew.unionOf.First(); c != null; c = c.Next())
-                                            if (cx._Ob(c.key().defpos) is EdgeType ex 
-                                                && ln.dataType.defpos==ex.leavingType && an.dataType.defpos==ex.arrivingType)
+                                            if (cx._Ob(c.key().defpos) is EdgeType ex)
                                             {
                                                 et = ex;
                                                 goto found;
@@ -4625,11 +4593,17 @@ namespace Pyrrho.Level3
                                 }
                                 if (nm == "" && cx.db.objects[cx.role.unlabelledEdgeTypesInfo[pn] ?? -1L] is EdgeType eu)
                                     et = eu;
-                                et ??= (EdgeType)ed._NodeType(cx, Domain.EdgeType, 0L);
-                                ed.Create(cx, et, defpos);
+                                et ??= (EdgeType)ed._NodeType(cx, Domain.EdgeType, 0L, false);
+                                var ls = ed.docValue;
+                                (_,ls) = et.Connect(cx, bn, nn, ed, ed.preCon, ls);
+                                (_,ls) = et.Connect(cx, bn, nn, ed, ed.postCon, ls);
+                                ed.Create(cx, et, defpos, ls);
                             }
                             else
+                            {
+                                bv = g;
                                 bn = g.Eval(cx) as TNode;
+                            }
                             if (atSchemaLevel)
                                 ed?.InsertSchema(cx);
                         }
@@ -5031,8 +5005,7 @@ namespace Pyrrho.Level3
                 ef = ef.Next();
             }
             var pre = ((Transaction)ac.db).physicals.Count;
-            var incoming = cx.result as RowSet;
-            if (incoming is null || incoming is EmptyRowSet || incoming is BindingRowSet)
+            if (cx.result is not RowSet incoming || incoming is EmptyRowSet || incoming is BindingRowSet)
                 incoming = TrivialRowSet.Static;
             _step = 0;
             for (var pb = incoming.First(cx); pb != null; pb = pb.Next(cx))
@@ -5047,7 +5020,7 @@ namespace Pyrrho.Level3
                             var xf = sa.matchExps.First();
                             if (gf is not null && xf is not null)
                                 ExpNode(ac, new ExpStep(sa.mode, xf, ab.Next(),
-                                    new GraphStep(sa.mode, gf.Next(), new EndStep(this, ff), ff), ff), Qlx.Null, null, null);
+                                    new GraphStep(sa.mode, gf.Next(), new EndStep(this, ff), ff), ff), TNull.Value, null, null);
                         }
             }
             cx.obs = ac.obs;
@@ -5129,7 +5102,7 @@ namespace Pyrrho.Level3
             /// <param name="cn">A continuation if provided</param>
             /// <param name="tok">A token indicating the match state</param>
             /// <param name="pd">The current last matched node if any</param>
-            public abstract void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd, bool match=true);
+            public abstract void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match=true);
             public virtual Step? Cont => null;
             protected static string Show(ABookmark<int, long>? b)
             {
@@ -5154,7 +5127,7 @@ namespace Pyrrho.Level3
             /// <summary>
             /// On success we call AddRow
             /// </summary>
-            public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match = true)
             {
                 for (var b = _ms.where.First(); b != null; b = b.Next())
                     if (cx.obs[b.key()] is SqlValueExpr se && se.Eval(cx) != TBool.True)
@@ -5181,7 +5154,7 @@ namespace Pyrrho.Level3
             /// On Success we go on to the next matchexpression if any.
             /// Otherwise we have succeeded and call next.Next.
             /// </summary>
-            public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match = true)
             {
                 if ((!_ms.Done(cx)) && cx.obs[matchAlts?.value() ?? -1L] is GqlMatch sm)
                 {
@@ -5191,11 +5164,11 @@ namespace Pyrrho.Level3
                             cx.binding -= sa.pathId;
                             var af = sa.matchExps.First();
                             var an = new GraphStep(matchMode, matchAlts?.Next(), next,next._ef);
-                            _ms.ExpNode(cx, new ExpStep(matchMode, af, ab.Next(), an,next._ef),Qlx.Null, null, null);
+                            _ms.ExpNode(cx, new ExpStep(matchMode, af, ab.Next(), an,next._ef),TNull.Value, null, null);
                         }
                 }
                 else if (match||_ms.optional)
-                    next.Next(cx, cn, tok, px, pd, match);
+                    next.Next(cx, cn, cr, px, pd, match);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5222,12 +5195,12 @@ namespace Pyrrho.Level3
             /// On Success we go on to the next element in the match expression if any.
             /// Otherwise the expression has succeeded and we call next.Next.
             /// </summary>
-            public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? pg, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? pg, TNode? pd, bool match = true)
             {
                 if ((!_ms.Done(cx)) && matches != null)
-                    _ms.ExpNode(cx, new ExpStep(mode, matches, ab, cn ?? next, _ef), tok, pg, pd);
+                    _ms.ExpNode(cx, new ExpStep(mode, matches, ab, cn ?? next, _ef), cr, pg, pd);
                 else
-                    next.Next(cx, null, Qlx.WITH, pg, pd, match);
+                    next.Next(cx, null, TBool.True, pg, pd, match);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5254,9 +5227,9 @@ namespace Pyrrho.Level3
             public Step next = n; // the continuation
             public CTree<long, TGParam> state = s.state; 
             public GqlNode? xn = pg;
-            public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match = true)
             {
-                _ms.ExpNode(cx, (ExpStep)next, tok, px, pd);
+                _ms.ExpNode(cx, (ExpStep)next, cr, px, pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5284,7 +5257,7 @@ namespace Pyrrho.Level3
             /// When this is done (backtracking) we announce success of the repeating pattern
             /// and call next.Next()
             /// </summary>
-            public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? px, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match = true)
             {
                 if (sp.inclusionMode != Qlx.ANY && pd?.defpos is long pp)
                 {
@@ -5302,12 +5275,12 @@ namespace Pyrrho.Level3
                 }
                 if (_ms.Done(cx))
                 {
-                    next.Next(cx, cn, tok, px, pd);
+                    next.Next(cx, cn, cr, px, pd);
                     return;
                 }
                 var i = im + 1;
                 if (i >= sp.quantifier.Item1 && pd is not null)
-                    next.Next(cx, cn, tok, px, pd, match);
+                    next.Next(cx, cn, cr, px, pd, match);
                 // now see if we need to repeat the match process for this path pattern
                 if (match && (i < sp.quantifier.Item2 || sp.quantifier.Item2 < 0) && pd is not null)
                     _ms.PathFirstNode(cx, new PathFirstStep(mode, sp, i, px,
@@ -5338,10 +5311,10 @@ namespace Pyrrho.Level3
             /// <summary>
             /// On each success we call the continuation
             /// </summary>
-            public override void Next(Context cx, Step? cn, Qlx tok, GqlNode? pg, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? pg, TNode? pd, bool match = true)
             {
                 if (match||_ms.optional)
-                     _ms.ExpNode(cx, (ExpStep)next, tok, pg, pd);
+                     _ms.ExpNode(cx, (ExpStep)next, cr, pg, pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5402,13 +5375,13 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">The Context</param>
         /// <param name="be">The Step: current state</param>
-        /// <param name="tok">A direction token if an edge</param>
+        /// <param name="cr">A connector if an edge</param>
         /// <param name="pd">The previous database node if any</param>
-        void ExpNode(Context cx, ExpStep be, Qlx tok, GqlNode? gp, TNode? pd)
+        void ExpNode(Context cx, ExpStep be, TypedValue cr, GqlNode? gp, TNode? pd)
         {
             if (cx.obs[be.matches?.value() ?? -1L] is not GqlNode xn)
             {
-                be.next.Next(cx, null, tok, gp, pd);
+                be.next.Next(cx, null, cr, gp, pd);
                 return;
             }
             cx.conn.Awake();
@@ -5426,45 +5399,42 @@ namespace Pyrrho.Level3
             }
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
-            if (tok == Qlx.WITH && pd is not null)
+            if (cr == TBool.True && pd is not null)
                 ds += (xn.defpos, pd.tableRow);
             //    else if (xn.Eval(ac) is TNode nn)
             //        ds += (xn.defpos, nn.tableRow);
-            else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr)
+            else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr && cr is TConnector tc)
             {
-                if ((pd is TEdge te) ? ((tok == Qlx.ARROWBASE && te.arriving.ToLong() == tr.defpos)
-                || (tok == Qlx.RARROW && te.leaving.ToLong() == tr.defpos)) : true)
+                if ((pd is TEdge te) ? ((tc.q == Qlx.ARROWBASE && te.tableRow.vals[tc.cp]?.ToLong() == tr.defpos)
+                || (tc.q == Qlx.RARROW && te.tableRow.vals[tc.cp]?.ToLong() == tr.defpos)) : true)
                     ds += (gr.refersTo, tr.tableRow);
                 if (pd is TNode pl && tr is TEdge ae)
                 {
-                    if (tok == Qlx.ARROWBASE && pl.defpos != ae.leaving.ToLong()) return;
-                    if (tok == Qlx.RARROW && pl.defpos != ae.arriving.ToLong()) return;
-                }
+                    if (tc.q == Qlx.ARROWBASE && pl.defpos != ae.tableRow.vals[tc.cp]?.ToLong()) return;
+                    if (tc.q== Qlx.RARROW && pl.defpos != ae.tableRow.vals[tc.cp]?.ToLong()) return;
+                } 
             }
             else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj)
             {
-                for (var b = dj.First(); b != null; b = b.Next())
+         /*       for (var b = dj.First(); b != null; b = b.Next())
                     if (b.key() is EdgeType je && ((tok == Qlx.ARROWBASE) ?
                         (cx.db.objects[je.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[je.arriveCol] as TInt)
                       : (cx.db.objects[je.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[je.leaveCol] as TInt))// this node will match with xn
                                        is TableRow jn)
-                        ds += (jn.defpos, jn);
+                        ds += (jn.defpos, jn); */
             }
-            else if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos)
+            else if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos
+                && cr is TConnector ec)
             {
-                if (((tok == Qlx.ARROWBASE) ?
-                (cx.db.objects[pe.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.arriveCol] as TInt)
-                : (cx.db.objects[pe.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[pe.leaveCol] as TInt))// this node will match with xn
+                for (var b=pe.connects.First();b!=null;b=b.Next())
+                    if (b.key() is TConnector tc1 && Connects(ec,tc1) && (ec.cn=="" || ec.cn==tc1.cn)
+                && (cx.db.objects[tc1.ct] as NodeType)?.GetS(cx, pd.tableRow.vals[tc1.cp] as TInt)
                is TableRow tn)
-                    ds += (tn.defpos, tn);
+                    ds += (tn.defpos, tn); 
             }
-            else if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
+            if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
-                if (pd.dataType is EdgeType et &&
-                    cx.db.objects[(tok == Qlx.ARROWBASE) ? et.leavingType : et.arrivingType] is NodeType qn
-                    && qn.Schema(cx) is TableRow ts)
-                    ds += (ts.defpos, ts);
-                else if (pd.dataType is NodeType pg)
+                if (pd.dataType is NodeType pg)
                 {
                     for (var b = pg.sindexes.First(); b != null; b = b.Next())
                         if ((cx.db.objects[b.key()] as EdgeType)?.Schema(cx) is TableRow tq)
@@ -5487,11 +5457,21 @@ namespace Pyrrho.Level3
                 ds = xn.For(cx, this, xn, ds);
             var df = ds.First();
             if (df == null && optional)
-                be.next.Next(cx, be.next, Qlx.Null, null, null, false);
+                be.next.Next(cx, be.next, TNull.Value, null, null, false);
             else if (df != null && !Done(cx))
                 DbNode(cx, new NodeStep(be.mode, xn, df, 
                     new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._ef)),
-                     (xn is GqlEdge || xn is GqlReference) ? xn.tok : tok, pd);
+                     (xn is GqlEdge || xn is GqlReference) ? xn.preCon : cr, pd);
+        }
+        bool Connects(TConnector ec,TConnector tc)
+        {
+            return ec.q switch
+            {
+                Qlx.ARROWBASE or Qlx.RARROWBASE => tc.q == Qlx.TO,
+                Qlx.RARROW or Qlx.ARROW => tc.q==Qlx.FROM,
+                Qlx.TILDE => tc.q == Qlx.WITH,
+                _ => false
+            };
         }
         static BTree<long,TableRow> Traverse(Context cx,MatchStatement ms,GqlNode xn, BTree<long,(int,Domain)> tr,
             TNode pd,NodeType pn,CTree<Domain,int> ctr,BTree<long,TableRow>ds)
@@ -5517,64 +5497,15 @@ namespace Pyrrho.Level3
                     }
                     if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
                         continue;
-                    var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
-                    var ic = (xn.tok == Qlx.ARROWBASE) ? rt.leaveCol : rt.arriveCol;
-                    var xp = (xn.tok == Qlx.ARROWBASE) ? rt.leaveIx : rt.arriveIx;
-                    for (var g = pt.First(); g != null; g = g.Next())
-                        if (g.key()[0] == ic &&cx.db.objects[xp] is Index rx)
-                        {
-                            if (pd.tableRow.vals[pn.idCol] is TInt ti
-                            && rx.rows?.impl?[ti] is TPartial tp)
-                            {
-                                if (lm < tp.value.Count && tr[rt.defpos].Item2 is Domain dm
-                                    && dm.Length > 0)
-                                    ds = Trunc(ds, rt, tp.value, lm, dm);
-                                else
-                                    for (var c = tp.value.First(); c != null; c = c.Next())
-                                        if (rt.tableRows[c.key()] is TableRow r)
-                                        {
-                                            if (tr.Count > 0L)
-                                            {
-                                                if (ms.AllTrunc(ctr))
-                                                    return ds;
-                                                if (ms.Trunc(ctr, rt))
-                                                    goto rtdone;
-                                                ctr = AddIn(ctr, rt);
-                                            }
-                                            ds += (r.defpos, r);
-                                        }
-                            }
-                            else if (rx.rows?.impl?[new TInt(pd.defpos)] is TPartial tq)
-                            {
-                                if (lm < tq.value.Count && tr[rt.defpos].Item2 is Domain dm
-                                    && dm.Length > 0)
-                                    ds = Trunc(ds, rt, tq.value, lm, dm);
-                                else
-                                    for (var c = tq.value.First(); c != null; c = c.Next())
-                                        if (rt.tableRows[c.key()] is TableRow r)
-                                        {
-                                            if (tr.Count > 0L)
-                                            {
-                                                if (ms.AllTrunc(ctr))
-                                                    return ds;
-                                                if (ms.Trunc(ctr, rt))
-                                                    goto rtdone;
-                                                ctr = AddIn(ctr, rt);
-                                            }
-                                            ds += (r.defpos, r);
-                                        }
-                            }
-                        rtdone:;
-                        }
                 }
             var la = tr.Contains(Domain.EdgeType.defpos) ? tr[Domain.EdgeType.defpos].Item1 : int.MaxValue;
-            for (var b = pn.sindexes[pd.tableRow.defpos]?.First(); b != null; b = b.Next())
+            for (var b = (cx._Ob(pn.defpos) as NodeType)?.sindexes[pd.tableRow.defpos]?.First(); 
+                b != null; b = b.Next())
                 if (cx.db.objects[b.key()] is TableColumn cc
                     && cx.db.objects[cc.tabledefpos] is EdgeType rt
                     && rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
                     && (ne == "" || nx == "" || ne == nx)
-                    && ((xn.tok==Qlx.ARROWBASE)?(cc.flags==PColumn.GraphFlags.LeaveCol)
-                    :(cc.flags==PColumn.GraphFlags.ArriveCol))
+                    && (cc.tc is TConnector tc && tc.q!=Qlx.Null)
                     && b.value() is CTree<long, bool> pt)
                     for (var c = pt.First(); c != null; c = c.Next())
                     {
@@ -5588,11 +5519,12 @@ namespace Pyrrho.Level3
                             continue;
                         if (rt.tableRows[c.key()] is TableRow dr && xn is GqlEdge xe)
                         {
-                            if (dr.vals[rt.leaveCol]?.ToLong() is long lp
-                                && cx.binding[xe.leavingValue] is TNode ln && ln.defpos != lp)
+                            if (xe.preCon is TConnector pe && 
+                                ((pe.q == Qlx.ARROWBASE && tc.q != Qlx.FROM)
+                                ||(pe.q==Qlx.RARROW && tc.q!=Qlx.TO)))
                                 continue;
-                            if (dr.vals[rt.arriveCol]?.ToLong() is long ap 
-                                && cx.binding[xe.arrivingValue] is TNode an && an.defpos != ap)
+                            if (cx.binding[xe.before?.defpos ?? -1L] is TNode tn 
+                                && tn.defpos != dr.vals[tc.cp]?.ToLong())
                                 continue;
                             if (lm-- > 0 && la-- > 0)
                                 ds += (dr.defpos, dr);
@@ -5668,7 +5600,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context</param>
         /// <param name="bn">Step gives current state of the match</param>
         /// <param name="pd">If not null, the previous matching node</param> 
-        void DbNode(Context cx,NodeStep bn, Qlx tok, TNode? pd)
+        void DbNode(Context cx,NodeStep bn, TypedValue cr, TNode? pd)
         {
             int step;
             var ob = cx.binding;
@@ -5690,9 +5622,6 @@ namespace Pyrrho.Level3
                     for (var b = (cx.db.objects[tr.tabledefpos] as NodeType)?.nodeTypes.First(); b != null; b = b.Next())
                         if (b.key() is NodeType dm)
                         {
-                            if (dm is EdgeType et && pd is not null &&
-                                ((bn.xn.tok == Qlx.ARROWBASE) ? et.leavingType : et.arrivingType) != pd.dataType.defpos)
-                                continue;
                             cx.binding += (bn.xn.defpos, new TRow(dm, tr.vals));
                             dn = dm.Node(cx, tr);
                             goto next;
@@ -5730,16 +5659,6 @@ namespace Pyrrho.Level3
                         if (!bn.xn.CheckProps(cx, this, dn))
                             goto another;
                         cx.values += (bn.xn.defpos, dn);
-                        if (dn is TEdge de && pd is not null && bn.xn.tok!=Qlx.LPAREN
-                            && ((bn.xn.tok == Qlx.ARROWBASE) ? de.leaving : de.arriving) is TInt pv
-                            && pv.ToLong()?.CompareTo(pd.tableRow.defpos) != 0 && pv.CompareTo(pd.id) != 0
-                            && pd is TEdge ee)
-                        {
-                            var p = (tok == Qlx.ARROWBASE) ? ee.arriving : ee.leaving;
-                            if (dn.id.CompareTo(p) == 0 || new TInt(dn.defpos).CompareTo(p) == 0)
-                                goto next;
-                            goto another;
-                        }
                     }
                     goto next;
                 another:
@@ -5753,7 +5672,7 @@ namespace Pyrrho.Level3
             next:
                 if (match)
                     anymatch = true;
-                bn.next.Next(cx, null, (tok == Qlx.WITH) ? Qlx.Null : tok, bn.xn, dn, match);
+                bn.next.Next(cx, null, (cr == TBool.True) ? TNull.Value : cr, bn.xn, dn, match);
             backtrack:
                 if (ot is not null)
                     cx.binding += (-1L, ot[0]);
@@ -5764,7 +5683,7 @@ namespace Pyrrho.Level3
                 ns = ns?.Next();
             }
             if (optional && !anymatch)
-                bn.next.Next(cx, null, (tok == Qlx.WITH) ? Qlx.Null : tok, bn.xn, dn, false);
+                bn.next.Next(cx, null, (cr == TBool.True) ? TNull.Value : cr, bn.xn, dn, false);
             if (ot is not null)
                 cx.binding += (-1L, ot[0]);
             cx.values = ov;
@@ -5805,7 +5724,7 @@ namespace Pyrrho.Level3
             if (fb?.Next() is not ABookmark<int, long> fn) goto backtrack;
             if (cx.obs[fn.value()] is GqlNode xn && bp.sp is GqlPath sp
                 && (bp.im < sp.quantifier.Item2 || sp.quantifier.Item2 < 0))
-                ExpNode(cx, new ExpStep(bp.mode, fn, null, bp.next,bp._ef), Qlx.NULL, xi, dn); // use ordinary ExpNode for the internal pattern
+                ExpNode(cx, new ExpStep(bp.mode, fn, null, bp.next,bp._ef), TNull.Value, xi, dn); // use ordinary ExpNode for the internal pattern
                                                                                   // dn must be an edge
                                                                                   // and xn must be an GqlEdge
             backtrack:
@@ -5858,20 +5777,6 @@ namespace Pyrrho.Level3
                         switch (b.key())
                         {
                             case -(long)Qlx.Id: /* tv = dn;*/ break;
-                            case -(long)Qlx.RARROW:
-                                {
-                                    var te = cx.GType(nt.leavingType);
-                                    var er = te?.Get(cx, dn.tableRow.vals[nt.leaveCol] as TInt);
-                                    tv = (te is null || er is null) ? TNull.Value : te.Node(cx, er);
-                                    break;
-                                }
-                            case -(long)Qlx.ARROW:
-                                {
-                                    var te = cx.GType(nt.arrivingType);
-                                    var er = te?.Get(cx, dn.tableRow.vals[nt.arriveCol] as TInt);
-                                    tv = (te is null || er is null) ? TNull.Value : te.Node(cx, er);
-                                    break;
-                                }
                             case -(long)Qlx.TYPE: //tv = new TChar(nt.name); break;
                                 {
                                     tv = new TChar(SubType(cx, nt, dn).name);

@@ -50,7 +50,7 @@ namespace Pyrrho.Level2
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
             Update1, Delete1, Drop1, RefAction, Post, // 71-75
             PNodeType, PEdgeType, EditType, AlterIndex, AlterEdgeType, // 76-80
-            Record4, Update2, Delete2, PSchema, PGraph, PGraphType // 81-86
+            Record4, Update2, Delete2, PSchema, PGraph, PGraphType // 81-87
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -283,10 +283,10 @@ namespace Pyrrho.Level2
             if (ut is NodeType nt && cx.db.objects[ux.keys[0] ?? -1L] is TableColumn nk)
             {
                 var ok = cx.db.objects[nt.idCol] as TableColumn;
-                cx.db += (nk + (TableColumn.GraphFlag, PColumn.GraphFlags.IdCol));
+  /*              cx.db += (nk + (TableColumn.GraphFlag, PColumn.GraphFlags.IdCol));
                 if (ok is not null)
-                    cx.db += (ok - TableColumn.GraphFlag);
-                nt = nt + (NodeType.IdIx, idindexdefpos) + (NodeType.IdCol, nk.defpos);
+                    cx.db += (ok - TableColumn.GraphFlag); 
+                nt = nt + (NodeType.IdIx, idindexdefpos) + (NodeType.IdCol, nk.defpos); */
                 cx.db += nt;
                 nt.Refresh(cx);
                 var cd = ok is null || ok.domain.kind!=nk.domain.kind;
@@ -372,17 +372,18 @@ namespace Pyrrho.Level2
     }
     internal class AlterEdgeType : Physical
     {
-        public bool leaving;
+        public int cid; // ARRIVING 0, LEAVING 1, ..
         public long reftype;
         public long edgetype;
         public AlterEdgeType(Reader rdr) : base(Type.AlterEdgeType, rdr) { }
-        public AlterEdgeType(bool lv, long rt, long et, long pp) : base(Type.AlterEdgeType, pp)
+        protected AlterEdgeType(Type t, Reader rdr) : base(t, rdr) { }
+        public AlterEdgeType(int id, long rt, long et, long pp) : base(Type.AlterEdgeType, pp)
         {
-            leaving = lv; reftype = rt; edgetype = et;
+            cid = id; reftype = rt; edgetype = et;
         }
         protected AlterEdgeType(AlterEdgeType x, Writer wr) : base(x, wr) 
         {
-            leaving = x.leaving;
+            cid = x.cid;
             edgetype = x.edgetype;
             reftype = x.reftype;
         }
@@ -417,21 +418,22 @@ namespace Pyrrho.Level2
         {
             reftype = wr.cx.Fix(reftype);
             edgetype = wr.cx.Fix(edgetype);
-            wr.PutInt(leaving ? 1 : 0);
+            wr.PutInt(cid);
             wr.PutLong(reftype);
             wr.PutLong(edgetype);
             base.Serialise(wr);
         }
         public override void Deserialise(Reader rdr)
         {
-            leaving = rdr.GetInt() != 0;
+            cid = rdr.GetInt();
             reftype = rdr.GetLong();
             edgetype = rdr.GetLong();
             base.Deserialise(rdr);
         }
         public override string ToString()
         {
-            return "AlterEdgeType " + DBObject.Uid(edgetype)+ (leaving?" LEAVING ":" ARRIVING ") 
+            return "AlterEdgeType " + DBObject.Uid(edgetype)
+                + (cid switch { 0=> " ARRIVING ", 1=> " LEAVING ", _=>cid.ToString()}) 
                 + DBObject.Uid(reftype);
         }
         internal override DBObject? Install(Context cx)
@@ -439,7 +441,7 @@ namespace Pyrrho.Level2
             if (cx.db.objects[edgetype] is not Level5.EdgeType et
                 || cx.db.objects[reftype] is not Level5.NodeType nt)
                 return null;
-            var nm = leaving ? "LEAVING" : "ARRIVING";
+            var nm = cid switch { 0 => "ARRIVING", 1 => "LEAVING", _ => "??" };
             long ip = -1L;
             for (var b = nt.rindexes[et.defpos]?.First(); b != null && ip<0; b = b.Next())
                 if (nt.representation.Contains(b.value()?.First()?.value() ?? -1L))
@@ -450,16 +452,6 @@ namespace Pyrrho.Level2
                                     ip = ax.defpos;
             if (ip < 0)
                 throw new PEException("PE40802");
-            if (leaving)
-            {
-                et += (Level5.EdgeType.LeavingType, reftype);
-                et += (Level5.EdgeType.LeaveIx, ip);
-            }
-            else
-            {
-                et += (Level5.EdgeType.ArrivingType, reftype);
-                et += (Level5.EdgeType.ArriveIx, ip);
-            }
             cx.db += et;
             cx.Add(et);
             return et;

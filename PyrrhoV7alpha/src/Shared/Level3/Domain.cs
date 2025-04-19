@@ -1,6 +1,5 @@
 using System.Globalization;
 using System.Text;
-using System.Transactions;
 using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
@@ -88,7 +87,7 @@ namespace Pyrrho.Level3
     Document, DocArray, ObjectId, JavaScript, ArgList, // Pyrrho 5.1
     TableType, Row, Delta, Position,
     Metadata, HttpDate, Star, // Pyrrho v7
-    _Rvv, GraphSpec, PathType, LabelType, Comparable; // Rvv is V7 validator type
+    _Rvv, GraphSpec, PathType, LabelType, Comparable, Connector; // Rvv is V7 validator type
         internal static UDType TypeSpec;
         internal static NodeType NodeType,NodeSchema;
         internal static EdgeType EdgeType,EdgeSchema;
@@ -132,7 +131,8 @@ namespace Pyrrho.Level3
             Partial = new StandardDataType(Qlx.T); // pseudo type for MTree implementation
             Array = new StandardDataType(Qlx.ARRAY, OrderCategory.None, Content);
             SetType = new StandardDataType(Qlx.SET, OrderCategory.None, Content);
-            EdgeEnds = new StandardDataType(Qlx.SET, OrderCategory.Primitive, Char);
+            Position = new StandardDataType(Qlx.POSITION);
+            EdgeEnds = new StandardDataType(Qlx.SET, OrderCategory.Primitive, Position); // March 2025
             Multiset = new StandardDataType(Qlx.MULTISET, OrderCategory.None, Content);
             Collection = UnionType(--_uid, Array, Multiset);
             Cursor = new StandardDataType(Qlx.CURSOR);
@@ -151,7 +151,6 @@ namespace Pyrrho.Level3
             Row = new StandardDataType(Qlx.ROW);
             Delta = new StandardDataType(Qlx.INCREMENT);
             _Rvv = new StandardDataType(Qlx.CHECK);
-            Position = new StandardDataType(Qlx.POSITION);
             Metadata = new StandardDataType(Qlx.METADATA);
             Star = new(--_uid, Qlx.TIMES, BTree<long, object>.Empty);
             GraphSpec = new StandardDataType(Qlx.GRAPH); // opaque
@@ -161,6 +160,7 @@ namespace Pyrrho.Level3
             EdgeSchema = new EdgeType(Qlx.SCHEMA);
             PathType = new StandardDataType(Qlx.PATH,OrderCategory.Primitive,NodeType);
             LabelType = new StandardDataType(Qlx.LABEL); // opaque
+            Connector = new StandardDataType(Qlx.CONNECTING); // opaque
         }
         public override Domain domain => this;
         public Qlx kind => (Qlx)(mem[Kind] ?? Qlx.NO);
@@ -221,7 +221,7 @@ namespace Pyrrho.Level3
         {
             cx.Add(this);
         }
-        // A result of types
+        // A combination of types (e.g. a union)
         public Domain(long dp, Qlx t, CTree<Domain, bool> u)
             : this(dp, BTree<long, object>.Empty + (Kind, t) + (UnionOf, u))
         {
@@ -481,12 +481,12 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 _ => false
             };
         }
-        internal NodeType? ForExtra(Context cx, BTree<long, object>? m = null)
+        internal NodeType? ForExtra(Context cx, BTree<long, object>? m = null, CTree<TypedValue,bool>? cs= null)
         {
             m ??= BTree<long, object>.Empty;
             var dc = (CTree<string, QlValue>?)m[GqlNode.DocValue];
             var op = (Qlx?)m[SqlValueExpr.Op];
-            var oi = OnInsert(cx, defpos, m);
+            var oi = OnInsert(cx, defpos, m, cs);
             return (oi.Count == 1 || dc is null || dc.Count == 0 || op == Qlx.COLON) ? oi.First()?.key() as NodeType : null;
         }
         /// <summary>
@@ -3375,7 +3375,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                 vs += (LastChange, new TInt((long)f.Value));
                                 vs += (Defpos, new TInt((long)(d["$pos"]??0L)));
                             }
-                            if (f.Key == "%classification")
+                            if (f.Key == "$classification")
                                 vs += (Classification,
                                     TLevel.New(Level.Parse((string)f.Value,cx)));
                             if (f.Key.StartsWith("$#") && kb is not null && cx.obs[kb.key()] is SqlFunction sf)
@@ -4534,7 +4534,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             return sv?.infos[cx.role.defpos]?.name
                 ?? sv?.alias ?? (string?)sv?.mem[ObInfo.Name] ?? ("Col" + i);
         }
-        internal virtual CTree<Domain, bool> OnInsert(Context cx, long _ap, BTree<long,object>? m= null)
+        internal virtual CTree<Domain, bool> OnInsert(Context cx, long _ap, BTree<long,object>? m= null,
+            CTree<TypedValue, bool>? cs = null)
         {
             var r = CTree<Domain, bool>.Empty;
             var tv = _Eval(cx);
@@ -4543,10 +4544,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             if (tv is TChar tc && cx.db.objects[cx.role.nodeTypes[tc.value] ?? -1L] is NodeType nt)
                 r += (nt, true);
             return r;
-        }
-        internal virtual CTree<Domain, bool> OnInsert(Context cx, BTree<long, long?>? d, long lt = -1L, long at = -1L)
-        {
-            return CTree<Domain, bool>.Empty;
         }
         internal static TypedValue Now => new TDateTime(Timestamp, DateTime.Now);
         internal static TypedValue MaxDate => new TDateTime(Timestamp, DateTime.MaxValue);
@@ -4668,6 +4665,17 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.PASSWORD: sb.Append("*********"); break;
             }
             return sb.ToString();
+        }
+
+        internal bool OkForConnector(Context cx,TConnector dc)
+        {
+            var d = cx._Ob(dc.ct) as Domain?? throw new PEException("PE90155");
+            if (EqualOrStrongSubtypeOf(d))
+                return true;
+            for (var b =d.unionOf.First(); b != null; b = b.Next())
+                if (EqualOrStrongSubtypeOf(b.key()))
+                    return true;
+            return false;
         }
     }
     

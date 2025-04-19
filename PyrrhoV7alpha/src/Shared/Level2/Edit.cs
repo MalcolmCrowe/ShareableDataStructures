@@ -315,47 +315,6 @@ namespace Pyrrho.Level2
                         cx.db += xi;
                         un = nu;
                     }
-                    // special case: if un is an edge type without leaving/arriving indexes we clone those of tg
-                    if (un is EdgeType eu && eu.leaveIx < 0 && tg is EdgeType te)
-                    {
-                        var lx = cx.db.objects[te.leaveIx] as Level3.Index ?? throw new DBException("PE40803");
-                        var xl = (Level3.Index)cx.Add(new Level3.Index(ppos + 2,
-                            lx.mem + (Level3.Index.TableDefPos, un.defpos)));
-                        eu += (Table.Indexes, un.indexes + (xl.keys, new CTree<long, bool>(xl.defpos, true)));
-                        if (!eu.representation.Contains(te.leaveCol))
-                            eu += (Domain.RowType, eu.rowType + te.leaveCol);
-                        eu += (Domain.Representation, eu.representation +
-                                (te.leaveCol, te.representation[te.leaveCol] ?? Domain.Position));
-                        eu += (EdgeType.LeaveCol, te.leaveCol);
-                        eu += (EdgeType.LeaveIx, xl.defpos);
-                        eu += (DBObject.Infos, eu.infos + (cx.role.defpos, ui + (ObInfo._Names, ui.names + r.names)));
-                        cx.Add(eu);
-                        cx.Add(xl);
-                        xx = xl;
-                        cx.db += eu;
-                        cx.db += xl;
-                        un = eu;
-                    }
-                    if (un is EdgeType ev && ev.arriveIx < 0 && dataType is EdgeType tf)
-                    {
-                        var ax = cx.db.objects[tf.arriveIx] as Level3.Index ?? throw new PEException("PE40804");
-                        var xa = (Level3.Index)cx.Add(new Level3.Index(ppos + 3,
-                            ax.mem + (Level3.Index.TableDefPos, un.defpos)));
-                        ev += (Table.Indexes, un.indexes + (xa.keys, new CTree<long, bool>(xa.defpos, true)));
-                        if (!ev.representation.Contains(tf.arriveCol))
-                            ev += (Domain.RowType, ev.rowType + tf.arriveCol);
-                        ev += (Domain.Representation, ev.representation +
-                            (tf.arriveCol, tf.representation[tf.arriveCol] ?? Domain.Position));
-                        ev += (EdgeType.ArriveCol, tf.arriveCol);
-                        ev += (EdgeType.ArriveIx, xa.defpos);
-                        ev += (DBObject.Infos, ev.infos + (cx.role.defpos, ui + (ObInfo._Names, ui.names + r.names)));
-                        cx.Add(ev);
-                        cx.Add(xa);
-                        xx = xa;
-                        cx.db += ev;
-                        cx.db += xa;
-                        un = ev;
-                    }
                     // otherwise we need to add tableRows to the new under
                     if (xx is null && un is NodeType nt && dataType is Table ns)
                     {

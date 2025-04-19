@@ -2726,6 +2726,8 @@ namespace Pyrrho.Level4
                     return (RowSet)cx.Add(this + (_Built, true) + (_Rows, new CList<TRow>(sg)));
                 }
                 var nrest = sce is not RestRowSet && sce is not RestRowSetUsing;
+                if ((bool?)mem[_Built]==true && !nrest)
+                    return this;
                 var r = (SelectRowSet)cx.Add(this + (Building, true));
                 if (sce is not BindingRowSet)
                 {
@@ -2797,9 +2799,11 @@ namespace Pyrrho.Level4
                 if (rws == CList<TRow>.Empty)
                     rws += new TRow(this, CTree<long, TypedValue>.Empty);
                 r = (SelectRowSet)r.New(r.mem - Building);
+                r = (SelectRowSet)r.New(r.mem + (_Rows, rws) + (_Built, true) - Level3.Index.Tree
+                    + (Groupings, r.groupings));
                 cx.obs += (defpos, r); // doesnt change depth
-                return (RowSet)cx.Add((RowSet)r.New(r.mem + (_Rows, rws) + (_Built, true) - Level3.Index.Tree
-                    + (Groupings, r.groupings)));
+                cx.Add(r);
+                return r;
             }
             return (RowSet)cx.Add(this + (_Built, true));
         }
@@ -5554,21 +5558,6 @@ namespace Pyrrho.Level4
                                 k += v;
                             }
                     }
-                    if (tb is EdgeType et && cx.conn.refIdsToPos)
-                    {
-                        if (cx.db.objects[et.leavingType] is NodeType ln
-                            && vs[et.leaveCol] is TChar ld
-                            && long.Parse(ld.value) is long lp
-                            && ln.FindPrimaryIndex(cx) is Level3.Index lx
-                            && lx.rows?.impl?[new TInt(lp)] is TInt li)
-                            vs += (et.leaveCol, li);
-                        if (cx.db.objects[et.arrivingType] is NodeType an
-                            && vs[et.arriveCol] is TChar ad
-                            && long.Parse(ad.value) is long ap
-                            && an.FindPrimaryIndex(cx) is Level3.Index ax
-                            && ax.rows?.impl?[new TInt(ap)] is TInt ai)
-                            vs += (et.arriveCol, ai);
-                    }
                 }
                 return vs;
             }
@@ -6729,8 +6718,6 @@ namespace Pyrrho.Level4
                 var et = GetH(wr.Headers,"ETag");
                 if (et != null && et.StartsWith("W/"))
                     et = et[2..];
-                if (et != null)
-                    et = et.Trim('"');
                 var ds = GetH(wr.Headers,"Description");
                 var cl = GetH(wr.Headers, "Classification");
                 var ld = GetH(wr.Headers, "LastData");

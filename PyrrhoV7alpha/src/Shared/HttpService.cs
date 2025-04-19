@@ -894,7 +894,7 @@ namespace Pyrrho
                         et = et[2..];
                     var ets = et.Split(';');
                     for (var i = 0; i < ets.Length; i++)
-                        rv += Rvv.Parse(ets[i].Trim().Trim('"'));
+                        rv += Rvv.Parse(ets[i].Trim());
                 }
                 if (PyrrhoStart.DebugMode || PyrrhoStart.HTTPFeedbackMode)
                 {

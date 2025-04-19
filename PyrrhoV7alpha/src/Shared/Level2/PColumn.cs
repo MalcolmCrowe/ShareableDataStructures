@@ -3,7 +3,6 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using Pyrrho.Level5;
-using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
@@ -46,11 +45,9 @@ namespace Pyrrho.Level2
         public BTree<UpdateAssignment,bool> upd = CTree<UpdateAssignment,bool>.Empty; // see PColumn3
 		public bool notNull = false;    // see PColumn2
 		public GenerationRule generated = GenerationRule.None; // ditto
-        [Flags] // for Typed Graph Model June2023
-        internal enum GraphFlags { None = 0, IdCol = 1, LeaveCol = 2, ArriveCol = 4, SetValue = 8 }
-        public GraphFlags flags;
-        public long index = -1L;  // IdIx // Leave or Arrive Ix
-        public long toType = -1L; // Leave or Arrive Type
+        public TypedValue connector = TNull.Value; 
+        protected long flags = 0L; 
+        protected long toType = -1L; 
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (table != null && dataType != null)
@@ -73,11 +70,13 @@ namespace Pyrrho.Level2
         public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
             Context cx) : base(t,pp,cx,nm,dm,-1L)
 		{
-			table = pr;
-			seq = (sq<0)?pr.Length:sq;
+			table = cx._Ob(pr.defpos) as Table??throw new DBException("42107",pr.name);
+			seq = (sq<0)?table.Length:sq;
             tabledefpos = pr.defpos;
             dataType = dm;
             domdefpos = dm.defpos;
+            table += (ObInfo._Names, table.names + (nm, (0,pp)));
+            cx.Add(table);
         }
         /// <summary>
         /// Constructor: a new Column definition from the buffer
@@ -100,12 +99,11 @@ namespace Pyrrho.Level2
                 tabledefpos = table.defpos;
                 seq = x.seq;
                 domdefpos = x.domdefpos;
+                connector = x.connector.Fix(wr.cx);
             }
         }
         protected override Physical Relocate(Writer wr)
         {
-            index = wr.cx.Fix(index);
-            toType = wr.cx.Fix(toType);
             return new PColumn(this, wr);
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
@@ -113,13 +111,6 @@ namespace Pyrrho.Level2
             if (tr is not null && wr.cx.uids[ppos] is long q
                 && wr.cx.db.objects[q] is Domain ndt)
                 dataType = ndt;
-            if (flags.HasFlag(GraphFlags.ArriveCol))
-                index = (dataType as EdgeType)?.arriveIx ?? -1L; 
-            else
-               if (flags.HasFlag(GraphFlags.IdCol))
-                index = (dataType as NodeType)?.idIx??-1L;
-            else if (flags.HasFlag(GraphFlags.LeaveCol))
-                index = (dataType as EdgeType)?.leaveIx ?? -1L;
             if (wr.cx.uids[tabledefpos] is long tp && wr.cx.db.objects[tp] is Table ta)
                 Commit(wr.cx, ta);
             var (nt,ph) = base.Commit(wr, tr);
@@ -203,6 +194,24 @@ namespace Pyrrho.Level2
             table = (Table)(rdr.GetObject(tabledefpos)
                 ??new Table(defpos,BTree<long,object>.Empty));
             name = rdr.GetString();
+                // March 2025
+            if (flags != 0L && rdr.context.db.objects[toType] is Domain ct)
+            {
+                var q = (flags & 0xf7L) switch
+                {
+                    1L => Qlx.ID,
+                    2L => Qlx.FROM,
+                    4L => Qlx.TO,
+                    16L => Qlx.WITH,
+                    _ => Qlx.NO
+                };
+                var tc = new TConnector(q, ct.defpos, name,
+                    ((flags & 0x8L) == 0x8L) ? Domain.EdgeEnds : Domain.Position, defpos);
+                connector = tc;
+                if (table is EdgeType et)
+                    rdr.context.db += et + (EdgeType.Connects, et.connects + (tc,true));
+            }
+                // end of fix
             seq = rdr.GetInt();
             domdefpos = rdr.GetLong();
             dataType = (Domain)(rdr.GetObject(domdefpos) ?? throw new PEException("PE0301"));
@@ -268,12 +277,11 @@ namespace Pyrrho.Level2
             else
                 sb.Append(dataType); 
             sb.Append(']');
-            if (flags != GraphFlags.None)
-                sb.Append(" " + flags);
-            if (index > 0)
-                sb.Append(" " + DBObject.Uid(index));
-            if (toType> 0)
-                sb.Append(" "+DBObject.Uid(toType));
+            if (connector is TConnector tc)
+            {
+                sb.Append(' ');sb.Append(tc.q); sb.Append(' '); sb.Append(DBObject.Uid(tc.ct));
+                sb.Append(' '); sb.Append(tc.cd); sb.Append(' ');sb.Append(DBObject.Uid(tc.cp));
+            }
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx)
@@ -306,6 +314,7 @@ namespace Pyrrho.Level2
             if (dataType.infos[cx.role.defpos]?.names is Names ss && ss!=Names.Empty)
                 ti += (ObInfo.Defs, ti.defs + (tc.defpos, ss));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
+            table += (ObInfo._Names, ti.names);
             table += (cx, tc); // this is where the NodeType stuff happens
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME));
             tc += (TableColumn.Seq, seq);
@@ -495,10 +504,10 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class PColumn3 : PColumn2
     {
-        public PColumn3(UDType ut, string nm, int sq, Domain dm,
-            GraphFlags gf, long ix, long tp, long pp, Context cx, bool ifN = false)
-            : this(ut, nm, sq, dm, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
-                    dm.notNull, GenerationRule.None, gf, ix, tp, pp, cx)
+        public PColumn3(UDType ut, string nm, int sq, Domain dm, TypedValue tc,
+            long pp, Context cx, bool ifN = false)
+            : this(ut, nm, sq, dm, "", tc, "", CTree<UpdateAssignment, bool>.Empty,
+                    dm.notNull, GenerationRule.None, tc, pp, cx)
         {
             ifNeeded = ifN;
         }
@@ -516,9 +525,9 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         public PColumn3(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
             string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge,
-                        GraphFlags gf, long ix, long tp, long pp, Context cx)
+                  TypedValue tc, long pp, Context cx)
             : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, 
-                  us, ua, nn, ge, gf, ix, tp, pp, cx)
+                  us, ua, nn, ge, tc, pp, cx)
         { }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -534,28 +543,19 @@ namespace Pyrrho.Level2
         /// <param name="db">The local database</param>
         protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ds, 
             TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
-            GenerationRule ge, GraphFlags gf, long ix, long tp, long pp, Context cx)
+            GenerationRule ge, TypedValue tc, long pp, Context cx)
             : base(t, pr, nm, (sq<0)?pr.Length:sq, dm, ds, dv, nn, ge, pp, cx)
         {
             upd = ua;
             ups = us;
-            flags = gf;
-            index = ix;
-            toType = tp;
-            if (flags.HasFlag(GraphFlags.LeaveCol))
+            if (cx.db.objects[pr.defpos] is EdgeType et && tc is TConnector cc)
             {
-                if (pr is EdgeType et)
-                    cx.Add(et + (EdgeType.LeaveCol, pp));
-                if (toType < 0)
-                    throw new PEException("PE20501");
+                tc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, pp);
+                et += (EdgeType.Connects, et.connects - cc + (tc, true));
+                cx.Add(et);
+                cx.db += et;
             }
-            if (flags.HasFlag(GraphFlags.ArriveCol))
-            {
-                if (pr is EdgeType et)
-                    cx.Add(et + (EdgeType.ArriveCol, pp));
-                if (toType < 0)
-                    throw new PEException("PE20502");
-            }
+            connector = tc;
         }
         /// <summary>
         /// Constructor: A new Column definition from the buffer
@@ -574,9 +574,6 @@ namespace Pyrrho.Level2
         {
             upd = x.upd;
             ups = x.ups;
-            flags = x.flags;
-            index = wr.cx.Fix(x.index);
-            toType = wr.cx.Fix(x.toType);
             table = (Table?)wr.cx.db.objects[wr.cx.Fix(x.table?.defpos??-1L)]??table;
         }
         internal override bool NeededFor(BTree<long, Physical> physicals)
@@ -590,8 +587,6 @@ namespace Pyrrho.Level2
         }
         protected override Physical Relocate(Writer wr)
         {
-            index = wr.cx.Fix(index);
-            toType = wr.cx.Fix(toType);
             return new PColumn3(this, wr);
         }
         /// <summary>
@@ -600,12 +595,32 @@ namespace Pyrrho.Level2
         /// <param name="r">Relocation information for positions</param>
         public override void Serialise(Writer wr)
         {
-            wr.PutString(ups??""); 
-            wr.PutLong((long)flags);
-            wr.PutLong(index);
+            wr.PutString(ups??"");
+            flags = 0L;
+            var cd = Domain.Position;
+            // Fix March 2025
+            if (connector is TConnector tc)
+            {
+                flags = tc.q switch
+                {
+                    Qlx.ID=>1L,
+                    Qlx.TO => 4L,
+                    Qlx.FROM => 2L,
+                    Qlx.WITH => 16L,
+                    _ => 0L
+                };
+                if (tc.cd.kind == Qlx.SET)
+                {
+                    flags += 8L;
+                    cd = Domain.EdgeEnds;
+                }
+                if (wr.cx._Ob(tc.ct) is not NodeType nt)
+                    throw new DBException("22G0V"); // Alas
+                toType = nt.defpos;
+            }
+            wr.PutLong(flags);
+            wr.PutLong(-1L);
             wr.PutLong(toType);
-            if ((flags.HasFlag(GraphFlags.LeaveCol) || flags.HasFlag(GraphFlags.ArriveCol)) && toType < 0)
-                throw new PEException("PE20502");
             base.Serialise(wr);
         }
         /// <summary>
@@ -616,8 +631,8 @@ namespace Pyrrho.Level2
         {
             ups = rdr.GetString();
             rdr.Upd(this);
-            flags = (GraphFlags)rdr.GetLong();
-            index = rdr.GetLong();
+            flags = rdr.GetLong();
+            rdr.GetLong();
             toType = rdr.GetLong();
             base.Deserialise(rdr);
         }

@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("29 December 2024 Repeatable tests, AVOIDING TESTS 22-23  ");
+                Console.WriteLine("19 Apr 2025 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -36,7 +36,7 @@ namespace Test
                     Console.WriteLine("PyrrhoTest 10 0");
                     Console.WriteLine("PyrrhoTest 0 0 commit");
                     Console.WriteLine("The next message should be 'Testing complete'");
-                }
+                } 
                 new Program(args).Tests();
                 Console.WriteLine("Testing complete");
                 Console.ReadLine();
@@ -117,9 +117,9 @@ namespace Test
                 connA.Act("insert into D values (1,'Joe','Soap'), (2,'Betty','Boop')");
                 connA.Act("create role A");
                 connA.Act("grant A to \"" + user +"\"");
-              //  Test22();
-              //  ResetA();
-              //  Test23();
+                Test22();
+                ResetA();
+                Test23();
             } 
             Test24(); 
             Test25();
@@ -1248,7 +1248,7 @@ namespace Test
                 "(select position from person where name='Joe'))");
             CheckResults(25, 2, "select count(*) from married", "[{COUNT:1}]");
             CheckResults(25, 3, "match ({name:'Joe'})<-[:married]-(x)", "[{X:'PERSON(NAME=Mary)'}]");
-            Act(357, "CREATE\r\n(:Product:WoodScrew {spec:'16/8x4'}),(:Product: WallPlug{spec:'18cm'}),"+
+            Act(357, "CREATE\r\n(:WoodScrew=>Product {spec:'16/8x4'}),(:WallPlug=>Product{spec:'18cm'})," +
                 "(Joe:Customer {Name:'Joe Edwards', Address:'10 Station Rd.'}),"+
                 "(Joe)-[:Ordered {\"Date\":date'2002-11-22'} ]->(:\"Order\"{id:201})");
             Act(358, "MATCH (O:\"Order\"{id:201})"+
@@ -1277,7 +1277,7 @@ namespace Test
             Act(364, "MATCH (ee:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),"
                 +"(ee)-[:owns]->(d),(d)-[:owned_by]->(ee)");
             Act(365, "MATCH (dg:Dog {name: 'Rex'})-[ro:owned_by]->() DELETE ro");
-            Act(366, "MATCH (ka{name:'Karin'}),()-[ow:owns ]->({name:'Rex'}) SET ow.leaving=ka");
+            Act(366, "MATCH (ka{name:'Karin'}),()-[ow:owns ]->({name:'Rex'}) SET ow.\"FROM\"=ka");
             CheckResults(25, 10, "select count(*) from owned_by", "[{COUNT:0}]");
             CheckResults(25, 11, "MATCH (n)-[:owns]->(dg) RETURN n.name,dg.name as dog", 
                 "[{NAME:'Karin',DOG:'Rex'}]");

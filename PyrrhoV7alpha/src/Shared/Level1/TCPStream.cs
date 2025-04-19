@@ -599,9 +599,9 @@ namespace Pyrrho.Level1
             try
             {
                 client.BeginSend(wbuf.bytes, 0, bSize, 0, new AsyncCallback(Callback1), wbuf);
+                wbuf.wait?.WaitOne();
                 wx = (wx + 1) & 1;
                 wbuf = wbufs[wx];
-                wbuf.wait?.WaitOne();
             }
             catch (Exception)
             {

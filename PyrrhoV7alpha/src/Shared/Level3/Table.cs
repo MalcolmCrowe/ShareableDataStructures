@@ -69,15 +69,6 @@ namespace Pyrrho.Level3
         public override Domain domain => throw new NotImplementedException();
         internal override bool Defined() => defpos > 0;
         internal virtual CTree<long, Domain> tableCols => representation;
-        // Type Graph stuff
-        public long idIx => (long)(mem[NodeType.IdIx] ?? -1L);
-        public long idCol => (long)(mem[NodeType.IdCol] ?? -1L);
-        public long leaveIx => (long)(mem[EdgeType.LeaveIx] ?? -1L);
-        public long arriveIx => (long)(mem[EdgeType.ArriveIx] ?? -1L);
-        public long leaveCol => (long)(mem[EdgeType.LeaveCol] ?? -1L);
-        public long arriveCol => (long)(mem[EdgeType.ArriveCol] ?? -1L);
-        public long leavingType => (long)(mem[EdgeType.LeavingType] ?? -1L);
-        public long arrivingType => (long)(mem[EdgeType.ArrivingType] ?? -1L);
         /// <summary>
         /// Enforcement of clearance rules
         /// </summary>
@@ -142,28 +133,6 @@ namespace Pyrrho.Level3
                 tb += (Infos, tb.infos + (cx.role.defpos, oi));
                 tb += (ObInfo._Names, oi.names);
             }
-            if (tc.flags.HasFlag(PColumn.GraphFlags.LeaveCol))
-            {
-                tb = tb + (EdgeType.LeaveColDomain, tc.domain) + (EdgeType.LeaveCol, tc.defpos);
-                for (var b = tb.subtypes.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is EdgeType st)
-                    {
-                        st = st + (EdgeType.LeaveColDomain, tc.domain) + (EdgeType.LeaveCol, tc.defpos);
-                        cx.db += st;
-                        cx.obs += (st.defpos,st);
-                    }
-            }
-            if (tc.flags.HasFlag(PColumn.GraphFlags.ArriveCol))
-            {
-                tb = tb + (EdgeType.ArriveColDomain, tc.domain) + (EdgeType.ArriveCol, tc.defpos);
-                for (var b = tb.subtypes.First(); b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is EdgeType st)
-                    {
-                        st = st + (EdgeType.ArriveColDomain, tc.domain) + (EdgeType.ArriveCol, tc.defpos);
-                        cx.db += st;
-                        cx.obs += (st.defpos, st);
-                    }
-            }
             for (var b = tb.subtypes.First(); b != null; b = b.Next())
                 if (cx._Ob(b.key()) is Table st)
                 {
@@ -175,6 +144,15 @@ namespace Pyrrho.Level3
                     st += (Under, ss + (tb, true));
                     cx.db += st;
                 }
+            if (tb is EdgeType et && tc.tc is TConnector cc)
+            {
+                var cs = et.connects;
+                for (var b=cs.First();b!=null;b=b.Next())
+                    if (b.key() is TConnector oc && cx.uids.Contains(oc.cp))
+                        cs -= oc;
+                et += (EdgeType.Connects, cs + (cc,true));
+                tb = et;
+            }
             cx.Add(tb);
             cx.db += (tb.defpos, tb);
             tb += (Dependents, tb.dependents + (tc.defpos, true));

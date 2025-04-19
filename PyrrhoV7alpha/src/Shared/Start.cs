@@ -440,7 +440,7 @@ namespace Pyrrho
                                         cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
                                     tcp.PutRowType(cx);
                                     rb = null;
-                                    if (cx.result is RowSet res)
+                                    if (cx.result is RowSet res && res.Length>0)
                                     {
                                         if (PyrrhoStart.ShowPlan)
                                             res.ShowPlan(cx);
@@ -484,7 +484,14 @@ namespace Pyrrho
                                     var r = cx.rdC;
                                     cx = new(db, conn) { rdC = r };
                                 }
-                                else
+                                else if (cx.result is not RowSet res || res.Length==0)
+                                {
+                                    var ocx = cx;
+                                    db = db.RdrClose(ref cx);
+                                    tcp.Write(Responses.Done);
+                                    tcp.PutInt(db.AffCount(ocx));
+                                }
+                                else 
                                 {
                                     if (cx.result is RowSet)
                                         cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
@@ -661,7 +668,7 @@ namespace Pyrrho
                                 BTree<long, TargetActivation>? ans = null;
                                 CTree<long, TypedValue>? old = null, vs = null;
                                 if (long.TryParse(ss[2], out long dp) && long.TryParse(ss[3], out long pp)
-                                    && tb.tableRows[dp] is TableRow tr && tr.ppos == pp)
+                                    && tb.tableRows[dp] is TableRow tr && tr.defpos == pp)
                                     if (TableRowSet.TableCursor.New(cx, f, dp) is Cursor ib)
                                     {
                                         old = tr.vals;
@@ -751,7 +758,7 @@ namespace Pyrrho
                                 BTree<long, TargetActivation>? ans = null;
                                 if (long.TryParse(ss[2], out long dp) 
                                     && long.TryParse(ss[3], out long pp)
-                                    && tb.tableRows[dp] is TableRow tr && tr.ppos == pp)
+                                    && tb.tableRows[dp] is TableRow tr && tr.defpos == pp)
                                 {
                                     var r = new TRow(f, f.iSMap, tr.vals);
                                     var ib = TableRowSet.TableCursor.New(cx, f, dp);
@@ -1010,7 +1017,7 @@ namespace Pyrrho
             for (var b = rs.First(); b != null; b = b.Next())
                 if (b.value() is long p && rs.representation[p] is Domain dm &&
                     cx.obs[p] is GqlNode g && g.state[p]?.type.HasFlag(TGParam.Type.Group) == true)
-                        rp += (p,new Domain(-1L, Qlx.ARRAY, dm));
+                    rp += (p, new Domain(-1L, Qlx.ARRAY, dm));
             if (rp != rs.representation)
                 return rs + (Domain.Representation, rp);
             return rs;
@@ -1142,7 +1149,7 @@ namespace Pyrrho
                 nextCell = rb[nextCol] ?? throw new PEException("PE0110");
                 dc = domains[nextCol] ?? throw new PEException("PE1405");
                 var nbuf = bbuf + (cx, dc, nextCell, rv ?? "", rc ?? "");
-                if (nbuf.m.Length + 7 >= TCPStream.bSize)
+                if (nbuf.m.Length + 8 >= TCPStream.bSize)
                     break;
                 bbuf = nbuf;
                 if (++nextCol == ds)
@@ -1523,7 +1530,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(20 March 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(19 April 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

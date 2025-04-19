@@ -132,7 +132,6 @@ namespace Pyrrho.Level4
 		public int start = 0, pushStart;
         public bool allowminus = false;
         public bool caseSensitive = false;
-        public bool doublequoted = false;
         public bool docValue = false; // caseSensitive matters if docValue is true
         /// <summary>
         /// the current character in the input string
@@ -430,7 +429,6 @@ namespace Pyrrho.Level4
             while (char.IsWhiteSpace(ch))
                 Advance();
             start = pos;
-            doublequoted = ch == '"';
             if (char.IsLetter(ch) || (cat && (ch=='/'||ch=='.')))
             {
                 char c = ch;
@@ -548,14 +546,25 @@ namespace Pyrrho.Level4
                     if (ch=='-')
                     {
                         Advance();
+                        LinkLabel('-');
                         if (ch=='>')
                         {
                             Advance();
                             return tok = Qlx.ARROW;
                         }
                         return tok = Qlx.RARROWBASE;
-                    }
-                    return tok = Qlx.RBRACK;
+                    } else if (ch=='~')
+                    {
+                        Advance();
+                        LinkLabel('~');
+                        if (ch == '>')
+                        {
+                            Advance();
+                            return tok = Qlx.ARROWTILDE;
+                        }
+                        return tok = Qlx.RBRACKTILDE;
+                    } else
+                        return tok = Qlx.RBRACK;
                 case '(': Advance(); return tok = Qlx.LPAREN;
                 case ')': Advance(); return tok = Qlx.RPAREN;
                 case '{': Advance(); return tok = Qlx.LBRACE;
@@ -567,7 +576,29 @@ namespace Pyrrho.Level4
                 case '.': Advance(); return tok = Qlx.DOT;
                 case ';': Advance(); return tok = Qlx.SEMICOLON;
                 case '&': Advance(); return tok = Qlx.AMPERSAND; // GQL label expression
-                case '~': Advance(); return tok = Qlx.TILDE;  // GQL
+                case '~':
+                    {
+                        Advance();
+                        LinkLabel('~');
+                        if (ch == '>')
+                        {
+                            Advance();
+                            return tok = Qlx.ARROWRTILDE;
+                        }
+                        if (ch == '-')
+                        {
+                            Advance();    // -- comment
+                            while (pos < input.Length)
+                                Advance();
+                            return Next();
+                        }
+                        if (ch == '[')
+                        {
+                            Advance();
+                            return tok = Qlx.ARROWBASETILDE;
+                        }
+                        return tok = Qlx.TILDE;
+                    }
                 case '?': Advance(); return tok = Qlx.QMARK; // added for Prepare()
                 case ':':
                     {
@@ -584,6 +615,7 @@ namespace Pyrrho.Level4
                         Advance();
                     else
                         ch = minusch;
+                    LinkLabel('-');
                     if (ch=='>')
                     {
                         Advance();
@@ -623,6 +655,7 @@ namespace Pyrrho.Level4
                     if (ch=='-')
                     {
                         Advance();
+                        LinkLabel('-');
                         if (ch=='[')
                         {
                             Advance();
@@ -743,6 +776,32 @@ namespace Pyrrho.Level4
                     return tok = Qlx.EOF;
             }
             throw new DBException("42101", ch).Mix();
+        }
+        void LinkLabel(char m)
+        {
+            var ls = pos;
+            if (ch == '"')
+            {
+                Advance();
+                while (ch != '"')
+                    Advance();
+                Advance();
+                val = new TChar(new string(input, ls, pos - ls -2));
+            } 
+            else if (char.IsLetter(ch))
+            {
+                Advance();
+                while (char.IsLetterOrDigit(ch))
+                    Advance();
+                val = new TChar(new string(input, ls, pos - ls));
+            }
+            if (ch == m)
+                Advance();
+            else 
+            {
+                pos = ls;
+                ch = input[pos];
+            }
         }
         /// <summary>
         /// This function is used for XML parsing (e.g. in XPATH)

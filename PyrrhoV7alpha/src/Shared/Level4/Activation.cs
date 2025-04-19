@@ -519,7 +519,9 @@ namespace Pyrrho.Level4
                             return _cx;
                         var st = rc.subType;
                         Record r;
-                        if (level != Level.D)
+                        if ((next?.exec as SqlInsert)?.newEdge is long ne && ne>0)
+                            r = new Update(ne, table.defpos, newRow, _cx.db.nextPos, _cx);
+                        else if (level != Level.D)
                             r = new Record3(table.defpos, newRow, st, level, _cx.db.nextPos, _cx);
                         else
                             r = new Record(table.defpos, newRow, _cx.db.nextPos, _cx);
