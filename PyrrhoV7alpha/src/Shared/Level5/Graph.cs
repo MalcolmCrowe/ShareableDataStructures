@@ -65,6 +65,7 @@ namespace Pyrrho.Level5
     (Domain)(mem[GqlNode._Label] ?? GqlLabel.Empty);
         internal long idCol => (long)(mem[IdCol] ?? -1L);
         internal long idIx => (long)(mem[IdIx] ?? -1L);
+        public override Domain domain => throw new NotImplementedException();
         internal CTree<string,bool> labels => 
             (CTree<string,bool>)(mem[LabelSet] ?? CTree<string,bool>.Empty);
         internal TRow? singleton => (TRow?)mem[TrivialRowSet.Singleton];
@@ -1585,6 +1586,7 @@ namespace Pyrrho.Level5
                         },
                         Qlx.WITH => ec.q switch
                         {
+                            Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE or
                             Qlx.TILDE => new TConnector(tc.q, at, cn, tc.cd) ??
                                         new TConnector(tc.q, bt, cn, tc.cd),
                             _ => TNull.Value
@@ -1732,10 +1734,12 @@ CTree<string, QlValue> ls, bool allowChange = false)
             var cc = (tt?.Count == 1) ? tt?.First()?.key() ?? ns[cn] : null;
             if (cc?.cp>0L)
                 return (ut,cc);
-            var tn = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, cx.db.nextPos);
+            var tn = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, cx.db.nextPos, tc.cm);
             var pc = new PColumn3(ut, cn, Length, Position,tn, cx.db.nextPos, cx, true);
             ut = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
             var nc = (TableColumn)(cx._Ob(pc.ppos) ?? throw new DBException("42105").Add(Qlx.COLUMN));
+            if (tn.cm is TMetadata md)
+                cx.Add(new PMetadata(cn, -1, nc, md, cx.db.nextPos));
             var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
             var px = new PIndex(cn, ut, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
                         | PIndex.ConstraintType.CascadeDelete,
@@ -2392,9 +2396,11 @@ CTree<string, QlValue> ls, bool allowChange = false)
         public readonly string cn;
         public readonly long cp;   // PColumn3 - constructed if needed
         public readonly Domain cd; // Possibly a SET type (Domain.EdgeEnds), most often POSITION
-        internal TConnector(Qlx a,long x,string s,Domain d,long p= -1L) : base(Domain.Connector)
+        public readonly TMetadata? cm;
+        internal TConnector(Qlx a,long x,string s,Domain d,long p= -1L,TMetadata? tm=null) 
+            : base(Domain.Connector)
         {
-            q = a; ct = x; cn = s; cd = d; cp = p;
+            q = a; ct = x; cn = s; cd = d; cp = p; cm = tm;
         }
         public override int CompareTo(object? obj)
         {
@@ -2425,8 +2431,13 @@ CTree<string, QlValue> ls, bool allowChange = false)
         }
         public override string ToString()
         {
-            return "TConnector " + q + ' ' + cn + ' ' + DBObject.Uid(ct) + ' '+ DBObject.Uid(cp) +
-                ((cd.defpos==Domain.Position.defpos)?"":'[' + DBObject.Uid(cd.defpos) + ']');
+            var sb = new StringBuilder("TConnector ");
+            sb.Append(q); sb.Append(' '); sb.Append(cn);
+            sb.Append(' '); sb.Append(DBObject.Uid(ct));
+            sb.Append(' '); sb.Append(DBObject.Uid(cp));
+            if (cm!=TMetadata.Empty)
+            { sb.Append(' '); sb.Append(cm); }
+            return sb.ToString();
         }
     }
     internal class TJoinedNode : TNode

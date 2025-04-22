@@ -280,7 +280,9 @@ namespace Pyrrho.Level2
             if (connector is TConnector tc)
             {
                 sb.Append(' ');sb.Append(tc.q); sb.Append(' '); sb.Append(DBObject.Uid(tc.ct));
-                sb.Append(' '); sb.Append(tc.cd); sb.Append(' ');sb.Append(DBObject.Uid(tc.cp));
+                sb.Append(' '); sb.Append(tc.cd); 
+                if (tc.cm != null)
+                { sb.Append(' '); sb.Append(tc.cm); }
             }
             return sb.ToString();
         }

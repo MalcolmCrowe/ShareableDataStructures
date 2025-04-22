@@ -1888,7 +1888,7 @@ namespace Pyrrho.Level4
             // the current token is LPAREN or LBRACK
             var svg = CList<GqlNode>.Empty;
             (var n, svg) = ParseInsertGraphItem(svg, sch);
-            while (tok == Qlx.RARROW || tok == Qlx.ARROWBASE)
+            while (tok == Qlx.RARROW || tok == Qlx.ARROWBASE || tok==Qlx.ARROWBASETILDE)
                 (n, svg) = ParseInsertGraphItem(svg, sch, n);
   //          cx.DecSD();
             return svg;
@@ -1928,9 +1928,11 @@ namespace Pyrrho.Level4
             if (tok == Qlx.Id)
                 Next();
             var cn = (lxr.val != TNull.Value) ? lxr.val.ToString() : "";
-            var ab = Mustbe(Qlx.LPAREN, Qlx.LBRACK, Qlx.ARROWBASE, Qlx.RARROW, Qlx.TILDE);
+            var ab = Mustbe(Qlx.LPAREN, Qlx.LBRACK, Qlx.ARROWBASE, Qlx.RARROW, 
+                Qlx.TILDE,Qlx.ARROWBASETILDE,Qlx.RBRACKTILDE);
             TypedValue ac = TNull.Value;
-            if (ln != null && (ab==Qlx.ARROWBASE||ab==Qlx.RARROW||ab==Qlx.TILDE))
+            if (ln != null && (ab==Qlx.ARROWBASE||ab==Qlx.RARROW
+                ||ab==Qlx.TILDE || ab==Qlx.RBRACKTILDE || ab==Qlx.ARROWBASETILDE))
                 ac = new TConnector(ab, ln.domain.defpos, cn, Domain.Position);
             var b = new Ident(this);
             var bound = cx.bindings.Contains(cx.names[b.ident].Item2);
@@ -1971,8 +1973,8 @@ namespace Pyrrho.Level4
                 lb = ParseNodeLabelExpression((ab == Qlx.LPAREN) ? Domain.NodeType : Domain.EdgeType,
                     b.ident,(NodeType?)((ab==Qlx.LPAREN)?null:ln?.domain));
             }
-            else if (!bound)
-                throw new DBException("42107", b.ident);
+//            else if (!bound)
+//                throw new DBException("42107", b.ident);
             var dc = CTree<string, QlValue>.Empty;
             CTree<long, bool>? wh = null;
             if (tok == Qlx.LBRACE)
@@ -2018,7 +2020,7 @@ namespace Pyrrho.Level4
                     m += (GqlNode.After, an);
             }
             else
-                Mustbe(Qlx.RPAREN,Qlx.RBRACK,Qlx.RBRACKTILDE,Qlx.RARROWTILDE);
+                Mustbe(Qlx.RPAREN,Qlx.RBRACK,Qlx.RBRACKTILDE,Qlx.ARROWBASETILDE);
             if (cx.obs[id] is GqlNode r)
             {
                 if (ln is null && ab == Qlx.LBRACK) // we are adding an extra connection to an edge reference
@@ -2073,7 +2075,8 @@ namespace Pyrrho.Level4
             TypedValue po = TNull.Value;
             Qlx ba = Qlx.NO;
             var cn = (lxr.val!=TNull.Value)?lxr.val.ToString():"";
-            Mustbe(Qlx.LPAREN, Qlx.TILDE, Qlx.ARROWBASETILDE, Qlx.ARROWBASE, Qlx.RARROW, Qlx.LBRACK);
+            Mustbe(Qlx.LPAREN, Qlx.TILDE, Qlx.ARROWBASETILDE, Qlx.RBRACKTILDE, Qlx.ARROWBASE, 
+                Qlx.RARROW, Qlx.LBRACK);
             GqlNode? r = null;
             GqlNode? an = null;
             var b = new Ident(this);
@@ -2100,6 +2103,8 @@ namespace Pyrrho.Level4
                 tgs += tgp;
                 (var sa, ahead, tgs) = ParseMatchExp(ahead, pi, tgs, f, ab, ln, pe);
                 r = new GqlPath(cx.GetUid(), cx, svp, qu, ln?.uid??-1L, sa.defpos);
+                if (pe?.before is GqlEdge ge && ge.postCon is TConnector ce)
+                    r += (GqlNode.PostCon, ce);
                 if (bf?.domain.defpos < 0 && ps?.domain.defpos > 0)
                     cx.Add(bf + (DBObject._Domain, ps.domain));
                 if (sa?.domain.defpos < 0 && pe?.domain.defpos > 0)
@@ -2221,8 +2226,10 @@ namespace Pyrrho.Level4
                         lxr.tgs = CTree<long, TGParam>.Empty;
                 }
                 cn = (lxr.val is TChar cl) ? cl.ToString() : "";
-                ba = Mustbe(Qlx.RPAREN, Qlx.TILDE, Qlx.RBRACKTILDE, Qlx.ARROW, Qlx.RARROWBASE, Qlx.RBRACK);
+                ba = Mustbe(Qlx.RPAREN, Qlx.TILDE, Qlx.RBRACKTILDE, Qlx.ARROW, 
+                    Qlx.RARROWBASE, Qlx.RBRACK);
                 r ??= cx.obs[id] as GqlReference;
+                po = new TConnector(ba, Domain.NodeType.defpos, cn, Domain.Position);
                 var le = (ln != null && cx.names[ln.ident].Item2 is long pl && pl >= 0L) ? pl : ln?.uid?? -1L;
                 if (r is null)
                 {
@@ -2254,9 +2261,8 @@ namespace Pyrrho.Level4
             // state M33
             if (r is null)
                 throw new DBException("42000", "MatchExp").Add(Qlx.MATCH_STATEMENT, new TChar(an?.name??"??"));
-            if (r is GqlEdge)
-                r = r.Add(cx, an, st, LexLp(), 
-                    new TConnector(ba,an?.domain.defpos??Domain.NodeType.defpos,cn,Domain.Position));
+            if (r is GqlEdge && an is not null) // an updated version of postCon
+                r = r.Add(cx, an, st, LexLp(),new TConnector(ba, an.domain.defpos, cn, Domain.Position));
             cx.Add(r);
             tgs += r.state;
             svg += r.defpos;
@@ -3485,8 +3491,10 @@ namespace Pyrrho.Level4
                     Qlx.NODE, Qlx.VERTEX, Qlx.POINTS, Qlx.DROP, Qlx.JSON, Qlx.CSV, Qlx.CHARLITERAL, Qlx.RDFLITERAL,
                     Qlx.REFERRED, Qlx.ETAG, Qlx.SECURITY);
                 case Qlx.COLUMN:
-                    return Match(Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.DROP,
+                    return Match(Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.DROP, 
                     Qlx.CHARLITERAL, Qlx.RDFLITERAL, Qlx.REFERS, Qlx.SECURITY, Qlx.MULTIPLICITY);
+                case Qlx.CONNECTION:
+                    return Match(Qlx.CARDINALITY, Qlx.OPTIONAL, Qlx.MULTIPLICITY);
                 case Qlx.FUNCTION:
                     return Match(Qlx.ENTITY, Qlx.PIE, Qlx.HISTOGRAM, Qlx.LEGEND,
                     Qlx.LINE, Qlx.POINTS, Qlx.DROP, Qlx.JSON, Qlx.CSV, Qlx.INVERTS, Qlx.MONOTONIC);
@@ -3500,7 +3508,7 @@ namespace Pyrrho.Level4
                     Match(Qlx.DESC, Qlx.URL, Qlx.MIME, Qlx.SQLAGENT, Qlx.USER, Qlx.PASSWORD,
                         Qlx.ENTITY, Qlx.PIE, Qlx.HISTOGRAM, Qlx.LEGEND, Qlx.LINE, Qlx.POINTS, Qlx.REFERRED,
                         Qlx.ETAG, Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.REFERS, Qlx.JSON, Qlx.CSV,
-                        Qlx.INVERTS, Qlx.MONOTONIC, Qlx.PREFIX, Qlx.SUFFIX, Qlx.CARDINALITY);
+                        Qlx.INVERTS, Qlx.MONOTONIC, Qlx.PREFIX, Qlx.SUFFIX, Qlx.OPTIONAL, Qlx.CARDINALITY);
                     return !Match(Qlx.EOF, Qlx.RPAREN, Qlx.COMMA, Qlx.RBRACK, Qlx.RBRACE);
                 default: return Match(Qlx.CHARLITERAL, Qlx.RDFLITERAL);
             }
@@ -3585,6 +3593,7 @@ namespace Pyrrho.Level4
                                 continue;
                             break;
                         }
+                    case Qlx.OPTIONAL:
                     case Qlx.VERTEX:
                     case Qlx.NODE:
                         {
@@ -3644,40 +3653,49 @@ namespace Pyrrho.Level4
                             if (tok == Qlx.LPAREN)
                             {
                                 Next();
-                                if (Match(Qlx.FROM,Qlx.Id))
+                                if (Match(Qlx.Id)) // old syntax
                                 {
-                                    var fs = Match(Qlx.FROM);
-                                    if (fs)
-                                        Next();
                                     cl += ParseConnector(Qlx.FROM);
-                                    while(fs && Match(Qlx.COMMA))
+                                    Mustbe(Qlx.COMMA);
+                                    cl += ParseConnector(Qlx.TO);
+                                }
+                                else
+                                {
+                                    if (!Match(Qlx.FROM, Qlx.TO, Qlx.WITH))
+                                        throw new DBException("42161", "identifier,FROM,TO,WITH", tok);
+                                    if (Match(Qlx.FROM))
                                     {
                                         Next();
                                         cl += ParseConnector(Qlx.FROM);
+                                        while (Match(Qlx.COMMA))
+                                        {
+                                            Next();
+                                            cl += ParseConnector(Qlx.FROM);
+                                        }
                                     }
-                                }
-                                if (Match(Qlx.WITH))
-                                {
-                                    Next();
-                                   cl += ParseConnector(Qlx.WITH);
-                                    while (Match(Qlx.COMMA))
+                                    if (Match(Qlx.WITH))
                                     {
                                         Next();
                                         cl += ParseConnector(Qlx.WITH);
+                                        while (Match(Qlx.COMMA))
+                                        {
+                                            Next();
+                                            cl += ParseConnector(Qlx.WITH);
+                                        }
                                     }
-                                }
-                                if (Match(Qlx.TO,Qlx.COMMA))
-                                {
-                                    Next();
-                                    cl += ParseConnector(Qlx.TO);
-                                    while (Match(Qlx.COMMA))
+                                    if (Match(Qlx.TO, Qlx.COMMA))
                                     {
                                         Next();
                                         cl += ParseConnector(Qlx.TO);
+                                        while (Match(Qlx.COMMA))
+                                        {
+                                            Next();
+                                            cl += ParseConnector(Qlx.TO);
+                                        }
                                     }
                                 }
-                                Mustbe(Qlx.RPAREN);
                             }
+                            Mustbe(Qlx.RPAREN);
                             m += (Qlx.EDGETYPE, cl);
                             break;
                         }
@@ -3774,7 +3792,10 @@ namespace Pyrrho.Level4
             var ct = (xl.Count == 1) ? xl.First()?.key() : new Domain(-1L, Qlx.UNION, xl);
             if (ct is null)
                 throw new DBException("42000");
-            return new TConnector(tk,ct.defpos,sc,cd);
+            TMetadata? tm = null;
+            if (!cx.ParsingMatch && StartMetadata(Qlx.CONNECTION))
+                tm = ParseMetadata(Qlx.CONNECTION);
+            return new TConnector(tk, ct.defpos, sc, cd, -1L, tm);
         }
         /// <summary>
         /// GenerationRule =  GENERATED ALWAYS AS '('Value')' [ UPDATE '(' Assignments ')' ]

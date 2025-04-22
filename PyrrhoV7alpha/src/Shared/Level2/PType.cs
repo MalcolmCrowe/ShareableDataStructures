@@ -219,7 +219,7 @@ namespace Pyrrho.Level2
             var sb = new StringBuilder(base.ToString());
             if (under.Count > 0)
             {
-                var cm = "Under: [";
+                var cm = " Under: [";
                 for (var b = under.First(); b != null; b = b.Next())
                 {
                     sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key().defpos));
@@ -283,6 +283,7 @@ namespace Pyrrho.Level2
             var ps = CTree<long, Domain>.Empty;
             var pn = BTree<string, (long,long)>.Empty;
             var pt = CList<long>.Empty;
+            var cs = CTree<TypedValue, bool>.Empty;
             for (var b = under.First(); b != null; b = b.Next())
                 if (b.key() is UDType so)
                 {
@@ -299,6 +300,8 @@ namespace Pyrrho.Level2
                         else if (so.representation[p]?.kind != pd.kind)
                             throw new DBException("PE20921");
                     }
+                    if (so is EdgeType et)
+                        cs += et.connects;
                     ps += so.representation;
                     pn += so.infos[cx.role.defpos]?.names ?? Names.Empty;
                 }
@@ -329,6 +332,8 @@ namespace Pyrrho.Level2
             if (pt.CompareTo(dataType.rowType)!=0 || ps.CompareTo(dataType.representation)!=0)
                 dataType = dataType+(Domain.RowType,pt)+(Domain.Representation,ps)
                     + (Domain.Display,pt.Length);
+            if (cs != CTree<TypedValue, bool>.Empty)
+                dataType += (EdgeType.Connects, cs);
             ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var ss = CTree<Domain, bool>.Empty;
             var oi = dataType.infos[cx.role.defpos];

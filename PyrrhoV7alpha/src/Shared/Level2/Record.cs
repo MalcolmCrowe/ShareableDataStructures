@@ -359,8 +359,9 @@ namespace Pyrrho.Level2
                 for (var b = et.connects.First(); b != null; b = b.Next())
                     if (b.key() is TConnector tc)
                     {
-                        if (now.vals[tc.cp] == TNull.Value)
-                            throw new PEException("PE6901");
+                        if (now.vals[tc.cp] == TNull.Value 
+                            && (tc.cm is null || !tc.cm.Contains(Qlx.OPTIONAL)))
+                            throw new DBException("22004",cx.NameFor(tc.cp)??tc.cn);
                         if (et.FindPrimaryIndex(cx) is null)
                         {
                             if (cx._Ob(tc.ct) is NodeType lt

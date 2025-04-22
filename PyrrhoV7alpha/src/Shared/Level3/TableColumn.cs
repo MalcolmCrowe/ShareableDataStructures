@@ -183,6 +183,22 @@ namespace Pyrrho.Level3
                 r +=(cx, UpdateAssignments, ua);
             return r;
         }
+        internal override DBObject Add(Context cx, PMetadata pm)
+        {
+            if (cx.db.objects[defpos] is TableColumn cl
+                && cx.db.objects[cl?.tabledefpos ?? -1L] is EdgeType et)
+            {
+                for (var b = et.connects.First(); b != null; b = b.Next())
+                    if (b.key() is TConnector tc && tc.cp == defpos)
+                    {
+                        var nc = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, tc.cp, pm.detail);
+                        et += (EdgeType.Connects, et.connects - tc + (nc,true));
+                        cx.db += et;
+                        return (EdgeType)cx.Add(et);
+                    }
+            }
+            return Domain.Content;
+        }
         /// <summary>
         /// Accessor: Check a new column notnull condition
         /// Normally fail if null values found

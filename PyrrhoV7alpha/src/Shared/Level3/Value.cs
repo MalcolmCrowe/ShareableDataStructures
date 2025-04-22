@@ -11214,22 +11214,23 @@ cx.obs[high] is not QlValue hi)
             if (m[_Label] is GqlLabel lb && cx.obs[cx.dnames[lb.name].Item2] is NodeType n)
                 return n;
             Domain r = (m[_Label] as Domain)?.ForExtra(cx, m + (DocValue, d), cs) ?? Domain.NodeType;
-            if (m[GqlEdge.Before] is GqlEdge be && cx.ParsingMatch)
+            if (m[Before] is GqlEdge be && cx.ParsingMatch && r.defpos < 0)
             {   //we are in a MatchExp and should constrain our domain
                 var u = CTree<Domain, bool>.Empty;
                 var ad = r;
                 for (var b = (be.domain as EdgeType)?.connects.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc && be.preCon is TConnector ec
+                    if (b.key() is TConnector tc && be.postCon is TConnector ec
                         && cx.db.objects[tc.ct] is NodeType dn && dn.defpos > 0L)
                     {
                         if (tc.cn != "" && ec.cn != "" && tc.cn != ec.cn) continue;
-                        if (ec.q == Qlx.ARROWBASE && tc.q != Qlx.TO) continue; // reversed
-                        if (ec.q == Qlx.RARROW && tc.q != Qlx.FROM) continue; // reversed
-                        if (ec.q == Qlx.TILDE && tc.q != Qlx.WITH) continue;
+                        if (ec.q == Qlx.ARROW && tc.q != Qlx.TO) continue;
+                        if (ec.q == Qlx.RARROWBASE && tc.q != Qlx.FROM) continue;
+                        if ((ec.q == Qlx.TILDE ||ec.q==Qlx.ARROWBASETILDE 
+                            || ec.q==Qlx.RBRACKTILDE) && tc.q != Qlx.WITH) continue;
                         u += (dn, true); ad = dn;
                     }
-                if (u!=CTree<Domain,bool>.Empty)
-                    r = (u.Count==1L)?ad : new Domain(-1L, Qlx.UNION, u);
+                if (u != CTree<Domain, bool>.Empty)
+                    r = (u.Count == 1L) ? ad : new Domain(-1L, Qlx.UNION, u);
             }
             return r;
         }
@@ -11310,9 +11311,9 @@ cx.obs[high] is not QlValue hi)
                 return label.For(cx, ms, xn, ds);
             return base.For(cx, ms, xn, ds);
         }
-        internal virtual GqlNode Add(Context cx, GqlNode? an, CTree<long, TGParam> tgs, long ap, TypedValue t)
+        internal virtual GqlNode Add(Context cx, GqlNode an, CTree<long, TGParam> tgs, long ap, TypedValue t)
         {
-            return (GqlNode)cx.Add(this + (State, tgs + state) + (PostCon,t));
+            return (GqlNode)cx.Add(this + (State, tgs + state) + (PostCon,t) + (After, an));
         }
         internal virtual Domain _NodeType(Context cx, NodeType dt, long ap, bool allowExtras = true,
             CTree<TypedValue,bool>? cr = null)
@@ -11906,7 +11907,7 @@ cx.obs[high] is not QlValue hi)
             return false;
         } 
 
-        internal override GqlNode Add(Context cx, GqlNode? an, CTree<long, TGParam> tgs, long ap,TypedValue po)
+        internal override GqlNode Add(Context cx, GqlNode an, CTree<long, TGParam> tgs, long ap,TypedValue po)
         {
             if (an is null)
                 throw new DBException("22G0L");

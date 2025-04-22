@@ -141,7 +141,6 @@ namespace Pyrrho.Level3
             sb.Append(' ');sb.Append(Uid(defpos));
             return sb.ToString();
         }
-
         internal override DBObject New(long dp, BTree<long, object> m)
         {
             return new Executable(dp,mem+m);
@@ -5020,7 +5019,7 @@ namespace Pyrrho.Level3
                             var xf = sa.matchExps.First();
                             if (gf is not null && xf is not null)
                                 ExpNode(ac, new ExpStep(sa.mode, xf, ab.Next(),
-                                    new GraphStep(sa.mode, gf.Next(), new EndStep(this, ff), ff), ff), TNull.Value, null, null);
+                                    new GraphStep(sa.mode, gf.Next(), new EndStep(this, ff), ff), ff), null, TNull.Value, null);
                         }
             }
             cx.obs = ac.obs;
@@ -5102,7 +5101,7 @@ namespace Pyrrho.Level3
             /// <param name="cn">A continuation if provided</param>
             /// <param name="tok">A token indicating the match state</param>
             /// <param name="pd">The current last matched node if any</param>
-            public abstract void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match=true);
+            public abstract void Next(Context cx, Step? cn, GqlNode? px, TNode? pd, Qlx match=Qlx.TRUE);
             public virtual Step? Cont => null;
             protected static string Show(ABookmark<int, long>? b)
             {
@@ -5127,12 +5126,12 @@ namespace Pyrrho.Level3
             /// <summary>
             /// On success we call AddRow
             /// </summary>
-            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, GqlNode? px, TNode? pd, Qlx match = Qlx.TRUE)
             {
                 for (var b = _ms.where.First(); b != null; b = b.Next())
                     if (cx.obs[b.key()] is SqlValueExpr se && se.Eval(cx) != TBool.True)
                         return;
-                if (match || _ms.optional)
+                if (match!=Qlx.FALSE || _ms.optional)
                     _ms.AddRow(cx,_ef);
             }
             public override string ToString()
@@ -5154,7 +5153,7 @@ namespace Pyrrho.Level3
             /// On Success we go on to the next matchexpression if any.
             /// Otherwise we have succeeded and call next.Next.
             /// </summary>
-            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, GqlNode? px, TNode? pd, Qlx match = Qlx.TRUE)
             {
                 if ((!_ms.Done(cx)) && cx.obs[matchAlts?.value() ?? -1L] is GqlMatch sm)
                 {
@@ -5164,11 +5163,11 @@ namespace Pyrrho.Level3
                             cx.binding -= sa.pathId;
                             var af = sa.matchExps.First();
                             var an = new GraphStep(matchMode, matchAlts?.Next(), next,next._ef);
-                            _ms.ExpNode(cx, new ExpStep(matchMode, af, ab.Next(), an,next._ef),TNull.Value, null, null);
+                            _ms.ExpNode(cx, new ExpStep(matchMode, af, ab.Next(), an,next._ef), null, TNull.Value, null);
                         }
                 }
-                else if (match||_ms.optional)
-                    next.Next(cx, cn, cr, px, pd, match);
+                else if (match!=Qlx.FALSE||_ms.optional)
+                    next.Next(cx, cn, px, pd, match);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5184,7 +5183,8 @@ namespace Pyrrho.Level3
         /// matches.value() if not null should be a GqlNode, GqlEdge, or GqlPath 
         /// (if ExpNode finds it is a GqlPath it sets up PathNode to follow it).
         /// </summary>
-        internal class ExpStep(Qlx matchMode, ABookmark<int, long>? m, ABookmark<int,long>?ab, Step n,ABookmark<int,long>?ef) : Step(n._ms,ef)
+        internal class ExpStep(Qlx matchMode, ABookmark<int, long>? m, ABookmark<int,long>?ab, 
+            Step n,ABookmark<int,long>?ef) : Step(n._ms,ef)
         {
             public Qlx mode = matchMode;
             public ABookmark<int, long>? matches = m; // the current place in the matchExp
@@ -5195,12 +5195,13 @@ namespace Pyrrho.Level3
             /// On Success we go on to the next element in the match expression if any.
             /// Otherwise the expression has succeeded and we call next.Next.
             /// </summary>
-            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? pg, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, GqlNode? pg, TNode? pd, Qlx match = Qlx.TRUE)
             {
-                if ((!_ms.Done(cx)) && matches != null)
-                    _ms.ExpNode(cx, new ExpStep(mode, matches, ab, cn ?? next, _ef), cr, pg, pd);
+                if (!_ms.Done(cx) && matches!=null)
+                    _ms.ExpNode(cx, new ExpStep(mode, matches, ab, cn ?? next, _ef), pg,
+                        (pg is GqlEdge pe) ? pe.postCon : (match==Qlx.WITH)?TBool.True:TNull.Value, pd);
                 else
-                    next.Next(cx, null, TBool.True, pg, pd, match);
+                    next.Next(cx, null, pg, pd, Qlx.WITH);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5218,18 +5219,19 @@ namespace Pyrrho.Level3
         /// of itself in the continuation if a further repeat is possible.
         /// 3 Step classes: PathFirstStep, PathStep, PathLastStep
         /// </summary>
-        internal class PathFirstStep(Qlx matchMode, GqlPath s, int i, GqlNode? pg, 
+        internal class PathFirstStep(Qlx matchMode, GqlPath s, int i, TypedValue cr, GqlNode? pg,
             Step n,ABookmark<int,long>?ef) : Step(n._ms, ef)
         {
             public Qlx mode = matchMode;
             public GqlPath sp = s; // the repeating pattern spec
             public int im = i; // the iteration count
+            public TypedValue pc = cr; // the prior connector if any
+            public GqlNode? xn = pg;
             public Step next = n; // the continuation
             public CTree<long, TGParam> state = s.state; 
-            public GqlNode? xn = pg;
-            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, GqlNode? px, TNode? pd, Qlx match = Qlx.TRUE)
             {
-                _ms.ExpNode(cx, (ExpStep)next, cr, px, pd);
+                _ms.ExpNode(cx, (ExpStep)next, px, pc, pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5241,12 +5243,13 @@ namespace Pyrrho.Level3
                 return sb.ToString();
             }
         }
-        internal class PathLastStep(Qlx matchMode, GqlPath s, TNode st, ABookmark<int, long>? m, int i, 
+        internal class PathLastStep(Qlx matchMode, GqlPath s, TypedValue cr, TNode st, ABookmark<int, long>? m, int i, 
             Step n,ABookmark<int,long>?ef) 
             : Step(n._ms, ef)
         {
             public Qlx mode = matchMode;
             public GqlPath sp = s;
+            public TypedValue pc = cr;
             public TNode start = st;
             public ABookmark<int, long>? matches = m; // rest of the enclosing MatchgExp
             public int im = i;
@@ -5257,7 +5260,7 @@ namespace Pyrrho.Level3
             /// When this is done (backtracking) we announce success of the repeating pattern
             /// and call next.Next()
             /// </summary>
-            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? px, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, GqlNode? px, TNode? pd, Qlx match = Qlx.TRUE)
             {
                 if (sp.inclusionMode != Qlx.ANY && pd?.defpos is long pp)
                 {
@@ -5275,16 +5278,16 @@ namespace Pyrrho.Level3
                 }
                 if (_ms.Done(cx))
                 {
-                    next.Next(cx, cn, cr, px, pd);
+                    next.Next(cx, cn, px, pd);
                     return;
                 }
                 var i = im + 1;
                 if (i >= sp.quantifier.Item1 && pd is not null)
-                    next.Next(cx, cn, cr, px, pd, match);
+                    next.Next(cx, cn, px, pd, match);
                 // now see if we need to repeat the match process for this path pattern
-                if (match && (i < sp.quantifier.Item2 || sp.quantifier.Item2 < 0) && pd is not null)
-                    _ms.PathFirstNode(cx, new PathFirstStep(mode, sp, i, px,
-                        new PathLastStep(mode, sp, start, matches, i, next,_ef),_ef), pd);
+                if (match!=Qlx.FALSE && (i < sp.quantifier.Item2 || sp.quantifier.Item2 < 0) && pd is not null)
+                    _ms.PathFirstNode(cx, new PathFirstStep(mode, sp, i, pc, px, 
+                        new PathLastStep(mode, sp, pc, start, matches, i, next,_ef),_ef), pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5311,10 +5314,10 @@ namespace Pyrrho.Level3
             /// <summary>
             /// On each success we call the continuation
             /// </summary>
-            public override void Next(Context cx, Step? cn, TypedValue cr, GqlNode? pg, TNode? pd, bool match = true)
+            public override void Next(Context cx, Step? cn, GqlNode? pg, TNode? pd, Qlx match = Qlx.TRUE)
             {
-                if (match||_ms.optional)
-                     _ms.ExpNode(cx, (ExpStep)next, cr, pg, pd);
+                if (match==Qlx.TRUE||_ms.optional)
+                     _ms.ExpNode(cx, (ExpStep)next, pg, xn.postCon, pd);
             }
             public override Step? Cont => next;
             public override string ToString()
@@ -5375,16 +5378,19 @@ namespace Pyrrho.Level3
         /// </summary>
         /// <param name="cx">The Context</param>
         /// <param name="be">The Step: current state</param>
-        /// <param name="cr">A connector if an edge</param>
+        /// <param name="gp">The current GqlNode if a path pattern follows</param>
+        /// <param name="cr">If pd is a TEdge, the postCon connector from its GqlEdge</param>
         /// <param name="pd">The previous database node if any</param>
-        void ExpNode(Context cx, ExpStep be, TypedValue cr, GqlNode? gp, TNode? pd)
+        void ExpNode(Context cx, ExpStep be, GqlNode? gp, TypedValue cr, TNode? pd)
         {
             if (cx.obs[be.matches?.value() ?? -1L] is not GqlNode xn)
             {
-                be.next.Next(cx, null, cr, gp, pd);
+                be.next.Next(cx, null, gp, pd);
                 return;
             }
             cx.conn.Awake();
+            if (xn is GqlEdge)
+                cr = xn.preCon;
             var step = ++_step;
             if (xn is GqlPath sp && sp.pattern.First() is ABookmark<int, long> ma && pd is not null)
             {
@@ -5392,45 +5398,48 @@ namespace Pyrrho.Level3
                 // here we just ensure that the required arrays have been initialised
                 if (cx.path != null)
                     cx.path = PathInit(cx, cx.path, ma, 0);
-                PathFirstNode(cx, new PathFirstStep(be.mode, sp, 0, gp,
-                    new PathLastStep(be.mode, sp, pd, be.matches?.Next(), 0,
+                cr = (cx.obs[ma.Next()?.value() ?? -1L] as GqlEdge)?.preCon ?? throw new DBException("42000");
+                PathFirstNode(cx, new PathFirstStep(be.mode, sp, 0, cr, gp, 
+                    new PathLastStep(be.mode, sp, cr, pd, be.matches?.Next(), 0, 
                     new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next,be._ef),be._ef),be._ef), pd);
                 return;
             }
-            var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
-            if (cr == TBool.True && pd is not null)
-                ds += (xn.defpos, pd.tableRow);
-            //    else if (xn.Eval(ac) is TNode nn)
-            //        ds += (xn.defpos, nn.tableRow);
-            else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr && cr is TConnector tc)
+            var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
+            if (cr == TBool.True && pd !=null)
+                ds += (pd.defpos, pd.tableRow);
+            else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr)
             {
-                if ((pd is TEdge te) ? ((tc.q == Qlx.ARROWBASE && te.tableRow.vals[tc.cp]?.ToLong() == tr.defpos)
-                || (tc.q == Qlx.RARROW && te.tableRow.vals[tc.cp]?.ToLong() == tr.defpos)) : true)
-                    ds += (gr.refersTo, tr.tableRow);
-                if (pd is TNode pl && tr is TEdge ae)
-                {
-                    if (tc.q == Qlx.ARROWBASE && pl.defpos != ae.tableRow.vals[tc.cp]?.ToLong()) return;
-                    if (tc.q== Qlx.RARROW && pl.defpos != ae.tableRow.vals[tc.cp]?.ToLong()) return;
-                } 
+                if (pd is TEdge te && te.dataType is EdgeType et && cr is TConnector ec)
+                    for (var b = et.connects.First(); b != null; b = b.Next())
+                        for (var c = Connects(et, ec).First(); c != null; c = c.Next())
+                            if (te.tableRow.vals[c.key().cp]?.ToLong()==tr.defpos)
+                                ds += (gr.refersTo, tr.tableRow);
+                if (pd is TNode pl && tr is TEdge ae && ae.dataType is EdgeType at && gr.postCon is TConnector gc)
+                    for (var b = at.connects.First(); b != null; b = b.Next())
+                        for (var c = Connects(at, gc).First(); c != null; c = c.Next())
+                            if (ae.tableRow.vals[c.key().cp]?.ToLong() == tr.defpos)
+                                ds += (gr.refersTo, tr.tableRow);
             }
-            else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj)
+            else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj && cr is TConnector jc)
             {
-         /*       for (var b = dj.First(); b != null; b = b.Next())
-                    if (b.key() is EdgeType je && ((tok == Qlx.ARROWBASE) ?
-                        (cx.db.objects[je.arrivingType] as NodeType)?.GetS(cx, pd.tableRow.vals[je.arriveCol] as TInt)
-                      : (cx.db.objects[je.leavingType] as NodeType)?.GetS(cx, pd.tableRow.vals[je.leaveCol] as TInt))// this node will match with xn
-                                       is TableRow jn)
-                        ds += (jn.defpos, jn); */
+                for (var b = dj.First(); b != null; b = b.Next())
+                    if (b.key() is EdgeType je)
+                        for (var c = Connects(je, jc).First(); c != null; c = c.Next())
+                            if (c.key() is TConnector kc && cx.db.objects[kc.ct] is NodeType jt
+                               && jt.GetS(cx, pd.tableRow.vals[jc.cp]) is TableRow jn
+                               && cx.db.objects[jn.tabledefpos] is Domain dn
+                               && dn.EqualOrStrongSubtypeOf(jt))
+                                ds += (jn.defpos, jn);
             }
             else if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos
-                && cr is TConnector ec)
+                && cr is TConnector ed)
             {
-                for (var b=pe.connects.First();b!=null;b=b.Next())
-                    if (b.key() is TConnector tc1 && Connects(ec,tc1) && (ec.cn=="" || ec.cn==tc1.cn)
+                for (var b = pe.connects.First(); b != null; b = b.Next())
+                    if (b.key() is TConnector tc1 && Connects(ed, tc1) && (ed.cn == "" || ed.cn == tc1.cn)
                 && (cx.db.objects[tc1.ct] as NodeType)?.GetS(cx, pd.tableRow.vals[tc1.cp] as TInt)
                is TableRow tn)
-                    ds += (tn.defpos, tn); 
+                        ds += (tn.defpos, tn);
             }
             if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
@@ -5448,40 +5457,39 @@ namespace Pyrrho.Level3
             {
                 var ctr = CTree<Domain, int>.Empty;
                 var tg = truncator != CTree<long, (int, Domain)>.Empty;
-                ds = Traverse(cx, this, xn, truncator, pd, pn, ctr, ds);
+                ds = Traverse(cx, this, xn, truncator, cr, pd, pn, ctr, ds);
                 for (var b = pn.super.First(); b != null; b = b.Next())
                     if (cx._Ob(b.key().defpos) is NodeType ps)
-                        ds = Traverse(cx, this, xn, truncator, pd, ps, ctr, ds);
+                        ds = Traverse(cx, this, xn, truncator, cr, pd, ps, ctr, ds);
             } // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
             else
                 ds = xn.For(cx, this, xn, ds);
             var df = ds.First();
             if (df == null && optional)
-                be.next.Next(cx, be.next, TNull.Value, null, null, false);
+                be.next.Next(cx, be.next, null, null, Qlx.FALSE);
             else if (df != null && !Done(cx))
                 DbNode(cx, new NodeStep(be.mode, xn, df, 
-                    new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._ef)),
-                     (xn is GqlEdge || xn is GqlReference) ? xn.preCon : cr, pd);
+                    new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._ef)),pd);
         }
         bool Connects(TConnector ec,TConnector tc)
         {
             return ec.q switch
             {
-                Qlx.ARROWBASE or Qlx.RARROWBASE => tc.q == Qlx.TO,
-                Qlx.RARROW or Qlx.ARROW => tc.q==Qlx.FROM,
-                Qlx.TILDE => tc.q == Qlx.WITH,
+                Qlx.ARROW or Qlx.RARROW => tc.q == Qlx.TO,
+                Qlx.RARROWBASE or Qlx.ARROWBASE => tc.q==Qlx.FROM,
+                Qlx.TILDE or Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE => tc.q == Qlx.WITH,
                 _ => false
             };
         }
         static BTree<long,TableRow> Traverse(Context cx,MatchStatement ms,GqlNode xn, BTree<long,(int,Domain)> tr,
-            TNode pd,NodeType pn,CTree<Domain,int> ctr,BTree<long,TableRow>ds)
+            TypedValue cr, TNode pd,NodeType pn,CTree<Domain,int> ctr,BTree<long,TableRow>ds)
         {
             if (pn.defpos < 0 && xn.label is GqlLabel gl && gl.kind == Qlx.VBAR)
             {
                 if (cx.db.objects[gl.left] is NodeType nl)
-                    ds = Traverse(cx, ms, xn, tr, pd, nl, ctr, ds);
+                    ds = Traverse(cx, ms, xn, tr, cr, pd, nl, ctr, ds);
                 if ((cx.db.objects[gl.right] is NodeType nr))
-                    ds = Traverse(cx, ms, xn, tr, pd, nr, ctr, ds);
+                    ds = Traverse(cx, ms, xn, tr, cr, pd, nr, ctr, ds);
                 return ds;
             }
             // case 1: pn has a primary index
@@ -5600,7 +5608,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context</param>
         /// <param name="bn">Step gives current state of the match</param>
         /// <param name="pd">If not null, the previous matching node</param> 
-        void DbNode(Context cx,NodeStep bn, TypedValue cr, TNode? pd)
+        void DbNode(Context cx,NodeStep bn, TNode? pd)
         {
             int step;
             var ob = cx.binding;
@@ -5672,7 +5680,7 @@ namespace Pyrrho.Level3
             next:
                 if (match)
                     anymatch = true;
-                bn.next.Next(cx, null, (cr == TBool.True) ? TNull.Value : cr, bn.xn, dn, match);
+                bn.next.Next(cx, null, bn.xn, dn, match?Qlx.TRUE:Qlx.FALSE);
             backtrack:
                 if (ot is not null)
                     cx.binding += (-1L, ot[0]);
@@ -5683,7 +5691,7 @@ namespace Pyrrho.Level3
                 ns = ns?.Next();
             }
             if (optional && !anymatch)
-                bn.next.Next(cx, null, (cr == TBool.True) ? TNull.Value : cr, bn.xn, dn, false);
+                bn.next.Next(cx, null, bn.xn, dn, Qlx.FALSE);
             if (ot is not null)
                 cx.binding += (-1L, ot[0]);
             cx.values = ov;
@@ -5724,7 +5732,7 @@ namespace Pyrrho.Level3
             if (fb?.Next() is not ABookmark<int, long> fn) goto backtrack;
             if (cx.obs[fn.value()] is GqlNode xn && bp.sp is GqlPath sp
                 && (bp.im < sp.quantifier.Item2 || sp.quantifier.Item2 < 0))
-                ExpNode(cx, new ExpStep(bp.mode, fn, null, bp.next,bp._ef), TNull.Value, xi, dn); // use ordinary ExpNode for the internal pattern
+                ExpNode(cx, new ExpStep(bp.mode, fn, null, bp.next,bp._ef), xi, bp.pc, dn); // use ordinary ExpNode for the internal pattern
                                                                                   // dn must be an edge
                                                                                   // and xn must be an GqlEdge
             backtrack:
@@ -5806,6 +5814,22 @@ namespace Pyrrho.Level3
                 cx.binding = bi;
             }
             return true;
+        }
+        CTree<TConnector, bool> Connects(EdgeType et, TConnector cr)
+        {
+            var r = CTree<TConnector, bool>.Empty;
+            for (var b = et.connects.First(); b != null; b = b.Next())
+                if (b.key() is TConnector tc
+                    && tc.cn != "" && (cr.cn == "" || cr.cn == tc.cn)
+                    && tc.q == cr.q switch
+                    {
+                        Qlx.ARROWBASE or Qlx.RARROW => Qlx.FROM,
+                        Qlx.ARROW or Qlx.RARROWBASE => Qlx.TO,
+                        Qlx.TILDE or Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE => Qlx.WITH,
+                        _ => Qlx.NO
+                    })
+                    r += (tc,true);
+            return r;
         }
         static NodeType SubType(Context cx,NodeType nt,TNode dn)
         {
