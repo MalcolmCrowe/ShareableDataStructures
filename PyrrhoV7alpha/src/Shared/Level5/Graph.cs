@@ -1574,21 +1574,26 @@ namespace Pyrrho.Level5
                     {
                         Qlx.TO => ec.q switch
                         {
-                            Qlx.ARROW => new TConnector(tc.q, tc.ct, cn, tc.cd),
-                            Qlx.RARROWBASE => new TConnector(tc.q, bt, cn, tc.cd),
+                            Qlx.ARROW => new TConnector(tc.q, tc.ct, cn, tc.cd, tc.cp, tc.cs, tc.cm),
+                            Qlx.RARROWBASE => new TConnector(tc.q, bt, cn, tc.cd, tc.cp, tc.cs, tc.cm),
                             _ => TNull.Value
                         },
                         Qlx.FROM => ec.q switch
                         {
-                            Qlx.ARROWBASE => new TConnector(tc.q, bt, cn, tc.cd),
-                            Qlx.RARROW => new TConnector(tc.q, at, cn, tc.cd),
+                            Qlx.ARROWBASE => new TConnector(tc.q, bt, cn, tc.cd, tc.cp, tc.cs, tc.cm),
+                            Qlx.RARROW => new TConnector(tc.q, at, cn, tc.cd, tc.cp, tc.cs, tc.cm),
                             _ => TNull.Value
                         },
                         Qlx.WITH => ec.q switch
                         {
-                            Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE or
-                            Qlx.TILDE => new TConnector(tc.q, at, cn, tc.cd) ??
-                                        new TConnector(tc.q, bt, cn, tc.cd),
+                            Qlx.ARROWLTILDE or
+                            Qlx.ARROWRTILDE or
+                            Qlx.ARROWTILDE or
+                            Qlx.ARROWBASETILDE or
+                            Qlx.RARROWTILDE or
+                            Qlx.RBRACKTILDE or
+                            Qlx.TILDE => new TConnector(tc.q, at, cn, tc.cd, tc.cp, tc.cs, tc.cm) ??
+                                        new TConnector(tc.q, bt, cn, tc.cd, tc.cp, tc.cs, tc.cm),
                             _ => TNull.Value
                         },
                         _ => TNull.Value
@@ -1611,11 +1616,17 @@ namespace Pyrrho.Level5
                         case Qlx.ARROW: q = Qlx.TO; nn = at; break;
                         case Qlx.RARROW: q = Qlx.TO; nn = bt; break;
                         case Qlx.RARROWBASE: q = Qlx.FROM; nn = at; break;
+                        case Qlx.ARROWLTILDE:
+                        case Qlx.ARROWRTILDE:
+                        case Qlx.ARROWTILDE:
+                        case Qlx.ARROWBASETILDE:
+                        case Qlx.RARROWTILDE:
+                        case Qlx.RBRACKTILDE:
                         case Qlx.TILDE: q = Qlx.WITH; nn = at; break;
                     }
                 if (nn>0)
                     (r, _) = BuildNodeTypeConnector(cx, 
-                        new TConnector(q, nn, ec.cn, Position));
+                        new TConnector(q, nn, ec.cn, Position, -1L, ec.cs, ec.cm));
             }
             return r;
         }
@@ -1625,7 +1636,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
             if (cc is not TConnector ec)
                 return (this, ls);
             var found = false;
-            for (var c = connects.First(); c != null; c = c.Next())
+            for (var c = connects.First(); c != null && !found; c = c.Next())
                 if (c.key() is TConnector tc)
                 {
                     TypedValue qv = tc.q switch
@@ -1644,8 +1655,14 @@ CTree<string, QlValue> ls, bool allowChange = false)
                         },
                         Qlx.WITH => ec.q switch
                         {
-                            Qlx.TILDE => Connect(cx, a, ec, tc, ed) ??
-                                        Connect(cx, b, ec, tc, ed),
+                            Qlx.ARROWLTILDE or
+                            Qlx.ARROWRTILDE or
+                            Qlx.ARROWTILDE or
+                            Qlx.ARROWBASETILDE or
+                            Qlx.RARROWTILDE or
+                            Qlx.RBRACKTILDE or
+                            Qlx.TILDE => ((qv=Connect(cx, a, ec, tc, ed))==TNull.Value)?
+                                        Connect(cx, b, ec, tc, ed):qv,
                             _ => TNull.Value
                         },
                         _ => TNull.Value
@@ -1669,12 +1686,18 @@ CTree<string, QlValue> ls, bool allowChange = false)
                         case Qlx.ARROW: q = Qlx.TO; nn = a; break;
                         case Qlx.RARROW: q = Qlx.FROM; nn = a; break;
                         case Qlx.RARROWBASE: q = Qlx.TO; nn = b; break;
+                        case Qlx.ARROWLTILDE:
+                        case Qlx.ARROWRTILDE:
+                        case Qlx.ARROWTILDE:
+                        case Qlx.ARROWBASETILDE:
+                        case Qlx.RARROWTILDE:
+                        case Qlx.RBRACKTILDE:
                         case Qlx.TILDE: q = Qlx.WITH; nn = a; break;
                     }
                 if (nn != null)
                 {
                     (r, var rc) = BuildNodeTypeConnector(cx,
-                        new TConnector(q, nn.dataType.defpos, ec.cn, Position));
+                        new TConnector(q, nn.dataType.defpos, ec.cn, Position, -1L, ec.cs, ec.cm));
                     ls += (cx.NameFor(rc.cp) ?? rc.cn,
                         (SqlLiteral)cx.Add(new SqlLiteral(cx.GetUid(), new TPosition(nn.defpos))));
                 }
@@ -1684,7 +1707,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
 
         static TypedValue Connect(Context cx, TNode? n, TConnector c, TConnector tc, GqlEdge ed)
         {
-            if (n == null || (c.cn != "" && tc.cn != c.cn))
+            if (n == null || (c.cn != "" && tc.cn.ToUpper() != c.cn.ToUpper()))
                 return TNull.Value;
             if (n != null)
             {
@@ -1734,12 +1757,12 @@ CTree<string, QlValue> ls, bool allowChange = false)
             var cc = (tt?.Count == 1) ? tt?.First()?.key() ?? ns[cn] : null;
             if (cc?.cp>0L)
                 return (ut,cc);
-            var tn = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, cx.db.nextPos, tc.cm);
+            var tn = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, cx.db.nextPos, tc.cs, tc.cm);
             var pc = new PColumn3(ut, cn, Length, Position,tn, cx.db.nextPos, cx, true);
             ut = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
             var nc = (TableColumn)(cx._Ob(pc.ppos) ?? throw new DBException("42105").Add(Qlx.COLUMN));
             if (tn.cm is TMetadata md)
-                cx.Add(new PMetadata(cn, -1, nc, md, cx.db.nextPos));
+                cx.Add(new PMetadata(cn, -1, nc, tn.cs, md, cx.db.nextPos));
             var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
             var px = new PIndex(cn, ut, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
                         | PIndex.ConstraintType.CascadeDelete,
@@ -1811,7 +1834,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
                     for (var db = d.connects.First(); db != null; db = db.Next())
                         if (db.key() is TConnector dc && cx._Ob(c.ct) is Domain td
                             && dc.q == c.q && !td.OkForConnector(cx,dc)
-                            && (c.cn != "" && c.cn != dc.cn)) goto skip;
+                            && (c.cn != "" && c.cn.ToUpper() != dc.cn.ToUpper())) goto skip;
                     return null;
                 skip:;
                 }
@@ -2396,11 +2419,12 @@ CTree<string, QlValue> ls, bool allowChange = false)
         public readonly string cn;
         public readonly long cp;   // PColumn3 - constructed if needed
         public readonly Domain cd; // Possibly a SET type (Domain.EdgeEnds), most often POSITION
+        public readonly string cs;
         public readonly TMetadata? cm;
-        internal TConnector(Qlx a,long x,string s,Domain d,long p= -1L,TMetadata? tm=null) 
+        internal TConnector(Qlx a,long x,string s,Domain d,long p= -1L,string ss="", TMetadata? tm=null) 
             : base(Domain.Connector)
         {
-            q = a; ct = x; cn = s; cd = d; cp = p; cm = tm;
+            q = a; ct = x; cn = s; cd = d; cp = p; cs = ss; cm = tm;
         }
         public override int CompareTo(object? obj)
         {
@@ -2412,7 +2436,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
             c = ct.CompareTo(that.ct);
             if (c != 0)
                 return c;
-            c = cn.CompareTo(that.cn);
+            c = cn.ToUpper().CompareTo(that.cn.ToUpper());
             if (c!=0)
                 return c;
 //            c = cp.CompareTo(that.cp);
@@ -2423,11 +2447,13 @@ CTree<string, QlValue> ls, bool allowChange = false)
         internal override TypedValue Fix(Context cx)
         {
             var r = (TConnector)base.Fix(cx);
-            return new TConnector(r.q,cx.Fix(r.ct), r.cn, (Domain)r.cd.Fix(cx),cx.Fix(r.cp));
+            return new TConnector(r.q,cx.Fix(r.ct), r.cn, (Domain)r.cd.Fix(cx),cx.Fix(r.cp),
+                r.cs, r.cm);
         }
         internal override TypedValue Replaced(Context cx)
         {
-            return new TConnector(q, cx.Replaced(ct), cn, cd, cx.Replaced(cp)); 
+            return new TConnector(q, cx.Replaced(ct), cn, cd, cx.Replaced(cp),
+                cs, (TMetadata)(cm?.Replaced(cx)??TMetadata.Empty)); 
         }
         public override string ToString()
         {

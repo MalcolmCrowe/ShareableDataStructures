@@ -552,7 +552,7 @@ namespace Pyrrho.Level2
             ups = us;
             if (cx.db.objects[pr.defpos] is EdgeType et && tc is TConnector cc)
             {
-                tc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, pp);
+                tc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, pp, cc.cs, cc.cm);
                 et += (EdgeType.Connects, et.connects - cc + (tc, true));
                 cx.Add(et);
                 cx.db += et;

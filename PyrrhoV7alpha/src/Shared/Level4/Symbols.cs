@@ -505,7 +505,7 @@ namespace Pyrrho.Level4
                 }
                 while (char.IsDigit(Advance()))
                     ;
-                if (ch != '.')
+                if (ch != '.' ||(ch=='.' && pos+1<input.Length && input[pos+1]=='.'))
                 {
                     str = new string(input, start, pos - start);
                     if (pos - start > 18)
@@ -516,6 +516,7 @@ namespace Pyrrho.Level4
                     MaybeSuffix();
                     return tok;
                 }
+                Advance();
                 while (char.IsDigit(Advance()))
                     ;
                 if (ch != 'e' && ch != 'E')
@@ -573,7 +574,16 @@ namespace Pyrrho.Level4
                 case '*': Advance(); return tok = Qlx.TIMES;
                 case '/': Advance(); return tok = Qlx.DIVIDE;
                 case ',': Advance(); return tok = Qlx.COMMA;
-                case '.': Advance(); return tok = Qlx.DOT;
+                case '.':
+                    {
+                        Advance(); 
+                        if (ch=='.')
+                        {
+                            Advance();
+                            return tok = Qlx.DOUBLEPERIOD;
+                        }
+                        return tok = Qlx.DOT;
+                    }
                 case ';': Advance(); return tok = Qlx.SEMICOLON;
                 case '&': Advance(); return tok = Qlx.AMPERSAND; // GQL label expression
                 case '~':

@@ -219,6 +219,7 @@ namespace Pyrrho.Level2
             tt += now;
             var pr = prevrec?.vals ?? CTree<long, TypedValue>.Empty;
             if (tt is EdgeType et)
+            {
                 for (var b = et.connects.First(); b != null; b = b.Next())
                     if (b.key() is TConnector tc)
                     {
@@ -242,6 +243,8 @@ namespace Pyrrho.Level2
                             }
                         }
                     }
+                cx.checkEdges += (now.defpos, now);
+            }
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x

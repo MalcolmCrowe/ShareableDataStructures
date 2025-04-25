@@ -191,7 +191,7 @@ namespace Pyrrho.Level3
                 for (var b = et.connects.First(); b != null; b = b.Next())
                     if (b.key() is TConnector tc && tc.cp == defpos)
                     {
-                        var nc = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, tc.cp, pm.detail);
+                        var nc = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, tc.cp, pm.str, pm.detail);
                         et += (EdgeType.Connects, et.connects - tc + (nc,true));
                         cx.db += et;
                         return (EdgeType)cx.Add(et);

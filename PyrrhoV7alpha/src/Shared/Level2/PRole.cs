@@ -142,6 +142,7 @@ namespace Pyrrho.Level2
         public long seq = -1L; // backward compatibility
         public long defpos;
         public TMetadata detail = TMetadata.Empty;
+        public string str = "";
         public string iri = "";
         public long refpos = -1L;
         public long flags = 0L;
@@ -151,15 +152,16 @@ namespace Pyrrho.Level2
             if (!Committed(wr,refpos)) return refpos;
             return -1;
         }
-        public PMetadata(string nm, long sq, DBObject ob, TMetadata md, long pp)
-            : this(Type.Metadata, nm, sq, ob, md, pp) { }
-        public PMetadata(Type t,string nm,long sq,DBObject ob, TMetadata md,long pp)
+        public PMetadata(string nm, long sq, DBObject ob, string s, TMetadata md, long pp)
+            : this(Type.Metadata, nm, sq, ob, s, md, pp) { }
+        public PMetadata(Type t,string nm,long sq,DBObject ob, string s, TMetadata md,long pp)
             :base(t,pp)
         { 
             name = nm;
             seq = sq;
             defpos = ob.defpos;
             detail = md;
+            str = s;
             iri = md[Qlx.IRI]?.ToString()??"";
             refpos = md[Qlx.INVERTS]?.ToLong()??-1L;
             flags = 0L;
@@ -173,6 +175,7 @@ namespace Pyrrho.Level2
             defpos = wr.cx.Fix(x.defpos);
             detail = x.detail;
             iri = x.iri;
+            str = x.str;
             refpos = wr.cx.Fix(x.refpos);
             flags = x.flags;
         }
@@ -187,7 +190,7 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
             wr.PutString(name?.ToString()??"");
-            wr.PutString(Detail(wr));
+            wr.PutString(str);
             wr.PutString(iri??"");
             wr.PutLong(seq+1); 
             defpos = wr.cx.Fix(defpos);
@@ -202,70 +205,14 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{
 			name =rdr.GetString();
-            detail = new Parser(rdr.context,rdr.GetString()).ParseMetadata(Qlx.ANY);
+            str = rdr.GetString();
+            detail = new Parser(rdr.context,str).ParseMetadata(Qlx.ANY).Item2;
             iri = rdr.GetString();
             seq = rdr.GetLong()-1;
             defpos = rdr.GetLong();
             flags = rdr.GetLong();
             base.Deserialise(rdr);
 		}
-        string Detail(Writer wr)
-        {
-            var sb = new StringBuilder();
-            for (var b = detail.First(); b != null; b = b.Next())
-                switch (b.key())
-                {
-                    case Qlx.DESC:
-                    case Qlx.URL:
-                        sb.Append(b.key());
-                        sb.Append('\'');
-                        sb.Append(b.value());
-                        sb.Append("' ");
-                        break;
-                    case Qlx.MIME:
-                    case Qlx.SQLAGENT:
-                    case Qlx.USER:
-                    case Qlx.PASSWORD:
-                        sb.Append(b.key());
-                        sb.Append(" \"");
-                        sb.Append(b.value());
-                        sb.Append("\" ");
-                        break;
-                    case Qlx.IRI:
-                        sb.Append(b.value().ToString());
-                        break;
-                    case Qlx.INVERTS:
-                        sb.Append(b.key());
-                        sb.Append(' ');
-                        if (b.value().ToLong() is long lp && wr.cx.db.objects[lp] is DBObject ob &&
-                            ob.infos[wr.cx.role.defpos] is ObInfo oi && oi.name != null)
-                            sb.Append(oi.name);
-                        sb.Append(' ');
-                        break;
-                    case Qlx.PREFIX:
-                    case Qlx.SUFFIX:
-                        sb.Append(b.key());
-                        sb.Append('"');
-                        sb.Append(b.value());
-                        sb.Append("\" ");
-                        break;
-                    case Qlx.MAX:
-                    case Qlx.MIN:  
-                        {
-                            var lw = detail[Qlx.MIN];
-                            var hi = detail[Qlx.MAX]??new TChar("*");
-                            sb.Append("CARDINALITY("); sb.Append(lw);
-                            { sb.Append(" TO "); sb.Append(hi); }
-                            sb.Append(')');
-                        }
-                        break;
-                    default:
-                        sb.Append(b.key());
-                        sb.Append(' ');
-                        break;
-                }
-            return sb.ToString();
-        }
         internal static long Flags(TMetadata md)
         {
             return 0L;
@@ -286,7 +233,7 @@ namespace Pyrrho.Level2
         {
             var sb = new StringBuilder();
             sb.Append("PMetadata "); sb.Append(name);
-            sb.Append(detail);
+            sb.Append(' '); sb.Append(str);
             return sb.ToString();
         }
         public override DBException? Conflicts(Database db, Context cx, Physical that,PTransaction ct)
@@ -334,8 +281,8 @@ namespace Pyrrho.Level2
         /// <param name="sq">The column seq no for a view column</param>
         /// <param name="ob">the DBObject</param>
         /// <param name="db">The physical database</param>
-        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, TMetadata md, long pp)
-         : base(tp, nm, sq, ob, md, pp)
+        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, string s, TMetadata md, long pp)
+         : base(tp, nm, sq, ob, s, md, pp)
         {
         }
         public PMetadata2(Reader rdr) : base (Type.Metadata2,rdr){}
@@ -387,8 +334,8 @@ namespace Pyrrho.Level2
         /// <param name="ob">the DBObject</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-        public PMetadata3(string nm, long sq, DBObject ob, TMetadata md, long pp)
-            : base(Type.Metadata3, nm, sq, ob, md, pp)
+        public PMetadata3(string nm, long sq, DBObject ob, string s, TMetadata md, long pp)
+            : base(Type.Metadata3, nm, sq, ob, s, md, pp)
         {  }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }
         protected PMetadata3(PMetadata3 x, Writer wr) : base(x, wr)

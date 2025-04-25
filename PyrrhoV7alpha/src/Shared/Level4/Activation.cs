@@ -52,6 +52,7 @@ namespace Pyrrho.Level4
             next.nextHeap = Math.Max(next.nextHeap,nextHeap);
             next.result = result;
             next.binding = binding;
+            next.checkEdges += checkEdges;
             if (next.next is Context nx)
                 nx.lastret = next.lastret;
             if (db != next.db)
@@ -133,6 +134,7 @@ namespace Pyrrho.Level4
                 next.obs = obs;
                 next.binding = binding;
                 next.funcs = funcs;
+                next.checkEdges += checkEdges;
             }
             return base.SlideDown();
         }
@@ -519,8 +521,15 @@ namespace Pyrrho.Level4
                             return _cx;
                         var st = rc.subType;
                         Record r;
-                        if ((next?.exec as SqlInsert)?.newEdge is long ne && ne>0)
+                        if ((next?.exec as SqlInsert)?.newEdge is long ne && ne > 0
+                            && table.tableRows[ne] is TableRow was)
+                        {
+                            for (var b = table.First(); b != null; b = b.Next())
+                                if (b.value() is long p && newRow[p] == TNull.Value
+                                    && was.vals[p] is TypedValue ov && ov != TNull.Value)
+                                    newRow += (p, ov);
                             r = new Update(ne, table.defpos, newRow, _cx.db.nextPos, _cx);
+                        }
                         else if (level != Level.D)
                             r = new Record3(table.defpos, newRow, st, level, _cx.db.nextPos, _cx);
                         else

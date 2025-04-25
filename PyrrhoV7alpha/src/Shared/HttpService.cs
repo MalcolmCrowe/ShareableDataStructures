@@ -249,7 +249,7 @@ namespace Pyrrho
             var fm = rs as TableRowSet ?? cx.obs[rs.source] as TableRowSet;
             var om = tr.objects[fm?.target??-1L] as DBObject;
             var psr = new Parser(cx, query);
-            chartType = psr.ParseMetadata(Qlx.TABLE);
+            chartType = psr.ParseMetadata(Qlx.TABLE).Item2;
             var mi = om?.infos[tr.role.defpos];
             if (mi is not null && om is not null && om.defpos > 0)
             {

@@ -1335,11 +1335,9 @@ namespace Pyrrho.Level4
                 }
                 if (eg || dm.kind == Qlx.EDGETYPE)
                 {
-                    fa = BList<(Ident, TMetadata)>.Empty;
                     var fi = new Ident(this);
                     var ix = cx.dnames[fi.ident].Item2;
-                    var md = ParseMetadata(Qlx.EDGETYPE);
-                    fa += (fi, md);
+                    var (_,md) = ParseMetadata(Qlx.EDGETYPE);
                     r = FindOrCreateElementType(id, null, ps, null, (md[Qlx.EDGETYPE] as TSet)?.tree, wds);
                 }
             }
@@ -1348,9 +1346,9 @@ namespace Pyrrho.Level4
             r ??= FindOrCreateElementType(id, null, tps, al);
             if (StartMetadata(Qlx.TYPE)) 
             {
-                var m = ParseMetadata(Qlx.TYPE);
+                var (s,m) = ParseMetadata(Qlx.TYPE);
                 if (r != null && m != null)
-                    cx.Add(new PMetadata(id.ident, -1, r, m, cx.db.nextPos));
+                    cx.Add(new PMetadata(id.ident, -1, r, s, m, cx.db.nextPos));
             }
             return r?.defpos ??throw new PEException("PE40201");
         }
@@ -1390,7 +1388,7 @@ namespace Pyrrho.Level4
         /// <returns>A (possibly joined) node tye that meets these requirements</returns>
         /// <exception cref="DBException"></exception>
         NodeType FindOrCreateElementType(Ident id, Domain? dm, BList<(Ident, Domain)> ps, Ident? a = null,
-            CTree<TypedValue,bool>? md=null, CTree<Qlx, bool>? wds = null)
+            CTree<TypedValue, bool>? md = null, CTree<Qlx, bool>? wds = null)
         {
             var un = dm?.super ?? CTree<Domain, bool>.Empty; // relevant node types
             var ep = CTree<long, bool>.Empty; // properties found
@@ -1485,7 +1483,10 @@ namespace Pyrrho.Level4
         Define:;
             NodeType? ut = null;
             var ops = ps;
-            md = (ParseMetadata(Qlx.TYPE)[Qlx.EDGETYPE] as TSet)?.tree;
+            var tt = Domain.NodeType;
+            if (StartMetadata(Qlx.TYPE))
+                if (ParseMetadata(Qlx.TYPE).Item2[Qlx.EDGETYPE] is TSet ts && ts.tree is CTree<TypedValue, bool> st)
+                md = (md==null)?st:(md + st);
             if (md == null && ix is null) // It is a new node tye
             {
                 var tp = new PNodeType(id.ident, (NodeType)Domain.NodeType.Relocate(id.uid), un, -1L, cx.db.nextPos, cx);
@@ -1509,6 +1510,7 @@ namespace Pyrrho.Level4
             }
             else if (md != null)
             { // it is an edge tye
+                tt = Domain.EdgeType;
                 var up = new PEdgeType(id.ident, (EdgeType)Domain.EdgeType.Relocate(id.uid), un, -1L, cx.db.nextPos, cx);
                 var et = (EdgeType)(cx.Add(up) ?? throw new DBException("42105"));
                 ut = et;
@@ -1517,8 +1519,7 @@ namespace Pyrrho.Level4
                         et = et.BuildNodeTypeConnector(cx, tc).Item1;
             }
             var nu = cx.db.objects[ut?.defpos??-1L] as NodeType??
-                new EdgeType(id.lp, id.uid,id.ident,(md==null)?Domain.NodeType:Domain.EdgeType,
-                    BTree<long,object>.Empty,cx);
+                new EdgeType(id.lp, id.uid,id.ident,tt,BTree<long,object>.Empty,cx);
             // 5: If there is a property called ID make it the primary key
             if (nu?.infos[cx.role.defpos] is ObInfo ui
                 && ui.names.Contains("ID") && cx.obs[ui.names["ID"].Item2] is TableColumn pt)
@@ -1532,16 +1533,16 @@ namespace Pyrrho.Level4
         /// <param name="id"></param>
         /// <param name="xp"></param>
         /// <returns></returns>
-        (Domain,BList<(Ident,TMetadata)>,BList<(Ident,Domain)>) ElementDetails(Ident id,NodeType xp)
+        (Domain,BList<(Ident, TMetadata)>, BList<(Ident,Domain)>) ElementDetails(Ident id,NodeType xp)
         {
-            var la = new BList<(Ident, TMetadata)>((id,TMetadata.Empty));
+            var la = new BList<(Ident, TMetadata)>((id, TMetadata.Empty));
             var ix = cx.dnames[id.ident].Item2;
             while (Match(Qlx.VBAR))
             {
                 Next();
                 var ia = new Ident(this);
                 Mustbe(Qlx.Id);
-                la += (ia, TMetadata.Empty+ParseMetadata(Qlx.TYPE));
+                la += (ia, TMetadata.Empty + ParseMetadata(Qlx.TYPE).Item2);
             }
             if (ix>=0L && cx.obs[ix] is Domain n)
                 return (n, la, BList<(Ident, Domain)>.Empty);
@@ -1581,12 +1582,13 @@ namespace Pyrrho.Level4
                 Mustbe(Qlx.RBRACE);
                 cx.defs -= cx.sD-1;
             }
+            var fa = BList<(Ident, string, TMetadata)>.Empty;
             if (le.kind == Qlx.NO)
             {
                 if (xp.kind == Qlx.NODETYPE)
                     le = FindOrCreateElementType(id, Domain.NodeType, ps);
                 else
-                    le = FindOrCreateElementType(id, Domain.EdgeType, ps, null, CTree<TypedValue,bool>.Empty);
+                    le = FindOrCreateElementType(id, Domain.EdgeType, ps);
             }
             else if (le.defpos > 0L && !cx.role.dbobjects.Contains(le.name))
                 le = FindOrCreateElementType(id, le, ps);
@@ -2013,7 +2015,8 @@ namespace Pyrrho.Level4
                 var ba = Mustbe(Qlx.ARROW, Qlx.RARROWBASE, Qlx.ARROWTILDE, Qlx.RBRACKTILDE);
                 (an, ahead) = ParseInsertGraphItem(ahead, sch);
                 m += (GqlNode.PreCon, ac);
-                m += (GqlNode.PostCon,new TConnector(ba, an.domain.defpos, cn, Domain.Position));
+                m += (GqlNode.PostCon,
+                    new TConnector(ba, an.domain.defpos, cn, Domain.Position));
                 if (ln != null)
                     m += (GqlNode.Before, ln);
                 if (an != null)
@@ -2023,10 +2026,11 @@ namespace Pyrrho.Level4
                 Mustbe(Qlx.RPAREN,Qlx.RBRACK,Qlx.RBRACKTILDE,Qlx.ARROWBASETILDE);
             if (cx.obs[id] is GqlNode r)
             {
-                if (ln is null && ab == Qlx.LBRACK) // we are adding an extra connection to an edge reference
+                if (ab == Qlx.LBRACK && !bound) // we are adding an extra connection to an edge reference
                     r = new GqlEdge(nb, BList<Ident>.Empty, cx, id, dc, lxr.tgs, dm, m);
                 else
-                    r = new GqlReference(cx, LexLp(), lp, (dm is null) ? r : r + (DBObject._Domain, dm));
+                    r = new GqlReference(cx, LexLp(), lp, (dm is null) ? r : r + (DBObject._Domain, dm), 
+                        null, m);
             }
             else if (lb.defpos >= 0 && lb.rowType == CList<long>.Empty && lb is NodeType zt
                 && (zt.kind != Qlx.EDGETYPE || dc.Count == 0L))
@@ -2081,7 +2085,8 @@ namespace Pyrrho.Level4
             GqlNode? an = null;
             var b = new Ident(this);
             if (cx.obs[cx.names[b.ident].Item2] is GqlNode nb)
-                r = new GqlReference(cx,b.lp,b.uid,nb,new TConnector(ab,nb.domain.defpos,cn,Domain.Position));
+                r = new GqlReference(cx,b.lp,b.uid,nb,
+                    new TConnector(ab,nb.domain.defpos,cn,Domain.Position));
             long id = -1L;
             var ahead = CList<long>.Empty;
             if (ab == Qlx.LBRACK)
@@ -2262,7 +2267,8 @@ namespace Pyrrho.Level4
             if (r is null)
                 throw new DBException("42000", "MatchExp").Add(Qlx.MATCH_STATEMENT, new TChar(an?.name??"??"));
             if (r is GqlEdge && an is not null) // an updated version of postCon
-                r = r.Add(cx, an, st, LexLp(),new TConnector(ba, an.domain.defpos, cn, Domain.Position));
+                r = r.Add(cx, an, st, LexLp(),
+                    new TConnector(ba, an.domain.defpos, cn, Domain.Position));
             cx.Add(r);
             tgs += r.state;
             svg += r.defpos;
@@ -2607,9 +2613,9 @@ namespace Pyrrho.Level4
             var vw = (View)(cx.Add(pv) ?? throw new DBException("42105").Add(Qlx.VIEW));
             if (StartMetadata(Qlx.VIEW))
             {
-                var m = ParseMetadata(Qlx.VIEW);
+                var (s,m) = ParseMetadata(Qlx.VIEW);
                 if (vw != null && m != null)
-                    cx.Add(new PMetadata(id, -1, vw, m, cx.db.nextPos));
+                    cx.Add(new PMetadata(id, -1, vw, s, m, cx.db.nextPos));
             }
             cx.result = null;
             cx.binding = CTree<long, TypedValue>.Empty;
@@ -2874,7 +2880,7 @@ namespace Pyrrho.Level4
                     ls += (cn, new SqlLiteral(p, cn, tc.domain.defaultValue, tc.domain));
                     nn += (cn, (ap,tc.defpos));
                 }
-            var m = ParseMetadata(Qlx.TYPE);
+            var (_,m) = ParseMetadata(Qlx.TYPE);
             if (m.Contains(Qlx.NODETYPE))
             {
                 var nt = new NodeType(typename.uid, dt.mem + (Domain.Kind, Qlx.NODETYPE));
@@ -3112,8 +3118,8 @@ namespace Pyrrho.Level4
             if (StartMetadata(Qlx.TABLE))
             {
                 var dp = LexDp();
-                var md = ParseMetadata(Qlx.TABLE);
-                cx.Add(new PMetadata(name.ident, dp, tb, md, cx.db.nextPos));
+                var (s,md) = ParseMetadata(Qlx.TABLE);
+                cx.Add(new PMetadata(name.ident, dp, tb, s, md, cx.db.nextPos));
             }
         }
         DBObject ParseClassification(DBObject ob)
@@ -3454,8 +3460,8 @@ namespace Pyrrho.Level4
                 tc += (Domain.Culture, new CultureInfo(ParseCollate()));
             if (StartMetadata(Qlx.TYPE) && cx.NameFor(tc.defpos) is string tn)
             {
-                var md = ParseMetadata(Qlx.TYPE);
-                var pm = new PMetadata(tn, 0, tc, md, cx.db.nextPos);
+                var (s,md) = ParseMetadata(Qlx.TYPE);
+                var pm = new PMetadata(tn, 0, tc, s, md, cx.db.nextPos);
                 cx.Add(pm);
                 var oi = tc.infos[cx.role.defpos] ?? new ObInfo(tn);
                 oi += (ObInfo._Metadata, md);
@@ -3505,7 +3511,7 @@ namespace Pyrrho.Level4
                     return Match(Qlx.PREFIX, Qlx.SUFFIX, Qlx.NODETYPE, Qlx.EDGETYPE, Qlx.SCHEMA,
                     Qlx.SENSITIVE, Qlx.CARDINALITY, Qlx.CONNECTING);
                 case Qlx.ANY:
-                    Match(Qlx.DESC, Qlx.URL, Qlx.MIME, Qlx.SQLAGENT, Qlx.USER, Qlx.PASSWORD,
+                    Match(Qlx.DESC, Qlx.URL, Qlx.MIME, Qlx.SQLAGENT, Qlx.USER, Qlx.PASSWORD, Qlx.MULTIPLICITY,
                         Qlx.ENTITY, Qlx.PIE, Qlx.HISTOGRAM, Qlx.LEGEND, Qlx.LINE, Qlx.POINTS, Qlx.REFERRED,
                         Qlx.ETAG, Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.REFERS, Qlx.JSON, Qlx.CSV,
                         Qlx.INVERTS, Qlx.MONOTONIC, Qlx.PREFIX, Qlx.SUFFIX, Qlx.OPTIONAL, Qlx.CARDINALITY);
@@ -3516,7 +3522,7 @@ namespace Pyrrho.Level4
         internal TMetadata ParseMetadata(string s, int off, Qlx kind)
         {
             lxr = new Lexer(cx, s, off);
-            return ParseMetadata(kind);
+            return ParseMetadata(kind).Item2;
         }
         /// <summary>
         /// Parse ([ADD]|DROP) Metadata
@@ -3524,7 +3530,7 @@ namespace Pyrrho.Level4
         /// <param name="tr">the database</param>
         /// <param name="ob">the object the metadata is for</param>
         /// <param name="kind">the metadata</param>
-        internal TMetadata ParseMetadata(Qlx kind)
+        internal (string,TMetadata) ParseMetadata(Qlx kind)
         {
             var drop = false;
             if (Match(Qlx.ADD, Qlx.DROP))
@@ -3535,6 +3541,7 @@ namespace Pyrrho.Level4
             var m = CTree<Qlx, TypedValue>.Empty;
             TypedValue ds = TNull.Value;
             TypedValue iri = TNull.Value;
+            var st = lxr.start;
             long iv = -1;
             var lp = tok == Qlx.LPAREN;
             if (lp)
@@ -3702,11 +3709,10 @@ namespace Pyrrho.Level4
                     case Qlx.CARDINALITY:
                         {
                             Next();
-                            Mustbe(Qlx.LPAREN);
                             var lw = lxr.val;
                             Mustbe(Qlx.INTEGERLITERAL);
                             m += (Qlx.MIN, lw);
-                            if (Match(Qlx.TO))
+                            if (Match(Qlx.TO,Qlx.DOUBLEPERIOD))
                             {
                                 Next();
                                 lw = lxr.val;
@@ -3718,11 +3724,10 @@ namespace Pyrrho.Level4
                     case Qlx.MULTIPLICITY:
                         {
                             Next();
-                            Mustbe(Qlx.LPAREN);
                             var lw = lxr.val;
                             Mustbe(Qlx.INTEGERLITERAL);
                             m += (Qlx.MINVALUE, lw);
-                            if (Match(Qlx.TO))
+                            if (Match(Qlx.TO,Qlx.DOUBLEPERIOD))
                             {
                                 Next();
                                 lw = lxr.val;
@@ -3748,7 +3753,8 @@ namespace Pyrrho.Level4
                 m += (Qlx.INVERTS, new TInt(iv));
             if (iri != TNull.Value)
                 m += (Qlx.IRI, iri);
-            return new TMetadata(m);
+            var ss = new string(lxr.input, st, lxr.start - st);
+            return (ss, new TMetadata(m));
         }
         // Connector= [id'=']Type_id{'|'Type_id}[SET][Domain_id] Metadata
         TConnector ParseConnector(Qlx tk)
@@ -3792,10 +3798,11 @@ namespace Pyrrho.Level4
             var ct = (xl.Count == 1) ? xl.First()?.key() : new Domain(-1L, Qlx.UNION, xl);
             if (ct is null)
                 throw new DBException("42000");
+            string ts = "";
             TMetadata? tm = null;
             if (!cx.ParsingMatch && StartMetadata(Qlx.CONNECTION))
-                tm = ParseMetadata(Qlx.CONNECTION);
-            return new TConnector(tk, ct.defpos, sc, cd, -1L, tm);
+                (ts,tm) = ParseMetadata(Qlx.CONNECTION);
+            return new TConnector(tk, ct.defpos, sc, cd, -1L, ts, tm);
         }
         /// <summary>
         /// GenerationRule =  GENERATED ALWAYS AS '('Value')' [ UPDATE '(' Assignments ')' ]
@@ -4276,8 +4283,8 @@ namespace Pyrrho.Level4
                 var lp = LexDp();
                 if (StartMetadata(Qlx.FUNCTION))
                 {
-                    var m = ParseMetadata(Qlx.FUNCTION);
-                    var pm = new PMetadata3(n.ident, 0, pr, m, cx.db.nextPos);
+                    var (ss, m) = ParseMetadata(Qlx.FUNCTION);
+                    var pm = new PMetadata3(n.ident, 0, pr, ss, m, cx.db.nextPos);
                     cx.Add(pm);
                 }
                 var s = new Ident(new string(lxr.input, st, lxr.start - st), lp);
@@ -5535,8 +5542,7 @@ namespace Pyrrho.Level4
             ls += (NestedStatement.Stms, ParseStatementList(m));
             Mustbe(Qlx.END);
             Mustbe(Qlx.LOOP);
-            var n = mm[Executable.Label] as string;
-            if (tok == Qlx.Id && n != null && n == lxr.val.ToString())
+            if (tok == Qlx.Id && mm[Executable.Label] is string n && n == lxr.val.ToString())
                 Next();
             return (Executable)cx.Add(ls);
         }
@@ -5560,8 +5566,7 @@ namespace Pyrrho.Level4
             ws += (cx, WhileStatement.What, ParseStatementList(m));
             Mustbe(Qlx.END);
             Mustbe(Qlx.WHILE);
-            var n = mm[Executable.Label] as string;
-            if (tok == Qlx.Id && n != null && n == lxr.val.ToString())
+            if (tok == Qlx.Id && mm[Executable.Label] is string n && n == lxr.val.ToString())
                 Next();
             cx = old; // old.Restore(lxr);
             cx.exec = ws;
@@ -6102,8 +6107,8 @@ namespace Pyrrho.Level4
                     throw new DBException("42135", ic.ident));
                 if (cx.role.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                var m = ParseMetadata(Qlx.COLUMN);
-                cx.Add(new PMetadata(ic.ident, 0, ob, m, cx.db.nextPos));
+                var (s,m) = ParseMetadata(Qlx.COLUMN);
+                cx.Add(new PMetadata(ic.ident, 0, ob, s, m, cx.db.nextPos));
             }
             if (StartMetadata(kind) || Match(Qlx.ADD))
             {
@@ -6111,9 +6116,9 @@ namespace Pyrrho.Level4
                     throw new DBException("42105").Add(Qlx.METADATA).Mix();
                 if (Match(Qlx.ALTER))
                     Next();
-                var m = ParseMetadata(kind);
+                var (s,m) = ParseMetadata(kind);
                 np = tr.nextPos;
-                cx.Add(new PMetadata(ob.NameFor(cx), -1, ob, m, np));
+                cx.Add(new PMetadata(ob.NameFor(cx), -1, ob, s, m, np));
             }
         }
         /// <summary>
@@ -6197,8 +6202,8 @@ namespace Pyrrho.Level4
                 {
                     if (tr.role.Denied(cx, Grant.Privilege.Metadata))
                         throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                    var m = ParseMetadata(Qlx.DOMAIN);
-                    if (cx.Add(new PMetadata(d.name, -1, d, m, dp)) is DBObject me)
+                    var (s,m) = ParseMetadata(Qlx.DOMAIN);
+                    if (cx.Add(new PMetadata(d.name, -1, d, s, m, dp)) is DBObject me)
                         es += me.defpos;
                 }
                 else
@@ -6216,7 +6221,8 @@ namespace Pyrrho.Level4
             {
                 if (cx.role.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                if (cx.Add(new PMetadata(d.name, 0, d, ParseMetadata(Qlx.DOMAIN),tr.nextPos)) is DBObject eo)
+                var (s, m) = ParseMetadata(Qlx.DOMAIN);
+                if (cx.Add(new PMetadata(d.name, 0, d, s, m,tr.nextPos)) is DBObject eo)
                     es += eo.defpos;
             }
             else
@@ -6381,8 +6387,9 @@ namespace Pyrrho.Level4
                                     {
                                         if (cx.role.Denied(cx, Grant.Privilege.Metadata))
                                             throw new DBException("42105").Add(Qlx.METADATA).Mix();
+                                        var (ss, mm) = ParseMetadata(Qlx.TABLE);
                                         cx.Add(new PMetadata(tb.NameFor(cx), 0, tb,
-                                                ParseMetadata(Qlx.TABLE), tr.nextPos));
+                                               ss, mm, tr.nextPos));
                                         return;
                                     }
                                     if (Match(Qlx.COLUMN))
@@ -6468,8 +6475,8 @@ namespace Pyrrho.Level4
                     if (StartMetadata(Qlx.TABLE) || Match(Qlx.ADD, Qlx.DROP))
                         if (tb.Denied(cx, Grant.Privilege.Metadata))
                             throw new DBException("42105").Add(Qlx.METADATA);
-                    cx.Add(new PMetadata(tb.NameFor(cx), 0, tb, ParseMetadata(Qlx.TABLE),
-                        tr.nextPos));
+                    var (s, m) = ParseMetadata(Qlx.TABLE);
+                    cx.Add(new PMetadata(tb.NameFor(cx), 0, tb, s, m, tr.nextPos));
                     return;
             }
         }
@@ -6519,7 +6526,8 @@ namespace Pyrrho.Level4
                 {
                     if (tb.Denied(cx, Grant.Privilege.Metadata))
                         throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                    var pm = new PMetadata(nm, 0, tc, ParseMetadata(Qlx.COLUMN), tr.nextPos);
+                    var (s, m) = ParseMetadata(Qlx.COLUMN);
+                    var pm = new PMetadata(nm, 0, tc, s, m, tr.nextPos);
                     tc = (TableColumn)(cx.Add(pm) ?? throw new DBException("42105").Add(Qlx.METADATA));
                 }
                 if (Match(Qlx.CONSTRAINT))
@@ -6587,7 +6595,8 @@ namespace Pyrrho.Level4
                 {
                     if (tb.Denied(cx, Grant.Privilege.Metadata))
                         throw new DBException("42105").Add(Qlx.METADATA,new TChar(tc.NameFor(cx))).Mix();
-                    var pm = new PMetadata(nm, 0, tc, ParseMetadata(Qlx.COLUMN), tr.nextPos);
+                    var (s, m) = ParseMetadata(Qlx.COLUMN);
+                    var pm = new PMetadata(nm, 0, tc, s, m, tr.nextPos);
                     tc = (TableColumn)(cx.Add(pm) ?? throw new DBException("42105").Add(Qlx.COLUMN));
                 }
                 else
@@ -6711,8 +6720,8 @@ namespace Pyrrho.Level4
             {
                 if (tb.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                var md = ParseMetadata(Qlx.COLUMN);
-                var pm = new PMetadata(nm, 0, tc, md, tr.nextPos);
+                var (s,md) = ParseMetadata(Qlx.COLUMN);
+                var pm = new PMetadata(nm, 0, tc, s, md, tr.nextPos);
                 cx.Add(pm);
             }
             return tb;
@@ -6837,13 +6846,13 @@ namespace Pyrrho.Level4
                     ParseTypeMetadata(id, tp);
                 else
                 {
-                    var (nm, dm, md) = ParseMember(id);
+                    var (nm, dm, s, md) = ParseMember(id);
                     var c = new PColumn2(tp, nm.ident, tp.Length, dm, dm.defaultString, dm.defaultValue,
                             false, GenerationRule.None, tr.nextPos, cx);
                     cx.Add(c);
                     var tc = (TableColumn)(cx.obs[c.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN));
                     if (md != TMetadata.Empty)
-                        cx.Add(new PMetadata(nm.ident, 0, tc, md, tr.nextPos));
+                        cx.Add(new PMetadata(nm.ident, 0, tc, s, md, tr.nextPos));
                 }
             }
             else if (Match(Qlx.ALTER))
@@ -6995,65 +7004,21 @@ namespace Pyrrho.Level4
         }
         bool StartDataType()
         {
-            switch(tok) { 
-                case Qlx.CHARACTER: 
-                case Qlx.CHAR:
-                case Qlx.VARCHAR:
-                case Qlx.NATIONAL:
-                case Qlx.NCHAR:
-                case Qlx.STRING:
-                case Qlx.BOOLEAN: 
-                case Qlx.NUMERIC:
-                case Qlx.DECIMAL:
-                case Qlx.DEC:
-                case Qlx.FLOAT:
-                case Qlx.REAL:
-                case Qlx.DOUBLE:
-                case Qlx.INT:
-                case Qlx.INTEGER:
-                case Qlx.BIGINT:
-                case Qlx.SMALLINT:
-                case Qlx.PASSWORD:
-                case Qlx.FLOAT16:
-                case Qlx.FLOAT32:
-                case Qlx.FLOAT64:
-                case Qlx.FLOAT128:
-                case Qlx.FLOAT256:
-                case Qlx.INT8:
-                case Qlx.INT16:
-                case Qlx.INT32:
-                case Qlx.INT64:
-                case Qlx.INTEGER128:
-                case Qlx.INT256:
-                case Qlx.SIGNED:
-                case Qlx.UNSIGNED:
-                case Qlx.BINARY:
-                case Qlx.BLOB:
-                case Qlx.NCLOB:
-                case Qlx.UINT:
-                case Qlx.UINT8:
-                case Qlx.UINT16:
-                case Qlx.UINT32:
-                case Qlx.UINT64:
-                case Qlx.UINT128:
-                case Qlx.UINT256:
-                case Qlx.CLOB:
-                case Qlx.DATE:
-                case Qlx.TIME:
-                case Qlx.TIMESTAMP:
-                case Qlx.INTERVAL:
-                case Qlx.DOCUMENT:
-                case Qlx.DOCARRAY:
-                case Qlx.CHECK:
-                case Qlx.ROW:
-                case Qlx.TABLE:
-                case Qlx.ARRAY:
-                case Qlx.SET:
-                case Qlx.MULTISET:
-                case Qlx.LIST:
-                case Qlx.REF: return true;
-                default: return false;
+            return tok switch
+            {
+                Qlx.CHARACTER or Qlx.CHAR or Qlx.VARCHAR or Qlx.NATIONAL or Qlx.NCHAR or Qlx.STRING 
+                or Qlx.BOOLEAN or Qlx.NUMERIC or Qlx.DECIMAL or Qlx.DEC or Qlx.FLOAT or Qlx.REAL 
+                or Qlx.DOUBLE or Qlx.INT or Qlx.INTEGER or Qlx.BIGINT or Qlx.SMALLINT or Qlx.PASSWORD 
+                or Qlx.FLOAT16 or Qlx.FLOAT32 or Qlx.FLOAT64 or Qlx.FLOAT128 or Qlx.FLOAT256 
+                or Qlx.INT8 or Qlx.INT16 or Qlx.INT32 or Qlx.INT64 or Qlx.INTEGER128 or Qlx.INT256 
+                or Qlx.SIGNED or Qlx.UNSIGNED or Qlx.BINARY or Qlx.BLOB or Qlx.NCLOB or Qlx.UINT 
+                or Qlx.UINT8 or Qlx.UINT16 or Qlx.UINT32 or Qlx.UINT64 or Qlx.UINT128 or Qlx.UINT256 
+                or Qlx.CLOB or Qlx.DATE or Qlx.TIME or Qlx.TIMESTAMP or Qlx.INTERVAL or Qlx.DOCUMENT 
+                or Qlx.DOCARRAY or Qlx.CHECK or Qlx.ROW or Qlx.TABLE or Qlx.ARRAY or Qlx.SET 
+                or Qlx.MULTISET or Qlx.LIST or Qlx.REF => true,
+                _ => false,
             };
+            ;
         }
         /// <summary>
 		/// Type = 		StandardType | DefinedType | DomainName | REF(TableReference) .
@@ -7329,7 +7294,7 @@ namespace Pyrrho.Level4
                 return ob;
             }
             var lp = LexDp();
-            var ns = BList<(Ident, Domain, TMetadata)>.Empty;
+            var ns = BList<(Ident, Domain, string, TMetadata)>.Empty;
             // sm is also used for the RestView case
             var sm = Names.Empty;
             for (var b = under.First(); b != null; b = b.Next())
@@ -7341,7 +7306,7 @@ namespace Pyrrho.Level4
                         && om.infos[cx.role.defpos] is ObInfo mm)
                     {
                         var im = new Ident(c.key(), mp);
-                        ns += (im, om.domain, mm.metadata);
+                        ns += (im, om.domain, "", mm.metadata);
                     }
                 if (b.key() is EdgeType)
                     k = Qlx.EDGETYPE;
@@ -7390,7 +7355,7 @@ namespace Pyrrho.Level4
             var j = 0;
             for (var b = ns.First(); b != null; b = b.Next(), j++)
             {
-                var (nm, dm, _) = b.value();
+                var (nm, dm, _, _) = b.value();
                 if ((k == Qlx.TYPE || k == Qlx.NODETYPE || k == Qlx.EDGETYPE) && pn != null)
                 {
                     var np = cx.db.nextPos;
@@ -7456,7 +7421,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="pn">The parent object being defined (except for anonymous row tye)</param>
         /// <returns>The RowTypeColumn</returns>
-		(Ident, Domain, TMetadata) ParseMember(Ident? pn)
+		(Ident, Domain, string, TMetadata) ParseMember(Ident? pn)
         {
             Ident? n = null;
             StartDataType();
@@ -7477,12 +7442,13 @@ namespace Pyrrho.Level4
             }
             if (Match(Qlx.COLLATE))
                 dm += (Domain.Culture, ParseCollate());
+            string s = "";
             var md = TMetadata.Empty;
             if (StartMetadata(Qlx.COLUMN))
-                md = ParseMetadata(Qlx.COLUMN);
+                (s,md) = ParseMetadata(Qlx.COLUMN);
             if (n == null || dm == null || md == null)
                 throw new DBException("42000", "Member");
-            return (n, dm, md);
+            return (n, dm, s, md);
         }
         /// <summary>
         /// Parse a precision
@@ -8482,8 +8448,8 @@ namespace Pyrrho.Level4
             {
                 if (ob is View ov)
                 {
-                    var ut = cx.db.objects[(ov as RestView)?.usingTable ?? -1L] as Table;
-                    RowSet? ur = (ut is null) ? null : _From(new Ident(ut.NameFor(cx), cx.GetUid()), ut,
+                    RowSet? ur = (cx.db.objects[(ov as RestView)?.usingTable ?? -1L] is not Table ut) ? 
+                        null : _From(new Ident(ut.NameFor(cx), cx.GetUid()), ut,
                         dm, Grant.AllPrivileges, ap);
                     ob = ov.Instance(dp, cx, ur);
                 }

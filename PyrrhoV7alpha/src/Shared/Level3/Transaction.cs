@@ -191,6 +191,45 @@ namespace Pyrrho.Level3
                 ta.db = this;
                 ta.Exec();
             }
+            for (var b = cx.checkEdges.First(); b != null; b = b.Next())
+                if (b.value() is TableRow tr && cx.db.objects[tr.tabledefpos] is EdgeType et
+                    && et.tableRows[b.key()] is TableRow nr)
+                    for (var c = et.connects.First(); c != null; c = c.Next())
+                        if (c.key() is TConnector tc && tc.cm is TMetadata tm)
+                        {
+                            var v = nr.vals[tc.cp];
+                            if (v==null || v==TNull.Value)
+                            {
+                                if (tm.Contains(Qlx.OPTIONAL)) continue;
+                                if (tm[Qlx.MINVALUE]?.ToInt() == 0) continue;
+                                throw new DBException("22G21", tc.cn);
+                            }
+                            var minv = tm[Qlx.MINVALUE]?.ToInt();
+                            var maxv = tm[Qlx.MAXVALUE]?.ToInt();
+                            if ((minv != null || maxv != null)
+                                && cx.db.objects[tc.ct] is NodeType nt
+                                && nt.sindexes[v.ToLong() ?? -1L]?[tc.cp] is CTree<long,bool> t)
+                            {
+                                var ct = (int)t.Count;
+                                if (minv!=null && minv > ct)
+                                    throw new DBException("22206",((tc.cn=="")?cx.NameFor(tc.cp):tc.cn)??"");
+                                if (maxv!=null && maxv < ct)
+                                    throw new DBException("22207", ((tc.cn == "") ? cx.NameFor(tc.cp) : tc.cn) ?? "");
+                            }
+                            if (tc.cd.kind == Qlx.SET)
+                            {
+                                var minc = tm[Qlx.MIN]?.ToInt();
+                                var maxc = tm[Qlx.MAX]?.ToInt();
+                                if (minc != null || maxc != null)
+                                {
+                                    var ct = v.Cardinality();
+                                    if (minc != null && minc > ct)
+                                        throw new DBException("22208", ((tc.cn == "") ? cx.NameFor(tc.cp) : tc.cn) ?? "");
+                                    if (maxc != null && maxc < ct)
+                                        throw new DBException("22209", ((tc.cn == "") ? cx.NameFor(tc.cp) : tc.cn) ?? "");
+                                }
+                            }
+                        }
             if (!autoCommit)
                 for (var b = (cx.db as Transaction)?.etags.First(); b != null; b = b.Next())
                     if (b.key() != name)

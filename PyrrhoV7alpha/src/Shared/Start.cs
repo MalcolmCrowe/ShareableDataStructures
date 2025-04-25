@@ -195,7 +195,8 @@ namespace Pyrrho
                                 tcp.Write(Responses.Done);
                                 tcp.PutInt(db.AffCount(cx));
                                 var r = cx.rdC;
-                                cx = new(db, conn) { rdC = r };
+                                var ne = (db is Transaction)?cx.checkEdges:BTree<long,TableRow>.Empty;
+                                cx = new(db, conn) { rdC = r, checkEdges = ne };
                                 break;
                             }
                         case Protocol.ExecuteNonQueryTrace: //  SQL service with trace
@@ -436,8 +437,8 @@ namespace Pyrrho
                                         pl++;
                                 if (cx.result is not null && ((Transaction)db).physicals.Count<=pl)
                                 {
-                                    if (cx.result is RowSet)
-                                        cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
+                                    if (cx.result is RowSet set)
+                                        cx.result = CheckPathGrouping(cx, set);
                                     tcp.PutRowType(cx);
                                     rb = null;
                                     if (cx.result is RowSet res && res.Length>0)
@@ -493,8 +494,8 @@ namespace Pyrrho
                                 }
                                 else 
                                 {
-                                    if (cx.result is RowSet)
-                                        cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
+                                    if (cx.result is RowSet set)
+                                        cx.result = CheckPathGrouping(cx, set);
                                     tcp.Write(Responses.TableData);
                                     tcp.PutRowType(cx);
                                     rb = null;
@@ -1530,7 +1531,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(22 April 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(25 April 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

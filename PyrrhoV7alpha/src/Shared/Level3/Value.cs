@@ -11222,7 +11222,7 @@ cx.obs[high] is not QlValue hi)
                     if (b.key() is TConnector tc && be.postCon is TConnector ec
                         && cx.db.objects[tc.ct] is NodeType dn && dn.defpos > 0L)
                     {
-                        if (tc.cn != "" && ec.cn != "" && tc.cn != ec.cn) continue;
+                        if (tc.cn != "" && ec.cn != "" && tc.cn.ToUpper() != ec.cn.ToUpper()) continue;
                         if (ec.q == Qlx.ARROW && tc.q != Qlx.TO) continue;
                         if (ec.q == Qlx.RARROWBASE && tc.q != Qlx.FROM) continue;
                         if ((ec.q == Qlx.TILDE ||ec.q==Qlx.ARROWBASETILDE 
@@ -11685,8 +11685,10 @@ cx.obs[high] is not QlValue hi)
         internal const long 
             RefersTo = -452; // long GqlNode
         internal long refersTo => (long)(mem[RefersTo] ?? -1L);
-        internal GqlReference(Context cx,long ap, long dp, GqlNode n, TypedValue? pr=null)
-            : this(dp, n.mem + (RefersTo, n.defpos)+ (PreCon,pr??TNull.Value) )
+        internal GqlReference(Context cx,long ap, long dp, GqlNode n, TypedValue? pr=null,
+            BTree<long,object>? m = null)
+            : this(dp, n.mem + (RefersTo, n.defpos)+ (PreCon,pr??TNull.Value)
+                  +(m??BTree<long,object>.Empty))
         {
             cx.names += (n.name ?? throw new PEException("PE40431"), (ap,n.defpos));
         }
@@ -11751,24 +11753,26 @@ cx.obs[high] is not QlValue hi)
             if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg
                && cx.names[tg.value].Item2 is long p && p < Transaction.Analysing && cx.bindings.Contains(p))
                 cx.names += (tg.value, (nm.lp,p));
-            if (cx.ParsingMatch && m[Before] is GqlNode bn && bn.domain.defpos<0
+            if (cx.ParsingMatch && m[Before] is GqlNode bn && bn.domain.defpos < 0
                 && dm is EdgeType et) //we are in a MatchExp and should constrain b
             {
-                var u = CTree<Domain,bool>.Empty;
+                var u = CTree<Domain, bool>.Empty;
                 Domain bd = bn.domain;
-                for (var b=et.connects.First();b!=null;b=b.Next())
-                    if (b.key() is TConnector tc && m[PreCon] is TConnector ec 
-                        && cx.db.objects[tc.ct] is NodeType nt && nt.defpos>0L)
+                for (var b = et.connects.First(); b != null; b = b.Next())
+                    if (b.key() is TConnector tc && m[PreCon] is TConnector ec
+                        && cx.db.objects[tc.ct] is NodeType nt && nt.defpos > 0L)
                     {
-                        if (tc.cn != "" && ec.cn != "" && tc.cn != ec.cn) continue;
+                        if (tc.cn != "" && ec.cn != "" && tc.cn.ToUpper() != ec.cn.ToUpper()) continue;
                         if (ec.q == Qlx.ARROWBASE && tc.q != Qlx.FROM) continue;
                         if (ec.q == Qlx.RARROW && tc.q != Qlx.TO) continue;
                         if (ec.q == Qlx.TILDE && tc.q != Qlx.WITH) continue;
                         u += (nt, true); bd = nt;
                     }
-                if (u!=CTree<Domain,bool>.Empty)
+                if (u != CTree<Domain, bool>.Empty)
                     cx.Add(bn + (_Domain, (u.Count == 1L) ? bd : new Domain(-1L, Qlx.UNION, u)));
             }
+            else if (nm.ident != "" && char.IsLetter(nm.ident[0]))
+                cx.bindings += (nm.uid, Domain.Null);
         }
         protected GqlEdge(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -11861,7 +11865,7 @@ cx.obs[high] is not QlValue hi)
                     for (var c = ce.First(); c != null; c = c.Next())
                         if (c.key() is TConnector oc && cx._Ob(oc.ct) is Domain td)
                         {
-                            if (cc.q == oc.q && (cc.cn == oc.cn || cc.cn == ""))
+                            if (cc.q == oc.q && (cc.cn.ToUpper() == oc.cn.ToUpper() || cc.cn == ""))
                             {
                                 if (dc.EqualOrStrongSubtypeOf(td))
                                     cr -= cc; // request is already satisfied
@@ -11874,7 +11878,7 @@ cx.obs[high] is not QlValue hi)
                                         un += td.unionOf;
                                     var nc = new TConnector(oc.q,
                                         new Domain(cx.GetUid(), Qlx.UNION, un).defpos,
-                                        oc.cn, oc.cd, oc.cp);
+                                        oc.cn, oc.cd, oc.cp, oc.cs, oc.cm);
                                     ce += (nc, true);
                                     goto skip;
                                 }

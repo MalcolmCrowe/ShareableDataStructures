@@ -4559,11 +4559,14 @@ namespace Pyrrho.Level3
                     TNode? bn = null;
                     GqlEdge? ed = null;
                     GqlNode? bv = null;
+                    GqlNode? er = null;
                     for (gb = ge.First(); gb != null; gb = gb.Next())
                         if (gb.value() is GqlNode g)
                         {
                             if (g is GqlEdge edge)
-                                ed = edge;
+                            { ed = edge; er = edge; }
+                            else if (g is GqlReference gr && cx.obs[gr.refersTo] is GqlEdge re)
+                            { ed = re; er = gr; se = true; }
                             else if (ed is not null && ((se == true) || bn is not null) && g.Eval(cx) is TNode nn)
                             {
                                 var el = cx.obs[ed.label.defpos] as Domain ?? ed.label;
@@ -4594,8 +4597,11 @@ namespace Pyrrho.Level3
                                     et = eu;
                                 et ??= (EdgeType)ed._NodeType(cx, Domain.EdgeType, 0L, false);
                                 var ls = ed.docValue;
-                                (_,ls) = et.Connect(cx, bn, nn, ed, ed.preCon, ls);
-                                (_,ls) = et.Connect(cx, bn, nn, ed, ed.postCon, ls);
+                                if (er != null) // er is always nonnull here
+                                {
+                                    (_, ls) = et.Connect(cx, bn, nn, ed, er.preCon, ls);
+                                    (_, ls) = et.Connect(cx, bn, nn, ed, er.postCon, ls);
+                                }
                                 ed.Create(cx, et, defpos, ls);
                             }
                             else
@@ -5436,7 +5442,8 @@ namespace Pyrrho.Level3
                 && cr is TConnector ed)
             {
                 for (var b = pe.connects.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc1 && Connects(ed, tc1) && (ed.cn == "" || ed.cn == tc1.cn)
+                    if (b.key() is TConnector tc1 && Connects(ed, tc1) 
+                        && (ed.cn == "" || ed.cn.ToUpper() == tc1.cn.ToUpper())
                 && (cx.db.objects[tc1.ct] as NodeType)?.GetS(cx, pd.tableRow.vals[tc1.cp] as TInt)
                is TableRow tn)
                         ds += (tn.defpos, tn);
@@ -5820,12 +5827,18 @@ namespace Pyrrho.Level3
             var r = CTree<TConnector, bool>.Empty;
             for (var b = et.connects.First(); b != null; b = b.Next())
                 if (b.key() is TConnector tc
-                    && tc.cn != "" && (cr.cn == "" || cr.cn == tc.cn)
+                    && tc.cn != "" && (cr.cn == "" || cr.cn.ToUpper() == tc.cn.ToUpper())
                     && tc.q == cr.q switch
                     {
                         Qlx.ARROWBASE or Qlx.RARROW => Qlx.FROM,
                         Qlx.ARROW or Qlx.RARROWBASE => Qlx.TO,
-                        Qlx.TILDE or Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE => Qlx.WITH,
+                        Qlx.ARROWLTILDE or
+                        Qlx.ARROWRTILDE or
+                        Qlx.ARROWTILDE or
+                        Qlx.ARROWBASETILDE or
+                        Qlx.RARROWTILDE or
+                        Qlx.RBRACKTILDE or
+                        Qlx.TILDE or Qlx.ARROWBASETILDE => Qlx.WITH,
                         _ => Qlx.NO
                     })
                     r += (tc,true);

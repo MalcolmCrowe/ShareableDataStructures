@@ -3,6 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4; 
 using Pyrrho.Common;
 using Pyrrho.Level5;
+using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -356,27 +357,23 @@ namespace Pyrrho.Level2
                 throw new PEException("PE6900");
             tt += now;
             if (tt is EdgeType et)
+            {
                 for (var b = et.connects.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc)
+                    if (b.key() is TConnector tc
+                        && et.FindPrimaryIndex(cx) is null
+                        && cx._Ob(tc.ct) is NodeType lt
+                        && now.vals[tc.cp] is TInt tl && tl.ToLong() is long li)
                     {
-                        if (now.vals[tc.cp] == TNull.Value 
-                            && (tc.cm is null || !tc.cm.Contains(Qlx.OPTIONAL)))
-                            throw new DBException("22004",cx.NameFor(tc.cp)??tc.cn);
-                        if (et.FindPrimaryIndex(cx) is null)
-                        {
-                            if (cx._Ob(tc.ct) is NodeType lt
-                               && now.vals[tc.cp] is TInt tl && tl.ToLong() is long li)
-                            {
-                                var cn = lt.sindexes[li] ?? CTree<long, CTree<long, bool>>.Empty;
-                                var cc = cn[tc.cp] ?? CTree<long, bool>.Empty;
-                                cc += (now.defpos, true);
-                                cn += (tc.cp, cc);
-                                lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
-                                cx.Add(lt);
-                                cx.db += lt;
-                            }
-                        }
+                        var cn = lt.sindexes[li] ?? CTree<long, CTree<long, bool>>.Empty;
+                        var cc = cn[tc.cp] ?? CTree<long, bool>.Empty;
+                        cc += (now.defpos, true);
+                        cn += (tc.cp, cc);
+                        lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
+                        cx.Add(lt);
+                        cx.db += lt;
                     }
+                cx.checkEdges += (now.defpos, now);
+            }
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
                     if (cx.db.objects[c.key()] is Level3.Index x
