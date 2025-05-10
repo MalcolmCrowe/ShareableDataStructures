@@ -43,7 +43,7 @@ namespace Pyrrho.Level2
 		public TypedValue dv => dataType?.defaultValue??TNull.Value; 
         public string dfs="",ups="";
         public BTree<UpdateAssignment,bool> upd = CTree<UpdateAssignment,bool>.Empty; // see PColumn3
-		public bool notNull = false;    // see PColumn2
+		public bool optional = true;    // see PColumn2
 		public GenerationRule generated = GenerationRule.None; // ditto
         public TypedValue connector = TNull.Value; 
         protected long flags = 0L; 
@@ -393,8 +393,8 @@ namespace Pyrrho.Level2
             : base(t,pr,nm,sq,dm,pp,cx)
 		{
 			dfs = ds;
-			notNull = nn;
-			generated = ge;
+            optional = !nn;
+            generated = ge;
             if (ge.gen == Generation.Expression)
             {
                 generated += (RowSet.Target, ppos);
@@ -417,7 +417,7 @@ namespace Pyrrho.Level2
         protected PColumn2(PColumn2 x, Writer wr) : base(x, wr)
         {
             dfs = x.dfs;
-            notNull = x.notNull;
+            optional = x.optional;
             generated = (GenerationRule)x.generated.Fix(wr.cx);
             framing = (Framing)x.framing.Fix(wr.cx);
         }
@@ -432,7 +432,7 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
             wr.PutString(dfs.ToString());
-            wr.PutInt(notNull ? 1 : 0);
+            wr.PutInt(optional ? 0 : 1);
             wr.PutInt((int)generated.gen);
 			base.Serialise(wr);
 		}
@@ -444,8 +444,8 @@ namespace Pyrrho.Level2
 		{
             var dfsrc = new Ident(rdr.GetString(),ppos + 1);
             dfs = dfsrc.ident;
-            notNull = (rdr.GetInt() > 0);
-			var gn = (Generation)rdr.GetInt();
+            optional = rdr.GetInt() <= 0;
+            var gn = (Generation)rdr.GetInt();
             base.Deserialise(rdr);
             if (dfs != "")
             {
@@ -494,7 +494,7 @@ namespace Pyrrho.Level2
         {
             var sb = new StringBuilder(base.ToString());
             if (dfs != "") { sb.Append(" default="); sb.Append(dfs); }
-            if (notNull) sb.Append(" NOT NULL");
+            if (!optional) sb.Append(" NOT NULL");
             if (generated.gen != Generation.No) { sb.Append(" Generated="); sb.Append(generated.gen); }
             return sb.ToString();
         }
@@ -509,7 +509,7 @@ namespace Pyrrho.Level2
         public PColumn3(UDType ut, string nm, int sq, Domain dm, TypedValue tc,
             long pp, Context cx, bool ifN = false)
             : this(ut, nm, sq, dm, "", tc, "", CTree<UpdateAssignment, bool>.Empty,
-                    dm.notNull, GenerationRule.None, tc, pp, cx)
+                    dm.optional, GenerationRule.None, tc, pp, cx)
         {
             ifNeeded = ifN;
         }

@@ -4566,8 +4566,9 @@ namespace Pyrrho.Level3
                             if (g is GqlEdge edge)
                             { ed = edge; er = edge; }
                             else if (g is GqlReference gr && cx.obs[gr.refersTo] is GqlEdge re)
-                            { ed = re; er = gr; se = true; }
-                            else if (ed is not null && ((se == true) || bn is not null) && g.Eval(cx) is TNode nn)
+                            { ed = re; er = gr; se = true;  }
+                            else if (ed is not null && er is not null 
+                                && ((se == true) || bn is not null) && g.Eval(cx) is TNode nn)
                             {
                                 var el = cx.obs[ed.label.defpos] as Domain ?? ed.label;
                                 var nm = (el.kind == Qlx.EDGETYPE) ?
@@ -4597,11 +4598,8 @@ namespace Pyrrho.Level3
                                     et = eu;
                                 et ??= (EdgeType)ed._NodeType(cx, Domain.EdgeType, 0L, false);
                                 var ls = ed.docValue;
-                                if (er != null) // er is always nonnull here
-                                {
-                                    (_, ls) = et.Connect(cx, bn, nn, ed, er.preCon, ls);
-                                    (_, ls) = et.Connect(cx, bn, nn, ed, er.postCon, ls);
-                                }
+                                (_, ls) = et.Connect(cx, bn, nn, ed, er.preCon, ls);
+                                (_, ls) = et.Connect(cx, bn, nn, ed, er.postCon, ls);
                                 ed.Create(cx, et, defpos, ls);
                             }
                             else
@@ -5419,12 +5417,12 @@ namespace Pyrrho.Level3
                 if (pd is TEdge te && te.dataType is EdgeType et && cr is TConnector ec)
                     for (var b = et.connects.First(); b != null; b = b.Next())
                         for (var c = Connects(et, ec).First(); c != null; c = c.Next())
-                            if (te.tableRow.vals[c.key().cp]?.ToLong()==tr.defpos)
+                            if (c.key() is TConnector x && te.tableRow.vals[x.cp]?.ToLong()==tr.defpos)
                                 ds += (gr.refersTo, tr.tableRow);
                 if (pd is TNode pl && tr is TEdge ae && ae.dataType is EdgeType at && gr.postCon is TConnector gc)
                     for (var b = at.connects.First(); b != null; b = b.Next())
                         for (var c = Connects(at, gc).First(); c != null; c = c.Next())
-                            if (ae.tableRow.vals[c.key().cp]?.ToLong() == tr.defpos)
+                            if (c.key() is TConnector x && ae.tableRow.vals[x.cp]?.ToLong() == tr.defpos)
                                 ds += (gr.refersTo, tr.tableRow);
             }
             else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj && cr is TConnector jc)
@@ -5442,8 +5440,7 @@ namespace Pyrrho.Level3
                 && cr is TConnector ed)
             {
                 for (var b = pe.connects.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc1 && Connects(ed, tc1) 
-                        && (ed.cn == "" || ed.cn.ToUpper() == tc1.cn.ToUpper())
+                    if (b.key() is TConnector tc1 && Connects(ed, tc1) && (ed.cn == "" || ed.cn == tc1.cn)
                 && (cx.db.objects[tc1.ct] as NodeType)?.GetS(cx, pd.tableRow.vals[tc1.cp] as TInt)
                is TableRow tn)
                         ds += (tn.defpos, tn);
@@ -5822,23 +5819,17 @@ namespace Pyrrho.Level3
             }
             return true;
         }
-        CTree<TConnector, bool> Connects(EdgeType et, TConnector cr)
+        CTree<TypedValue, bool> Connects(EdgeType et, TConnector cr)
         {
-            var r = CTree<TConnector, bool>.Empty;
+            var r = CTree<TypedValue, bool>.Empty;
             for (var b = et.connects.First(); b != null; b = b.Next())
                 if (b.key() is TConnector tc
-                    && tc.cn != "" && (cr.cn == "" || cr.cn.ToUpper() == tc.cn.ToUpper())
+                    && tc.cn != "" && (cr.cn == "" || cr.cn == tc.cn)
                     && tc.q == cr.q switch
                     {
                         Qlx.ARROWBASE or Qlx.RARROW => Qlx.FROM,
                         Qlx.ARROW or Qlx.RARROWBASE => Qlx.TO,
-                        Qlx.ARROWLTILDE or
-                        Qlx.ARROWRTILDE or
-                        Qlx.ARROWTILDE or
-                        Qlx.ARROWBASETILDE or
-                        Qlx.RARROWTILDE or
-                        Qlx.RBRACKTILDE or
-                        Qlx.TILDE or Qlx.ARROWBASETILDE => Qlx.WITH,
+                        Qlx.TILDE or Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE => Qlx.WITH,
                         _ => Qlx.NO
                     })
                     r += (tc,true);

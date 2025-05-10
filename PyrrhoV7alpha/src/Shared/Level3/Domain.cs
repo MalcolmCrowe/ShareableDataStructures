@@ -62,7 +62,7 @@ namespace Pyrrho.Level3
             Kind = -80, // Qlx
             Nodes = -260, // CTree<long,bool> GqlNode used for Match Return
             NodeTypes = -471, // CTree<Domain,bool> NodeType
-            NotNull = -81, // bool
+            Optional = -81, // bool
             NullsFirst = -82, // bool (C)
             _OrderCategory = -83, // OrderCategory
             OrderFunc = -84, // Procedure?  Unlike any other property!
@@ -169,7 +169,7 @@ namespace Pyrrho.Level3
         public Qlx start => (Qlx)(mem[Start] ?? Qlx.NULL);
         public Qlx end => (Qlx)(mem[End] ?? Qlx.NULL);
         public Qlx AscDesc => (Qlx)(mem[Descending] ?? Qlx.ASC);
-        public bool notNull => (bool)(mem[NotNull] ?? false);
+        public bool optional => (bool)(mem[Optional] ?? false);
         public Qlx nulls => (Qlx)(mem[NullsFirst] ?? Qlx.NULL);
         public CharSet charSet => (CharSet)(mem[Charset] ?? CharSet.UCS);
         public CultureInfo culture => (CultureInfo)(mem[Culture] ?? CultureInfo.InvariantCulture);
@@ -446,7 +446,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
         /// <returns></returns>
         internal long Create(Writer wr,Transaction tr)
         {
-            var d0 = this - NotNull - Descending;
+            var d0 = this - Optional - Descending;
             if (wr.cx.db.Find(d0) is Domain d && (d0.CompareTo(d)==0 || d.defpos<Transaction.TransPos))
                 return d.defpos;
             if (wr.cx.role.dbobjects[NameFor(wr.cx)] is long p)
@@ -567,7 +567,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     var i = b.key();
                     flags[i] = dc.Typecode() + (addFlags ? adds[i] : 0);
                     if (cx._Ob(cp) is DBObject tc)
-                        flags[i] += (((tc is Domain td) ? td : tc.domain).notNull ? 0x100 : 0) +
+                        flags[i] += (((tc is Domain td) ? td : tc.domain).optional ? 0 : 0x100) +
                             (((tc as TableColumn)?.generated != GenerationRule.None) ? 0x200 : 0);
                 }
         }
@@ -776,8 +776,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 }
                 if (cm == ",") sb.Append(')');
             }
-            if (notNull)
-                sb.Append(" NOT NULL");
+            if (optional)
+                sb.Append(" OPTIONAL");
             if (unionOf.Count > 0)
             {
                 var cm = " of [";
@@ -1434,7 +1434,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             c = Comp(AscDesc, that.AscDesc);
             if (c != 0)
                 return c;
-            c = Comp(notNull, that.notNull);
+            c = Comp(optional, that.optional);
             if (c != 0) 
                 return c;
             c = Comp(name, that.name); // definer's name
@@ -2408,21 +2408,21 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                 var n = lx.GetName();
                                 if (b.value() is long p)
                                 {
-                                    if (n == null) // no name supplied
+                      /*              if (n == null) // no name supplied
                                     {
                                         if (b == null || !unnamedOk)
                                             return new DBException("22208").Mix();
                                         namedOk = false;
                                     }
-                                    else // column name supplied
+                                    else // column name supplied */ 
                                     {
                                         if (lx.ch != ':')
                                             return new DBException("42124").Mix();
                                         else
                                             lx.Advance();
-                                        if (!namedOk)
+                      /*                  if (!namedOk)
                                             return new DBException("22208").Mix()
-                                                .Add(Qlx.COLUMN_NAME, new TChar(n));
+                                                .Add(Qlx.COLUMN_NAME, new TChar(n)); */
                                         unnamedOk = false;
                                         var nms = infos[definer]?.names;
                                         if (nms?[n].Item2 is long np && np != p)

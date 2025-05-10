@@ -505,7 +505,7 @@ namespace Pyrrho.Level4
                 }
                 while (char.IsDigit(Advance()))
                     ;
-                if (ch != '.' ||(ch=='.' && pos+1<input.Length && input[pos+1]=='.'))
+                if (ch != '.' || (ch == '.' && pos + 1 < input.Length && input[pos + 1] == '.'))
                 {
                     str = new string(input, start, pos - start);
                     if (pos - start > 18)
@@ -516,7 +516,6 @@ namespace Pyrrho.Level4
                     MaybeSuffix();
                     return tok;
                 }
-                Advance();
                 while (char.IsDigit(Advance()))
                     ;
                 if (ch != 'e' && ch != 'E')
@@ -576,8 +575,8 @@ namespace Pyrrho.Level4
                 case ',': Advance(); return tok = Qlx.COMMA;
                 case '.':
                     {
-                        Advance(); 
-                        if (ch=='.')
+                        Advance();
+                        if (ch == '.')
                         {
                             Advance();
                             return tok = Qlx.DOUBLEPERIOD;

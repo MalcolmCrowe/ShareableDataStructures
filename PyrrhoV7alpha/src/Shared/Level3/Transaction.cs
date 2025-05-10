@@ -198,24 +198,27 @@ namespace Pyrrho.Level3
                         if (c.key() is TConnector tc && tc.cm is TMetadata tm)
                         {
                             var v = nr.vals[tc.cp];
-                            if (v==null || v==TNull.Value)
+                            if (v == null || v == TNull.Value)
                             {
                                 if (tm.Contains(Qlx.OPTIONAL)) continue;
                                 if (tm[Qlx.MINVALUE]?.ToInt() == 0) continue;
+                                if (tm[Qlx.MIN]?.ToInt() == 0) continue;
                                 throw new DBException("22G21", tc.cn);
                             }
                             var minv = tm[Qlx.MINVALUE]?.ToInt();
                             var maxv = tm[Qlx.MAXVALUE]?.ToInt();
                             if ((minv != null || maxv != null)
-                                && cx.db.objects[tc.ct] is NodeType nt
-                                && nt.sindexes[v.ToLong() ?? -1L]?[tc.cp] is CTree<long,bool> t)
-                            {
-                                var ct = (int)t.Count;
-                                if (minv!=null && minv > ct)
-                                    throw new DBException("22206",((tc.cn=="")?cx.NameFor(tc.cp):tc.cn)??"");
-                                if (maxv!=null && maxv < ct)
-                                    throw new DBException("22207", ((tc.cn == "") ? cx.NameFor(tc.cp) : tc.cn) ?? "");
-                            }
+                                )
+                                ;
+                            /*                        && cx.db.objects[tc.ct] is NodeType nt
+                                                    && nt.sindexes[v.ToLong() ?? -1L]?[tc.cp] is CTree<long,bool> t)
+                                                {
+                                                    var ct = (int)t.Count;
+                                                    if (minv!=null && minv > ct)
+                                                        throw new DBException("22206",((tc.cn=="")?cx.NameFor(tc.cp):tc.cn)??"");
+                                                    if (maxv!=null && maxv < ct)
+                                                        throw new DBException("22207", ((tc.cn == "") ? cx.NameFor(tc.cp) : tc.cn) ?? "");
+                                                } */
                             if (tc.cd.kind == Qlx.SET)
                             {
                                 var minc = tm[Qlx.MIN]?.ToInt();
@@ -230,6 +233,7 @@ namespace Pyrrho.Level3
                                 }
                             }
                         }
+
             if (!autoCommit)
                 for (var b = (cx.db as Transaction)?.etags.First(); b != null; b = b.Next())
                     if (b.key() != name)

@@ -32,8 +32,8 @@ namespace Pyrrho.Level3
             (GenerationRule)(mem[Generated] ?? GenerationRule.None);
         public int seq => (int)(mem[Seq] ?? -1);
         public long tabledefpos => (long)(mem[_Table] ?? -1L);
-        public bool notNull => (bool)(mem[Domain.NotNull] ?? false);
-         public CTree<UpdateAssignment,bool> update =>
+        public bool optional => (bool)(mem[Domain.Optional] ?? false);
+        public CTree<UpdateAssignment,bool> update =>
             (CTree<UpdateAssignment,bool>?)mem[UpdateAssignments] 
             ?? CTree<UpdateAssignment,bool>.Empty;
         public string? updateString => (string?)mem[UpdateString];
@@ -94,11 +94,11 @@ namespace Pyrrho.Level3
         {
             var r = BTree<long, object>.Empty + (Definer, c.definer)
                 + (Owner, c.owner) + (Infos, c.infos) + (Seq, c.seq)
-                + (_Domain, dt) + (LastChange, c.ppos);
+                + (_Domain, dt) + (LastChange, c.ppos) + (Domain.Optional, c.optional);
             if (dt.infos[cx.role.defpos] is ObInfo oi)
                 r = r + (ObInfo._Names, oi.names) + (ObInfo.Defs, oi.defs);
-            if (c.notNull || dt.notNull)
-                r += (Domain.NotNull, true);
+            if ((!c.optional) && (!dt.optional))
+                r += (Domain.Optional, false);
             if (c.generated != GenerationRule.None)
                 r += (Generated, c.generated);
             if (c.dfs != "")
@@ -185,18 +185,29 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Add(Context cx, PMetadata pm)
         {
-            if (cx.db.objects[defpos] is TableColumn cl
-                && cx.db.objects[cl?.tabledefpos ?? -1L] is EdgeType et)
+            if (cx.db.objects[defpos] is TableColumn cl)
             {
-                for (var b = et.connects.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc && tc.cp == defpos)
-                    {
-                        var nc = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, tc.cp, pm.str, pm.detail);
-                        et += (EdgeType.Connects, et.connects - tc + (nc,true));
-                        cx.db += et;
-                        return (EdgeType)cx.Add(et);
-                    }
+                if (pm.detail.Contains(Qlx.OPTIONAL))
+                {
+                    cl += (Domain.Optional, true);
+                    cx.Add(cl);
+                    cx.db += cl;
+                }
+                if (cx.db.objects[cl?.tabledefpos ?? -1L] is EdgeType et)
+                {
+                    var cs = CTree<TypedValue,bool>.Empty;
+                    for (var b = et.connects.First(); b != null; b = b.Next())
+                        if (b.key() is TConnector tc)
+                            if (tc.cp == defpos)
+                                cs += (new TConnector(tc.q, tc.ct, tc.cn, tc.cd, tc.cp, pm.str, pm.detail),true);
+                            else
+                                cs += (tc,true);
+                    et += (EdgeType.Connects, cs);
+                    cx.db += et;
+                    return (EdgeType)cx.Add(et);
+                }
             }
+
             return Domain.Content;
         }
         /// <summary>
@@ -322,12 +333,13 @@ namespace Pyrrho.Level3
         {
             var sb = new StringBuilder(base.ToString());
             sb.Append(' '); sb.Append(domain);
+            if (optional) sb.Append(" optional");
             if (mem.Contains(_Table)) { sb.Append(" Table="); sb.Append(Uid(tabledefpos)); }
             if (mem.Contains(Checks) && checks.Count>0)
             { sb.Append(" Checks:"); sb.Append(checks); }
             if (mem.Contains(Generated) && generated.gen != Generation.No)
             { sb.Append(" Generated="); sb.Append(generated); }
-            if (mem.Contains(Domain.NotNull) && domain.notNull) sb.Append(" Not Null");
+            if (mem.Contains(Domain.Optional) && domain.optional) sb.Append(" Optional");
             if (domain.defaultValue is not null && 
               ((domain.defaultValue != TNull.Value) || PyrrhoStart.VerboseMode))
             { sb.Append(" colDefault "); sb.Append(domain.defaultValue); }

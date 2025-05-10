@@ -1092,7 +1092,7 @@ namespace Pyrrho.Level1
                     var n = sc.NameFor(cx);
                     PutString(n);
                     PutString((sc.domain.kind == Qlx.DOCUMENT) ? "DOCUMENT": n);
-                    var flags = sc.domain.Typecode() + (dn.domain.notNull ? 0x100 : 0) +
+                    var flags = sc.domain.Typecode() + (dn.domain.optional ? 0 : 0x100) +
                     ((dn.generated != GenerationRule.None) ? 0x200 : 0);
                     PutInt(flags);
                 }

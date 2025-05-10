@@ -61,7 +61,7 @@ namespace Pyrrho.Level4
         internal string? url = null;
         internal Transaction? tr => db as Transaction;
         internal BList<TriggerActivation> deferred = BList<TriggerActivation>.Empty;
-        internal BTree<long,TableRow> checkEdges = BTree<long,TableRow>.Empty;
+        internal BTree<long, TableRow> checkEdges = BTree<long, TableRow>.Empty;
         internal BList<Exception> warnings = BList<Exception>.Empty;
         internal ObTree obs = ObTree.Empty;
         // these 3 fields help with Fix(dp) during instancing (for Views)
@@ -156,7 +156,10 @@ namespace Pyrrho.Level4
             parseStart = 0L;
             this.db = db;
             if (db is Transaction)
+            {
                 rdC = cx.rdC;
+                checkEdges = cx.checkEdges;
+            }
         }
         internal Context(Context cx)
         {

@@ -122,6 +122,8 @@ namespace PyrrhoCmd
                 var str = GetCommand(db, null, interactive);
                 if (str == null)
                     break;
+                if (str.Trim().Length == 0)
+                    continue;
                 str = InsertBlobs(str); // ~file or ~URL is replaced by a binary large object string
                 if (str.Length > 0)
                     Obey(str);
@@ -573,7 +575,7 @@ namespace PyrrhoCmd
             while (iv > 7 && char.IsWhiteSpace(str[iv]))
                 iv--;
             if (str.Substring(iv - 5, 6).ToLower() != "values")
-                return "";
+                return str;
             var ef = it + 1;
             while (ef < str.Length && !char.IsWhiteSpace(str[ef]))
                 ef++;
@@ -629,8 +631,6 @@ namespace PyrrhoCmd
 			int j;
 			for (j=0;j<rdr.FieldCount;j++)
 				cols.Add(new Column(rdr.GetName(j),rdr.GetFieldType(j),rdr.GetName(j).Length));
-            if (j == 0)
-                return;
             while (rdr.Read())
             {
                 string[] row = new string[cols.Count];

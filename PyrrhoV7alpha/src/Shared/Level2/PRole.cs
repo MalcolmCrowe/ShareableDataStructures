@@ -152,7 +152,7 @@ namespace Pyrrho.Level2
             if (!Committed(wr,refpos)) return refpos;
             return -1;
         }
-        public PMetadata(string nm, long sq, DBObject ob, string s, TMetadata md, long pp)
+        public PMetadata(string nm, long sq, DBObject ob, string s,TMetadata md, long pp)
             : this(Type.Metadata, nm, sq, ob, s, md, pp) { }
         public PMetadata(Type t,string nm,long sq,DBObject ob, string s, TMetadata md,long pp)
             :base(t,pp)
@@ -206,13 +206,70 @@ namespace Pyrrho.Level2
 		{
 			name =rdr.GetString();
             str = rdr.GetString();
-            detail = new Parser(rdr.context,str).ParseMetadata(Qlx.ANY).Item2;
+            detail = new Parser(rdr.context, str).ParseMetadata(Qlx.ANY).Item2;
             iri = rdr.GetString();
             seq = rdr.GetLong()-1;
             defpos = rdr.GetLong();
             flags = rdr.GetLong();
             base.Deserialise(rdr);
 		}
+        string Detail(Writer wr)
+        {
+            var sb = new StringBuilder();
+            for (var b = detail.First(); b != null; b = b.Next())
+                switch (b.key())
+                {
+                    case Qlx.DESC:
+                    case Qlx.URL:
+                        sb.Append(b.key());
+                        sb.Append('\'');
+                        sb.Append(b.value());
+                        sb.Append("' ");
+                        break;
+                    case Qlx.MIME:
+                    case Qlx.SQLAGENT:
+                    case Qlx.USER:
+                    case Qlx.PASSWORD:
+                        sb.Append(b.key());
+                        sb.Append(" \"");
+                        sb.Append(b.value());
+                        sb.Append("\" ");
+                        break;
+                    case Qlx.IRI:
+                        sb.Append(b.value().ToString());
+                        break;
+                    case Qlx.INVERTS:
+                        sb.Append(b.key());
+                        sb.Append(' ');
+                        if (b.value().ToLong() is long lp && wr.cx.db.objects[lp] is DBObject ob &&
+                            ob.infos[wr.cx.role.defpos] is ObInfo oi && oi.name != null)
+                            sb.Append(oi.name);
+                        sb.Append(' ');
+                        break;
+                    case Qlx.PREFIX:
+                    case Qlx.SUFFIX:
+                        sb.Append(b.key());
+                        sb.Append('"');
+                        sb.Append(b.value());
+                        sb.Append("\" ");
+                        break;
+                    case Qlx.MAX:
+                    case Qlx.MIN:  
+                        {
+                            var lw = detail[Qlx.MIN];
+                            var hi = detail[Qlx.MAX]??new TChar("*");
+                            sb.Append("CARDINALITY("); sb.Append(lw);
+                            { sb.Append(" TO "); sb.Append(hi); }
+                            sb.Append(')');
+                        }
+                        break;
+                    default:
+                        sb.Append(b.key());
+                        sb.Append(' ');
+                        break;
+                }
+            return sb.ToString();
+        }
         internal static long Flags(TMetadata md)
         {
             return 0L;

@@ -5310,7 +5310,7 @@ namespace Pyrrho.Level4
             internal TransitionCursor(TableActivation ta, TransitionRowSet trs, Cursor fbm, int pos,
                 Domain iC)
                 : base(ta.next ?? throw new PEException("PE49205"), trs, pos, fbm._ds,
-                      new TRow((Domain)trs, iC, fbm))
+                       new TRow((Domain)trs, iC, fbm))// _Fix(ta,trs,iC,fbm)))
             {
                 _trs = trs;
                 _fbm = fbm;
@@ -5329,6 +5329,25 @@ namespace Pyrrho.Level4
                 _tgc = TargetCursor.New(ta, this,false); // retrieve it from ta
                 ta.values += (p, v);
                 ta.next.values += (ta._trs.target, this);
+            }
+            static Cursor _Fix(TableActivation ta, TransitionRowSet trs, Domain iC, Cursor fbm)
+            {
+                var ib = iC.First();
+                for (var b = fbm.values.First(); b != null && ib != null; b = b.Next(), ib = ib.Next())
+                {
+                    if (ib.value() is long p && b.value() is TypedValue v
+                            && trs.representation[p] is Domain ds && ds.kind == Qlx.SET
+                            && ds.elType is Domain de)
+                    {
+                        var s = v as TSet ?? new TSet(de);
+                        if (de.kind == Qlx.POSITION && v is TNode tn)
+                            s = s.Add(new TPosition(tn.defpos));
+                        else
+                            s = s.Add(v);
+                        fbm += (ta, b.key(), ((TypedValue)s) ?? TNull.Value);
+                    }
+                }
+                return fbm;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {
@@ -5460,7 +5479,7 @@ namespace Pyrrho.Level4
                             vs += (tc.defpos, dv);
                         }
                         cv = vs[tc.defpos];
-                        if (tc.notNull && cv == TNull.Value)
+                        if ((!tc.optional) && cv == TNull.Value && t.kind!=Qlx.EDGETYPE)
                             throw new DBException("22004", tc.NameFor(cx));
                         for (var cb = tc.checks?.First(); cb != null; cb = cb.Next())
                             if (cx.db.objects[cb.key()] is Check ck)

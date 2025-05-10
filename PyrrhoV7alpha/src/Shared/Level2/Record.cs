@@ -3,7 +3,6 @@ using Pyrrho.Level3;
 using Pyrrho.Level4; 
 using Pyrrho.Common;
 using Pyrrho.Level5;
-using System.Runtime.InteropServices;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -360,7 +359,6 @@ namespace Pyrrho.Level2
             {
                 for (var b = et.connects.First(); b != null; b = b.Next())
                     if (b.key() is TConnector tc
-                        && et.FindPrimaryIndex(cx) is null
                         && cx._Ob(tc.ct) is NodeType lt
                         && now.vals[tc.cp] is TInt tl && tl.ToLong() is long li)
                     {
@@ -372,7 +370,8 @@ namespace Pyrrho.Level2
                         cx.Add(lt);
                         cx.db += lt;
                     }
-                cx.checkEdges += (now.defpos, now);
+                if (cx.db is Transaction)
+                    cx.checkEdges += (now.defpos, now);
             }
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())

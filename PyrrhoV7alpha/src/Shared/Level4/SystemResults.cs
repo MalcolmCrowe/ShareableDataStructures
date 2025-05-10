@@ -1760,7 +1760,7 @@ namespace Pyrrho.Level4
                     new TInt(c.seq),
                     Pos(c.domdefpos),
                     Display(c.dfs.ToString()),
-                    TBool.For(c.notNull),
+                    TBool.For(!c.optional),
                     new TChar(c.generated.ToString()),
                     Display(c.upd.ToString()),
                     new TChar(c.connector.ToString()));
@@ -5236,7 +5236,7 @@ namespace Pyrrho.Level4
                     new TInt(i),
                     Pos(cx.db.Find(d)?.defpos??-1L),
                     new TChar(d.defaultString??""),
-                    TBool.For(d.notNull),
+                    TBool.For(!d.optional),
                     new TChar(tc.generated.gfs),
                     new TChar(tc.updateString??""));
             }

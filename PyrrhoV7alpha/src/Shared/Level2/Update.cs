@@ -225,25 +225,23 @@ namespace Pyrrho.Level2
                     {
                         if (now.vals[tc.cp] == TNull.Value)
                             throw new PEException("PE6902");
-                        if (et.FindPrimaryIndex(cx) is null)
+                        if (cx._Ob(tc.ct) is NodeType lt
+                            && now.vals[tc.cp] is TInt tl && tl.ToLong() is long li)
                         {
-                            if (cx._Ob(tc.ct) is NodeType lt
-                                && now.vals[tc.cp] is TInt tl && tl.ToLong() is long li)
-                            {
-                                var ls = lt.sindexes;
-                                if (prevrec?.vals[tc.cp] is TInt ol && ol.ToLong() is long lo && lo != li)
-                                    ls -= lo;
-                                var cn = ls[li] ?? CTree<long, CTree<long, bool>>.Empty;
-                                var cc = cn[tc.cp] ?? CTree<long, bool>.Empty;
-                                cc += (now.defpos, true);
-                                cn += (tc.cp, cc);
-                                lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
-                                cx.Add(lt);
-                                cx.db += lt;
-                            }
+                            var ls = lt.sindexes;
+                            if (prevrec?.vals[tc.cp] is TInt ol && ol.ToLong() is long lo && lo != li)
+                                ls -= lo;
+                            var cn = ls[li] ?? CTree<long, CTree<long, bool>>.Empty;
+                            var cc = cn[tc.cp] ?? CTree<long, bool>.Empty;
+                            cc += (now.defpos, true);
+                            cn += (tc.cp, cc);
+                            lt += (Table.SysRefIndexes, lt.sindexes + (li, cn));
+                            cx.Add(lt);
+                            cx.db += lt;
                         }
                     }
-                cx.checkEdges += (now.defpos, now);
+                if (cx.db is Transaction)
+                    cx.checkEdges += (now.defpos, now);
             }
             for (var xb = tt.indexes.First(); xb != null; xb = xb.Next())
                 for (var c = xb.value().First(); c != null; c = c.Next())
