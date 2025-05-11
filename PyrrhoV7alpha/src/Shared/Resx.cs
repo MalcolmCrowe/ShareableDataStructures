@@ -24,7 +24,6 @@ namespace Pyrrho
             if (GqlStateDone || dict==null)
                 return;
             dict.Add("02000", "Not found");
-            dict.Add("08004", "Server unavailable");
             dict.Add("21000", "Cardinality violation");
             dict.Add("22000", "Data exception");
             dict.Add("22001", "String data, right truncation");
@@ -54,8 +53,6 @@ namespace Pyrrho
             dict.Add("22109", "Too few arguments");
             dict.Add("22110", "Too many arguments");
             dict.Add("22111", "Circular dependency found");
-            dict.Add("2202B", "Invalid vector value");
-            dict.Add("2202C", "Vector coordinate, null value not allowed");
             dict.Add("22203", "Loss of precision on conversion");
             dict.Add("22204", "RowSet expected");
             dict.Add("22205", "Null value found in table {0}");

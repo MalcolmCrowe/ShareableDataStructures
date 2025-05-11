@@ -195,7 +195,7 @@ namespace Pyrrho
                                 tcp.Write(Responses.Done);
                                 tcp.PutInt(db.AffCount(cx));
                                 var r = cx.rdC;
-                                var ne = (db is Transaction)?cx.checkEdges:BTree<long,TableRow>.Empty;
+                                var ne = (db is Transaction) ? cx.checkEdges : BTree<long, TableRow>.Empty;
                                 cx = new(db, conn) { rdC = r, checkEdges = ne };
                                 break;
                             }
@@ -437,8 +437,8 @@ namespace Pyrrho
                                         pl++;
                                 if (cx.result is not null && ((Transaction)db).physicals.Count<=pl)
                                 {
-                                    if (cx.result is RowSet set)
-                                        cx.result = CheckPathGrouping(cx, set);
+                                    if (cx.result is RowSet)
+                                        cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
                                     tcp.PutRowType(cx);
                                     rb = null;
                                     if (cx.result is RowSet res && res.Length>0)
@@ -483,7 +483,8 @@ namespace Pyrrho
                                     tcp.PutInt(c);   
                                     db = db.RdrClose(ref cx);
                                     var r = cx.rdC;
-                                    cx = new(db, conn) { rdC = r };
+                                    var ce = cx.checkEdges;
+                                    cx = new(db, conn) { rdC = r, checkEdges = ce };
                                 }
                                 else if (cx.result is not RowSet res || res.Length==0)
                                 {
@@ -494,8 +495,8 @@ namespace Pyrrho
                                 }
                                 else 
                                 {
-                                    if (cx.result is RowSet set)
-                                        cx.result = CheckPathGrouping(cx, set);
+                                    if (cx.result is RowSet)
+                                        cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
                                     tcp.Write(Responses.TableData);
                                     tcp.PutRowType(cx);
                                     rb = null;
@@ -1531,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(25 April 2025)", "http://www.pyrrhodb.com"
+            "7.09alpha","(10 May 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }
