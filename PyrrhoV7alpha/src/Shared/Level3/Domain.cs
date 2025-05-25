@@ -1,3 +1,4 @@
+using System.ComponentModel;
 using System.Globalization;
 using System.Text;
 using Pyrrho.Common;
@@ -65,7 +66,7 @@ namespace Pyrrho.Level3
             Optional = -81, // bool
             NullsFirst = -82, // bool (C)
             _OrderCategory = -83, // OrderCategory
-            OrderFunc = -84, // Procedure?  Unlike any other property!
+            OrderFunc = -84, // Procedure
             Precision = -85, // int (D)
             Representation = -87, // CTree<long,Domain> DBObject (gets extended by Matching)
             RowType = -187,  // CList<long> 
@@ -82,7 +83,7 @@ namespace Pyrrho.Level3
     Float16,Float32,Float64,Float128, Float256, _Numeric, Real, Date, Timespan, Timestamp,
     Interval, _Level, MTree, // pseudo type for MTree implementations
     Partial, // pseudo type for MTree implementation
-    Array, SetType, Multiset, Collection, EdgeEnds, Cursor, UnionNumeric, UnionDate,
+    Array, SetType, Multiset, List, Collection, EdgeEnds, Cursor, UnionNumeric, UnionDate,
     UnionDateNumeric, Exception, Period,
     Document, DocArray, ObjectId, JavaScript, ArgList, // Pyrrho 5.1
     TableType, Row, Delta, Position,
@@ -130,6 +131,7 @@ namespace Pyrrho.Level3
             MTree = new StandardDataType(Qlx.M); // pseudo type for MTree implementation
             Partial = new StandardDataType(Qlx.T); // pseudo type for MTree implementation
             Array = new StandardDataType(Qlx.ARRAY, OrderCategory.None, Content);
+            List = new StandardDataType(Qlx.LIST, OrderCategory.None, Content);
             SetType = new StandardDataType(Qlx.SET, OrderCategory.None, Content);
             Position = new StandardDataType(Qlx.POSITION);
             EdgeEnds = new StandardDataType(Qlx.SET, OrderCategory.Primitive, Position); // March 2025
@@ -205,7 +207,8 @@ namespace Pyrrho.Level3
         internal Domain(Context cx, CTree<long, Domain> rs, CList<long> rt, BTree<long, ObInfo> ii)
             : this(-1L, _Mem(cx, Qlx.TABLE, rs, rt, rt.Length) + (Infos, ii)
                   + (ObInfo._Names, ii[cx.role.defpos]?.names??Names.Empty)
-                  + (ObInfo._Metadata, ii[cx.role.defpos]?.metadata??TMetadata.Empty)) { }
+                  + (ObInfo._Metadata, ii[cx.role.defpos]?.metadata??TMetadata.Empty)
+                  + (ObInfo.MetaString, ii[cx.role.defpos]?.metastring??"")) { }
         internal Domain(long dp, Context cx, Qlx t, CTree<long, Domain> rs, CList<long> rt, int ds = 0)
             : this(dp, _Mem(cx, t, rs, rt, ds))
         {
@@ -236,7 +239,7 @@ namespace Pyrrho.Level3
         internal Domain(long dp, BTree<long, object> m) : base(dp, m)
         { }
         /// <summary>
-        /// Allow construction of ad-hoc derived types such as ARRAY, MULTISET, SET, COLLECT
+        /// Allow construction of ad-hoc derived types such as ARRAY, MULTISET, SET, LIST, COLLECT
         /// </summary>
         /// <param name="t"></param>
         /// <param name="d"></param>
@@ -852,10 +855,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 Qlx.BLOB => 5,
                 Qlx.ROW => 6,
                 Qlx.ARRAY => 7,
-                Qlx.SET => 7,
-                Qlx.MULTISET => 7,
-                Qlx.TABLE => 7,
-                Qlx.TYPE or Qlx.NODETYPE or Qlx.EDGETYPE => 12,
+                Qlx.SET or Qlx.LIST or Qlx.MULTISET => 15,
+                Qlx.TABLE or Qlx.TYPE or Qlx.NODETYPE or Qlx.EDGETYPE => 12,
                 Qlx.BOOLEAN => 9,
                 Qlx.INTERVAL => 10,
                 Qlx.TIME => 11,
@@ -914,17 +915,17 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     {
                         var dp = rdr.GetLong();
                         var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
-                        var vs = CList<TypedValue>.Empty;
+                        var vs = CTree<long,TypedValue>.Empty;
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
-                            vs += el.Get(log, rdr, pp);
-                        return new TList(this, vs);
+                            vs += (rdr.GetInt(),el.Get(log, rdr, pp));
+                        return new TArray(new Domain(-1L,Qlx.ARRAY,el), vs);
                     }
                 case Qlx.MULTISET:
                     {
                         var dp = rdr.GetLong();
                         var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
-                        var m = new TMultiset(this);
+                        var m = new TMultiset(el);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
                              m = m.Add(el.Get(log, rdr, pp));
@@ -934,7 +935,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     {
                         var dp = rdr.GetLong();
                         var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
-                        var m = new TSet(this);
+                        var m = new TSet(el);
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
                             m = m.Add(el.Get(log, rdr, pp));
@@ -1371,12 +1372,28 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.REF: goto case Qlx.ROW;
                 case Qlx.ARRAY:
                     {
-                        var a = (TList)tv;
-                        var et = a.dataType.elType ?? throw new PEException("PE50708");
-                        wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48814"));
-                        wr.PutInt(a.Length);
-                        for(var ab=a.list.First();ab is not null;ab=ab.Next())
-                            et.Put(ab.value(), wr);
+                        if (tv is TList a)
+                        {
+                            var et = a.dataType.elType ?? throw new PEException("PE50708");
+                            wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48814"));
+                            wr.PutInt(a.Length);
+                            for (var ab = a.list.First(); ab is not null; ab = ab.Next())
+                            {
+                                wr.PutInt(ab.key());
+                                et.Put(ab.value(), wr);
+                            }
+                        } 
+                        else if (tv is TArray aa)
+                        {
+                            var et = aa.dataType.elType ?? throw new PEException("PE50708");
+                            wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48814"));
+                            wr.PutInt((int)aa.array.Count);
+                            for (var ab = aa.array.First(); ab is not null; ab = ab.Next())
+                            {
+                                wr.PutLong(ab.key());
+                                et.Put(ab.value(), wr);
+                            }
+                        }
                         return;
                     }
                 case Qlx.MULTISET:
@@ -2396,8 +2413,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     //                }
                     //            }
                             b = rowType.First();
-                            bool namedOk = true;
-                            bool unnamedOk = true;
                             lx.White();
                             while (lx.ch == comma)
                             {
@@ -2408,31 +2423,18 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                 var n = lx.GetName();
                                 if (b.value() is long p)
                                 {
-                      /*              if (n == null) // no name supplied
-                                    {
-                                        if (b == null || !unnamedOk)
-                                            return new DBException("22208").Mix();
-                                        namedOk = false;
-                                    }
-                                    else // column name supplied */ 
-                                    {
-                                        if (lx.ch != ':')
-                                            return new DBException("42124").Mix();
-                                        else
-                                            lx.Advance();
-                      /*                  if (!namedOk)
-                                            return new DBException("22208").Mix()
-                                                .Add(Qlx.COLUMN_NAME, new TChar(n)); */
-                                        unnamedOk = false;
-                                        var nms = infos[definer]?.names;
-                                        if (nms?[n].Item2 is long np && np != p)
-                                            p = np;
-                                        if (nms?[n.ToUpper()].Item2 is long mp && mp != p)
-                                            p = mp;
-                                    }
+                                    if (lx.ch != ':')
+                                        return new DBException("42124").Mix();
+                                    else
+                                        lx.Advance();
+                                    var nms = infos[definer]?.names;
+                                    if (nms?[n].Item2 is long np && np != p)
+                                        p = np;
+                                    if (nms?[n.ToUpper()].Item2 is long mp && mp != p)
+                                        p = mp;
                                     lx.White();
                                     var cv = (representation[p] ?? Content).Parse(lx);
-                                    if (n?[0]!='$')
+                                    if (n?[0] != '$')
                                         cols += (p, cv);
                                     comma = ',';
                                 }
@@ -5309,15 +5311,15 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 ne.Fix(cx);
             return (UDType?)cx.Add(new PType(pn.ident, dt, un, -1L, dp, cx));
         }
-        internal override DBObject Add(Context cx, PMetadata pm)
+        internal override DBObject Add(Context cx, string s, TMetadata md)
         {
-            var r = base.Add(cx,pm);
-            if (pm.detail[Qlx.PREFIX] is TChar pf)
+            var r = base.Add(cx,s,md);
+            if (md[Qlx.PREFIX] is TChar pf)
             {
                 r += (Prefix, pf.value);
                 cx.db += (Database.Prefixes, cx.db.prefixes + (pf.value, defpos));
             }
-            if (pm.detail[Qlx.SUFFIX] is TChar sf)
+            if (md[Qlx.SUFFIX] is TChar sf)
             {
                 r += (Suffix, sf.value);
                 cx.db += (Database.Suffixes, cx.db.suffixes + (sf.value, defpos));

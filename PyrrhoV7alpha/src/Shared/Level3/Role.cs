@@ -228,10 +228,12 @@ namespace Pyrrho.Level3
     internal class ObInfo : Basis
     {
         internal const long
-            _Metadata = -254, // CTree<Qlx,TypedValue>
+            ConstraintNames = -324, // CTree<string,long> Check
             Defs = -367,        // BTree<long,Names> DBObject  
             Description = -67, // string
             Inverts = -353, // long Procedure
+            _Metadata = -254, // TMetadata
+            MetaString = -435, //string
             MethodInfos = -252, // BTree<string, BTree<CList<Domain>,long?>> Method
             Name = -50, // string
             _Names = -282, // Names TableColumn (SqlValues in RowSet)
@@ -244,9 +246,12 @@ namespace Pyrrho.Level3
             (BTree<string, BTree<CList<Domain>, long?>>?)mem[MethodInfos] 
             ?? BTree<string, BTree<CList<Domain>, long?>>.Empty;
         public TMetadata metadata => (TMetadata?)mem[_Metadata] ?? TMetadata.Empty;
+        public string metastring => (string)(mem[MetaString] ?? "");
         public string? name => (string?)mem[Name] ?? "";
         internal Names names =>
             (Names)(mem[_Names]??Names.Empty);
+        internal CTree<string,long> constraintNames =>
+            (CTree<string, long>)(mem[ConstraintNames] ?? CTree<string, long>.Empty);
         internal BTree<long,Names> defs =>
                         (BTree<long, Names>)(mem[Defs] ?? BTree<long, Names>.Empty);
         internal long schemaKey => (long)(mem[SchemaKey] ?? -1L);
@@ -275,8 +280,8 @@ namespace Pyrrho.Level3
         }
         public static ObInfo operator +(ObInfo d, PMetadata pm)
         {
-            d += (_Metadata, pm.Metadata());
-            if (pm.detail[Qlx.DESCRIBE] is TypedValue tv)
+            d = d + (_Metadata, d.metadata + pm.md) + (MetaString, pm.ms);
+            if (pm.md[Qlx.DESCRIBE] is TypedValue tv)
                 d += (Description, tv);
             if (pm.refpos > 0)
                 d += (Inverts, pm.refpos);
@@ -370,9 +375,9 @@ namespace Pyrrho.Level3
             {
                 sb.Append(" Privilege="); sb.Append((long)priv);
             }
-            if (mem.Contains(_Metadata))
+            if (mem.Contains(MetaString))
             { 
-                sb.Append(' '); sb.Append(Metadata(metadata,description)); 
+                sb.Append(' '); sb.Append(metastring); 
             }
             if (mem.Contains(Description))
             {

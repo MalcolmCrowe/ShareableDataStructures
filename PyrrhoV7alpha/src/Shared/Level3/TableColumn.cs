@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -28,6 +29,7 @@ namespace Pyrrho.Level3
             UpdateAssignments = -271, // CTree<UpdateAssignment,bool>
             UpdateString = -272; // string
         public CTree<long, bool> checks => (CTree<long, bool>)(mem[Checks] ?? CTree<long, bool>.Empty);
+        public TypedValue defaultValue => (TypedValue)(mem[Domain.Default] ?? domain.defaultValue ?? TNull.Value);
         public GenerationRule generated =>
             (GenerationRule)(mem[Generated] ?? GenerationRule.None);
         public int seq => (int)(mem[Seq] ?? -1);
@@ -183,32 +185,71 @@ namespace Pyrrho.Level3
                 r +=(cx, UpdateAssignments, ua);
             return r;
         }
-        internal override DBObject Add(Context cx, PMetadata pm)
+        internal override DBObject Add(Context cx, string s, TMetadata md)
         {
-            if (cx.db.objects[defpos] is TableColumn cl)
-            {
-                if (pm.detail.Contains(Qlx.OPTIONAL))
+            var ckp = 0L;
+            var tc = this;
+            var table = cx.db.objects[tabledefpos] as Table ?? throw new PEException("PE30331");
+            var ti = table.infos[cx.role.defpos] ?? new ObInfo(table.name);
+            for (var b = md.First(); b != null; b = b.Next())
+                switch (b.key())
                 {
-                    cl += (Domain.Optional, true);
-                    cx.Add(cl);
-                    cx.db += cl;
+                    case Qlx.DEFAULT:
+                        {
+                            if (md.Contains(Qlx.GENERATED))
+                                break;
+                            var dv = domain.Coerce(cx, b.value());
+                            tc = tc + (Domain.Default, dv) + (Domain.DefaultString, b.value().ToString());
+                            break;
+                        }
+                    case Qlx.GENERATED:
+                        tc = tc + (Generated, new GenerationRule(generated.gen,
+                        generated.gfs, cx.obs[generated.exp] as QlValue??SqlNull.Value, defpos, cx.db.nextStmt));
+                        break;
+                    case Qlx.SECURITY:
+                        table = (Table)(cx.Add(new Classify(tc.defpos, ((TLevel)b.value()).val, cx.db.nextPos))
+                            ?? throw new DBException("42105"));
+                        break;
+                    case Qlx.CHECK:
+                        {
+                            tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new PEException("PE60631"));
+                            var nst = md[Qlx.SCOPE]?.ToLong() ?? -1L;
+                            var ckn = md[Qlx.CONSTRAINT]?.ToString() ?? "";
+                            var sce = md[Qlx.SOURCE]?.ToString() ?? "";
+                            if (cx.obs[md[Qlx.CHECK]?.ToLong() ?? -1L] is QlValue se)
+                            {
+                                var pc = new PCheck2(table, tc, ckn, se, sce, nst, cx.db.nextPos, cx);
+                                cx.Add(pc);
+                                if (ckn != "")
+                                    ti += (ObInfo.ConstraintNames, ti.constraintNames + (ckn, ckp));
+                                tc += (Checks, checks + (pc.ppos, true));
+                            }
+                            break;
+                        }
+                    case Qlx.OPTIONAL:
+                        {
+                            tc += (Domain.Optional, b.value().ToBool()??false);
+                            break;
+                        }
+                    case Qlx.CONNECTING:
+                        {
+                            var cc = b.value() as TConnector ?? throw new PEException("PE60641");
+                            cc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, defpos, cc.cs, cc.cm);
+                            tc += (ObInfo._Metadata, tc.metadata+(Qlx.CONNECTING,b.value()));
+                  /*          if (table is EdgeType et)
+                            {
+                                var cs = CTree<TypedValue, bool>.Empty;
+                                var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
+                                et += (ObInfo._Metadata, et.metadata + (Qlx.EDGETYPE, ts + cc));
+                                table = et;
+                            } */
+                            break;
+                        }
                 }
-                if (cx.db.objects[cl?.tabledefpos ?? -1L] is EdgeType et)
-                {
-                    var cs = CTree<TypedValue,bool>.Empty;
-                    for (var b = et.connects.First(); b != null; b = b.Next())
-                        if (b.key() is TConnector tc)
-                            if (tc.cp == defpos)
-                                cs += (new TConnector(tc.q, tc.ct, tc.cn, tc.cd, tc.cp, pm.str, pm.detail),true);
-                            else
-                                cs += (tc,true);
-                    et += (EdgeType.Connects, cs);
-                    cx.db += et;
-                    return (EdgeType)cx.Add(et);
-                }
-            }
-
-            return Domain.Content;
+            cx.Add(tc);
+            cx.db += tc;
+            cx.Install(table + (Infos, table.infos + (cx.role.defpos, ti)));
+            return tc;
         }
         /// <summary>
         /// Accessor: Check a new column notnull condition
@@ -237,7 +278,7 @@ namespace Pyrrho.Level3
         internal override DBObject Apply(Context cx, Domain tb)
         {
             cx.Add(framing);
-            var f = ObTree.Empty;
+            var f = framing.obs;
             if (cx.obs[generated.exp] is QlValue ex)
                 f = ex._Apply(cx, tb, f);
             for (var b = checks.First(); b != null; b = b.Next())
@@ -334,15 +375,13 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             sb.Append(' '); sb.Append(domain);
             if (optional) sb.Append(" optional");
-            if (mem.Contains(_Table)) { sb.Append(" Table="); sb.Append(Uid(tabledefpos)); }
-            if (mem.Contains(Checks) && checks.Count>0)
+            sb.Append(" Table="); sb.Append(Uid(tabledefpos)); 
+            if (checks.Count>0)
             { sb.Append(" Checks:"); sb.Append(checks); }
-            if (mem.Contains(Generated) && generated.gen != Generation.No)
+            if (generated.gen != Generation.No)
             { sb.Append(" Generated="); sb.Append(generated); }
-            if (mem.Contains(Domain.Optional) && domain.optional) sb.Append(" Optional");
-            if (domain.defaultValue is not null && 
-              ((domain.defaultValue != TNull.Value) || PyrrhoStart.VerboseMode))
-            { sb.Append(" colDefault "); sb.Append(domain.defaultValue); }
+            if (mem.Contains(Domain.Default))
+            { sb.Append(" default "); sb.Append(defaultValue); }
             if (mem.Contains(UpdateString))
             {
                 sb.Append(" UpdateString="); sb.Append(updateString);
@@ -353,7 +392,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    internal enum Generation { No, Expression, RowStart, RowEnd, Position };
+    internal enum Generation { No, Expression, RowStart, RowEnd };
     /// <summary>
     /// Helper for GenerationRule
     /// 
@@ -371,10 +410,29 @@ namespace Pyrrho.Level3
         public long target => (long)(mem[RowSet.Target] ?? -1L);
         public long nextStmt => (long)(mem[Database.NextStmt] ?? -1L);  
         public GenerationRule(Generation g) : base(new BTree<long, object>(_Generation, g)) { }
+        public GenerationRule(TMetadata md) : base(_Mem(md))
+        { }
         public GenerationRule(Generation g, string s, QlValue e, long t, long nst)
             : base(BTree<long, object>.Empty + (_Generation, g) + (GenExp, e.defpos) + (GenString, s)
                   +(RowSet.Target,t) + (Database.NextStmt,nst)) { }
         protected GenerationRule(BTree<long, object> m) : base(m) { }
+        static BTree<long,object> _Mem(TMetadata md)
+        {
+            var r = BTree<long, object>.Empty;
+            var g = Generation.No;
+            if (md[Qlx.GENERATED] is TInt ev)
+            {
+                r += (GenExp, ev.ToLong() ?? -1L);
+                g = Generation.Expression;
+            }
+            if (md.Contains(Qlx.START))
+                g = Generation.RowStart;
+            if (md.Contains(Qlx.END))
+                g = Generation.RowEnd;
+            r += (_Generation, g);
+            r += (GenExp, md[Qlx.VALUE].ToLong() ?? -1L);
+            return r;
+        }
         public static GenerationRule operator +(GenerationRule gr, (long, object) x)
         {
             var (dp, ob) = x;

@@ -7,7 +7,7 @@ using System.Net;
 using System.Net.Sockets;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2022
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use
 
@@ -421,6 +421,7 @@ namespace Pyrrho
                 case 12: cell.val = GetRow(cell.subType); break;
                 case 13: cell.val = new Date(GetDateTime()); break;
                 case 14: cell.val = GetTable(); break;
+                case 15: cell.val = GetList(); break;
                 default: throw new DatabaseError("2E204", "" + flag);
             }
         }
@@ -453,16 +454,28 @@ namespace Pyrrho
         }
         internal PyrrhoArray GetArray()
         {
-            PyrrhoArray 
-                r = new PyrrhoArray();
-            r.kind = GetString();
+            var tree = BTree<long, CellValue>.Empty;
+            var kind = GetString();
             var dn = GetString();
             var fl = GetInt();
             int n = GetInt();
             var rdr = new PyrrhoReader(new PyrrhoTable());
-            r.data = new object[n];
             for (int j = 0; j < n; j++)
-                r.data[j] = rdr.GetCell(this, dn, fl);
+                tree += (rdr.GetInt(this), rdr.GetCell(this, dn, fl));
+            var r = new PyrrhoArray(kind,tree);
+            return r;
+        }
+        internal PyrrhoList GetList()
+        {
+            var list = BList<CellValue>.Empty;
+            var kind = GetString();
+            var dn = GetString();
+            var fl = GetInt();
+            int n = GetInt();
+            var rdr = new PyrrhoReader(new PyrrhoTable());
+            for (int j = 0; j < n; j++)
+                list += rdr.GetCell(this, dn, fl);
+            var r = new PyrrhoList(kind, list);
             return r;
         }
         internal void GetSchema(PyrrhoTable pt, int ncols)
@@ -1575,6 +1588,13 @@ namespace Pyrrho
             }
             return cell;
         }
+        internal long GetInt(PyrrhoConnect c)
+        {
+            var cell = GetCell(c, "INTEGER", 1);
+            if (cell.val is not long p)
+                throw new DatabaseError("22004");
+            return p;
+        }
         public int RecordsAffected
         {
             get
@@ -2220,7 +2240,7 @@ namespace Pyrrho
                     case 12: return typeof(PyrrhoRow);
                     case 13: return typeof(Date);
                     case 14: return typeof(PyrrhoTable);
-                    case 15: return typeof(PyrrhoArray);
+                    case 15: return typeof(PyrrhoList);
                 }
                 throw new DatabaseError("2E204", "" + t);
             }
@@ -2241,7 +2261,7 @@ namespace Pyrrho
                     case 4: return "timestamp";
                     case 5: return "blob";
                     case 6: return "row";
-                    case 7: return "array"; // or multiset or table
+                    case 7: return "array"; 
                     case 8: return "real";
                     case 9: return "boolean";
                     case 10: return "interval";
@@ -2337,17 +2357,44 @@ namespace Pyrrho
     public class PyrrhoArray
     {
         public string kind;
-        public object[] data;
+        public BTree<long,CellValue> arr;
+        public PyrrhoArray(string kind, BTree<long, CellValue> arr)
+        {
+            this.kind = kind;
+            this.arr = arr;
+        }
         public override string ToString()
         {
-            string str = kind + "[";
-            for (int j = 0; j < data.Length; j++)
+            var sb = new StringBuilder(kind);
+            var cm = '[';
+            for (var b=arr.First();b!=null;b=b.Next())
             {
-                str += data[j].ToString() + ((j < data.Length - 1) ? "," : "]");
+                sb.Append(cm); cm = ','; sb.Append(b.key());
+                sb.Append('='); sb.Append(b.value());
             }
-            if (data.Length == 0)
-                str += ']';
-            return str;
+            sb.Append(']');
+            return sb.ToString();
+        }
+    }
+    public class PyrrhoList
+    {
+        public string kind;
+        public BList<CellValue> list;
+        public PyrrhoList(string kind, BList<CellValue> list)
+        {
+            this.kind = kind;
+            this.list = list;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(kind);
+            var cm = '[';
+            for (var b = list.First(); b != null; b = b.Next())
+            {
+                sb.Append(cm); cm = ','; sb.Append(b.value());
+            }
+            sb.Append(']');
+            return sb.ToString();
         }
     }
     public class PyrrhoInterval

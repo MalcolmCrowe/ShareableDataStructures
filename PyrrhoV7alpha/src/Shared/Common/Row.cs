@@ -1,5 +1,6 @@
 using System.Net.Http.Headers;
 using System.Text;
+using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
@@ -200,14 +201,14 @@ namespace Pyrrho.Common
     }
     internal class TBookmark : IBookmark<TypedValue>
     {
-        internal readonly TArray parent;
+        internal readonly TList parent;
         internal readonly int pos;
         internal TypedValue value => parent[pos]??TNull.Value;
         internal TBookmark(TypedValue pa, int po)
-        { parent = pa as TArray??throw new PEException("PE60201"); pos = po; }
+        { parent = pa as TList??throw new PEException("PE60201"); pos = po; }
         public IBookmark<TypedValue>? Next() 
         {
-            return (pos < parent.array.Count-1) ? new TBookmark(parent, pos+1):null; 
+            return (pos < parent.list.Count-1) ? new TBookmark(parent, pos+1):null; 
         }
         public IBookmark<TypedValue>? Previous()
         {
@@ -215,7 +216,31 @@ namespace Pyrrho.Common
         }
         public TypedValue Value()
         {
-            return parent.array[pos]??TNull.Value;
+            return parent.list[pos]??TNull.Value;
+        }
+        public long Position()
+        {
+            return pos;
+        }
+    }
+    internal class TABookmark : IBookmark<TypedValue>
+    {
+        internal readonly TArray parent;
+        internal readonly int pos;
+        internal TypedValue value => parent[pos] ?? TNull.Value;
+        internal TABookmark(TypedValue pa, int po)
+        { parent = pa as TArray ?? throw new PEException("PE60201"); pos = po; }
+        public IBookmark<TypedValue>? Next()
+        {
+            return (pos < parent.array.Count - 1) ? new TBookmark(parent, pos + 1) : null;
+        }
+        public IBookmark<TypedValue>? Previous()
+        {
+            return (pos > 0) ? new TBookmark(parent, pos - 1) : null;
+        }
+        public TypedValue Value()
+        {
+            return parent.array[pos] ?? TNull.Value;
         }
         public long Position()
         {
@@ -284,6 +309,10 @@ namespace Pyrrho.Common
     internal class TPosition : TInt
     {
         internal TPosition(long p) : base(Domain.Position, p) { }
+        internal override TypedValue Fix(Context cx)
+        {
+            return new TPosition(cx.Fix(value));
+        }
         public override string ToString()
         {
             if (value < 0)
@@ -848,28 +877,31 @@ namespace Pyrrho.Common
     }
     internal class TArray : TypedValue
     {
-        internal readonly CTree<int,TypedValue> array;
+        internal readonly CTree<long,TypedValue> array;
         internal TArray(Domain dt)
             : base(new Domain(-1L, Qlx.ARRAY, dt))
         {
-            array = CTree<int, TypedValue>.Empty;
+            array = CTree<long, TypedValue>.Empty;
         }
-        internal TArray(Domain dt, CTree<int, TypedValue> a) : base(dt) { array = a; }
+        internal TArray(Domain dt, CTree<long, TypedValue> a) : base(dt) { array = a; }
         internal override TypedValue Fix(Context cx)
         {
             return new TArray((Domain)dataType.Fix(cx),
-                cx.FixTiV(array));
+                cx.FixTlV(array));
         }
-        public static TArray operator +(TArray ar, (Context,int,TypedValue) x)
+        public static TArray operator +(TArray ar, (Context,long,TypedValue) x)
         {
             var (cx, i, v) = x;
             if (ar.dataType.elType is not Domain dt)
                 goto bad;
-            if (dt.kind == Qlx.CHAR && v.dataType.kind!=Qlx.CHAR)
-                v = new TChar(v.ToString());
-            else if (v is TChar tc 
-                && (cx.db.objects[cx.role.dbobjects[tc.value] ?? -1L]as Domain)?.EqualOrStrongSubtypeOf(dt)!=true)
-                goto bad;
+            if (dt.kind != v.dataType.kind)
+            {
+                if (dt.kind == Qlx.CHAR && v.dataType.kind != Qlx.CHAR)
+                    v = new TChar(v.ToString());
+                else if (v is TChar tc
+                    && (cx.db.objects[cx.role.dbobjects[tc.value] ?? -1L] as Domain)?.EqualOrStrongSubtypeOf(dt) != true)
+                    goto bad;
+            }
             if (v.dataType.EqualOrStrongSubtypeOf(dt))
                 return new TArray(ar.dataType, ar.array + (i,v));
             bad:
@@ -881,11 +913,11 @@ namespace Pyrrho.Common
         }
         internal override IBookmark<TypedValue>? First()
         {
-            return (array.Count>0L)?new TBookmark(this,0) : null;
+            return (array.Count>0L)?new TABookmark(this,0) : null;
         }
         internal override IBookmark<TypedValue>? Last()
         {
-            return (array.Count > 0L) ? new TBookmark(this,(int)(array.Count-1L)) : null;
+            return (array.Count > 0L) ? new TABookmark(this,(int)(array.Count-1L)) : null;
         }
         internal override TypedValue Max()
         {
@@ -1053,6 +1085,23 @@ namespace Pyrrho.Common
         public TypedValue this[Qlx x] => md[x]??TNull.Value;
         public new ABookmark<Qlx,TypedValue>?  First() => md.First();
         public bool Contains(Qlx x) => md.Contains(x);
+        internal PIndex.ConstraintType RefActions()
+        {
+            var md = this;
+            if ((Qlx)(md[Qlx.UPDATE].ToInt() ?? 0) == Qlx.RESTRICT)
+                return PIndex.ConstraintType.RestrictUpdate;
+            else if ((Qlx)(md[Qlx.UPDATE].ToInt() ?? 0) == Qlx.CASCADE)
+                return PIndex.ConstraintType.CascadeUpdate;
+            else if ((Qlx)(md[Qlx.DELETE].ToInt() ?? 0) == Qlx.RESTRICT)
+                return PIndex.ConstraintType.RestrictDelete;
+            else if ((Qlx)(md[Qlx.DELETE].ToInt() ?? 0) == Qlx.CASCADE)
+                return PIndex.ConstraintType.CascadeDelete;
+            return 0;
+        }
+        internal override TypedValue Fix(Context cx)
+        {
+            return new TMetadata(cx.FixTQV(md));
+        }
         public override string ToString()
         {
             if (md == CTree<Qlx, TypedValue>.Empty)
@@ -1299,36 +1348,18 @@ namespace Pyrrho.Common
             return r;
         }
     }
-    /// <summary>
-    /// An XRow is a TRow whose dataType contains a keys field: the values of the XRow are
-    /// guaranteed to include any non-null key values.
-    /// The XRow constructor draws on the current Context.
-    /// </summary>
-    internal class XRow : TRow
-    {
-        public XRow(Context cx, Domain dt, CTree<long, TypedValue> vs)
-        : base(dt, _Row(cx,dt,vs))
-        {  }
-        static CTree<long,TypedValue> _Row(Context cx, Domain dt, CTree<long,TypedValue> vs)
-        {
-            var kt = (dt.mem[Level3.Index.Keys] as Domain??throw new DBException("PE020601")).rowType;
-            for (var b = kt.First(); b != null; b = b.Next())
-                if (b.value() is long p && !vs.Contains(p) && cx.obs[p] is QlValue e)
-                    vs += (p, e.Eval(cx));
-            return vs;
-        }
-    }
     // we implement a TPath as a TRow: its row type is
-    // [0=NodeType Array, {uid=TypedValue} ]
+    // [0=NodeType List, {uid=TypedValue} ]
     // where uid identifies an unbound identifier X:T in the Match Statement
-    // and the TypedValue is T or TArray<T> if X is in a repeating path segment
+    // and the TypedValue is T or TList<T> if X is in a repeating path segment
     // During evaluation of the Match, the TPatch starts off empty and is
     // populated as the path is traversed
     internal class TPath : TRow
     {
         internal readonly long matchAlt; 
         internal TPath(long dp,Context cx) : base(new Domain(-1L,cx,Qlx.ROW,BList<DBObject>.Empty,0), 
-            new CTree<long, TypedValue>(0, new TArray(new Domain(-1L,Qlx.ARRAY,Domain.NodeType),CTree<int,TypedValue>.Empty))) 
+            new CTree<long, TypedValue>(0, 
+                new TList(new Domain(-1L,Qlx.LIST,Domain.NodeType),CList<TypedValue>.Empty))) 
         {
             matchAlt = dp;
         }
@@ -1409,13 +1440,17 @@ namespace Pyrrho.Common
         {
             return a.Add(v);
         }
+        public static TSet operator -(TSet a, TypedValue v)
+        {
+            return a.Remove(v);
+        }
         internal override int Cardinality()
         {
             return (int)tree.Count;
         }
         internal override TypedValue Fix(Context cx)
         {
-            return new TSet((Domain)dataType.Fix(cx),tree);
+            return new TSet((Domain)(dataType.Fix(cx)),cx.FixTVb(tree));
         }
         internal TSet Add(TypedValue a)
         {
@@ -1600,9 +1635,19 @@ namespace Pyrrho.Common
             count = tm.count;
             // Disallow not Allow for duplicates (see below)
         }
-        internal TMultiset(Domain dt,BTree<TypedValue,long?>t,long ct) :base(dt)
+        internal TMultiset(Domain dt,BTree<TypedValue,long?>t,long ct) 
+            :base(_Type(dt,t))
         {
             tree = t; count = ct;
+        }
+        static Domain _Type(Domain dt, BTree<TypedValue, long?> t)
+        {
+            if (t.First()?.key() is TypedValue v)
+                if (dt.kind == Qlx.Null)
+                    dt = new Domain(-1L, Qlx.MULTISET, v.dataType);
+                else if (dt.elType?.kind != v.dataType.kind)
+                    throw new DBException("22004");
+            return dt;
         }
         internal override int Cardinality()
         {
@@ -1663,39 +1708,24 @@ namespace Pyrrho.Common
             readonly TMultiset _set;
             readonly ABookmark<TypedValue, long?> _bmk;
             readonly long _pos;
-            readonly long? _rep;
+            readonly long _rep;
             internal MultisetBookmark(TMultiset set, long pos, 
                 ABookmark<TypedValue, long?> bmk, long? rep = null)
             {
-                _set = set; _pos = pos; _bmk = bmk; _rep = rep;
+                _set = set; _pos = pos; _bmk = bmk; _rep = rep??bmk.value()??1L;
             }
-            public IBookmark<TypedValue>? Next()
+            public IBookmark<TypedValue>? _Next()
             {
-                var bmk = _bmk;
-                var rep = _rep;
-                for (; ; )
-                {
-                    if (rep is not null && rep>0)
-                            return new MultisetBookmark(_set, _pos + 1, bmk, rep - 1);
-                    bmk = ABookmark<TypedValue, long?>.Next(bmk, _set.tree);
-                    if (bmk == null)
-                        return null;
-                    rep = bmk.value();
-                }
+                if (_rep > 1)
+                    return new MultisetBookmark(_set, _pos + 1, _bmk, _rep - 1);
+                var bmk = ABookmark<TypedValue, long?>.Next(_bmk, _set.tree);
+                if (bmk == null)
+                    return null;
+                return new MultisetBookmark(_set, _pos + 1, bmk);
             }
             public IBookmark<TypedValue>? Previous()
             {
-                var bmk = _bmk;
-                var rep = _rep;
-                for (; ; )
-                {
-                    if (rep is not null && rep>0)
-                            return new MultisetBookmark(_set, _pos - 1, bmk, rep - 1);
-                    bmk = ABookmark<TypedValue, long?>.Previous(bmk, _set.tree);
-                    if (bmk == null)
-                        return null;
-                    rep = bmk.value();
-                }
+                throw new NotImplementedException();
             }
             public long Position()
             {
@@ -1709,7 +1739,7 @@ namespace Pyrrho.Common
 
             IBookmark<TypedValue>? IBookmark<TypedValue>.Next()
             {
-                return Next();
+                return _Next();
             }
         }
         /// <summary>
@@ -1904,32 +1934,4 @@ namespace Pyrrho.Common
     [Flags]
     internal enum OrderCategory 
     { None = 0, Equals = 1, Full = 2, Relative = 4, Map = 8, State = 16, Primitive = 32 };
-    /// <summary>
-    /// A set of DBObject references
-    /// </summary>
-    internal class TMeta : TypedValue
-    {
-        public readonly long defpos;
-        public readonly Qlx kind;
-        public readonly CTree<string, TypedValue> props;
-        public readonly DBObject? dbo;
-        public TMeta(long dp,Qlx k,Context cx) : base(Domain.Content) 
-        {
-            defpos = dp;
-            kind = k;
-            var r = CTree<string,TypedValue>.Empty;
-            if (cx.db.objects[dp] is DBObject ob)
-            {
-                dbo = ob;
-                r += ("Pos", new TInt(dp));
-                r += ("Type", new TChar(ob.GetType().Name));
-                r += ("Domain", new TChar(ob.domain.kind.ToString()));
-                if (ob.definer>0)
-                    r += ("Definer", new TInt(ob.definer));
-                if (ob.infos[cx.role.defpos] is ObInfo oi && oi.name is string no)
-                    r += ("Name", new TChar(no));
-            }
-            props = r;
-        }
-    }
 }

@@ -414,12 +414,10 @@ namespace Pyrrho.Level3
             cx.depths += (depth, ds);
             cx.Add(this);
         }
-        internal override DBObject Add(Context cx, PMetadata pm)
+        internal override DBObject Add(Context cx, string s, TMetadata md)
         {
-            var md = pm.Metadata();
             var oi = (infos[cx.role.defpos]??new ObInfo(name))
-                +(ObInfo._Metadata,md)
-                +(ObInfo.SchemaKey, pm.ppos);
+                +(ObInfo._Metadata,metadata+md) + (ObInfo.MetaString, metastring+s);
             var r = cx.Add(this + (Infos, infos + (cx.role.defpos, oi)));
             cx.db += r;
             return r;
@@ -507,8 +505,8 @@ namespace Pyrrho.Level3
             var rv = new RestView(cx.GetUid(), nd.mem + (UsingTable, usingTable)
                 + (NamesMap, nm) + (ObInfo._Names, ns) +(ViewDef,viewDef)
                 + (_Depth,nd.depth+1)
-                + (Infos, new BTree<long, ObInfo>(cx.role.defpos,oi
-                    + (ObInfo._Metadata,oi.metadata)+ (ObInfo._Names, ns))));
+                + (Infos, new BTree<long, ObInfo>(cx.role.defpos,oi + (ObInfo._Names, ns)
+                    + (ObInfo._Metadata,oi.metadata) +(ObInfo.MetaString, oi.metastring))));
             rv = (RestView)cx.Add(rv);
             var r = rv.RowSets(vn, cx, nd, lp, 0L, Grant.AllPrivileges, null, (TableRowSet?)ur);
             if (ur is not null)

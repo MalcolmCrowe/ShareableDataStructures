@@ -4302,7 +4302,7 @@ namespace Pyrrho.Level4
     internal class ArrayRowSet : RowSet
     {
         public ArrayRowSet(long dp, Context cx, QlValue sv) :
-            base(dp, new BTree<long,object>(SqlLiteral._Val, sv.Eval(cx)))
+            base(dp, new BTree<long, object>(SqlLiteral._Val, sv.Eval(cx)))
         {
             cx.Add(this);
         }
@@ -4334,15 +4334,15 @@ namespace Pyrrho.Level4
         }
         protected override Cursor? _First(Context cx)
         {
-            var a = (TList?)mem[SqlLiteral._Val];
+            var a = (TArray?)mem[SqlLiteral._Val];
             if (a == null) return null;
             return ArrayCursor.New(cx, this, a, 0);
         }
         protected override Cursor? _Last(Context cx)
         {
-            var a = (TList?)mem[SqlLiteral._Val];
-            if (a==null) return null;
-            return ArrayCursor.New(cx,this,a,a.Length-1);
+            var a = (TArray?)mem[SqlLiteral._Val];
+            if (a == null) return null;
+            return ArrayCursor.New(cx, this, a, a.Length - 1);
         }
         internal override Basis New(BTree<long, object> m)
         {
@@ -4350,23 +4350,112 @@ namespace Pyrrho.Level4
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new ArrayRowSet(dp,m);
+            return new ArrayRowSet(dp, m);
         }
-         internal class ArrayCursor : Cursor
+        internal class ArrayCursor : Cursor
         {
             internal readonly ArrayRowSet _ars;
+            internal readonly TArray _ar;
+            internal readonly int _ix;
+            ArrayCursor(Context cx, ArrayRowSet ars, TArray ar, int ix)
+                : base(cx, ars, ix, E, (TRow)(ar[ix]??throw new DBException("22004")))
+            {
+                _ars = ars; _ix = ix; _ar = ar;
+            }
+            internal static ArrayCursor? New(Context cx, ArrayRowSet ars, TArray ar, int ix)
+            {
+                if (ix < 0 || ar.Length <= ix)
+                    return null;
+                return new ArrayCursor(cx, ars, ar, ix);
+            }
+            protected override Cursor? _Next(Context cx)
+            {
+                return New(cx, _ars, _ar, _ix + 1);
+            }
+
+            protected override Cursor? _Previous(Context cx)
+            {
+                return New(cx, _ars, _ar, _ix - 1);
+            }
+
+            internal override BList<TableRow> Rec()
+            {
+                throw new NotImplementedException();
+            }
+        }
+    }
+
+    /// <summary>
+    /// A RowSet for UNNEST of a list
+    /// </summary>
+    internal class ListRowSet : RowSet
+    {
+        public ListRowSet(long dp, Context cx, QlValue sv) :
+            base(dp, new BTree<long,object>(SqlLiteral._Val, sv.Eval(cx)))
+        {
+            cx.Add(this);
+        }
+        protected ListRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        public static ListRowSet operator +(ListRowSet et, (long, object) x)
+        {
+            var d = et.depth;
+            var m = et.mem;
+            var (dp, ob) = x;
+            if (et.mem[dp] == ob)
+                return et;
+            if (ob is DBObject bb && dp != _Depth)
+            {
+                d = Math.Max(bb.depth + 1, d);
+                if (d > et.depth)
+                    m += (_Depth, d);
+            }
+            return (ListRowSet)et.New(m + x);
+        }
+        public static ListRowSet operator +(ListRowSet rs, (Context, long, object) x)
+        {
+            var d = rs.depth;
+            var m = rs.mem;
+            var (cx, p, o) = x;
+            if (rs.mem[p] == o)
+                return rs;
+            m = rs._Depths(cx, m, d, p, o);
+            return (ListRowSet)rs.New(m + (p, o));
+        }
+        protected override Cursor? _First(Context cx)
+        {
+            var a = (TList?)mem[SqlLiteral._Val];
+            if (a == null) return null;
+            return ListCursor.New(cx, this, a, 0);
+        }
+        protected override Cursor? _Last(Context cx)
+        {
+            var a = (TList?)mem[SqlLiteral._Val];
+            if (a==null) return null;
+            return ListCursor.New(cx,this,a,a.Length-1);
+        }
+        internal override Basis New(BTree<long, object> m)
+        {
+            return new ListRowSet(defpos, m);
+        }
+        internal override DBObject New(long dp, BTree<long, object> m)
+        {
+            return new ListRowSet(dp,m);
+        }
+         internal class ListCursor : Cursor
+        {
+            internal readonly ListRowSet _ars;
             internal readonly TList _ar;
             internal readonly int _ix;
-            ArrayCursor(Context cx,ArrayRowSet ars,TList ar, int ix)
+            ListCursor(Context cx,ListRowSet ars,TList ar, int ix)
                 : base(cx,ars,ix,E,(TRow)ar[ix])
             {
                 _ars = ars; _ix = ix;  _ar = ar;
             }
-            internal static ArrayCursor? New(Context cx, ArrayRowSet ars, TList ar, int ix)
+            internal static ListCursor? New(Context cx, ListRowSet ars, TList ar, int ix)
             {
                 if (ix<0 || ar.Length <= ix)
                     return null;
-                return new ArrayCursor(cx, ars, ar, ix);
+                return new ListCursor(cx, ars, ar, ix);
             }
             protected override Cursor? _Next(Context cx)
             {
@@ -7773,9 +7862,7 @@ namespace Pyrrho.Level4
         }
         protected override Cursor? _First(Context cx)
         {
-            var lf = cx.obs[left] as RowSet;
-            var rg = cx.obs[right] as RowSet;
-            if (lf is null || rg is null)
+            if (cx.obs[left] is not RowSet lf || cx.obs[right] is not RowSet rg)
                 return null;
             return op switch
             {
@@ -7801,27 +7888,17 @@ namespace Pyrrho.Level4
         /// A Result Cursor for composite rowset
         ///     /
         /// </summary>
-        internal abstract class CompositeCursor : Cursor
+        internal abstract class CompositeCursor(CompositeRowSet r, int pos, Cursor? lf, Cursor? rg,
+            TRow? lr, TRow? rr, bool lu, bool ru, TRow rw) : Cursor(r, pos, rw)
         {
-            protected readonly CompositeRowSet _rowSet;
-            protected readonly Cursor? _left;
-            protected readonly Cursor? _right;
-            protected readonly TRow? _leftRow;
-            protected readonly TRow? _rightRow;
-            protected readonly bool _leftUsed;
-            protected readonly bool _rightUsed;
-            protected CompositeCursor(CompositeRowSet r, int pos, Cursor? lf, Cursor? rg,
-                TRow? lr, TRow? rr, bool lu, bool ru, TRow rw)
-                : base(r, pos, rw)
-            {
-                _rowSet = r;
-                _left = lf;
-                _right = rg;
-                _leftRow = lr;
-                _rightRow = rr;
-                _leftUsed = lu;
-                _rightUsed = ru;
-            }
+            protected readonly CompositeRowSet _rowSet = r;
+            protected readonly Cursor? _left = lf;
+            protected readonly Cursor? _right = rg;
+            protected readonly TRow? _leftRow = lr;
+            protected readonly TRow? _rightRow = rr;
+            protected readonly bool _leftUsed = lu;
+            protected readonly bool _rightUsed = ru;
+
             internal override BList<TableRow>? Rec()
             {
                 return null;

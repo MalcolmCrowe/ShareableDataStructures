@@ -47,8 +47,7 @@ namespace Pyrrho.Level3
                   + (ObInfo.Name,c.name??""))
         { }
         public Check(PCheck2 c, Database db)
-            : base(c.ppos, Bool.mem
-                                    + (Owner, c.owner) + (Definer, c.definer)
+            : base(c.ppos, Bool.mem  + (Owner, c.owner) + (Definer, c.definer)
                   + (Infos, c.infos) + (ObInfo.Name, c.name)
           + (RowSet.Target, c.subobjdefpos) + (Source, c.check ?? "")
           + (Condition, c.test) + (_Framing, c.framing)+(LastChange,c.ppos)

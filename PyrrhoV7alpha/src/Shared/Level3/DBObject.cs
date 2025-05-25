@@ -69,9 +69,11 @@ namespace Pyrrho.Level3
     (BTree<long, ObInfo>?)mem[Infos] ?? BTree<long, ObInfo>.Empty;
         internal long from => (long)(mem[_From] ?? -1L);
         internal GQL gql => (GQL)(mem[Gql] ?? GQL.None);
+        // the next 4 entries are role-dependent 
         internal string name => (string)(mem[ObInfo.Name] ?? "");
         public Names names => (Names)(mem[ObInfo._Names] ?? Names.Empty);
         public TMetadata metadata => (TMetadata)(mem[ObInfo._Metadata] ?? TMetadata.Empty);
+        public string metastring => (string)(mem[ObInfo.MetaString] ?? "");
         internal BList<Ident>? chain => (BList<Ident>?)mem[Chain];
         public virtual Domain domain => (Domain)(mem[_Domain] ?? Domain.Null);
         public long scope => (long)(mem[Scope] ?? 0L);
@@ -317,6 +319,9 @@ namespace Pyrrho.Level3
             var fm = cx.Fix(from);
             if (fm != from)
                 r += (_From, fm);
+            var md = metadata.Fix(cx);
+            if (md != metadata)
+                r += (ObInfo._Metadata, md);
             var nd = cx.Fix(definer);
             if (definer != nd)
                 r += (Definer, nd);
@@ -335,16 +340,16 @@ namespace Pyrrho.Level3
         /// <param name="pm"></param>
         /// <param name="p"></param>
         /// <returns></returns>
-        internal virtual DBObject Add(Context cx,PMetadata pm)
+        internal virtual DBObject Add(Context cx,string ms,TMetadata md)
         {
             var m = mem;
             if (infos[cx.role.defpos] is ObInfo oi)
             {
-                var om = oi.metadata + pm.detail;
-                m += (Infos, infos + (cx.role.defpos, oi+(ObInfo._Metadata,om)));
-                m += (ObInfo._Metadata, om);
-            }
-            m += (LastChange, pm.ppos);
+                var om = oi.metadata + md;
+                var os = oi.metastring + ms;
+                m += (Infos, infos + (cx.role.defpos, oi+(ObInfo._Metadata,om) + (ObInfo.MetaString, ms)));
+                m =  m + (ObInfo._Metadata, om) + (ObInfo.MetaString, ms);
+            } 
             var r = New(defpos, m);
             cx.db += r;
             return cx.Add(r);

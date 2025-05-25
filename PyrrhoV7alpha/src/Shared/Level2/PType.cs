@@ -91,9 +91,6 @@ namespace Pyrrho.Level2
         { }
         protected PType(PType x, Writer wr) : base(x, wr)
         {
-            name = wr.cx.NewNode(wr.Length, x.name.Trim(':'));
-            if (x.name.EndsWith(':'))
-                name += ':';
             under = wr.cx.FixTDb(x.under);
         }
         public override long Dependent(Writer wr, Transaction tr)
@@ -178,7 +175,7 @@ namespace Pyrrho.Level2
                 m += (Domain.Under, dt.super);
             if (un > 0)
             { // it can happen that under is more recent than dt (EditType), so be careful
-                var un1 = (UDType)(rdr.context.db.objects[un] ?? Domain.TypeSpec);
+                var un1 = (Table)(rdr.context.db.objects[un] ?? Domain.TypeSpec);
                 var ui = un1.infos[rdr.context.role.defpos];
                 var rs = dt.representation;
                 for (var b = ui?.names.First(); b != null; b = b.Next())
@@ -283,7 +280,6 @@ namespace Pyrrho.Level2
             var ps = CTree<long, Domain>.Empty;
             var pn = BTree<string, (long,long)>.Empty;
             var pt = CList<long>.Empty;
-            var cs = CTree<TypedValue, bool>.Empty;
             for (var b = under.First(); b != null; b = b.Next())
                 if (b.key() is UDType so)
                 {
@@ -300,8 +296,6 @@ namespace Pyrrho.Level2
                         else if (so.representation[p]?.kind != pd.kind)
                             throw new DBException("PE20921");
                     }
-                    if (so is EdgeType et)
-                        cs += et.connects;
                     ps += so.representation;
                     pn += so.infos[cx.role.defpos]?.names ?? Names.Empty;
                 }
@@ -332,8 +326,6 @@ namespace Pyrrho.Level2
             if (pt.CompareTo(dataType.rowType)!=0 || ps.CompareTo(dataType.representation)!=0)
                 dataType = dataType+(Domain.RowType,pt)+(Domain.Representation,ps)
                     + (Domain.Display,pt.Length);
-            if (cs != CTree<TypedValue, bool>.Empty)
-                dataType += (EdgeType.Connects, cs);
             ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var ss = CTree<Domain, bool>.Empty;
             var oi = dataType.infos[cx.role.defpos];

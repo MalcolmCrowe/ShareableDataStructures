@@ -496,6 +496,12 @@ namespace Pyrrho.Level4
                 d = _DepthV(b.value(), d);
             return d;
         }
+        internal int _DepthLll(CList<(long,long)>? t, int d)
+        {
+            for (var b = t?.First(); b != null; b = b.Next())
+                d = Math.Max(_DepthV(b.value().Item1, d), _DepthV(b.value().Item2, d));
+            return d;
+        }
         internal int _DepthLLl(CList<CList<long>>?t, int d)
         {
             for (var b = t?.First(); b != null; b = b.Next())
@@ -1202,6 +1208,21 @@ namespace Pyrrho.Level4
                 }
             return ch ? r : vt;
         }
+        internal CTree<Qlx, TypedValue> ReplacedTQV(CTree<Qlx, TypedValue> vt)
+        {
+            var r = CTree<Qlx, TypedValue>.Empty;
+            var ch = false;
+            for (var b = vt.First(); b != null; b = b.Next())
+                if (b.value() is TypedValue v)
+                {
+                    var k = b.key();
+                    var nv = v.Replaced(this);
+                    if (nv != v)
+                        ch = true;
+                    r += (k, nv);
+                }
+            return ch ? r : vt;
+        }
         internal CTree<long, bool> ReplacedTlb(CTree<long, bool> wh)
         {
             var r = CTree<long, bool>.Empty;
@@ -1605,6 +1626,7 @@ namespace Pyrrho.Level4
                         case RowSet._Matches: v = ReplacedTlV((CTree<long, TypedValue>)v); break;
                         case RowSet.Matching: v = ReplacedTTllb((CTree<long, CTree<long, bool>>)v); break;
                         case Grouping.Members: v = Replaced((CTree<long, int>)v); break;
+                        case ObInfo._Metadata: v = ReplacedTQV((CTree<Qlx, TypedValue>)v); break;
                         case ObInfo._Names: v = ReplacedTsl((Names)v); break;
                         case RestView.NamesMap: v = ReplacedTls((CTree<long,string>)v); break;
                         case NullPredicate.NVal: v = Replaced((long)v); break;
@@ -1649,7 +1671,7 @@ namespace Pyrrho.Level4
                         case InstanceRowSet.SRowType: v = ReplacedLl((CList<long>)v); break;
                         case NestedStatement.Stms: v = ReplacedLl((CList<long>)v); break;
                         case QlValue.Sub: v = Replaced((long)v); break;
-                        case SqlValueArray.Svs: v = Replaced((long)v); break;
+                        case SqlValueList.Svs: v = Replaced((long)v); break;
                         case Level3.Index.TableDefPos: v = Replaced((long)v); break;
                         case Table.TableRows: v = ReplacedTlR((BTree<long, TableRow>)v,w); break;
                         case RowSet.Target: v = Replaced((long)v); break;
@@ -2194,6 +2216,29 @@ namespace Pyrrho.Level4
                 }
             return ch ? r : ord;
         }
+        internal CList<(long,long)> FixLll(CList<(long,long)> ord)
+        {
+            var r = CList<(long,long)>.Empty;
+            var ch = false;
+            for (var b = ord.First(); b != null; b = b.Next())
+            {
+                var (p, q) = b.value();
+                var f = Fix(p);
+                if (f > 0 && f != p)
+                { 
+                    ch = true;
+                    p = f;
+                }
+                var g = Fix(q);
+                if (g > 0 && g != q)
+                {
+                    ch = true;
+                    q = g;
+                }
+                r += (p,q);
+            }
+            return ch ? r : ord;
+        }
         internal CList<CList<long>> FixLLl(CList<CList<long>> stms)
         {
             var r = CList<CList<long>>.Empty;
@@ -2346,9 +2391,9 @@ namespace Pyrrho.Level4
                 }
             return ch?r:a;
         }
-        internal CTree<int, TypedValue> FixTiV(CTree<int, TypedValue> a)
+        internal CTree<Qlx, TypedValue> FixTQV(CTree<Qlx, TypedValue> a)
         {
-            var r = CTree<int, TypedValue>.Empty;
+            var r = CTree<Qlx, TypedValue>.Empty;
             var ch = false;
             for (var b = a.First(); b != null; b = b.Next())
                 if (b.value() is TypedValue ov)

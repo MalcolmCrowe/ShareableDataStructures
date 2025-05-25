@@ -138,8 +138,7 @@ namespace Pyrrho.Level2
             wr.PutInt((int)domain.charSet);
             wr.PutString(domain.culture.Name);
             wr.PutString(domain.defaultString);
-            if ((domain.kind == Qlx.ARRAY || domain.kind == Qlx.MULTISET || domain.kind==Qlx.SET)
-                && domain.elType is not null)
+            if (domain.elType is not null)
                 wr.PutLong(wr.cx.db.Find(domain.elType)?.defpos??throw new PEException("PE48802"));
             else
                 wr.PutLong(-1L);

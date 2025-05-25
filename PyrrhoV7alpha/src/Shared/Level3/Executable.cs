@@ -5415,12 +5415,12 @@ namespace Pyrrho.Level3
             else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr)
             {
                 if (pd is TEdge te && te.dataType is EdgeType et && cr is TConnector ec)
-                    for (var b = et.connects.First(); b != null; b = b.Next())
+               //     for (var b = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
                         for (var c = Connects(et, ec).First(); c != null; c = c.Next())
                             if (c.key() is TConnector x && te.tableRow.vals[x.cp]?.ToLong()==tr.defpos)
                                 ds += (gr.refersTo, tr.tableRow);
                 if (pd is TNode pl && tr is TEdge ae && ae.dataType is EdgeType at && gr.postCon is TConnector gc)
-                    for (var b = at.connects.First(); b != null; b = b.Next())
+               //     for (var b = (at.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
                         for (var c = Connects(at, gc).First(); c != null; c = c.Next())
                             if (c.key() is TConnector x && ae.tableRow.vals[x.cp]?.ToLong() == tr.defpos)
                                 ds += (gr.refersTo, tr.tableRow);
@@ -5439,8 +5439,8 @@ namespace Pyrrho.Level3
             else if (pd is not null && pd.dataType is EdgeType pe && pd.defpos != pd.dataType.defpos
                 && cr is TConnector ed)
             {
-                for (var b = pe.connects.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc1 && Connects(ed, tc1) && (ed.cn == "" || ed.cn == tc1.cn)
+                for (var b = (pe.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+                    if (b.Value() is TConnector tc1 && Connects(ed, tc1) && (ed.cn == "" || ed.cn == tc1.cn)
                 && (cx.db.objects[tc1.ct] as NodeType)?.GetS(cx, pd.tableRow.vals[tc1.cp] as TInt)
                is TableRow tn)
                         ds += (tn.defpos, tn);
@@ -5822,8 +5822,8 @@ namespace Pyrrho.Level3
         CTree<TypedValue, bool> Connects(EdgeType et, TConnector cr)
         {
             var r = CTree<TypedValue, bool>.Empty;
-            for (var b = et.connects.First(); b != null; b = b.Next())
-                if (b.key() is TConnector tc
+            for (var b = (et.metadata[Qlx.EDGETYPE]as TSet)?.First(); b != null; b = b.Next())
+                if (b.Value() is TConnector tc
                     && tc.cn != "" && (cr.cn == "" || cr.cn == tc.cn)
                     && tc.q == cr.q switch
                     {

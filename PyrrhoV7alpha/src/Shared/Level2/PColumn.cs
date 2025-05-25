@@ -67,7 +67,7 @@ namespace Pyrrho.Level2
         /// <param name="sq">The 0-based position in the table</param>
         /// <param name="dm">The domain</param>
         /// <param name="tb">The local database</param>
-        public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
+        public PColumn(Type t, Table pr, string nm, int sq, Domain dm, string ms, TMetadata md, long pp, 
             Context cx) : base(t,pp,cx,nm,dm,-1L)
 		{
 			table = cx._Ob(pr.defpos) as Table??throw new DBException("42107",pr.name);
@@ -75,8 +75,17 @@ namespace Pyrrho.Level2
             tabledefpos = pr.defpos;
             dataType = dm;
             domdefpos = dm.defpos;
-            table += (ObInfo._Names, table.names + (nm, (0,pp)));
-            cx.Add(table);
+            this.ms = ms;
+            this.md = md;
+/*            table += (ObInfo._Names, table.names + (nm, (0, pp)));
+            if (ms != "" && table is EdgeType)
+            {
+                var c = md[Qlx.CONNECTING] as TConnector ?? throw new PEException("PE50431");
+                var ts = table.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
+                var mn = table.metadata + (Qlx.EDGETYPE, ts + c); 
+                table = table + (ObInfo._Metadata, mn) + (ObInfo.MetaString, pr.metastring + ms);
+            }
+            cx.Add(table); */
         }
         /// <summary>
         /// Constructor: a new Column definition from the buffer
@@ -114,7 +123,7 @@ namespace Pyrrho.Level2
             if (wr.cx.uids[tabledefpos] is long tp && wr.cx.db.objects[tp] is Table ta)
                 Commit(wr.cx, ta);
             var (nt,ph) = base.Commit(wr, tr);
-            if (wr.cx.uids[tabledefpos] is long t && wr.cx.db.objects[t] is Table tb)
+/*            if (wr.cx.uids[tabledefpos] is long t && wr.cx.db.objects[t] is Table tb)
             {
                 var ot = tb;
                 var xs = tb.indexes;
@@ -142,7 +151,7 @@ namespace Pyrrho.Level2
                 {
                     tb += (DBObject.Infos, tb.infos + (tb.definer, ni));
                     tb += (ObInfo._Names, ni.names);
-                    tb += (ObInfo._Metadata, ni.metadata);
+                    tb = tb + (ObInfo._Metadata, ni.metadata) + (ObInfo.MetaString, ni.metastring);
                 }
                 var sx = wr.cx.FixTlTlTlb(tb.sindexes);
                 if (sx != tb.sindexes)
@@ -151,7 +160,7 @@ namespace Pyrrho.Level2
                     tb += (Table.KeyCols, tb.keyCols - ppos + (ph.ppos,true));
                 if (ot != tb)
                     wr.cx.db += (tb.defpos, tb);
-            }
+            } */
             return (nt,ph);
         }
         void Commit(Context cx,Table ta)
@@ -208,8 +217,12 @@ namespace Pyrrho.Level2
                 var tc = new TConnector(q, ct.defpos, name,
                     ((flags & 0x8L) == 0x8L) ? Domain.EdgeEnds : Domain.Position, defpos);
                 connector = tc;
+                md += (Qlx.CONNECTING, tc);
                 if (table is EdgeType et)
-                    rdr.context.db += et + (EdgeType.Connects, et.connects + (tc,true));
+                {
+                    var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
+                    rdr.context.db += et + (ObInfo._Metadata, et.metadata + (Qlx.EDGETYPE,ts + tc));
+                }
             }
                 // end of fix
             seq = rdr.GetInt();
@@ -277,13 +290,8 @@ namespace Pyrrho.Level2
             else
                 sb.Append(dataType); 
             sb.Append(']');
-            if (connector is TConnector tc)
-            {
-                sb.Append(' ');sb.Append(tc.q); sb.Append(' '); sb.Append(DBObject.Uid(tc.ct));
-                sb.Append(' '); sb.Append(tc.cd); 
-                if (tc.cm != null)
-                { sb.Append(' '); sb.Append(tc.cm); }
-            }
+            if (ms != "") sb.Append(' ');
+            sb.Append(ms);
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx)
@@ -320,11 +328,11 @@ namespace Pyrrho.Level2
             table += (cx, tc); // this is where the NodeType stuff happens
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME));
             tc += (TableColumn.Seq, seq);
-            tc = (TableColumn)tc.Apply(cx, table);
+            tc = (TableColumn)tc.Apply(cx, table); 
+            tc = (TableColumn)tc.Add(cx, ms, md);
             cx.db += (tc.defpos, tc);
             table += (DBObject.LastChange, ppos);
             table += (ObInfo._Names, ti.names);
-            cx.Install(table);
             cx.db += (table.defpos, table);
             if (table is UDType ut)
                 for (var b = ut.methods.First(); b != null; b = b.Next())
@@ -368,13 +376,9 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the column (may be null)</param>
         /// <param name="sq">The position of the column in the table</param>
         /// <param name="dm">The domain</param>
-        /// <param name="dv">The default value</param>
-        /// <param name="nn">True if the NOT NULL constraint is to apply</param>
-        /// <param name="ge">The generation rule</param>
         /// <param name="db">The local database</param>
-        public PColumn2(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            bool nn, GenerationRule ge, long pp, Context cx)
-            : this(Type.PColumn2,pr,nm,sq,dm,ds,dv,nn,ge,pp,cx)
+        public PColumn2(Table pr, string nm, int sq, Domain dm, string ms,TMetadata md,long pp, Context cx)
+            : this(Type.PColumn2,pr,nm,sq,dm,ms,md,pp,cx)
 		{ }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -384,21 +388,17 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the ident</param>
         /// <param name="sq">The position of the ident in the table</param>
         /// <param name="dm">The domain</param>
-        /// <param name="ds">The default value</param>
-        /// <param name="nn">True if the NOT NULL constraint is to apply</param>
-        /// <param name="ge">the Generation Rule</param>
         /// <param name="db">The database</param>
-        protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, string ds,
-            TypedValue v, bool nn, GenerationRule ge, long pp, Context cx)
-            : base(t,pr,nm,sq,dm,pp,cx)
-		{
-			dfs = ds;
-            optional = !nn;
-            generated = ge;
-            if (ge.gen == Generation.Expression)
+        protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, string ms, TMetadata md, long pp, Context cx)
+            : base(t, pr, nm, sq, dm, ms, md, pp, cx)
+        {
+            dfs = md.Contains(Qlx.DEFAULT)? md[Qlx.DEFAULT].ToString():"";
+            optional = md[Qlx.OPTIONAL].ToBool()??true;
+            generated = new GenerationRule(md);
+            if (generated.gen == Generation.Expression)
             {
                 generated += (RowSet.Target, ppos);
-                framing = new Framing(cx, ge.nextStmt);
+                framing = new Framing(cx, generated.nextStmt);
             }
 		}
         /// <summary>
@@ -498,7 +498,7 @@ namespace Pyrrho.Level2
             if (generated.gen != Generation.No) { sb.Append(" Generated="); sb.Append(generated.gen); }
             return sb.ToString();
         }
-	}
+    }
     /// <summary>
     /// PColumn3: this is an extension of PColumn to add some column constraints.
     /// Changed for the Typed Graph Model
@@ -506,58 +506,47 @@ namespace Pyrrho.Level2
     /// </summary>
     internal class PColumn3 : PColumn2
     {
-        public PColumn3(UDType ut, string nm, int sq, Domain dm, TypedValue tc,
-            long pp, Context cx, bool ifN = false)
-            : this(ut, nm, sq, dm, "", tc, "", CTree<UpdateAssignment, bool>.Empty,
-                    dm.optional, GenerationRule.None, tc, pp, cx)
-        {
-            ifNeeded = ifN;
-        }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
         /// </summary>
         /// <param name="pr">The defining position of the table</param>
         /// <param name="nm">The name of the table column</param>
         /// <param name="sq">The position of the table column in the table</param>
-        /// <param name="dm">The domain</param>
-        /// <param name="dv">The default value</param>
-        /// <param name="ua">The update assignments</param>
-        /// <param name="nn">True if the NOT NULL constraint is to apply</param>
-        /// <param name="ge">The generation rule</param>
+        /// <param name="dm">The declared domain of the table column</param>
+        /// <param name="md">Column Metadata</param>
+        /// <param name="pp">The new physical position</param>
         /// <param name="db">The local database</param>
-        public PColumn3(Table pr, string nm, int sq, Domain dm, string ds, TypedValue dv, 
-            string us, CTree<UpdateAssignment,bool> ua, bool nn, GenerationRule ge,
-                  TypedValue tc, long pp, Context cx)
-            : this(Type.PColumn3, pr, nm, sq, dm, ds, dv, 
-                  us, ua, nn, ge, tc, pp, cx)
-        { }
+        /// <param name="cx">The context</param>
+        public PColumn3(Table pr, string nm, int sq, Domain dm, string ms, TMetadata md, long pp, Context cx, bool ifN = false)
+            : this(Type.PColumn3, pr, nm, sq, dm, ms, md, pp, cx)
+        {
+            ifNeeded = ifN;
+        }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
         /// </summary>
         /// <param name="t">the PColumn2 type</param>
         /// <param name="pr">The defining position of the table</param>
-        /// <param name="nm">The name of the ident</param>
-        /// <param name="sq">The position of the ident in the table</param>
-        /// <param name="dm">The domain</param>
-        /// <param name="dv">The default value</param>
-        /// <param name="nn">True if the NOT NULL constraint is to apply</param>
-        /// <param name="ge">The generation rule</param>
+        /// <param name="nm">The name of the table column</param>
+        /// <param name="sq">The position of the table column in the table</param>
+        /// <param name="dm">The declared domain of the table column</param>
+        /// <param name="md">Column Metadata</param>
+        /// <param name="pp">The new physical position</param>
         /// <param name="db">The local database</param>
-        protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ds, 
-            TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
-            GenerationRule ge, TypedValue tc, long pp, Context cx)
-            : base(t, pr, nm, (sq<0)?pr.Length:sq, dm, ds, dv, nn, ge, pp, cx)
+        /// <param name="cx">The context</param>
+        protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ms, TMetadata md, long pp, Context cx)
+            : base(t, pr, nm, (sq<0)?pr.Length:sq, dm, ms,md, pp, cx)
         {
-            upd = ua;
-            ups = us;
-            if (cx.db.objects[pr.defpos] is EdgeType et && tc is TConnector cc)
+            if (cx.db.objects[pr.defpos] is EdgeType et &&  md[Qlx.CONNECTING] is TConnector cc)
             {
-                tc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, pp, cc.cs, cc.cm);
-                et += (EdgeType.Connects, et.connects - cc + (tc, true));
+                var tc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, pp, cc.cs, cc.cm);
+                var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
+                et += (ObInfo._Metadata, et.metadata + (Qlx.EDGETYPE,ts - cc + tc)); 
                 cx.Add(et);
-                cx.db += et;
+                cx.db += et; 
+                md = md + (Qlx.CONNECTING, tc);
+                connector = tc;
             }
-            connector = tc;
         }
         /// <summary>
         /// Constructor: A new Column definition from the buffer
@@ -641,7 +630,7 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
-            if (upd != CTree<UpdateAssignment,bool>.Empty) { sb.Append(" UpdateRule="); sb.Append(upd); }
+            if (upd != CTree<UpdateAssignment, bool>.Empty) { sb.Append(" UpdateRule="); sb.Append(upd); }
             return sb.ToString();
         }
     }

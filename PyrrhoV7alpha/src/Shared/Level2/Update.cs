@@ -220,8 +220,8 @@ namespace Pyrrho.Level2
             var pr = prevrec?.vals ?? CTree<long, TypedValue>.Empty;
             if (tt is EdgeType et)
             {
-                for (var b = et.connects.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc)
+                for (var b = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+                    if (b.Value() is TConnector tc)
                     {
                         if (now.vals[tc.cp] == TNull.Value)
                             throw new PEException("PE6902");

@@ -989,7 +989,6 @@ namespace Pyrrho.Level4
             t+=new SystemTableColumn(t, "DefPos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Name", Domain.Char,0);
             t+=new SystemTableColumn(t, "Description", Domain.Char,0);
-            t+=new SystemTableColumn(t, "Output", Domain.Char,0);
             t+=new SystemTableColumn(t, "RefPos", Domain.Position,0);
             t+=new SystemTableColumn(t, "Detail", Domain.Char,0);
             t.AddIndex("Pos");
@@ -1069,16 +1068,14 @@ namespace Pyrrho.Level4
             static TRow _Value(SystemRowSet res, Physical ph)
             {
                 PMetadata m = (PMetadata)ph;
-                var md = m.Metadata();
                 return new TRow(res,
                     Pos(m.ppos),
                     Pos(m.defpos),
                     new TChar(m.name ?? throw new PEException("PE0311")),
-                    new TChar(md.Contains(Qlx.PASSWORD)?"*******":m.detail.ToString()),
-                    new TChar(m.MetaFlags()),
+                    new TChar(m.md.Contains(Qlx.PASSWORD)?"*******":m.ms.ToString()),
                     Pos(m.refpos),
                     // At present m.iri may contain a password (this should get fixed)
-                    new TChar((m.iri!="" && md.Contains(Qlx.PASSWORD))?"*******":m.iri));
+                    new TChar((m.iri!="" && m.md.Contains(Qlx.PASSWORD))?"*******":m.iri));
             }
          }
         /// <summary>

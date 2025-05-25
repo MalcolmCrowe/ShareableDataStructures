@@ -46,11 +46,11 @@ namespace Pyrrho.Level1
         /// add another cell to the BBuf and simply discard a failed attempt.
         /// This happens in PyrrhoServer.ReaderData, where there is a comment about why.
         /// </summary>
-        internal class BBuf
+        internal class BBuf(BList<byte> b)
         {
-            public readonly BList<byte> m;
+            public readonly BList<byte> m = b;
             public static BBuf Empty = new(BList<byte>.Empty);
-            public BBuf(BList<byte> b) { m = b; }
+
             public static BBuf operator+(BBuf b,byte[] x)
             {
                 for (var i = 0; i < x.Length; i++)
@@ -135,17 +135,20 @@ namespace Pyrrho.Level1
                 bb += "ARRAY";
                 int n = ta.Length;
                 var et = ta.dataType.elType ?? throw new DBException("22G03");
-                bb += et.name ?? et.ToString();
+                bb += et.ToString();
                 bb += et.Typecode();
                 bb += n;
                 for (var b = ta.array.First(); b != null; b = b.Next())
+                {
+                    bb += (cx, Domain.Int, new TInt(b.key()));
                     bb += (cx, et, b.value());
+                }
                 return bb;
             }
             public static BBuf operator +(BBuf bb, (Context, TList) x)
             {
                 var (cx, tl) = x;
-                bb += "ARRAY";  // not LIST
+                bb += "LIST";  
                 int n = tl.Length;
                 var et = tl.dataType.elType ?? throw new DBException("22G03");
                 bb += et.ToString();
@@ -303,7 +306,8 @@ namespace Pyrrho.Level1
                             throw new PEException("PE42165");
                         }
                     case Qlx.REF:
-                    case Qlx.ROW: return b +(cx, (TRow)tv); 
+                    case Qlx.ROW: return b +(cx, (TRow)tv);
+                    case Qlx.LIST: return b+(cx, (TList)tv);
                     case Qlx.ARRAY: return b+(cx, (TArray)tv);
                     case Qlx.SET:
                         {
@@ -636,7 +640,6 @@ namespace Pyrrho.Level1
             rpos = rcount + 2;
         }
         bool exception = false;
-        static int flushcount = 0;
         /// <summary>
         /// Flush the buffers to the network
         /// </summary>
@@ -898,11 +901,7 @@ namespace Pyrrho.Level1
         /// <param name="n">an Int32 for the stream</param>
         internal void PutInt(int n)
         {
-            byte[] b = new byte[4];
-            b[0] = (byte)(n >> 24);
-            b[1] = (byte)(n >> 16);
-            b[2] = (byte)(n >> 8);
-            b[3] = (byte)n;
+            byte[] b = [(byte)(n >> 24), (byte)(n >> 16), (byte)(n >> 8), (byte)n];
             Write(b, 0, 4);
         }
         /// <summary>
@@ -911,15 +910,17 @@ namespace Pyrrho.Level1
         /// <param name="n">an Int64 for the stream</param>
         public void PutLong(long n)
         {
-            byte[] b = new byte[8];
-            b[0] = (byte)(n >> 56);
-            b[1] = (byte)(n >> 48);
-            b[2] = (byte)(n >> 40);
-            b[3] = (byte)(n >> 32);
-            b[4] = (byte)(n >> 24);
-            b[5] = (byte)(n >> 16);
-            b[6] = (byte)(n >> 8);
-            b[7] = (byte)n;
+            byte[] b =
+            [
+                (byte)(n >> 56),
+                (byte)(n >> 48),
+                (byte)(n >> 40),
+                (byte)(n >> 32),
+                (byte)(n >> 24),
+                (byte)(n >> 16),
+                (byte)(n >> 8),
+                (byte)n,
+            ];
             Write(b, 0, 8);
         }
         /// <summary>
@@ -933,14 +934,14 @@ namespace Pyrrho.Level1
             for (int j = 0; j < files.Length; j++)
             {
                 string s = files[j];
-                int m = s.LastIndexOf("\\");
+                int m = s.LastIndexOf('\\');
                 if (m >= 0)
                     s = s[(m + 1)..];
-                m = s.LastIndexOf("/");
+                m = s.LastIndexOf('/');
                 if (m >= 0)
                     s = s[(m + 1)..];
                 int n = s.Length - 4;
-                if (s.IndexOf(".", 0, n) >= 0)
+                if (s.IndexOf('.', 0, n) >= 0)
                     continue;
                 ar.Add(s[..n]);
             }

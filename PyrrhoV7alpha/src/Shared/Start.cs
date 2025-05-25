@@ -437,8 +437,8 @@ namespace Pyrrho
                                         pl++;
                                 if (cx.result is not null && ((Transaction)db).physicals.Count<=pl)
                                 {
-                                    if (cx.result is RowSet)
-                                        cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
+                                    if (cx.result is RowSet set)
+                                        cx.result = CheckPathGrouping(cx, set);
                                     tcp.PutRowType(cx);
                                     rb = null;
                                     if (cx.result is RowSet res && res.Length>0)
@@ -495,8 +495,8 @@ namespace Pyrrho
                                 }
                                 else 
                                 {
-                                    if (cx.result is RowSet)
-                                        cx.result = CheckPathGrouping(cx, (RowSet)cx.result);
+                                    if (cx.result is RowSet set)
+                                        cx.result = CheckPathGrouping(cx, set);
                                     tcp.Write(Responses.TableData);
                                     tcp.PutRowType(cx);
                                     rb = null;
@@ -1273,7 +1273,7 @@ namespace Pyrrho
             int len = 4 + StringLength("ARRAY") + TypeLength(a.dataType.elType ??Domain.Content);
             if (a is TArray ta)
             for (var b = ta.array.First(); b != null; b = b.Next())
-                len += 1 + DataLength(cx, b.value());
+                len += 2 + StringLength(new TInt(b.key())) + DataLength(cx, b.value());
             else if (a is TList tl)
                 for (var b = tl.list.First(); b != null; b = b.Next())
                     len += 1 + DataLength(cx, b.value());
@@ -1295,7 +1295,7 @@ namespace Pyrrho
         }
         int TableLength(Context _cx, RowSet r)
         {
-            int len = 4 + StringLength("TABLE") + SchemaLength(_cx, r);
+            int len = 4 + StringLength(r.kind.ToString()) + SchemaLength(_cx, r);
             for (var e = r.First(_cx); e != null; e = e.Next(_cx))
                 len += RowLength(_cx, e);
             return len;
@@ -1532,7 +1532,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.09alpha","(10 May 2025)", "http://www.pyrrhodb.com"
+            "7.010alpha","(25 May 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

@@ -2,8 +2,12 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.Diagnostics;
 using System.Globalization;
+using System.Net;
 using System.Runtime.Intrinsics.Arm;
+using System.Xml;
+using System.Xml.Linq;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -1338,13 +1342,13 @@ namespace Pyrrho.Level4
                 {
                     var fi = new Ident(this);
                     var ix = cx.dnames[fi.ident].Item2;
-                    var (_,md) = ParseMetadata(Qlx.EDGETYPE);
-                    r = FindOrCreateElementType(id, null, ps, null, (md[Qlx.EDGETYPE] as TSet)?.tree, wds);
+                    var (ms,md) = ParseMetadata(Qlx.EDGETYPE);
+                    r = FindOrCreateElementType(id, null, ps, ms, md);
                 }
             }
             else
                 r = dm as NodeType;
-            r ??= FindOrCreateElementType(id, null, tps, al);
+            r ??= FindOrCreateElementType(id, null, tps, "", TMetadata.Empty /*??*/, al);
             if (StartMetadata(Qlx.TYPE)) 
             {
                 var (s,m) = ParseMetadata(Qlx.TYPE);
@@ -1388,8 +1392,8 @@ namespace Pyrrho.Level4
         /// <param name="wds">The keywords collected from the element tye specification</param>
         /// <returns>A (possibly joined) node tye that meets these requirements</returns>
         /// <exception cref="DBException"></exception>
-        NodeType FindOrCreateElementType(Ident id, Domain? dm, BList<(Ident, Domain)> ps, Ident? a = null,
-            CTree<TypedValue,bool>? md=null, CTree<Qlx, bool>? wds = null)
+        NodeType FindOrCreateElementType(Ident id, Domain? dm, BList<(Ident, Domain)> ps,  string ms, TMetadata md, Ident? a = null,
+          CTree<Qlx, bool>? wds = null)
         {
             var un = dm?.super ?? CTree<Domain, bool>.Empty; // relevant node types
             var ep = CTree<long, bool>.Empty; // properties found
@@ -1484,8 +1488,7 @@ namespace Pyrrho.Level4
         Define:;
             NodeType? ut = null;
             var ops = ps;
-            md = (ParseMetadata(Qlx.TYPE).Item2[Qlx.EDGETYPE] as TSet)?.tree;
-            if (md == null && ix is null) // It is a new node tye
+            if (md.Contains(Qlx.NODETYPE) && ix is null) // It is a new node tye
             {
                 var tp = new PNodeType(id.ident, (NodeType)Domain.NodeType.Relocate(id.uid), un, -1L, cx.db.nextPos, cx);
                 ut = (NodeType)(cx.Add(tp) ?? throw new DBException("42105"));
@@ -1502,28 +1505,22 @@ namespace Pyrrho.Level4
                             continue;
                         throw new DBException("42104", cn);
                     }
-                    var pc = new PColumn3(ut, cn.ident, -1, cd, TNull.Value, cx.db.nextPos, cx);
+                    var pc = new PColumn3(ut, cn.ident, -1, cd, ms, md, cx.db.nextPos, cx);
                     cx.Add(pc);
                 }
             }
-            else if (md != null)
+            else if (md[Qlx.EDGETYPE] is TSet cs)
             { // it is an edge tye
                 var up = new PEdgeType(id.ident, (EdgeType)Domain.EdgeType.Relocate(id.uid), un, -1L, cx.db.nextPos, cx);
                 var et = (EdgeType)(cx.Add(up) ?? throw new DBException("42105"));
                 ut = et;
-                for (var b = md?.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc)
+                for (var b = cs?.First(); b != null; b = b.Next())
+                    if (b.Value() is TConnector tc)
                         et = et.BuildNodeTypeConnector(cx, tc).Item1;
             }
             var nu = cx.db.objects[ut?.defpos??-1L] as NodeType??
-                new EdgeType(id.lp, id.uid,id.ident,(md==null)?Domain.NodeType:Domain.EdgeType,
-                    BTree<long,object>.Empty,cx);
-      /*      // 5: If there is a property called ID make it the primary key
-            if (nu?.infos[cx.role.defpos] is ObInfo ui
-                && ui.names.Contains("ID") && cx.obs[ui.names["ID"].Item2] is TableColumn pt)
-                cx.Add(new PIndex("ID", nu, new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(pt), 1),
-                    PIndex.ConstraintType.PrimaryKey, -1, cx.db.nextPos)); */
-            return nu ?? throw new DBException("42105");
+                new EdgeType(id.lp, id.uid,id.ident,Domain.EdgeType,BTree<long,object>.Empty,cx);
+            return (NodeType)nu.Add(cx,ms,md); // here is where we add PIndexes as required
         }
         /// <summary>
         /// When this is called id is the current Lexer Ident
@@ -1531,36 +1528,36 @@ namespace Pyrrho.Level4
         /// <param name="id"></param>
         /// <param name="xp"></param>
         /// <returns></returns>
-        (Domain,BList<(Ident,TMetadata)>,BList<(Ident,Domain)>) ElementDetails(Ident id,NodeType xp)
+        (Domain, BList<(Ident, TMetadata)>, BList<(Ident, Domain)>) ElementDetails(Ident id, NodeType xp)
         {
-            var la = new BList<(Ident, TMetadata)>((id,TMetadata.Empty));
+            var la = new BList<(Ident, TMetadata)>((id, TMetadata.Empty));
             var ix = cx.dnames[id.ident].Item2;
             while (Match(Qlx.VBAR))
             {
                 Next();
                 var ia = new Ident(this);
                 Mustbe(Qlx.Id);
-                la += (ia, TMetadata.Empty+ParseMetadata(Qlx.TYPE).Item2);
+                la += (ia, TMetadata.Empty + ParseMetadata(Qlx.TYPE).Item2);
             }
-            if (ix>=0L && cx.obs[ix] is Domain n)
+            if (ix >= 0L && cx.obs[ix] is Domain n)
                 return (n, la, BList<(Ident, Domain)>.Empty);
             Domain le = GqlLabel.Empty;
-            if (Match(Qlx.LABEL,Qlx.LABELS,Qlx.COLON,Qlx.DOUBLEARROW,Qlx.IMPLIES))
-                le = ParseNodeLabelExpression(xp,id.ident);
+            if (Match(Qlx.LABEL, Qlx.LABELS, Qlx.COLON, Qlx.DOUBLEARROW, Qlx.IMPLIES))
+                le = ParseNodeLabelExpression(xp, id.ident);
             var lp = LexLp();
             if (Match(Qlx.DOUBLEARROW, Qlx.IMPLIES)) // we prefer DOUBLEARROW to the keyword
             {
                 Next();
                 var lf = ParseNodeLabelExpression(xp);
                 cx.Add(lf);
-                le = (Domain)cx.Add(new GqlLabel(lp,cx,le.defpos,lf.defpos,
-                    new BTree<long,object>(Domain.Kind,Qlx.DOUBLEARROW)));
+                le = (Domain)cx.Add(new GqlLabel(lp, cx, le.defpos, lf.defpos,
+                    new BTree<long, object>(Domain.Kind, Qlx.DOUBLEARROW)));
             }
             var ps = BList<(Ident, Domain)>.Empty;
             if (Match(Qlx.LBRACE))
             {
                 Next();
-    //            cx.IncSD(id);
+                //            cx.IncSD(id);
                 var pn = new Ident(this);
                 Mustbe(Qlx.Id);
                 if (Match(Qlx.COLON, Qlx.DOUBLECOLON, Qlx.TYPED)) // allow colon because of JSON option
@@ -1578,17 +1575,19 @@ namespace Pyrrho.Level4
                     ps += (pn, dt);
                 }
                 Mustbe(Qlx.RBRACE);
-                cx.defs -= cx.sD-1;
+                cx.defs -= cx.sD - 1;
+            }
+            var ms = "";
+            if (StartMetadata(Qlx.TABLE))
+            {
+                (ms, var md) = ParseMetadata(Qlx.TABLE);
+                xp = xp + (ObInfo._Metadata, xp.metadata + md) + (ObInfo.MetaString, ms);
+                cx.Add(xp);
             }
             if (le.kind == Qlx.NO)
-            {
-                if (xp.kind == Qlx.NODETYPE)
-                    le = FindOrCreateElementType(id, Domain.NodeType, ps);
-                else
-                    le = FindOrCreateElementType(id, Domain.EdgeType, ps, null, CTree<TypedValue,bool>.Empty);
-            }
+                le = FindOrCreateElementType(id, Domain.NodeType, ps, ms, xp.metadata);
             else if (le.defpos > 0L && !cx.role.dbobjects.Contains(le.name))
-                le = FindOrCreateElementType(id, le, ps);
+                le = FindOrCreateElementType(id, le, ps, ms, xp.metadata);
             lxr.tgs = CTree<long, TGParam>.Empty;
             return (le, la, ps);
         }
@@ -1712,7 +1711,7 @@ namespace Pyrrho.Level4
         /// <summary>
         /// Create: CREATE GraphPattern {',' GraphPattern } [THEN Statements END].
         /// A graph fragment results in the addition of at least one Record
-        /// in a node tye: the node tye definition comprising a table and UDT may 
+        /// in a node tye: the node tye definition comprising a tble and UDT may 
         /// be created and/or altered on the fly, and may extend to further edge and edge types.
         /// The given input is a sequence of clauses that contain graph expressions
         /// with internal and external references to existing and new nodes, edges and their types.
@@ -2496,7 +2495,7 @@ namespace Pyrrho.Level4
             }
             // CREATE VIEW always creates a new Compiled object,
             // whose columns and datatype are recorded in the framing part.
-            // For a normal view the columns are QlInstances that refer to a derived table
+            // For a normal view the columns are QlInstances that refer to a derived tble
             // to be defined in the AS QueryStatement part of the syntax:
             // so that initially they will have the undefined Content datatype.
             // If it is a RestView the column datatypes are specified inline
@@ -2510,7 +2509,7 @@ namespace Pyrrho.Level4
             cx.defs = BTree<long, Names>.Empty;
             var ns = Names.Empty;
             var nst = cx.db.nextStmt;
-            Table? us = null;  // Show the USING table of a RestViewUsing
+            Table? us = null;  // Show the USING tble of a RestViewUsing
             var ts = BTree<long, ObInfo>.Empty;
             if (Match(Qlx.LPAREN))
             {
@@ -2874,7 +2873,8 @@ namespace Pyrrho.Level4
                     ls += (cn, new SqlLiteral(p, cn, tc.domain.defaultValue, tc.domain));
                     nn += (cn, (ap,tc.defpos));
                 }
-            var (_,m) = ParseMetadata(Qlx.TYPE);
+            var (s,m) = ParseMetadata(Qlx.TYPE);
+            dt = dt + (ObInfo._Metadata,dt.metadata + m) + (ObInfo.MetaString,s);
             if (m.Contains(Qlx.NODETYPE))
             {
                 var nt = new NodeType(typename.uid, dt.mem + (Domain.Kind, Qlx.NODETYPE));
@@ -2884,8 +2884,8 @@ namespace Pyrrho.Level4
             var odt = dt;
             if (m[Qlx.EDGETYPE] is TSet tm) //Each entry in tm is a TConnector
             {
-                var et = new EdgeType(LexLp(),typename.uid,typename.ident,dt,
-                    BTree<long,object>.Empty+(EdgeType.Connects,tm.tree),cx);
+                var et = new EdgeType(LexLp(), typename.uid, typename.ident, dt,
+                    BTree<long, object>.Empty + (ObInfo._Metadata, dt.metadata+(Qlx.EDGETYPE,tm)), cx);
                 et = et.FixEdgeType(cx, typename, tm.tree);
                 dt = et.Build(cx, null, 0L, typename.ident, ls);
             }
@@ -3022,7 +3022,6 @@ namespace Pyrrho.Level4
                 Next();
                 int st = lxr.start;
                 var dv = ParseSqlValue((DBObject._Domain,type));
-                Next();
                 var ds = new string(lxr.input, st, lxr.start - st);
                 type = type + (Domain.Default, dv) + (Domain.DefaultString, ds);
             }
@@ -3091,30 +3090,33 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.Id);
             if (cx.db.schema.dbobjects.Contains(name.ident) || cx.role.dbobjects.Contains(name.ident))
                 throw new DBException("42104", name);
-            var pt = new PTable(name.ident, Domain.TableType,cx.db.nextPos, cx);
-            var tb = cx.Add(pt) ?? throw new DBException("42105").Add(Qlx.TABLE);
-            tb = ParseTableContentsSource((Table)tb);
-            if (tok == Qlx.RDFLITERAL &&
-                lxr.val is RdfLiteral rit && rit.val is string ri)
+            var pt = new PTable(name.ident, Domain.TableType, cx.db.nextPos, cx);
+            var tb = (Table)(cx.Add(pt) ?? throw new DBException("42105").Add(Qlx.TABLE));
+            var ti = tb.infos[cx.role.defpos] ?? new ObInfo(name.ident);
+            string si = "";
+            TMetadata sm = TMetadata.Empty;
+            Mustbe(Qlx.LPAREN);
+            for (; ; )
             {
-                tb += (ObInfo.Name, ri);
-                tb = (Table)cx.Add(tb); // FIX this
-                Next();
+                if (StartMetadata(Qlx.TABLE))
+                {
+                    var (st, mt) = ParseMetadata(Qlx.TABLE,(DBObject._Domain,tb));
+                    si += st; sm += mt;
+                }
+                else
+                    (si,sm,tb) = ParseColumnDefin(tb,si,sm);
+                if (Match(Qlx.COMMA))
+                    Next();
+                else
+                    break;
             }
-            if (Match(Qlx.SECURITY))
-            {
-                Next();
-                if (Match(Qlx.LEVEL))
-                    tb = ParseClassification(tb);
-                if (Match(Qlx.SCOPE))
-                    tb = ParseEnforcement((Table)tb);
-            }
+            Mustbe(Qlx.RPAREN);
             if (StartMetadata(Qlx.TABLE))
             {
-                var dp = LexDp();
-                var (s,md) = ParseMetadata(Qlx.TABLE);
-                cx.Add(new PMetadata(name.ident, dp, tb, s, md, cx.db.nextPos));
+                var (s, md) = ParseMetadata(Qlx.TABLE,(DBObject._Domain, tb));
+                si += s; sm += md;
             }
+            tb.Add(cx, tb.metastring+si, tb.metadata+sm);
         }
         DBObject ParseClassification(DBObject ob)
         {
@@ -3148,77 +3150,12 @@ namespace Pyrrho.Level4
             tb = (Table)(cx.Add(pe) ?? throw new DBException("42105").Add(Qlx.ENFORCED));
             return tb;
         }
+
         /// <summary>
-        /// TebleContents = '(' TableClause {',' TableClause } ')' { VersioningClause }
-        /// | OF Type_id ['(' TypedTableElement { ',' TypedTableElement } ')'] .
-        /// VersioningClause = WITH (SYSTEM|APPLICATION) VERSIONING .
-        /// </summary>
-        /// <param name="ta">The newly defined Table</param>
-        /// <returns>The updated Table</returns>
-        Table ParseTableContentsSource(Table tb)
-        {
-            switch (tok)
-            {
-                case Qlx.LPAREN:
-                    Next();
-                    tb = ParseTableItem(tb);
-                    while (tok == Qlx.COMMA)
-                    {
-                        Next();
-                        tb = ParseTableItem(tb);
-                    }
-                    Mustbe(Qlx.RPAREN);
-                    while (Match(Qlx.WITH))
-                        tb = ParseVersioningClause(tb, false);
-                    break;
-                case Qlx.OF:
-                    {
-                        Next();
-                        var id = ParseIdent();
-                        var udt = cx.db.objects[cx.role.dbobjects[id.ident] ?? -1L] as Domain ??
-                            throw new DBException("42133", id.ToString()).Mix();
-                        var tr = cx.db as Transaction ?? throw new DBException("2F003");
-                        for (var cd = udt.rowType.First(); cd != null; cd = cd.Next())
-                            if (cd.value() is long p && cx.db.objects[p] is TableColumn tc &&
-                                tc.infos[cx.role.defpos] is ObInfo ci && ci.name is not null)
-                            {
-                                var pc = new PColumn2(tb, ci.name, cd.key(), tc.domain,
-                                    tc.generated.gfs ?? tc.domain.defaultValue?.ToString() ?? "",
-                                    tc.domain.defaultValue ?? TNull.Value, !tc.domain.optional,
-                                    tc.generated, tr.nextPos, cx);
-                                tb = (Table?)cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN);
-                            }
-                        if (Match(Qlx.LPAREN))
-                        {
-                            for (; ; )
-                            {
-                                Next();
-                                if (Match(Qlx.UNIQUE, Qlx.PRIMARY, Qlx.FOREIGN))
-                                    tb = ParseTableConstraintDefin(tb);
-                                else
-                                {
-                                    id = ParseIdent();
-                                    var se = (TableColumn?)cx.db.objects[udt.ColFor(cx, id.ident)]
-                                        ?? throw new DBException("42112", id.ident);
-                                    ParseColumnOptions(tb, se);
-                                    tb = (Table?)cx.obs[tb.defpos] ?? throw new PEException("PE1711");
-                                }
-                                if (!Match(Qlx.COMMA))
-                                    break;
-                            }
-                            Mustbe(Qlx.RPAREN);
-                        }
-                        break;
-                    }
-                default: throw new DBException("42161", "(, AS, or OF", tok.ToString()).Mix();
-            }
-            return tb;
-        }
-        /// <summary>
-        /// Parse the table versioning clause:
+        /// Parse the tble versioning clause:
         /// (SYSTEM|APPLICATION) VERSIONING
         /// </summary>
-        /// <param name="ta">the table</param>
+        /// <param name="ta">the tble</param>
         /// <param name="drop">whether we are dropping an existing versioning</param>
         /// <returns>the updated Table object</returns>
         private Table ParseVersioningClause(Table tb, bool drop)
@@ -3259,60 +3196,6 @@ namespace Pyrrho.Level4
             return (Table)cx.Add(tb + (Table.Indexes, tb.indexes + ixs));
         }
         /// <summary>
-        /// TypedTableElement = id WITH OPTIONS '(' ColumnOption {',' ColumnOption} ')'.
-        /// ColumnOption = (SCOPE id)|(DEFAULT TypedValue)|ColumnConstraint .
-        /// </summary>
-        /// <param name="tb">The table being created</param>
-        /// <param name="tc">The column being optioned</param>
-        void ParseColumnOptions(Table tb, TableColumn tc)
-        {
-            Mustbe(Qlx.WITH);
-            Mustbe(Qlx.OPTIONS);
-            Mustbe(Qlx.LPAREN);
-            for (; ; )
-            {
-                switch (tok)
-                {
-                    case Qlx.SCOPE:
-                        Next();
-                        Mustbe(Qlx.Id); // TBD
-                        break;
-                    case Qlx.DEFAULT:
-                        {
-                            Next();
-                            int st = lxr.start;
-                            var dv = ParseSqlValue((DBObject._Domain, tc.domain));
-                            var ds = new string(lxr.input, st, lxr.start - st);
-                            tc = tc + (Domain.Default, dv) + (Domain.DefaultString, ds);
-                            cx.db += tc;
-                            break;
-                        }
-                    default:
-                        tb = ParseColumnConstraint(tb, tc);
-                        break;
-                }
-                if (Match(Qlx.COMMA))
-                    Next();
-                else
-                    break;
-            }
-            Mustbe(Qlx.RPAREN);
-        }
-        /// <summary>
-        /// TableClause =	ColumnDefinition | TableConstraintDef | TablePeriodDefinition .
-        /// </summary>
-        Table ParseTableItem(Table tb)
-        {
-            Match(Qlx.PRIMARY, Qlx.UNIQUE, Qlx.FOREIGN, Qlx.CHECK);
-            if (Match(Qlx.PERIOD))
-                tb = AddTablePeriodDefinition(tb);
-            else if (tok == Qlx.Id)
-                tb = ParseColumnDefin(tb);
-            else
-                tb = ParseTableConstraintDefin(tb);
-            return tb;
-        }
-        /// <summary>
         /// TablePeriodDefinition = PERIOD FOR PeriodName '(' id, id ')' .
         /// PeriodName = SYSTEM_TIME | id .
         /// </summary>
@@ -3337,35 +3220,7 @@ namespace Pyrrho.Level4
             Mustbe(Qlx.RPAREN);
             return r;
         }
-        /// <summary>
-        /// Add columns for table period definition
-        /// </summary>
-        /// <param name="tb"></param>
-        /// <returns>the updated table</returns>
-        Table AddTablePeriodDefinition(Table tb)
-        {
-            var ptd = ParseTablePeriodDefinition();
-            if (ptd.col1 == null || ptd.col2 == null)
-                throw new DBException("42105").Add(Qlx.COLUMN);
-            var c1 = (TableColumn?)cx.db.objects[tb.ColFor(cx, ptd.col1.ident)];
-            var c2 = (TableColumn?)cx.db.objects[tb.ColFor(cx, ptd.col2.ident)];
-            if (c1 is null)
-                throw new DBException("42112", ptd.col1).Mix();
-            if (c1.domain.kind != Qlx.DATE && c1.domain.kind != Qlx.TIMESTAMP)
-                throw new DBException("22005R", "DATE or TIMESTAMP", c1.ToString()).ISO()
-                    .AddType(Domain.UnionDate).AddValue(c1.domain);
-            if (c2 == null)
-                throw new DBException("42112", ptd.col2).Mix();
-            if (c2.domain.kind != Qlx.DATE && c2.domain.kind != Qlx.TIMESTAMP)
-                throw new DBException("22005R", "DATE or TIMESTAMP", c2.ToString()).ISO()
-                    .AddType(Domain.UnionDate).AddValue(c1.domain);
-            if (c1.domain.CompareTo(c2) != 0)
-                throw new DBException("22005S", c1.ToString(), c2.ToString()).ISO()
-                    .AddType(c1.domain).AddValue(c2.domain);
-            var tr = cx.db as Transaction ?? throw new DBException("2F003");
-            var pd = new PPeriodDef(tb, ptd.periodname.ident, c1.defpos, c2.defpos, tr.nextPos, cx);
-            return (Table)(cx.Add(pd) ?? throw new DBException("42105").Add(Qlx.PERIOD));
-        }
+
         /// <summary>
 		/// ColumnDefinition = id Type [DEFAULT TypedValue] {ColumnConstraint|CheckConstraint} Collate {Metadata}
 		/// |	id Type GENERATED ALWAYS AS '('Value')'
@@ -3373,9 +3228,9 @@ namespace Pyrrho.Level4
         /// Type = ...|	Type ARRAY
         /// |	Type MULTISET 
         /// </summary>
-        /// <param name="tb">the table</param>
-        /// <returns>the updated table</returns>
-        Table ParseColumnDefin(Table tb)
+        /// <param name="tb">the tble</param>
+        /// <returns>the updated tble</returns>
+        (string,TMetadata,Table) ParseColumnDefin(Table tb,string s,TMetadata d)
         {
             var type = Domain.Null;
             var dom = Domain.Null;
@@ -3395,85 +3250,24 @@ namespace Pyrrho.Level4
                 Next();
             }
             dom = type;
-            if (Match(Qlx.ARRAY, Qlx.SET, Qlx.MULTISET))
+            if (Match(Qlx.ARRAY, Qlx.SET, Qlx.MULTISET, Qlx.LIST))
             {
                 dom = (Domain)cx.Add(new Domain(cx.GetUid(), tok, type));
                 cx.Add(dom);
                 Next();
             }
-            var ua = CTree<UpdateAssignment, bool>.Empty;
-            var gr = GenerationRule.None;
-            var dfs = "";
-            var nst = cx.db.nextStmt;
-            TypedValue dv = TNull.Value;
-            if (Match(Qlx.DEFAULT))
-            {
-                Next();
-                int st = lxr.start;
-                dv = lxr.val;
-                dfs = new string(lxr.input, st, lxr.pos - st-1);
-                Next();
-            }
-            else if (Match(Qlx.GENERATED))
-            {
-                dv = dom.defaultValue ?? TNull.Value;
-                // Set up the information for parsing the generation rule
-                // The table domain and cx.defs should contain the columns so far defined
-                var oc = cx;
-                cx = cx.ForConstraintParse();
-                gr = ParseGenerationRule(lp, tb, dom);
-                dfs = gr.gfs;
-                oc.DoneCompileParse(cx);
-                cx = oc;
-            }
+            var tr = cx.db as Transaction ?? throw new DBException("2F003");
+            StartMetadata(Qlx.COLUMN);
+            var (ms, md) = ParseMetadata(Qlx.COLUMN, (TableColumn._Table, tb),
+                (DBObject._Domain, dom),(DBObject.Defpos,new TInt(tr.nextPos)));
             if (dom == null)
                 throw new DBException("42120", colname.ident);
-            var tr = cx.db as Transaction ?? throw new DBException("2F003");
-            var pc = new PColumn3(tb, colname.ident, -1, dom,
-                dfs, dv, "", ua, false, gr, TNull.Value, tr.nextPos, cx);
-            cx.Add(pc);
+            var pc = new PColumn3(tb, colname.ident, -1, dom, ms, md, tr.nextPos, cx);
+            tb = (Table)(cx.Add(pc)??throw new DBException("42105"));
             tb = (Table?)cx.obs[tb.defpos] ?? tb;
             var tc = (TableColumn)(cx.db.objects[pc.defpos] ?? throw new PEException("PE50100"));
-            if (gr.exp >= 0)
-                tc = cx.Modify(pc, tc);
-            while (Match(Qlx.NOT, Qlx.REFERENCES, Qlx.CHECK, Qlx.UNIQUE, Qlx.PRIMARY, Qlx.CONSTRAINT,
-                Qlx.SECURITY))
-            {
-                var oc = cx;
-                nst = cx.db.nextStmt;
-                cx = cx.ForConstraintParse();
-                tb = ParseColumnConstraintDefin(tb, pc, tc);
-                tb = (Table?)cx.obs[tb.defpos] ?? throw new PEException("PE1570");
-                oc.DoneCompileParse(cx);
-                cx = oc;
-                tc = cx.Modify(pc, (TableColumn)(cx.obs[tc.defpos] ?? throw new PEException("PE15070")));
-                tb = cx.Modify(tb, nst); // maybe the framing changes since nst are irrelevant??
-            }
             var od = dom;
-            if (type != null && Match(Qlx.COLLATE))
-                tc += (Domain.Culture, new CultureInfo(ParseCollate()));
-            if (StartMetadata(Qlx.TYPE) && cx.NameFor(tc.defpos) is string tn)
-            {
-                var (s,md) = ParseMetadata(Qlx.TYPE);
-                var pm = new PMetadata(tn, 0, tc, s, md, cx.db.nextPos);
-                cx.Add(pm);
-                var oi = tc.infos[cx.role.defpos] ?? new ObInfo(tn);
-                oi += (ObInfo._Metadata, md);
-                tc += (DBObject.Infos, tc.infos + (cx.role.defpos, oi));
-                tc += (ObInfo._Names, oi.names);
-                tc += (ObInfo._Metadata, oi.metadata);
-            }
-            if (dom != od)
-            {
-                var nd = (Domain)dom.Relocate(cx.GetUid());
-                if (nd is EdgeType ne && nd.defpos != dom.defpos)
-                    ne.Fix(cx);
-                dom = nd;
-                cx.Add(dom);
-                tc += (DBObject._Domain, dom);
-                cx.Add(tc);
-            }
-            return tb;
+            return (s+ms,d+md,tb);
         }
         /// <summary>
         /// Detect start of TableMetadata or ColumnMetatdata
@@ -3489,11 +3283,14 @@ namespace Pyrrho.Level4
                 case Qlx.TABLE:
                     return Match(Qlx.ENTITY, Qlx.PIE, Qlx.HISTOGRAM, Qlx.LEGEND, Qlx.LINE,
                     Qlx.NODE, Qlx.VERTEX, Qlx.POINTS, Qlx.DROP, Qlx.JSON, Qlx.CSV, Qlx.CHARLITERAL, Qlx.RDFLITERAL,
-                    Qlx.REFERRED, Qlx.ETAG, Qlx.SECURITY);
+                    Qlx.REFERRED, Qlx.ETAG, Qlx.SECURITY, Qlx.PRIMARY,Qlx.UNIQUE,Qlx.CHECK, 
+                    Qlx.FOREIGN, Qlx.RDFLITERAL);
                 case Qlx.COLUMN:
-                    return Match(Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.DROP, 
-                    Qlx.CHARLITERAL, Qlx.RDFLITERAL, Qlx.REFERS, Qlx.SECURITY, Qlx.MULTIPLICITY);
-                case Qlx.CONNECTION:
+                    return Match(Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.DROP, Qlx.NOT,
+                    Qlx.CHARLITERAL, Qlx.RDFLITERAL, Qlx.REFERS, Qlx.SECURITY, Qlx.MULTIPLICITY,
+                    Qlx.REFERENCES,Qlx.CHECK,Qlx.UNIQUE,Qlx.PRIMARY,Qlx.COLLATE, Qlx.DEFAULT,
+                    Qlx.GENERATED);
+                case Qlx.CONNECTING:
                     return Match(Qlx.CARDINALITY, Qlx.OPTIONAL, Qlx.MULTIPLICITY);
                 case Qlx.FUNCTION:
                     return Match(Qlx.ENTITY, Qlx.PIE, Qlx.HISTOGRAM, Qlx.LEGEND,
@@ -3513,18 +3310,17 @@ namespace Pyrrho.Level4
                 default: return Match(Qlx.CHARLITERAL, Qlx.RDFLITERAL);
             }
         }
-        internal TMetadata ParseMetadata(string s, int off, Qlx kind)
+        internal TMetadata ParseMetadata(string s, int off, Qlx kind, params (long, object)[] om)
         {
             lxr = new Lexer(cx, s, off);
-            return ParseMetadata(kind).Item2;
+            return ParseMetadata(kind,om).Item2;
         }
         /// <summary>
         /// Parse ([ADD]|DROP) Metadata
         /// </summary>
         /// <param name="tr">the database</param>
         /// <param name="ob">the object the metadata is for</param>
-        /// <param name="kind">the metadata</param>
-        internal (string,TMetadata) ParseMetadata(Qlx kind)
+        internal (string,TMetadata) ParseMetadata(Qlx kind,params (long,object)[] om)
         {
             var drop = false;
             if (Match(Qlx.ADD, Qlx.DROP))
@@ -3537,7 +3333,10 @@ namespace Pyrrho.Level4
             TypedValue iri = TNull.Value;
             var st = lxr.start;
             long iv = -1;
+            var ckn = "";
             var lp = tok == Qlx.LPAREN;
+            var os = ""; // we may need a Replace step to add a single column key
+            var ns = "";
             if (lp)
                 Next();
             while (StartMetadata(kind))
@@ -3557,6 +3356,13 @@ namespace Pyrrho.Level4
                             var x = cx.GetObject(o.ToString()) ??
                                 throw new DBException("42108", lxr.val.ToString()).Pyrrho();
                             iv = x.defpos;
+                            break;
+                        }
+                    case Qlx.COLLATE:
+                        {
+                            Next();
+                            m += (Qlx.COLLATE, lxr.val);
+                            Mustbe(Qlx.Id);
                             break;
                         }
                     case Qlx.DESC:
@@ -3594,7 +3400,19 @@ namespace Pyrrho.Level4
                                 continue;
                             break;
                         }
+                    case Qlx.NOT:
+                        {
+                            Next();
+                            Mustbe(Qlx.NULL);
+                            m += (Qlx.OPTIONAL, TBool.False);
+                            break;
+                        }
                     case Qlx.OPTIONAL:
+                        {
+                            m += (Qlx.OPTIONAL, TBool.True);
+                            Next();
+                            break;
+                        }
                     case Qlx.VERTEX:
                     case Qlx.NODE:
                         {
@@ -3657,7 +3475,7 @@ namespace Pyrrho.Level4
                                 if (Match(Qlx.Id)) // old syntax
                                 {
                                     cl += ParseConnector(Qlx.FROM);
-                                    Mustbe(Qlx.COMMA);
+                                    Mustbe(Qlx.COMMA,Qlx.TO);
                                     cl += ParseConnector(Qlx.TO);
                                 }
                                 else
@@ -3740,7 +3558,268 @@ namespace Pyrrho.Level4
                                 Mustbe(Qlx.RPAREN);
                             break;
                         }
-                    default:
+                    // Column Metadata:
+                    //  PRIMARY KEY 
+                    //  REFERENCES id[Cols][USING(id | '('Values')')] { ReferentialAction }
+                    //  UNIQUE
+                    // Table Metadata
+                    //  UNIQUE Cols
+                    //  PRIMARY KEY Cols 
+                    //  FOREIGN KEY Cols REFERENCES id [Cols] [USING (id|'('Values')')] { ReferentialAction } 
+                    // ReferentialAction ReferentialAction = ON (DELETE|UPDATE) (CASCADE| SET (DEFAULT|NULL)|RESTRICT)
+                    // The TMetadata on the Index uses keywords and values as follows:
+                    // always one of UNIQUE, PRIMARY, FOREIGN and 0 or more of the others
+                    // Qlx.UNIQUE => Cols TList(long) TableColumn 
+                    // Qlx.PRIMARY => Cols TList(long) TableColumn 
+                    // Qlx.REFERENCES => referencedTable TInt Table
+                    // Qlx.PRIMARY or Qlx.UNIQUE or Qlx.KEY => referencing columns
+                    // Qlx.PER => referenced columns in referencedTable (rarely needed) TList(long) TableColumn
+                    // Qlx.USING => adapter function TInt Procedure
+                    // Qlx.VALUES => string from Parse.SqlValueList
+                    // Qlx.DELETE => TInt Qlx CASCADE DEFAULT NULL RESTRICT
+                    // Qlx.UPDATE => TInt Qlx CASCADE DEFAULT NULL RESTRICT
+                    case Qlx.UNIQUE:
+                    case Qlx.PRIMARY:
+                    case Qlx.FOREIGN: // keyword FOREIGN is supplied for REFERENCES column
+                    case Qlx.REFERENCES:
+                        {
+                            var upf = tok;
+                            if (Match(Qlx.FOREIGN)) // must precede REFERENCES for table metadata
+                                Next();
+                            Table? tb = null;
+                            Domain? dm = null;
+                            TInt? tp = null;
+                            for (var b=0;b<om.Length;b++)
+                            {
+                                var (k, v) = om[b];
+                                if (k == TableColumn._Table) // provided if kind==Qlx.COLUMN
+                                    tb = v as Table;
+                                else if (k == DBObject._Domain) // provided if kind==Qlx.TABLE or Qlx.COLUMN
+                                    dm = v as Domain;
+                                else if (k == DBObject.Defpos)
+                                    tp = v as TInt;
+                            }
+                            var td = tb ?? dm ?? throw new PEException("PE31401");
+                            var oi = td.infos[cx.role.defpos]??throw new DBException("42107");
+                            Next();
+                            if (Match(Qlx.KEY))
+                                Next();
+                            var cl = new TList(Domain.Int);
+                            var lb = Match(Qlx.LPAREN);
+                            if (lb)
+                            {
+                                Next();
+                                for (; ; )
+                                {
+                                    var cp = oi.names[lxr.val.ToString()].Item2;
+                                    if (cp <= 0)
+                                        throw new DBException("42112", lxr.val.ToString());
+                                    cl += new TInt(cp);
+                                    Mustbe(Qlx.Id);
+                                    if (Match(Qlx.COMMA))
+                                        Next();
+                                    else
+                                        break;
+                                }
+                                Mustbe(Qlx.RPAREN);
+                            }
+                            else if (tp != null)
+                            {
+                                cl += tp;
+                                os = new string(lxr.input, st, lxr.start - st);
+                                ns = os + '(' + oi.name + ')';
+                            }
+                            else throw new DBException("42161", Qlx.LPAREN);
+                            m += ((upf == Qlx.REFERENCES) ? Qlx.KEY : upf, cl);
+                            Table? rt = null;
+                            if (upf==Qlx.REFERENCES)
+                            {
+                                if (cx.role.dbobjects[lxr.val.ToString()] is long rp)
+                                {
+                                    rt = cx.db.objects[rp] as Table
+                                        ??throw new DBException("42107",lxr.val.ToString());
+                                    m += (Qlx.REFERENCES, new TInt(rp));
+                                }
+                                else throw new DBException("42107", lxr.val.ToString());
+                                Mustbe(Qlx.Id);
+                                var refs = CList<long>.Empty;
+                                if (Match(Qlx.LPAREN) && rt is not null)
+                                {
+                                    cl = new TList(Domain.Int);
+                                    Next();
+                                    for (; ; )
+                                    {
+                                        var p = rt.names[lxr.val.ToString()].Item2;
+                                        if (p <= 0)
+                                            throw new DBException("42112", lxr.val.ToString());
+                                        cl += new TInt(p);
+                                        refs += p;
+                                        Mustbe(Qlx.Id);
+                                        if (Match(Qlx.COMMA))
+                                            Next();
+                                        else
+                                            break;
+                                    }
+                                    Mustbe(Qlx.RPAREN);
+                                    m += (Qlx.PER, cl);
+                                }
+                                if (Match(Qlx.USING))
+                                {
+                                    var us = lxr.start;
+                                    if (Match(Qlx.LPAREN))
+                                    {
+                                        cl = new TList(Domain.Int);
+                                        Next();
+                                        for (; ; )
+                                        {
+                                            var v = (QlValue)cx.Add(ParseSqlValue());
+                                            cl += new TInt(v.defpos);
+                                            Mustbe(Qlx.Id);
+                                            if (Match(Qlx.COMMA))
+                                                Next();
+                                            else
+                                                break;
+                                        }
+                                        Mustbe(Qlx.RPAREN);
+                                        m += (Qlx.VALUES, new TChar(new string(lxr.input, us, lxr.start - us)));
+                                    } else
+                                    {
+                                        cl = new TList(Domain.Int);
+                                        var pn = lxr.val.ToString();
+                                        if (cx.GetProcedure(0L, pn, cx.db.Signature(cx, refs)) is Procedure pr)
+                                            m += (Qlx.USING, new TInt(pr.defpos));
+                                        else throw new DBException("42108", pn);
+                                    }
+                                }
+                                if (Match(Qlx.ON))
+                                {
+                                    Next();
+                                    Qlx ov = Qlx.RESTRICT;
+                                    var du = Mustbe(Qlx.DELETE, Qlx.UPDATE);
+                                    if (Match(Qlx.SET))
+                                    {
+                                        Next();
+                                        ov = Mustbe(Qlx.DEFAULT, Qlx.NULL);
+                                    }
+                                    else // NO ACTION is not allowed
+                                        ov = Mustbe(Qlx.CASCADE, Qlx.RESTRICT);
+                                    m += (du, new TInt((int)ov));
+                                }
+                            }
+                            break;
+                        }
+                    case Qlx.CHECK:
+                        {
+                            Next();
+                            var cs = lxr.start;
+                            var oc = cx.parse;
+                            cx.parse = ExecuteStatus.Compile;
+                            var nst = cx.db.nextStmt;
+                            Mustbe(Qlx.LPAREN);
+                            var se = (QlValue)cx.Add(ParseSqlValue((DBObject._Domain,Domain.Bool)));
+                            Mustbe(Qlx.RPAREN);
+                            m += (Qlx.CONSTRAINT, new TChar(ckn));
+                            m += (Qlx.CHECK, new TInt(se.defpos));
+                            m += (Qlx.SOURCE, new TChar(new string(lxr.input, cs, lxr.pos-cs-1)));
+                            m += (Qlx.SCOPE, new TInt(nst));
+                            break;
+                        }
+                    case Qlx.CONSTRAINT:
+                        {
+                            Next();
+                            o = lxr.val;
+                            if (o == TNull.Value)
+                                o = new TChar("");
+                            ckn = o.ToString();
+                            Mustbe(Qlx.Id);
+                            m += (Qlx.CONSTRAINT, o);
+                            break;
+                        }
+                    case Qlx.DEFAULT:
+                        {
+                            Next();
+                            int dd = lxr.start;
+                            var sv = (QlValue)cx.Add(ParseSqlValue(om));
+                            m += (Qlx.VALUE, new TInt(sv.defpos));
+                            m += (Qlx.DEFAULT, new TChar(new string(lxr.input, dd, lxr.pos - dd - 1)));
+                            break;
+                        }
+                        // Qlx.GENERATED=>Generation enum
+                        // Qlx.VALUE=>QlValue
+                        // Qlx.DEFAULT=>String
+                    case Qlx.GENERATED:
+                        {
+                            Next();
+                            Mustbe(Qlx.ALWAYS);
+                            Mustbe(Qlx.AS);
+                            var g = Generation.No;
+                            if (Match(Qlx.ROW))
+                            {
+                                Next();
+                                g = Mustbe(Qlx.START, Qlx.END) switch
+                                {
+                                    Qlx.START => Generation.RowStart,
+                                    Qlx.END => Generation.RowEnd,
+                                    _ => Generation.No
+                                };
+                            } else
+                            {
+                                g = Generation.Expression;
+                                var gs = lxr.start;
+                                var oc = cx.parse;
+                                cx.parse = ExecuteStatus.Compile;
+                                var nst = cx.db.nextStmt;
+                                Table? tb = null;
+                                for(var i=0;i<om.Length;i++)
+                                {
+                                    var (k, v) = om[i];
+                                    if (k == TableColumn._Table)
+                                        tb = v as Table;
+                                }
+                                for (var b = tb?.rowType.First(); b != null; b = b.Next())
+                                    if (b.value() is long p && cx.db.objects[p] is TableColumn co)
+                                    {
+                                        var nm = co.NameFor(cx) ?? "";
+                                        var rv = new QlInstance(LexLp(), cx.GetUid(), cx, nm, -1L, co.defpos);
+                                        cx.Add(rv);
+                                        cx.Add(nm, LexLp(), rv);
+                                    }
+                                var gnv = ParseSqlValue(om);
+                                var s = new string(lxr.input, gs, lxr.start - gs);
+                                cx.Add(gnv);
+                                m += (Qlx.VALUE, new TInt(gnv.defpos));
+                                m += (Qlx.DEFAULT, new TChar(s));
+                                cx.parse = oc;
+                            }
+                            m += (Qlx.GENERATED, new TInt((int)g));
+                            break;
+                        }
+                    case Qlx.SECURITY:
+                        {
+                            Next();
+                            if (Match(Qlx.LEVEL))
+                                Next();
+                            m += (Qlx.SECURITY,TLevel.New(MustBeLevel()));
+                            if (Match(Qlx.SCOPE))
+                            {
+                                Next();
+                                Grant.Privilege r = Grant.Privilege.NoPrivilege;
+                                while (Match(Qlx.READ, Qlx.INSERT, Qlx.UPDATE, Qlx.DELETE))
+                                {
+                                    switch (tok)
+                                    {
+                                        case Qlx.READ: r |= Grant.Privilege.Select; break;
+                                        case Qlx.INSERT: r |= Grant.Privilege.Insert; break;
+                                        case Qlx.UPDATE: r |= Grant.Privilege.Update; break;
+                                        case Qlx.DELETE: r |= Grant.Privilege.Delete; break;
+                                    }
+                                    Next();
+                                }
+                                m += (Qlx.SCOPE, new TInt((int)r));
+                            }
+                            break;
+                        }
+                    default: // e.g. Qlx.RESTRICT, Qlx.CASCADE
                         if (drop)
                             o = new TChar("");
                         m += (tok, o);
@@ -3758,6 +3837,8 @@ namespace Pyrrho.Level4
             if (iri != TNull.Value)
                 m += (Qlx.IRI, iri);
             var ss = new string(lxr.input, st, lxr.start - st);
+            if (os != ns)
+                ss = ss.Replace(os, ns);
             return (ss, new TMetadata(m));
         }
         // Connector= [id'=']Type_id{'|'Type_id}[SET][Domain_id] Metadata
@@ -3774,7 +3855,7 @@ namespace Pyrrho.Level4
                 Next();
                 ln = lxr.val;
             }
-            var tp = (NodeType)(cx.db.objects[cx.role.nodeTypes[ln.ToString()]??-1L]
+            var tp = (NodeType)(cx._Ob(cx.role.nodeTypes[ln.ToString()]??-1L)
                 ?? throw new DBException("42107", ln));
             xl += (tp,true);
             if (sc!="")
@@ -3784,8 +3865,7 @@ namespace Pyrrho.Level4
             {
                 Next();
                 ln = lxr.val;
-                tp = (NodeType)(cx.db.objects[cx.role.nodeTypes[ln.ToString()] ?? -1L]
-                                ?? throw new DBException("42107", ln));
+                tp = (NodeType)(cx._Ob(cx.role.nodeTypes[ln.ToString()] ?? -1L)                                ?? throw new DBException("42107", ln));
                 xl += (tp, true);
                 Mustbe(Qlx.Id);
             }
@@ -3799,383 +3879,14 @@ namespace Pyrrho.Level4
             if (dm == Domain.Null)
                 dm = Domain.Position;
             cd = s ? new Domain(-1L, Qlx.SET, dm) : dm;
-            var ct = (xl.Count == 1) ? xl.First()?.key() : new Domain(-1L, Qlx.UNION, xl);
+            var ct = (xl.Count == 1) ? xl.First()?.key() : (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.UNION, xl));
             if (ct is null)
                 throw new DBException("42000");
             string ts = "";
             TMetadata? tm = null;
-            if (!cx.ParsingMatch && StartMetadata(Qlx.CONNECTION))
-                (ts,tm) = ParseMetadata(Qlx.CONNECTION);
+            if (!cx.ParsingMatch && StartMetadata(Qlx.CONNECTING))
+                (ts,tm) = ParseMetadata(Qlx.CONNECTING);
             return new TConnector(tk, ct.defpos, sc, cd, -1L, ts, tm);
-        }
-        /// <summary>
-        /// GenerationRule =  GENERATED ALWAYS AS '('Value')' [ UPDATE '(' Assignments ')' ]
-        /// |   GENERATED ALWAYS AS ROW (START|END) .
-        /// </summary>
-        /// <param name="rt">The expected tye</param>
-        GenerationRule ParseGenerationRule(long tc, Table tb, Domain xp)
-        {
-            var gr = GenerationRule.None;
-            var ox = cx.parse;
-            if (Match(Qlx.GENERATED))
-            {
-                Next();
-                Mustbe(Qlx.ALWAYS);
-                Mustbe(Qlx.AS);
-                if (Match(Qlx.ROW))
-                {
-                    Next();
-                    gr = tok switch
-                    {
-                        Qlx.START => new GenerationRule(Generation.RowStart),
-                        Qlx.END => new GenerationRule(Generation.RowEnd),
-                        _ => throw new DBException("42161", "START or END", tok.ToString()).Mix(),
-                    };
-                    Next();
-                }
-                else
-                {
-                    var st = lxr.start;
-                    var oc = cx.parse;
-                    cx.parse = ExecuteStatus.Compile;
-                    var nst = cx.db.nextStmt;
-                    for (var b = tb.rowType.First(); b != null; b = b.Next())
-                        if (b.value() is long p && cx.db.objects[p] is TableColumn co)
-                        {
-                            var nm = co.NameFor(cx) ?? "";
-                            var rv = new QlInstance(LexLp(), cx.GetUid(), cx, nm, -1L, co.defpos);
-                            cx.Add(rv);
-                            cx.Add(nm, LexLp(), rv);
-                        }
-                    var gnv = ParseSqlValue((DBObject._Domain, xp));
-                    var s = new string(lxr.input, st, lxr.start - st);
-                    gr = new GenerationRule(Generation.Expression, s, gnv, tc, nst);
-                    cx.Add(gnv);
-                    cx.parse = oc;
-                }
-            }
-            cx.parse = ox;
-            return gr;
-        }
-        /// <summary>
-        /// Parse a columnconstraintdefinition
-        /// ColumnConstraint = [ CONSTRAINT id ] ColumnConstraintDef
-        /// </summary>
-        /// <param name="tb">the table</param>
-        /// <param name="pc">the column (Level2)</param>
-        /// <returns>the updated table</returns>
-		Table ParseColumnConstraintDefin(Table tb, PColumn2 pc, TableColumn tc)
-        {
-            //     Ident name = null;
-            if (Match(Qlx.CONSTRAINT))
-            {
-                Next();
-                //      name = new Ident(this);
-                Mustbe(Qlx.Id);
-            }
-            if (tok == Qlx.NOT)
-            {
-                Next();
-                if (pc != null)
-                {
-                    pc.optional = false;
-                    var dm = tc.domain;
-                    if (!dm.optional && cx.tr is not null)
-                    {
-                        dm = (Domain)dm.Relocate(cx.GetUid());
-                        dm += (Domain.Optional, false);
-                        tc += (Domain.Optional, false);
-                        dm = (Domain)cx.Add(dm);
-                        pc.dataType = dm;
-                        cx.db += (Transaction.Physicals, cx.tr.physicals + (pc.defpos, pc));
-                    }
-                    tc += (DBObject._Domain, dm);
-                    tc = (TableColumn)cx.Add(tc);
-                    tb += (Domain.Representation, tb.representation + (tc.defpos, dm));
-                    tb = (Table)cx.Add(tb);
-                    cx.db += (tb.defpos, tb);
-                    cx.db += (tc.defpos, tc);
-                }
-                Mustbe(Qlx.NULL);
-            }
-            else
-                tb = ParseColumnConstraint(tb, tc);
-            cx.db += (tc.defpos, tc);
-            return tb;
-        }
-        /// <summary>
-        /// ColumnConstraintDef = 	NOT NULL
-        ///     |	PRIMARY KEY 
-        ///     |	REFERENCES id [ Cols ] { ReferentialAction }
-        /// 	|	UNIQUE 
-        ///     |   CHECK SearchCondition .
-        /// </summary>
-        /// <param name="tb">the table</param>
-        /// <param name="tc">the table column (Level3)</param>
-        /// <param name="name">the name of the constraint</param>
-        /// <returns>the updated table</returns>
-		Table ParseColumnConstraint(Table tb, TableColumn tc)
-        {
-            if (cx.tr == null) throw new DBException("42105").Add(Qlx.TRANSACTION);
-            var key = new Domain(cx.GetUid(), cx, Qlx.ROW, new BList<DBObject>(tc), 1);
-            string nm = "";
-            switch (tok)
-            {
-                case Qlx.SECURITY:
-                    Next();
-                    ParseClassification(tc);
-                    break;
-                case Qlx.REFERENCES:
-                    {
-                        Next();
-                        var rn = lxr.val.ToString();
-                        var ta = cx.GetObject(rn);
-                        var rt = ta as Table;
-                        if (rt == null && ta is RestView rv)
-                            rt = rv.super.First()?.key() as Table??throw new DBException("42105").Add(Qlx.REFERENCES);
-                        if (rt == null) throw new DBException("42107", rn).Mix();
-                        var cols = Domain.Row;
-                        Mustbe(Qlx.Id);
-                        if (tok == Qlx.LPAREN)
-                            cols = ParseColsList(rt) ?? throw new DBException("42000").Add(Qlx.REFERENCING);
-                        string afn = "";
-                        if (tok == Qlx.USING)
-                        {
-                            Next();
-                            int st = lxr.start;
-                            if (tok == Qlx.Id)
-                            {
-                                Next();
-                                var ni = new Ident(this);
-                                var pr = cx.GetProcedure(LexDp(), ni.ident, new CList<Domain>(tb))
-                                     ?? throw new DBException("42108", ni.ident);
-                                afn = "\"" + pr.defpos + "\"";
-                            }
-                            else
-                            {
-                                Mustbe(Qlx.LPAREN);
-                                ParseSqlValueList();
-                                Mustbe(Qlx.RPAREN);
-                                afn = new string(lxr.input, st, lxr.start - st);
-                            }
-                        }
-                        var ct = ParseReferentialAction();
-                        tb = cx.tr.ReferentialConstraint(cx, tb, "", key, rt, cols, ct, afn);
-                        break;
-                    }
-                case Qlx.CONSTRAINT:
-                    {
-                        Next();
-                        nm = new Ident(this).ident;
-                        Mustbe(Qlx.Id);
-                        if (tok != Qlx.CHECK)
-                            throw new DBException("42161", "CHECK", tok);
-                        goto case Qlx.CHECK;
-                    }
-                case Qlx.CHECK:
-                    {
-                        Next();
-                        ParseColumnCheckConstraint(tb, tc, nm);
-                        break;
-                    }
-                case Qlx.DEFAULT:
-                    {
-                        Next();
-                        cx.Add(tc + (Domain.Default, ParseSqlValue((DBObject._Domain,tc.domain)).Eval(cx) ?? TNull.Value));
-                        break;
-                    }
-                case Qlx.UNIQUE:
-                    {
-                        Next();
-                        var tr = cx.db as Transaction ?? throw new DBException("2F003");
-                        cx.Add(new PIndex(nm, tb, key, PIndex.ConstraintType.Unique, -1L,
-                            tr.nextPos));
-                        break;
-                    }
-                case Qlx.PRIMARY:
-                    {
-                        var tn = tb.NameFor(cx);
-                        if (tb.FindPrimaryIndex(cx) is not null)
-                            throw new DBException("42147", tn).Mix();
-                        Next();
-                        Mustbe(Qlx.KEY);
-                        cx.Add(new PIndex(tn, tb, key, PIndex.ConstraintType.PrimaryKey,
-                            -1L, cx.db.nextPos));
-                        break;
-                    }
-            }
-            return tb;
-        }
-        /// <summary>
-        /// TableConstraint = [CONSTRAINT id ] TableConstraintDef .
-		/// TableConstraintDef = UNIQUE Cols
-		/// |	PRIMARY KEY  Cols
-		/// |	FOREIGN KEY Cols REFERENCES Table_id [ Cols ] { ReferentialAction } .
-        /// </summary>
-        /// <param name="tb">the table</param>
-		Table ParseTableConstraintDefin(Table tb)
-        {
-            Ident? name = null;
-            if (Match(Qlx.CONSTRAINT))
-            {
-                Next();
-                name = new Ident(this);
-                Mustbe(Qlx.Id);
-            }
-            else if (tok == Qlx.Id)
-                name = new Ident(this);
-            Qlx s = Mustbe(Qlx.UNIQUE, Qlx.PRIMARY, Qlx.FOREIGN, Qlx.CHECK);
-            switch (s)
-            {
-                case Qlx.UNIQUE: tb = ParseUniqueConstraint(tb, name); break;
-                case Qlx.PRIMARY: (tb) = ParsePrimaryConstraint(tb, name); break;
-                case Qlx.FOREIGN: (tb) = ParseReferentialConstraint(tb, name); break;
-                case Qlx.CHECK: (tb) = ParseTableConstraint(tb, name); break;
-            }
-            cx.result = null;
-            cx.binding = CTree<long, TypedValue>.Empty;
-            return (Table)cx.Add(tb);
-        }
-        /// <summary>
-        /// construct a unique constraint
-        /// </summary>
-        /// <param name="tb">the table</param>
-        /// <param name="name">the constraint name</param>
-        /// <returns>the updated table</returns>
-        Table ParseUniqueConstraint(Table tb, Ident? name)
-        {
-            var tr = cx.db as Transaction ?? throw new DBException("42105").Add(Qlx.TRANSACTION);
-            if (ParseColsList(tb, Qlx.ROW) is not Domain ks) throw new DBException("42161", "cols");
-            var px = new PIndex(name?.ident ?? "", tb, ks, PIndex.ConstraintType.Unique, -1L, tr.nextPos);
-            return (Table)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.UNIQUE));
-        }
-        /// <summary>
-        /// construct a primary key constraint
-        /// </summary>
-        /// <param name="tb">the table</param>
-        /// <param name="cl">the ident</param>
-        /// <param name="name">the constraint name</param>
-        Table ParsePrimaryConstraint(Table tb, Ident? name)
-        {
-            var tr = cx.db as Transaction ?? throw new DBException("42105").Add(Qlx.TRANSACTION);
-            Mustbe(Qlx.KEY);
-            if (ParseColsList(tb, Qlx.ROW) is not Domain ks) throw new DBException("42161", "cols");
-            if (tb.FindPrimaryIndex(cx) is not null)
-            {
-                var up = -1L;
-                for (var b = tb.indexes[ks]?.First(); up < 0L && b != null; b = b.Next())
-                    if (cx.db.objects[b.key()] is Level3.Index x && x.flags.HasFlag(PIndex.ConstraintType.Unique))
-                        up = x.defpos;
-                if (up < 0L)
-                {
-                    var pp = new PIndex(name?.ident ?? "", tb, ks, PIndex.ConstraintType.Unique, -1L, tr.nextPos);
-                    if (cx.Add(pp) is null)
-                        throw new DBException("42105").Add(Qlx.PRIMARY);
-                    up = pp.defpos;
-                }
-                var ax = new AlterIndex(up, cx.db.nextPos);
-                return (Table)(cx.Add(ax) ?? throw new DBException("42105").Add(Qlx.ALTER));
-            }
-            Physical px = new PIndex(name?.ident ?? "", tb, ks,
-                PIndex.ConstraintType.PrimaryKey, -1L, tr.nextPos);
-            return (Table)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.CONSTRAINT));
-        }
-        /// <summary>
-        /// construct a referential constraint
-        /// id [ Cols ] { ReferentialAction }
-        /// </summary>
-        /// <param name="tb">the table</param>
-        /// <param name="name">the constraint name</param>
-        /// <returns>the updated table</returns>
-        Table ParseReferentialConstraint(Table tb, Ident? name)
-        {
-            var tr = cx.db as Transaction ?? throw new DBException("42105").Add(Qlx.TRANSACTION);
-            Mustbe(Qlx.KEY);
-            var cols = ParseColsList(tb) ?? throw new DBException("42161", "cols");
-            Mustbe(Qlx.REFERENCES);
-            var refname = new Ident(this);
-            var rt = cx.GetObject(refname.ident) as Table ??
-                throw new DBException("42107", refname).Mix();
-            Mustbe(Qlx.Id);
-            var refs = Domain.Row;
-            PIndex.ConstraintType ct = PIndex.ConstraintType.ForeignKey;
-            if (tok == Qlx.LPAREN)
-                refs = ParseColsList(rt) ?? Domain.Null;
-            string afn = "";
-            if (Match(Qlx.USING))
-            {
-                Next();
-                int st = lxr.start;
-                if (tok == Qlx.Id)
-                {
-                    var ic = new Ident(this);
-                    Next();
-                    var pr = cx.GetProcedure(LexDp(), ic.ident, Database.Signature(refs))
-                        ?? throw new DBException("42108", ic.ident);
-                    afn = "\"" + pr.defpos + "\"";
-                }
-                else
-                {
-                    Mustbe(Qlx.LPAREN);
-                    ParseSqlValueList();
-                    Mustbe(Qlx.RPAREN);
-                    afn = new string(lxr.input, st, lxr.start - st);
-                }
-            }
-            if (Match(Qlx.ON))
-                ct |= ParseReferentialAction();
-            tb = tr.ReferentialConstraint(cx, tb, name?.ident ?? "", cols, rt, refs, ct, afn);
-            return (Table)(cx.Add(tb) ?? throw new DBException("42105").Add(Qlx.ACTION));
-        }
-        /// <summary>
-        /// CheckConstraint = [ CONSTRAINT id ] CHECK '(' [XMLOption] QlValue ')' .
-        /// </summary>
-        /// <param name="tb">The table</param>
-        /// <param name="name">the name of the constraint</param
-        /// <returns>the new PCheck</returns>
-        Table ParseTableConstraint(Table tb, Ident? name)
-        {
-            int st = lxr.start;
-            var nst = cx.db.nextStmt;
-            Mustbe(Qlx.LPAREN);
-            var se = ParseSqlValue((DBObject._Domain,Domain.Bool));
-            Mustbe(Qlx.RPAREN);
-            var n = name ?? new Ident(this);
-            var tr = cx.db as Transaction ?? throw new DBException("2F003");
-            PCheck r = new(tb, n.ident, se, new string(lxr.input, st, lxr.start - st), nst, tr.nextPos, cx);
-            tb = (Table)(cx.Add(r) ?? throw new DBException("42105").Add(Qlx.CHECK));
-            if (tb.defpos < Transaction.TransPos)
-            {
-                var trs = tb.RowSets(new Ident("", -1L), cx, tb, -1L, 0L);
-                if (trs.First(cx) != null)
-                    throw new DBException("44000", n.ident).ISO();
-            }
-            return tb;
-        }
-        /// <summary>
-        /// CheckConstraint = [ CONSTRAINT id ] CHECK '(' [XMLOption] QlValue ')' .
-        /// </summary>
-        /// <param name="tb">The table</param>
-        /// <param name="pc">the column constrained</param>
-        /// <param name="name">the name of the constraint</param>
-        /// <returns>the new TableColumn</returns>
-        TableColumn ParseColumnCheckConstraint(Table tb, TableColumn tc, string nm)
-        {
-            var oc = cx.parse;
-            cx.parse = ExecuteStatus.Compile;
-            int st = lxr.start;
-            Mustbe(Qlx.LPAREN);
-            // Set up the information for parsing the column check constraint
-            var ix = tb.defpos;
-       //     cx.Add(tb.NameFor(cx), tb);
-            var nst = cx.db.nextStmt;
-            var se = ParseSqlValue((DBObject._Domain,Domain.Bool));
-            Mustbe(Qlx.RPAREN);
-            var tr = cx.db as Transaction ?? throw new DBException("2F003");
-            var pc = new PCheck2(tb, tc, nm, se,
-                new string(lxr.input, st, lxr.start - st), nst, tr.nextPos, cx);
-            cx.parse = oc;
-            return (TableColumn)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.CHECK));
         }
         /// <summary>
 		/// ReferentialAction = {ON (DELETE|UPDATE) (CASCADE| SET DEFAULT|RESTRICT)} .
@@ -4220,7 +3931,7 @@ namespace Pyrrho.Level4
                 }
             }
             return r;
-        }
+        } 
         /// <summary>
         /// Called from ALTER and CREATE parsers. This is the first time we see the proc-clause,
         /// and we must parse it to add any physicals needed to declare Domains and Types 
@@ -4349,7 +4060,7 @@ namespace Pyrrho.Level4
             return (ps, oi);
         }
         /// <summary>
-        /// Function metadata is used to control display of output from table-valued functions
+        /// Function metadata is used to control display of output from tble-valued functions
         /// </summary>
         /// <param name="pr"></param>
         void ParseAlterBody(Procedure pr)
@@ -4931,7 +4642,7 @@ namespace Pyrrho.Level4
             cx.Add(ls);
             return ls;
         }
-        Executable ParseOrderAndPage()
+        OrderAndPageStatement ParseOrderAndPage()
         {
             var lp = LexDp();
             var m = BTree<long, object>.Empty;
@@ -5546,8 +5257,7 @@ namespace Pyrrho.Level4
             ls += (NestedStatement.Stms, ParseStatementList(m));
             Mustbe(Qlx.END);
             Mustbe(Qlx.LOOP);
-            var n = mm[Executable.Label] as string;
-            if (tok == Qlx.Id && n != null && n == lxr.val.ToString())
+            if (tok == Qlx.Id && mm[Executable.Label] is string n && n == lxr.val.ToString())
                 Next();
             return (Executable)cx.Add(ls);
         }
@@ -5571,8 +5281,7 @@ namespace Pyrrho.Level4
             ws += (cx, WhileStatement.What, ParseStatementList(m));
             Mustbe(Qlx.END);
             Mustbe(Qlx.WHILE);
-            var n = mm[Executable.Label] as string;
-            if (tok == Qlx.Id && n != null && n == lxr.val.ToString())
+            if (tok == Qlx.Id && mm[Executable.Label] is string n && n == lxr.val.ToString())
                 Next();
             cx = old; // old.Restore(lxr);
             cx.exec = ws;
@@ -6108,12 +5817,14 @@ namespace Pyrrho.Level4
             {
                 Next();
                 var ic = new Ident(this);
+                var tb = ob;
                 Mustbe(Qlx.Id);
                 ob = (Domain)(cx.GetObject(ic.ident) ??
                     throw new DBException("42135", ic.ident));
                 if (cx.role.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                var (s,m) = ParseMetadata(Qlx.COLUMN);
+                var (s,m) = ParseMetadata(Qlx.COLUMN,(TableColumn._Table,tb),
+                    (DBObject._Domain,ob.domain), (DBObject.Defpos, new TInt(cx.db.nextPos)));
                 cx.Add(new PMetadata(ic.ident, 0, ob, s, m, cx.db.nextPos));
             }
             if (StartMetadata(kind) || Match(Qlx.ADD))
@@ -6259,7 +5970,7 @@ namespace Pyrrho.Level4
         /// |   ALTER TABLE id AlterTable { ',' AlterTable }
         /// </summary>
         /// <param name="tb">the database</param>
-        /// <param name="tb">the table</param>
+        /// <param name="tb">the tble</param>
         /// <returns>A tree of Executable references</returns>
         void ParseAlterTableOps(Table tb)
         {
@@ -6300,191 +6011,130 @@ namespace Pyrrho.Level4
                 cx.Add(new Change(tb.defpos, o.ToString(), tr.nextPos, cx));
                 return;
             }
+            Match(Qlx.ADD,Qlx.DROP,Qlx.ALTER);
+            var drop = false;
+            if (Match(Qlx.DROP))
+            {
+                drop = true;
+                Next();
+                if (Match(Qlx.COLUMN))
+                    Next();
+            }
             if (Match(Qlx.LEVEL))
                 ParseClassification(tb);
             if (Match(Qlx.SCOPE))
                 ParseEnforcement(tb);
-            Match(Qlx.ADD,Qlx.PRIMARY, Qlx.FOREIGN, Qlx.UNIQUE, Qlx.PERIOD, Qlx.CONSTRAINT, Qlx.ALTER);
-            switch (tok)
+            var ms = "";
+            var md = TMetadata.Empty;
+            if (StartMetadata(Qlx.TABLE))
             {
-                case Qlx.CONSTRAINT:
-                    ParseCheckConstraint(tb);
-                    return;
-                case Qlx.DROP:
-                    {
-                        Next();
-                        Match(Qlx.PRIMARY, Qlx.FOREIGN, Qlx.UNIQUE, Qlx.PERIOD, Qlx.CONSTRAINT);
-                        switch (tok)
-                        {
-                            case Qlx.CONSTRAINT:
-                                {
-                                    Next();
-                                    var name = new Ident(this);
-                                    Mustbe(Qlx.Id);
-                                    Drop.DropAction act = ParseDropAction();
-                                    if (cx.GetObject(name.ident) is Check ck)
-                                        cx.Add(new Drop1(ck.defpos, act, tr.nextPos));
-                                    return;
-                                }
-                            case Qlx.PRIMARY:
-                                {
-                                    Next();
-                                    Mustbe(Qlx.KEY);
-                                    Drop.DropAction act = ParseDropAction();
-                                    if (ParseColsList(tb) is not Domain cols)
-                                        throw new DBException("42161", "cols");
-                                    cols += (Domain.Kind, Qlx.ROW);
-                                    Level3.Index x = (tb).FindIndex(cx.db, cols)?[0]
-                                        ?? throw new DBException("42164", tb.NameFor(cx));
-                                    if (x != null)
-                                        cx.Add(new Drop1(x.defpos, act, tr.nextPos));
-                                    return;
-                                }
-                            case Qlx.FOREIGN:
-                                {
-                                    Next();
-                                    Mustbe(Qlx.KEY);
-                                    if (ParseColsList(tb) is not Domain cols)
-                                        throw new DBException("42161", "cols");
-                                    Mustbe(Qlx.REFERENCES);
-                                    var n = new Ident(this);
-                                    Mustbe(Qlx.Id);
-                                    var rt = cx.GetObject(n.ident) as Table ??
-                                        throw new DBException("42107", n).Mix();
-                                    var st = lxr.pos;
-                                    if (tok == Qlx.LPAREN && ParseColsList(rt) is null)
-                                        throw new DBException("42161", "rcols");
-                                    var x = (tb).FindIndex(cx.db, cols)?[0];
-                                    if (x != null)
-                                    {
-                                        cx.Add(new Drop(x.defpos, tr.nextPos));
-                                        return;
-                                    }
-                                    throw new DBException("42135", new string(lxr.input, st, lxr.pos)).Mix();
-                                }
-                            case Qlx.UNIQUE:
-                                {
-                                    Next();
-                                    var st = lxr.pos;
-                                    if (ParseColsList(tb) is not Domain cols)
-                                        throw new DBException("42161", "cols");
-                                    var x = tb.FindIndex(cx.db, cols)?[0];
-                                    if (x != null)
-                                    {
-                                        cx.Add(new Drop(x.defpos, tr.nextPos));
-                                        return;
-                                    }
-                                    throw new DBException("42135", new string(lxr.input, st, lxr.pos)).Mix();
-                                }
-                            case Qlx.PERIOD:
-                                {
-                                    var ptd = ParseTablePeriodDefinition();
-                                    var pd = (ptd.pkind == Qlx.SYSTEM_TIME) ? tb.systemPS : tb.applicationPS;
-                                    if (pd > 0)
-                                        cx.Add(new Drop(pd, tr.nextPos));
-                                    return;
-                                }
-                            case Qlx.WITH:
-                                ParseVersioningClause(tb, true);
-                                return;
-                            default:
-                                {
-                                    if (StartMetadata(Qlx.TABLE))
-                                    {
-                                        if (cx.role.Denied(cx, Grant.Privilege.Metadata))
-                                            throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                                        var (ss, mm) = ParseMetadata(Qlx.TABLE);
-                                        cx.Add(new PMetadata(tb.NameFor(cx), 0, tb,
-                                               ss, mm, tr.nextPos));
-                                        return;
-                                    }
-                                    if (Match(Qlx.COLUMN))
-                                        Next();
-                                    var name = new Ident(this);
-                                    Mustbe(Qlx.Id);
-                                    Drop.DropAction act = ParseDropAction();
-                                    var tc = (TableColumn?)tr.objects[tb.ColFor(cx, name.ident)]
-                                       ?? throw new DBException("42135", name);
-                                    if (tc != null)
-                                        cx.Add(new Drop1(tc.defpos, act, tr.nextPos));
-                                    return;
-                                }
-                        }
-                    }
-                case Qlx.ADD:
-                    {
-                        Next();
-                        if (Match(Qlx.PERIOD))
-                            AddTablePeriodDefinition(tb);
-                        else if (tok == Qlx.WITH)
-                            ParseVersioningClause(tb, false);
-                        else if (Match(Qlx.CONSTRAINT,Qlx.UNIQUE,Qlx.PRIMARY,Qlx.FOREIGN,Qlx.CHECK))
-                            ParseTableConstraintDefin(tb);
-                        else
-                            ParseColumnDefin(tb);
-                        break;
-                    }
-                case Qlx.ALTER:
-                    {
-                        Next();
-                        if (Match(Qlx.COLUMN))
-                            Next();
-                        var o = new Ident(this);
-                        Mustbe(Qlx.Id);
-                        var col = (TableColumn?)cx.db.objects[tb.ColFor(cx, o.ident)]
-                                ?? throw new DBException("42112", o.ident);
-                        while (StartMetadata(Qlx.COLUMN) || Match(Qlx.TO, Qlx.POSITION, Qlx.SET, Qlx.DROP, Qlx.ADD, Qlx.TYPE))
-                            tb = ParseAlterColumn(tb, col, o.ident);
-                        return;
-                    }
-                case Qlx.PERIOD:
-                    {
-                        if (Match(Qlx.Id))
-                        {
-                            var pid = lxr.val;
-                            Next();
-                            Mustbe(Qlx.TO);
-                            if (cx.db.objects[tb.applicationPS] is not PeriodDef pd)
-                                throw new DBException("42162", pid).Mix();
-                            pid = lxr.val;
-                            Mustbe(Qlx.Id);
-                            cx.Add(new Change(pd.defpos, pid.ToString(), tr.nextPos, cx));
-                        }
-                        tb = AddTablePeriodDefinition(tb);
-                        return;
-                    }
-                case Qlx.SET:
-                    {
-                        Next();
-                        if (ParseColsList(tb) is not Domain cols)
-                            throw new DBException("42161", "cols");
-                        Mustbe(Qlx.REFERENCES);
-                        var n = new Ident(this);
-                        Mustbe(Qlx.Id);
-                        var rt = cx.GetObject(n.ident) as Table ??
-                            throw new DBException("42107", n).Mix();
-                        var st = lxr.pos;
-                        if (tok == Qlx.LPAREN && ParseColsList(rt) is null)
-                            throw new DBException("42161", "cols");
-                        PIndex.ConstraintType ct = 0;
-                        if (Match(Qlx.ON))
-                            ct = ParseReferentialAction();
-                        cols += (Domain.Kind, Qlx.ROW);
-                        if (tb.FindIndex(cx.db, cols, PIndex.ConstraintType.ForeignKey)?[0] is Level3.Index x)
-                        {
-                            cx.Add(new RefAction(x.defpos, ct, tr.nextPos));
-                            return;
-                        }
-                        throw new DBException("42135", new string(lxr.input, st, lxr.pos - st)).Mix();
-                    }
-                default:
-                    if (StartMetadata(Qlx.TABLE) || Match(Qlx.ADD, Qlx.DROP))
-                        if (tb.Denied(cx, Grant.Privilege.Metadata))
-                            throw new DBException("42105").Add(Qlx.METADATA);
-                    var (s, m) = ParseMetadata(Qlx.TABLE);
-                    cx.Add(new PMetadata(tb.NameFor(cx), 0, tb, s, m, tr.nextPos));
-                    return;
+                var (x, y) = ParseMetadata(Qlx.TABLE, (DBObject._Domain, tb));
+                ms += x; md += y;
             }
+            if (Match(Qlx.ADD))
+            {
+                Next();
+                if (StartMetadata(Qlx.TABLE))
+                {
+                    var (x, y) = ParseMetadata(Qlx.TABLE, (DBObject._Domain, tb));
+                    ms += x; md += y;
+                    cx.Add(new PMetadata(tb.NameFor(cx), 0, tb, ms, md, cx.db.nextPos));
+                    return;
+                }
+                else
+                {
+                    if (Match(Qlx.COLUMN))
+                        Next();
+                    (ms,md,tb) = ParseColumnDefin(tb,ms,md);
+                    return;
+                }
+            }
+            else if (Match(Qlx.ALTER))
+            {
+                Next();
+                if (Match(Qlx.COLUMN))
+                    Next();
+                var o = new Ident(this);
+                Mustbe(Qlx.Id);
+                var col = (TableColumn?)cx.db.objects[tb.ColFor(cx, o.ident)]
+                        ?? throw new DBException("42112", o.ident);
+                while (StartMetadata(Qlx.COLUMN) || Match(Qlx.TO, Qlx.POSITION, Qlx.SET, Qlx.DROP, Qlx.ADD, Qlx.TYPE))
+                    tb = ParseAlterColumn(tb, col, o.ident);
+                return;
+            }
+            else if (Match(Qlx.SET))
+            {
+                Next();
+                if (ParseColsList(tb) is not Domain cols)
+                    throw new DBException("42161", "cols");
+                Mustbe(Qlx.REFERENCES);
+                var n = new Ident(this);
+                Mustbe(Qlx.Id);
+                var rt = cx.GetObject(n.ident) as Table ??
+                    throw new DBException("42107", n).Mix();
+                var st = lxr.pos;
+                if (tok == Qlx.LPAREN && ParseColsList(rt) is null)
+                    throw new DBException("42161", "cols");
+                PIndex.ConstraintType ct = 0;
+                if (Match(Qlx.ON))
+                    ct = ParseReferentialAction();
+                cols += (Domain.Kind, Qlx.ROW);
+                if (tb.FindIndex(cx.db, cols, PIndex.ConstraintType.ForeignKey)?[0] is Level3.Index x)
+                {
+                    cx.Add(new RefAction(x.defpos, ct, tr.nextPos));
+                    return;
+                }
+                throw new DBException("42135", new string(lxr.input, st, lxr.pos - st)).Mix();
+
+            }
+            else if (Match(Qlx.Id)) // alter table xx drop column
+            {
+                var name = new Ident(this);
+                Next();
+                Drop.DropAction act = ParseDropAction();
+                var tc = (TableColumn?)tr.objects[tb.ColFor(cx, name.ident)]
+                   ?? throw new DBException("42135", name);
+                if (tc != null)
+                    cx.Add(new Drop1(tc.defpos, act, tr.nextPos));
+                return;
+            }
+            else if (md!=TMetadata.Empty)
+            { 
+                var dropaction = //{ Restrict=0,Null=1,Default=2,Cascade=3}
+                                    md.Contains(Qlx.RESTRICT) ? Drop.DropAction.Restrict
+                                    : md.Contains(Qlx.NULL) ? Drop.DropAction.Null
+                                    : md.Contains(Qlx.DEFAULT) ? Drop.DropAction.Default
+                                    : md.Contains(Qlx.CASCADE) ? Drop.DropAction.Cascade
+                                    : Drop.DropAction.Restrict;
+                for (var b=md.First();b!=null;b=b.Next())
+                    switch(b.key())
+                    {
+                        case Qlx.CONSTRAINT:
+                                if (cx.GetObject(b.value().ToString()) is Check ck)
+                                    cx.Add(new Drop1(ck.defpos, dropaction, cx.db.nextPos));
+                                return;
+                        case Qlx.PRIMARY:
+                        case Qlx.FOREIGN:
+                        case Qlx.UNIQUE:
+                            {
+                                var cl = BList<DBObject>.Empty;
+                                for (var c = (b.value() as TList)?.First(); c != null; c = c.Next())
+                                    cl += cx.db.objects[c.Value().ToLong() ?? -1L] as DBObject
+                                        ?? throw new PEException("PE31402");
+                                var dm = new Domain(Qlx.ROW, cx, cl);
+                                if (tb.FindIndex(cx.db, dm)?[0] is Level3.Index x)
+                                    if (b.key() == Qlx.PRIMARY)
+                                        cx.Add(new Drop1(x.defpos, dropaction, cx.db.nextPos));
+                                    else
+                                         cx.Add(new Drop(x.defpos, cx.db.nextPos));
+                               return;
+                            }
+                    }
+            }
+            else if (drop)
+                cx.Add(new Drop(tb.defpos, cx.db.nextPos));
+            else
+                cx.Add(new PMetadata(tb.NameFor(cx), 0, tb, ms, md, cx.db.nextPos));
         }
         /// <summary>
         /// <summary>
@@ -6495,8 +6145,8 @@ namespace Pyrrho.Level4
         /// |	SET GenerationRule.
         /// </summary>
         /// <param name="db">the database</param>
-        /// <param name="tb">the table object</param>
-        /// <param name="tc">the table column object</param>
+        /// <param name="tb">the tble object</param>
+        /// <param name="tc">the tble column object</param>
         Table ParseAlterColumn(Table tb, TableColumn tc, string nm)
         {
             var tr = cx.db as Transaction ?? throw new DBException("2F003");
@@ -6510,7 +6160,7 @@ namespace Pyrrho.Level4
                 tb = (Table)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.ALTER));
                 return tb;
             }
-            if (Match(Qlx.POSITION))
+            else if (Match(Qlx.POSITION))
             {
                 Next();
                 o = lxr.val;
@@ -6518,81 +6168,19 @@ namespace Pyrrho.Level4
                 if (o.ToInt() is not int n)
                     throw new DBException("42161", "INTEGER");
                 var pa = new Alter3(tc.defpos, nm, n, tb, tc.domain,
-                    tc.generated.gfs ?? cx.obs?.ToString() ?? "",
-                    tc.domain.defaultValue ?? TNull.Value,
-                    "", tc.update, !tc.domain.optional, tc.generated,
-                    tc.tc, tr.nextPos, cx);
+                   tc.metastring, tc.metadata, tr.nextPos, cx);
                 tb = (Table)(cx.Add(pa) ?? throw new DBException("42105").Add(Qlx.POSITION));
                 return tb;
             }
-            if (Match(Qlx.ADD))
+            else if (Match(Qlx.ADD,Qlx.SET))
             {
                 Next();
-                while (StartMetadata(Qlx.COLUMN))
-                {
-                    if (tb.Denied(cx, Grant.Privilege.Metadata))
-                        throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                    var (s, m) = ParseMetadata(Qlx.COLUMN);
-                    var pm = new PMetadata(nm, 0, tc, s, m, tr.nextPos);
-                    tc = (TableColumn)(cx.Add(pm) ?? throw new DBException("42105").Add(Qlx.METADATA));
-                }
-                if (Match(Qlx.CONSTRAINT))
-                    Next();
-                var n = new Ident(this);
-                Mustbe(Qlx.Id);
-                Mustbe(Qlx.CHECK);
-                Mustbe(Qlx.LPAREN);
-                int st = lxr.pos;
-                var nst = cx.db.nextStmt;
-                var se = ParseSqlValue((DBObject._Domain, Domain.Bool));
-                string source = new(lxr.input, st, lxr.pos - st - 1);
-                Mustbe(Qlx.RPAREN);
-                var pc = new PCheck(tc, n.ident, se, source, nst, tr.nextPos, cx);
-                tc = (TableColumn)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.CHECK));
-            }
-            else if (tok == Qlx.SET)
-            {
-                Next();
-                if (Match(Qlx.DEFAULT))
-                {
-                    Next();
-                    int st = lxr.start;
-                    var dv = lxr.val;
-                    Next();
-                    var ds = new string(lxr.input, st, lxr.start - st);
-                    var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
-                        tb, tc.domain, ds, dv, "",
-                        CTree<UpdateAssignment, bool>.Empty, false,
-                        GenerationRule.None, tc.tc, tr.nextPos, cx);
-                    tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105").Add(Qlx.DEFAULT));
-                }
-                else if (Match(Qlx.GENERATED))
-                {
-                    Domain type = Domain.Row;
-                    var oc = cx;
-                    cx = cx.ForConstraintParse();
-                    var nst = cx.db.nextStmt;
-                    var gr = ParseGenerationRule(tc.defpos, tb, tc.domain) + (DBObject._Framing, new Framing(cx, nst));
-                    oc.DoneCompileParse(cx);
-                    cx = oc;
-                    tc.ColumnCheck(tr, true);
-                    var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm), tb, tc.domain,
-                        gr.gfs ?? type.defaultValue?.ToString() ?? "", type.defaultValue ?? TNull.Value,
-                        "", CTree<UpdateAssignment, bool>.Empty, !tc.domain.optional, gr,
-                        tc.tc, tr.nextPos, cx);
-                    tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105").Add(Qlx.GENERATED));
-                }
-                else if (Match(Qlx.NOT))
-                {
-                    Next();
-                    Mustbe(Qlx.NULL);
-                    tc.ColumnCheck(tr, false);
-                    var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
-                        tb, tc.domain, "", TNull.Value, "", CTree<UpdateAssignment, bool>.Empty,
-                        true, tc.generated, tc.tc, tr.nextPos, cx);
-                    tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105").Add(Qlx.NULLS));
-                }
-                return ParseColumnConstraint(tb, tc);
+                var (ms, md) = ParseMetadata(Qlx.COLUMN,(TableColumn._Table,tb),
+                    (DBObject._Domain,tc.domain), (DBObject.Defpos, new TInt(tc.defpos)));
+                if (tb.Denied(cx, Grant.Privilege.Metadata))
+                    throw new DBException("42105").Add(Qlx.METADATA).Mix();
+                var pm = new PMetadata(nm, 0, tc, ms, md, tr.nextPos);
+                tc = (TableColumn)(cx.Add(pm) ?? throw new DBException("42105").Add(Qlx.METADATA));
             }
             else if (tok == Qlx.DROP)
             {
@@ -6600,137 +6188,15 @@ namespace Pyrrho.Level4
                 if (StartMetadata(Qlx.COLUMN))
                 {
                     if (tb.Denied(cx, Grant.Privilege.Metadata))
-                        throw new DBException("42105").Add(Qlx.METADATA,new TChar(tc.NameFor(cx))).Mix();
-                    var (s, m) = ParseMetadata(Qlx.COLUMN);
+                        throw new DBException("42105").Add(Qlx.METADATA, new TChar(tc.NameFor(cx))).Mix();
+                    var (s, m) = ParseMetadata(Qlx.COLUMN, (TableColumn._Table, tb), 
+                        (DBObject._Domain, tc.domain), (DBObject.Defpos, new TInt(tc.defpos)));
+                    m += (Qlx.DROP, TBool.True);
                     var pm = new PMetadata(nm, 0, tc, s, m, tr.nextPos);
                     tc = (TableColumn)(cx.Add(pm) ?? throw new DBException("42105").Add(Qlx.COLUMN));
                 }
-                else
-                {
-                    if (!Match(Qlx.DEFAULT,Qlx.NOT,Qlx.PRIMARY,Qlx.REFERENCES,Qlx.UNIQUE,Qlx.CONSTRAINT)
-                        &&!StartMetadata(Qlx.COLUMN))
-                        throw new DBException("42000", lxr.Diag).ISO();
-                    if (tok == Qlx.DEFAULT)
-                    {
-                        Next();
-                        var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
-                            tb, tc.domain, "", TNull.Value, tc.updateString ?? "", tc.update, !tc.domain.optional,
-                            GenerationRule.None, tc.tc, tr.nextPos, cx);
-                        tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105").Add(Qlx.DEFAULT));
-                    }
-                    else if (tok == Qlx.NOT)
-                    {
-                        Next();
-                        Mustbe(Qlx.NULL);
-                        var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
-                            tb, tc.domain, tc.domain.defaultString, tc.domain.defaultValue,
-                            tc.updateString ?? "", tc.update, false,
-                            tc.generated, tc.tc, tr.nextPos, cx);
-                        tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105").Add(Qlx.NULLS));
-                    }
-                    else if (tok == Qlx.PRIMARY)
-                    {
-                        Next();
-                        Mustbe(Qlx.KEY);
-                        Drop.DropAction act = ParseDropAction();
-                        if (tb.FindPrimaryIndex(cx) is Level3.Index x)
-                        {
-                            if (x.keys.Length != 1 || x.keys[0] != tc.defpos)
-                                throw new DBException("42158", tb.NameFor(cx), tc.NameFor(cx)).Mix()
-                                    .Add(Qlx.TABLE_NAME, new TChar(tb.NameFor(cx)))
-                                    .Add(Qlx.COLUMN_NAME, new TChar(tc.NameFor(cx)));
-                            var pd = new Drop1(x.defpos, act, tr.nextPos);
-                            cx.Add(pd);
-                        }
-                    }
-                    else if (tok == Qlx.REFERENCES)
-                    {
-                        Next();
-                        var n = new Ident(this);
-                        Mustbe(Qlx.Id);
-                        if (tok == Qlx.LPAREN)
-                        {
-                            Next();
-                            Mustbe(Qlx.Id);
-                            Mustbe(Qlx.RPAREN);
-                        }
-                        Level3.Index? dx = null;
-                        for (var p = tb.indexes.First(); dx == null && p != null; p = p.Next())
-                            for (var c = p.value().First(); dx == null && c != null; c = c.Next())
-                                if (cx.db.objects[c.key()] is Level3.Index x && x.keys.Length == 1 && x.keys[0] == tc.defpos &&
-                                    cx.db.objects[x.reftabledefpos] is Table rt && rt.NameFor(cx) == n.ident)
-                                    dx = x;
-                        if (dx == null)
-                            throw new DBException("42159", nm, n.ident).Mix()
-                                .Add(Qlx.TABLE_NAME, new TChar(n.ident))
-                                .Add(Qlx.COLUMN_NAME, new TChar(nm));
-                        var pd = new Drop(dx.defpos, tr.nextPos);
-                        cx.Add(pd);
-                    }
-                    else if (tok == Qlx.UNIQUE)
-                    {
-                        Next();
-                        Level3.Index? dx = null;
-                        for (var p = tb.indexes.First(); dx == null && p != null; p = p.Next())
-                            for (var c = p.value().First(); dx == null && c != null; c = c.Next())
-                                if (cx.db.objects[c.key()] is Level3.Index x && x.keys.Length == 1 &&
-                                        x.keys[0] == tc.defpos &&
-                                    (x.flags & PIndex.ConstraintType.Unique) == PIndex.ConstraintType.Unique)
-                                    dx = x;
-                        if (dx == null)
-                            throw new DBException("42160", nm).Mix()
-                                .Add(Qlx.TABLE_NAME, new TChar(nm));
-                        var pd = new Drop(dx.defpos, tr.nextPos);
-                        cx.Add(pd);
-                    }
-                    else if (tok == Qlx.CONSTRAINT)
-                    {
-                        var n = new Ident(this);
-                        Mustbe(Qlx.Id);
-                        Drop.DropAction s = ParseDropAction();
-                        var ch = cx.GetObject(n.ident) as Check ?? throw new DBException("42135", n.ident);
-                        var pd = new Drop1(ch.defpos, s, tr.nextPos);
-                        cx.Add(pd);
-                    }
-                }
             }
-            else if (Match(Qlx.TYPE))
-            {
-                Next();
-                Domain? type;
-                if (tok == Qlx.Id)
-                {
-                    var domain = new Ident(this);
-                    Next();
-                    type = (Domain?)cx.GetObject(domain.ident);
-                    if (type == null)
-                        throw new DBException("42119", domain.ident, cx.db.name).Mix()
-                            .Add(Qlx.CATALOG_NAME, new TChar(cx.db.name))
-                            .Add(Qlx.TYPE, new TChar(domain.ident));
-                }
-                else if (StartDataType())
-                {
-                    type = ParseDataType() + (Domain.Default, tc.domain.defaultValue)
-                        + (Domain.DefaultString, tc.domain.defaultString);
-                    type = (Domain)cx.Add(type);
-                    if (!tc.domain.CanTakeValueOf(type))
-                        throw new DBException("2200G");
-                    var pa = new Alter3(tc.defpos, nm, tb.PosFor(cx, nm),
-                        tb, type,
-                        type.defaultString, type.defaultValue, tc.updateString ?? "", tc.update,
-                        !tc.domain.optional, tc.generated, tc.tc, tr.nextPos, cx);
-                    tc = (TableColumn)(cx.Add(pa) ?? throw new DBException("42105").Add(Qlx.DOMAIN));
-                }
-            }
-            if (StartMetadata(Qlx.COLUMN))
-            {
-                if (tb.Denied(cx, Grant.Privilege.Metadata))
-                    throw new DBException("42105").Add(Qlx.METADATA).Mix();
-                var (s, md) = ParseMetadata(Qlx.COLUMN);
-                var pm = new PMetadata(nm, 0, tc, s, md, tr.nextPos);
-                cx.Add(pm);
-            }
-            return tb;
+            return (Table)(cx.db.objects[tb.defpos]??tb);
         }
         /// <summary>
 		/// AlterType = TO id
@@ -6754,9 +6220,9 @@ namespace Pyrrho.Level4
             if (tok == Qlx.TO)
             {
                 Next();
-                id = new Ident(this);
+                var ni = new Ident(this);
                 Mustbe(Qlx.Id);
-                cx.Add(new Change(ro.dbobjects[id.ident] ?? -1L, id.ident, tr.nextPos, cx));
+                cx.Add(new Change(ro.dbobjects[id.ident] ?? -1L, ni.ident, tr.nextPos, cx));
             }
             else if (tok == Qlx.SET)
             {
@@ -6768,7 +6234,7 @@ namespace Pyrrho.Level4
                     Mustbe(Qlx.Id);
                     if (cx.role.dbobjects.Contains(ui.ident)
                         && cx.db.objects[cx.role.dbobjects[ui.ident] ?? -1L] is UDType tu)
-                        cx.Add(new EditType(id.ident, tp, tp, new CTree<Domain,bool>(tu,true), cx.db.nextPos, cx));
+                        cx.Add(new EditType(id.ident, tp, tp, new CTree<Domain, bool>(tu, true), cx.db.nextPos, cx));
                     else
                         throw new DBException("42107", ui.ident);
                 }
@@ -6782,19 +6248,15 @@ namespace Pyrrho.Level4
                         throw new DBException("42133", id).Mix()
                             .Add(Qlx.TYPE, new TChar(id.ident));
                     Mustbe(Qlx.TO);
-                    id = new Ident(this);
+                    var ni = new Ident(this);
                     Mustbe(Qlx.Id);
-                    new Alter3(tc.defpos, id.ident, sq,
-                        (Table?)cx.db.objects[tc.tabledefpos] ?? throw new DBException("42105").Add(Qlx.TABLE),
-                        tc.domain, tc.domain.defaultString,
-                        tc.domain.defaultValue, tc.updateString ?? "",
-                        tc.update, !tc.domain.optional, tc.generated, tc.tc, tr.nextPos, cx);
+                    new Alter3(tc.defpos, ni.ident, tc.seq, tp, tc.domain, tc.metastring, tc.metadata, tr.nextPos, cx);
                 }
             }
             else if (tok == Qlx.DROP)
             {
                 Next();
-                if (Match(Qlx.CONSTRAINT,Qlx.COLUMN))
+                if (Match(Qlx.CONSTRAINT, Qlx.COLUMN))
                 {
                     ParseDropStatement();
                     return;
@@ -6803,7 +6265,7 @@ namespace Pyrrho.Level4
                 {
                     Next();
                     var st = tp.super?.First()?.key() as UDType ?? throw new PEException("PE92612");
-                    cx.Add(new EditType(id.ident, tp, st, CTree<Domain,bool>.Empty, cx.db.nextPos, cx));
+                    cx.Add(new EditType(id.ident, tp, st, CTree<Domain, bool>.Empty, cx.db.nextPos, cx));
                 }
                 else
                 {
@@ -6839,7 +6301,7 @@ namespace Pyrrho.Level4
                 }
                 if (Match(Qlx.COLUMN))
                 {
-                    ParseColumnDefin(tp);
+                    var (ms,md,tb) = ParseColumnDefin(tp,"",TMetadata.Empty);
                     return;
                 }
                 MethodModes();
@@ -6853,8 +6315,7 @@ namespace Pyrrho.Level4
                 else
                 {
                     var (nm, dm, s, md) = ParseMember(id);
-                    var c = new PColumn2(tp, nm.ident, tp.Length, dm, dm.defaultString, dm.defaultValue,
-                            false, GenerationRule.None, tr.nextPos, cx);
+                    var c = new PColumn2(tp, nm.ident, tp.Length, dm, s, md, tr.nextPos, cx);
                     cx.Add(c);
                     var tc = (TableColumn)(cx.obs[c.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN));
                     if (md != TMetadata.Empty)
@@ -6936,9 +6397,7 @@ namespace Pyrrho.Level4
                 if (cx._Ob(tc.tabledefpos) is Domain td && ci.name is not null)
                     tc = (TableColumn)(cx.Add(new Alter3(tc.defpos, ci.name, td.PosFor(cx, ci.name),
                          (Table?)cx.db.objects[tc.tabledefpos] ?? throw new DBException("42105").Add(Qlx.DOMAIN),
-                         tc.domain, ds, dv, tc.updateString ?? "", tc.update,
-                         !tc.domain.optional, GenerationRule.None,
-                         tc.tc, tr.nextPos, cx)) ?? throw new DBException("42105"));
+                         tc.domain, tc.metastring, tc.metadata, tr.nextPos, cx)) ?? throw new DBException("42105"));
                 skip:
                 if (tok != Qlx.COMMA)
                     break;
@@ -7010,65 +6469,21 @@ namespace Pyrrho.Level4
         }
         bool StartDataType()
         {
-            switch(tok) { 
-                case Qlx.CHARACTER: 
-                case Qlx.CHAR:
-                case Qlx.VARCHAR:
-                case Qlx.NATIONAL:
-                case Qlx.NCHAR:
-                case Qlx.STRING:
-                case Qlx.BOOLEAN: 
-                case Qlx.NUMERIC:
-                case Qlx.DECIMAL:
-                case Qlx.DEC:
-                case Qlx.FLOAT:
-                case Qlx.REAL:
-                case Qlx.DOUBLE:
-                case Qlx.INT:
-                case Qlx.INTEGER:
-                case Qlx.BIGINT:
-                case Qlx.SMALLINT:
-                case Qlx.PASSWORD:
-                case Qlx.FLOAT16:
-                case Qlx.FLOAT32:
-                case Qlx.FLOAT64:
-                case Qlx.FLOAT128:
-                case Qlx.FLOAT256:
-                case Qlx.INT8:
-                case Qlx.INT16:
-                case Qlx.INT32:
-                case Qlx.INT64:
-                case Qlx.INTEGER128:
-                case Qlx.INT256:
-                case Qlx.SIGNED:
-                case Qlx.UNSIGNED:
-                case Qlx.BINARY:
-                case Qlx.BLOB:
-                case Qlx.NCLOB:
-                case Qlx.UINT:
-                case Qlx.UINT8:
-                case Qlx.UINT16:
-                case Qlx.UINT32:
-                case Qlx.UINT64:
-                case Qlx.UINT128:
-                case Qlx.UINT256:
-                case Qlx.CLOB:
-                case Qlx.DATE:
-                case Qlx.TIME:
-                case Qlx.TIMESTAMP:
-                case Qlx.INTERVAL:
-                case Qlx.DOCUMENT:
-                case Qlx.DOCARRAY:
-                case Qlx.CHECK:
-                case Qlx.ROW:
-                case Qlx.TABLE:
-                case Qlx.ARRAY:
-                case Qlx.SET:
-                case Qlx.MULTISET:
-                case Qlx.LIST:
-                case Qlx.REF: return true;
-                default: return false;
+            return tok switch
+            {
+                Qlx.CHARACTER or Qlx.CHAR or Qlx.VARCHAR or Qlx.NATIONAL or Qlx.NCHAR or Qlx.STRING 
+                or Qlx.BOOLEAN or Qlx.NUMERIC or Qlx.DECIMAL or Qlx.DEC or Qlx.FLOAT or Qlx.REAL 
+                or Qlx.DOUBLE or Qlx.INT or Qlx.INTEGER or Qlx.BIGINT or Qlx.SMALLINT or Qlx.PASSWORD 
+                or Qlx.FLOAT16 or Qlx.FLOAT32 or Qlx.FLOAT64 or Qlx.FLOAT128 or Qlx.FLOAT256 
+                or Qlx.INT8 or Qlx.INT16 or Qlx.INT32 or Qlx.INT64 or Qlx.INTEGER128 or Qlx.INT256 
+                or Qlx.SIGNED or Qlx.UNSIGNED or Qlx.BINARY or Qlx.BLOB or Qlx.NCLOB or Qlx.UINT 
+                or Qlx.UINT8 or Qlx.UINT16 or Qlx.UINT32 or Qlx.UINT64 or Qlx.UINT128 or Qlx.UINT256 
+                or Qlx.CLOB or Qlx.DATE or Qlx.TIME or Qlx.TIMESTAMP or Qlx.INTERVAL or Qlx.DOCUMENT 
+                or Qlx.DOCARRAY or Qlx.CHECK or Qlx.ROW or Qlx.TABLE or Qlx.ARRAY or Qlx.SET or Qlx.MULTISET 
+                or Qlx.LIST or Qlx.REF => true,
+                _ => false,
             };
+            ;
         }
         /// <summary>
 		/// Type = 		StandardType | DefinedType | DomainName | REF(TableReference) .
@@ -7104,7 +6519,7 @@ namespace Pyrrho.Level4
                 else
                     r = ParseStandardDataType();
             }
-            if (r != null && Match(Qlx.ARRAY, Qlx.SET, Qlx.MULTISET))
+            if (r != null && Match(Qlx.ARRAY, Qlx.SET, Qlx.MULTISET, Qlx.LIST))
             {
                 r = new Domain(-1L, tok, r);
                 Next();
@@ -7405,13 +6820,11 @@ namespace Pyrrho.Level4
             var j = 0;
             for (var b = ns.First(); b != null; b = b.Next(), j++)
             {
-                var (nm, dm, _, _) = b.value();
-                if ((k == Qlx.TYPE || k == Qlx.NODETYPE || k == Qlx.EDGETYPE) && pn != null)
+                var (nm, dm, ss, md) = b.value();
+                if (dt is Table tble && pn != null)
                 {
                     var np = cx.db.nextPos;
-                    var pc = new PColumn3((Table)dt, nm.ident, -1, dm,
-                        "", dm.defaultValue, "", CTree<UpdateAssignment, bool>.Empty,
-                        false, GenerationRule.None, TNull.Value, np, cx);
+                    var pc = new PColumn3(tble, nm.ident, -1, dm, ss, md, np, cx);
                     cx.Add(pc);
                     ms += (pc.defpos, dm);
                     sm += (nm.ident, (nm.lp,pc.defpos));
@@ -7443,16 +6856,17 @@ namespace Pyrrho.Level4
                 + (ObInfo.Name, tn) + (DBObject.Definer, cx.role.defpos)
                 + (DBObject.Infos, new BTree<long, ObInfo>(cx.role.defpos, oi))
                 + (Domain.Representation, ms) + (Domain.RowType, rt));
+            var us = "";
+            var um = TMetadata.Empty;
             for (var a = under?.First(); a != null; a = a.Next())
                 if (cx.db.objects[a.key().defpos] is Table tu)
                 {
-                    for (var b = tu.indexes.First(); b != null; b = b.Next())
-                        for (var c = b.value().First(); c != null; c = c.Next())
-                            if (cx.db.objects[c.key()] is Level3.Index x && dt is Table t)
-                                r = (Domain)(cx.Add(new PIndex(t.name + "." + x.name, t, b.key(), x.flags,
-                                    x.refindexdefpos, cx.db.nextPos)) ?? dt);
                     r += (Domain.Constraints, tu.constraints);
+                    us += tu.metastring;
+                    um += tu.metadata;
                 }
+            if (us != "")
+                r = (Domain)r.Add(cx, us, um);
             if (pn == null || pn.ident == "") // RestView
                 r = r + (ObInfo._Names, sm) + (RestView.NamesMap, ls);
             cx.Add(r);
@@ -7495,7 +6909,7 @@ namespace Pyrrho.Level4
             string s = "";
             var md = TMetadata.Empty;
             if (StartMetadata(Qlx.COLUMN))
-                (s,md) = ParseMetadata(Qlx.COLUMN);
+                (s,md) = ParseMetadata(Qlx.COLUMN,(DBObject._Domain,dm), (DBObject.Defpos, new TInt(n?.uid??-1L)));
             if (n == null || dm == null || md == null)
                 throw new DBException("42000", "Member");
             return (n, dm, s, md);
@@ -7740,7 +7154,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
 		/// QueryTerm = QueryPrimary | QueryTerm INTERSECT [ ALL | DISTINCT ] QueryPrimary .
-        /// A simple table query is defined (SQL2003-02 14.1SR18c) as a CursorSpecification 
+        /// A simple tble query is defined (SQL2003-02 14.1SR18c) as a CursorSpecification 
         /// in which the QueryExpression is a QueryTerm that is a QueryPrimary that is a QuerySpecification.
         /// </summary>
         /// <param name="t">the expected obs tye</param>
@@ -8252,7 +7666,7 @@ namespace Pyrrho.Level4
         /// <param name="dp">The position for the selectrowset being constructed</param>
         /// <param name="dm">the selectlist </param>
         /// <param name="ap">ambient limit in names: e.g. 0L allow all, LexLp() allow none</param>
-        /// <returns>The resolved select domain and table expression</returns>
+        /// <returns>The resolved select domain and tble expression</returns>
 		RowSet ParseFromClause(long dp, params (long, object)[]m)
         {
             if (tok == Qlx.FROM)
@@ -8275,7 +7689,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="st">the future selectrowset defining position</param>
         /// <param name="ap">ambient limit in names: e.g. 0L allow all, LexLp() allow none</param>
-        /// <returns>and the new table reference item</returns>
+        /// <returns>and the new tble reference item</returns>
         RowSet ParseTableReference(long st, params (long, object)[]m)
         {
             RowSet a = ParseTableReferenceItem(st, m);
@@ -8302,7 +7716,7 @@ namespace Pyrrho.Level4
         /// </summary>
         /// <param name="st">the defining position of the selectrowset being constructed</param>
         /// <param name="ap">ambient limit in names: e.g. 0L allow all, LexLp() allow none</param>
-        /// <returns>the rowset for this table reference</returns>
+        /// <returns>the rowset for this tble reference</returns>
 		RowSet ParseTableReferenceItem(long st, params (long, object)[]m)
         {
             var mm = BTree<long, object>.New(m);
@@ -8356,6 +7770,8 @@ namespace Pyrrho.Level4
                     rf = new SetRowSet(cx.GetUid(), cx, sv);
                 else if (sv.domain.kind == Qlx.MULTISET)
                     rf = new MultisetRowSet(cx.GetUid(), cx, sv);
+                else if (sv.domain.kind == Qlx.LIST)
+                    rf = new ListRowSet(cx.GetUid(), cx, sv);
                 else throw new DBException("42161", sv);
                 Mustbe(Qlx.RPAREN);
             }
@@ -8363,7 +7779,7 @@ namespace Pyrrho.Level4
             {
                 Next();
                 var cp = LexDp();
-                Mustbe(Qlx.LPAREN); // SQL2003-2 7.6 required before table valued function
+                Mustbe(Qlx.LPAREN); // SQL2003-2 7.6 required before tble valued function
                 Ident n = new(this);
                 Mustbe(Qlx.Id);
                 var r = CList<long>.Empty;
@@ -8429,7 +7845,7 @@ namespace Pyrrho.Level4
             }
             else if (tok == Qlx.LBRACK)
                 rf = new TrivialRowSet(cx, ap, dm) + (cx, RowSet.Target, ParseSqlDocArray().defpos);
-            else // ordinary table, view, OLD/NEW TABLE id, or parameter
+            else // ordinary tble, view, OLD/NEW TABLE id, or parameter
             {
                 Ident ic = new(this);
                 Mustbe(Qlx.Id);
@@ -8487,8 +7903,8 @@ namespace Pyrrho.Level4
         /// We are about to call the From constructor, which may
         /// Resolve undefined expressions in the SelectList 
         /// </summary>
-        /// <param name="dp">The occurrence of this table reference</param>
-        /// <param name="ob">The table or view referenced</param>
+        /// <param name="dp">The occurrence of this tble reference</param>
+        /// <param name="ob">The tble or view referenced</param>
         /// <param name="q">The expected valueType for the enclosing query</param>
         /// <returns></returns>
         RowSet _From(Ident ic, DBObject ob, Domain dm, Grant.Privilege pr, long ap, string? a = null)
@@ -8498,8 +7914,8 @@ namespace Pyrrho.Level4
             {
                 if (ob is View ov)
                 {
-                    var ut = cx.db.objects[(ov as RestView)?.usingTable ?? -1L] as Table;
-                    RowSet? ur = (ut is null) ? null : _From(new Ident(ut.NameFor(cx), cx.GetUid()), ut,
+                    RowSet? ur = (cx.db.objects[(ov as RestView)?.usingTable ?? -1L] is not Table ut) ? 
+                        null : _From(new Ident(ut.NameFor(cx), cx.GetUid()), ut,
                         dm, Grant.AllPrivileges, ap);
                     ob = ov.Instance(dp, cx, ur);
                 }
@@ -8598,7 +8014,7 @@ namespace Pyrrho.Level4
         }
         /// <summary>
         /// Alias = 		[[AS] id [ Cols ]] .
-        /// Creates a new ObInfo for the derived table.
+        /// Creates a new ObInfo for the derived tble.
         /// </summary>
         /// <returns>The correlation info</returns>
 		ObInfo? ParseCorrelation(Domain xp)
@@ -9452,13 +8868,14 @@ namespace Pyrrho.Level4
                 return (QlValue)cx.Add(new SqlValueExpr(lp, cx,
                     op, left, ParseSqlValueFactor((DBObject._Domain,left.domain),(NestedStatement.WfOK,wfok)), imm,mm));
             }
-            while (Match(Qlx.TIMES, Qlx.DIVIDE, Qlx.MULTISET, Qlx.SET))
+            while (Match(Qlx.TIMES, Qlx.DIVIDE, Qlx.LIST, Qlx.MULTISET, Qlx.SET))
             {
                 Qlx op = tok;
                 lp = LexDp();
                 switch (op)
                 {
                     case Qlx.DIVIDE: goto case Qlx.TIMES;
+                    case Qlx.LIST:
                     case Qlx.MULTISET:
                         {
                             var sm = tok;
@@ -9543,7 +8960,7 @@ namespace Pyrrho.Level4
             while (tok == Qlx.DOT || tok == Qlx.LBRACK)
                 if (tok == Qlx.DOT)
                 {
-                    // could be table alias, block id, instance id etc
+                    // could be tble alias, block id, instance id etc
                     Next();
                     if (tok == Qlx.TIMES)
                     {
@@ -9778,7 +9195,7 @@ namespace Pyrrho.Level4
         /// Every = EVERY '(' [DISTINCT|ALL]  TypedValue) ')' FuncOpt .
         /// Exists = EXISTS QueryExpression .
         /// FuncOpt = [FILTER '(' WHERE SearchCondition ')'] [OVER WindowSpec] .
-        /// The presence of the OVER keyword makes a window function. In accordance with SQL2003-02 section 4.15.3, window functions can only be used in the select tree of a RowSetSpec or SelectSingle or the order by clause of a “simple table query” as defined in section 7.5 above. Thus window functions cannot be used within expressions or as function arguments.
+        /// The presence of the OVER keyword makes a window function. In accordance with SQL2003-02 section 4.15.3, window functions can only be used in the select tree of a RowSetSpec or SelectSingle or the order by clause of a “simple tble query” as defined in section 7.5 above. Thus window functions cannot be used within expressions or as function arguments.
         /// In =  TypedValue [NOT] IN '(' QueryExpression | (  TypedValue { ','  TypedValue } ) ')' .
         /// Like =  TypedValue [NOT] LIKE string .
         /// Member =  TypedValue [ NOT ] MEMBER OF TypedValue .
@@ -9883,7 +9300,7 @@ namespace Pyrrho.Level4
             Match(Qlx.SCHEMA, Qlx.LABELS, Qlx.ELEMENTID, Qlx.ID, Qlx.TYPE, // we may get these non-reserved words
                 Qlx.TABLE, Qlx.EXTRACT, Qlx.FIRST_VALUE, Qlx.GROUPING, Qlx.HTTP, Qlx.LAST_VALUE, Qlx.LAST_DATA,Qlx.RANK,
     Qlx.CHAR_LENGTH, Qlx.WITHIN, Qlx.POSITION, Qlx.ROW_NUMBER, Qlx.SUBSTRING, Qlx.COLLECT, Qlx.INTERSECTION,
-    Qlx.ELEMENT, Qlx.USER, Qlx.VERSIONING, Qlx.VALUES);
+    Qlx.ELEMENT, Qlx.USER, Qlx.VERSIONING, Qlx.MULTISET, Qlx.LIST, Qlx.VALUES);
             StartStdFunctionRefs();
             if (Match(Qlx.Id, Qlx.FIRST, Qlx.NEXT, Qlx.LAST, Qlx.CHECK, Qlx.TYPE_URI)) // Id or pseudo ident
             {
@@ -9939,7 +9356,7 @@ namespace Pyrrho.Level4
             StartDataType();
             switch (tok)
             {
-                case Qlx.ARRAY:
+                case Qlx.LIST:
                     {
                         Next();
                         if (Match(Qlx.LPAREN))
@@ -9949,22 +9366,50 @@ namespace Pyrrho.Level4
                             if (tok == Qlx.SELECT)
                             {
                                 var st = lxr.start;
-                                var cs = ParseSelectStatement((DBObject._Domain,Domain.Null));
+                                var cs = ParseSelectStatement((DBObject._Domain, Domain.Null));
                                 Mustbe(Qlx.RPAREN);
                                 return (QlValue)cx.Add(new QlValueQuery(lp, cx,
-                                    (RowSet)(cx.obs[cs.result] ?? throw new DBException("42000", "Array")), 
+                                    (RowSet)(cx.obs[cs.result] ?? throw new DBException("42000", "Array")),
                                     xp, new CList<long>(cs.defpos)));
                             }
                             throw new DBException("22204");
                         }
                         Mustbe(Qlx.LBRACK);
                         var et = (xp.kind == Qlx.CONTENT) ? xp
-                            : xp.elType ?? throw new DBException("42000",DBObject.Uid(LexLp()));
-                        var v = ParseSqlValueList((DBObject._Domain,et));
+                            : xp.elType ?? throw new DBException("42000", DBObject.Uid(LexLp()));
+                        var v = ParseSqlValueList((DBObject._Domain, et));
                         if (v.Length == 0)
                             throw new DBException("22103").ISO();
                         Mustbe(Qlx.RBRACK);
-                        return (QlValue)cx.Add(new SqlValueArray(lp, cx, xp, v));
+                        return (QlValue)cx.Add(new SqlValueList(lp, cx, xp, v));
+                    }
+                case Qlx.ARRAY:
+                    {
+                        Next();
+                        Mustbe(Qlx.LBRACK);
+                        var et = (xp.kind == Qlx.CONTENT) ? xp
+                            : xp.elType ?? throw new DBException("42000",DBObject.Uid(LexLp()));
+                        var vs = CList<(long, long)>.Empty;
+                        var k = (QlValue)cx.Add(ParseSqlValue((DBObject._Domain,Domain.Int))
+                            ??throw new DBException("42161","INT value",tok));
+                        Mustbe(Qlx.EQL);
+                        var v = (QlValue)cx.Add(ParseSqlValue((DBObject._Domain, et))
+                            ?? throw new DBException("42161", et, tok));
+                        vs += (k.defpos, v.defpos);
+                        while (Match(Qlx.COMMA))
+                        {
+                            Next();
+                            k = (QlValue)cx.Add(ParseSqlValue((DBObject._Domain, Domain.Int))
+                                ?? throw new DBException("42161", "INT value", tok));
+                            Mustbe(Qlx.EQL);
+                            v = (QlValue)cx.Add(ParseSqlValue((DBObject._Domain, et))
+                                ?? throw new DBException("42161", et, tok));
+                            vs += (k.defpos, v.defpos);
+                        }
+                        if (vs.Length == 0)
+                            throw new DBException("22103").ISO();
+                        Mustbe(Qlx.RBRACK);
+                        return (QlValue)cx.Add(new SqlValueArray(lp, cx, xp, vs));
                     }
                 case Qlx.SCHEMA:
                     {
@@ -10055,6 +9500,8 @@ namespace Pyrrho.Level4
                         {
                             case Qlx.ARRAY:
                             case Qlx.MULTISET:
+                            case Qlx.SET:
+                            case Qlx.LIST:
                                 et = xp.elType ?? Domain.Null;
                                 break;
                             case Qlx.CONTENT:
@@ -11083,6 +10530,7 @@ namespace Pyrrho.Level4
                 case Qlx.ARRAY:
                 case Qlx.SET:
                 case Qlx.MULTISET:
+                case Qlx.LIST:
                     ei = xp.elType ?? throw new PEException("PE50710");
                     break;
                 case Qlx.CONTENT:
@@ -11270,8 +10718,8 @@ namespace Pyrrho.Level4
                     Mustbe(Qlx.RBRACK);
                     var xp = Domain.Content;
                     if (ls != CList<long>.Empty && cx.obs[ls[0]] is QlValue vl)
-                        xp = new Domain(-1L, Qlx.ARRAY, vl.domain);
-                    return (QlValue)cx.Add(new SqlValueArray(dp, cx, xp, ls));
+                        xp = new Domain(-1L, Qlx.LIST, vl.domain);
+                    return (QlValue)cx.Add(new SqlValueList(dp, cx, xp, ls));
                 }
                 v += ParseSqlRow();
             }

@@ -357,8 +357,8 @@ namespace Pyrrho.Level2
             tt += now;
             if (tt is EdgeType et)
             {
-                for (var b = et.connects.First(); b != null; b = b.Next())
-                    if (b.key() is TConnector tc
+                for (var b = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+                    if (b.Value() is TConnector tc
                         && cx._Ob(tc.ct) is NodeType lt
                         && now.vals[tc.cp] is TInt tl && tl.ToLong() is long li)
                     {

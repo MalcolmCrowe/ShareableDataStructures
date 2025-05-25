@@ -63,6 +63,8 @@ namespace Pyrrho.Level2
         public long trans;
         public long time;
         public bool ifNeeded = false;
+        public string ms = "";
+        public TMetadata md = TMetadata.Empty;
         protected Physical(Type tp, long pp)
         {
             type = tp;
@@ -84,6 +86,8 @@ namespace Pyrrho.Level2
         protected Physical(Physical ph,Writer wr)
         {
             type = ph.type;
+            ms = ph.ms;
+            md = (TMetadata)ph.md.Fix(wr.cx);
             ppos = wr.Length;
             wr.cx.uids += (ph.ppos, ppos);
             time = ph.time;

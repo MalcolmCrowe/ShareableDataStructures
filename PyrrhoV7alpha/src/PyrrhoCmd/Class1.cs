@@ -631,6 +631,11 @@ namespace PyrrhoCmd
 			int j;
 			for (j=0;j<rdr.FieldCount;j++)
 				cols.Add(new Column(rdr.GetName(j),rdr.GetFieldType(j),rdr.GetName(j).Length));
+            if (rdr.FieldCount == 0)
+            {
+                rdr.Close();
+                return;
+            }
             while (rdr.Read())
             {
                 string[] row = new string[cols.Count];

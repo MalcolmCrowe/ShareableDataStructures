@@ -194,8 +194,9 @@ namespace Pyrrho.Level3
             for (var b = cx.checkEdges.First(); b != null; b = b.Next())
                 if (b.value() is TableRow tr && cx.db.objects[tr.tabledefpos] is EdgeType et
                     && et.tableRows[b.key()] is TableRow nr)
-                    for (var c = et.connects.First(); c != null; c = c.Next())
-                        if (c.key() is TConnector tc && tc.cm is TMetadata tm)
+                    for (var c = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); 
+                        c != null; c = c.Next())
+                        if (c.Value() is TConnector tc && tc.cm is TMetadata tm)
                         {
                             var v = nr.vals[tc.cp];
                             if (v == null || v == TNull.Value)

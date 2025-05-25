@@ -165,16 +165,9 @@ namespace Pyrrho.Level2
         /// <param name="sq">The (new) table column position (0,1,..)</param>
         /// <param name="tb">The table</param>
         /// <param name="dm">The (new) domain </param>
-        /// <param name="ds">The (new) default string</param>
-        /// <param name="ua">The update assignment rule</param>
-        /// <param name="nn">The (new) setting for NOT NULL</param>
-        /// <param name="ge">The (new) setting for GENERATED ALWAYS</param>
-        /// <param name="nst">The first possible framing executable</param>
         /// <param name="db">The local database</param>
-        public Alter3(long co, string nm, int sq, Table tb, Domain dm, string ds,
-            TypedValue dv, string us, CTree<UpdateAssignment,bool> ua, bool nn, 
-            GenerationRule ge, TypedValue tc, long pp, Context cx) :
-            base(Type.Alter3, tb, nm, -1, dm, ds, dv, us, ua, nn, ge, tc, pp, cx)
+        public Alter3(long co, string nm, int sq, Table tb, Domain dm,string ms, TMetadata md, long pp, Context cx) :
+            base(Type.Alter3, tb, nm, -1, dm, ms, md, pp, cx)
 		{
             _defpos = co;
 		}

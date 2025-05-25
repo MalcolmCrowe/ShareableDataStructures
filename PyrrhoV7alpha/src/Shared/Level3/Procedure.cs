@@ -136,7 +136,6 @@ namespace Pyrrho.Level3
                 if (cx.result is RowSet cs && domain.kind == Qlx.TABLE)
                 {
                     for (var b = cs?.First(cx); b != null; b = b.Next(cx))
-                        if (b is not null)
                             rr += b;
                     r = new TList(cx.result, rr);
                 }

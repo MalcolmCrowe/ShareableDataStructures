@@ -69,9 +69,6 @@ namespace Pyrrho.Level2
 		protected PTable(Type t, Reader rdr) : base(t,rdr) {}
         protected PTable(PTable x, Writer wr) : base(x, wr)
         {
-            name = wr.cx.NewNode(wr.Length, x.name.Trim(':'));
-            if (x.name.EndsWith(':'))
-                name += ':';
             nodeType = wr.cx.Fix(x.nodeType);
             rowiri = x.rowiri;
         }

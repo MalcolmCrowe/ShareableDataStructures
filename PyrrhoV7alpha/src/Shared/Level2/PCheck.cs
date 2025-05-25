@@ -146,6 +146,7 @@ namespace Pyrrho.Level2
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             var ob = (DBObject?)cx.db.objects[ck.checkobjpos] ?? throw new PEException("PE1438");
+            ob = (DBObject)ob.Fix(cx);
             ob = ob.Add(ck, cx.db);
             ck = (Check)ck.Apply(cx, (Domain)ob);
             cx.Install(ob);
@@ -241,7 +242,7 @@ namespace Pyrrho.Level2
             var ck = new Check(this, cx.db);
             ck += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos,
                 new ObInfo(name??"", Grant.Privilege.Execute)));
-            if (cx.db.objects[ck.checkobjpos] is not DBObject co)
+            if (cx._Ob(ck.checkobjpos) is not DBObject co)
                 throw new PEException("PE1451");
             cx.Install(ck);
             var nc = co.Add(ck, cx.db);

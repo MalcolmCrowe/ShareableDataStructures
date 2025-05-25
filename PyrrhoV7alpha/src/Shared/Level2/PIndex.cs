@@ -149,9 +149,6 @@ namespace Pyrrho.Level2
         public PIndex(Type t, Reader rdr) : base(t, rdr) { }
         protected PIndex(PIndex x, Writer wr) : base(x, wr)
         {
-            name = wr.cx.NewNode(wr.Length, x.name.Trim(':'));
-            if (x.name.EndsWith(':'))
-                name += ':';
             tabledefpos = wr.cx.Fix(x.tabledefpos);
             var bs = BList<DBObject>.Empty;
             for (var b = x.columns.First(); b != null; b = b.Next())
@@ -162,6 +159,7 @@ namespace Pyrrho.Level2
                 }
             columns = (Domain)wr.cx.Add(new Domain(-1L, wr.cx, Qlx.ROW, bs, bs.Length));
             flags = x.flags;
+            name = x.name;
             reference = wr.cx.Fix(x.reference);
         }
         protected override Physical Relocate(Writer wr)
@@ -314,10 +312,9 @@ namespace Pyrrho.Level2
             var kc = tb.keyCols;
             var fl = false;
             for (var b = x.keys.First(); b != null; b = b.Next())
-                if (b.value() is long tc)
+                if (b.value() is long tc && cx.db.objects[tc] is TableColumn c)
                 {
                     cs += tc;
-                    var c = (cx.db.objects[tc] as TableColumn) ?? throw new PEException("PE1437");
                     cx.Add(c);
                     fl = c.tc is TConnector cc && cc.q == Qlx.ID;
                     kc += (tc, true);
@@ -325,7 +322,7 @@ namespace Pyrrho.Level2
             var dp = defpos;
             tb += (Table.KeyCols, kc);
             tb += (DBObject.LastChange, defpos);
-            cx.Install(tb);
+            cx.Install(tb); 
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.db += (tb.defpos, tb);

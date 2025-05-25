@@ -64,10 +64,6 @@ namespace Pyrrho.Level2
     {
         public long leavingType = -1L;
         public long arrivingType = -1L;
-        public override long Dependent(Writer wr, Transaction tr)
-        {
-            return base.Dependent(wr, tr);
-        }
         internal PEdgeType(string nm, PType pt, NodeType dm, Context cx)
     : base(Type.PEdgeType, nm, dm + (ObInfo.Name, nm), dm.super, -1L, pt.ppos, cx)
         { }
