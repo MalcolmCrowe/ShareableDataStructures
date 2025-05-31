@@ -118,6 +118,8 @@ namespace Pyrrho.Level2
     }
     /// <summary>
     /// An Edit record is to request an ALTER UDType
+    /// TODO: if MINVALUE/MAXVALUE is supplied or altered for a column or a column added or deleted
+    /// we need to recompute MultiplicityIndexes
     /// </summary>
     internal class EditType : PType
     {

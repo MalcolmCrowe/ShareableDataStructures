@@ -265,6 +265,30 @@ namespace Pyrrho.Level2
                 if (reference > 0 && wr.cx.db.objects[x.reftabledefpos] is Table rt)
                     wr.cx.db += (rt.defpos, rt + (Table.RefIndexes, rt.rindexes - ppos)
                                  + (Table.SysRefIndexes, rt.sindexes - x.reftabledefpos));
+                if (tr?.objects[tabledefpos] is Table tt)
+                {
+                    var ms = tt.metastring;
+                    if (ms != "")
+                        for (var b = wr.cx.uids.First(); b != null; b = b.Next())
+                            ms = ph.ms.Replace(b.key().ToString(), b.value().ToString());
+                    tb += (ObInfo.MetaString, ms);
+                    tb += (ObInfo._Metadata, tt.metadata.Fix(wr.cx));
+                    var ch = false;
+                    var mx = CTree<long, long>.Empty;
+                    for (var b = tt.mindexes.First(); b != null; b = b.Next())
+                    {
+                        var k = b.key();
+                        var nk = wr.cx.Fix(k);
+                        var v = b.value();
+                        var nv = wr.cx.Fix(v);
+                        if (k != nk || v != nv)
+                            ch = true;
+                        mx += (nk, nv);
+                    }
+                    if (ch)
+                        tb += (Table.MultiplicityIndexes, mx);
+                    wr.cx.db += tb;
+                }
             }
             return (nt, ph);
         }

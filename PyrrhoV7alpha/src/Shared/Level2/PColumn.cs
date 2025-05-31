@@ -3,6 +3,7 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Common;
 using Pyrrho.Level5;
+using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
@@ -123,7 +124,7 @@ namespace Pyrrho.Level2
             if (wr.cx.uids[tabledefpos] is long tp && wr.cx.db.objects[tp] is Table ta)
                 Commit(wr.cx, ta);
             var (nt,ph) = base.Commit(wr, tr);
-/*            if (wr.cx.uids[tabledefpos] is long t && wr.cx.db.objects[t] is Table tb)
+            if (wr.cx.uids[tabledefpos] is long t && wr.cx.db.objects[t] is Table tb)
             {
                 var ot = tb;
                 var xs = tb.indexes;
@@ -147,11 +148,15 @@ namespace Pyrrho.Level2
                     }
                 if (rx != tb.rindexes)
                     tb += (Table.RefIndexes, rx);
+                var md = tb.metadata.Fix(wr.cx);
+                if (md != tb.metadata)
+                    tb += (ObInfo._Metadata, md);
                 if (tb.infos[tb.definer] is ObInfo ti && ti._Fix(wr.cx) is ObInfo ni && ni.dbg != ti.dbg)
                 {
                     tb += (DBObject.Infos, tb.infos + (tb.definer, ni));
                     tb += (ObInfo._Names, ni.names);
-                    tb = tb + (ObInfo._Metadata, ni.metadata) + (ObInfo.MetaString, ni.metastring);
+                    tb = tb + (ObInfo._Metadata, ni.metadata.Fix(wr.cx)) 
+                        + (ObInfo.MetaString, ni.metastring);
                 }
                 var sx = wr.cx.FixTlTlTlb(tb.sindexes);
                 if (sx != tb.sindexes)
@@ -160,7 +165,7 @@ namespace Pyrrho.Level2
                     tb += (Table.KeyCols, tb.keyCols - ppos + (ph.ppos,true));
                 if (ot != tb)
                     wr.cx.db += (tb.defpos, tb);
-            } */
+            } 
             return (nt,ph);
         }
         void Commit(Context cx,Table ta)
@@ -540,10 +545,12 @@ namespace Pyrrho.Level2
             if (cx.db.objects[pr.defpos] is EdgeType et &&  md[Qlx.CONNECTING] is TConnector cc)
             {
                 var tc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, pp, cc.cs, cc.cm);
-                var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
-                et += (ObInfo._Metadata, et.metadata + (Qlx.EDGETYPE,ts - cc + tc)); 
-                cx.Add(et);
-                cx.db += et; 
+                //       var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
+                //       et += (ObInfo._Metadata, et.metadata + ); 
+                //       cx.Add(et);
+                //       cx.db += et; 
+                cx.MetaPend(pr.defpos, defpos, "",
+                    TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Domain.Connector) + tc));
                 md = md + (Qlx.CONNECTING, tc);
                 connector = tc;
             }

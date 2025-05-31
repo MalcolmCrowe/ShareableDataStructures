@@ -3374,8 +3374,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         {
                             if (f.Key == "$check")
                             {
-                                vs += (LastChange, new TInt((long)f.Value));
-                                vs += (Defpos, new TInt((long)(d["$pos"]??0L)));
+                                vs += (LastChange, new TPosition((long)f.Value));
+                                vs += (Defpos, new TPosition((long)(d["$pos"]??0L)));
                             }
                             if (f.Key == "$classification")
                                 vs += (Classification,

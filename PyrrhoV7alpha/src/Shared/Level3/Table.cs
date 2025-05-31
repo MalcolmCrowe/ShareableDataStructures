@@ -41,6 +41,7 @@ namespace Pyrrho.Level3
             Indexes = -264, // CTree<Domain,CTree<long,bool>> QlValue,Index
             KeyCols = -320, // CTree<long,bool> TableColumn (over all indexes)
             LastData = -258, // long
+            MultiplicityIndexes = -467, // CTree<long,long> Column,Index
             RefIndexes = -250, // CTree<long,CTree<Domain,Domain>> referencing Table,referencing TableColumns,referenced TableColumns
             SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,CTree<long,bool>>>> nodeTable,node, edgeColumn,edge 
             SystemPS = -265, //long (system-period specification)
@@ -75,12 +76,29 @@ namespace Pyrrho.Level3
         internal Grant.Privilege enforcement => (Grant.Privilege)(mem[Enforcement]??0);
         internal long applicationPS => (long)(mem[ApplicationPS] ?? -1L);
         internal long systemPS => (long)(mem[SystemPS] ?? -1L);
+        
+        // for foreign keys
         internal CTree<long,CTree<Domain,Domain>> rindexes =>
             (CTree<long, CTree<Domain, Domain>>)(mem[RefIndexes] 
             ?? CTree<long, CTree<Domain, Domain>>.Empty);
+        
+        // for GQL (a powertful alternative to foreign keys, using POSITION)
         internal CTree<long, CTree<long, CTree<long, bool>>> sindexes =>
             (CTree<long, CTree<long, CTree<long, bool>>>)(mem[SysRefIndexes]
             ?? CTree<long, CTree<long, CTree<long, bool>>>.Empty);
+
+        // For N-ary edges and advanced multiplicity generally (Fritz Laux)
+        // An n-ary association is a relation of degree n+x (x= number of properties)
+        // with a compound primary key of n-attributes.
+        // The multiplicity of a column defines the minimum (participation)
+        // and maximum  (cardinality) number of values (nodes)
+        // that can occur if you hold the other n-1 columns fixed. 
+        // Multiplicity is a column metadata (MINVALUE,MAXVALUE) that leads to
+        // provision of a MultiplicityIndex on the Table.
+        // This type of constraint brings a run-time cost O(NM) on insert/delete
+        // where N is the size of the table and M is the number of mindexes on it.
+        internal CTree<long, long> mindexes =>
+            (CTree<long, long>)(mem[MultiplicityIndexes] ?? CTree<long, long>.Empty);
         internal CTree<long, bool> tableChecks => 
             (CTree<long, bool>)(mem[TableChecks] ?? CTree<long, bool>.Empty);
         internal CTree<PTrigger.TrigType, CTree<long,bool>> triggers =>
@@ -239,7 +257,7 @@ namespace Pyrrho.Level3
                         }
                     case Qlx.REFERENCES:
                         {
-                            var ta = (cx.db.objects[b.value().ToLong() ?? -1L] as DBObject) ?? throw new DBException("42105");
+          /*                  var ta = (cx.db.objects[b.value().ToLong() ?? -1L] as DBObject) ?? throw new DBException("42105");
                             var rt = ta as Table;
                             if (rt == null && ta is RestView rv)
                                 rt = rv.super.First()?.key() as Table ?? throw new DBException("42105").Add(Qlx.REFERENCES);
@@ -263,27 +281,29 @@ namespace Pyrrho.Level3
                             if (rx.keys.Length != key.Length) throw new DBException("22207");
                             ob = (Table)(cx.Add(new PIndex1(name, tb, key,
                                 PIndex.ConstraintType.ForeignKey | md.RefActions(),
-                                rx.defpos, afn, cx.db.nextPos)) ?? throw new DBException("42105"));
+                                rx.defpos, afn, cx.db.nextPos)) ?? throw new DBException("42105")); */
                             break;
                         }
                     case Qlx.UNIQUE:
                         {
-                            var cs = CList<long>.Empty;
+         /*                   var cs = CList<long>.Empty;
                             for (var c = (md[Qlx.UNIQUE] as TList)?.First(); c != null; c = c.Next())
                                 cs += c.Value().ToLong() ?? -1L;
                             var key = new Domain(cx, tb.representation, cs, tb.infos); 
                             ob = (Table)(cx.Add(new PIndex("", tb, key,
-                                PIndex.ConstraintType.Unique, -1L, cx.db.nextPos)) ?? throw new DBException("42105")); ;
+                                PIndex.ConstraintType.Unique, -1L, cx.db.nextPos)) ?? throw new DBException("42105")); 
+         */
                             break;
                         }
                     case Qlx.PRIMARY:
                         {
-                            var cs = CList<long>.Empty;
+         /*                 var cs = CList<long>.Empty;
                             for (var c = (md[Qlx.PRIMARY] as TList)?.First(); c != null; c = c.Next())
                                 cs += c.Value().ToLong() ?? -1L;
                             var key = new Domain(cx, tb.representation, cs, tb.infos); 
                             ob = (Table)(cx.Add(new PIndex("Primary", tb, key,
-                                PIndex.ConstraintType.PrimaryKey, -1L, cx.db.nextPos)) ?? throw new DBException("42105")); ;
+                                PIndex.ConstraintType.PrimaryKey, -1L, cx.db.nextPos)) ?? throw new DBException("42105"));
+         */
                             break;
                         }
                     case Qlx.IRI:
@@ -298,9 +318,38 @@ namespace Pyrrho.Level3
                             ob = nb;
                         }
                         break;
+                    case Qlx.MULTIPLICITY:
+                        if (b.value() is TSet ts)
+                            for (var c = ts.First(); c != null; c = c.Next())
+                                if (cx.db.objects[c.Value().ToLong() ?? -1L] is TableColumn co
+                                    && !mindexes.Contains(co.defpos))
+                                    ob = AddMultiplicityIndex(cx, co);
+                        break;
                 }
             cx.db += ob;
             ob = (Table)cx.Add(ob);
+            return ob;
+        }
+        internal Table AddMultiplicityIndex(Context cx, TableColumn co)
+        {
+            // construct a foreignkey-type index for all columns with co as the last
+            var ks = CList<long>.Empty;
+            for (var d = rowType.First(); d != null; d = d.Next())
+                if (d.value() != co.defpos)
+                    ks += d.value();
+            ks += co.defpos;
+            var ob = this;
+            var px = new PIndex("M" + co.name, this, new Domain(cx, representation, ks,
+                BTree<long, ObInfo>.Empty),
+                PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeDelete
+                | PIndex.ConstraintType.CascadeUpdate, -1L, cx.db.nextPos);
+            ob = (Table)(cx.Add(px) ?? throw new DBException("42105"));
+            if (cx.db.objects[px.defpos] is Index mx)
+            {
+                ob += (MultiplicityIndexes, ob.mindexes + (co.defpos, mx.defpos));
+                mx.Build(cx);
+            }
+            cx.db += ob;
             return ob;
         }
         internal override DBObject AddTrigger(Trigger tg)

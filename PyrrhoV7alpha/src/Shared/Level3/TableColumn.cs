@@ -191,6 +191,7 @@ namespace Pyrrho.Level3
             var tc = this;
             var table = cx.db.objects[tabledefpos] as Table ?? throw new PEException("PE30331");
             var ti = table.infos[cx.role.defpos] ?? new ObInfo(table.name);
+            var tm = TMetadata.Empty; // this will become the new bits of metadata to add to the TableColumn 
             for (var b = md.First(); b != null; b = b.Next())
                 switch (b.key())
                 {
@@ -236,18 +237,22 @@ namespace Pyrrho.Level3
                             var cc = b.value() as TConnector ?? throw new PEException("PE60641");
                             cc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, defpos, cc.cs, cc.cm);
                             tc += (ObInfo._Metadata, tc.metadata+(Qlx.CONNECTING,b.value()));
-                  /*          if (table is EdgeType et)
-                            {
-                                var cs = CTree<TypedValue, bool>.Empty;
-                                var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
-                                et += (ObInfo._Metadata, et.metadata + (Qlx.EDGETYPE, ts + cc));
-                                table = et;
-                            } */
+                            tm += (Qlx.EDGETYPE, new TSet(Domain.Connector) + cc);
+                            break;
+                        }
+                    case Qlx.MINVALUE:
+                    case Qlx.MAXVALUE:
+                        {
+                            tc += (ObInfo._Metadata, tc.metadata + (b.key(), b.value()));
+                            tm += (Qlx.MULTIPLICITY, new TSet(Domain.Position) + new TPosition(defpos));
                             break;
                         }
                 }
             cx.Add(tc);
             cx.db += tc;
+            //      cx.Install(table.Add(cx, s, tm) + (Infos, table.infos + (cx.role.defpos, ti))); 
+            if (tm!=TMetadata.Empty)
+                cx.MetaPend(table.defpos, defpos, s, tm);
             cx.Install(table + (Infos, table.infos + (cx.role.defpos, ti)));
             return tc;
         }
@@ -601,7 +606,7 @@ namespace Pyrrho.Level3
         internal TableRow(long vp,CTree<long,TypedValue>? vs=null)
         {
             vs ??= CTree<long, TypedValue>.Empty;
-            var dp = (vs[DBObject.Defpos] is TInt v)?v.ToLong()??-1L:-1L;
+            var dp = (vs[DBObject.Defpos] is TPosition v)?v.ToLong()??-1L:-1L;
             var pp = vs[Table.LastData]?.ToLong() ?? 01L;
             defpos = dp;
             time = DateTime.Now.Ticks;
@@ -784,7 +789,8 @@ namespace Pyrrho.Level3
         }
     }
     
-    internal class RemoteTableRow(long dp, CTree<long, TypedValue> v, string u, RestRowSet r) : TableRow(r.target,v+(DBObject.Defpos,new TInt(dp))) 
+    internal class RemoteTableRow(long dp, CTree<long, TypedValue> v, string u, RestRowSet r) 
+        : TableRow(r.target,v+(DBObject.Defpos,new TPosition(dp))) 
     {
         internal readonly string url = u;
         internal readonly RestRowSet rrs = r;

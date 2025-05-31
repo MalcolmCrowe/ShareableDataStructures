@@ -134,6 +134,11 @@ namespace Pyrrho.Level2
                 // and try again
             }
             var ph = Relocate(wr);
+            ph.ms = ms;
+            if (ms!="")
+                for (var b=wr.cx.uids.First();b!=null;b=b.Next())
+                    ph.ms = ph.ms.Replace(b.key().ToString(),b.value().ToString());
+            ph.md = (TMetadata)md.Fix(wr.cx);
             wr.WriteByte((byte)type);
             ph.Serialise(wr);
             ph.Install(wr.cx);

@@ -61,7 +61,7 @@ namespace Pyrrho.Level4
         internal string? url = null;
         internal Transaction? tr => db as Transaction;
         internal BList<TriggerActivation> deferred = BList<TriggerActivation>.Empty;
-        internal BTree<long, TableRow> checkEdges = BTree<long, TableRow>.Empty;
+        internal BTree<long, TableRow> checkEdges = BTree<long, TableRow>.Empty; // edges and multiplcity
         internal BList<Exception> warnings = BList<Exception>.Empty;
         internal ObTree obs = ObTree.Empty;
         // these 3 fields help with Fix(dp) during instancing (for Views)
@@ -124,6 +124,7 @@ namespace Pyrrho.Level4
         internal CTree<long, TypedValue> binding = CTree<long, TypedValue>.Empty;
         internal BTree<long, long?> newnodes = BTree<long, long?>.Empty;
         internal BTree<string, long?> newEdges = BTree<string, long?>.Empty;
+        internal CTree<long, CTree<long, (string,TMetadata)>> metaPending = CTree<long, CTree<long, (string,TMetadata)>>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
         /// We only send versioned information if 
@@ -2188,6 +2189,14 @@ namespace Pyrrho.Level4
         internal virtual Context FindCx(long c)
         {
             return this;
+        }
+        internal void MetaPend(long tg,long dp,string s,TMetadata tm)
+        {
+            var pn = metaPending[tg] ?? CTree<long, (string,TMetadata)>.Empty;
+            var (ds,dm) = pn.Contains(dp)?pn[dp] : ("",TMetadata.Empty);
+            if (!ds.Contains(s))
+                ds = ds + "" + s;
+            metaPending += (tg, pn + (dp, (ds,dm+tm)));
         }
         internal virtual TriggerActivation FindTriggerActivation(long tabledefpos)
         {

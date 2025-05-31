@@ -17,8 +17,8 @@ namespace Pyrrho.Level3
     /// MTree is used for total and partial orderings where the value is long (e.g. in Index structure)
     /// for partial ordering the final stage Slot Row all implement BTree (and are ATree(long,bool))
     /// Logically a MTree contains associations of form (key,pos)
-    /// Show partial orders this is implemented as a tree of (key,T) where T contains (pos,true).
-    /// All the implementation is done with SqlTrees or STree (STree allows set-valued keys).
+    /// Partial orders are implemented as a tree of (key,T) where T contains (pos,true).
+    /// All the implementation is done with SqlTrees.
     /// A null key is entered if permitted by allowNulls;
     /// of course in a multi-level MTree with allowNulls, any element of the key might be null.
     /// We detect partial ordering through the TreeBehaviour on onDuplicate.
@@ -151,6 +151,28 @@ namespace Pyrrho.Level3
                 }
             }
             return r;
+        }
+        internal (int,int) Multiplicity(CList<TypedValue> k, int l, int h)
+        {
+            if (k.Length == 0 || k[k.Length - 1] == TNull.Value)
+                return (l, h);
+            if (count == 0L || impl == null)
+                return (0, h);
+            var f = k[0]??TNull.Value;
+            var v = impl[f];
+            if (v==null ||v==TNull.Value)
+                   return (0, 0);
+            switch (impl.kind)
+                {
+                    case Qlx.T: // k.Length==1
+                        return (l, (int)((v as TPartial)?.value.Count??0L));
+                    case Qlx.INT:
+                        return (1,1);
+                    case Qlx.M: // k.Length>1
+                        return (v is TMTree t)?t.value.Multiplicity(k - 0, l, h) : (0,0);
+                    default:
+                        return (l, h);
+                }
         }
         /// <summary>
         /// A key for this index has a null at position cur: return a suitable new value for this null

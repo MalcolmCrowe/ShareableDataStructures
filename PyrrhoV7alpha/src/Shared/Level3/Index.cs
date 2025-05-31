@@ -44,7 +44,7 @@ namespace Pyrrho.Level3
         /// <summary>
         /// The flags describe the type of index
         /// </summary>
-        public PIndex.ConstraintType flags => (PIndex.ConstraintType)(mem[IndexConstraint] ?? 0);
+        public ConstraintType flags => (ConstraintType)(mem[IndexConstraint] ?? 0);
         public MTree? rows => (MTree?)mem[Tree];
         public Domain keys => (Domain?)mem[Keys] ?? Domain.Null;
         /// <summary>
@@ -299,30 +299,6 @@ namespace Pyrrho.Level3
        //             x = x.AddRows(t, cx);
             return x;
         }
-        /// <summary>
-        /// A readable version of the Index
-        /// </summary>
-        /// <returns>the string representation</returns>
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            sb.Append(" for "); sb.Append(Uid(tabledefpos));
-            sb.Append(" count " + rows?.count);
-            sb.Append(" Key:"); sb.Append(keys);
-            sb.Append(" Kind="); sb.Append(flags);
-            if (refindexdefpos != -1)
-            {
-                sb.Append(" RefIndex="); sb.Append(Uid(refindexdefpos));
-                sb.Append(" RefTable="); sb.Append(Uid(reftabledefpos));
-            }
-            sb.Append(" Rows:"); sb.Append(rows);
-            if (adapter!=-1)
-            {
-                sb.Append(" Adapter="); sb.Append(Uid(adapter));
-                sb.Append(" References:"); sb.Append(references);
-            }
-            return sb.ToString();
-        }
         internal override Basis New(BTree<long, object> m)
         {
             return new Index(defpos, m);
@@ -379,6 +355,23 @@ namespace Pyrrho.Level3
             }
             return r;
         }
+        internal (int,int) Multiplicity()
+        {
+            if (rows == null)
+                return (0, 0);
+            var l = 0;
+            var h = int.MaxValue;
+            var f = true;
+            for (var b=rows.First();b!=null;b=b.Next(),f=false)
+            {
+                var (x,y) = rows.Multiplicity(b._key, l, h);
+                if (x < l || f)
+                    l = x;
+                if (y > h || f)
+                    h = y;
+            }
+            return (l, h);
+        }
         internal override void Note(Context cx, StringBuilder sb, string pre="/// ")
         {
             sb.Append(pre); sb.Append(flags);
@@ -390,9 +383,33 @@ namespace Pyrrho.Level3
                     sb.Append(cx.NameFor(p));
                 }
             sb.Append(")");
-            if (flags.HasFlag(PIndex.ConstraintType.ForeignKey))
+            if (flags.HasFlag(ConstraintType.ForeignKey))
             { sb.Append(" "); sb.Append(cx.NameFor(reftabledefpos)); }
             sb.Append("\r\n");
+        }
+        /// <summary>
+        /// A readable version of the Index
+        /// </summary>
+        /// <returns>the string representation</returns>
+        public override string ToString()
+        {
+            var sb = new StringBuilder(base.ToString());
+            sb.Append(" for "); sb.Append(Uid(tabledefpos));
+            sb.Append(" count " + rows?.count);
+            sb.Append(" Key:"); sb.Append(keys);
+            sb.Append(" Kind="); sb.Append(flags);
+            if (refindexdefpos != -1)
+            {
+                sb.Append(" RefIndex="); sb.Append(Uid(refindexdefpos));
+                sb.Append(" RefTable="); sb.Append(Uid(reftabledefpos));
+            }
+            sb.Append(" Rows:"); sb.Append(rows);
+            if (adapter != -1)
+            {
+                sb.Append(" Adapter="); sb.Append(Uid(adapter));
+                sb.Append(" References:"); sb.Append(references);
+            }
+            return sb.ToString();
         }
     }
 }

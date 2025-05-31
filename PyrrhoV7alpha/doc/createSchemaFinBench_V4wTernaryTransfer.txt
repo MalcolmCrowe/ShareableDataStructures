@@ -1,32 +1,29 @@
-// Version: timestamp'2025-02-22 17:40:00'
+// Version: timestamp'2025-02-27 11:00:00'
 create schema /ldbc
 
 // version table
 create table version (createtime timestamp)
-insert into version values (timestamp'2025-02-22 20:05:00')
+insert into version values (timestamp'2025-02-27 11:00:00')
 
 // create node and edge types
 
-[ create graph type /ldbc/FinBench_FL3 {
+[ create graph type /ldbc/FinBench_FL4 {
 node LegalEntity {id::int,name::string,isBlocked::boolean,
   country::string, city::string},
 node Medium {id::int, type::String, Issuer::string, issued::timestamp, isBlocked::boolean,
   lastLogin::timestamp, riskLevel::string},
-directed edge uses connecting (LegalEntity to Medium),
+directed edge uses connecting (from LegalEntity multiplicity 1..1 to Medium multiplicity 0..*),
 directed edge contract {type::string,amount::decimal,currency::string,createTime::timestamp}    
-  connecting (LegalEntity to LegalEntity),
+  connecting (from LegalEntity multiplicity 0..* to LegalEntity multiplicity 0..*),
 node Account {id::int,accntType::string, bankName::string, isBlocked::boolean, currency::string,
   created::timestamp, lastLogin::timestamp, accntLevel::string, Balance::decimal},
 node Branch {Id::int, BIC::String, Location::String, phone::string, email::string},
 node SignIn {id::int, location::String, signin::timestamp, signout::timestamp, via::String},
-directed edge has connecting (Branch to Account),
-directed edge with_ connecting (SignIn to Medium),
-directed edge transfer {id::int, type::string, 
-  amount::decimal,currency::string,execTime::timestamp}  
-  connecting (Account to Account),
-directed edge usedFor connecting (SignIn to transfer), //instead of tenary edge 
-directed edge activatedFor connecting (Medium to Account),
-directed edge owns connecting (LegalEntity to Account) }
+directed edge has connecting (from Branch multiplicity 1..1 to Account multiplicity 0..*),
+directed edge with_ connecting (from SignIn multiplicity 1..* to Medium multiplicity 1..1),
+directed edge type transfer connecting (from Account multiplicity 1..*  with SignIn multiplicity 0..1 to Account multiplicity 1..* ),
+directed edge activatedFor connecting (from Medium multiplicity 0..* to Account multiplicity 1..1 ),
+directed edge owns connecting (from LegalEntity multiplicity 1..1 to Account multiplicity 1..*) }
 ] 
 
 // create subtypes of LegalEntity
@@ -39,6 +36,26 @@ create type POS under account as (PosLocation char)
 create type ATM under account as (AtmLocation char) 
 create type Loan under account as (loanAmnt decimal, Interest decimal(5,2), Rate decimal)
 create type Custodial under account as (ISIN char, quantity decimal) 
+
+// some data inserts: person#1, accounts#1,3,5,8,11,34, branches#1,3,4,10,13,15
+[insert (p:Person {id:1,name:'Hans Dampf',isBlocked:false, country:'Germany', city:'Stuttgart', Birthday:timestamp'1970-03-09', gender:'male'}),
+ (a1:Custodial {id:3, accntType:'custodial account', bankName:'Global ETF', isBlocked:false,currency:'€',created:timestamp'1965-10-11', 
+ lastLogin:timestamp'1992-11-09', accntLevel:'Silver level', Balance:3803.94, ISIN:'DE000BAY0017', quantity:185.5})]
+ [ match (a1:Custodial {id:3}),
+ insert (b1:Branch {id:3, BIC:'YUINDEFF',location:'Frankfurt', phone:'0711/349578', email:'h.dampf@uinvest.de'})-[:has]->(a1)]
+[ insert 
+ (a2:Account {id:11, accntType:'saving account', BankName:'Global Shares', isBlocked:false, Currency:'€', created:timestamp'2010-10-17', lastLogin:timestamp'2024-11-17', accntLevel:'Gold level', Balance:12500.0}),
+ (b2:Branch {id:10, BIC:'GSESMTMTXXX', location:'Valetta,Malta', phone:'+356 20/2030', email:'k.galea@m-web.de'})-[:has]->(a2)
+]
+[insert (a3:Account {id:34, accntType:'checking account', BankName:'BNP Paribas', isBlocked:false, Currency:'€',created:timestamp'1989-10-08', lastLogin:timestamp'2024-11-28', accntLevel:'green level',  Balance:1280.04}),
+ (b3:Branch {id:13, BIC:'BNPAFRPPXXX',location:'Paris', phone:'+33 52 6337777', email:'info@bnp.com'})-[:has]->(a3),
+ (a4:Custodial {id:1, accntType:'custodial account', BankName:'Union Invest', isBlocked:false,Currency:'€',created:timestamp'2024-10-11',  lastLogin:timestamp'2024-11-09', accntLevel:'Silver level',  Balance:2451.33, ISIN:'EU0009658145', quantity:240.5 }),
+ (b4:Branch {id:1, BIC:'YUINDEFF',location:'Frankfurt', phone:'0711/349578', email:'h.gewinn@uinvest.de'})-[:has]->(a4),
+ (a5:Loan {id:8, accntType:'loan account', BankName:'Credit Swiss', isBlocked:false, Currency:'€', created:timestamp'2024-10-10', lastLogin:timestamp'2024-11-18', accntLevel:'Basic level',Balance:30000, loanAmnt:50000, Interest:4.9, rate:600.0}),
+ (b5:Branch {id:15, BIC:'CRESCHZZ80A',location:'Zürich', phone:'+41 44 3339911', email:'info@c-suisse.com'})-[:has]->(a5),
+ (a6:Account {id:5, accntType:'checking account', BankName:'KSK Tübingen', isBlocked:false,Currency:'€', created:timestamp'2024-10-18', lastLogin:timestamp'2024-11-18', accntLevel:'Gold level',  Balance:18975.45}),
+ (b6:Branch {id:4, BIC:'SOLADES1TUB',location:'Tübingen', phone:'07071/349578', email:'f.mayer@gmail.de'} )-[:has]->(a6)
+]
 
 // fill Graph DB
 // #############
@@ -94,33 +111,24 @@ insert(e1)-[:contract {type:'invest', amount:5000000.00, currency:'€',
 createTime:timestamp'2024-10-01 16:05:00'} ]->(e2) ]
 
 // insert Branch nodes
-
-insert into Branch values (1, 'YUINDEFF','Frankfurt', '0711/349578', 'h.dampf@web.de')
+// Branches #1,3,4,10,13,15 already inserted above
 insert into Branch values (2, 'DEUTDESS641','DB Tübingen', '07071/2030', 'k.mayer@web.de')
-insert into Branch values (3, 'DEUTDEDBSTG','Stuttgart', '0711/349578', 'r.schulz@DBank.de')
-insert into Branch values (4, 'SOLADES1TUB','Tübingen', '0711/349578', 'f.mayer@gmail.de')
 insert into Branch values (5, 'GENODEF1S10','Berlin', '030/3495780', 'k.breme@web.de')
 insert into Branch values (6, 'SOLADES1ULM','Cafe Post, Ulm', '07321/349578', 'w.abel@kskUlm.de')
 insert into Branch values (7, 'GENODEF1S02','Karlsruhe', '0721/74932', 'kontakt@sparda-bw.de')
 insert into Branch values (8, 'DEUTDEDBSTG','Airport Stgt', '0711/349578', 'k.mayer@web.de')
 insert into Branch values (9, 'SOLADES1ULM','Hotel Münster, Ulm', '07321/344478', 'k.kurz@web.de')
-insert into Branch values (10,'GSESMTMTXXX','Frankfurt', '03021/549578', 'gshares@debeka.de')
 insert into Branch values (11,'DRESDEFXXXX','Dresden', '069/58008000', 'a.kunz@web.de')
 insert into Branch values (12,'UBSWCHZH82A','Schaffhausen', '+41 52 6337777', 'info@ubs.com')
-insert into Branch values (13,'BNPAFRPPXXX','Paris', '+33 52 6337777', 'info@bnp.com')
 insert into Branch values (14,'INGDDEFFXXX','Frankfurt', '069/50509069', 'info@ing.de') 
-insert into Branch values (15,'CRESCHZZ80A','Zürich', '+41 44 3339911', 'info@c-suisse.com')
 insert into Branch values (16,'SOLADES1ULM','Ulm', '07321/349578', 'w.abel@kskUlm.de')
 
 
 // insert POS, ATM, Checking, Custodial, and Loan nodes as Account.
-
-insert into Custodial values (1, 'custodial account', 'Union Invest', false,'€','2024-10-11',  '2024-11-09', 'Silver level',  2451.33, 'EU0009658145',240.5)
+// Accounts #1,3,5,8,11,34 already inserted
 insert into ATM values (2, 'ATM / SB account', 'Deutsche Bank', false,'€','1949-10-11', '2024-11-08', 'ATM safe', 6000.00, 'Am Lustnauer Tor, Tübingen')
 insert into Account values (22, 'retirement account', 'Deutsche Bank', false,'€','2024-10-11', '2024-11-08', 'Basic level',  600.00)
-insert into Custodial values (3, 'custodial account', 'Global ETF', false,'€','1965-10-11', '1992-11-09', 'Silver level', 3803.94, 'DE000BAY0017', 185.5)
 insert into Loan values (4, 'loan account', 'KSK Tübingen', false,'€','2024-10-11', '2024-11-08', 'Mortgage level', 14000.0, 20000, 3.4, 500.0)
-insert into Account values (5, 'checking account', 'KSK Tübingen', false,'€','2024-10-18', '2024-11-18', 'Gold level',  18975.45)
 insert into Loan values (6, 'loan account', 'Sparda Berlin', false,'€','2024-10-18', '2024-11-18', 'Mortgage level', 40000.0, 200000, 3.1, 900.0)
 insert into POS values (15, 'POS account', 'KSK Ulm', false,'€','2023-10-18', '2024-09-18', 'POS Gold', 189.45, 'Café Post, Sendlingen')
 insert into POS values (16, 'POS account', 'Sparda BW', false,'€','2023-11-19', '2024-09-28', 'POS silver', 489.95,'Hettlage, Ulm')
@@ -132,16 +140,13 @@ insert into Account values (28, 'checking account', 'KSK Ulm', false,'€','2023
 insert into Account values (31, 'checking account', 'KSK Tübingen', false,'€','2024-10-18', '2024-11-18', 'Silver level',  12000.0)
 insert into Account values (32, 'POS account', 'Deutsche Bank Stgt.', false,'€','1982-10-28', '2024-12-18', 'Silver level',  120362.94)
 insert into Account values (33, 'checking account', 'Ing DiBa', false,'€','1989-10-08', '2024-11-28', 'Silver level',  12362.04)
-insert into Account values (34, 'credit card', 'Amex', false,'€','1989-10-08', '2024-11-28', 'green level',  1280.04)
 
-// insert more Account and Medium (1,2,3, 20,21,22) nodes
+// insert more Account #12,7,13,14 and Medium #1,2,3 nodes
 
-[insert (a1:Account{id:11, accntType:'saving account', BankName:'Global Shares', isBlocked:false, Currency:'€', created:timestamp'2010-10-17', lastLogin:timestamp'2024-11-17', accntLevel:'Gold level', Balance:12500.0}),
- (a2:Loan{id:12, accntType:'loan account', BankName:'Ing DiBa',isBlocked:false, Currency:'€', created:timestamp'2024-10-11', lastLogin:timestamp'2024-11-16', accntLevel:'Basic level', Balance:25000.0, loanAmnt:60000, Interest:4.5, rate:1500.00}),
+[insert (a2:Loan{id:12, accntType:'loan account', BankName:'Ing DiBa',isBlocked:false, Currency:'€', created:timestamp'2024-10-11', lastLogin:timestamp'2024-11-16', accntLevel:'Basic level', Balance:25000.0, loanAmnt:60000, Interest:4.5, rate:1500.00}),
 (m:Medium {id:2,type:'debitCard', Issuer:'Ing DiBa', issued:timestamp'1955-11-01', isBlocked:false, lastLogin:timestamp'2024-11-10', riskLevel:'moderate risk'}) ]
 
 [insert (a1:Account{id:7, accntType:'checking account',BankName:'Dresdener Bank', isBlocked:false, Currency:'€', created:timestamp'2024-10-18', lastLogin:timestamp'2024-11-18', accntLevel:'Gold level', Balance:12075.85}),
- (a2:Loan{id:8, accntType:'loan account', BankName:'Credit Swiss',isBlocked:false,Currency:'€',created:timestamp'2024-10-10', lastLogin:'2024-11-18', accntLevel:'Basic level',Balance:30000, loanAmnt:50000, Interest:4.9, rate:600.0}),
 (m:Medium {id:1, type:'creditCard',Issuer:'Amex', issued:timestamp'2024-11-01', isBlocked:false, lastLogin:timestamp'2024-10-20 12:44:15', riskLevel:'moderate risk'}) ]
 
 [insert (a1:Custodial{id:13, accntType:'custodial account', BankName:'IBM stock, UBS', isBlocked:false, Currency:'€', created:timestamp'2024-10-17',  lastLogin:'2024-11-17', accntLevel:'Gold level',Balance:17050.49, ISIN:'US4592001014', quantity:1250.0}),
@@ -158,7 +163,7 @@ insert into Account values (34, 'credit card', 'Amex', false,'€','1989-10-08',
 // Connect Bank(POS/ATM) with Branch(Location)
 [match (a:Account {id:1}), (b:Branch {id:1}), create (a)<-[:has]- (b) ]
 [match (a:Account {id:2}), (b:Branch {id:2}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:22}), (b:Branch {id:2}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:22}), (b:Branch {id:2}), insert (a)<-[:has]- (b) ]
 [match (a:Account {id:3}), (b:Branch {id:3}), create (a)<-[:has]- (b) ]
 [match (a:Account {id:4}), (b:Branch {id:4}), create (a)<-[:has]- (b) ]
 [match (a:Account {id:5}), (b:Branch {id:4}), create (a)<-[:has]- (b) ]
@@ -181,32 +186,7 @@ insert into Account values (34, 'credit card', 'Amex', false,'€','1989-10-08',
 [match (a:Account {id:33}), (b:Branch {id:14}), create (a)<-[:has]- (b) ]
 [match (a:Account {id:34}), (b:Branch {id:13}), create (a)<-[:has]- (b) ]
 
-// insert Transfer nodes (work-around for ternary edge Transfer)
 
-[match (a1:Account {id:34}), (a2:Account {id:8}), create (a1)-[t:Transfer{id:1, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-17 07:45:30', type:'repay'}]-> (a2) ]
-
-[match (a1:Account {id:33}), (a2:Account {id:8}), create (a1)-[t:Transfer{id:2, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-18 09:45:10', type:'repay'}]-> (a2) ]
-
-[ match (a1:Account {id:1}), (a2:Account {id:12}), create (a1)-[t:Transfer{id:3, amount:4050.0, Currency:'€', execTime:timestamp'2024-10-19 07:45:30', type:'repay'}]-> (a2)]
-
-[match (a1:Account {id:1}), (a2:Account {id:5}), create (a1)-[t:Transfer{id:4, amount:7999.0, Currency:'€', execTime:timestamp'2024-10-20 09:30:05', type:'shop payment'}]-> (a2) ]
-
-[match (a1:Account {id:3}), (a2:Account {id:5}), create (a1)-[t:Transfer{id:5, amount:11000.0, Currency:'€', execTime:timestamp'2024-10-20 12:44:50', type:'transfer'}]-> (a2) ]
-
-[ match (a1:Account {id:4}), (a2:Account {id:14}), create (a1)-[t:Transfer{id:6, amount:466.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:48',type:'repay'}]-> (a2)]
-
-[ match (a1:Account {id:5}), (a2:Account {id:28}), create (a1)-[t:Transfer{id:7, amount:495.0, Currency:'€', execTime:timestamp'2024-10-22 09:46:00',type:'deposit'}]-> (a2)]
-
-[ match (a1:Account {id:6}), (a2:Account {id:2}), create (a1)-[t:Transfer{id:8, amount:466.0, Currency:'€', execTime:timestamp'2024-10-23 07:45:33',type:'withdraw'}]-> (a2)]
-
-[ match (a1:Account {id:4}), (a2:Account {id:18}), create (a1)-[t:Transfer{id:9, amount:1412.0, Currency:'€', execTime:timestamp'2024-10-25 09:44:57',type:'shop payment'}]-> (a2)]
-
-[ match (a1:Account {id:7}), (a2:Account {id:27}), create (a1)-[t:Transfer{id:10, amount:3000.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'cash deposit'}]-> (a2)]
-
-[ match (a1:Account {id:26}), (a2:Account {id:12}), create (a1)-[t:Transfer{id:11, amount:4000.0, Currency:'€', execTime:timestamp'2024-12-20 09:46:43',type:'repay'}]-> (a2)]
-
-// without signIn
-[ match (a1:Account {id:34}), (a2:Account {id:16}), create (a1)-[t:Transfer{id:12, amount:399.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'shop payment'}]-> (a2)]
 
 // insert more Medium nodes 4 bis 11
 
@@ -325,37 +305,43 @@ insert into Account values (34, 'credit card', 'Amex', false,'€','1989-10-08',
 [ match (m:Medium {id:11}), (s:SignIn {id:13}), create (m)<-[:with_]-(s)]
 [ match (m:Medium {id:23}), (s:SignIn {id:23}), create (m)<-[:with_]-(s)]
 
-// insert usedFor edges ((work-around for ternary edge Transfer)
+// insert ternary edge Transfer 
 
-[ match (s:SignIn {id:1}), (t:Transfer {id:1}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:2}), (t:Transfer {id:2}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:3}), (t:Transfer {id:3}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:4}), (t:Transfer {id:4}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:5}), (t:Transfer {id:5}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:6}), (t:Transfer {id:6}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:7}), (t:Transfer {id:7}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:8}), (t:Transfer {id:8}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:9}), (t:Transfer {id:9}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:24}), (t:Transfer {id:10}), create (s)-[:usedFor]->(t) ]
-[ match (s:SignIn {id:23}), (t:Transfer {id:11}), create (s)-[:usedFor]->(t) ]
+[match (a1:Account {id:34}), (a2:Account {id:8}), (s:SignIn {id:1}),
+insert (a1)-[t:Transfer{id:1, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-17 07:45:30', type:'repay'}]->(a2),[t]~(s) ]
 
-// Inserting consistent money transfers via signin
+[match (a1:Account {id:33}), (a2:Account {id:8}), (s:SignIn {id:2}),
+insert (a1)-[t:Transfer{id:2, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-18 09:45:10', type:'repay'}]-> (a2),[t]~(s) ]
 
-[match (m:medium {id:2}), (a:account {id:33}), (b:account {id:5})
-insert (m)<-[:with_]-(s:signin {id:15,location:'Stgt, Home PC', signin:timestamp'2024-01-06 20:10:00', signout:timestamp'2024-01-06 20:18:05', Via:'Home PC' }),
-(a)-[t:transfer {id:13, type:'transfer',amount:234.0, currency:'€', exectime:timestamp'2024-01-06 20:14:00'}]->(b), 
-insert (s)-[:usedFor]->(t) ]
+[ match (a1:Account {id:1}), (a2:Account {id:12}), (s:SignIn {id:3}),
+insert (a1)-[t:Transfer{id:3, amount:4050.0, Currency:'€', execTime:timestamp'2024-10-19 07:45:30', type:'repay'}]-> (a2),[t]~(s)]
 
-[match (m:medium {id:11}), (a:account {id:31}), (b:account {id:16}), (s:signin {id:13})
-Insert (a)-[t:transfer {id:14, type:'shop payment',amount:654.0, currency:'€', exectime:timestamp'2024-01-07 11:04:12'}]->(b),
-insert (s)-[:usedFor]->(t) ]
+[match (a1:Account {id:1}), (a2:Account {id:5}), (s:SignIn {id:4}),
+insert (a1)-[t:Transfer{id:4, amount:7999.0, Currency:'€', execTime:timestamp'2024-10-20 09:30:05', type:'shop payment'}]-> (a2),[t]~(s) ]
 
-[match (m:medium {id:11}), (a:account {id:31}), (b1:account {id:14}), (b2:account {id:8}),  
-insert (m)<-[:with_]-(s:signin {id:25,location:'Stgt, Home PC', signin:timestamp'2024-10-20 17:50:25', signout:timestamp'2024-10-20 18:00:11', Via:'Home PC' }),
-(a)-[t1:transfer {id:15, type:'transfer',amount:800.0, currency:'€', exectime:timestamp'2024-10-20 17:55:23'}]->(b1), 
-(a)-[t2:transfer {id:16, type:'transfer',amount:499.0, currency:'€', exectime:timestamp'2024-10-20 17:59:44'}]->(b2), 
-insert (s)-[:usedFor]->(t1), (s)-[:usedFor]->(t2)]
+[match (a1:Account {id:3}), (a2:Account {id:5}), (s:SignIn {id:5}),
+insert  (a1)-[t:Transfer{id:5, amount:11000.0, Currency:'€', execTime:timestamp'2024-10-20 12:44:50', type:'transfer'}]-> (a2),[t]~(s) ]
 
+[ match (a1:Account {id:4}), (a2:Account {id:14}), (s:SignIn {id:6}),
+insert (a1)-[t:Transfer{id:6, amount:466.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:48',type:'repay'}]-> (a2),[t]~(s)]
 
-// #################################################
+[ match (a1:Account {id:5}), (a2:Account {id:28}), (s:SignIn {id:7}),
+insert(a1)-[t:Transfer{id:7, amount:495.0, Currency:'€', execTime:timestamp'2024-10-22 09:46:00',type:'deposit'}]-> (a2),[t]~(s)]
 
+[ match (a1:Account {id:6}), (a2:Account {id:2}), (s:SignIn {id:8}),
+insert (a1)-[t:Transfer{id:8, amount:466.0, Currency:'€', execTime:timestamp'2024-10-23 07:45:33',type:'withdraw'}]-> (a2),[t]~(s)]
+
+[ match (a1:Account {id:4}), (a2:Account {id:18}), (s:SignIn {id:9}),
+insert (a1)-[t:Transfer{id:9, amount:1412.0, Currency:'€', execTime:timestamp'2024-10-25 09:44:57',type:'shop payment'}]-> (a2),[t]~(s)]
+
+[ match (a1:Account {id:7}), (a2:Account {id:27}), (s:SignIn {id:24}),
+insert (a1)-[t:Transfer{id:10, amount:3000.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'cash deposit'}]-> (a2),[t]~(s)]
+
+[ match (a1:Account {id:26}), (a2:Account {id:12}), (s:SignIn {id:23}),
+insert (a1)-[t:Transfer{id:11, amount:4000.0, Currency:'€', execTime:timestamp'2024-12-20 09:46:43',type:'repay'}]-> (a2),[t]~(s)]
+
+// without signIn
+[ match (a1:Account {id:34}), (a2:Account {id:16}), 
+insert (a1)-[t:Transfer{id:12, amount:399.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'shop payment'}]-> (a2)]
+
+// Inserting consistent money transfers via signin **** to do ****

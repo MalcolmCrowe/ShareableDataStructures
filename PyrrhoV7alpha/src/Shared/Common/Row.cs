@@ -100,8 +100,10 @@ namespace Pyrrho.Common
         }
         public static TypedValue operator+ (TypedValue left,TypedValue right)
         {
-            if (left is TNull)
+            if (left is TNull || (left.dataType.kind!=right.dataType.kind) || left is TPosition)
                 return right;
+            if (right is TNull)
+                return left;
             if (left is TInt li && right is TInt ri)
                 return new TInt(li.value + ri.value);
             if (left is TInteger lj && right is TInteger rj)
@@ -110,6 +112,12 @@ namespace Pyrrho.Common
                 return new TNumeric(ln.value + rn.value);
             if (left is TReal lr && right is TReal rr)
                 return new TReal(lr?.ToDouble()??0 + rr?.ToDouble()??0);
+            if (left is TSet sl && right is TSet sr)
+                return sl + sr;
+            if (left is TList ll && right is TList rl)
+                return ll + rl;
+            if (left is TMetadata ml && right is TMetadata mr)
+                return ml + mr;
             throw new PEException("PE40601");
         }
         public static TypedValue operator /(TypedValue left, int right)
@@ -799,6 +807,10 @@ namespace Pyrrho.Common
                 throw new DBException("22G03", ar.dataType.elType??Domain.Null, v.dataType);
             return new TList(ar.dataType, ar.list + v);
         }
+        public static TList operator +(TList a, TList b)
+        {
+            return new TList(a.dataType, a.list + b.list);
+        }
         public static TList operator-(TList ls,int k)
         {
             return new TList(ls.dataType, ls.list - k);
@@ -1080,7 +1092,22 @@ namespace Pyrrho.Common
         }
         public static TMetadata operator +(TMetadata m1, TMetadata m2)
         {
-            return new(m1.md + m2.md);
+            var m = m1.md;
+            for (var b = m2.md.First(); b != null; b = b.Next())
+            {
+                var k = b.key();
+                var v = b.value();
+                var u = m[k];
+                if (u==null || u == TNull.Value)
+                    m += (k, v);
+                else 
+                    m += (k, u + v);
+            }
+            return new(m);
+        }
+        public static TMetadata operator-(TMetadata m, Qlx q)
+        {
+            return new(m.md - q);
         }
         public TypedValue this[Qlx x] => md[x]??TNull.Value;
         public new ABookmark<Qlx,TypedValue>?  First() => md.First();
@@ -1439,6 +1466,10 @@ namespace Pyrrho.Common
         public static TSet operator+(TSet a,TypedValue v)
         {
             return a.Add(v);
+        }
+        public static TSet operator +(TSet a, TSet b)
+        {
+            return new TSet(a.dataType,a.tree+b.tree);
         }
         public static TSet operator -(TSet a, TypedValue v)
         {

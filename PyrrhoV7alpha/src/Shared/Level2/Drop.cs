@@ -23,7 +23,7 @@ namespace Pyrrho.Level2
         /// The defining position of the object to drop
         /// </summary>
 		public long delpos;
-        public enum DropAction { Restrict=0,Null=1,Default=2,Cascade=3}
+        public enum DropAction { DontDrop=0,Restrict=1,Null=2,Default=3,Cascade=4}
         public DropAction dropAction=DropAction.Restrict;
         public override long Dependent(Writer wr, Transaction tr)
         {

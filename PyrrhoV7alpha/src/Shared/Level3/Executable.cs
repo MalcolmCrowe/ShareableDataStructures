@@ -5977,6 +5977,7 @@ namespace Pyrrho.Level3
         DropGraphStatement,
         DropGraphTypeStatement,
         DropSchemaStatement,
+        DropStatement,
         DurationValueExpression,
         DynamicPropertyValueType,
         DynamicUnionType,

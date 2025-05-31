@@ -68,7 +68,10 @@ namespace Pyrrho.Level2
             dataType = dm1 + (ObInfo.Name, nm) + (Domain.RowType,rt) + (Domain.Representation,rs);
             under = un;
             if (un.Count != 0L)
+            {
                 dataType += (Domain.Under, un);
+                cx.db += dataType;
+            }
         }
         public PType(string nm, UDType dm, CTree<Domain, bool> un, long ns, long pp, Context cx)
             : this(Type.PType, nm, dm, un, ns, pp, cx) { }
