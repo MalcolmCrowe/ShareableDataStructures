@@ -3383,21 +3383,11 @@ namespace Pyrrho.Level4
                         {
                             Next();
                             EdgeType? tb = null;
-                            UDType?  dt = null;
                             for (var i = 0; i < om.Length; i++)
                             {
                                 var (k, v) = om[i];
                                 if (k == TableColumn._Table)
-                                   dt  = v as UDType;
-                            }
-                            if (dt is null)
-                                throw new PEException("PE50731");
-                            if (dt is not EdgeType)
-                            {
-                                var pc = ((Transaction)cx.db).physicals[dt.defpos] as PType??
-                                    throw new PEException("PE50741");
-                                pc = new PEdgeType(dt.NameFor(cx), pc, Domain.EdgeType, cx);
-                                tb = (EdgeType?)cx.Add(pc);
+                                    tb = v as EdgeType;
                             }
                             if (tb is null)
                                 throw new DBException("42105");
