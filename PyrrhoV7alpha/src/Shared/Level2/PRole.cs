@@ -144,6 +144,8 @@ namespace Pyrrho.Level2
         public string iri = "";
         public long refpos = -1L;
         public long flags = 0L;
+        public string details = "";
+        public TMetadata metadata = TMetadata.Empty;
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (defpos!=ppos && !Committed(wr,defpos)) return defpos;
@@ -158,8 +160,8 @@ namespace Pyrrho.Level2
             name = nm;
             seq = sq;
             defpos = ob.defpos;
-            this.md = md;
-            ms = s;
+            metadata = md;
+            details = s;
             iri = md[Qlx.IRI]?.ToString()??"";
             refpos = md[Qlx.INVERTS]?.ToLong()??-1L;
             flags = 0L;
@@ -171,6 +173,8 @@ namespace Pyrrho.Level2
             name = x.name;
             seq = x.seq;
             defpos = wr.cx.Fix(x.defpos);
+            details = x.details;
+            metadata = (TMetadata)x.metadata.Fix(wr.cx);
             iri = x.iri;
             refpos = wr.cx.Fix(x.refpos);
             flags = x.flags;
@@ -186,7 +190,7 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
 		{
             wr.PutString(name?.ToString()??"");
-            wr.PutString(ms);
+            wr.PutString(details);
             wr.PutString(iri??"");
             wr.PutLong(seq+1); 
             defpos = wr.cx.Fix(defpos);
@@ -201,8 +205,8 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr) 
 		{
 			name =rdr.GetString();
-            ms = rdr.GetString();
-            md = new Parser(rdr.context, ms).ParseMetadata(Qlx.ANY).Item2;
+            details = rdr.GetString();
+            metadata = new Parser(rdr.context, details).ParseMetadata(Qlx.ANY).Item2;
             iri = rdr.GetString();
             seq = rdr.GetLong()-1;
             defpos = rdr.GetLong();
@@ -212,7 +216,7 @@ namespace Pyrrho.Level2
         string Detail(Writer wr)
         {
             var sb = new StringBuilder();
-            for (var b = md.First(); b != null; b = b.Next())
+            for (var b = metadata.First(); b != null; b = b.Next())
                 switch (b.key())
                 {
                     case Qlx.DESC:
@@ -252,8 +256,8 @@ namespace Pyrrho.Level2
                     case Qlx.MAX:
                     case Qlx.MIN:  
                         {
-                            var lw = md[Qlx.MIN];
-                            var hi = md[Qlx.MAX]??new TChar("*");
+                            var lw = metadata[Qlx.MIN];
+                            var hi = metadata[Qlx.MAX]??new TChar("*");
                             sb.Append("CARDINALITY("); sb.Append(lw);
                             { sb.Append(" TO "); sb.Append(hi); }
                             sb.Append(')');
@@ -279,7 +283,7 @@ namespace Pyrrho.Level2
             var sb = new StringBuilder();
             sb.Append("PMetadata "); sb.Append(name);
             sb.Append('['); sb.Append(DBObject.Uid(defpos));
-            sb.Append("] "); sb.Append(ms);
+            sb.Append("] "); sb.Append(details);
             return sb.ToString();
         }
         public override DBException? Conflicts(Database db, Context cx, Physical that,PTransaction ct)
@@ -311,7 +315,7 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx)
         {
             var ob = ((DBObject?)cx.db.objects[defpos]) ?? throw new DBException("42000","PMetadata");
-            ob = ob.Add(cx,ms,md);
+            ob = ob.Add(cx, details, metadata);
             ob += (DBObject.LastChange, ppos);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
@@ -366,7 +370,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
 		public override string ToString() 
         {
-            return "PMetadata2 " + name + "[" + defpos + "." + seq + "]" + md +
+            return "PMetadata2 " + name + "[" + defpos + "." + seq + "]" + details +
                 iri;
         }
 
@@ -416,7 +420,7 @@ namespace Pyrrho.Level2
         /// <returns>the string representation</returns>
         public override string ToString()
         {
-            return "PMetadata3 " + name + "[" + defpos + "." + seq + "]" + md +
+            return "PMetadata3 " + name + "[" + defpos + "." + seq + "]" + details +
                 iri;
         }
 

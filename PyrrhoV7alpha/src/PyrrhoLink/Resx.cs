@@ -26,7 +26,7 @@ namespace Pyrrho
             dict.Add("02000", "Not found");
             dict.Add("08000", "Connection exception");
             dict.Add("08001", "Client unable to establish connection");
-            dict.Add("08004", "Server rejected establishment of connection");
+            dict.Add("08004", "Server unavailable");
             dict.Add("08C00", "Client side threading violation for reader");
             dict.Add("08C01", "Client side threading violation for command");
             dict.Add("08C02", "Client side threading violation for transaction");
@@ -65,6 +65,11 @@ namespace Pyrrho
             dict.Add("22203", "Loss of precision on conversion");
             dict.Add("22204", "RowSet expected");
             dict.Add("22205", "Null value found in table {0}");
+            dict.Add("22206", "Multiplicity {0} min value not reached");
+            dict.Add("22207", "Multiplicity {0} max value exceeded");
+            dict.Add("22208", "Cardinality {0} min value not reached");
+            dict.Add("22209", "Cardinality {0} max value exceeded");
+            dict.Add("22211", "Check constraint fails");
             dict.Add("22G02", "Negative limit value");
             dict.Add("22G03", "Invalid value type");
             dict.Add("22G04", "Values not comparable");
@@ -95,6 +100,7 @@ namespace Pyrrho
             dict.Add("22G12", "Invalid value type");
             dict.Add("22G13", "Invalid group variable name");
             dict.Add("22G14", "Incompatible temporal instant unit groups");
+            dict.Add("22G21", "Edge connection {0} missing");
             dict.Add("23000", "Integrity constraint: {0}");
             dict.Add("23001", "RESTRICT: {0} referenced in {1} {2}");
             dict.Add("23002", "RESTRICT: Index {0} is not empty");

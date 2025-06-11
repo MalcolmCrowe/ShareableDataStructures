@@ -418,7 +418,8 @@ namespace Pyrrho.Level3
         {
             var oi = (infos[cx.role.defpos]??new ObInfo(name))
                 +(ObInfo._Metadata,metadata+md) + (ObInfo.MetaString, metastring+s);
-            var r = cx.Add(this + (Infos, infos + (cx.role.defpos, oi)));
+            var r = cx.Add(this + (Infos, infos + (cx.role.defpos, oi))
+                    +(ObInfo._Metadata,metadata+md));
             cx.db += r;
             return r;
         }

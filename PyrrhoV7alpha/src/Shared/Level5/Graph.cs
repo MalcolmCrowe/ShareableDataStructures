@@ -503,7 +503,8 @@ namespace Pyrrho.Level5
                 for (var b = dc?.First(); b != null; b = b.Next())
                     if (b.value() is QlValue sv && !nt.HierarchyCols(cx).Contains(b.key()))
                     {
-                        var pc = new PColumn3(nt, b.key(), -1, sv.domain, "", TMetadata.Empty, cx.db.nextPos, cx, true);
+                        var pc = new PColumn3(nt, b.key(), -1, sv.domain, "", TMetadata.Empty, 
+                            cx.db.nextPos, cx, true);
                         nt = (NodeType)(cx.Add(pc)??throw new DBException("42105"));
                     }
             }
@@ -569,7 +570,7 @@ namespace Pyrrho.Level5
                 if (ut.HierarchyCols(cx).Contains(n))
                     continue;
                 var d = cx._Dom(b.value().defpos) ?? Content;
-                var pc = new PColumn3(ut, n, -1, d, d.metastring, d.metadata, cx.db.nextPos, cx);
+                var pc = new PColumn3(ut, n, -1, d, d.defaultString, d.metadata, cx.db.nextPos, cx);
                 ut = (NodeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
                 rt += pc.ppos;
                 rs += (pc.ppos, d);
@@ -1348,7 +1349,7 @@ namespace Pyrrho.Level5
                     return r;
                 case Qlx.EDGETYPE:
                     return r + (cx.FindEdgeType(name ?? "", dc)?.Build(cx, null, ap, "", dc)
-                ?? EdgeTypeFor(name ?? "", m, cx, cs), true);
+                ?? EdgeTypeFor(new Ident(name??"",defpos), m, cx, cs), true);
                 case Qlx.NO:
                     if (cx.db.objects[cx.role.dbobjects[name] ?? -1L] is NodeType d)
                         r += (d, true);
@@ -1397,22 +1398,32 @@ namespace Pyrrho.Level5
             }
             return nt ?? throw new DBException("42105");
         }
-        internal static EdgeType EdgeTypeFor(string nm, BTree<long, object> m, Context cx, CTree<TypedValue,bool>? cs=null)
+        internal static EdgeType EdgeTypeFor(Ident nm, BTree<long, object> m, Context cx, CTree<TypedValue,bool>? cs=null)
         {
             if (cx.ParsingMatch)
                 return EdgeType;
+            cs ??= CTree<TypedValue, bool>.Empty;
             var un = (CTree<Domain, bool>)(m[Under] ?? CTree<Domain, bool>.Empty);
             var nu = CTree<Domain, bool>.Empty;
             for (var b = un.First(); b != null; b = b.Next())
                 nu += ((b.key() is GqlLabel gl) ? (cx.db.objects[cx.role.dbobjects[gl.name ?? ""] ?? -1L]
                     as Domain) ?? throw new DBException("42107", gl.name ?? "??") : b.key(), true);
             var dc = (CTree<string, QlValue>)(m[GqlNode.DocValue] ?? CTree<string, QlValue>.Empty);
-            if (cx.db.objects[cx.role.edgeTypes[nm] ?? -1L] is not EdgeType et)
+            if (cx.db.objects[cx.role.edgeTypes[nm.ident] ?? -1L] is not EdgeType et)
             {
-                var pt = new PEdgeType(nm, EdgeType, nu, -1L, cx.db.nextPos, cx, true);
+                var pt = new PEdgeType(nm.ident, EdgeType, nu, -1L, cx.db.nextPos, cx, true);
                 et = (EdgeType)(cx.Add(pt) ?? throw new DBException("42105"));
+                var mp = cx.metaPending[nm.uid] ?? CTree<long, (string, TMetadata)>.Empty;
+                for (var b = mp.First(); b != null; b = b.Next())
+                {
+                    var (s, ms) = b.value();
+                    for (var c = (ms[Qlx.EDGETYPE] as TSet)?.First(); c != null; c = c.Next()) 
+                        cs += (c.Value(), true);
+                }
+                cx.metaPending -= nm.uid;
+                cx.db += et;
             }
-            for (var b = cs?.First(); b != null; b = b.Next())
+            for (var b = cs.First(); b != null; b = b.Next())
                 if (b.key() is TConnector tc)
                     (et,tc) = et.BuildNodeTypeConnector(cx, tc);
             var ro = cx.role;
@@ -1420,10 +1431,11 @@ namespace Pyrrho.Level5
             for (var b = dc.First(); b != null; b = b.Next())
                 if (!e.HierarchyCols(cx).Contains(b.key()) && b.value() is QlValue q)
                 {
-                    var pc = new PColumn3(e, b.key(), -1, q.domain, q.metastring, q.metadata, cx.db.nextPos, cx, true);
+                    var pc = new PColumn3(e, b.key(), -1, q.domain, "", true, GenerationRule.None,
+                        q.metadata, cx.db.nextPos, cx, true);
                     e = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105"));
                 }
-            e = (EdgeType)e.Build(cx, null, 0L, nm, dc);
+            e = (EdgeType)e.Build(cx, null, 0L, nm.ident, dc);
             return e;
         }
         public override string ToString()
@@ -1486,13 +1498,6 @@ namespace Pyrrho.Level5
             // TBD
             return et;
         }
- //       protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
- //       {
- //           var nc = cx.FixTVb(connects);
- //           if (nc != connects)
- //               m += (Connects, nc);
- //           return base._Fix(cx, m);
- //       }
         internal override void AddNodeOrEdgeType(Context cx)
         {
             var ro = cx.role;
@@ -1551,7 +1556,7 @@ namespace Pyrrho.Level5
             cx.db += this;
         }
         internal EdgeType Connect(Context cx, GqlNode? b, GqlNode? a, TypedValue cc,
-            CTree<string, QlValue> ls, bool allowChange = false)
+            CTree<string, QlValue> ls, bool allowChange = false, long dp = -1L)
         {
             if (cc is not TConnector ec)
                 return this;
@@ -1607,9 +1612,12 @@ namespace Pyrrho.Level5
                         case Qlx.ARROWBASETILDE: q = Qlx.WITH; nn = bt; break;
                         case Qlx.RBRACKTILDE: q = Qlx.WITH; nn = at; break;
                     }
-                if (nn>0)
-                    (r, _) = BuildNodeTypeConnector(cx, 
-                        new TConnector(q, nn, ec.cn, Position));
+                var nc = new TConnector(q, nn, ec.cn, Position);
+                if (nn > 0 && defpos > 0)
+                    (r, _) = BuildNodeTypeConnector(cx,nc);
+                else
+                    cx.MetaPend(dp+1L, dp+1L, "", 
+                        TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Connector)+nc));
             }
             return r;
         }
@@ -1734,8 +1742,8 @@ CTree<string, QlValue> ls, bool allowChange = false)
             if (cc is TConnector x && x.cp>0L)
                 return (ut,x);
             var tn = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, cx.db.nextPos, tc.cs, tc.cm);
-            var md = (tc.cm ?? TMetadata.Empty) + (Qlx.CONNECTING, tn);
-            var pc = new PColumn3(ut, cn, Length, Position,tc.cs, md, cx.db.nextPos, cx, false);
+            var md = (tc.cm ?? TMetadata.Empty) + (Qlx.CONNECTING, tn) + (Qlx.OPTIONAL,TBool.False);
+            var pc = new PColumn3(ut, cn, Length, Position,"", md, cx.db.nextPos, cx, false);
             ut = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
             var nc = (TableColumn)(cx._Ob(pc.ppos) ?? throw new DBException("42105").Add(Qlx.COLUMN));
             var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
@@ -1875,8 +1883,8 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 var nc = cx.obs[tc.cp] as TableColumn;
                 if (nc ==null) // this is a surprise but likely allowed
                 {
-                    var pc = new PColumn3(r, tc.cn, r.Length, tc.cd, tc.cs, 
-                        tc.cm??TMetadata.Empty, tc.cp, cx, true);
+                    var cm = tc.cm??TMetadata.Empty + (Qlx.OPTIONAL, TBool.False);
+                    var pc = new PColumn3(r, tc.cn, r.Length, tc.cd, "", cm, tc.cp, cx, true);
                     r = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
                     nc = cx.obs[tc.cp] as TableColumn ?? throw new PEException("PE20832");
                     var om = r.metadata[Qlx.EDGETYPE] as TSet??new TSet(Connector);
@@ -1971,7 +1979,8 @@ CTree<string, QlValue> ls, bool allowChange = false)
             for (var b = dc?.First(); b != null; b = b.Next())
                 if (b.value() is QlValue sv && !et.HierarchyCols(cx).Contains(b.key()))
                 {
-                    var pc = new PColumn3(et, b.key(), -1, sv.domain, "", TMetadata.Empty, cx.db.nextPos, cx, true);
+                    var pc = new PColumn3(et, b.key(), -1, sv.domain, "",TMetadata.Empty, 
+                        cx.db.nextPos, cx, true);
                     et = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105"));
                 }
             var ec = CTree<(Qlx, NodeType, string), bool>.Empty;
@@ -2417,7 +2426,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
     }
     internal class TConnector : TypedValue
     {
-        public readonly Qlx q;
+        public readonly Qlx q; // FROM and TO are used in EdgeType, left as ARROWBASE etc in expressions
         public readonly long ct; // A node type or a union of node types
         public readonly string cn;
         public readonly long cp;   // PColumn3 - constructed if needed
@@ -2449,9 +2458,6 @@ CTree<string, QlValue> ls, bool allowChange = false)
             c = cn.CompareTo(that.cn);
             if (c!=0)
                 return c;
-//            c = cp.CompareTo(that.cp);
-//            if (c != 0)
-//                return c;
             return cd.CompareTo(that.cd);
         }
         internal override TypedValue Fix(Context cx)
@@ -2466,7 +2472,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("TConnector ");
+            var sb = new StringBuilder();
             sb.Append(q); sb.Append(' '); sb.Append(cn);
             sb.Append(' '); sb.Append(DBObject.Uid(ct));
             sb.Append(' '); sb.Append(DBObject.Uid(cp));

@@ -167,6 +167,21 @@ namespace Pyrrho.Level3
             tb += (Dependents, tb.dependents + (tc.defpos, true));
             if (tc.sensitive)
                 tb += (Sensitive, true);
+            if (tb is EdgeType et && tc.tc is TConnector nc)
+            {
+                var cs = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Connector);
+                var found = false;
+                for (var b=cs.First();b!=null;b=b.Next())
+                    if (b.Value() is TConnector c && c.q==nc.q && c.cn==nc.cn)
+                    {
+                        cs = cs - c + nc;
+                        found = true;
+                    }
+                if (!found)
+                    cs += nc;
+                et += (ObInfo._Metadata, et.metadata + (Qlx.EDGETYPE, cs));
+                tb = et;
+            }
             return (Table)cx.Add(tb);
         }
         public static Table operator-(Table tb,long p)
@@ -230,9 +245,9 @@ namespace Pyrrho.Level3
         }
         internal override DBObject Add(Context cx, string s, TMetadata md)
         {
-            var ob = (Table)base.Add(cx, s,md);
+            var ob = (Table)base.Add(cx, s, md);
             var tb = this;
-            var ti = tb.infos[cx.role.defpos]??new ObInfo(name);
+            var ti = tb.infos[cx.role.defpos] ?? new ObInfo(name);
             for (var b = md.First(); b != null; b = b.Next())
                 switch (b.key())
                 {
@@ -256,54 +271,17 @@ namespace Pyrrho.Level3
                             break;
                         }
                     case Qlx.REFERENCES:
-                        {
-          /*                  var ta = (cx.db.objects[b.value().ToLong() ?? -1L] as DBObject) ?? throw new DBException("42105");
-                            var rt = ta as Table;
-                            if (rt == null && ta is RestView rv)
-                                rt = rv.super.First()?.key() as Table ?? throw new DBException("42105").Add(Qlx.REFERENCES);
-                            if (rt == null) throw new DBException("42105");
-                            var cs = CList<long>.Empty;
-                            for (var c = (md[Qlx.KEY] as TList)?.First(); c != null; c = c.Next())
-                                cs += c.Value().ToLong() ?? -1L;
-                            var key = new Domain(cx, tb.representation, cs, tb.infos);
-                            var per = Row;
-                            var cl = BList<DBObject>.Empty;
-                            for (var c = (md[Qlx.PER] as TList)?.First(); c != null; c = c.Next())
-                                if (cx.db.objects[c.Value().ToLong() ?? -1L] is TableColumn cc)
-                                    cl += cc;
-                            if (cl != BList<DBObject>.Empty)
-                                per = new Domain(Qlx.ROW, cx, cl);
-                            string afn = (md[Qlx.VALUES] as TChar)?.ToString() ?? "";
-                            if (cx.db.objects[md[Qlx.USING]?.ToLong() ?? -1L] is Procedure pr)
-                                afn = "\"" + pr.defpos + "\"";
-                            Index rx = ((per.Length == 0) ? rt.FindPrimaryIndex(cx) :
-                                rt.FindIndex(cx.db, per)?[0]) ?? throw new DBException("42111");
-                            if (rx.keys.Length != key.Length) throw new DBException("22207");
-                            ob = (Table)(cx.Add(new PIndex1(name, tb, key,
-                                PIndex.ConstraintType.ForeignKey | md.RefActions(),
-                                rx.defpos, afn, cx.db.nextPos)) ?? throw new DBException("42105")); */
-                            break;
-                        }
                     case Qlx.UNIQUE:
-                        {
-         /*                   var cs = CList<long>.Empty;
-                            for (var c = (md[Qlx.UNIQUE] as TList)?.First(); c != null; c = c.Next())
-                                cs += c.Value().ToLong() ?? -1L;
-                            var key = new Domain(cx, tb.representation, cs, tb.infos); 
-                            ob = (Table)(cx.Add(new PIndex("", tb, key,
-                                PIndex.ConstraintType.Unique, -1L, cx.db.nextPos)) ?? throw new DBException("42105")); 
-         */
-                            break;
-                        }
                     case Qlx.PRIMARY:
                         {
-         /*                 var cs = CList<long>.Empty;
-                            for (var c = (md[Qlx.PRIMARY] as TList)?.First(); c != null; c = c.Next())
-                                cs += c.Value().ToLong() ?? -1L;
-                            var key = new Domain(cx, tb.representation, cs, tb.infos); 
-                            ob = (Table)(cx.Add(new PIndex("Primary", tb, key,
-                                PIndex.ConstraintType.PrimaryKey, -1L, cx.db.nextPos)) ?? throw new DBException("42105"));
-         */
+                            if (cx.db is Transaction tr 
+                                && tr.physicals[b.value()?.ToLong() ?? -1L] is PIndex px)
+                            {
+                                px.tabledefpos = defpos;
+                                cx.db = tr + (Transaction.Physicals, tr.physicals+(defpos,px));
+                                cx.Add(px);
+                                ob = cx.db.objects[defpos] as Table ?? this;
+                            }
                             break;
                         }
                     case Qlx.IRI:

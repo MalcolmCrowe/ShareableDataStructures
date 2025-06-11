@@ -280,8 +280,8 @@ namespace Pyrrho.Level3
         }
         public static ObInfo operator +(ObInfo d, PMetadata pm)
         {
-            d = d + (_Metadata, d.metadata + pm.md) + (MetaString, pm.ms);
-            if (pm.md[Qlx.DESCRIBE] is TypedValue tv)
+            d = d + (_Metadata, d.metadata + pm.metadata) + (MetaString, pm.details);
+            if (pm.metadata[Qlx.DESCRIBE] is TypedValue tv)
                 d += (Description, tv);
             if (pm.refpos > 0)
                 d += (Inverts, pm.refpos);

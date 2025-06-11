@@ -1,8 +1,9 @@
-using System.Text;
+using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
-using Pyrrho.Common;
 using Pyrrho.Level5;
+using System.Runtime.Intrinsics.Arm;
+using System.Text;
 using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -42,13 +43,12 @@ namespace Pyrrho.Level2
         /// </summary>
         public long domdefpos = -1L;
 		public TypedValue dv => dataType?.defaultValue??TNull.Value; 
-        public string dfs="",ups="";
+        public string dfs="",ups=""; // ups is used for cn if PColumn3 
         public BTree<UpdateAssignment,bool> upd = CTree<UpdateAssignment,bool>.Empty; // see PColumn3
 		public bool optional = true;    // see PColumn2
 		public GenerationRule generated = GenerationRule.None; // ditto
-        public TypedValue connector = TNull.Value; 
-        protected long flags = 0L; 
-        protected long toType = -1L; 
+        public long flags = 0L; // see PColumn3
+        public long toType = -1L; // ditto
         public override long Dependent(Writer wr, Transaction tr)
         {
             if (table != null && dataType != null)
@@ -68,7 +68,7 @@ namespace Pyrrho.Level2
         /// <param name="sq">The 0-based position in the table</param>
         /// <param name="dm">The domain</param>
         /// <param name="tb">The local database</param>
-        public PColumn(Type t, Table pr, string nm, int sq, Domain dm, string ms, TMetadata md, long pp, 
+        public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
             Context cx) : base(t,pp,cx,nm,dm,-1L)
 		{
 			table = cx._Ob(pr.defpos) as Table??throw new DBException("42107",pr.name);
@@ -76,17 +76,6 @@ namespace Pyrrho.Level2
             tabledefpos = pr.defpos;
             dataType = dm;
             domdefpos = dm.defpos;
-            this.ms = ms;
-            this.md = md;
-/*            table += (ObInfo._Names, table.names + (nm, (0, pp)));
-            if (ms != "" && table is EdgeType)
-            {
-                var c = md[Qlx.CONNECTING] as TConnector ?? throw new PEException("PE50431");
-                var ts = table.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
-                var mn = table.metadata + (Qlx.EDGETYPE, ts + c); 
-                table = table + (ObInfo._Metadata, mn) + (ObInfo.MetaString, pr.metastring + ms);
-            }
-            cx.Add(table); */
         }
         /// <summary>
         /// Constructor: a new Column definition from the buffer
@@ -109,7 +98,7 @@ namespace Pyrrho.Level2
                 tabledefpos = table.defpos;
                 seq = x.seq;
                 domdefpos = x.domdefpos;
-                connector = x.connector.Fix(wr.cx);
+                toType = wr.cx.Fix(x.toType);
             }
         }
         protected override Physical Relocate(Writer wr)
@@ -155,8 +144,6 @@ namespace Pyrrho.Level2
                 {
                     tb += (DBObject.Infos, tb.infos + (tb.definer, ni));
                     tb += (ObInfo._Names, ni.names);
-                    tb = tb + (ObInfo._Metadata, ni.metadata.Fix(wr.cx)) 
-                        + (ObInfo.MetaString, ni.metastring);
                 }
                 var sx = wr.cx.FixTlTlTlb(tb.sindexes);
                 if (sx != tb.sindexes)
@@ -198,6 +185,51 @@ namespace Pyrrho.Level2
             wr.PutLong(domdefpos);
 			base.Serialise(wr);
 		}
+        public TConnector? TCon(Context cx)
+        {
+            if (flags != 0L && cx.db.objects[toType] is Domain ct)
+            {
+                var q = (flags & 0xfL) switch
+                {
+                    1L => Qlx.ID,
+                    2L => Qlx.FROM,
+                    4L => Qlx.TO,
+                    8L => Qlx.WITH,
+                    _ => Qlx.NO
+                };
+                var dm = ((flags & 0x10L) == 0x10L) ? Domain.EdgeEnds : Domain.Position;
+                return new TConnector(q, ct.defpos, ups, dm, defpos);
+            }
+            return null;
+        }
+        public void FromTCon(TConnector tc)
+        {
+            flags = tc.q switch
+            {
+                Qlx.ID => 1L,
+                Qlx.TO => 4L,
+                Qlx.FROM => 2L,
+                Qlx.WITH => 8L,
+                _ => 0L
+            };
+            if (tc.cd.kind == Qlx.SET)
+            {
+                flags += 16L;
+                domdefpos = Domain.EdgeEnds.defpos;
+            }
+            toType = tc.ct;
+        }
+        public string TCon()
+        {
+            var s = ((flags & 0x10L) == 0L) ? "" : " SET";
+            switch (flags&0xfL)
+            {
+                case 4: return " TO" + s;
+                case 2: return " FROM" + s;
+                case 8: return " WITH" + s;
+            }
+            return s;
+        }
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
@@ -208,28 +240,11 @@ namespace Pyrrho.Level2
             table = (Table)(rdr.GetObject(tabledefpos)
                 ??new Table(defpos,BTree<long,object>.Empty));
             name = rdr.GetString();
-                // March 2025
-            if (flags != 0L && rdr.context.db.objects[toType] is Domain ct)
+            if (table is EdgeType et && TCon(rdr.context) is TConnector tc)
             {
-                var q = (flags & 0xf7L) switch
-                {
-                    1L => Qlx.ID,
-                    2L => Qlx.FROM,
-                    4L => Qlx.TO,
-                    16L => Qlx.WITH,
-                    _ => Qlx.NO
-                };
-                var tc = new TConnector(q, ct.defpos, name,
-                    ((flags & 0x8L) == 0x8L) ? Domain.EdgeEnds : Domain.Position, defpos);
-                connector = tc;
-                md += (Qlx.CONNECTING, tc);
-                if (table is EdgeType et)
-                {
-                    var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
-                    rdr.context.db += et + (ObInfo._Metadata, et.metadata + (Qlx.EDGETYPE,ts + tc));
-                }
+                var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
+                rdr.context.db += et + (ObInfo._Metadata, et.metadata + (Qlx.EDGETYPE, ts + tc));
             }
-                // end of fix
             seq = rdr.GetInt();
             domdefpos = rdr.GetLong();
             dataType = (Domain)(rdr.GetObject(domdefpos) ?? throw new PEException("PE0301"));
@@ -295,8 +310,6 @@ namespace Pyrrho.Level2
             else
                 sb.Append(dataType); 
             sb.Append(']');
-            if (ms != "") sb.Append(' ');
-            sb.Append(ms);
             return sb.ToString();
         }
         internal override DBObject? Install(Context cx)
@@ -330,10 +343,12 @@ namespace Pyrrho.Level2
                 ti += (ObInfo.Defs, ti.defs + (tc.defpos, ss));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
             table += (ObInfo._Names, ti.names);
-            table += (cx, tc); // this is where the NodeType stuff happens
+            table += (cx, tc); 
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME));
             tc += (TableColumn.Seq, seq);
-            tc = (TableColumn)tc.Apply(cx, table); 
+            tc = (TableColumn)tc.Apply(cx, table);
+            var ms = "";
+            var md = TMetadata.Empty;
             tc = (TableColumn)tc.Add(cx, ms, md);
             cx.db += (tc.defpos, tc);
             table += (DBObject.LastChange, ppos);
@@ -382,8 +397,9 @@ namespace Pyrrho.Level2
         /// <param name="sq">The position of the column in the table</param>
         /// <param name="dm">The domain</param>
         /// <param name="db">The local database</param>
-        public PColumn2(Table pr, string nm, int sq, Domain dm, string ms,TMetadata md,long pp, Context cx)
-            : this(Type.PColumn2,pr,nm,sq,dm,ms,md,pp,cx)
+        public PColumn2(Table pr, string nm, int sq, Domain dm, 
+            string ds, bool opt, GenerationRule ge, long pp, Context cx)
+            : this(Type.PColumn2,pr,nm,sq,dm,ds,opt,ge,pp,cx)
 		{ }
         /// <summary>
         /// Constructor: A new Column definition from the Parser
@@ -394,12 +410,13 @@ namespace Pyrrho.Level2
         /// <param name="sq">The position of the ident in the table</param>
         /// <param name="dm">The domain</param>
         /// <param name="db">The database</param>
-        protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, string ms, TMetadata md, long pp, Context cx)
-            : base(t, pr, nm, sq, dm, ms, md, pp, cx)
+        protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, 
+            string ds, bool opt, GenerationRule ge, long pp, Context cx)
+            : base(t, pr, nm, sq, dm, pp, cx)
         {
-            dfs = md.Contains(Qlx.DEFAULT)? md[Qlx.DEFAULT].ToString():"";
-            optional = md[Qlx.OPTIONAL].ToBool()??true;
-            generated = new GenerationRule(md);
+            dfs = ds;
+            optional = opt;
+            generated = ge;
             if (generated.gen == Generation.Expression)
             {
                 generated += (RowSet.Target, ppos);
@@ -522,8 +539,30 @@ namespace Pyrrho.Level2
         /// <param name="pp">The new physical position</param>
         /// <param name="db">The local database</param>
         /// <param name="cx">The context</param>
-        public PColumn3(Table pr, string nm, int sq, Domain dm, string ms, TMetadata md, long pp, Context cx, bool ifN = false)
-            : this(Type.PColumn3, pr, nm, sq, dm, ms, md, pp, cx)
+        public PColumn3(Table pr, string nm, int sq, Domain dm, string ms, 
+            TMetadata md, long pp, Context cx, bool ifN = false)
+            : this(pr, nm, sq, dm, _Meta(cx,ms,md,pp), pp, cx, ifN)
+        {  }
+        PColumn3(Table pr, string nm, int sq, Domain dm, 
+            (string,bool,GenerationRule,TypedValue,Framing) xx, long pp, Context cx, bool ifN = false)
+            : this(pr, nm, sq, dm, xx.Item1, xx.Item2, xx.Item3, xx.Item4, pp, cx, ifN)
+        {
+            framing = xx.Item5;
+        }
+        /// <summary>
+        /// Constructor: A new Column definition from the Parser
+        /// </summary>
+        /// <param name="pr">The defining position of the table</param>
+        /// <param name="nm">The name of the table column</param>
+        /// <param name="sq">The position of the table column in the table</param>
+        /// <param name="dm">The declared domain of the table column</param>
+        /// <param name="pp">The new physical position</param>
+        /// <param name="db">The local database</param>
+        /// <param name="cx">The context</param>
+        public PColumn3(Table pr, string nm, int sq, Domain dm, 
+            string ds, bool opt, GenerationRule ge, TypedValue tm, long pp,
+            Context cx, bool ifN = false)
+            : this(Type.PColumn3, pr, nm, sq, dm, ds,opt,ge, tm, pp, cx)
         {
             ifNeeded = ifN;
         }
@@ -539,20 +578,19 @@ namespace Pyrrho.Level2
         /// <param name="pp">The new physical position</param>
         /// <param name="db">The local database</param>
         /// <param name="cx">The context</param>
-        protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, string ms, TMetadata md, long pp, Context cx)
-            : base(t, pr, nm, (sq<0)?pr.Length:sq, dm, ms,md, pp, cx)
+        protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, 
+            string ds, bool opt, GenerationRule ge, TypedValue tt, long pp, Context cx)
+            : base(t, pr, nm, (sq<0)?pr.Length:sq, dm, ds, opt, ge, pp, cx)
         {
-            if (cx.db.objects[pr.defpos] is EdgeType et &&  md[Qlx.CONNECTING] is TConnector cc)
+            if (((tt as TConnector)??((tt as TMetadata)?[Qlx.CONNECTING] as TConnector)) is TConnector tc)
             {
-                var tc = new TConnector(cc.q, cc.ct, cc.cn, cc.cd, pp, cc.cs, cc.cm);
-                //       var ts = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
-                //       et += (ObInfo._Metadata, et.metadata + ); 
-                //       cx.Add(et);
-                //       cx.db += et; 
-                cx.MetaPend(pr.defpos, defpos, "",
-                    TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Domain.Connector) + tc));
-                md = md + (Qlx.CONNECTING, tc);
-                connector = tc;
+                var ts = pr.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Domain.Connector);
+                ts += tc;
+                if (table?.defpos>0)
+                    cx.db += table = table + (ObInfo._Metadata, table.metadata + (Qlx.EDGETYPE, ts));
+                else
+                    cx.MetaPend(pr.defpos, defpos, "", TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Domain.Connector) + tc));
+                FromTCon(tc);
             }
         }
         /// <summary>
@@ -572,7 +610,24 @@ namespace Pyrrho.Level2
         {
             upd = x.upd;
             ups = x.ups;
+            flags = x.flags;
             table = (Table?)wr.cx.db.objects[wr.cx.Fix(x.table?.defpos??-1L)]??table;
+            toType = wr.cx.Fix(x.toType);
+        }
+        static (string, bool, GenerationRule, TypedValue, Framing) _Meta(Context cx,
+            string ms, TMetadata md, long pp)
+        {
+            GenerationRule ge = new GenerationRule(md);
+            TypedValue tv = md;
+            var framing = Framing.Empty;
+            string ds = md.Contains(Qlx.DEFAULT) ? md[Qlx.DEFAULT].ToString() : "";
+            bool opt = md[Qlx.OPTIONAL].ToBool() ?? true;
+            if (ge.gen == Generation.Expression)
+            {
+                ge += (RowSet.Target, pp);
+                framing = new Framing(cx, ge.nextStmt);
+            }
+            return (ds, opt, ge, tv, framing);
         }
         internal override bool NeededFor(BTree<long, Physical> physicals)
         {
@@ -594,30 +649,8 @@ namespace Pyrrho.Level2
         public override void Serialise(Writer wr)
         {
             wr.PutString(ups??"");
-            flags = 0L;
-            var cd = Domain.Position;
-            // Fix March 2025
-            if (connector is TConnector tc)
-            {
-                flags = tc.q switch
-                {
-                    Qlx.ID=>1L,
-                    Qlx.TO => 4L,
-                    Qlx.FROM => 2L,
-                    Qlx.WITH => 16L,
-                    _ => 0L
-                };
-                if (tc.cd.kind == Qlx.SET)
-                {
-                    flags += 8L;
-                    cd = Domain.EdgeEnds;
-                }
-                if (wr.cx._Ob(tc.ct) is not NodeType nt)
-                    throw new DBException("22G0V"); // Alas
-                toType = nt.defpos;
-            }
             wr.PutLong(flags);
-            wr.PutLong(-1L);
+            wr.PutLong(-1L); // refIndex will not be defined on Deserialize
             wr.PutLong(toType);
             base.Serialise(wr);
         }
@@ -628,16 +661,19 @@ namespace Pyrrho.Level2
         public override void Deserialise(Reader rdr)
         {
             ups = rdr.GetString();
-            rdr.Upd(this);
             flags = rdr.GetLong();
             rdr.GetLong();
             toType = rdr.GetLong();
             base.Deserialise(rdr);
+            if (toType>0)
+                rdr.Upd(this);
         }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
             if (upd != CTree<UpdateAssignment, bool>.Empty) { sb.Append(" UpdateRule="); sb.Append(upd); }
+            sb.Append(TCon());
+            if (toType>0) { sb.Append(' '); sb.Append(DBObject.Uid(toType)); }
             return sb.ToString();
         }
     }

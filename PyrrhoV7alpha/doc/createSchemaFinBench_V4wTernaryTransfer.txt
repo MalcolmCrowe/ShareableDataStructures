@@ -8,17 +8,17 @@ insert into version values (timestamp'2025-02-27 11:00:00')
 // create node and edge types
 
 [ create graph type /ldbc/FinBench_FL4 {
-node LegalEntity {id::int,name::string,isBlocked::boolean,
+node LegalEntity {id::int primary key,name::string,isBlocked::boolean,
   country::string, city::string},
-node Medium {id::int, type::String, Issuer::string, issued::timestamp, isBlocked::boolean,
+node Medium {id::int primary key, type::String, Issuer::string, issued::timestamp, isBlocked::boolean,
   lastLogin::timestamp, riskLevel::string},
 directed edge uses connecting (from LegalEntity multiplicity 1..1 to Medium multiplicity 0..*),
 directed edge contract {type::string,amount::decimal,currency::string,createTime::timestamp}    
   connecting (from LegalEntity multiplicity 0..* to LegalEntity multiplicity 0..*),
-node Account {id::int,accntType::string, bankName::string, isBlocked::boolean, currency::string,
+node Account {id::int primary key,accntType::string, bankName::string, isBlocked::boolean, currency::string,
   created::timestamp, lastLogin::timestamp, accntLevel::string, Balance::decimal},
-node Branch {Id::int, BIC::String, Location::String, phone::string, email::string},
-node SignIn {id::int, location::String, signin::timestamp, signout::timestamp, via::String},
+node Branch {Id::int primary key, BIC::String, Location::String, phone::string, email::string},
+node SignIn {id::int primary key, location::String, signin::timestamp, signout::timestamp, via::String},
 directed edge has connecting (from Branch multiplicity 1..1 to Account multiplicity 0..*),
 directed edge with_ connecting (from SignIn multiplicity 1..* to Medium multiplicity 1..1),
 directed edge type transfer connecting (from Account multiplicity 1..*  with SignIn multiplicity 0..1 to Account multiplicity 1..* ),
@@ -61,7 +61,7 @@ create type Custodial under account as (ISIN char, quantity decimal)
 // #############
 // insert Person and Company nodes as LegalEntity
 
- insert into Person values (1, 'Hans Dampf', false, 'Germany', 'Stuttgart', '1970-03-09', 'male')
+//insert into Person values (1, 'Hans Dampf', false, 'Germany', 'Stuttgart', '1970-03-09', 'male')
  insert into Person values (2, 'Ferry Porsche', false, 'Germany', 'Zuffenhausen', '1909-09-19', 'male')
  insert into Person values (3, 'Albert Fezer', false, 'Germany', 'Esslingen', '1899-06-25', 'male')
  insert into Person values (4, 'Gottlieb Stoll', false, 'Germany', 'Holzmaden', '1897-05-18', 'male')
@@ -82,31 +82,31 @@ insert into Company values (5, 'Karl Storz GmbH', false, 'Germany', 'Tuttlingen'
  insert into Company values (23, 'Breuninger Stgt.', false, 'Germany', 'Stuttgart', 'department store','Retail business','https://www.breuninger.de/', '1982-11-01')
 
 // insert contract edges
-[ match (e1:LegalEntity {id:1}), (e2:LegalEntity {id:2}), 
+[ match (e1:LegalEntity {id:1}), (e2:LegalEntity {id:2})
 create (e1)-[:contract {Type:'guarantee', amount:20000.0, currency:'Euro', createTime:timestamp'1990-11-18 17:44:00'}]->(e2) ]
 
-[ match (e1:LegalEntity {id:3}), (e2:LegalEntity {id:4}), 
+[ match (e1:LegalEntity {id:3}), (e2:LegalEntity {id:4})
 insert (e1)-[:contract {Type:'guarantee', amount:10000.0, currency:'Euro', createTime:timestamp'1924-11-17 11:22:00'}]->(e2) ]
 
-[ match (e1:LegalEntity {id:3}), (e2:LegalEntity {id:5}), 
+[ match (e1:LegalEntity {id:3}), (e2:LegalEntity {id:5})
 insert (e1)-[:contract {Type:'invest', amount:50000.0, currency:'€', createTime:timestamp'1954-10-18 10:44:00'}]->(e2) ]
 
-[ match (e1:LegalEntity {id:6}), (e2:LegalEntity {id:7}), 
+[ match (e1:LegalEntity {id:6}), (e2:LegalEntity {id:7})
 insert (e1)-[:contract {Type:'invest', amount:200000.0, currency:'€', createTime:timestamp'2024-11-20 09:11:00'}]->(e2) ]
 
-[ match (e1:Legalentity {id:5}), (e2:Legalentity {id:12}), 
+[ match (e1:Legalentity {id:5}), (e2:Legalentity {id:12})
 insert(e1)-[:contract {type:'guarantee', amount:100000.00, currency:'€', 
 createTime:timestamp'1977-10-22 10:25:00'} ]->(e2) ]
 
-[ match (e1:Legalentity {id:3}), (e2:Legalentity {id:2}), 
+[ match (e1:Legalentity {id:3}), (e2:Legalentity {id:2})
 insert(e1)-[:contract {type:'guarantee', amount:1000000.00, currency:'Euro', 
 createTime:timestamp'1948-11-06 10:25:00'} ]->(e2) ]
 
-[ match (e1:Legalentity {id:2}), (e2:Legalentity {id:13}), 
+[ match (e1:Legalentity {id:2}), (e2:Legalentity {id:13})
 insert(e1)-[:contract {type:'invest', amount:200000.00, currency:'€', 
 createTime:timestamp'2024-11-01 14:15:00'} ]->(e2) ]
 
-[ match (e1:Legalentity {id:4}), (e2:Legalentity {id:8}), 
+[ match (e1:Legalentity {id:4}), (e2:Legalentity {id:8})
 insert(e1)-[:contract {type:'invest', amount:5000000.00, currency:'€', 
 createTime:timestamp'2024-10-01 16:05:00'} ]->(e2) ]
 
@@ -161,30 +161,30 @@ insert into Account values (33, 'checking account', 'Ing DiBa', false,'€','198
 
 
 // Connect Bank(POS/ATM) with Branch(Location)
-[match (a:Account {id:1}), (b:Branch {id:1}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:2}), (b:Branch {id:2}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:22}), (b:Branch {id:2}), insert (a)<-[:has]- (b) ]
-[match (a:Account {id:3}), (b:Branch {id:3}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:4}), (b:Branch {id:4}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:5}), (b:Branch {id:4}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:6}), (b:Branch {id:5}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:15}), (b:Branch {id:16}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:16}), (b:Branch {id:7}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:17}), (b:Branch {id:8}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:26}), (b:Branch {id:7}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:27}), (b:Branch {id:2}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:28}), (b:Branch {id:6}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:18}), (b:Branch {id:9}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:11}), (b:Branch {id:10}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:12}), (b:Branch {id:14}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:7}), (b:Branch {id:11}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:8}), (b:Branch {id:15}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:13}), (b:Branch {id:12}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:14}), (b:Branch {id:13}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:31}), (b:Branch {id:4}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:32}), (b:Branch {id:3}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:33}), (b:Branch {id:14}), create (a)<-[:has]- (b) ]
-[match (a:Account {id:34}), (b:Branch {id:13}), create (a)<-[:has]- (b) ]
+[match (a:Account {id:1}), (b:Branch {id:1}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:2}), (b:Branch {id:2}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:22}), (b:Branch {id:2}) insert (a)<-[:has]- (b) ]
+[match (a:Account {id:3}), (b:Branch {id:3}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:4}), (b:Branch {id:4}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:5}), (b:Branch {id:4}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:6}), (b:Branch {id:5}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:15}), (b:Branch {id:16}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:16}), (b:Branch {id:7}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:17}), (b:Branch {id:8}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:26}), (b:Branch {id:7}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:27}), (b:Branch {id:2}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:28}), (b:Branch {id:6}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:18}), (b:Branch {id:9}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:11}), (b:Branch {id:10}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:12}), (b:Branch {id:14}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:7}), (b:Branch {id:11}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:8}), (b:Branch {id:15}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:13}), (b:Branch {id:12}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:14}), (b:Branch {id:13}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:31}), (b:Branch {id:4}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:32}), (b:Branch {id:3}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:33}), (b:Branch {id:14}) create (a)<-[:has]- (b) ]
+[match (a:Account {id:34}), (b:Branch {id:13}) create (a)<-[:has]- (b) ]
 
 
 
@@ -202,68 +202,68 @@ insert into Account values (33, 'checking account', 'Ing DiBa', false,'€','198
 
 // insert uses edges
 
-[ match (m:Medium {id:1}), (e:LegalEntity {id:1}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:23}), (e:LegalEntity {id:16}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:2}), (e:LegalEntity {id:2}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:3}), (e:LegalEntity {id:3}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:4}), (e:LegalEntity {id:4}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:5}), (e:LegalEntity {id:5}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:6}), (e:LegalEntity {id:6}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:7}), (e:LegalEntity {id:7}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:8}), (e:LegalEntity {id:8}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:11}), (e:LegalEntity {id:11}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:9}), (e:LegalEntity {id:1}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:10}), (e:LegalEntity {id:1}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:20}), (e:LegalEntity {id:20}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:21}), (e:LegalEntity {id:21}), create (e)-[:uses]->(m)]
-[ match (m:Medium {id:22}), (e:LegalEntity {id:22}), create (e)-[:uses]->(m)]
+[ match (m:Medium {id:1}), (e:LegalEntity {id:1}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:23}), (e:LegalEntity {id:16}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:2}), (e:LegalEntity {id:2}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:3}), (e:LegalEntity {id:3}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:4}), (e:LegalEntity {id:4}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:5}), (e:LegalEntity {id:5}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:6}), (e:LegalEntity {id:6}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:7}), (e:LegalEntity {id:7}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:8}), (e:LegalEntity {id:8}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:11}), (e:LegalEntity {id:11}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:9}), (e:LegalEntity {id:1}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:10}), (e:LegalEntity {id:1}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:20}), (e:LegalEntity {id:20}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:21}), (e:LegalEntity {id:21}) create (e)-[:uses]->(m)]
+[ match (m:Medium {id:22}), (e:LegalEntity {id:22}) create (e)-[:uses]->(m)]
 
 // insert activatedFor edges
 
-[ match (m:Medium {id:1}), (e:Account {id:3}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:1}), (e:Account {id:11}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:1}), (e:Account {id:34}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:2}), (e:Account {id:33}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:3}), (e:Account {id:1}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:4}), (e:Account {id:4}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:6}), (e:Account {id:6}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:5}), (e:Account {id:5}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:7}), (e:Account {id:7}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:8}), (e:Account {id:8}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:11}), (e:Account {id:31}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:9}), (e:Account {id:1}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:10}), (e:Account {id:1}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:20}), (e:Account {id:15}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:21}), (e:Account {id:16}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:22}), (e:Account {id:18}), create (m)-[:activatedFor]->(e)]
-[ match (m:Medium {id:23}), (e:Account {id:26}), create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:1}), (e:Account {id:3}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:1}), (e:Account {id:11}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:1}), (e:Account {id:34}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:2}), (e:Account {id:33}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:3}), (e:Account {id:1}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:4}), (e:Account {id:4}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:6}), (e:Account {id:6}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:5}), (e:Account {id:5}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:7}), (e:Account {id:7}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:8}), (e:Account {id:8}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:11}), (e:Account {id:31}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:9}), (e:Account {id:1}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:10}), (e:Account {id:1}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:20}), (e:Account {id:15}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:21}), (e:Account {id:16}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:22}), (e:Account {id:18}) create (m)-[:activatedFor]->(e)]
+[ match (m:Medium {id:23}), (e:Account {id:26}) create (m)-[:activatedFor]->(e)]
 
 // insert owns edges
 
-[ match (m:LegalEntity {id:1}), (e:Account {id:3}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:1}), (e:Account {id:11}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:2}), (e:Account {id:33}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:9}), (e:Account {id:2}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:3}), (e:Account {id:1}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:4}), (e:Account {id:4}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:5}), (e:Account {id:5}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:6}), (e:Account {id:6}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:7}), (e:Account {id:7}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:8}), (e:Account {id:8}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:9}), (e:Account {id:17}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:11}), (e:Account {id:31}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:12}), (e:Account {id:12}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:13}), (e:Account {id:13}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:14}), (e:Account {id:14}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:20}), (e:Account {id:15}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:21}), (e:Account {id:16}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:22}), (e:Account {id:18}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:23}), (e:Account {id:32}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:15}), (e:Account {id:22}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:16}), (e:Account {id:26}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:14}), (e:Account {id:27}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:21}), (e:Account {id:28}), create (m)-[:owns]->(e)]
-[ match (m:LegalEntity {id:16}), (e:Account {id:34}), create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:1}), (e:Account {id:3}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:1}), (e:Account {id:11}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:2}), (e:Account {id:33}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:9}), (e:Account {id:2}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:3}), (e:Account {id:1}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:4}), (e:Account {id:4}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:5}), (e:Account {id:5}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:6}), (e:Account {id:6}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:7}), (e:Account {id:7}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:8}), (e:Account {id:8}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:9}), (e:Account {id:17}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:11}), (e:Account {id:31}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:12}), (e:Account {id:12}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:13}), (e:Account {id:13}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:14}), (e:Account {id:14}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:20}), (e:Account {id:15}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:21}), (e:Account {id:16}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:22}), (e:Account {id:18}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:23}), (e:Account {id:32}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:15}), (e:Account {id:22}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:16}), (e:Account {id:26}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:14}), (e:Account {id:27}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:21}), (e:Account {id:28}) create (m)-[:owns]->(e)]
+[ match (m:LegalEntity {id:16}), (e:Account {id:34}) create (m)-[:owns]->(e)]
 
 // insert SignIn nodes
 
@@ -288,60 +288,60 @@ insert into Account values (33, 'checking account', 'Ing DiBa', false,'€','198
 
 // insert with_ edges
 
-[ match (m:Medium {id:1}), (s:SignIn {id:1}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:1}), (s:SignIn {id:5}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:2}), (s:SignIn {id:2}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:3}), (s:SignIn {id:4}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:3}), (s:SignIn {id:3}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:4}), (s:SignIn {id:6}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:5}), (s:SignIn {id:7}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:6}), (s:SignIn {id:8}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:7}), (s:SignIn {id:24}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:4}), (s:SignIn {id:9}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:8}), (s:SignIn {id:14}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:21}), (s:SignIn {id:10}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:9}), (s:SignIn {id:11}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:10}), (s:SignIn {id:12}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:11}), (s:SignIn {id:13}), create (m)<-[:with_]-(s)]
-[ match (m:Medium {id:23}), (s:SignIn {id:23}), create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:1}), (s:SignIn {id:1}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:1}), (s:SignIn {id:5}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:2}), (s:SignIn {id:2}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:3}), (s:SignIn {id:4}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:3}), (s:SignIn {id:3}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:4}), (s:SignIn {id:6}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:5}), (s:SignIn {id:7}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:6}), (s:SignIn {id:8}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:7}), (s:SignIn {id:24}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:4}), (s:SignIn {id:9}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:8}), (s:SignIn {id:14}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:21}), (s:SignIn {id:10}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:9}), (s:SignIn {id:11}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:10}), (s:SignIn {id:12}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:11}), (s:SignIn {id:13}) create (m)<-[:with_]-(s)]
+[ match (m:Medium {id:23}), (s:SignIn {id:23}) create (m)<-[:with_]-(s)]
 
 // insert ternary edge Transfer 
 
-[match (a1:Account {id:34}), (a2:Account {id:8}), (s:SignIn {id:1}),
+[match (a1:Account {id:34}), (a2:Account {id:8}), (s:SignIn {id:1})
 insert (a1)-[t:Transfer{id:1, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-17 07:45:30', type:'repay'}]->(a2),[t]~(s) ]
 
-[match (a1:Account {id:33}), (a2:Account {id:8}), (s:SignIn {id:2}),
+[match (a1:Account {id:33}), (a2:Account {id:8}), (s:SignIn {id:2})
 insert (a1)-[t:Transfer{id:2, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-18 09:45:10', type:'repay'}]-> (a2),[t]~(s) ]
 
-[ match (a1:Account {id:1}), (a2:Account {id:12}), (s:SignIn {id:3}),
+[ match (a1:Account {id:1}), (a2:Account {id:12}), (s:SignIn {id:3})
 insert (a1)-[t:Transfer{id:3, amount:4050.0, Currency:'€', execTime:timestamp'2024-10-19 07:45:30', type:'repay'}]-> (a2),[t]~(s)]
 
-[match (a1:Account {id:1}), (a2:Account {id:5}), (s:SignIn {id:4}),
+[match (a1:Account {id:1}), (a2:Account {id:5}), (s:SignIn {id:4})
 insert (a1)-[t:Transfer{id:4, amount:7999.0, Currency:'€', execTime:timestamp'2024-10-20 09:30:05', type:'shop payment'}]-> (a2),[t]~(s) ]
 
-[match (a1:Account {id:3}), (a2:Account {id:5}), (s:SignIn {id:5}),
+[match (a1:Account {id:3}), (a2:Account {id:5}), (s:SignIn {id:5})
 insert  (a1)-[t:Transfer{id:5, amount:11000.0, Currency:'€', execTime:timestamp'2024-10-20 12:44:50', type:'transfer'}]-> (a2),[t]~(s) ]
 
-[ match (a1:Account {id:4}), (a2:Account {id:14}), (s:SignIn {id:6}),
+[ match (a1:Account {id:4}), (a2:Account {id:14}), (s:SignIn {id:6})
 insert (a1)-[t:Transfer{id:6, amount:466.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:48',type:'repay'}]-> (a2),[t]~(s)]
 
-[ match (a1:Account {id:5}), (a2:Account {id:28}), (s:SignIn {id:7}),
+[ match (a1:Account {id:5}), (a2:Account {id:28}), (s:SignIn {id:7})
 insert(a1)-[t:Transfer{id:7, amount:495.0, Currency:'€', execTime:timestamp'2024-10-22 09:46:00',type:'deposit'}]-> (a2),[t]~(s)]
 
-[ match (a1:Account {id:6}), (a2:Account {id:2}), (s:SignIn {id:8}),
+[ match (a1:Account {id:6}), (a2:Account {id:2}), (s:SignIn {id:8})
 insert (a1)-[t:Transfer{id:8, amount:466.0, Currency:'€', execTime:timestamp'2024-10-23 07:45:33',type:'withdraw'}]-> (a2),[t]~(s)]
 
-[ match (a1:Account {id:4}), (a2:Account {id:18}), (s:SignIn {id:9}),
+[ match (a1:Account {id:4}), (a2:Account {id:18}), (s:SignIn {id:9})
 insert (a1)-[t:Transfer{id:9, amount:1412.0, Currency:'€', execTime:timestamp'2024-10-25 09:44:57',type:'shop payment'}]-> (a2),[t]~(s)]
 
-[ match (a1:Account {id:7}), (a2:Account {id:27}), (s:SignIn {id:24}),
+[ match (a1:Account {id:7}), (a2:Account {id:27}), (s:SignIn {id:24})
 insert (a1)-[t:Transfer{id:10, amount:3000.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'cash deposit'}]-> (a2),[t]~(s)]
 
-[ match (a1:Account {id:26}), (a2:Account {id:12}), (s:SignIn {id:23}),
+[ match (a1:Account {id:26}), (a2:Account {id:12}), (s:SignIn {id:23})
 insert (a1)-[t:Transfer{id:11, amount:4000.0, Currency:'€', execTime:timestamp'2024-12-20 09:46:43',type:'repay'}]-> (a2),[t]~(s)]
 
 // without signIn
-[ match (a1:Account {id:34}), (a2:Account {id:16}), 
+[ match (a1:Account {id:34}), (a2:Account {id:16})
 insert (a1)-[t:Transfer{id:12, amount:399.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'shop payment'}]-> (a2)]
 
 // Inserting consistent money transfers via signin **** to do ****

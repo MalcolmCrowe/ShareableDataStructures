@@ -1072,10 +1072,10 @@ namespace Pyrrho.Level4
                     Pos(m.ppos),
                     Pos(m.defpos),
                     new TChar(m.name ?? throw new PEException("PE0311")),
-                    new TChar(m.md.Contains(Qlx.PASSWORD)?"*******":m.ms.ToString()),
+                    new TChar(m.metadata.Contains(Qlx.PASSWORD)?"*******":m.details),
                     Pos(m.refpos),
                     // At present m.iri may contain a password (this should get fixed)
-                    new TChar((m.iri!="" && m.md.Contains(Qlx.PASSWORD))?"*******":m.iri));
+                    new TChar((m.iri!="" && m.metadata.Contains(Qlx.PASSWORD))?"*******":m.iri));
             }
          }
         /// <summary>
@@ -1760,7 +1760,7 @@ namespace Pyrrho.Level4
                     TBool.For(!c.optional),
                     new TChar(c.generated.ToString()),
                     Display(c.upd.ToString()),
-                    new TChar(c.connector.ToString()));
+                    new TChar(c.ups+" "+Uid(c.toType)));
             }
          }
         /// <summary>

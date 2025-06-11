@@ -771,7 +771,7 @@ namespace Test
             testing = 15;
             Begin();
             Act(227,"create table ca(a char,b int check (b>0))");
-            CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99)","Column check");
+            CheckExceptionNonQuery(15, 1, "insert into ca values('Neg',-99)","Check constraint");
             if (!commit)
             {
                 Begin();

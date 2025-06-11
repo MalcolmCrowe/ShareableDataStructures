@@ -60,6 +60,7 @@ namespace Pyrrho
             dict.Add("22207", "Multiplicity {0} max value exceeded");
             dict.Add("22208", "Cardinality {0} min value not reached");
             dict.Add("22209", "Cardinality {0} max value exceeded");
+            dict.Add("22211", "Check constraint fails");
             dict.Add("22G02", "Negative limit value");
             dict.Add("22G03", "Invalid value type");
             dict.Add("22G04", "Values not comparable");

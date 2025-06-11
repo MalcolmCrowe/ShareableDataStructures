@@ -11642,8 +11642,8 @@ cx.obs[high] is not QlValue hi)
                 nt = (NodeType)(cx.Add(ph)??throw new DBException("42105"));
                 for (var b = ll.First(); b != null; b = b.Next())
                  if (b.value() is QlValue q){
-                    var pc = new PColumn3(nt, b.key(), -1, q.domain, q.metastring, q.metadata, 
-                        cx.db.nextPos, cx);
+                    var pc = new PColumn3(nt, b.key(), -1, q.domain, q.metastring,
+                         q.metadata, cx.db.nextPos, cx);
                         cx.Add(pc);
                 }
                 if (cx.db.objects[nt.defpos] is NodeType nn)
@@ -11674,7 +11674,8 @@ cx.obs[high] is not QlValue hi)
                         for (var c = ((Transaction)cx.db).physicals.First(); c != null; c = c.Next())
                             if (c.value() is PColumn3 p3 && p3.name == b.key())
                                 goto skip;
-                        var pc = new PColumn3(fi, b.key(), -1, q.domain,q.metastring,q.metadata, cx.db.nextPos, cx);
+                        var pc = new PColumn3(fi, b.key(), -1, q.domain,q.metastring,
+                            q.metadata + (Qlx.OPTIONAL,TBool.False), cx.db.nextPos, cx);
                         cx.Add(pc);
                     skip:;
                     }
@@ -11922,7 +11923,7 @@ cx.obs[high] is not QlValue hi)
                     && tb is not null && tb.defpos>0)
                 {
                     var pc = new PColumn(Physical.Type.PColumn, tb, b.key(), 
-                        tb.Length, qv.domain, "", TMetadata.Empty, cx.db.nextPos, cx);
+                        tb.Length, qv.domain, cx.db.nextPos, cx);
                     tb = (NodeType?)cx.Add(pc);
                 }
             return tb;
@@ -12046,7 +12047,7 @@ cx.obs[high] is not QlValue hi)
     {
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, long i,
             CTree<string, QlValue> d, CTree<long, TGParam> tgs, Domain? dm, BTree<long, object> m)
-            : base(nm, ch, cx, i, d, tgs, _Type(dm, cx, d, m), _Mem(cx, d, tgs, dm, m, nm, i))
+            : base(nm, ch, cx, i, d, tgs, _Type(nm, dm, cx, d, m), _Mem(cx, d, tgs, dm, m, nm, i))
         {
             if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg
                && cx.names[tg.value].Item2 is long p && p < Transaction.Analysing && cx.bindings.Contains(p))
@@ -12072,7 +12073,7 @@ cx.obs[high] is not QlValue hi)
         }
         protected GqlEdge(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        protected new static NodeType _Type(Domain? dm, Context cx, CTree<string, QlValue> d, BTree<long, object>? m,
+        protected static NodeType _Type(Ident nm, Domain? dm, Context cx, CTree<string, QlValue> d, BTree<long, object>? m,
             CTree<TypedValue, bool>? cs = null)
         {
             if ((dm is null || dm.defpos<0) && m?[_Label] is GqlLabel gl 
@@ -12088,8 +12089,8 @@ cx.obs[high] is not QlValue hi)
                 return Domain.EdgeType;
             if (dm is not EdgeType et || et.defpos < 0)
                 et = GqlNode._Type(dm, cx, d, m, cs) as EdgeType ?? Domain.EdgeType;
-            et = et.Connect(cx, bf, af, pr, d, true);
-            et = et.Connect(cx, bf, af, po, d, true);
+            et = et.Connect(cx, bf, af, pr, d, true, nm.uid);
+            et = et.Connect(cx, bf, af, po, d, true, nm.uid);
             return et;
         }
         static BTree<long,object> _Mem(Context cx,CTree<string,QlValue> d,

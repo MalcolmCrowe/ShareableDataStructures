@@ -63,8 +63,6 @@ namespace Pyrrho.Level2
         public long trans;
         public long time;
         public bool ifNeeded = false;
-        public string ms = "";
-        public TMetadata md = TMetadata.Empty;
         protected Physical(Type tp, long pp)
         {
             type = tp;
@@ -86,8 +84,6 @@ namespace Pyrrho.Level2
         protected Physical(Physical ph,Writer wr)
         {
             type = ph.type;
-            ms = ph.ms;
-            md = (TMetadata)ph.md.Fix(wr.cx);
             ppos = wr.Length;
             wr.cx.uids += (ph.ppos, ppos);
             time = ph.time;
@@ -134,11 +130,6 @@ namespace Pyrrho.Level2
                 // and try again
             }
             var ph = Relocate(wr);
-            ph.ms = ms;
-            if (ms!="")
-                for (var b=wr.cx.uids.First();b!=null;b=b.Next())
-                    ph.ms = ph.ms.Replace(b.key().ToString(),b.value().ToString());
-            ph.md = (TMetadata)md.Fix(wr.cx);
             wr.WriteByte((byte)type);
             ph.Serialise(wr);
             ph.Install(wr.cx);

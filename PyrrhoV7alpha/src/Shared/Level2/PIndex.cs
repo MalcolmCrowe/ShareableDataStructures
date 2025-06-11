@@ -270,7 +270,7 @@ namespace Pyrrho.Level2
                     var ms = tt.metastring;
                     if (ms != "")
                         for (var b = wr.cx.uids.First(); b != null; b = b.Next())
-                            ms = ph.ms.Replace(b.key().ToString(), b.value().ToString());
+                            ms = ms.Replace(b.key().ToString(), b.value().ToString());
                     tb += (ObInfo.MetaString, ms);
                     tb += (ObInfo._Metadata, tt.metadata.Fix(wr.cx));
                     var ch = false;

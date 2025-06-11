@@ -379,7 +379,7 @@ namespace Pyrrho.Level3
         /// Drop anything that needs this, directly or indirectly,
         /// and then drop this.
         /// </summary>
-        internal void Cascade(Context cx, Drop.DropAction a=0,
+        internal void Cascade(Context cx, Drop.DropAction a=Level2.Drop.DropAction.Restrict,
             BTree<long,TypedValue>?u=null)
         {
             if (cx.db is not Transaction tr)

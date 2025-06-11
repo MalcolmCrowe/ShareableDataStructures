@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
+using System.Reflection.Metadata;
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
@@ -104,6 +105,7 @@ namespace Pyrrho.Level2
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
+            UDType? ut = (tr?.objects[defpos]??dataType) as UDType;
             var un = CTree<Domain, bool>.Empty;
             for (var b=under.First();b!=null;b=b.Next())
             {
@@ -156,12 +158,6 @@ namespace Pyrrho.Level2
                 + (Domain.Culture, PDomain.GetCulture(rdr.GetString()));
             var oi = new ObInfo(name, Grant.AllPrivileges);
             var ds = rdr.GetString();
-            if (ds.Length > 0
-                && k == Qlx.CHAR && ds[0] != '\'')
-            {
-                ds = "'" + ds + "'";
-                m += (Domain.DefaultString, ds);
-            }
             var st = rdr.GetLong(); // a relic of the past
             var dt = dataType;
             m = m + (Domain.Representation, dt.representation) + (Domain.RowType, dt.rowType);

@@ -11,7 +11,6 @@ using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
 using System.Text;
-using System.Xml;
 namespace Pyrrho.Level2
 {
     /// <summary>
@@ -82,7 +81,8 @@ namespace Pyrrho.Level2
         protected PEdgeType(Type t, Reader rdr) : base(t, rdr) { }
         protected PEdgeType(PEdgeType x, Writer wr) : base(x, wr) 
         {
-            dataType = (Domain)dataType.Fix(wr.cx);
+            dataType = (Domain)x.dataType.Fix(wr.cx);
+            wr.cx.Add(dataType);
         }
         protected override Physical Relocate(Writer wr)
         {

@@ -6856,7 +6856,7 @@ namespace Pyrrho.Level4
                 if (a != null)
                     r += (RestValue, a);
                 cx._Add(r);
-                if (et != null && et != "" && rq.Method == HttpMethod.Post) // Pyrrho manual 3.8.1
+                if (et != null && et != "")// && rq.Method == HttpMethod.Post) // Pyrrho manual 3.8.1
                 {
                     var vwdesc = cx.url ?? defaultUrl;
                     var tr = (Transaction)cx.db;

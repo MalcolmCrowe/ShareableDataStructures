@@ -111,8 +111,8 @@ namespace Pyrrho.Level3
                 r += (Domain.Default, c.dv);
             if (c.ups!="")
                 r = r + (UpdateString, c.ups) + (UpdateAssignments, c.upd);
-            if (c.connector is TConnector cc && cc.q!=Qlx.Null)
-                r = r + (Connector,cc);
+            if (c.TCon(cx) is TConnector cc)
+                r = r + (Connector, cc);
             return r;
         }
         internal override Basis New(BTree<long, object> m)

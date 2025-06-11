@@ -255,7 +255,7 @@ namespace Pyrrho.Level3
         }
         protected override void _Cascade(Context cx, Drop.DropAction a, BTree<long, TypedValue> u)
         {
-            if (a == 0 && rows?.Count > 0)
+            if (a == Level2.Drop.DropAction.Restrict && rows?.Count > 0)
                 throw new DBException("23002",defpos);
             base._Cascade(cx, a, u);
         }

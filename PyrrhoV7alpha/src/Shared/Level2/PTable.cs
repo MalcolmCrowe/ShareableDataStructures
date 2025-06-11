@@ -24,8 +24,7 @@ namespace Pyrrho.Level2
         /// The defining position of this table
         /// </summary>
         public long defpos { get { return ppos; } }
-        public string rowiri = "";
-        public Grant.Privilege enforcement = (Grant.Privilege)15; // read,insert,udate,delete
+        public string rowiri = ""; 
         public long nodeType = -1L;
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -70,7 +69,6 @@ namespace Pyrrho.Level2
         protected PTable(PTable x, Writer wr) : base(x, wr)
         {
             nodeType = wr.cx.Fix(x.nodeType);
-            rowiri = x.rowiri;
         }
         protected override Physical Relocate(Writer wr)
         {
@@ -153,7 +151,7 @@ namespace Pyrrho.Level2
         {
             rowiri = ir;
         }
-        public PTable1(Reader rdr) : base(Type.PTable1, rdr) { }
+        public PTable1 (Reader rdr) : base(Type.PTable1, rdr) { }
         protected PTable1(Type tp, Reader rdr) : base(tp, rdr) { }
         protected PTable1(PTable1 x, Writer wr) : base(x, wr)
         {
@@ -178,8 +176,7 @@ namespace Pyrrho.Level2
             return "PTable1 " + name + " rowiri=" + rowiri;
         }
     }
-    /// <summary>
-    /// Modification to RowIri
+    /// <summarrowiri/ Modification to RowIri
     /// </summary>
     internal class AlterRowIri : PTable1
     {
@@ -213,8 +210,7 @@ namespace Pyrrho.Level2
             return "AlterRowIri ["+rowpos+"] iri=" + rowiri;
         }
     }
-    /// <summary>
-    /// handle enforcement specification for Clearance
+    /// <summarrowiri/ handle enforcement specification for Clearance
     /// </summary>
     internal class Enforcement :Physical
     {
