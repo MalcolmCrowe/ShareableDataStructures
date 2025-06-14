@@ -525,9 +525,15 @@ namespace Pyrrho.Level4
                             && table.tableRows[ne] is TableRow was)
                         {
                             for (var b = table.First(); b != null; b = b.Next())
-                                if (b.value() is long p && newRow[p] == TNull.Value
-                                    && was.vals[p] is TypedValue ov && ov != TNull.Value)
-                                    newRow += (p, ov);
+                                if (b.value() is long p && newRow[p] is TypedValue v)
+                                {
+                                    if (v == TNull.Value
+                                        && was.vals[p] is TypedValue ov && ov != TNull.Value)
+                                        newRow += (p, ov);
+                                    if (was.vals[p] is TSet ts
+                                        && v.dataType.kind == ts.dataType.elType?.kind)
+                                        newRow += (p, ts + v);
+                                }
                             r = new Update(ne, table.defpos, newRow, _cx.db.nextPos, _cx);
                         }
                         else if (level != Level.D)

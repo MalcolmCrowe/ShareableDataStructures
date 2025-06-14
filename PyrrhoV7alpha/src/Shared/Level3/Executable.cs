@@ -5203,7 +5203,9 @@ namespace Pyrrho.Level3
             {
                 if (!_ms.Done(cx) && matches!=null)
                     _ms.ExpNode(cx, new ExpStep(mode, matches, ab, cn ?? next, _ef), pg,
-                        (pg is GqlEdge pe) ? pe.postCon : (match==Qlx.WITH)?TBool.True:TNull.Value, pd);
+                        (pg is GqlReference gr) ?gr.postCon :
+                        (pg is GqlEdge pe) ? pe.postCon : (match==Qlx.WITH)?TBool.True:TNull.Value, 
+                        (pg?.delimit==true)?null:pd);
                 else
                     next.Next(cx, null, pg, pd, Qlx.WITH);
             }
@@ -5393,6 +5395,7 @@ namespace Pyrrho.Level3
                 return;
             }
             cx.conn.Awake();
+            var qd = pd;
             if (xn is GqlEdge)
                 cr = xn.preCon;
             var step = ++_step;
@@ -5410,20 +5413,22 @@ namespace Pyrrho.Level3
             }
             // We have a current node xn, but no current dn yet. Initialise the set of possible d to empty. 
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
-            if (cr == TBool.True && pd !=null)
+            if (cr == TBool.True && pd != null)
                 ds += (pd.defpos, pd.tableRow);
-            else if (xn is GqlReference gr && cx.binding[gr.refersTo] is TNode tr)
+            else if (xn is GqlReference gr)
             {
-                if (pd is TEdge te && te.dataType is EdgeType et && cr is TConnector ec)
-               //     for (var b = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
-                        for (var c = Connects(et, ec).First(); c != null; c = c.Next())
-                            if (c.key() is TConnector x && te.tableRow.vals[x.cp]?.ToLong()==tr.defpos)
-                                ds += (gr.refersTo, tr.tableRow);
-                if (pd is TNode pl && tr is TEdge ae && ae.dataType is EdgeType at && gr.postCon is TConnector gc)
-               //     for (var b = (at.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
-                        for (var c = Connects(at, gc).First(); c != null; c = c.Next())
-                            if (c.key() is TConnector x && ae.tableRow.vals[x.cp]?.ToLong() == tr.defpos)
-                                ds += (gr.refersTo, tr.tableRow);
+                if (cx.binding[gr.refersTo] is TNode tr)
+                    ds += (gr.refersTo, tr.tableRow);
+                else if (pd is TEdge te && te.dataType is EdgeType et && cr is TConnector ec)
+                    //     for (var b = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+                    for (var c = Connects(et, ec).First(); c != null; c = c.Next())
+                    {
+                        if (c.key() is TConnector x
+                                && (cx.db.objects[x.ct] as NodeType)?.GetS(cx,
+                                    pd?.tableRow.vals[x.cp] as TInt)
+                               is TableRow yn)
+                            ds += (yn.defpos, yn);
+                    }
             }
             else if (pd is TEdge && cx.db.joinedNodes[pd.defpos] is CTree<Domain, bool> dj && cr is TConnector jc)
             {
@@ -5440,10 +5445,11 @@ namespace Pyrrho.Level3
                 && cr is TConnector ed)
             {
                 for (var b = (pe.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
-                    if (b.Value() is TConnector tc1 && Connects(ed, tc1) && (ed.cn == "" || ed.cn == tc1.cn)
-                && (cx.db.objects[tc1.ct] as NodeType)?.GetS(cx, pd.tableRow.vals[tc1.cp] as TInt)
-               is TableRow tn)
-                        ds += (tn.defpos, tn);
+                    if (b.Value() is TConnector tc1 && Connects(ed, tc1))
+                        if (ed.cn == "" || ed.cn.ToUpper() == tc1.cn.ToUpper())
+                            if ((cx.db.objects[tc1.ct] as NodeType)?.GetS(cx, pd.tableRow.vals[tc1.cp] as TInt)
+                           is TableRow tn)
+                                ds += (tn.defpos, tn);
             }
             if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
@@ -5466,14 +5472,14 @@ namespace Pyrrho.Level3
                     if (cx._Ob(b.key().defpos) is NodeType ps)
                         ds = Traverse(cx, this, xn, truncator, cr, pd, ps, ctr, ds);
             } // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
-            else
+            else if (ds.Count==0)
                 ds = xn.For(cx, this, xn, ds);
             var df = ds.First();
             if (df == null && optional)
                 be.next.Next(cx, be.next, null, null, Qlx.FALSE);
             else if (df != null && !Done(cx))
                 DbNode(cx, new NodeStep(be.mode, xn, df, 
-                    new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._ef)),pd);
+                    new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._ef)),qd);
         }
         bool Connects(TConnector ec,TConnector tc)
         {
@@ -5668,6 +5674,17 @@ namespace Pyrrho.Level3
                         }
                         if (!DoBindings(cx, bn.xn, dn))
                             goto another;
+                        if (bn.xn is GqlReference && dn is TEdge de && de.dataType is EdgeType et
+                            && bn.xn.preCon is TConnector xc)
+                        {
+                            var conn = false;
+                            for (var b = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+                                if (b.Value() is TConnector tc && Connects(xc, tc)
+                                    && dn.tableRow.vals[tc.cp]?.ToLong() == pd?.defpos)
+                                    conn = true;
+                            if (!conn)
+                                goto another;
+                        }
                         if (!bn.xn.CheckProps(cx, this, dn))
                             goto another;
                         cx.values += (bn.xn.defpos, dn);
@@ -5824,11 +5841,11 @@ namespace Pyrrho.Level3
             var r = CTree<TypedValue, bool>.Empty;
             for (var b = (et.metadata[Qlx.EDGETYPE]as TSet)?.First(); b != null; b = b.Next())
                 if (b.Value() is TConnector tc
-                    && tc.cn != "" && (cr.cn == "" || cr.cn == tc.cn)
+                    && tc.cn != "" && (cr.cn == "" || cr.cn.ToUpper() == tc.cn.ToUpper())
                     && tc.q == cr.q switch
                     {
-                        Qlx.ARROWBASE or Qlx.RARROW => Qlx.FROM,
-                        Qlx.ARROW or Qlx.RARROWBASE => Qlx.TO,
+                        Qlx.ARROWBASE or Qlx.RARROW => Qlx.TO,
+                        Qlx.ARROW or Qlx.RARROWBASE => Qlx.FROM,
                         Qlx.TILDE or Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE => Qlx.WITH,
                         _ => Qlx.NO
                     })

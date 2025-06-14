@@ -11426,6 +11426,7 @@ cx.obs[high] is not QlValue hi)
         internal const long
             After = -479,   // GqlNode
             Before = -473,  // GqlNode
+            Delimit = -325, // bool
             DocValue = -477,    // CTree<string,QlValue> 
             IdValue = -480,     // long             QlValue of Int
             _Label = -360,      // GqlLabel (a subclass of Domain, deals with label sets etc)
@@ -11433,7 +11434,7 @@ cx.obs[high] is not QlValue hi)
             PreCon = -469, // TypedValue
             State = -245;       // CTree<long,TGParam> tgs in this GqlNode  (always empty for GraphInsertStatement)
         internal GqlNode? before => (GqlNode?)mem[Before];
-        internal GqlNode? after => (GqlNode?)mem[After];
+        internal bool delimit => (bool?)mem[Delimit]??false;
         public CTree<string, QlValue> docValue => (CTree<string,QlValue>)(mem[DocValue]??CTree<string,QlValue>.Empty);
         public long idValue => (long)(mem[IdValue] ?? -1L);
         public Domain label => (Domain)(mem[_Label] ?? GqlLabel.Empty);
@@ -11447,18 +11448,22 @@ cx.obs[high] is not QlValue hi)
             (BTree<long,Names>)(mem[ObInfo.Defs] ?? BTree<long,Names>.Empty);
         public GqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<string, QlValue> d,
             CTree<long, TGParam> tgs, Domain? dm = null, BTree<long, object>? m = null)
-            : base(nm, nm, ch, cx, _Type(dm,cx,d,m), _Mem(nm, i, d, tgs, dm, cx, m))
+           : this(cx, nm, ch, i, d, tgs, _Type(dm,cx,d,m), m)
+        {  }
+        GqlNode(Context cx, Ident nm, BList<Ident> ch, long i, CTree<string, QlValue> d,
+            CTree<long, TGParam> tgs, Domain dm, BTree<long, object>? m = null)
+            : base(nm, nm, ch, cx, dm, _Mem(nm, i, d, tgs, dm, cx, m))
         {
             if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg && cx.names[tg.value].Item2 is long t)
-                for (var b = cx.obs[t]?.infos[cx.role.defpos]?.names.First();b!=null;b=b.Next())
-                    if (b.value().Item2 is long p && p<Transaction.Analysing && cx.bindings.Contains(p))
-                            cx.Add(tg.value, nm.lp, this);
-            cx.names += (nm.ident, (nm.lp,defpos));
+                for (var b = cx.obs[t]?.infos[cx.role.defpos]?.names.First(); b != null; b = b.Next())
+                    if (b.value().Item2 is long p && p < Transaction.Analysing && cx.bindings.Contains(p))
+                        cx.Add(tg.value, nm.lp, this);
+            cx.names += (nm.ident, (nm.lp, defpos));
         }
         protected GqlNode(long dp, BTree<long, object> m) : base(dp, m)
         { }
         static BTree<long, object> _Mem(Ident nm, long i, CTree<string, QlValue> d, CTree<long, TGParam> tgs,
-            Domain? dm, Context cx, BTree<long, object>? m)
+            Domain dm, Context cx, BTree<long, object>? m)
         {
             m ??= BTree<long, object>.Empty;
             if (i > 0)
@@ -11484,7 +11489,7 @@ cx.obs[high] is not QlValue hi)
                 }
             m += (State, ng);
             m += (ObInfo.Defs, cx.defs);
-            m += (ObInfo._Names, cx.names);
+            m += (ObInfo._Names, dm.names);
             if (!m.Contains(_Label) && dm is not null && dm.defpos>0) // otherwise leave it unlabelled
                 m += (_Label, dm); // an explicit NodeType
             return m;
@@ -11716,7 +11721,7 @@ cx.obs[high] is not QlValue hi)
             if (allowExtras)
             {
                 nt = (NodeType)_NodeType(cx, dt, ap, allowExtras);
-                if (nt != nd.domain)
+                if (nt.CompareTo(nd.domain)!=0)
                 {
                     nd += (_Domain, nt);
                     cx.Add(nd);
@@ -11741,7 +11746,7 @@ cx.obs[high] is not QlValue hi)
             nd += (_Domain, nt);
             nd = (GqlNode)cx.Add(nd);
             ls ??= CTree<string, QlValue>.Empty;
-            ls = nd._AddEnds(cx, ls);
+    //        ls = nd._AddEnds(cx, ls);
             TNode? tn = null;
             if (nt.defpos > 0 && !cx.parse.HasFlag(ExecuteStatus.GraphType))
             {
@@ -11813,7 +11818,7 @@ cx.obs[high] is not QlValue hi)
             cx.names = nt.infos[cx.role.defpos]?.names??Names.Empty;
             return nd;
         }
-        protected virtual CTree<string,QlValue> _AddEnds(Context cx, CTree<string,QlValue> ls)
+ /*       protected virtual CTree<string,QlValue> _AddEnds(Context cx, CTree<string,QlValue> ls)
         {
             if (domain is NodeType nt && cx.obs[idValue] is GqlNode il
                     && cx.NameFor(nt.idCol) is string iC && !ls.Contains(iC))
@@ -11824,7 +11829,7 @@ cx.obs[high] is not QlValue hi)
                     ls += (iC, SqlNull.Value);
             }
             return ls;
-        }
+        } */
         /// <summary>
         /// This method is called during Match, so this.domain is not helpful.
         /// </summary>
@@ -12217,13 +12222,13 @@ cx.obs[high] is not QlValue hi)
             r += (PostCon, po);
             return (GqlEdge)cx.Add(r);
         }
-        protected override CTree<string, QlValue> _AddEnds(Context cx, CTree<string, QlValue> ls)
+/*        protected override CTree<string, QlValue> _AddEnds(Context cx, CTree<string, QlValue> ls)
         {
             ls = base._AddEnds(cx, ls);
             if (cx.db.objects[domain.defpos] is not EdgeType et)
                 return ls;
             return ls;
-        }
+        } */
         internal override NodeType? InsertSchema(Context cx)
         {
             var r = base.InsertSchema(cx) as EdgeType;

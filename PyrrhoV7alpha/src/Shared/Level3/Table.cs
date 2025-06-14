@@ -172,7 +172,8 @@ namespace Pyrrho.Level3
                 var cs = et.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Connector);
                 var found = false;
                 for (var b=cs.First();b!=null;b=b.Next())
-                    if (b.Value() is TConnector c && c.q==nc.q && c.cn==nc.cn)
+                    if (b.Value() is TConnector c && c.q==nc.q && c.cn==nc.cn
+                        && c.ct==nc.ct)
                     {
                         cs = cs - c + nc;
                         found = true;

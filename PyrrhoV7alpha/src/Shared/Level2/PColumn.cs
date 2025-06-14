@@ -198,7 +198,10 @@ namespace Pyrrho.Level2
                     _ => Qlx.NO
                 };
                 var dm = ((flags & 0x10L) == 0x10L) ? Domain.EdgeEnds : Domain.Position;
-                return new TConnector(q, ct.defpos, ups, dm, defpos);
+                var s = ups;
+                if (ups == "")
+                    s = name;
+                return new TConnector(q, ct.defpos, s, dm, defpos);
             }
             return null;
         }

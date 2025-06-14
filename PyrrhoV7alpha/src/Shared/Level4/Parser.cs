@@ -1789,13 +1789,18 @@ namespace Pyrrho.Level4
         }
         CList<GqlNode> ParseInsertGraphStep(bool sch)
         {
-  //          cx.IncSD(new Ident(this));
             // the current token is LPAREN or LBRACK
             var svg = CList<GqlNode>.Empty;
-            (var n, svg) = ParseInsertGraphItem(svg, sch);
-            while (tok == Qlx.RARROW || tok == Qlx.ARROWBASE || tok==Qlx.ARROWBASETILDE)
-                (n, svg) = ParseInsertGraphItem(svg, sch, n);
-  //          cx.DecSD();
+            for (; ; )
+            {
+                (var n, svg) = ParseInsertGraphItem(svg, sch);
+                while (tok == Qlx.RARROW || tok == Qlx.ARROWBASE || tok == Qlx.ARROWBASETILDE)
+                    (n, svg) = ParseInsertGraphItem(svg, sch, n);
+                if (Match(Qlx.AMPERSAND))
+                    Next();
+                else
+                    break;
+            }
             return svg;
         }
         // state M19
@@ -2143,24 +2148,36 @@ namespace Pyrrho.Level4
                 if (r is null)
                 {
                     var m = BTree<long, object>.Empty + (SqlFunction._Val, lb.defpos) + (GqlNode._Label, lb);
-                    if (pr!=TNull.Value)
+                    if (pr != TNull.Value)
                         m += (GqlNode.PreCon, pr);
-                    if (po!=TNull.Value)
+                    if (po != TNull.Value)
                         m += (GqlNode.PostCon, po);
+                    if (ba == Qlx.RPAREN && tok == Qlx.LPAREN)
+                        m += (GqlNode.Delimit, true);
                     if (bf != null)
                         m += (GqlNode.Before, bf);
-                    r = ba switch
-                    {
-                        // for GqlNode, use available type information from the previous node 
-                        Qlx.RPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st, null, m),
-                        // and for GqlEdge look at available connector information
-                        Qlx.ARROW or Qlx.RARROWBASE or Qlx.TILDE or Qlx.RBRACKTILDE
-                                => new GqlEdge(b, BList<Ident>.Empty, cx, id, dc, st, dm, m),
-                        _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))
-                    };
-                    r += (GqlNode._Label, lb);
-                    if (wh is not null)
-                        r += (RowSet._Where, wh);
+                        r = ba switch
+                        {
+                            // for GqlNode, use available type information from the previous node 
+                            Qlx.RPAREN => new GqlNode(b, BList<Ident>.Empty, cx, id, dc, st, null, m),
+                            // and for GqlEdge look at available connector information
+                            Qlx.ARROW or Qlx.RARROWBASE or Qlx.TILDE or Qlx.RBRACKTILDE
+                                    => new GqlEdge(b, BList<Ident>.Empty, cx, id, dc, st, dm, m),
+                            _ => throw new DBException("42000", ab).Add(Qlx.MATCH_STATEMENT, new TChar(ab.ToString()))
+                        };
+                        r += (GqlNode._Label, lb);
+                        if (wh is not null)
+                            r += (RowSet._Where, wh);
+                } else if (r is GqlReference gr)
+                {
+                    gr = gr + (SqlFunction._Val, lb.defpos) + (GqlNode._Label, lb);
+                    if (pr != TNull.Value)
+                        gr += (GqlNode.PreCon, pr);
+                    if (po != TNull.Value)
+                        gr += (GqlNode.PostCon, po);
+                    if (bf != null)
+                        gr += (GqlNode.Before, bf);
+                    r = gr;
                 }
             }
             cx.Add(r);
@@ -3410,9 +3427,9 @@ namespace Pyrrho.Level4
                                 Next();
                                 if (Match(Qlx.Id)) // old syntax
                                 {
-                                    (tb,cl) = ParseConnector(tb,cl,Qlx.FROM);
+                                    (tb,cl) = ParseConnector(tb,cl,Qlx.FROM,0);
                                     Mustbe(Qlx.COMMA,Qlx.TO);
-                                    (tb, cl) = ParseConnector(tb,cl, Qlx.TO);
+                                    (tb, cl) = ParseConnector(tb,cl, Qlx.TO,0);
                                 }
                                 else
                                 {
@@ -3420,32 +3437,35 @@ namespace Pyrrho.Level4
                                         throw new DBException("42161", "identifier,FROM,TO,WITH", tok);
                                     if (Match(Qlx.FROM))
                                     {
+                                        int j = 0;
                                         Next();
-                                        (tb, cl) = ParseConnector(tb,cl, Qlx.FROM);
+                                        (tb, cl) = ParseConnector(tb,cl, Qlx.FROM,++j);
                                         while (Match(Qlx.COMMA))
                                         {
                                             Next();
-                                            (tb, cl) = ParseConnector(tb,cl, Qlx.FROM);
+                                            (tb, cl) = ParseConnector(tb,cl, Qlx.FROM,++j);
                                         }
                                     }
                                     if (Match(Qlx.WITH))
                                     {
+                                        int j = 0;
                                         Next();
-                                        (tb, cl) = ParseConnector(tb,cl, Qlx.WITH);
+                                        (tb, cl) = ParseConnector(tb,cl, Qlx.WITH,++j);
                                         while (Match(Qlx.COMMA))
                                         {
                                             Next();
-                                            (tb, cl) = ParseConnector(tb,cl, Qlx.WITH);
+                                            (tb, cl) = ParseConnector(tb,cl, Qlx.WITH,++j);
                                         }
                                     }
                                     if (Match(Qlx.TO, Qlx.COMMA))
                                     {
+                                        int j = 0;
                                         Next();
-                                        (tb, cl) = ParseConnector(tb,cl, Qlx.TO);
+                                        (tb, cl) = ParseConnector(tb,cl, Qlx.TO, ++j);
                                         while (Match(Qlx.COMMA))
                                         {
                                             Next();
-                                            (tb, cl) = ParseConnector(tb, cl, Qlx.TO);
+                                            (tb, cl) = ParseConnector(tb, cl, Qlx.TO, ++j);
                                         }
                                     }
                                 }
@@ -3759,7 +3779,7 @@ namespace Pyrrho.Level4
             return (Table)(cx.Add(px)??throw new DBException("42105"));    
         }
         // Connector= [id'=']Type_id{'|'Type_id}[SET][Domain_id] Metadata
-        (EdgeType,TSet) ParseConnector(EdgeType et,TSet cl, Qlx tk)
+        (EdgeType,TSet) ParseConnector(EdgeType et,TSet cl, Qlx tk, int k)
         {
             var xl = CTree<Domain,bool>.Empty;
             var sc = "";
@@ -3780,8 +3800,8 @@ namespace Pyrrho.Level4
             if (sc=="")
             {
                 sc = tk.ToString();
-                for (var j = 1; tp.names.Contains(sc); j++)
-                    sc = tk.ToString() + j;
+                if (k != 0)
+                    sc += k;
             }
             Match(Qlx.TO);
             while (tok==Qlx.VBAR)

@@ -1709,6 +1709,8 @@ CTree<string, QlValue> ls, bool allowChange = false)
 
         internal (EdgeType,TConnector) BuildNodeTypeConnector(Context cx, TConnector tc)
         {
+            if (metadata[Qlx.EDGETYPE] is TSet ts && ts.Contains(tc))
+                return (this, tc);
             var d = cx._Ob(tc.ct) as Domain ?? throw new PEException("PE90151");
             if (d is NodeType nt)
                 return BuildNodeTypeConnector(cx, tc, nt);
@@ -2458,7 +2460,24 @@ CTree<string, QlValue> ls, bool allowChange = false)
             c = cn.CompareTo(that.cn);
             if (c!=0)
                 return c;
-            return cd.CompareTo(that.cd);
+            c = cp.CompareTo(that.cp);
+            if (c != 0)
+                return c;
+            c = cd.CompareTo(that.cd);
+            if (c != 0)
+                return c;
+            c = cs.CompareTo(that.cs);
+            if (c != 0)
+                return c;
+            if (cm != null)
+            {
+                c = cm.CompareTo(that.cm);
+                if (c != 0)
+                    return c;
+            }
+            else if (that.cm == null)
+                return -1;
+            return 0;
         }
         internal override TypedValue Fix(Context cx)
         {
