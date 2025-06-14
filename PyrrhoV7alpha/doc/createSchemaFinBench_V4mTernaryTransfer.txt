@@ -21,7 +21,7 @@ node Branch {Id::int primary key, BIC::String, Location::String, phone::string, 
 node SignIn {id::int primary key, location::String, signin::timestamp, signout::timestamp, via::String},
 directed edge has connecting (from Branch multiplicity 1..1 to Account multiplicity 0..*),
 directed edge with_ connecting (from SignIn multiplicity 1..* to Medium multiplicity 1..1),
-directed edge type transfer connecting (from Account multiplicity 1..*  with SignIn multiplicity 0..1 to Account multiplicity 1..* ),
+directed edge type transfer connecting (from Account multiplicity 1..*, SignIn multiplicity 0..1 to Account multiplicity 1..* ),
 directed edge activatedFor connecting (from Medium multiplicity 0..* to Account multiplicity 1..1 ),
 directed edge owns connecting (from LegalEntity multiplicity 1..1 to Account multiplicity 1..*) }
 ] 
@@ -308,37 +308,37 @@ insert into Account values (33, 'checking account', 'Ing DiBa', false,'€','198
 // insert ternary edge Transfer 
 
 [match (a1:Account {id:34}), (a2:Account {id:8}), (s:SignIn {id:1})
-insert (a1)-[t:Transfer{id:1, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-17 07:45:30', type:'repay'}]->(a2),[t]~(s) ]
+insert (a1)-[t:Transfer{id:1, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-17 07:45:30', type:'repay'}]->(a2) [t]-(s) ]
 
 [match (a1:Account {id:33}), (a2:Account {id:8}), (s:SignIn {id:2})
-insert (a1)-[t:Transfer{id:2, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-18 09:45:10', type:'repay'}]-> (a2),[t]~(s) ]
+insert (a1)-[t:Transfer{id:2, amount:3500.0, Currency:'€', execTime:timestamp'2024-10-18 09:45:10', type:'repay'}]-> (a2) [t]-(s) ]
 
 [ match (a1:Account {id:1}), (a2:Account {id:12}), (s:SignIn {id:3})
-insert (a1)-[t:Transfer{id:3, amount:4050.0, Currency:'€', execTime:timestamp'2024-10-19 07:45:30', type:'repay'}]-> (a2),[t]~(s)]
+insert (a1)-[t:Transfer{id:3, amount:4050.0, Currency:'€', execTime:timestamp'2024-10-19 07:45:30', type:'repay'}]-> (a2) [t]-(s)]
 
 [match (a1:Account {id:1}), (a2:Account {id:5}), (s:SignIn {id:4})
-insert (a1)-[t:Transfer{id:4, amount:7999.0, Currency:'€', execTime:timestamp'2024-10-20 09:30:05', type:'shop payment'}]-> (a2),[t]~(s) ]
+insert (a1)-[t:Transfer{id:4, amount:7999.0, Currency:'€', execTime:timestamp'2024-10-20 09:30:05', type:'shop payment'}]-> (a2) [t]-(s) ]
 
 [match (a1:Account {id:3}), (a2:Account {id:5}), (s:SignIn {id:5})
-insert  (a1)-[t:Transfer{id:5, amount:11000.0, Currency:'€', execTime:timestamp'2024-10-20 12:44:50', type:'transfer'}]-> (a2),[t]~(s) ]
+insert  (a1)-[t:Transfer{id:5, amount:11000.0, Currency:'€', execTime:timestamp'2024-10-20 12:44:50', type:'transfer'}]-> (a2) [t]-(s) ]
 
 [ match (a1:Account {id:4}), (a2:Account {id:14}), (s:SignIn {id:6})
-insert (a1)-[t:Transfer{id:6, amount:466.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:48',type:'repay'}]-> (a2),[t]~(s)]
+insert (a1)-[t:Transfer{id:6, amount:466.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:48',type:'repay'}]-> (a2) [t]-(s)]
 
 [ match (a1:Account {id:5}), (a2:Account {id:28}), (s:SignIn {id:7})
-insert(a1)-[t:Transfer{id:7, amount:495.0, Currency:'€', execTime:timestamp'2024-10-22 09:46:00',type:'deposit'}]-> (a2),[t]~(s)]
+insert(a1)-[t:Transfer{id:7, amount:495.0, Currency:'€', execTime:timestamp'2024-10-22 09:46:00',type:'deposit'}]-> (a2) [t]-(s)]
 
 [ match (a1:Account {id:6}), (a2:Account {id:2}), (s:SignIn {id:8})
-insert (a1)-[t:Transfer{id:8, amount:466.0, Currency:'€', execTime:timestamp'2024-10-23 07:45:33',type:'withdraw'}]-> (a2),[t]~(s)]
+insert (a1)-[t:Transfer{id:8, amount:466.0, Currency:'€', execTime:timestamp'2024-10-23 07:45:33',type:'withdraw'}]-> (a2) [t]-(s)]
 
 [ match (a1:Account {id:4}), (a2:Account {id:18}), (s:SignIn {id:9})
-insert (a1)-[t:Transfer{id:9, amount:1412.0, Currency:'€', execTime:timestamp'2024-10-25 09:44:57',type:'shop payment'}]-> (a2),[t]~(s)]
+insert (a1)-[t:Transfer{id:9, amount:1412.0, Currency:'€', execTime:timestamp'2024-10-25 09:44:57',type:'shop payment'}]-> (a2) [t]-(s)]
 
 [ match (a1:Account {id:7}), (a2:Account {id:27}), (s:SignIn {id:24})
-insert (a1)-[t:Transfer{id:10, amount:3000.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'cash deposit'}]-> (a2),[t]~(s)]
+insert (a1)-[t:Transfer{id:10, amount:3000.0, Currency:'€', execTime:timestamp'2024-10-21 07:45:43',type:'cash deposit'}]-> (a2) [t]-(s)]
 
 [ match (a1:Account {id:26}), (a2:Account {id:12}), (s:SignIn {id:23})
-insert (a1)-[t:Transfer{id:11, amount:4000.0, Currency:'€', execTime:timestamp'2024-12-20 09:46:43',type:'repay'}]-> (a2),[t]~(s)]
+insert (a1)-[t:Transfer{id:11, amount:4000.0, Currency:'€', execTime:timestamp'2024-12-20 09:46:43',type:'repay'}]-> (a2) [t]-(s)]
 
 // without signIn
 [ match (a1:Account {id:34}), (a2:Account {id:16})
