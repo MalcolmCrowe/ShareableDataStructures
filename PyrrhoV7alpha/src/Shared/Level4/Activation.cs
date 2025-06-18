@@ -498,9 +498,20 @@ namespace Pyrrho.Level4
         }
         internal override Context EachRow(Context _cx,int pos)
         {
-            var cu = next?.cursors[(_trs.data>=0)?_trs.data : _trs.from];
-            var trc = (cu is not null)?new TransitionRowSet.TransitionCursor(this, _trs, (Cursor)cu, pos, insertCols)
-                : (TransitionRowSet.TransitionCursor?)cursors[_trs.defpos];
+            var cu = next?.cursors[(_trs.data >= 0) ? _trs.data : _trs.from] as Cursor;
+            var np = _cx.db.nextPos;
+            var ne = -1L;
+            if (next != null && next.exec is SqlInsert si && si.forNode is long fn)
+            {
+                ne = fn;
+                if (ne > 0)
+                    if (next.newEdges[ne] is long pp && pp > 0L)
+                        np = pp;
+                    else
+                        next.newEdges += (ne, np);
+            }
+            var trc = (cu is not null) ? new TransitionRowSet.TransitionCursor(this, _trs, cu, pos, insertCols)//, np)
+                    : (TransitionRowSet.TransitionCursor?)cursors[_trs.defpos];
             if (trc == null || db==null || _cx.db==null || trc._tgc==null)
                 return _cx;
             var tgc = trc._tgc;
@@ -521,32 +532,33 @@ namespace Pyrrho.Level4
                             return _cx;
                         var st = rc.subType;
                         Record r;
-                        if ((next?.exec as SqlInsert)?.newEdge is long ne && ne > 0
-                            && table.tableRows[ne] is TableRow was)
+                        if (((Transaction)db).physicals[newEdges[ne]] is Record re
+                            && table.tableRows[re.defpos]?.vals is CTree<long,TypedValue> was) // updates will have the same defpos
                         {
                             for (var b = table.First(); b != null; b = b.Next())
                                 if (b.value() is long p && newRow[p] is TypedValue v)
                                 {
                                     if (v == TNull.Value
-                                        && was.vals[p] is TypedValue ov && ov != TNull.Value)
+                                        && was[p] is TypedValue ov && ov != TNull.Value)
                                         newRow += (p, ov);
-                                    if (was.vals[p] is TSet ts
+                                    if (was[p] is TSet ts
                                         && v.dataType.kind == ts.dataType.elType?.kind)
                                         newRow += (p, ts + v);
                                 }
-                            r = new Update(ne, table.defpos, newRow, _cx.db.nextPos, _cx);
+                            r = new Update(re.defpos, table.defpos, newRow, _cx.db.nextPos, _cx);
                         }
-                        else if (level != Level.D)
-                            r = new Record3(table.defpos, newRow, st, level, _cx.db.nextPos, _cx);
                         else
-                            r = new Record(table.defpos, newRow, _cx.db.nextPos, _cx);
+                        if (level != Level.D)
+                            r = new Record3(table.defpos, newRow, st, level, np, _cx);
+                        else
+                            r = new Record(table.defpos, newRow, np, _cx);
                         Add(r);
                         _cx.Add(r);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
                         newTables += (_trs.defpos, ns + (r.defpos, new TableRow(r,_cx)));
                         count++;
                         if (table is NodeType nt)
-                            values += (r.defpos, new TNode(this,rc));
+                            values += (r.defpos, (nt is EdgeType)?new TEdge(this,rc):new TNode(this,rc));
                         // install the record in the transaction
                         //      cx.tr.FixTriggeredActions(triggers, ta._tty, r);
                         // Row-level after triggers

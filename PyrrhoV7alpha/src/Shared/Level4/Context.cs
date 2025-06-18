@@ -123,7 +123,7 @@ namespace Pyrrho.Level4
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
         internal CTree<long, TypedValue> binding = CTree<long, TypedValue>.Empty;
         internal BTree<long, long?> newnodes = BTree<long, long?>.Empty;
-        internal BTree<string, long?> newEdges = BTree<string, long?>.Empty;
+        internal CTree<long, long> newEdges = CTree<long, long>.Empty;
         internal CTree<long, CTree<long, (string,TMetadata)>> metaPending = CTree<long, CTree<long, (string,TMetadata)>>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>

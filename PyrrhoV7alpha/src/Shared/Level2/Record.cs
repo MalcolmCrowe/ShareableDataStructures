@@ -126,13 +126,17 @@ namespace Pyrrho.Level2
             for (var b = x.fields.PositionAt(0); b != null; b = b.Next())
             {
                 var v = b.value();
-                if (x.nodeOrEdge)
+                if (x.nodeOrEdge && v is TSet ts && ts.dataType.elType?.kind == Qlx.INTEGER)
                 {
-                    if (v is TChar t && wr.cx.NewNode(ppos, t.value) is string w && t.value != w)
-                        v = new TChar(w);
-                    if (v is TInt p && wr.cx.Fix(p.value) is long nv && nv != p.value)
-                        v = new TInt(nv);
+                    var s = new TSet(Domain.Int);
+                    for (var c = ts.First(); c != null; c = c.Next())
+                    {
+                        var p = c.Value().ToLong() ?? -1L;
+                        s += new TInt(wr.cx.uids[p] ?? p);
+                    }
+                    v = s;
                 }
+                else v = v.Fix(wr.cx);
                 fields += (wr.cx.Fix(b.key()), v);
             }
             subType = wr.cx.Fix(x.subType);
@@ -210,11 +214,12 @@ namespace Pyrrho.Level2
             for (var d = fields.PositionAt(0); d != null; d = d.Next())
                 if (cs[d.key()] is Domain ndt && d.value() is TypedValue o)
                 {
-                    var k = d.key();
+                    ndt = (Domain)ndt.Fix(wr.cx);
+                    var k = wr.cx.Fix(d.key());
                     wr.PutLong(k); // coldefpos
-                    var dt = o.dataType ?? Domain.Null;
+                    var dt = (Domain)o.dataType.Fix(wr.cx) ?? Domain.Null;
                     dt.PutDataType(ndt, wr);
-                    dt.Put(o, wr);
+                    dt.Put(o.Fix(wr.cx), wr);
                 }
         }
         static CTree<long, Domain> ColsFrom(Context cx, CTree<long, bool> tbs, CTree<long, Domain> cdt)

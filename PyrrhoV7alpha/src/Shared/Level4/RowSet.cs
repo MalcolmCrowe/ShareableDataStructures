@@ -5396,6 +5396,33 @@ namespace Pyrrho.Level4
             internal readonly TransitionRowSet _trs;
             internal readonly Cursor _fbm; // transition source cursor
             internal readonly TargetCursor? _tgc;
+            /*            internal TransitionCursor(TableActivation ta, TransitionRowSet trs, Cursor fbm, int pos,
+                            Domain iC, long ne = -1L) // if ne is positive, we add to edge fields in ta.values
+                            : base(ta.next ?? throw new PEException("PE49205"), trs, pos, fbm._ds,
+                                   new TRow((Domain)trs, iC, fbm))
+                        {
+                            _trs = trs;
+                            _fbm = fbm;
+                            var cx = ta.next;
+                            Record? re = null;
+                            if (ne > 0)
+                                re = ((Transaction)ta.db).physicals[ne] as Record;
+                            var vs = CTree<long, TypedValue>.Empty;
+                            for (var b = trs.iSMap.First(); b != null; b = b.Next())
+                                if (b.value() is long p && (values[b.key()]??TNull.Value) is TypedValue v)
+                                {
+                                    if (re?.fields[p] is TypedValue tv)
+                                    {
+                                        if (v == TNull.Value) v = tv;
+                                        else if (tv != TNull.Value) v = tv + v;
+                                        vs += (p, v);
+                                    }
+                                    cx.values += (p, v);
+                                }
+                            _tgc = TargetCursor.New(ta, this, true); // retrieve it from ta
+                            for (var b = vs.First(); b != null; b = b.Next())
+                                _tgc += (ta, b.key(), b.value());
+                        } */
             internal TransitionCursor(TableActivation ta, TransitionRowSet trs, Cursor fbm, int pos,
                 Domain iC)
                 : base(ta.next ?? throw new PEException("PE49205"), trs, pos, fbm._ds,
@@ -5418,25 +5445,6 @@ namespace Pyrrho.Level4
                 _tgc = TargetCursor.New(ta, this,false); // retrieve it from ta
                 ta.values += (p, v);
                 ta.next.values += (ta._trs.target, this);
-            }
-            static Cursor _Fix(TableActivation ta, TransitionRowSet trs, Domain iC, Cursor fbm)
-            {
-                var ib = iC.First();
-                for (var b = fbm.values.First(); b != null && ib != null; b = b.Next(), ib = ib.Next())
-                {
-                    if (ib.value() is long p && b.value() is TypedValue v
-                            && trs.representation[p] is Domain ds && ds.kind == Qlx.SET
-                            && ds.elType is Domain de)
-                    {
-                        var s = v as TSet ?? new TSet(de);
-                        if (de.kind == Qlx.POSITION && v is TNode tn)
-                            s = s.Add(new TPosition(tn.defpos));
-                        else
-                            s = s.Add(v);
-                        fbm += (ta, b.key(), ((TypedValue)s) ?? TNull.Value);
-                    }
-                }
-                return fbm;
             }
             protected override Cursor New(Context cx, long p, TypedValue v)
             {

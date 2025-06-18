@@ -11446,6 +11446,7 @@ cx.obs[high] is not QlValue hi)
             (CTree<long, TGParam>)(mem[State] ?? CTree<long, TGParam>.Empty);
         public BTree<long,Names> defs => 
             (BTree<long,Names>)(mem[ObInfo.Defs] ?? BTree<long,Names>.Empty);
+        internal virtual long RefEdge => -1L;
         public GqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<string, QlValue> d,
             CTree<long, TGParam> tgs, Domain? dm = null, BTree<long, object>? m = null)
            : this(cx, nm, ch, i, d, tgs, _Type(dm,cx,d,m), m)
@@ -11791,12 +11792,8 @@ cx.obs[high] is not QlValue hi)
                 var sce = n.RowSetFor(ap,vp, cx, fm.rowType, fm.representation)
                     + (cx, RowSet.RSTargets, fm.rsTargets)
                     + (RowSet.Asserts, RowSet.Assertions.AssignTarget);
-                var s = new SqlInsert(cx.GetUid(), fm, sce.defpos, ts + (Domain.RowType, iC));
-                if (this is GqlEdge && name != null && name != "")
-                    if (cx.newEdges[name] is long p)
-                        s += (SqlInsert.NewEdge, p);
-                    else
-                        cx.newEdges += (name, np);
+                var s = new SqlInsert(cx.GetUid(), fm, sce.defpos, ts + (Domain.RowType, iC),
+                    new BTree<long,object>(SqlInsert.ForNode,RefEdge));
                 cx.Add(s);
                 // NB: The TargetCursor/trigger machinery will place values in cx.values in the !0.. range
                 // From the point of view of graph operations these are spurious, and should not be accessed
@@ -11818,18 +11815,6 @@ cx.obs[high] is not QlValue hi)
             cx.names = nt.infos[cx.role.defpos]?.names??Names.Empty;
             return nd;
         }
- /*       protected virtual CTree<string,QlValue> _AddEnds(Context cx, CTree<string,QlValue> ls)
-        {
-            if (domain is NodeType nt && cx.obs[idValue] is GqlNode il
-                    && cx.NameFor(nt.idCol) is string iC && !ls.Contains(iC))
-            {
-                if (il.Eval(cx) is TNode tn)
-                    ls += (iC, (QlValue)cx.Add(new SqlLiteral(cx.GetUid(), tn.id)));
-                else
-                    ls += (iC, SqlNull.Value);
-            }
-            return ls;
-        } */
         /// <summary>
         /// This method is called during Match, so this.domain is not helpful.
         /// </summary>
@@ -11988,6 +11973,7 @@ cx.obs[high] is not QlValue hi)
         internal const long 
             RefersTo = -452; // long GqlNode
         internal long refersTo => (long)(mem[RefersTo] ?? -1L);
+        internal override long RefEdge => refersTo;
         internal GqlReference(Context cx,long ap, long dp, GqlNode n, BTree<long,object> m)
             : this(dp, n.mem -PreCon - PostCon -Before - After 
                   + (RefersTo, n.defpos)+ m)
@@ -12050,6 +12036,7 @@ cx.obs[high] is not QlValue hi)
     /// </summary>
     internal class GqlEdge : GqlNode
     {
+        internal override long RefEdge => defpos;
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, long i,
             CTree<string, QlValue> d, CTree<long, TGParam> tgs, Domain? dm, BTree<long, object> m)
             : base(nm, ch, cx, i, d, tgs, _Type(nm, dm, cx, d, m), _Mem(cx, d, tgs, dm, m, nm, i))

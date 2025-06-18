@@ -4127,25 +4127,25 @@ namespace Pyrrho.Level3
     {
         internal const long
             InsCols = -241, // Domain
-            NewEdge = -466, // long Record 
+            ForNode = -149, // long GqlNode
             Value = -156; // long RowSet
         internal long source => (long)(mem[RowSet._Source] ?? -1L);
         public long value => (long)(mem[Value] ?? -1L);
+        internal long forNode => (long) (mem[ForNode] ?? -1L);
         public Domain insCols => (Domain)(mem[InsCols]??Domain.Row); // tablecolumns (should be specified)
-        public long newEdge => (long)(mem[NewEdge] ?? -1L);// allows values to be added to an edge
         /// <summary>
         /// Constructor: an INSERT statement from the parser.
         /// </summary>
         /// <param name="cx">The parsing context</param>
         /// <param name="fm">The rowset with target info</param>
         /// <param name="v">The uid of the data rowset</param>
-        public SqlInsert(long dp, RowSet fm, long v, Domain iC)
-           : base(dp, _Mem(fm,v,iC))
+        public SqlInsert(long dp, RowSet fm, long v, Domain iC, BTree<long,object>?m=null)
+           : base(dp, _Mem(fm,v,iC,m))
         { }
         protected SqlInsert(long dp, BTree<long, object> m) : base(dp, m) { }
-        static BTree<long, object> _Mem(RowSet fm,long v, Domain iC)
+        static BTree<long, object> _Mem(RowSet fm,long v, Domain iC, BTree<long,object>?m)
         {
-            var r = BTree<long, object>.Empty + (RowSet._Source, fm.defpos)
+            var r = (m??BTree<long, object>.Empty) + (RowSet._Source, fm.defpos)
                  + (Value, v) + (Gql,GQL.InsertStatement);
             if (iC != null)
                 r += (InsCols, iC);
@@ -4262,6 +4262,10 @@ namespace Pyrrho.Level3
                         sb.Append(Uid(p));
                     }
                 sb.Append(']');
+            }
+            if (forNode>0)
+            { 
+                sb.Append(" for "); sb.Append(Uid(forNode)); 
             }
             return sb.ToString();
         }

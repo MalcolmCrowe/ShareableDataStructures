@@ -1857,7 +1857,7 @@ namespace Pyrrho.Level4
                 if (cx.role.dbobjects.Contains(b.ident))
                     throw new DBException("42104", b.ident);
                 var ix = cx.names[b.ident].Item2;
-                if (ix<0L)
+                if (ix<=0L)
                 {
                     id = lp;
                     if (cx._Ob(b.uid) is DBObject bo)
@@ -1874,7 +1874,10 @@ namespace Pyrrho.Level4
                 Next();
             }
             if (!bound)
+            {
                 nb = new Ident(nb.ident, LexLp());
+                cx.names += (nb.ident, (nb.lp, nb.uid));
+            }
             Domain lb = GqlLabel.Empty;
             Qlx tk = tok;
             if (tok == Qlx.COLON)
@@ -1934,15 +1937,7 @@ namespace Pyrrho.Level4
             else
                 Mustbe(Qlx.RPAREN,Qlx.RBRACK,Qlx.RBRACKTILDE,Qlx.ARROWBASETILDE);
             if (cx.obs[id] is GqlNode r)
-            {
-                if (ln is null && ab == Qlx.LBRACK) // we are adding an extra connection to an edge reference
-                    r = new GqlEdge(nb, BList<Ident>.Empty, cx, id, dc, lxr.tgs, dm, m);
-                else
-                    r = new GqlReference(cx, LexLp(), lp, (dm is null) ? r : r + (DBObject._Domain, dm), m);
-            }
-            else if (lb.defpos >= 0 && lb.rowType == CList<long>.Empty && lb is NodeType zt
-                && (zt.kind != Qlx.EDGETYPE || dc.Count == 0L))
-                r = new GqlReference(lp, zt);
+                r = new GqlReference(cx, LexLp(), lp, (dm is null) ? r : r + (DBObject._Domain, dm), m);
             else
                 r = (ab == Qlx.LPAREN) ? new GqlNode(nb, BList<Ident>.Empty, cx, id, dc, lxr.tgs, dm, m)
                     : new GqlEdge(nb, BList<Ident>.Empty, cx, -1L, dc, lxr.tgs, 

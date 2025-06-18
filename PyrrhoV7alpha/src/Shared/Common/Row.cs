@@ -100,10 +100,12 @@ namespace Pyrrho.Common
         }
         public static TypedValue operator+ (TypedValue left,TypedValue right)
         {
-            if (left is TNull || (left.dataType.kind!=right.dataType.kind) || left is TPosition)
+            if (left is TNull)
                 return right;
             if (right is TNull)
                 return left;
+            if (left is TPosition pl && right is TPosition pr)
+                return new TSet(Domain.Position) + pl + pr;
             if (left is TInt li && right is TInt ri)
                 return new TInt(li.value + ri.value);
             if (left is TInteger lj && right is TInteger rj)
@@ -114,6 +116,10 @@ namespace Pyrrho.Common
                 return new TReal(lr?.ToDouble()??0 + rr?.ToDouble()??0);
             if (left is TSet sl && right is TSet sr)
                 return sl + sr;
+            if (left is TSet ls && right.dataType.defpos == ls.dataType.elType?.defpos)
+                return ls + right;
+            if (right is TSet rs && left.dataType.defpos == rs.dataType.elType?.defpos)
+                return rs + left;
             if (left is TList ll && right is TList rl)
                 return ll + rl;
             if (left is TMetadata ml && right is TMetadata mr)
@@ -319,7 +325,7 @@ namespace Pyrrho.Common
         internal TPosition(long p) : base(Domain.Position, p) { }
         internal override TypedValue Fix(Context cx)
         {
-            return new TPosition(cx.Fix(value));
+            return new TPosition(cx.uids[value]??value);
         }
         public override string ToString()
         {

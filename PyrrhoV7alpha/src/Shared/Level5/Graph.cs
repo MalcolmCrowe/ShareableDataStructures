@@ -1657,7 +1657,14 @@ CTree<string, QlValue> ls, bool allowChange = false)
                     };
                     if (qv != TNull.Value)
                     {
-                        ls += (cx.NameFor(tc.cp) ?? tc.cn, new SqlLiteral(cx.GetUid(), qv));
+                        var n = cx.NameFor(tc.cp) ?? tc.cn;
+                        if (tc.cd.kind==Qlx.POSITION)
+                            ls += (n, new SqlLiteral(cx.GetUid(), qv));
+                        else
+                        {
+                            var ov = ls[tc.cn]?._Eval(cx)??TNull.Value;
+                            ls += (n, new SqlLiteral(cx.GetUid(), tc.cd.Coerce(cx,qv + ov)));
+                        }
                         found = true;
                     }
                 }
