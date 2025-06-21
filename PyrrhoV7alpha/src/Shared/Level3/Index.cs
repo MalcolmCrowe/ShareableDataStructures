@@ -239,7 +239,7 @@ namespace Pyrrho.Level3
             return false;
         }
         /// <summary>
-        /// Check referential integrity
+        /// CheckFields referential integrity
         /// </summary>
         /// <param name="m">The key to check</param>
         void CheckRef(Database db, CList<TypedValue> m)

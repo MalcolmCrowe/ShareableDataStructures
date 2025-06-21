@@ -228,7 +228,7 @@ namespace Pyrrho.Level3
     internal class ObInfo : Basis
     {
         internal const long
-            ConstraintNames = -324, // CTree<string,long> Check
+            ConstraintNames = -324, // CTree<string,long> CheckFields
             Defs = -367,        // BTree<long,Names> DBObject  
             Description = -67, // string
             Inverts = -353, // long Procedure

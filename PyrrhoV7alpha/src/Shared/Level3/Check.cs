@@ -13,7 +13,7 @@ using Pyrrho.Level4;
 namespace Pyrrho.Level3
 {
     /// <summary>
-    /// Database Object for Check constraints
+    /// Database Object for CheckFields constraints
     /// Immutable
     /// shareable
     /// </summary>

@@ -187,7 +187,7 @@ namespace Pyrrho.Level3
             return r + (Dependents, os)+(_Depth,d);
         }
         /// <summary>
-        /// Check to see if the current role has the given privilege on this (except Admin).
+        /// CheckFields to see if the current role has the given privilege on this (except Admin).
         /// Object owners (users) implicitly have all privileges on their objects.
         /// </summary>
         /// <param name="priv">The privilege in question</param>
@@ -523,7 +523,7 @@ namespace Pyrrho.Level3
             return ma;
         }
         /// <summary>
-        /// Check constraints can be added to Domains, TableColumns and Tables
+        /// CheckFields constraints can be added to Domains, TableColumns and Tables
         /// </summary>
         /// <param name="ck"></param>
         /// <param name="db"></param>

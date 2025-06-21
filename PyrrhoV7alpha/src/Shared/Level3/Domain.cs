@@ -88,7 +88,8 @@ namespace Pyrrho.Level3
     Document, DocArray, ObjectId, JavaScript, ArgList, // Pyrrho 5.1
     TableType, Row, Delta, Position,
     Metadata, HttpDate, Star, // Pyrrho v7
-    _Rvv, GraphSpec, PathType, LabelType, Comparable, Connector; // Rvv is V7 validator type
+    _Rvv, GraphSpec, PathType, LabelType, Comparable, 
+    Connector, Vector; // Rvv is V7 validator type
         internal static UDType TypeSpec;
         internal static NodeType NodeType,NodeSchema;
         internal static EdgeType EdgeType,EdgeSchema;
@@ -163,6 +164,7 @@ namespace Pyrrho.Level3
             PathType = new StandardDataType(Qlx.PATH,OrderCategory.Primitive,NodeType);
             LabelType = new StandardDataType(Qlx.LABEL); // opaque
             Connector = new StandardDataType(Qlx.CONNECTING); // opaque
+            Vector = new StandardDataType(Qlx.VECTOR); // opaque
         }
         public override Domain domain => this;
         public Qlx kind => (Qlx)(mem[Kind] ?? Qlx.NO);
@@ -911,6 +913,16 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.TIMESTAMP: return new TDateTime(this, new DateTime(rdr.GetLong()));
                 case Qlx.INTERVAL0: return new TInterval(this, rdr.GetInterval0()); //attempt backward compatibility
                 case Qlx.INTERVAL: return new TInterval(this, rdr.GetInterval());
+                case Qlx.VECTOR:
+                    {
+                        var dp = rdr.GetLong();
+                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var vs = CTree<long, TypedValue>.Empty;
+                        var n = rdr.GetInt();
+                        for (int j = 0; j < n; j++)
+                            vs += (rdr.GetInt(), el.Get(log, rdr, pp));
+                        return new TVector(new Domain(-1L, Qlx.VECTOR, el), vs);
+                    }
                 case Qlx.ARRAY:
                     {
                         var dp = rdr.GetLong();
@@ -939,6 +951,16 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         var n = rdr.GetInt();
                         for (int j = 0; j < n; j++)
                             m = m.Add(el.Get(log, rdr, pp));
+                        return m;
+                    }
+                case Qlx.LIST:
+                    {
+                        var dp = rdr.GetLong();
+                        var el = (Domain?)rdr.context.db.objects[dp] ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+                        var m = new TList(el);
+                        var n = rdr.GetInt();
+                        for (int j = 0; j < n; j++)
+                            m += el.Get(log, rdr, pp);
                         return m;
                     }
                 case Qlx.REF:
@@ -1049,6 +1071,9 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 DataType.Blob => Blob,
                 DataType.Row => Row,
                 DataType.Password => Password,
+                DataType.List => (kind==Qlx.SET)?SetType:List,
+                DataType.Multiset => Multiset,
+                DataType.Array => (kind==Qlx.VECTOR)?Vector:Array,
                 _ => this,
             };
         }
@@ -1145,48 +1170,52 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
         /// <param name="wr"></param>
         public virtual void PutDataType(Domain nt, Writer wr)
         {
-            if (EqualOrStrongSubtypeOf(nt) && wr.cx.db.Find(this) is Domain d
-                && d.defpos<Transaction.TransPos && CompareTo(nt)!=0)
+            switch (Equivalent(kind))
             {
-                wr.WriteByte((byte)DataType.DomainRef);
-                wr.PutLong(d.defpos);
-                return;
-            }
-            else 
-                switch (Equivalent(kind))
-                {
-                    case Qlx.Null:
-                    case Qlx.NULL: wr.WriteByte((byte)DataType.Null); break;
-                    case Qlx.ARRAY: wr.WriteByte((byte)DataType.Array); break;
-                    case Qlx.BLOB: wr.WriteByte((byte)DataType.Blob); break;
-                    case Qlx.BOOLEAN: wr.WriteByte((byte)DataType.Boolean); break;
-                    case Qlx.LEVEL:
-                    case Qlx.METADATA:
-                    case Qlx.CHECK:
-                    case Qlx.CHAR: wr.WriteByte((byte)DataType.String); break;
-                    case Qlx.DOCUMENT: goto case Qlx.BLOB;
-                    case Qlx.DOCARRAY: goto case Qlx.BLOB;
-                    case Qlx.OBJECT: goto case Qlx.BLOB;
+                case Qlx.Null:
+                case Qlx.NULL: wr.WriteByte((byte)DataType.Null); break;
+                case Qlx.VECTOR:
+                case Qlx.ARRAY: wr.WriteByte((byte)DataType.Array); break;
+                case Qlx.BLOB: wr.WriteByte((byte)DataType.Blob); break;
+                case Qlx.BOOLEAN: wr.WriteByte((byte)DataType.Boolean); break;
+                case Qlx.LEVEL:
+                case Qlx.METADATA:
+                case Qlx.CHECK:
+                case Qlx.CHAR: wr.WriteByte((byte)DataType.String); break;
+                case Qlx.DOCUMENT: goto case Qlx.BLOB;
+                case Qlx.DOCARRAY: goto case Qlx.BLOB;
+                case Qlx.OBJECT: goto case Qlx.BLOB;
 #if MONGO || SIMILAR
                 case Sqlx.REGULAR_EXPRESSION: goto case Sqlx.CHAR;
 #endif
-                    case Qlx.INTEGER: wr.WriteByte((byte)DataType.Integer); break;
-                    case Qlx.SET: 
-                    case Qlx.MULTISET: wr.WriteByte((byte)DataType.Multiset); break;
-                    case Qlx.NUMERIC: wr.WriteByte((byte)DataType.Numeric); break;
-                    case Qlx.PASSWORD: wr.WriteByte((byte)DataType.Password); break;
-                    case Qlx.REAL: wr.WriteByte((byte)DataType.Numeric); break;
-                    case Qlx.DATE: wr.WriteByte((byte)DataType.Date); break;
-                    case Qlx.TIME: wr.WriteByte((byte)DataType.TimeSpan); break;
-                    case Qlx.TIMESTAMP: wr.WriteByte((byte)DataType.TimeStamp); break;
-                    case Qlx.INTERVAL: wr.WriteByte((byte)DataType.Interval); break;
-                    case Qlx.TYPE:
+                case Qlx.INTEGER: wr.WriteByte((byte)DataType.Integer); break;
+                case Qlx.LIST:
+                case Qlx.SET: wr.WriteByte((byte)DataType.List); break;
+                case Qlx.MULTISET: wr.WriteByte((byte)DataType.Multiset); break;
+                case Qlx.NUMERIC: wr.WriteByte((byte)DataType.Numeric); break;
+                case Qlx.PASSWORD: wr.WriteByte((byte)DataType.Password); break;
+                case Qlx.REAL: wr.WriteByte((byte)DataType.Numeric); break;
+                case Qlx.DATE: wr.WriteByte((byte)DataType.Date); break;
+                case Qlx.TIME: wr.WriteByte((byte)DataType.TimeSpan); break;
+                case Qlx.TIMESTAMP: wr.WriteByte((byte)DataType.TimeStamp); break;
+                case Qlx.INTERVAL: wr.WriteByte((byte)DataType.Interval); break;
+                case Qlx.TYPE:
+                    wr.WriteByte((byte)DataType.DomainRef);
+                    var nd = (Domain?)wr.cx.db.objects[defpos] ?? Content; // without nms
+                    wr.PutLong(wr.cx.db.Find(nd)?.defpos ?? Content.defpos); break;
+                case Qlx.REF:
+                case Qlx.ROW: wr.WriteByte((byte)DataType.Row); break;
+                default:
+                    if (EqualOrStrongSubtypeOf(nt) && wr.cx.db.Find(this) is Domain d
+            && d.defpos < Transaction.TransPos && CompareTo(nt) != 0)
+                    {
                         wr.WriteByte((byte)DataType.DomainRef);
-                        var nd = (Domain?)wr.cx.db.objects[defpos]??Content; // without nms
-                        wr.PutLong(wr.cx.db.Find(nd)?.defpos ??Content.defpos); break;
-                    case Qlx.REF:
-                    case Qlx.ROW: wr.WriteByte((byte)DataType.Row); break;
-                }
+                        wr.PutLong(d.defpos);
+                        return;
+                    }
+                    throw new NotSupportedException();
+            }
+            return;
         }
         public virtual void Put(TypedValue tv, Writer wr)
         {
@@ -1289,7 +1318,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         if (tv is TInt && tv.ToLong() is long xs)
                             wr.PutLong(xs);
                         else if (tv is TDateTime te && te.value is DateTime de)
-                            wr.PutLong(de.Ticks); 
+                            wr.PutLong(de.Ticks);
                         return;
                     }
                 case Qlx.INTERVAL:
@@ -1371,50 +1400,51 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     }
                 case Qlx.REF: goto case Qlx.ROW;
                 case Qlx.ARRAY:
+                case Qlx.VECTOR:
                     {
-                        if (tv is TList a)
+                        var aa = (TArray)tv;
+                        var et = aa.dataType.elType ?? throw new PEException("PE50708");
+                        wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48814"));
+                        wr.PutInt((int)aa.array.Count);
+                        for (var ab = aa.array.First(); ab is not null; ab = ab.Next())
                         {
-                            var et = a.dataType.elType ?? throw new PEException("PE50708");
-                            wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48814"));
-                            wr.PutInt(a.Length);
-                            for (var ab = a.list.First(); ab is not null; ab = ab.Next())
-                            {
-                                wr.PutInt(ab.key());
-                                et.Put(ab.value(), wr);
-                            }
-                        } 
-                        else if (tv is TArray aa)
-                        {
-                            var et = aa.dataType.elType ?? throw new PEException("PE50708");
-                            wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48814"));
-                            wr.PutInt((int)aa.array.Count);
-                            for (var ab = aa.array.First(); ab is not null; ab = ab.Next())
-                            {
-                                wr.PutLong(ab.key());
-                                et.Put(ab.value(), wr);
-                            }
+                            wr.PutLong(ab.key());
+                            et.Put(ab.value(), wr);
                         }
                         return;
                     }
-                case Qlx.MULTISET:
+                case Qlx.LIST:
                     {
-                        TMultiset m = (TMultiset)tv;
-                        var et = m.dataType.elType?? throw new PEException("PE50706");
-                        wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48815"));
-                        wr.PutInt((int)m.Count);
-                        for (var a = m.tree.First(); a != null; a = a.Next())
-                            for (int i = 0; i < a.value(); i++)
-                                et.Put(a.key(), wr);
+                        var a = (TList)tv;
+                        var et = a.dataType.elType ?? throw new PEException("PE50708");
+                        wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48814"));
+                        wr.PutInt(a.Length);
+                        for (var ab = a.list.First(); ab is not null; ab = ab.Next())
+                            et.Put(ab.value(), wr);
                         return;
                     }
                 case Qlx.SET:
                     {
                         TSet m = (TSet)tv;
-                        var et = m.dataType.elType ?? throw new PEException("PE50707");
+                        var et = m.dataType.elType ?? throw new PEException("PE50706");
                         wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48815"));
                         wr.PutInt((int)m.tree.Count);
                         for (var a = m.tree.First(); a != null; a = a.Next())
                             et.Put(a.key(), wr);
+                        return;
+                    }
+                case Qlx.MULTISET:
+                    {
+                        TMultiset m = (TMultiset)tv;
+                        var et = m.dataType.elType ?? throw new PEException("PE50706");
+                        wr.PutLong(wr.cx.db.Find(et)?.defpos ?? throw new PEException("PE48815"));
+                        wr.PutInt((int)m.Count);
+                        for (var a = m.tree.First(); a != null; a = a.Next())
+                        if (a.value() is long p && p>0)
+                        { 
+                            et.Put(a.key(), wr);
+                            wr.PutInt((int)p);
+                        }
                         return;
                     }
                 case Qlx.METADATA:
@@ -2942,6 +2972,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 return Check(ts.value);
             if (v.dataType.kind == Qlx.SET && ((TSet)v).Cardinality() == 1)
                 return ((TSet)v).First()?.Value() ?? TNull.Value;
+            if (kind == Qlx.SET && elType is Domain ed && v.dataType.kind == ed.kind)
+                return new TSet(ed) + v;
             if (v.dataType.kind == Qlx.MULTISET && ((TMultiset)v).Cardinality() == 1)
                 return Check(((TMultiset)v).First()?.Value() ?? TNull.Value);
             //          if (v.dataType.name == name)
@@ -3145,8 +3177,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     break;
                 case Qlx.CHAR:
                     {
-                        var vt = v.dataType;
-                        string str = vt.kind switch
+                        var ct = v.dataType;
+                        string str = ct.kind switch
                         {
                             Qlx.DATE or Qlx.TIMESTAMP => ((TDateTime)v).value.ToString(culture),
                             Qlx.CHAR => ((TChar)v).ToString(),
@@ -3156,7 +3188,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         };
                         if (prec != 0 && str.Length > prec)
                             throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
-                                                .AddType(this).AddValue(vt);
+                                                .AddType(this).AddValue(ct);
                         return Check(new TChar(this, str));
                     }
                 case Qlx.PERIOD:
@@ -3219,31 +3251,99 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.VALUE:
                 case Qlx.NULL:
                     return Check(v);
+                case Qlx.LIST:
+                    if (elType is not null && v.dataType.elType is not null)
+                    {
+                        var w = CList<TypedValue>.Empty;
+                        for (var b = v.First(); b != null; b = b.Next())
+                            w += elType.Coerce(cx,b.Value());
+                        return new TList(this, w);
+                    }
+                    break;
+                case Qlx.VECTOR:
+                    if (v.dataType.elType is not null)
+                        if (v is TArray av)
+                        {
+                            if (elType is null)
+                                return new TVector(new Domain(-1L, Qlx.VECTOR, v.dataType.elType), av.array);
+                            else
+                            {
+                                var w = CTree<long, TypedValue>.Empty;
+                                for (var b = av.array.First(); b != null; b = b.Next())
+                                    w += (b.key(), elType.Coerce(cx, b.value()));
+                                return new TVector(this, w);
+                            }
+                        }
+                        else
+                        {
+                            var tp = elType ?? v.dataType.elType;
+                            var w = CTree<long, TypedValue>.Empty;
+                            var k = 0;
+                            for (var b = v.First(); b != null; b = b.Next())
+                                w += (k++, tp.Coerce(cx, b.Value()));
+                            return new TVector((elType is null)?new Domain(-1L,Qlx.VECTOR,tp):this, w);
+                        }
+                        break;
                 case Qlx.ARRAY:
-                    if (v is TList && elType is not null && v.dataType.elType is not null
-                        && elType.CanTakeValueOf(v.dataType.elType))
-                        return Check(v);
-                    if (v is TArray && elType is not null && v.dataType.elType is not null
-                        && elType.CanTakeValueOf(v.dataType.elType))
-                        return Check(v);
+                    if (elType is not null && v.dataType.elType is not null)
+                        if (v is TArray aa)
+                        {
+                            var w = CTree<long, TypedValue>.Empty;
+                            for (var b = aa.array.First(); b != null; b = b.Next())
+                                w += (b.key(), elType.Coerce(cx, b.value()));
+                            return new TArray(this, w);
+                        }
+                        else
+                        {
+                            var tp = elType ?? v.dataType.elType;
+                            var w = CTree<long, TypedValue>.Empty;
+                            var k = 0;
+                            for (var b = v.First(); b != null; b = b.Next())
+                                w += (k++, tp.Coerce(cx, b.Value()));
+                            return new TArray(this, w);
+                        }
                     break;
                 case Qlx.SET:
-                    if (v.dataType.elType is not null)
-                    {
-                        if (v is TSet && elType is not null && elType.CanTakeValueOf(v.dataType.elType))
-                            return Check(v);
-                        else if (v.dataType.EqualOrStrongSubtypeOf(v.dataType.elType))
-                            return Check(new TSet(v.dataType, new CTree<TypedValue, bool>(v, true)));
-                    }
-                    if (elType?.CanTakeValueOf(v.dataType) == true)
-                        return Check(new TSet(this, new CTree<TypedValue, bool>(v, true)));
-                    break;
+                    if (elType is not null && v.dataType.elType is not null)
+                        if (v is TSet st)
+                        {
+                            var w = CTree<TypedValue,bool>.Empty;
+                            for (var b = st.tree.First(); b != null; b = b.Next())
+                                w += (elType.Coerce(cx, b.key()),true);
+                            return new TSet(this, w);
+                        }
+                        else
+                        {
+                            var w = CTree<TypedValue,bool>.Empty;
+                            for (var b = v.First(); b != null; b = b.Next())
+                                w += (elType.Coerce(cx, b.Value()),true);
+                            return new TSet(this, w);
+                        }
+                        break;
                 case Qlx.MULTISET:
-                    if (v is TMultiset && elType is not null && v.dataType.elType is not null
-                        && elType.CanTakeValueOf(v.dataType.elType))
-                        return Check(v);
-                    if (elType?.CanTakeValueOf(v.dataType) == true)
-                        return Check(new TMultiset(v.dataType, new BTree<TypedValue, long?>(v, 1L), 1));
+                    if (elType is not null && v.dataType.elType is not null)
+                        if (v is TMultiset mt)
+                        {
+                            var w = BTree<TypedValue, long?>.Empty;
+                            var ct = 0L;
+                            for (var b = mt.tree.First(); b != null; b = b.Next())
+                                if (b.value() is long m && m > 0)
+                                {
+                                    w += (elType.Coerce(cx, b.key()), m);
+                                    ct += m;
+                                }
+                            return new TMultiset(this, w, ct);
+                        }
+                        else
+                        {
+                            var w = BTree<TypedValue, long?>.Empty;
+                            for (var b = v.First(); b != null; b = b.Next())
+                            {
+                                var nv = elType.Coerce(cx, b.Value());
+                                w += (nv, (w[nv] is long cp)?cp+1L:1L);
+                            }
+                            return new TMultiset(this, w, v.Cardinality());
+                        }
                     break;
                 default:
                     return Check(v);

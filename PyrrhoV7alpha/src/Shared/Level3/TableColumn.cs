@@ -21,7 +21,7 @@ namespace Pyrrho.Level3
     internal class TableColumn : DBObject
     {
         internal const long
-            Checks = -268,  // CTree<long,bool> Check
+            Checks = -268,  // CTree<long,bool> CheckFields
             Generated = -269, // GenerationRule (C)
             Connector = -391, // TConnector
             Seq = -344, // int column position in this table
@@ -257,7 +257,7 @@ namespace Pyrrho.Level3
             return tc;
         }
         /// <summary>
-        /// Accessor: Check a new column notnull condition
+        /// Accessor: CheckFields a new column notnull condition
         /// Normally fail if null values found
         /// </summary>
         /// <param name="tr">Transaction</param>
@@ -292,9 +292,9 @@ namespace Pyrrho.Level3
             return cx.Add(this + (_Framing, framing+(Framing.Obs,f)));
         }
         /// <summary>
-        /// Accessor: Check a new column check constraint
+        /// Accessor: CheckFields a new column check constraint
         /// </summary>
-        /// <param name="c">The new Check constraint</param>
+        /// <param name="c">The new CheckFields constraint</param>
         /// <param name="signal">signal is 44003 for column check, 44001 for domain check</param>
         internal void ColumnCheck(Transaction tr, Check c, string signal)
         {
@@ -542,7 +542,7 @@ namespace Pyrrho.Level3
         internal static TableRow Any = new (-1L); // creates a dummy TableRow for TPath
         public TableRow(Record rc, Context cx)
         {
-            rc.Check(cx);
+            rc.CheckFields(cx);
             defpos = rc.defpos;
             time = rc.time;
             user = (cx.user ?? User.None).defpos;
@@ -555,7 +555,7 @@ namespace Pyrrho.Level3
         }
         public TableRow(Update up, Context cx, TableRow? old, Level? lv=null)
         {
-            up.Check(cx);
+            up.CheckFields(cx);
             defpos = up.defpos;
             time = up.time;
             user = (cx.user ?? User.None).defpos;
@@ -748,7 +748,7 @@ namespace Pyrrho.Level3
         internal TableRow ShallowReplace(Context cx,long was, long now)
         {
             var vs = cx.ShallowReplace(vals, was, now);
-            return (vs != vals) ? new TableRow(this,vs) : this; // Check is done by caller: can't be done just now
+            return (vs != vals) ? new TableRow(this,vs) : this; // CheckFields is done by caller: can't be done just now
         }
         public override string ToString()
         {

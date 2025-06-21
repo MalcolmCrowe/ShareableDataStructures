@@ -2644,7 +2644,7 @@ namespace Pyrrho.Level4
                 throw new DBException("42112", id.ident).Mix();
             Mustbe(Qlx.Id);
             // We will construct paths as required for any later components
-            while (tok == Qlx.DOT)
+            while (tok == Qlx.DOTTOKEN)
             {
                 Next();
                 var pa = new Ident(this);
@@ -5149,7 +5149,7 @@ namespace Pyrrho.Level4
                 && cx.db.objects[si.names[ic.sub.ident].Item2] is TableColumn tc1)
             {
                 var co = new QlInstance(ic.sub, cx, sv.defpos, tc1);
-                var nc = new SqlValueExpr(ic, cx, Qlx.DOT, sv, co, Qlx.NO);
+                var nc = new SqlValueExpr(ic, cx, Qlx.DOTTOKEN, sv, co, Qlx.NO);
                 return nc;
             }
             if (pa is QlValue sv1 && sv1.domain is NodeType && sub is not null)
@@ -5230,7 +5230,7 @@ namespace Pyrrho.Level4
             il ??= BList<Ident>.Empty;
             var left = ParseIdent(stdfns);
             il += left;
-            if (tok == Qlx.DOT)
+            if (tok == Qlx.DOTTOKEN)
             {
                 Next();
                 if (!Match(Qlx.Id)) // allow VERSIONING etc to follow - see  ParseVarOrColum
@@ -6480,7 +6480,7 @@ namespace Pyrrho.Level4
                 or Qlx.UINT8 or Qlx.UINT16 or Qlx.UINT32 or Qlx.UINT64 or Qlx.UINT128 or Qlx.UINT256 
                 or Qlx.CLOB or Qlx.DATE or Qlx.TIME or Qlx.TIMESTAMP or Qlx.INTERVAL or Qlx.DOCUMENT 
                 or Qlx.DOCARRAY or Qlx.CHECK or Qlx.ROW or Qlx.TABLE or Qlx.ARRAY or Qlx.SET or Qlx.MULTISET 
-                or Qlx.LIST or Qlx.REF => true,
+                or Qlx.LIST or Qlx.VECTOR or Qlx.REF => true,
                 _ => false,
             };
             ;
@@ -6655,6 +6655,11 @@ namespace Pyrrho.Level4
                 if (Match(Qlx.YEAR, Qlx.DAY, Qlx.MONTH, Qlx.HOUR, Qlx.MINUTE, Qlx.SECOND))
                     dr = ParseIntervalType();
                 r = dr;
+            }
+            else if (Match(Qlx.VECTOR))
+            {
+                r = r0 = Domain.Vector;
+                Next();
             }
             else if (Match(Qlx.PASSWORD))
             {
@@ -8968,8 +8973,8 @@ namespace Pyrrho.Level4
             var left = ParseSqlValueItem(m);
             bool invert = false;
             var lp = LexDp();
-            while (tok == Qlx.DOT || tok == Qlx.LBRACK)
-                if (tok == Qlx.DOT)
+            while (tok == Qlx.DOTTOKEN || tok == Qlx.LBRACK)
+                if (tok == Qlx.DOTTOKEN)
                 {
                     // could be tble alias, block id, instance id etc
                     Next();
@@ -9006,7 +9011,7 @@ namespace Pyrrho.Level4
                         var cp = oi?.names[n.ident].Item2 ?? -1L;
                         if (cp == 0L) throw new DBException("42000");
                         var el = new QlInstance(n, cx, lp, cp);
-                        left = (QlValue)cx.Add(new SqlValueExpr(cx.GetUid(), cx, Qlx.DOT, left, el, Qlx.NO, mm));
+                        left = (QlValue)cx.Add(new SqlValueExpr(cx.GetUid(), cx, Qlx.DOTTOKEN, left, el, Qlx.NO, mm));
                     }
                 }
                 else // tok==Qlx.LBRACK
@@ -9422,6 +9427,7 @@ namespace Pyrrho.Level4
                         Mustbe(Qlx.RBRACK);
                         return (QlValue)cx.Add(new SqlValueArray(lp, cx, xp, vs));
                     }
+
                 case Qlx.SCHEMA:
                     {
                         Next();
@@ -10292,7 +10298,7 @@ namespace Pyrrho.Level4
                             mod = tok;
                             Next();
                         }
-                        val = ParseSqlValue((DBObject._Domain, Domain.Char));
+                        val = ParseSqlValue((DBObject._Domain,Domain.Char));
                         if (tok == Qlx.FROM)
                         {
                             Next();
@@ -10309,6 +10315,63 @@ namespace Pyrrho.Level4
                 case Sqlx.VAR_POP: goto case Sqlx.COUNT;
                 case Sqlx.VAR_SAMP: goto case Sqlx.COUNT;
 #endif
+                case Qlx.VECTOR:
+                    kind = tok;
+                    Next();
+                    Mustbe(Qlx.LPAREN);
+                    val = ParseSqlValue((DBObject._Domain,Domain.Char));
+                    if (Match(Qlx.COMMA))
+                    {
+                        Next();
+                        op1 = ParseSqlValue((DBObject._Domain, Domain.Int));
+                        if (Match(Qlx.COMMA))
+                        {
+                            Next();
+                            op2 = (QlValue)cx.Add(new SqlTypeExpr(cx.GetUid(), ParseDataType()));
+                        }
+                    }
+                    Mustbe(Qlx.RPAREN);
+                    break;
+                case Qlx.VECTOR_DIMENSION_COUNT:
+                    kind = tok;
+                    Next();
+                    Mustbe(Qlx.LPAREN);
+                    val = ParseSqlValue((DBObject._Domain, Domain.Vector));
+                    Mustbe(Qlx.RPAREN);
+                    break;
+                case Qlx.VECTOR_DISTANCE:
+                    kind = tok;
+                    Next();
+                    Mustbe(Qlx.LPAREN);
+                    val = ParseSqlValue((DBObject._Domain, Domain.Vector));
+                    Mustbe(Qlx.COMMA);
+                    op1 = ParseSqlValue((DBObject._Domain, Domain.Vector));
+                    Mustbe(Qlx.COMMA);
+                    mod = Mustbe(Qlx.EUCLIDEAN, Qlx.EUCLIDEAN_SQUARED, Qlx.MANHATTAN, 
+                        Qlx.COSINE, Qlx.DOT, Qlx.HAMMING);
+                    Mustbe(Qlx.RPAREN);
+                    break;
+                case Qlx.VECTOR_NORM:
+                    kind = tok;
+                    Next();
+                    Mustbe(Qlx.LPAREN);
+                    val = ParseSqlValue((DBObject._Domain, Domain.Vector));
+                    Mustbe(Qlx.COMMA);
+                    mod = Mustbe(Qlx.EUCLIDEAN, Qlx.MANHATTAN);
+                    Mustbe(Qlx.RPAREN);
+                    break;
+                case Qlx.VECTOR_SERIALIZE:
+                    kind = tok;
+                    Next();
+                    Mustbe(Qlx.LPAREN);
+                    val = ParseSqlValue((DBObject._Domain, Domain.Vector));
+                    Mustbe(Qlx.RPAREN);
+                    if (Match(Qlx.RETURNING))
+                    {
+                        Next();
+                        op1 = (QlValue)cx.Add(new SqlTypeExpr(cx.GetUid(), ParseDataType()));
+                    }
+                    break;
                 case Qlx.VERSIONING:
                     kind = tok;
                     Next();

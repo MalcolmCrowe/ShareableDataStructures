@@ -5426,7 +5426,7 @@ namespace Pyrrho.Level4
             internal TransitionCursor(TableActivation ta, TransitionRowSet trs, Cursor fbm, int pos,
                 Domain iC)
                 : base(ta.next ?? throw new PEException("PE49205"), trs, pos, fbm._ds,
-                       new TRow((Domain)trs, iC, fbm))// _Fix(ta,trs,iC,fbm)))
+                       new TRow((Domain)trs, iC,fbm))
             {
                 _trs = trs;
                 _fbm = fbm;

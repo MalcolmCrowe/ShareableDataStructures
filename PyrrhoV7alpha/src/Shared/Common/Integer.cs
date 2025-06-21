@@ -777,7 +777,7 @@ namespace Pyrrho.Common
             return new Integer(pw);
         }
         /// <summary>
-        /// Check a bitmask
+        /// CheckFields a bitmask
         /// </summary>
         /// <param name="p">the bit to check</param>
         /// <returns>whether the bit is on</returns>

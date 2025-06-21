@@ -66,7 +66,7 @@ namespace Pyrrho.Level4
             return (rowType, representation, rowType, tr, ns, ds);
         }
         /// <summary>
-        /// Accessor: Check object permissions
+        /// Accessor: CheckFields object permissions
         /// </summary>
         /// <param name="db">The Database</param>
         /// <param name="priv">The privilege being checked for</param>
@@ -176,7 +176,7 @@ namespace Pyrrho.Level4
             return name??"";
         }
         /// <summary>
-        /// Accessor: Check object permissions
+        /// Accessor: CheckFields object permissions
         /// </summary>
         /// <param name="db">The Database</param>
         /// <param name="priv">The privilege being checked for</param>
@@ -1352,7 +1352,7 @@ namespace Pyrrho.Level4
             }
         }
         /// <summary>
-        /// set up the Log$Check table
+        /// set up the Log$CheckFields table
         /// </summary>
         static void LogCheckResults()
         {
@@ -1366,7 +1366,7 @@ namespace Pyrrho.Level4
             t.Add();
         }
         /// <summary>
-        /// an enumerator for Log$Check
+        /// an enumerator for Log$CheckFields
         /// </summary>
         internal class LogCheckBookmark : LogSystemBookmark
         {
@@ -1433,7 +1433,7 @@ namespace Pyrrho.Level4
                 return null;
             }
             /// <summary>
-            /// the current value: (Pos,Ref,Name,Check,Transaction)
+            /// the current value: (Pos,Ref,Name,CheckFields,Transaction)
             /// </summary>
             static TRow _Value(SystemRowSet res, Physical ph)
             {
@@ -5396,7 +5396,7 @@ namespace Pyrrho.Level4
                 return null;
             }
             /// <summary>
-            /// the current value: Table,Column,Check,Select,Pos)
+            /// the current value: Table,Column,CheckFields,Select,Pos)
             /// </summary>
             static TRow _Value(Context _cx, SystemRowSet rs, object ta,long tc,long ck)
             {

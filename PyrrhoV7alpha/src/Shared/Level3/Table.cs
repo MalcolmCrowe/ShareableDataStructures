@@ -45,7 +45,7 @@ namespace Pyrrho.Level3
             RefIndexes = -250, // CTree<long,CTree<Domain,Domain>> referencing Table,referencing TableColumns,referenced TableColumns
             SysRefIndexes = -111, // CTree<long,CTree<long,CTree<long,CTree<long,bool>>>> nodeTable,node, edgeColumn,edge 
             SystemPS = -265, //long (system-period specification)
-            TableChecks = -266, // CTree<long,bool> Check
+            TableChecks = -266, // CTree<long,bool> CheckFields
             TableRows = -181, // BTree<long,TableRow>
             Triggers = -267; // CTree<PTrigger.TrigType,CTree<long,bool>> (T) 
         /// <summary>
@@ -364,7 +364,7 @@ namespace Pyrrho.Level3
             if (ts != tableRows)
             {
              //   for (var b = ts.First(); b != null; b = b.Next()) // verify that all tablerows have the right types for all vals
-             //       b.value()?.Check(r,cx);
+             //       b.value()?.CheckFields(r,cx);
                 r += (TableRows, ts);
             }
             return r;

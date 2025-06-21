@@ -282,7 +282,7 @@ namespace Pyrrho.Level3
                 Qlx.COMMA => ",",
                 Qlx.CONCATENATE => "||",
                 Qlx.DIVIDE => "/",
-                Qlx.DOT => ".",
+                Qlx.DOTTOKEN => ".",
                 Qlx.DOUBLECOLON => "::",
                 Qlx.GEQ => ">=",
                 Qlx.GTR => ">",
@@ -2007,7 +2007,7 @@ namespace Pyrrho.Level3
                             dm = left.FindType(cx, Domain.UnionNumeric);
                         break;
                     }
-                case Qlx.DOT:
+                case Qlx.DOTTOKEN:
                     dm = dr;
                     if (left?.name != null && left.name != "" && right?.name != null && right.name != "")
                         nm = left.name + "." + right.name;
@@ -2294,7 +2294,7 @@ namespace Pyrrho.Level3
         internal override bool KnownBy(Context cx, RowSet q, bool ambient = false)
         {
             return ((cx.obs[left] as QlValue)?.KnownBy(cx, q, ambient) != false)
-                && (op==Qlx.DOT || ((cx.obs[right] as QlValue)?.KnownBy(cx, q, ambient) != false));
+                && (op==Qlx.DOTTOKEN || ((cx.obs[right] as QlValue)?.KnownBy(cx, q, ambient) != false));
         }
         internal override bool KnownBy<V>(Context cx, CTree<long, V> cs, bool ambient = false)
         {
@@ -2333,7 +2333,7 @@ namespace Pyrrho.Level3
                 return r;
             if (cx.obs[left] is QlValue sl)
                 r += sl.ExposedOperands(cx,ag,gc);
-            if (cx.obs[right] is QlValue sr && op!=Qlx.DOT)
+            if (cx.obs[right] is QlValue sr && op!=Qlx.DOTTOKEN)
                 r += sr.ExposedOperands(cx,ag,gc);
             return r;
         }
@@ -2376,7 +2376,7 @@ namespace Pyrrho.Level3
                             dm = sl.FindType(cx, Domain.UnionNumeric);
                         break;
                     }
-                case Qlx.DOT:
+                case Qlx.DOTTOKEN:
                     dm = dr;
                     break;
                 case Qlx.ELEMENTID: dm = Domain.Int; break; // tableRow.defpos
@@ -2559,7 +2559,7 @@ namespace Pyrrho.Level3
         }
         internal override void Set(Context cx, TypedValue v)
         {
-            if (op != Qlx.DOT)
+            if (op != Qlx.DOTTOKEN)
                 throw new DBException("42174");
             var lf = cx.obs[left];
             var rw = (TRow?)lf?.Eval(cx) ?? TRow.Empty;
@@ -2680,7 +2680,7 @@ namespace Pyrrho.Level3
                             return v;
                         return domain.Eval(defpos, cx, a, op, b);
                     }
-                case Qlx.DOT:
+                case Qlx.DOTTOKEN:
                     {
                         var ol = cx.obs[left] as QlValue;
                  //       if (ol is GqlNode && cx.values[right] is TypedValue dv && dv != TNull.Value)
@@ -3102,7 +3102,7 @@ namespace Pyrrho.Level3
             var r = qn;
             if (cx.obs[left] is QlValue sv)
                 r = sv.Needs(cx, rs, r) ?? r;
-            if (op != Qlx.DOT)
+            if (op != Qlx.DOTTOKEN)
                 r = ((QlValue?)cx.obs[right])?.Needs(cx, rs, r) ?? r;
             return r;
         }
@@ -3119,7 +3119,7 @@ namespace Pyrrho.Level3
             var r = CTree<long, bool>.Empty;
             if (cx.obs[left] is QlValue sv)
                 r = sv.Needs(cx, rs);
-            if (op != Qlx.DOT && cx.obs[right] is QlValue sw)
+            if (op != Qlx.DOTTOKEN && cx.obs[right] is QlValue sw)
                 r += sw.Needs(cx, rs);
             return r;
         }
@@ -6846,7 +6846,7 @@ namespace Pyrrho.Level3
         /// </summary>
         public long window => (long)(mem[Window] ?? -1L);
         /// <summary>
-        /// Check for monotonic
+        /// CheckFields for monotonic
         /// </summary>
         public bool monotonic => (bool)(mem[Monotonic] ?? false);
         /// <summary>
@@ -7293,6 +7293,11 @@ namespace Pyrrho.Level3
                 case Qlx.UNNEST: return Domain.TableType;
                 case Qlx.UPPER: return Domain.Char;
                 case Qlx.USER: return Domain.Char;
+                case Qlx.VECTOR: return Domain.Vector;
+                case Qlx.VECTOR_DIMENSION_COUNT: return Domain.Int;
+                case Qlx.VECTOR_DISTANCE: return Domain.Real;
+                case Qlx.VECTOR_NORM: return Domain.Real;
+                case Qlx.VECTOR_SERIALIZE: return op1?.domain??Domain.Content;
                 case Qlx.VERSION:
                     cx.versioned = true;
                     return (op1 == null) ? Domain.Int : Domain._Rvv;
@@ -7996,7 +8001,119 @@ namespace Pyrrho.Level3
                         return new TChar(v.ToString().ToUpper());
                     }
                 case Qlx.USER: return new TChar(cx.db.user?.name ?? "");
-                case Qlx.VERSION: // row version pseudocolumn
+                case Qlx.VECTOR:
+                    {
+                        var vs = cx.obs[val]?.Eval(cx) ??throw new DBException("22004");
+                        var sc = new Scanner(-1L, vs.ToString().ToCharArray(), 0, cx);
+                        var dt = (cx.obs[op2]?.Eval(cx) as TTypeSpec)?._dataType ?? Domain.Content;
+                        var nd = new Domain(-1L, Qlx.ARRAY, dt);
+                        TypedValue tv;
+                        if (nd.TryParse(sc, out tv) is DBException ex) throw ex;
+                        if (tv is TArray ta) return new TVector(nd, ta.array);
+                        throw new DBException("42000");
+                    }
+                case Qlx.VECTOR_DIMENSION_COUNT:
+                    {
+                        if (cx.obs[val]?.Eval(cx) is TVector vec)
+                            return new TInt(vec.Length);
+                        return TNull.Value;
+                    }
+                case Qlx.VECTOR_DISTANCE:
+                    {
+                        if ((cx.obs[val]?.Eval(cx) is not TVector va)
+                            || (cx.obs[op1]?.Eval(cx) is not TVector vb)
+                            || va.dataType.elType is not Domain de
+                            || vb.dataType.elType?.kind!=de.kind
+                            || va.Length != vb.Length)
+                            throw new DBException("22000");
+                        var n = va.Length;
+                        var s = de.defaultValue ?? TNull.Value;
+                        var sa = de.defaultValue ?? TNull.Value;
+                        var sb = de.defaultValue ?? TNull.Value;
+                        switch (mod)
+                        {
+                            case Qlx.EUCLIDEAN:
+                                {
+                                    if (de.kind != Qlx.REAL)
+                                        throw new DBException("22G12");
+                                    var a = va.First();
+                                    for (var b = vb.First(); a != null && b != null; a = a.Next(), b = b.Next())
+                                        s += (a.Value() - b.Value()) * (a.Value() - b.Value());
+                                    return new TReal(Math.Sqrt(s?.ToDouble() ?? 0));
+                                }
+                            case Qlx.EUCLIDEAN_SQUARED:
+                                {
+                                    if (de.kind != Qlx.REAL && de.kind != Qlx.NUMERIC && de.kind!=Qlx.INTEGER)
+                                        throw new DBException("22G12");
+                                    var a = va.First();
+                                    for (var b = vb.First(); a != null && b != null; a = a.Next(), b = b.Next())
+                                        s += (a.Value() - b.Value()) * (a.Value() - b.Value());
+                                    return s;
+                                }
+                            case Qlx.DOT:
+                            case Qlx.MANHATTAN:
+                                {
+                                    if (de.kind != Qlx.REAL && de.kind != Qlx.NUMERIC && de.kind != Qlx.INTEGER)
+                                        throw new DBException("22G12");
+                                    var a = va.First();
+                                    for (var b = vb.First(); a != null && b != null; a = a.Next(), b = b.Next())
+                                        s += (a.Value() - b.Value()).Abs();
+                                    return s;
+                                }
+                            case Qlx.COSINE:
+                                {
+                                    if (de.kind != Qlx.REAL)
+                                        throw new DBException("22G12");
+                                    var a = va.First();
+                                    for (var b = vb.First(); a != null && b != null; a = a.Next(), b = b.Next())
+                                    {
+                                        s += a.Value() * b.Value();
+                                        sa += a.Value() * a.Value();
+                                        sb += b.Value() * b.Value();
+                                    }
+                                    return new TReal(s.ToDouble() / Math.Sqrt(sa.ToDouble() * sb.ToDouble()));
+                                }
+                            case Qlx.HAMMING:
+                                {
+                                    var a = va.First();
+                                    var si = 0;
+                                    for (var b = vb.First(); a != null && b != null; a = a.Next(), b = b.Next())
+                                        si += (a.Value().CompareTo(b.Value())==0) ? 0 : 1;
+                                    return new TInt(si);
+                                }                           
+                        }
+                        return TNull.Value;
+                    }
+                    case Qlx.VECTOR_NORM:
+                    {
+                        if (cx.obs[val]?.Eval(cx) is not TVector va
+                            || va.dataType.elType is not Domain de)
+                            throw new DBException("22000");
+                        var n = va.Length;
+                        var s = de.defaultValue ?? TNull.Value;
+                        switch (mod)
+                        {
+                            case Qlx.EUCLIDEAN:
+                                {
+                                    if (de.kind != Qlx.REAL)
+                                        throw new DBException("22G12");
+                                    for (var b = va.First(); b != null; b = b.Next())
+                                        s += b.Value() * b.Value();
+                                    return new TReal(Math.Sqrt(s?.ToDouble() ?? 0));
+                                }
+                            case Qlx.MANHATTAN:
+                                {
+                                    if (de.kind != Qlx.REAL && de.kind != Qlx.NUMERIC
+                                        && de.kind!=Qlx.INTEGER)
+                                        throw new DBException("22G12");
+                                    for (var b = va.First(); b != null; b = b.Next())
+                                        s += b.Value().Abs();
+                                    return s;
+                                }
+                        }
+                        return TNull.Value;
+                    }
+                    case Qlx.VERSION: // row version pseudocolumn
                     {
                         var vl = (QlValue?)cx.obs[val] ?? throw new PEException("PE1984");
                         var vcx = new Context(cx);
@@ -11547,7 +11664,7 @@ cx.obs[high] is not QlValue hi)
                 &&  cx.db.objects[si.names[n.ident].Item2] is TableColumn tc1)
             {
                 var co = new QlInstance(n, cx, defpos, tc1);
-                var nc = new SqlValueExpr(ic.uid, cx, Qlx.DOT, this, co, Qlx.NO);
+                var nc = new SqlValueExpr(ic.uid, cx, Qlx.DOTTOKEN, this, co, Qlx.NO);
                 cx.Add(co);
                 return (cx.Add(nc),n.sub);
             }

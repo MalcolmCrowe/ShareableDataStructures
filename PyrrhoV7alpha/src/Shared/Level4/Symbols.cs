@@ -185,7 +185,7 @@ namespace Pyrrho.Level4
             resWds[h] = new ResWd(t, s);
         }
         /// <summary>
-        /// Check if a string matches a reserved word.
+        /// CheckFields if a string matches a reserved word.
         /// tok is set if it is a reserved word.
         /// </summary>
         /// <param name="s">The given string</param>
@@ -581,7 +581,7 @@ namespace Pyrrho.Level4
                             Advance();
                             return tok = Qlx.DOUBLEPERIOD;
                         }
-                        return tok = Qlx.DOT;
+                        return tok = Qlx.DOTTOKEN;
                     }
                 case ';': Advance(); return tok = Qlx.SEMICOLON;
                 case '&': Advance(); return tok = Qlx.AMPERSAND; // GQL label expression

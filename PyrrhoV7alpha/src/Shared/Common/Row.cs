@@ -1,4 +1,5 @@
 using System.Net.Http.Headers;
+using System.Security.Cryptography;
 using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
@@ -98,6 +99,10 @@ namespace Pyrrho.Common
         {
             return this;
         }
+        internal virtual TypedValue Abs()
+        {
+            return this;
+        }
         public static TypedValue operator+ (TypedValue left,TypedValue right)
         {
             if (left is TNull)
@@ -126,6 +131,18 @@ namespace Pyrrho.Common
                 return ml + mr;
             throw new PEException("PE40601");
         }
+        public static TypedValue operator -(TypedValue left, TypedValue right)
+        {
+            if (left is TInt li && right is TInt ri)
+                return new TInt(li.value - ri.value);
+            if (left is TInteger lj && right is TInteger rj)
+                return new TInteger(lj.ivalue - rj.ivalue);
+            if (left is TNumeric ln && right is TNumeric rn)
+                return new TNumeric(ln.value - rn.value);
+            if (left is TReal lr && right is TReal rr)
+                return new TReal(lr?.ToDouble() ?? 0 - rr?.ToDouble() ?? 0);
+            throw new PEException("PE40601");
+        }
         public static TypedValue operator /(TypedValue left, int right)
         {
             if (left is TInt li)
@@ -136,6 +153,18 @@ namespace Pyrrho.Common
                 return new TNumeric(ln.value/new Numeric(right));
             if (left is TReal lr)
                 return new TReal((lr?.ToDouble() ?? 0)/right);
+            throw new PEException("PE40603");
+        }
+        public static TypedValue operator *(TypedValue left, TypedValue right)
+        {
+            if (left is TInt li && right is TInt ri)
+                return new TInt(li.value * ri.value);
+            if (left is TInteger lj && right is TInteger rj)
+                return new TInteger(lj.ivalue * rj.ivalue);
+            if (left is TNumeric ln && right is TNumeric rn)
+                return new TNumeric(ln.value * rn.value);
+            if (left is TReal lr && right is TReal rr)
+                return new TReal((lr?.ToDouble() ?? 0) *(rr?.ToDouble()??0));
             throw new PEException("PE40603");
         }
         internal virtual bool Contains(TypedValue e)
@@ -215,14 +244,17 @@ namespace Pyrrho.Common
     }
     internal class TBookmark : IBookmark<TypedValue>
     {
-        internal readonly TList parent;
+        internal readonly TypedValue parent;
         internal readonly int pos;
         internal TypedValue value => parent[pos]??TNull.Value;
         internal TBookmark(TypedValue pa, int po)
-        { parent = pa as TList??throw new PEException("PE60201"); pos = po; }
+        { 
+            parent = pa;
+            pos = po;
+        }
         public IBookmark<TypedValue>? Next() 
         {
-            return (pos < parent.list.Count-1) ? new TBookmark(parent, pos+1):null; 
+            return (pos < parent.Cardinality()-1) ? new TBookmark(parent, pos+1):null; 
         }
         public IBookmark<TypedValue>? Previous()
         {
@@ -230,7 +262,11 @@ namespace Pyrrho.Common
         }
         public TypedValue Value()
         {
-            return parent.list[pos]??TNull.Value;
+            if (parent is TList tl)
+                return tl.list[pos] ?? TNull.Value;
+            if (parent is TArray ta)
+                return ta.array[pos] ?? TNull.Value;
+            throw new PEException("PE70731");
         }
         public long Position()
         {
@@ -318,6 +354,12 @@ namespace Pyrrho.Common
         {
             return new Integer(value);
         }
+        internal override TypedValue Abs()
+        {
+            if (value < 0)
+                return new TInt(-value);
+            return this;
+        }
     }
     // shareable
     internal class TPosition : TInt
@@ -381,6 +423,12 @@ namespace Pyrrho.Common
         internal override double ToDouble()
         {
             return (double)ivalue;
+        }
+        internal override TypedValue Abs()
+        {
+            if (ivalue < Integer.Zero)
+                return new TInteger(ivalue.Negate());
+            return this;
         }
         public override string ToString()
         {
@@ -464,6 +512,12 @@ namespace Pyrrho.Common
                 return r; 
             return base.ToInteger();
         }
+        internal override TypedValue Abs()
+        {
+            if (value < Numeric.Zero)
+                return new TNumeric(value.Negate());
+            return this;
+        }
     }
     // shareable
     internal class TReal : TypedValue
@@ -491,6 +545,12 @@ namespace Pyrrho.Common
             if (double.IsNaN(dvalue))
                 return (double)nvalue;
             return dvalue;
+        }
+        internal override TReal Abs()
+        {
+            if (dvalue < 0.0)
+                return new TReal(-dvalue);
+            return this;
         }
     }
 
@@ -794,7 +854,7 @@ namespace Pyrrho.Common
     {
         internal readonly CList<TypedValue> list; 
         internal TList(Domain dt, params TypedValue[] a) 
-            : base(new Domain(-1L,Qlx.ARRAY,dt)) 
+            : base(new Domain(-1L,Qlx.LIST,dt)) 
         { 
             var ts = CList<TypedValue>.Empty;
             foreach (var x in a)
@@ -897,7 +957,7 @@ namespace Pyrrho.Common
     {
         internal readonly CTree<long,TypedValue> array;
         internal TArray(Domain dt)
-            : base(new Domain(-1L, Qlx.ARRAY, dt))
+            : base(dt)
         {
             array = CTree<long, TypedValue>.Empty;
         }
@@ -1680,7 +1740,7 @@ namespace Pyrrho.Common
         static Domain _Type(Domain dt, BTree<TypedValue, long?> t)
         {
             if (t.First()?.key() is TypedValue v)
-                if (dt.kind == Qlx.Null)
+                if (dt.kind == Qlx.Null || dt.elType?.kind==Qlx.CONTENT)
                     dt = new Domain(-1L, Qlx.MULTISET, v.dataType);
                 else if (dt.elType?.kind != v.dataType.kind)
                     throw new DBException("22004");
@@ -1927,6 +1987,51 @@ namespace Pyrrho.Common
                 }
             sb.Append(')');
             return sb.ToString();
+        }
+    }
+    internal class TVector : TArray
+    {
+        internal readonly int dimension;
+        internal TVector(Domain dt, int dim) : base(dt)
+        {
+            dimension = dim;
+        }
+        internal TVector(Domain dt, CTree<long, TypedValue> a) : base(dt, a)
+        {
+            dimension = (int)a.Count;
+        }
+        internal override TypedValue Fix(Context cx)
+        {
+            return new TVector((Domain)dataType.Fix(cx),
+                cx.FixTlV(array));
+        }
+        public static TVector operator+(TVector ve,(Context,long,TypedValue) x)
+        {
+            var (cx, i, v) = x;
+            if (ve.dataType.elType is null)
+                ve = new TVector(new Domain(-1L, Qlx.VECTOR, v.dataType), 0);
+            if (ve.dataType.elType is not Domain dt)
+                goto bad;
+            if (dt.kind != v.dataType.kind)
+            {
+                if (dt.kind == Qlx.CHAR && v.dataType.kind != Qlx.CHAR)
+                    v = new TChar(v.ToString());
+                else if (v is TChar tc
+                    && (cx.db.objects[cx.role.dbobjects[tc.value] ?? -1L] as Domain)?.EqualOrStrongSubtypeOf(dt) != true)
+                    goto bad;
+            }
+            if (v.dataType.EqualOrStrongSubtypeOf(dt))
+                return new TVector(ve.dataType, ve.array + (i, v));
+            bad:
+            throw new DBException("22G03", ve.dataType.elType ?? Domain.Null, v.dataType);
+        }
+        internal override int Cardinality()
+        {
+            return array==CTree<long,TypedValue>.Empty?dimension:(int)array.Count;
+        }
+        internal override string ToString(Context cx)
+        {
+            return base.ToString(cx);
         }
     }
     // shareable
