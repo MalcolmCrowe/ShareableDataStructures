@@ -856,7 +856,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 Qlx.DATE => 13,
                 Qlx.BLOB => 5,
                 Qlx.ROW => 6,
-                Qlx.ARRAY => 7,
+                Qlx.ARRAY or Qlx.VECTOR => 7,
                 Qlx.SET or Qlx.LIST or Qlx.MULTISET => 15,
                 Qlx.TABLE or Qlx.TYPE or Qlx.NODETYPE or Qlx.EDGETYPE => 12,
                 Qlx.BOOLEAN => 9,
@@ -2319,7 +2319,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.TYPE:
                 case Qlx.TABLE:
                 case Qlx.VIEW:
-                    v = (this+(Kind,Qlx.ROW)).ParseList(lx); return null;
+                    v = (this+(Kind,Qlx.ROW)).ParseList(lx,this); return null;
                 case Qlx.ROW:
                     {
                         if (lx._cx == null)
@@ -2477,12 +2477,14 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             return null;
                         }
                     }
+                case Qlx.SET:
                 case Qlx.MULTISET:
+                case Qlx.VECTOR:
                 case Qlx.ARRAY:
                     {
                         if (lx._cx == null)
                             throw new PEException("PE3041");
-                        v = elType?.ParseList(lx)??TNull.Value;
+                        v = elType?.ParseList(lx,this)??TNull.Value;
                         return null;
                     }
                 case Qlx.UNION:
@@ -2553,12 +2555,12 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             return new DBException("2E303", ToString(), xs).Pyrrho()
                 .AddType(this).AddValue(new TChar(xs));
         }
-        TypedValue ParseList(Scanner lx)
+        TypedValue ParseList(Scanner lx,Domain od)
         {
             if (lx._cx == null)
                 throw new PEException("PE3040");
             if (kind == Qlx.SENSITIVE)
-                return new TSensitive(this, elType?.ParseList(lx)??TNull.Value);
+                return new TSensitive(this, elType?.ParseList(lx,od)??TNull.Value);
             var vs = CList<TypedValue>.Empty;
             var end = ')';
             switch(lx.ch)
@@ -2581,7 +2583,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             if (lx.ch == end)
                 lx.Advance();
             lx.Advance();
-            return new TList(this, vs);
+            return new TList(od, vs);
         }
         /// <summary>
         /// Helper for parsing Interval values
@@ -2926,7 +2928,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 lx.Advance();
             return int.Parse(new string(lx.input, s, lx.pos - s));
         }
-        TypedValue Check(TypedValue v)
+        TypedValue CheckFields(TypedValue v)
         {
             if (this is SelectRowSet rs && rs.aggs!=CTree<long,bool>.Empty && rs.group<0L
                 && rs.Length == 1 && rs.representation[rs[0]??-1L]?.kind == v.dataType.kind)
@@ -2954,40 +2956,40 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 {
                     var du = b.key();
                     if (du.HasValue(cx, v))
-                        return Check(v);
+                        return CheckFields(v);
                 }
             if (kind == Qlx.COLLECT && elType is not null && v.dataType.EqualOrStrongSubtypeOf(elType))
                 return v;
             if (abbrev != "" && v.dataType.kind == Qlx.CHAR && kind != Qlx.CHAR)
                 v = Parse(new Scanner(-1, v.ToString().ToCharArray(), 0, cx));
-            for (var dd = v.dataType; dd != null; dd = (super.Count==1L)?super.First()?.key() as UDType:null)
-                if (CompareTo(dd) == 0)
-                    return Check(v);
+            for (var dd = v.dataType; dd != null; dd = (super.Count == 1L) ? super.First()?.key() as UDType : null)
+                if (CompareTo(dd) == 0 && v.dataType.elType is null && dd.elType is null)
+                        return CheckFields(v);
             var vk = Equivalent(v.dataType.kind);
             if (Equivalent(kind) != Qlx.ROW && (vk == Qlx.ROW || vk == Qlx.TABLE) && v is TRow rw && rw.Length == 1
                 && rw.dataType.rowType.First()?.value() is long p && rw.dataType.representation[p] is Domain di
                 && rw.values[p] is TypedValue va)
                 return di.Coerce(cx, va);
             if (v.dataType is UDType ut && CanTakeValueOf(ut) && v is TSubType ts)
-                return Check(ts.value);
+                return CheckFields(ts.value);
             if (v.dataType.kind == Qlx.SET && ((TSet)v).Cardinality() == 1)
                 return ((TSet)v).First()?.Value() ?? TNull.Value;
             if (kind == Qlx.SET && elType is Domain ed && v.dataType.kind == ed.kind)
                 return new TSet(ed) + v;
             if (v.dataType.kind == Qlx.MULTISET && ((TMultiset)v).Cardinality() == 1)
-                return Check(((TMultiset)v).First()?.Value() ?? TNull.Value);
+                return CheckFields(((TMultiset)v).First()?.Value() ?? TNull.Value);
             //          if (v.dataType.name == name)
             var kn = Equivalent(kind);
             if (kn == Qlx.UNION)
-                return Check(v);
+                return CheckFields(v);
             switch (kn)
             {
                 case Qlx.BOOLEAN:
                     if (vk==Qlx.CHAR)
                     {
                         var s = v.ToString().ToUpper();
-                        if (s == "TRUE") return Check(TBool.True);
-                        if (s == "FALSE") return Check(TBool.False);
+                        if (s == "TRUE") return CheckFields(TBool.True);
+                        if (s == "FALSE") return CheckFields(TBool.False);
                     }
                     throw new DBException("42161", "BOOLEAN", v);
                 case Qlx.INTEGER:
@@ -3006,12 +3008,12 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                 if (iv >= limit || iv <= -limit)
                                     throw new DBException("22003").ISO()
                                         .AddType(this).AddValue(v);
-                                return Check(new TInteger(this, iv));
+                                return CheckFields(new TInteger(this, iv));
                             }
                             if (v.ToLong() is long vl)
-                                return Check(new TInt(this, vl));
+                                return CheckFields(new TInt(this, vl));
                             if (v.ToInteger() is Integer xv)
-                                return Check(new TInteger(this, xv));
+                                return CheckFields(new TInteger(this, xv));
                             break;
                         }
                         if (vk == Qlx.NUMERIC && v is TNumeric a)
@@ -3037,7 +3039,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                     throw new DBException("22003").ISO()
                                         .AddType(this).Add(Qlx.VALUE, v);
                             }
-                            return Check(new TInteger(this, na.mantissa));
+                            return CheckFields(new TInteger(this, na.mantissa));
                         }
                         if (vk == Qlx.REAL && v.ToLong() is long ii)
                         {
@@ -3049,12 +3051,12 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                     throw new DBException("22003").ISO()
                                          .AddType(this).AddValue(v);
                             }
-                            return Check(new TInt(this, ii));
+                            return CheckFields(new TInt(this, ii));
                         }
                         if (vk == Qlx.CHAR)
                             return new TInt(Integer.Parse(v.ToString()));
                         if (vk == Qlx.NODETYPE || vk == Qlx.EDGETYPE)
-                            return Check(((TNode)v).id);
+                            return CheckFields(((TNode)v).id);
                     }
                     break;
                 case Qlx.NUMERIC:
@@ -3101,7 +3103,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                 throw new DBException("22003").ISO()
                                      .AddType(this).AddValue(v);
                         }
-                        return Check(new TNumeric(this, a));
+                        return CheckFields(new TNumeric(this, a));
                     }
                 case Qlx.REAL:
                     {
@@ -3122,32 +3124,32 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             break;
                         if (sg)
                             d = -d;
-                        return Check(new TReal(this, (double)d));
+                        return CheckFields(new TReal(this, (double)d));
                     }
                 case Qlx.DATE:
                     {
                         switch (vk)
                         {
                             case Qlx.DATE:
-                                return Check(v);
+                                return CheckFields(v);
                             case Qlx.CHAR:
-                                return Check(new TDateTime(this, DateTime.Parse(v.ToString(),
+                                return CheckFields(new TDateTime(this, DateTime.Parse(v.ToString(),
                                     (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
                                     : v.dataType.culture)));
                         }
                         if (v is TDateTime dt)
-                            return Check(new TDateTime(this, dt.value));
+                            return CheckFields(new TDateTime(this, dt.value));
                         if (v.ToLong() is long lv)
-                            return Check(new TDateTime(this, new DateTime(lv)));
+                            return CheckFields(new TDateTime(this, new DateTime(lv)));
                         break;
                     }
                 case Qlx.TIME:
                     switch (vk)
                     {
                         case Qlx.TIME:
-                            return Check(v);
+                            return CheckFields(v);
                         case Qlx.CHAR:
-                            return Check(new TTimeSpan(this, TimeSpan.Parse(v.ToString(),
+                            return CheckFields(new TTimeSpan(this, TimeSpan.Parse(v.ToString(),
                                 (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
                                 : v.dataType.culture)));
                     }
@@ -3157,23 +3159,23 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     {
                         case Qlx.TIMESTAMP: return v;
                         case Qlx.DATE:
-                            return Check(new TDateTime(this, ((TDateTime)v).value));
+                            return CheckFields(new TDateTime(this, ((TDateTime)v).value));
                         case Qlx.CHAR:
                             if (!v.ToString().Contains('-'))
                             {
                                 var s = long.Parse(v.ToString());
-                                return Check(new TDateTime(new DateTime(s*10000+new DateTime(1970,1,1).Ticks)));
+                                return CheckFields(new TDateTime(new DateTime(s*10000+new DateTime(1970,1,1).Ticks)));
                             }
-                            return Check(new TDateTime(this, DateTime.Parse(v.ToString(),
+                            return CheckFields(new TDateTime(this, DateTime.Parse(v.ToString(),
                                 (cx.conn.props["Locale"] is string lc) ? new CultureInfo(lc)
                                 : v.dataType.culture)));
                     }
                     if (v.ToLong() is long vm)
-                        return Check(new TDateTime(this, new DateTime(vm)));
+                        return CheckFields(new TDateTime(this, new DateTime(vm)));
                     break;
                 case Qlx.INTERVAL:
                     if (v is TInterval zv)
-                        return Check(new TInterval(this, zv.value));
+                        return CheckFields(new TInterval(this, zv.value));
                     break;
                 case Qlx.CHAR:
                     {
@@ -3189,13 +3191,13 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         if (prec != 0 && str.Length > prec)
                             throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
                                                 .AddType(this).AddValue(ct);
-                        return Check(new TChar(this, str));
+                        return CheckFields(new TChar(this, str));
                     }
                 case Qlx.PERIOD:
                     {
                         if (v is not TPeriod pd || elType is null)
                             return TNull.Value;
-                        return Check(new TPeriod(this, new Period(elType.Coerce(cx, pd.value.start),
+                        return CheckFields(new TPeriod(this, new Period(elType.Coerce(cx, pd.value.start),
                             elType.Coerce(cx, pd.value.end))));
                     }
                 case Qlx.DOCUMENT:
@@ -3206,19 +3208,19 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                 {
                                     var vs = v.ToString();
                                     if (vs[0] == '{')
-                                        return Check(new TDocument(vs));
+                                        return CheckFields(new TDocument(vs));
                                     break;
                                 }
                             case Qlx.BLOB:
                                 {
                                     var i = 0;
-                                    return Check(new TDocument(((TBlob)v).value, ref i));
+                                    return CheckFields(new TDocument(((TBlob)v).value, ref i));
                                 }
                         }
                         return v;
                     }
-                case Qlx.CONTENT: return Check(v);
-                case Qlx.PASSWORD: return Check(v);
+                case Qlx.CONTENT: return CheckFields(v);
+                case Qlx.PASSWORD: return CheckFields(v);
                 case Qlx.DOCARRAY: goto case Qlx.DOCUMENT;
                 case Qlx.TYPE:
                     {
@@ -3228,7 +3230,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             if ((this+(Kind,Qlx.ROW)).TryParse(new Scanner(0, ("("+s+")").ToCharArray(), 0, cx), out v) is not null)
                                 return v;
                         }
-                        return Check(v);
+                        return CheckFields(v);
                     }
                 case Qlx.ROW:
                     {
@@ -3246,11 +3248,11 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                 vs += (pp, dt.Coerce(cx, tv));
                         if (vb != null)
                             goto bad;
-                        return Check(new TRow(this, vs));
+                        return CheckFields(new TRow(this, vs));
                     }
                 case Qlx.VALUE:
                 case Qlx.NULL:
-                    return Check(v);
+                    return CheckFields(v);
                 case Qlx.LIST:
                     if (elType is not null && v.dataType.elType is not null)
                     {
@@ -3346,7 +3348,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         }
                     break;
                 default:
-                    return Check(v);
+                    return CheckFields(v);
             }
         bad: throw new DBException("22G03", this, v.ToString()).ISO();
         }
@@ -3359,9 +3361,9 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
         internal TypedValue Coerce(Context cx,object ob)
         {
             if (ob==null)
-                return Check(defaultValue);
+                return CheckFields(defaultValue);
             if (abbrev != "" && ob is string so && Equivalent(kind) != Qlx.CHAR)
-                return Check(Parse(new Scanner(-1, so.ToCharArray(), 0, cx)));
+                return CheckFields(Parse(new Scanner(-1, so.ToCharArray(), 0, cx)));
             switch (Equivalent(kind))
             {
                 case Qlx.UNION:
@@ -3369,13 +3371,13 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     {
                         var du = b.key();
                         if (du.Coerce(cx, ob) is TypedValue t0)
-                            return Check(t0);
+                            return CheckFields(t0);
                     }
                     break;
                 case Qlx.INTEGER:
                     if (ob is long lo)
-                        return Check(new TInt(this, lo));
-                    return Check(new TInt(this, (int)ob));
+                        return CheckFields(new TInt(this, lo));
+                    return CheckFields(new TInt(this, (int)ob));
                 case Qlx.NUMERIC:
                     {
                         Numeric nm = new (0);
@@ -3387,36 +3389,36 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             nm = new (om);
                         if (ob is int io)
                             nm = new Numeric(io);
-                        return Check(new TNumeric(this, nm));
+                        return CheckFields(new TNumeric(this, nm));
                     }
                 case Qlx.REAL:
                     {
                         if (ob is decimal om)
-                            return Check(new TReal(this, (double)om));
+                            return CheckFields(new TReal(this, (double)om));
                         if (ob is float fo)
-                            return Check(new TReal(this, fo));
-                        return Check(new TReal(this, (double)ob));
+                            return CheckFields(new TReal(this, fo));
+                        return CheckFields(new TReal(this, (double)ob));
                     }
                 case Qlx.DATE:
-                    return Check(new TDateTime(this, (DateTime)ob));
+                    return CheckFields(new TDateTime(this, (DateTime)ob));
                 case Qlx.TIME:
-                    return Check(new TTimeSpan(this, (TimeSpan)ob));
+                    return CheckFields(new TTimeSpan(this, (TimeSpan)ob));
                 case Qlx.TIMESTAMP:
                     {
                         if (ob is DateTime dt)
-                            return Check(new TDateTime(this, dt));
+                            return CheckFields(new TDateTime(this, dt));
                         if (ob is Date od)
-                            return Check(new TDateTime(this, od.date));
+                            return CheckFields(new TDateTime(this, od.date));
                         if (ob is string os)
-                            return Check(new TDateTime(this,
+                            return CheckFields(new TDateTime(this,
                                 DateTime.Parse(os, culture)));
                         if (ob is long ol)
-                            return Check(new TDateTime(this, new DateTime(ol)));
+                            return CheckFields(new TDateTime(this, new DateTime(ol)));
                         break;
                     }
                 case Qlx.INTERVAL:
                     if (ob is Interval oi)
-                        return Check(new TInterval(this, oi));
+                        return CheckFields(new TInterval(this, oi));
                     break;
                 case Qlx.CHAR:
                     {
@@ -3430,23 +3432,23 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         if (prec != 0 && str.Length > prec)
                             throw new DBException("22001", "CHAR(" + prec + ")", "CHAR(" + str.Length + ")").ISO()
                                                 .AddType(this);
-                        return Check(new TChar(this, str));
+                        return CheckFields(new TChar(this, str));
                     }
                 case Qlx.PERIOD:
                     {
                         var pd = ob as Period ?? throw new DBException("22000");
                         if (elType is null) 
                             throw new DBException("22000");
-                        return Check(new TPeriod(this, new Period(elType.Coerce(cx, pd.start),
+                        return CheckFields(new TPeriod(this, new Period(elType.Coerce(cx, pd.start),
                             elType.Coerce(cx, pd.end))));
                     }
                 case Qlx.DOCUMENT:
                     {
                         if (ob is string vs && vs[0] == '{')
-                            return Check(new TDocument(vs));
+                            return CheckFields(new TDocument(vs));
                         int i = 0;
                         if (ob is byte[] bs)
-                            return Check(new TDocument(bs, ref i));
+                            return CheckFields(new TDocument(bs, ref i));
                         break;
                     }
                 case Qlx.ROW:
@@ -3600,7 +3602,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         var r = new TRow(this, vs);
                         if (d.Contains("$check")) // used for remote data
                             r += (Rvv.RVV, new TRvv(cx, vs));
-                        return Check(r);
+                        return CheckFields(r);
                     }
                     break;
                 case Qlx.TABLE:
@@ -3613,7 +3615,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         var va = CList<TypedValue>.Empty;
                         foreach (var o in da.items)
                             va += dr.Coerce(cx, o);
-                        return Check(new TList(dt, va));
+                        return CheckFields(new TList(dt, va));
                     }
                     break;
                 case Qlx.ARRAY:
@@ -3622,7 +3624,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         var va = CList<TypedValue>.Empty;
                         foreach (var o in db.items)
                             va += elType.Coerce(cx, o);
-                        return Check(new TList(elType, va));
+                        return CheckFields(new TList(elType, va));
                     }
                     break;
                 case Qlx.SET:
@@ -3634,7 +3636,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             var v = elType.Coerce(cx, o);
                             va += (v, true);
                         }
-                        return Check(new TSet(elType, va));
+                        return CheckFields(new TSet(elType, va));
                     }
                     break;
                 case Qlx.MULTISET:
@@ -3649,7 +3651,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             va += (v, k);
                             n++;
                         }
-                        return Check(new TMultiset(elType, va, n));
+                        return CheckFields(new TMultiset(elType, va, n));
                     }
                     break;
             }

@@ -8006,10 +8006,11 @@ namespace Pyrrho.Level3
                         var vs = cx.obs[val]?.Eval(cx) ??throw new DBException("22004");
                         var sc = new Scanner(-1L, vs.ToString().ToCharArray(), 0, cx);
                         var dt = (cx.obs[op2]?.Eval(cx) as TTypeSpec)?._dataType ?? Domain.Content;
-                        var nd = new Domain(-1L, Qlx.ARRAY, dt);
+                        var nd = new Domain(-1L, Qlx.VECTOR, dt);
                         TypedValue tv;
                         if (nd.TryParse(sc, out tv) is DBException ex) throw ex;
-                        if (tv is TArray ta) return new TVector(nd, ta.array);
+                        tv = nd.Coerce(cx, tv);
+                        if (tv is TVector ta) return ta;
                         throw new DBException("42000");
                     }
                 case Qlx.VECTOR_DIMENSION_COUNT:
