@@ -505,10 +505,10 @@ namespace Pyrrho.Level4
             {
                 ne = fn;
                 if (ne > 0)
-                    if (next.newEdges[ne] is long pp && pp > 0L)
-                        np = pp;
-                    else
-                        next.newEdges += (ne, np);
+                {
+                    var pp = next.newNodes[ne] ?? CTree<long, bool>.Empty;
+                    next.newNodes += (fn, pp + (np, true));
+                }
             }
             var trc = (cu is not null) ? new TransitionRowSet.TransitionCursor(this, _trs, cu, pos, insertCols)//, np)
                     : (TransitionRowSet.TransitionCursor?)cursors[_trs.defpos];
@@ -532,7 +532,7 @@ namespace Pyrrho.Level4
                             return _cx;
                         var st = rc.subType;
                         Record r;
-                        if (((Transaction)db).physicals[newEdges[ne]] is Record re
+/*                        if (((Transaction)db).physicals[newNodes[ne]?.Last()?.key()??-1L] is Record re
                             && table.tableRows[re.defpos]?.vals is CTree<long,TypedValue> was) // updates will have the same defpos
                         {
                             for (var b = table.First(); b != null; b = b.Next())
@@ -547,11 +547,12 @@ namespace Pyrrho.Level4
                                 }
                             r = new Update(re.defpos, table.defpos, newRow, _cx.db.nextPos, _cx);
                         }
-                        else
+                        else */
                         if (level != Level.D)
                             r = new Record3(table.defpos, newRow, st, level, np, _cx);
                         else
                             r = new Record(table.defpos, newRow, np, _cx);
+                        r.node = ne;
                         Add(r);
                         _cx.Add(r);
                         var ns = newTables[_trs.defpos] ?? BTree<long, TableRow>.Empty;
@@ -1125,7 +1126,7 @@ namespace Pyrrho.Level4
                 if (tc != TBool.False)
                 {
                     db += (Transaction.TriggeredAction, db.nextPos);
-                    Add(new TriggeredAction(_trig.ppos, db.nextPos));
+                    Add(new TriggeredAction(_trig.ppos, db.nextPos, db));
                     if (next.values[_trs.target] is TypedValue v) // the TriggerCursor (if any)
                     {
                         values += (_trs.target, v);

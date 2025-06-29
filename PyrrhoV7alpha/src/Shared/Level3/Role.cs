@@ -60,7 +60,7 @@ namespace Pyrrho.Level3
             NodeTypes = -115, // BTree<string,long?> Labelled NodeType by name
             PropertyNames = -243, // CTree<string,CTree<long,bool>> Domains by child names
             Procedures = -249, // BTree<string,BTree<CList<Domain>,long?>> Procedure/Function by name and arity
-            Schemas = -356,    // BTree<string,long?> RowType by name
+            Schemas = -356,    // BTree<string,long?> Schemas by name
             UnlabelledNodeTypesInfo = -476, //BTree<CTree<string,bool>,long?> NodeType by properties
             UnlabelledEdgeTypesInfo = -482; //BTree<CTree<string,bool>,long?> EdgeType by properties
         internal BTree<string, long?> dbobjects => 
@@ -309,10 +309,6 @@ namespace Pyrrho.Level3
                     case Qlx.SQLAGENT:
                         sb.Append(b.key());
                         sb.Append(' '); sb.Append(b.value().ToString());
-                        continue;
-                    case Qlx.PASSWORD:
-                        sb.Append(b.key());
-                        sb.Append(" ******");
                         continue;
                     case Qlx.IRI:
                         sb.Append(b.key());

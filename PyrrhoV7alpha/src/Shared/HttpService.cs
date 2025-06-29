@@ -57,7 +57,7 @@ namespace Pyrrho
                     listener.Prefixes.Add("http://" + host + ":" + port + "/");
                 if (sport > 0)
                     listener.Prefixes.Add("https://" + host + ":" + sport + "/");
-                listener.Realm = "PyrrhoDB granted password";
+                listener.Realm = "PyrrhoDB";
                 listener.AuthenticationSchemes = AuthenticationSchemes.Basic;
                 listener.Start();
                 if (port>0)

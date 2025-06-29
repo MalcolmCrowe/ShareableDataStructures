@@ -23,11 +23,8 @@ namespace Pyrrho.Level3
 	internal class User : Role
 	{
         internal const long
-            Password = -303, // string (hidden)
             Clearance = -305; // Level
         public static User None = new User("");
-        public string? pwd => (string?)mem[Password]; // if "" will be set on next authentication
-   //     public long initialRole => (long)(mem[InitialRole]??Database.Public);
         public Level clearance => (Level)(mem[Clearance]??Level.D);
         /// <summary>
         /// Constructor: a User from level 2 information
@@ -65,10 +62,6 @@ namespace Pyrrho.Level3
         public override string ToString()
 		{
             var sb = new StringBuilder(base.ToString());
-            if (pwd is not null)
-            { sb.Append(" Password:"); sb.Append((pwd.Length==0)?"":"****"); }
-       //     if (mem.Contains(InitialRole))
-       //     { sb.Append(" InitialRole:"); sb.Append(Uid(initialRole)); }
             sb.Append(" Clearance:"); sb.Append(clearance);
             return sb.ToString();
 		}

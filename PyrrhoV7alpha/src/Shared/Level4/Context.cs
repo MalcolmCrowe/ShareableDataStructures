@@ -86,8 +86,8 @@ namespace Pyrrho.Level4
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal CTree<long,int> size = CTree<long,int>.Empty; // BindingSet. yuk: A hack for limit with match statements 
-        internal Graph? graph = null; // current graph, set by USE
-        internal Schema? schema = null; // current rowType, set by AT
+        internal GraphType? graph = null; // current graph, set by USE
+        internal Schema? schema = null; // current schema, set by USE
         internal bool ParsingMatch = false;
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
         // bindings, and cache of RowSetPredicate RowSet (not initialised from parent, not copied to parent on exit)
@@ -122,9 +122,9 @@ namespace Pyrrho.Level4
         internal CTree<long, CTree<long, bool>> rdS = CTree<long, CTree<long, bool>>.Empty; // specific read TableRow defpos
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
         internal CTree<long, TypedValue> binding = CTree<long, TypedValue>.Empty;
-        internal BTree<long, long?> newnodes = BTree<long, long?>.Empty;
-        internal CTree<long, long> newEdges = CTree<long, long>.Empty;
-        internal CTree<long, CTree<long, (string,TMetadata)>> metaPending = CTree<long, CTree<long, (string,TMetadata)>>.Empty;
+        internal CTree<long, CTree<long,bool>> newNodes = CTree<long, CTree<long,bool>>.Empty;
+        internal CTree<long, CTree<long, CTree<string,TMetadata>>> metaPending 
+            = CTree<long, CTree<long, CTree<string, TMetadata>>>.Empty;
         public int rconflicts = 0, wconflicts = 0;
         /// <summary>
         /// We only send versioned information if 
@@ -152,7 +152,7 @@ namespace Pyrrho.Level4
             if (conn.props["Schema"] is string sn)
                 cx.schema = cx.db.objects[cx.role.schemas[sn] ?? -1] as Schema;
             if (conn.props["Graph"] is string gn)
-                cx.graph = cx.db.objects[cx.role.graphs[gn] ?? -1] as Graph;
+                cx.graph = cx.db.objects[cx.role.graphs[gn] ?? -1] as GraphType;
             nextHeap = conn.nextPrep;
             parseStart = 0L;
             this.db = db;
@@ -174,7 +174,7 @@ namespace Pyrrho.Level4
             anames = cx.anames;
             defs = cx.defs;
             names = cx.names;
-            newEdges = cx.newEdges;
+            newNodes = cx.newNodes;
             depths = cx.depths;
             obs = cx.obs;
             cursors = cx.cursors;
@@ -295,7 +295,7 @@ namespace Pyrrho.Level4
         {
             var (bc, _, sub) = defs[(n, d, BList<Iix>.Empty)]; // chain lookup
             DBObject? rr, r = null;
-            Ident? s = n;
+            Ident? cn = n;
             for (var b = bc.First(); b != null; b = b.Next())
             {
                 rr = r;
@@ -306,17 +306,17 @@ namespace Pyrrho.Level4
                         (ob.GetType().Name=="QlValue" && (!parse.HasFlag(ExecuteStatus.Graph))
                             &&ob.domain.kind!=Qlx.PATH))) // an undefined identifier from a lower level
                         return (null, n);
-                    (r, s) = ob._Lookup(lp, this, n, n.sub, rr);
+                    (r, cn) = ob._Lookup(lp, this, n, n.sub, rr);
                     if (r!=ob && (r is SqlField||(r is SqlValueExpr se && se.op==Qlx.DOT)))
                     {
-                        if (s is null)
+                        if (cn is null)
                         {
                             undefined -= n.iix.dp;
                             undefined -= lp;
                         }
                         break;
                     }
-                    (r,s) = ob._Lookup(lp, this, n, sub, rr);
+                    (r,cn) = ob._Lookup(lp, this, n, sub, rr);
                     lp = GetUid();
                     if (sub!=null)
                         n = sub;
@@ -325,7 +325,7 @@ namespace Pyrrho.Level4
                 if (ix.sd < sD) // an undefined identifier from a lower level
                     return (null, n);
             }
-            return (r,s);
+            return (r,cn);
         }
 */
         internal CTree<long, bool> Needs(CTree<long, bool> nd,
@@ -470,20 +470,6 @@ namespace Pyrrho.Level4
                 return -1L;
             return (parse.HasFlag(ExecuteStatus.Parse) || parse.HasFlag(ExecuteStatus.Compile))?
                 db.nextStmt - 1:  nextHeap - 1;
-        }
-        internal string NewNode(long pp, string v)
-        {
-            if (long.TryParse(v, out var c) && c >= Transaction.TransPos)
-            {
-                if (newnodes[c] is long q)
-                    return q.ToString();
-                else
-                {
-                    newnodes += (c, pp);
-                    return pp.ToString();
-                }
-            }
-            return v;
         }
         internal int _DepthV(long? p, int d)
         {
@@ -677,6 +663,12 @@ namespace Pyrrho.Level4
             if (PyrrhoStart.DebugMode && db is Transaction)
                 Console.WriteLine(ph.ToString());
             return db.Add(this, ph);
+        }
+        // Restore the database to its state before the installation of a given Physical
+        // see GraphInsertStatement
+        internal void BackTo(Physical ph)
+        {
+            db = ph.db;
         }
         /// <summary>
         /// Add the framing objects without relocation, but taking account of their depths.
@@ -2190,13 +2182,19 @@ namespace Pyrrho.Level4
         {
             return this;
         }
-        internal void MetaPend(long tg,long dp,string s,TMetadata tm)
+        /// <summary>
+        /// metaPending holds connection information for an edgeType that has not yet been constructed.
+        /// In the meantime it is referenced by the lexpos of the GqlEdge where it first occurs.
+        /// </summary>
+        /// <param name="tg">The defpos that will be used for the edge type</param>
+        /// <param name="dp">The node type it connects</param>
+        /// <param name="cn">The name of the connection</param>
+        /// <param name="tm">The connection metadata</param>
+        internal void MetaPend(long tg,long dp,string cn,TMetadata tm)
         {
-            var pn = metaPending[tg] ?? CTree<long, (string,TMetadata)>.Empty;
-            var (ds,dm) = pn.Contains(dp)?pn[dp] : ("",TMetadata.Empty);
-            if (!ds.Contains(s))
-                ds = ds + "" + s;
-            metaPending += (tg, pn + (dp, (ds,dm+tm)));
+            var pn = metaPending[tg] ?? CTree<long, CTree<string,TMetadata>>.Empty;
+            var td = pn[dp] ?? CTree<string,TMetadata>.Empty;
+            metaPending += (tg, pn + (dp, td + (cn,tm)));
         }
         internal virtual TriggerActivation FindTriggerActivation(long tabledefpos)
         {
@@ -2654,7 +2652,7 @@ namespace Pyrrho.Level4
         /// </summary>
         BTree<string, PreparedStatement> _prepared = BTree<string, PreparedStatement>.Empty;
         /// <summary>
-        ///  A tree of prepared edge-interventions, to replace edge e with source type s
+        ///  A tree of prepared edge-interventions, to replace edge e with source type cn
         ///  and destination type d with edge type n
         /// </summary>
         internal CTree<string, CTree<string, CTree<string, string>>> edgeTypes =

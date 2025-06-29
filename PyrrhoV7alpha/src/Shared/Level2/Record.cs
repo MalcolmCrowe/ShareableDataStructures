@@ -47,6 +47,7 @@ namespace Pyrrho.Level2
         public long subType = -1L;
         public override long _table => tabledefpos;
         // For JoinedNodeTypes, we may have record hierarchies with more entries than nodetype hierarchies
+        public long node = -1L;
         protected CTree<long,bool> suT = CTree<long,bool>.Empty;
         protected CTree<long,bool> sbT = CTree<long,bool>.Empty;
         public override CTree<long, bool> supTables => suT;
@@ -80,7 +81,7 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         protected Record(Type t, long tp, CTree<long, TypedValue> fl, long pp,
-            Context cx) : base(t, pp)
+            Context cx) : base(t, pp, cx.db)
         {
             if (cx.tr == null || cx.db.user == null)
                 throw new DBException("42105").Add(Qlx.USER);
@@ -93,10 +94,10 @@ namespace Pyrrho.Level2
             if (cx._Ob(tp) is Table tb)
             {
                 nodeOrEdge = tb is NodeType;
-                if (tb is JoinedNodeType jt)
+ /*               if (tb is JoinedNodeType jt)
                     for (var b = jt.nodeTypes.First(); b != null; b = b.Next())
                             suT += (b.key().defpos, true);
-                else
+                else */
                     for (var b = tb.super.First(); b != null; b = b.Next())
                             suT += (b.key().defpos, true);
                 siC += tb.sindexes; 
@@ -172,10 +173,10 @@ namespace Pyrrho.Level2
             if (rdr.context.db.objects[tabledefpos] is Table tb)
             {
                 nodeOrEdge = tb is NodeType;
-                if (tb is JoinedNodeType jt)
+/*                if (tb is JoinedNodeType jt)
                     for (var b = jt.nodeTypes.First(); b != null; b = b.Next())
                         suT += (b.key().defpos, true);
-                else
+                else */
                     for (var b = tb.super.First(); b != null; b = b.Next())
                         suT += (b.key().defpos, true);
                 siC += tb.sindexes;
@@ -417,10 +418,10 @@ namespace Pyrrho.Level2
         }
         protected virtual TableRow Now(Context cx)
         {
-            Check(cx);
+            CheckFields(cx);
             return new TableRow(this, cx);
         }
-        internal virtual void Check(Context cx)
+        internal virtual void CheckFields(Context cx)
         {
             if (cx.db.objects[tabledefpos] is not Table tb) throw new DBException("42105").Add(Qlx.CONSTRAINT);
             //       var dm = tb._PathDomain(cx);
@@ -599,13 +600,6 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
         }
     }
-    /// <summary>
-    /// When a Record4 is Installed, it saves the JoinedNodeType to the database,
-    /// and the Install sequence is for the JoinedNodeType. 
-    /// The saved TableRow references the JoinedNodeType, so used for later Update and Delete.
-    /// The record is also added to each factor.
-    /// The same JoinedNodeType is used for subsequent Record4s for the same label set.
-    /// </summary>
     internal class Record4 : Record3
     {
         public Record4(CTree<long,bool> tbs, CTree<long, TypedValue> fl, long st, 
@@ -639,7 +633,6 @@ namespace Pyrrho.Level2
                 jt += (tb, true);
                 r = tb;
             }
-            cx.db += (Database.JoinedNodes, cx.db.joinedNodes + (defpos, jt));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return r ?? throw new PEException("PE0302");

@@ -124,8 +124,8 @@ namespace Pyrrho.Level2
         }
         public Clearance(Reader rdr) : base(Type.Clearance, rdr)
         { }
-        public Clearance(long us, Level cl, long pp)
-            : base(Type.Clearance, pp)
+        public Clearance(long us, Level cl, long pp, Database d)
+            : base(Type.Clearance, pp, d)
         {
             _user = us;
             clearance = cl;

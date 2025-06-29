@@ -93,8 +93,10 @@ namespace Pyrrho.Level3
         }
        internal Context Obey(Context cx,ABookmark<int,long>? next = null)
         {
-            if (cx.db.objects[graph] is Graph g)
+            if (cx.db.objects[graph] is GraphType g)
+            {
                 cx.graph = g;
+            }
             if (cx is Activation ax)
                 return _Obey(ax,next);
             else
@@ -4558,7 +4560,7 @@ namespace Pyrrho.Level3
                         //&& cx.db.objects[nd.domain.defpos] is NodeType nt)
                         {
                             nd.label.OnInsert(cx, nd.defpos); // for side effects
-                            nd.Create(cx, (NodeType)nd.domain, defpos, nd.docValue);
+                            nd.Create(cx, nd.domain, defpos, nd.docValue);
                         }
                     TNode? bn = null;
                     GqlEdge? ed = null;
@@ -4605,6 +4607,8 @@ namespace Pyrrho.Level3
                                 (_, ls) = et.Connect(cx, bn, nn, ed, er.preCon, ls);
                                 (_, ls) = et.Connect(cx, bn, nn, ed, er.postCon, ls);
                                 ed.Create(cx, et, defpos, ls);
+                                bv = g;
+                                bn = g.Eval(cx) as TNode;
                             }
                             else
                             {
@@ -4615,6 +4619,10 @@ namespace Pyrrho.Level3
                                 ed?.InsertSchema(cx);
                         }
                 }
+            // RECOMBINE JoinedNodeType Nodes here
+            for (var c = cx.newNodes.First(); c != null; c = c.Next())
+                if (c.value() is CTree<long, bool> ln && ln.Count > 1L)
+                    cx.db = JoinRecords(cx, c.key(), ln);
             cx.names = ob;
             if (next is not null && cx.obs[next.value()] is Executable e)
                 cx = e._Obey(cx, next.Next());
@@ -4629,6 +4637,90 @@ namespace Pyrrho.Level3
                         if (c.value() is GqlNode sn)
                             r += (sn.domain.defpos, true);
             return r;
+        }
+        /// <summary>
+        /// There are two situations where the one-at-a-time strategy of GQL INSERT statements
+        /// is at variance with the requirement for transaction management:
+        /// (a) where a new node has a label set with more than one label
+        /// (b) where a new edge is not binary.
+        /// These situations are managed by cx.newNodes.
+        /// In both cases we intervene at the end of GraphInsertStatement._Obey,
+        /// to construct a compound record R' for the new node (resp. new edge) N.
+        /// Then we restore the database to the first record for N, and install R'.
+        /// Intervening physicals if any get re-installed in this process.
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <param name="nd"></param>
+        /// <param name="ps"></param>
+        internal Database JoinRecords(Context cx,long nd,CTree<long,bool> ps)
+        {
+            var tbs = CTree<long, bool>.Empty;
+            var fl = CTree<long, TypedValue>.Empty;
+            var tr = (Transaction)cx.db;
+            var tph = tr.physicals;
+            var tb = -1L;
+            var rp = -1L;
+            var st = -1L;
+            var lv = Level.D;
+            var nodeOrEdge = false;
+            Record? backto = null;
+            if (cx.obs[nd] is GqlNode g)
+            {
+                for (var b=ps.First();b!=null;b=b.Next())
+                {
+                    if (tr.physicals[b.key()] is Record r)
+                    {
+                        if (backto == null)
+                            backto = r;
+                        st = r.subType;
+                        lv = r.classification;
+                        tbs += (r.tabledefpos, true);
+                        nodeOrEdge = r.nodeOrEdge;
+                        for (var c=r.fields.First();c!=null;c=c.Next())
+                        {
+                            var o = fl[c.key()] ?? TNull.Value;
+                            var n = r.fields[c.key()] ?? TNull.Value;
+                            if (n != TNull.Value)
+                            {
+                                if (o is TSet ts)
+                                {
+                                    if (n is TSet ns)
+                                        fl += (c.key(), ts + ns);
+                                    else
+                                        fl += (c.key(), ts + n);
+                                } else if (o is TList tl)
+                                {
+                                    if (n is TList nl)
+                                        fl += (c.key(), tl + nl);
+                                    else
+                                        fl += (c.key(), tl + n);
+                                }
+                                fl += (c.key(), n);
+                            }
+                        }
+                        if (rp < 0)
+                        {
+                            rp = b.key();
+                            tb = r.tabledefpos;
+                        }
+                        if (g is GqlEdge)
+                            cx.checkEdges -= b.key();
+                        tph -= b.key();
+                    }
+                }
+                var r4 = new Record4(tbs, fl, st, lv, rp, cx);
+                tph += (rp, r4);
+                cx.Add(r4);
+                cx.obs += (nd, g + (_Domain, g.label));
+            }
+            // now replay the affected part of the transaction
+            if (backto != null)
+            {
+                cx.BackTo(backto);
+                for (var b = tph.PositionAt(backto.ppos); b != null; b = b.Next())
+                    cx.Add(b.value());
+            }
+            return cx.db;
         }
         public override string ToString()
         {

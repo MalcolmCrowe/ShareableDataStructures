@@ -592,7 +592,7 @@ namespace Pyrrho.Level2
                 if (table?.defpos>0)
                     cx.db += table = table + (ObInfo._Metadata, table.metadata + (Qlx.EDGETYPE, ts));
                 else
-                    cx.MetaPend(pr.defpos, defpos, "", TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Domain.Connector) + tc));
+                    cx.MetaPend(pr.defpos, defpos, nm, TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Domain.Connector) + tc));
                 FromTCon(tc);
             }
         }

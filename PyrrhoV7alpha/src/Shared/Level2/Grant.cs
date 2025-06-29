@@ -63,7 +63,7 @@ namespace Pyrrho.Level2
         public Grant(Privilege pr, long ob, long ge, long pp, Context cx)
             : this(Type.Grant, pr, ob, ge, pp, cx) { }
         protected Grant(Type t,Privilege pr, long ob, long ge, long pp, Context cx)
-            : base(t, pp)
+            : base(t, pp, cx.db)
 		{
             priv = pr;
             obj = ob;
@@ -188,7 +188,7 @@ namespace Pyrrho.Level2
                 rg += (Role.Procedures, rg.procedures+(nm,ps));
                 cx.db += (grantee, rg);
             }
-            if (priv == Privilege.GrantGraph && ob is Level5.Graph gp)
+            if (priv == Privilege.GrantGraph && ob is Level5.GraphType gp)
                 rg += (Executable.UseGraph, gp.defpos);
             // install the privilege on the target object
             oi += (ObInfo.Privilege, pr);
@@ -210,8 +210,8 @@ namespace Pyrrho.Level2
             if (!Committed(wr,irolepos)) return irolepos;
             return -1;
         }
-        internal Authenticate(long us, string p, long r, long pp)
-            : base(Type.Authenticate, pp)
+        internal Authenticate(long us, string p, long r, long pp, Database d)
+            : base(Type.Authenticate, pp, d)
         {
             userpos = us; pwd = p ?? ""; irolepos = r;
         }

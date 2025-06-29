@@ -241,7 +241,7 @@ namespace Pyrrho.Common
         VALUE = 215,
         VARBINARY = 216,
         VARCHAR = 217,
-        PASSWORD = 218, // must be 218, Pyrrho v5 (not reserved)
+        PASSWORD = 218, // must be 218, Pyrrho v5 (not reserved, deprecated)
         VARIABLE = 219,
         VECTOR = 220,
         VECTOR_DIMENSION_COUNT = 221,
@@ -305,7 +305,7 @@ namespace Pyrrho.Common
         RBRACK = 278, // ] 
         RBRACKTILDE = 279, // ]~ GQL right brancket tilde
         RDFDATETIME = 280, //
-        RDFLITERAL = 281, // 
+//        RDFLITERAL = 281, // 
         RDFTYPE = 282, // Pyrrho 7.0
         REALLITERAL = 283, //
         RPAREN = 284, // ) 
@@ -886,10 +886,10 @@ namespace Pyrrho.Common
         DomainRef,  // typedefpos, Integer els, els x obs 
         Blob,       // Integer length, length x byte: Opaque binary type (Clob is String)
         Row,        // spec, Integer cols, cols x obs
-        Multiset,   // Integer els, els x obs (also for Set)
-        Array,		// Array, Vector Integer els, els x obs
-        Password,   // A more secure type of string (write-only)
-        List        // List, Set
+        Multiset,   // Integer els, els x (ob,count) 
+        Array,		// Integer els, els x (long, ob)
+        Vector,     // Integer els, els x (long, ob)
+        List        // List or Set: Integer els, els x obs
     }
     /// <summary>
     /// These are the supported character repertoires in SQL2011

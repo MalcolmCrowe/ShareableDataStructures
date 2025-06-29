@@ -252,22 +252,17 @@ namespace Pyrrho.Level3
             for (var b = md.First(); b != null; b = b.Next())
                 switch (b.key())
                 {
-                    case Qlx.RDFLITERAL:
-                        {
-                            var nm = b.value().ToString();
-                            tb += (ObInfo.Name, nm);
-                            ti += (ObInfo.Name, nm);
-                            break;
-                        }
                     case Qlx.SECURITY:
                         {
-                            tb = (Table)(cx.Add(new Classify(tb.defpos, ((TLevel)b.value()).val, cx.db.nextPos))
+                            tb = (Table)(cx.Add(new Classify(tb.defpos, 
+                                ((TLevel)b.value()).val, cx.db.nextPos, cx.db))
                                 ?? throw new DBException("42105"));
                             break;
                         }
                     case Qlx.SCOPE:
                         {
-                            tb = (Table)(cx.Add(new Enforcement(tb, (Grant.Privilege)(b.value().ToInt() ?? 0), cx.db.nextPos))
+                            tb = (Table)(cx.Add(new Enforcement(tb, 
+                                (Grant.Privilege)(b.value().ToInt() ?? 0), cx.db.nextPos, cx.db))
                                 ?? throw new DBException("42105"));
                             break;
                         }
@@ -318,10 +313,10 @@ namespace Pyrrho.Level3
                     ks += d.value();
             ks += co.defpos;
             var ob = this;
-            var px = new PIndex("M" + co.name, this, new Domain(cx, representation, ks,
+            var px = new PIndex("M" + co.name, this, new Domain(cx, representation, ks, 
                 BTree<long, ObInfo>.Empty),
                 PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeDelete
-                | PIndex.ConstraintType.CascadeUpdate, -1L, cx.db.nextPos);
+                | PIndex.ConstraintType.CascadeUpdate, -1L, cx.db.nextPos, cx.db);
             ob = (Table)(cx.Add(px) ?? throw new DBException("42105"));
             if (cx.db.objects[px.defpos] is Index mx)
             {

@@ -250,7 +250,6 @@ namespace Pyrrho.Level3
                 throw new PEException("PE0100");
             var rdr = new Reader(new Context(db), cx.db.length);
             var wr = new Writer(new Context(db), df);
-            wr.cx.newnodes = cx.newnodes;
             wr.cx.nextHeap = cx.nextHeap; // preserve Compiled objects framing
             var tb = cph.First(); // start of the work we want to commit
             var since = rdr.GetAll();
@@ -333,7 +332,7 @@ namespace Pyrrho.Level3
                     uu = null;
                 if (rl.defpos >= TransPos)
                     rl = db.schema;
-                pt = new PTransaction((int)physicals.Count, uu, rl, nextPos);
+                pt = new PTransaction((int)physicals.Count, uu, rl, nextPos, cx.db);
                 cx.Add(pt);
                 wr.segment = wr.file.Position;
                 cx.parse = ExecuteStatus.Commit;

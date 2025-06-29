@@ -145,6 +145,22 @@ namespace Pyrrho.Level1
                 }
                 return bb;
             }
+            public static BBuf operator +(BBuf bb, (Context, TVector) x)
+            {
+                var (cx, ta) = x;
+                bb += "VECTOR";
+                int n = ta.Length;
+                var et = ta.dataType.elType ?? throw new DBException("22G03");
+                bb += et.ToString();
+                bb += et.Typecode();
+                bb += n;
+                for (var b = ta.array.First(); b != null; b = b.Next())
+                {
+                    bb += (cx, Domain.Int, new TInt(b.key()));
+                    bb += (cx, et, b.value());
+                }
+                return bb;
+            }
             public static BBuf operator +(BBuf bb, (Context, TList) x)
             {
                 var (cx, tl) = x;
@@ -258,8 +274,6 @@ namespace Pyrrho.Level1
                     case Qlx.LEVEL:
                     case Qlx.CHAR:
                         return b + tv.ToString();;
-                    case Qlx.PASSWORD: 
-                        return b+"********"; 
                     case Qlx.POSITION:
                         return b+DBObject.Uid(tv.ToLong() ?? 0L);
                     case Qlx.DATE:
@@ -308,6 +322,7 @@ namespace Pyrrho.Level1
                     case Qlx.REF:
                     case Qlx.ROW: return b +(cx, (TRow)tv);
                     case Qlx.LIST: return b+(cx, (TList)tv);
+                    case Qlx.VECTOR: return b+(cx, (TVector)tv);
                     case Qlx.ARRAY: return b+(cx, (TArray)tv);
                     case Qlx.SET:
                         {

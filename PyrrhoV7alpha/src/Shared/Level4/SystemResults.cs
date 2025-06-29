@@ -1072,10 +1072,9 @@ namespace Pyrrho.Level4
                     Pos(m.ppos),
                     Pos(m.defpos),
                     new TChar(m.name ?? throw new PEException("PE0311")),
-                    new TChar(m.metadata.Contains(Qlx.PASSWORD)?"*******":m.details),
+                    new TChar(m.details),
                     Pos(m.refpos),
-                    // At present m.iri may contain a password (this should get fixed)
-                    new TChar((m.iri!="" && m.metadata.Contains(Qlx.PASSWORD))?"*******":m.iri));
+                    new TChar(m.iri));
             }
          }
         /// <summary>
@@ -2874,7 +2873,7 @@ namespace Pyrrho.Level4
                 return null;
             }
             /// <summary>
-            /// the current value: (Pos,name,Iri,Transaction)
+            /// the current value: (Pos,name,Transaction)
             /// </summary>
             static TRow _Value(SystemRowSet res, Physical ph)
             {
@@ -4023,7 +4022,6 @@ namespace Pyrrho.Level4
             var t = new SystemTable("Sys$User");
             t+=new SystemTableColumn(t, "Pos", Position,0);
             t+=new SystemTableColumn(t, "Name", Char,1);
-            t+=new SystemTableColumn(t, "SetPassword", Bool,0); // usually null
             t+=new SystemTableColumn(t, "Clearance", Char,0); // usually null, otherwise D to A
             t.AddIndex("Name");
             t.Add();
@@ -4077,7 +4075,6 @@ namespace Pyrrho.Level4
                 return new TRow(res,
                     Pos(a.defpos),
                     new TChar(a.name??""),
-                    (a.pwd==null)?TNull.Value:TBool.For(a.pwd.Length==0),
                     new TChar(a.clearance.ToString()));
             }
             /// <summary>
@@ -6885,7 +6882,7 @@ namespace Pyrrho.Level4
             internal static RoleGraphEdgeTypeBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
-                    if (b.value() is Graph g)
+                    if (b.value() is GraphType g)
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is EdgeType e)
@@ -6921,7 +6918,7 @@ namespace Pyrrho.Level4
                         }
                     for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
                     {
-                        if (obmk.value() is Graph g1)
+                        if (obmk.value() is GraphType g1)
                         {
                             g = g1;
                             bmk = g1.graphTypes.First();
@@ -7095,7 +7092,7 @@ namespace Pyrrho.Level4
             internal static RoleGraphLabelBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
-                    if (b.value() is Graph g)
+                    if (b.value() is GraphType g)
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
                         {
                             if (cx._Ob(c.key()) is NodeType e)
@@ -7144,7 +7141,7 @@ namespace Pyrrho.Level4
                         }
                     for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
                     {
-                        if (obmk.value() is Graph g1)
+                        if (obmk.value() is GraphType g1)
                         {
                             g = g1;
                             mbmk = g1.graphTypes.First();
@@ -7188,16 +7185,16 @@ namespace Pyrrho.Level4
             t.Add();
         }
         internal class RoleGraphNodeTypeBookmark(Context cx, SystemRowSet r, int pos,
-            ABookmark<long, object> obmk, ABookmark<long, bool> bmk, Graph g, NodeType e) : SystemBookmark(cx, r, pos, e.defpos, e.defpos, _Value(r, g, e))
+            ABookmark<long, object> obmk, ABookmark<long, bool> bmk, GraphType g, NodeType e) : SystemBookmark(cx, r, pos, e.defpos, e.defpos, _Value(r, g, e))
         {
             readonly ABookmark<long, object> _obmk = obmk;
-            readonly Graph _g = g;
+            readonly GraphType _g = g;
             readonly ABookmark<long, bool> _bmk = bmk;
 
             internal static RoleGraphNodeTypeBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
-                    if (b.value() is Graph g)
+                    if (b.value() is GraphType g)
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
                             if (cx._Ob(c.key()) is NodeType e && e.domain.kind!=Qlx.EDGETYPE)
                             {
@@ -7222,7 +7219,7 @@ namespace Pyrrho.Level4
                                 return rb;
                         }
                     for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
-                        if (obmk.value() is Graph g1)
+                        if (obmk.value() is GraphType g1)
                         {
                             g = g1;
                             bmk = g.graphTypes.First();
@@ -7234,7 +7231,7 @@ namespace Pyrrho.Level4
             /// <summary>
             /// the current value: (Pos,Graph,name,Owner)
             /// </summary>
-            static TRow _Value(SystemRowSet rs, Graph g, NodeType e)
+            static TRow _Value(SystemRowSet rs, GraphType g, NodeType e)
             {
                 return new TRow(rs,
                     new TChar(Uid(e.defpos)),
@@ -7246,7 +7243,7 @@ namespace Pyrrho.Level4
             {
                 throw new NotImplementedException();
             }
-        }
+        } 
         static void RoleGraphPropertyResults()
         {
             var t = new SystemTable("Role$GraphProperty");
@@ -7270,7 +7267,7 @@ namespace Pyrrho.Level4
             internal static RoleGraphPropertyBookmark? New(Context cx, SystemRowSet res)
             {
                 for (var b = cx.db.objects.PositionAt(0); b != null; b = b.Next())
-                    if (b.value() is Graph g)
+                    if (b.value() is GraphType g)
                         for (var c = g.graphTypes.First(); c != null; c = c.Next())
                         {
                             if (cx.obs[c.key()] is NodeType e)
@@ -7321,7 +7318,7 @@ namespace Pyrrho.Level4
                         }
                     for (obmk = obmk.Next(); obmk != null; obmk = obmk.Next())
                     {
-                        if (obmk.value() is Graph g1)
+                        if (obmk.value() is GraphType g1)
                         {
                             g = g1;
                             mbmk = g1.graphTypes.First();
@@ -7355,7 +7352,6 @@ namespace Pyrrho.Level4
                 throw new NotImplementedException();
             }
         }
-
         static void RoleNodeTypeResults()
         {
             var t = new SystemTable("Role$NodeType");

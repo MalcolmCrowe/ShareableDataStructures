@@ -11552,6 +11552,7 @@ cx.obs[high] is not QlValue hi)
             PreCon = -469, // TypedValue
             State = -245;       // CTree<long,TGParam> tgs in this GqlNode  (always empty for GraphInsertStatement)
         internal GqlNode? before => (GqlNode?)mem[Before];
+        internal virtual long RefNode => defpos;
         internal bool delimit => (bool?)mem[Delimit]??false;
         public CTree<string, QlValue> docValue => (CTree<string,QlValue>)(mem[DocValue]??CTree<string,QlValue>.Empty);
         public long idValue => (long)(mem[IdValue] ?? -1L);
@@ -11564,7 +11565,6 @@ cx.obs[high] is not QlValue hi)
             (CTree<long, TGParam>)(mem[State] ?? CTree<long, TGParam>.Empty);
         public BTree<long,Names> defs => 
             (BTree<long,Names>)(mem[ObInfo.Defs] ?? BTree<long,Names>.Empty);
-        internal virtual long RefEdge => -1L;
         public GqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<string, QlValue> d,
             CTree<long, TGParam> tgs, Domain? dm = null, BTree<long, object>? m = null)
            : this(cx, nm, ch, i, d, tgs, _Type(dm,cx,d,m), m)
@@ -11631,6 +11631,8 @@ cx.obs[high] is not QlValue hi)
                 return Domain.NodeType;
             if (m[_Label] is GqlLabel lb && cx.obs[cx.dnames[lb.name].Item2] is NodeType n)
                 return n;
+            if (dm?.kind == Qlx.AMPERSAND)
+                return dm;
             Domain r = (m[_Label] as Domain)?.ForExtra(cx, m + (DocValue, d), cs) ?? Domain.NodeType;
             if (m[Before] is GqlEdge be && cx.ParsingMatch && r.defpos < 0)
             {   //we are in a MatchExp and should constrain our domain
@@ -11773,19 +11775,29 @@ cx.obs[high] is not QlValue hi)
                 if (cx.db.objects[nt.defpos] is NodeType nn)
                     nt = nn;
             }
-            else if (label.kind == Qlx.AMPERSAND)
+/*            else if (label.kind == Qlx.AMPERSAND)
             {
                 var sb = new StringBuilder();
+                var oi = new ObInfo(label.ToString());
                 var cm = "";
                 for (var b = tl.First(); b != null; b = b.Next())
                 {
                     sb.Append(cm); cm = "&"; sb.Append(b.key().name);
+                    oi += (ObInfo._Names, oi.names + b.key().names);
                 }
-                // JoinedNodeType is not committed to the database: it is a syntactic device leading to Record4 creation
-                NodeType jt = new JoinedNodeType(ap,cx.GetUid(), sb.ToString(), Domain.NodeType, 
-                    new BTree<long,object>(Domain.NodeTypes,tl), cx);
+                for (var b = cx.db.joinedNodes.First(); b != null; b = b.Next())
+                    if (b.value().CompareTo(tl) == 0)
+                        return cx.db.objects[b.key()] as JoinedNodeType ?? throw new PEException("PE80851");
+                // JoinedNodeType needs to have connection persistence so use cx.db.nextStmt
+                NodeType jt = new JoinedNodeType(ap, cx.db.nextStmt, sb.ToString(), Domain.NodeType,
+                    new BTree<long, object>(Domain.NodeTypes, tl), cx);
+                jt += (Infos,new BTree<long,ObInfo>(cx.role.defpos,oi));
+                cx.Add(jt);
+                cx.db += jt;
+                cx.db += (Database.JoinedNodes, cx.db.joinedNodes + (jt.defpos, tl));
+                cx.db += (Database.NextStmt, cx.db.nextStmt + 1);
                 return jt;
-            }
+            } */
             else if (tl.Count>0)
             {
                 var fi =  tl.First()?.key() as NodeType ?? throw new PEException("PE70301");
@@ -11828,9 +11840,16 @@ cx.obs[high] is not QlValue hi)
                     .Add(Qlx.INSERT_STATEMENT,new TChar(name??"??"));
             return nt;
         }
-        internal GqlNode Create(Context cx, NodeType dt, long ap, CTree<string,QlValue> ls,
+        internal GqlNode Create(Context cx, Domain dt, long ap, CTree<string,QlValue> ls,
             bool allowExtras = true)
         {
+            if (dt is GqlLabel lb && lb.kind==Qlx.AMPERSAND)
+            {
+                var r1 = this;
+                for (var b = dt._NodeTypes(cx).First();b!=null;b=b.Next())
+                    r1 = r1.Create(cx, b.key(), ap, ls, false);
+                return r1;
+            }
             var nd = this;
             // If there are no labels, we create new node types rather than adding altering existing
             allowExtras = allowExtras && label.ForExtra(cx,mem) is not null;
@@ -11839,7 +11858,7 @@ cx.obs[high] is not QlValue hi)
             var ods = cx.defs;
             if (allowExtras)
             {
-                nt = (NodeType)_NodeType(cx, dt, ap, allowExtras);
+                nt = (NodeType)_NodeType(cx, (NodeType)dt, ap, allowExtras);
                 if (nt.CompareTo(nd.domain)!=0)
                 {
                     nd += (_Domain, nt);
@@ -11857,11 +11876,11 @@ cx.obs[high] is not QlValue hi)
                     nt = ot;
                 else
                     nt = nt.Build(cx, this, ap, nt.name??label.name, ls);
-                if (nt is JoinedNodeType) // JoinedNodeType will have done everything
-                    return this;
+ /*               if (nt is JoinedNodeType) // JoinedNodeType will have done everything
+                    return (GqlNode)cx.Add(nd+(_Domain,nt)); */
             }
             else
-                nt = dt;
+                nt = (NodeType)dt;
             nd += (_Domain, nt);
             nd = (GqlNode)cx.Add(nd);
             ls ??= CTree<string, QlValue>.Empty;
@@ -11911,12 +11930,17 @@ cx.obs[high] is not QlValue hi)
                     + (cx, RowSet.RSTargets, fm.rsTargets)
                     + (RowSet.Asserts, RowSet.Assertions.AssignTarget);
                 var s = new SqlInsert(cx.GetUid(), fm, sce.defpos, ts + (Domain.RowType, iC),
-                    new BTree<long,object>(SqlInsert.ForNode,RefEdge));
+                    new BTree<long,object>(SqlInsert.ForNode,RefNode));
                 cx.Add(s);
-                // NB: The TargetCursor/trigger machinery will place values in cx.values in the !0.. range
-                // From the point of view of graph operations these are spurious, and should not be accessed
-                // The only exception is to retrieve the value of tn
-                s._Obey(cx); // ??
+                s._Obey(cx); 
+                if (nd.label.kind==Qlx.AMPERSAND && nd.label is GqlLabel dl)
+                {
+                    var rs = CTree<long,bool>.Empty;
+                    if (cx.newNodes[dl.left] is CTree<long, bool> nl)
+                        rs += nl;
+                    if (cx.newNodes[dl.right] is CTree<long, bool> nr)
+                        rs += nr;
+                }
                 if (nd.name != null)
                     cx.Add(nd.name, ap, nd);
                 tn = cx.values[np] as TNode; //?? throw new DBException("42105").Add(Qlx.INSERT_STATEMENT);
@@ -12091,7 +12115,7 @@ cx.obs[high] is not QlValue hi)
         internal const long 
             RefersTo = -452; // long GqlNode
         internal long refersTo => (long)(mem[RefersTo] ?? -1L);
-        internal override long RefEdge => refersTo;
+        internal override long RefNode => refersTo;
         internal GqlReference(Context cx,long ap, long dp, GqlNode n, BTree<long,object> m)
             : this(dp, n.mem -PreCon - PostCon -Before - After 
                   + (RefersTo, n.defpos)+ m)
@@ -12154,7 +12178,6 @@ cx.obs[high] is not QlValue hi)
     /// </summary>
     internal class GqlEdge : GqlNode
     {
-        internal override long RefEdge => defpos;
         public GqlEdge(Ident nm, BList<Ident> ch, Context cx, long i,
             CTree<string, QlValue> d, CTree<long, TGParam> tgs, Domain? dm, BTree<long, object> m)
             : base(nm, ch, cx, i, d, tgs, _Type(nm, dm, cx, d, m), _Mem(cx, d, tgs, dm, m, nm, i))
@@ -12309,9 +12332,10 @@ cx.obs[high] is not QlValue hi)
             if (cx.db.objects[end] is NodeType et && cx.db.objects[defpos] is NodeType dt
                 && dt.EqualOrStrongSubtypeOf(et))
                 return true;
-            if (cx._Ob(defpos) is JoinedNodeType jt)
-                for (var b=jt.nodeTypes.First();b!=null;b=b.Next())
-                    if (b.key().defpos==end)
+/*            if (cx._Ob(defpos) is JoinedNodeType jt)
+                for (var b=jt.nodeTypes.First();b!=null;b=b.Next()) */
+            for (var b=domain.super.First();b!=null;b=b.Next())
+                  if (b.key().defpos==end)
                         return true;
             return false;
         } 

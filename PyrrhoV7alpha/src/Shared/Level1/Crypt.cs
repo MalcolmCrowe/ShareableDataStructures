@@ -77,11 +77,11 @@ namespace Pyrrho.Security
 					case "Role": Send(Connecting.Role, v); break;
 					case "Stop": Send(Connecting.Stop, v); break;
                     case "User": Send(Connecting.User, v); break;
-                    case "Base": Send(Connecting.Base, v); break;
+              //      case "Base": Send(Connecting.Base, v); break;
 					case "Locale": Send(Connecting.Culture, v); break;
-                    case "BaseServer": Send(Connecting.BaseServer, v); break;
-                    case "Coordinator": Send(Connecting.Coordinator, v); break;
-                    case "Password": Send(Connecting.Password, v); break;
+              //      case "BaseServer": Send(Connecting.BaseServer, v); break;
+              //      case "Coordinator": Send(Connecting.Coordinator, v); break;
+              //      case "Password": Send(Connecting.Password, v); break;
                     case "Modify": Send(Connecting.Modify, v); break;
                     case "Length": Send(Connecting.Length, v); break;
 					case "CaseSensitive": Send(Connecting.CaseSensitive, v); break;

@@ -106,8 +106,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex(string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, long pp, bool ifN = false) :
-            this(Type.PIndex, nm, tb, cl, fl, rx, pp)
+            ConstraintType fl, long rx, long pp, Database d, bool ifN = false) :
+            this(Type.PIndex, nm, tb, cl, fl, rx, pp, d)
         {
             ifNeeded = ifN;
         }
@@ -123,8 +123,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex(Type t, string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, long pp) :
-            base(t, pp)
+            ConstraintType fl, long rx, long pp, Database d) :
+            base(t, pp, d)
         {
             if (fl == ConstraintType.ForeignKey || fl == ConstraintType.NoType)
                 fl = Reference;
@@ -372,8 +372,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex1(string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, string af, long pp) :
-            this(Type.PIndex1, nm, tb, cl, fl, rx, af, pp)
+            ConstraintType fl, long rx, string af, long pp, Database d) :
+            this(Type.PIndex1, nm, tb, cl, fl, rx, af, pp, d)
         { }
         /// <summary>
         /// Constructor: A new PIndex request from the Parser
@@ -388,8 +388,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
         public PIndex1(Type t, string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, string af, long pp) :
-            base(t, nm, tb, cl, fl, rx, pp)
+            ConstraintType fl, long rx, string af, long pp, Database d) :
+            base(t, nm, tb, cl, fl, rx, pp, d)
         {
             adapter = af;
         }
@@ -441,13 +441,13 @@ namespace Pyrrho.Level2
         /// <param name="md">The metadata flags</param>
         /// <param name="db">The database</param>
         public PIndex2(string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, string af, ulong md, long pp) :
-            this(Type.PIndex2, nm, tb, cl, fl, rx, af, md, pp)
+            ConstraintType fl, long rx, string af, ulong md, long pp, Database d) :
+            this(Type.PIndex2, nm, tb, cl, fl, rx, af, md, pp, d)
         {
         }
         protected PIndex2(Type t, string nm, Table tb, Domain cl,
-            ConstraintType fl, long rx, string af, ulong md, long pp)
-            : base(t, nm, tb, cl, fl, rx, af, pp)
+            ConstraintType fl, long rx, string af, ulong md, long pp, Database d)
+            : base(t, nm, tb, cl, fl, rx, af, pp, d)
         {
             metadata = md;
         }
@@ -481,8 +481,8 @@ namespace Pyrrho.Level2
     {
         public PIndex.ConstraintType ctype;
         public long index;
-        public RefAction(long ix, PIndex.ConstraintType ct, long pp)
-            : base(Type.RefAction, pp) 
+        public RefAction(long ix, PIndex.ConstraintType ct, long pp, Database d)
+            : base(Type.RefAction, pp, d) 
         {
             index = ix;
             ctype = ct;

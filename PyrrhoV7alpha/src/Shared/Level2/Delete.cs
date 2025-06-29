@@ -47,17 +47,17 @@ namespace Pyrrho.Level2
         public Delete(Context cx, TableRow rw, long pp)
             : this(Type.Delete, rw, pp, cx) { }
         protected Delete(Type t, TableRow rw, long pp, Context cx)
-            : base(t, pp)
+            : base(t, pp, cx.db)
         {
             tabledefpos = rw.tabledefpos;
             delrec = rw;
             delpos = rw.defpos;
             if (cx._Ob(tabledefpos) is Table tb)
             {
-                if (tb is JoinedNodeType jt)
+/*                if (tb is JoinedNodeType jt)
                     for (var b = jt.nodeTypes.First(); b != null; b = b.Next())
                             suT += (b.key().defpos, true);
-                else
+                else */
                     for (var b = tb.super.First(); b != null; b = b.Next())
                             suT += (b.key().defpos, true);
                 siC += tb.sindexes;

@@ -3,11 +3,12 @@ using Pyrrho.Common;
 using Pyrrho.Level4;
 using System.Text;
 using Pyrrho.Level2;
+using System.Data.SqlTypes;
 
 namespace Pyrrho.Level5
 {
     // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-    // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
+    // (nc) Malcolm Crowe, University of the West of Scotland 2004-2025
     //
     // This software is without support and no liability for damage consequential to use.
     // You can view and test this code
@@ -629,7 +630,7 @@ namespace Pyrrho.Level5
             if (cx._Ob(defpos) is not NodeType nt || nt.infos[definer] is not ObInfo ni)
                 throw new DBException("PE42133", name);
             for (var b = e.docValue.First(); b != null; b = b.Next())
-                if (!ni.names.Contains(b.key()) && allowExtras)
+                if (!(ni.names.Contains(b.key())||e.label.names.Contains(b.key())) && allowExtras)
                 {
                     var nc = new PColumn3(r, b.key(), -1, b.value().domain, 
                         ni.metastring, ni.metadata, cx.db.nextPos, cx, true);
@@ -1168,7 +1169,7 @@ namespace Pyrrho.Level5
         internal long right => (long)(mem[QlValue.Right] ?? -1L);
         public GqlLabel(long dp, Context? cx, long lf, long rg, BTree<long, object>? m = null)
             : base(dp, _Mem(cx, m, lf, rg)) { }
-        internal GqlLabel(Ident id, Context cx,NodeType? lt = null, NodeType? at = null, BTree<long,object>? m = null)
+        internal GqlLabel(Ident id, Context cx,Domain? lt = null, Domain? at = null, BTree<long,object>? m = null)
             : this(id.lp, id.uid, id.ident, cx, lt?.defpos, at?.defpos, m) { }
         internal GqlLabel(long lp, long dp, string nm,  Context cx, long? lt = null, long? at = null, 
             BTree<long,object>? m=null)
@@ -1413,13 +1414,14 @@ namespace Pyrrho.Level5
             {
                 var pt = new PEdgeType(nm.ident, EdgeType, nu, -1L, cx.db.nextPos, cx, true);
                 et = (EdgeType)(cx.Add(pt) ?? throw new DBException("42105"));
-                var mp = cx.metaPending[nm.uid] ?? CTree<long, (string, TMetadata)>.Empty;
+                var mp = cx.metaPending[nm.uid] ?? CTree<long, CTree<string, TMetadata>>.Empty;
                 for (var b = mp.First(); b != null; b = b.Next())
-                {
-                    var (s, ms) = b.value();
-                    for (var c = (ms[Qlx.EDGETYPE] as TSet)?.First(); c != null; c = c.Next()) 
-                        cs += (c.Value(), true);
-                }
+                    for (var c = b.value().First(); c != null; c = c.Next())
+                    {
+                        var ms = c.value();
+                        for (var d = (ms[Qlx.EDGETYPE] as TSet)?.First(); d != null; d = d.Next())
+                            cs += (d.Value(), true);
+                    }
                 cx.metaPending -= nm.uid;
                 cx.db += et;
             }
@@ -1437,6 +1439,18 @@ namespace Pyrrho.Level5
                 }
             e = (EdgeType)e.Build(cx, null, 0L, nm.ident, dc);
             return e;
+        }
+        internal override CTree<Domain, bool> _NodeTypes(Context cx)
+        {
+            var r =  base._NodeTypes(cx);
+            if (kind == Qlx.AMPERSAND)
+            {
+                if (cx._Ob(left) is NodeType nl)
+                    r += nl._NodeTypes(cx);
+                if (cx._Ob(right) is NodeType nr)
+                    r += nr._NodeTypes(cx);
+            }
+            return r;
         }
         public override string ToString()
         {
@@ -1612,11 +1626,12 @@ namespace Pyrrho.Level5
                         case Qlx.ARROWBASETILDE: q = Qlx.WITH; nn = bt; break;
                         case Qlx.RBRACKTILDE: q = Qlx.WITH; nn = at; break;
                     }
-                var nc = new TConnector(q, nn, ec.cn, Position);
+                var cn = (ec.cn == "") ? q.ToString() : ec.cn;
+                var nc = new TConnector(q, nn, cn, Position);
                 if (nn > 0 && defpos > 0)
                     (r, _) = BuildNodeTypeConnector(cx,nc);
                 else
-                    cx.MetaPend(dp+1L, dp+1L, "", 
+                    cx.MetaPend(dp+1L, dp+1L, cn, 
                         TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Connector)+nc));
             }
             return r;
@@ -1624,7 +1639,7 @@ namespace Pyrrho.Level5
         internal (EdgeType, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode a, GqlEdge ed, TypedValue cc,
 CTree<string, QlValue> ls, bool allowChange = false)
         {
-            if (cc is not TConnector ec)
+            if (cc is not TConnector nc)
                 return (this, ls);
             var found = false;
             for (var c = (metadata[Qlx.EDGETYPE] as TSet)?.First(); c != null; c = c.Next())
@@ -1632,25 +1647,25 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 {
                     TypedValue qv = tc.q switch
                     {
-                        Qlx.TO => ec.q switch
+                        Qlx.TO => nc.q switch
                         {
-                            Qlx.ARROW or Qlx.ARROWR => Connect(cx, a, ec, tc, ed), // ]-> ->
-                            Qlx.RARROW or Qlx.ARROWL => Connect(cx, b, ec, tc, ed), // <-[ <-
+                            Qlx.ARROW or Qlx.ARROWR => Connect(cx, a, nc, tc, ed), // ]-> ->
+                            Qlx.RARROW or Qlx.ARROWL => Connect(cx, b, nc, tc, ed), // <-[ <-
                             _ => TNull.Value
                         },
-                        Qlx.FROM => ec.q switch
+                        Qlx.FROM => nc.q switch
                         {
-                            Qlx.ARROWBASE or Qlx.ARROWR => Connect(cx, b, ec, tc, ed), // -[ ->
-                            Qlx.RARROWBASE or Qlx.ARROWL => Connect(cx, a, ec, tc, ed), // ]- <-
+                            Qlx.ARROWBASE or Qlx.ARROWR => Connect(cx, b, nc, tc, ed), // -[ ->
+                            Qlx.RARROWBASE or Qlx.ARROWL => Connect(cx, a, nc, tc, ed), // ]- <-
                             _ => TNull.Value
                         },
-                        Qlx.WITH => ec.q switch
+                        Qlx.WITH => nc.q switch
                         {
                             Qlx.ARROWLTILDE or Qlx.RARROWTILDE or Qlx.ARROWBASETILDE // <~ <~[ ~[
-                                => Connect(cx, b, ec, tc, ed),
+                                => Connect(cx, b, nc, tc, ed),
                             Qlx.RBRACKTILDE or Qlx.ARROWTILDE or Qlx.ARROWRTILDE // ]~ ]~> ~>
-                                => Connect(cx, a, ec, tc, ed),
-                            Qlx.TILDE => Connect(cx, a, ec, tc, ed) ?? Connect(cx, b, ec, tc, ed), // ~
+                                => Connect(cx, a, nc, tc, ed),
+                            Qlx.TILDE => Connect(cx, a, nc, tc, ed) ?? Connect(cx, b, nc, tc, ed), // ~
                             _ => TNull.Value
                         },
                         _ => TNull.Value
@@ -1666,6 +1681,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
                             ls += (n, new SqlLiteral(cx.GetUid(), tc.cd.Coerce(cx,qv + ov)));
                         }
                         found = true;
+                        break;
                     }
                 }
             var r = this;
@@ -1675,7 +1691,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 Qlx q = Qlx.Null;
                 long bt = (b == null) ? -1L : b.dataType.defpos;
                 long at = a.dataType.defpos;
-                if (b != null) switch (ec.q)
+                if (b != null) switch (nc.q)
                     {
                         case Qlx.ARROWBASE: q = Qlx.FROM; nn = b; break;
                         case Qlx.ARROW: q = Qlx.TO; nn = a; break;
@@ -1687,7 +1703,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 if (nn != null)
                 {
                     (r, var rc) = BuildNodeTypeConnector(cx,
-                        new TConnector(q, nn.dataType.defpos, ec.cn, Position));
+                        new TConnector(q, nn.dataType.defpos, nc.cn, Position));
                     ls += (cx.NameFor(rc.cp) ?? rc.cn,
                         (SqlLiteral)cx.Add(new SqlLiteral(cx.GetUid(), new TPosition(nn.defpos))));
                 }
@@ -1695,22 +1711,42 @@ CTree<string, QlValue> ls, bool allowChange = false)
             return (r, ls);
         }
 
-        static TypedValue Connect(Context cx, TNode? n, TConnector c, TConnector tc, GqlEdge ed)
+        static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec, GqlEdge ed)
         {
-            if (n == null || (c.cn != "" && tc.cn.ToUpper() != c.cn.ToUpper()))
+            if (n == null || (nc.cn != "" && ec.cn.ToUpper() != nc.cn.ToUpper()))
                 return TNull.Value;
-            if (cx.db.objects[n.tableRow.tabledefpos] is Domain nt && cx.db.objects[tc.ct] is Domain ct
-                && !nt.EqualOrStrongSubtypeOf(ct))
-                return TNull.Value;
-            if (n != null)
+            if (cx._Ob(nc.ct) is GqlLabel gl && gl.kind == Qlx.AMPERSAND)
+                for (var b = gl._NodeTypes(cx).First(); b != null; b = b.Next())
+                    if (Connect(cx, n, (NodeType)b.key(), nc, ec, ed) is TypedValue v && v != TNull.Value)
+                        return v;
+            if (n.dataType is NodeType nt)
+                return Connect(cx,n,nt,nc,ec,ed)??TNull.Value;
+            throw new DBException("22G0V");
+        }
+
+        static TypedValue? Connect(Context cx, TNode n, NodeType? nt, TConnector nc, TConnector ec, GqlEdge ed)
+        {
+            if (nt is null)
+                return null;
+            if (ec.ct != nt.defpos && cx._Ob(ec.ct) is Domain en)
             {
-                if (tc.cd.kind == Qlx.POSITION)
-                    return new TPosition(n.defpos);
-                if (tc.cd.kind == Qlx.SET && tc.cd.elType is Domain de)
-                    return (de.kind == Qlx.POSITION) ? new TPosition(n.defpos) : n;
-                if (cx.db.objects[tc.ct] is Domain d && n.dataType.EqualOrStrongSubtypeOf(d))
-                    return n;
+                if (en is NodeType && !nt.EqualOrStrongSubtypeOf(en))
+                    return null;
+                if (en is GqlLabel el && el.kind==Qlx.AMPERSAND)
+                {
+                    var ok = false;
+                    for (var b = el._NodeTypes(cx).First(); (!ok) && b != null; b = b.Next())
+                        ok = nt.EqualOrStrongSubtypeOf(b.key());
+                    if (!ok)
+                        return null;
+                }
             }
+            if (ec.cd.kind == Qlx.POSITION)
+                return new TPosition(n.defpos);
+            if (ec.cd.kind == Qlx.SET && ec.cd.elType is Domain de)
+                return (de.kind == Qlx.POSITION) ? new TPosition(n.defpos) : n;
+            if (cx.db.objects[ec.ct] is Domain d && n.dataType.EqualOrStrongSubtypeOf(d))
+                return n;
             throw new DBException("22G0V");
         }
 
@@ -1758,7 +1794,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
             var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
             var px = new PIndex(cn, ut, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
                         | PIndex.ConstraintType.CascadeDelete,
-                -1L, cx.db.nextPos, false);
+                -1L, cx.db.nextPos,cx.db,false);
             nc += (Level3.Index.RefIndex, px.ppos);
             ut = (EdgeType)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.REF));
             var um = ut.metadata[Qlx.EDGETYPE] as TSet ?? new TSet(Connector);
@@ -1902,7 +1938,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
                 var px = new PIndex(tc.cn, this, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
                             | PIndex.ConstraintType.CascadeDelete,
-                    -1L, cx.db.nextPos, false);
+                    -1L, cx.db.nextPos, cx.db, false);
                 nc += (Level3.Index.RefIndex, px.ppos);
                 cx.Add(nc);
                 r = (EdgeType)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.REF));
@@ -2034,7 +2070,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
             return sb.ToString();
         }
     }
-    /// <summary>
+/*    /// <summary>
     /// This type is created as a side effect of Record4.Install: 
     /// Records in this table are posted into and indexed by the separate nodeTypes.
     /// </summary>
@@ -2076,13 +2112,13 @@ CTree<string, QlValue> ls, bool allowChange = false)
             ls ??= CTree<string,QlValue>.Empty;
             // examine any provided id values
             for (var b = nodeTypes.First(); b != null; b = b.Next())
-                if (b.key() is NodeType nt && cx._Ob(nt.idCol) is TableColumn tc
-                        && tc.infos[cx.role.defpos] is ObInfo ci && ci.name is string cn
+                if (b.key() is NodeType nt && cx._Ob(nt.idCol) is TableColumn ec
+                        && ec.infos[cx.role.defpos] is ObInfo ci && ci.name is string cn
                         && ls?[cn] is QlValue sv)
                 {
                     var tv = sv.Eval(cx);
-                    for (var c = ids.First(); c != null; c = c.Next())
-                        if (c.value() is TypedValue cv && cv.CompareTo(tv) != 0)
+                    for (var nc = ids.First(); nc != null; nc = nc.Next())
+                        if (nc.value() is TypedValue cv && cv.CompareTo(tv) != 0)
                             throw new DBException("42000", "Conflicting id values");
                     if (it.defpos == Null.defpos)
                         it = tv.dataType;
@@ -2102,12 +2138,12 @@ CTree<string, QlValue> ls, bool allowChange = false)
                         cx.Add(new GqlLabel(ap,cx.GetUid(),nt.name,cx)));
                     var nd = new GqlNode(new Ident(Uid(np), np), CList<Ident>.Empty, cx,
                         -1L, x.docValue, x.state, nt, m);
-                    nd.Create(cx, nt, ap, x.docValue,false);
+                    nd.Create(cx, this, ap, x.docValue,false);
                     // locate the Record that has just been constructed in et
                     tbs += (nt.defpos, true);
                     var tr = (Transaction)cx.db; // must be inside this loop
-                    for (var c = tr.physicals.Last(); c != null; c = c.Previous())
-                        if (c.value() is Record rc 
+                    for (var nc = tr.physicals.Last(); nc != null; nc = nc.Previous())
+                        if (nc.value() is Record rc 
                             && (rc.tabledefpos==nt.defpos 
                             || (rc as Record4)?.extraTables.Contains(nt.defpos)==true))
                         { 
@@ -2143,79 +2179,89 @@ CTree<string, QlValue> ls, bool allowChange = false)
             sb.Append(base.ToString());
             return sb.ToString();
         } 
-    }
+    } */
     /// <summary>
     /// See GQL 4.13: it is a set of node types and edge types that are defined as constraints on a Graph
     /// </summary>
     internal class GraphType : Domain
     {
-        internal GraphType(PGraphType pg, Context cx, long ap)
-            : this(pg.ppos, _Mem(pg,cx, ap))
-        { }
-        public GraphType(long dp, BTree<long, object> m) : base(dp, m)
-        { }
-        public GraphType(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
-        {  }
-        static BTree<long,object> _Mem(PGraphType pg,Context cx,long ap)
-        {
-            var r = BTree<long, object>.Empty;
-            r += (Graph.Iri, pg.iri);
-            r += (Graph.GraphTypes, pg.types);
-            var ix = pg.iri.LastIndexOf('/');
-            var nm = pg.iri[ix..];
-            var oi = new ObInfo(nm, Grant.AllPrivileges);
-            var ns = Names.Empty;
-            for (var b = pg.types.First(); b != null; b = b.Next())
-                if (cx._Ob(b.key()) is UDType ut)
-                    ns += (ut.name, (ap,b.key()));
-            oi += (ObInfo._Names, ns);
-            r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
-            return r;
-        }
-        public static GraphType operator +(GraphType et, (long, object) x)
-        {
-            return (GraphType)et.New(et.defpos, et.mem + x);
-        }
-        internal override DBObject New(long dp, BTree<long, object> m)
-        {
-            return new GraphType(dp,m);
-        }
-    }
-    // The Graph view of graph data
+        /*       internal GraphType(PGraphType pg, Context cx, long ap)
+                   : this(pg.ppos, _Mem(pg,cx, ap))
+               { }
+               public GraphType(long dp, BTree<long, object> m) : base(dp, m)
+               { }
+               public GraphType(long pp, long dp, BTree<long, object>? m = null) : base(pp, dp, m)
+               {  }
+               static BTree<long,object> _Mem(PGraphType pg,Context cx,long ap)
+               {
+                   var r = BTree<long, object>.Empty;
+                   r += (Graph.Iri, pg.iri);
+                   r += (Graph.GraphTypes, pg.types);
+                   var ix = pg.iri.LastIndexOf('/');
+                   var nm = pg.iri[ix..];
+                   var oi = new ObInfo(nm, Grant.AllPrivileges);
+                   var ns = Names.Empty;
+                   for (var b = pg.types.First(); b != null; b = b.Next())
+                       if (cx._Ob(b.key()) is UDType ut)
+                           ns += (ut.name, (ap,b.key()));
+                   oi += (ObInfo._Names, ns);
+                   r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
+                   return r;
+               }
+               public static GraphType operator +(GraphType et, (long, object) x)
+               {
+                   return (GraphType)et.New(et.defpos, et.mem + x);
+               }
+               internal override DBObject New(long dp, BTree<long, object> m)
+               {
+                   return new GraphType(dp,m);
+               }
+           }
+           // The Graph view of graph data
 
-    // The database is considered to contain a (possibly empty) set of TGraphs.
-    // Every Node in the database belongs to exactly one graph in this set. 
+           // The database is considered to contain a (possibly empty) set of TGraphs.
+           // Every Node in the database belongs to exactly one graph in this set. 
 
-    /// <summary>
-    /// A Graph is a DBObject containing a tree of TNodes.
-    /// </summary>
-    internal class Graph : DBObject,IComparable
-    {
+           /// <summary>
+           /// A Graph is a DBObject containing a tree of TNodes.
+           /// </summary>
+           internal class Graph : DBObject,IComparable
+           {*/
         internal const long
             GraphTypes = -122, // CTree<long,bool> GraphType
             Iri = -147, // string
-            Nodes = -499; // CTree<long,TNode> // and edges
-        internal CTree<long,TNode> nodes =>
-            (CTree<long, TNode>) (mem[Nodes]??CTree<long,TNode>.Empty);
+            _Schema = -450;  // long Schema (GQL)
+       //     Nodes = -499; // CTree<long,TNode> // and edges
+       // internal CTree<long,TNode> nodes =>
+       //     (CTree<long, TNode>) (mem[Nodes]??CTree<long,TNode>.Empty);
         internal CTree<long,bool> graphTypes => 
             (CTree<long,bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
+        internal long schema => (long)(mem[_Schema]??-1L);
         internal string iri => (string)(mem[Iri]??"");
-        internal Graph(PGraph pg,Context cx,long ap)
+      //  internal long schema => (long)(mem[Schema] ?? -1L);
+        internal GraphType(PGraphType pg,Context cx,long ap)
             : base(pg.ppos,_Mem(cx,pg,ap))
+        {
+            cx.graph = this;
+            cx.schema = cx.obs[schema] as Schema;
+        }
+        public GraphType(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        public Graph(long dp, BTree<long, object> m) : base(dp, m)
-        { }
-        static BTree<long,object> _Mem(Context cx,PGraph ps,long ap)
+        static BTree<long,object> _Mem(Context cx,PGraphType ps,long ap)
         {
             var r = BTree<long, object>.Empty
-                + (Nodes, ps.records) + (Iri, ps.iri) + (GraphTypes, ps.types ?? CTree<long, bool>.Empty);
+                 + (GraphTypes, ps.types ?? CTree<long, bool>.Empty);
             var nm = ps.iri;
+            r += (ObInfo.Name, nm);
             var ix = ps.iri.LastIndexOf('/');
             if (ix >= 0)
             {
                 nm = ps.iri[(ix + 1)..];
+                ps.name = nm;
                 ps.iri = ps.iri[0..ix];
             }
+            if (cx.role.schemas[ps.iri] is long sp && sp>=0)
+                r += (_Schema, sp);
             var oi = new ObInfo(nm, Grant.AllPrivileges);
             var ns = Names.Empty;
             for (var b = ps.types?.First(); b != null; b = b.Next())
@@ -2223,19 +2269,22 @@ CTree<string, QlValue> ls, bool allowChange = false)
                     ns += (ut.name, (ap,b.key()));
             oi += (ObInfo._Names, ns);
             r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
+            var ro = cx.role;
+            ro = ro + (Role.Graphs, ro.graphs + (nm, ps.ppos));
+            cx.db += (Database.Role, ro);
             return r;
         }
-        public static Graph operator +(Graph et, (long, object) x)
+        public static GraphType operator +(GraphType et, (long, object) x)
         {
-            return (Graph)et.New(et.defpos, et.mem + x);
+            return (GraphType)et.New(et.defpos, et.mem + x);
         }
-        public static Graph operator+(Graph g,TNode r)
+        public static GraphType operator+(GraphType g,TNode r)
         {
-            return new Graph(g.defpos,g.mem + (Nodes,g.nodes+(r.tableRow.defpos,r)));
+            return new GraphType(g.defpos,g.mem + (Nodes,g.nodes+(r.tableRow.defpos,true)));
         }
-        public int CompareTo(object? obj)
+        public override int CompareTo(object? obj)
         {
-            if (obj is not Graph tg)
+            if (obj is not GraphType tg)
                 return 1;
             var c = iri.CompareTo(tg.iri);
             if (c != 0) return c;
@@ -2245,7 +2294,8 @@ CTree<string, QlValue> ls, bool allowChange = false)
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("TGraph (");
+            var sb = new StringBuilder("GraphType (");
+            sb.Append(name);
             var cm = "[";
             for (var b=nodes.First();b is not null;b=b.Next())
             {
@@ -2258,7 +2308,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
         }
         internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new Graph(dp,m);
+            return new GraphType(dp,m);
         }
     }
     internal class Schema : DBObject
@@ -2271,7 +2321,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
         internal CTree<long, bool> graphTypes =>
             (CTree<long, bool>)(mem[GraphTypes] ?? CTree<long, bool>.Empty);
         internal string directoryPath => 
-            (string)(mem[Graph.Iri] ?? "");
+            (string)(mem[GraphType.Iri] ?? "");
         internal static Schema Empty = new(); 
         Schema() : base(--_uid,new BTree<long,object>(Infos,
             new BTree<long,ObInfo>(-502,new ObInfo(".",Grant.AllPrivileges))))
@@ -2286,7 +2336,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
         static BTree<long,object> _Mem(Context cx,PSchema ps)
         {
             var r = BTree<long, object>.Empty;
-            r += (Graph.Iri, ps.directoryPath);
+            r += (GraphType.Iri, ps.directoryPath);
             var oi = new ObInfo(ps.directoryPath, Grant.AllPrivileges);
             r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
             return r;
@@ -2507,7 +2557,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
             return sb.ToString();
         }
     }
-    internal class TJoinedNode : TNode
+/*    internal class TJoinedNode : TNode
     {
         public CTree<Domain, bool>? nodeTypes => (dataType as JoinedNodeType)?.nodeTypes; 
         internal TJoinedNode(Context cx,TableRow tr) : base(cx, tr) { }
@@ -2523,7 +2573,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
         {
             return "TJoinedNode " + DBObject.Uid(defpos) + "[" + dataType + "]";
         }
-    }
+    } */
     /// <summary>
     /// A class for an unbound identifier (A variable in Francis's paper)
     /// </summary>

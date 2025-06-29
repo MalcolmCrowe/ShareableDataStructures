@@ -50,7 +50,7 @@ namespace Pyrrho.Level2
             RestView2, Audit, Clearance, Classify, Enforcement, Record3, // 65-70
             Update1, Delete1, Drop1, RefAction, Post, // 71-75
             PNodeType, PEdgeType, EditType, AlterIndex, AlterEdgeType, // 76-80
-            Record4, Update2, Delete2, PSchema, PGraph, PGraphType // 81-87
+            Record4, Update2, Delete2, PSchema, PGraph, PGraphType // 81-87 (PGraph is currently unused)
         };
         /// <summary>
         /// The Physical.Type of the Physical
@@ -62,11 +62,13 @@ namespace Pyrrho.Level2
         public readonly long ppos;
         public long trans;
         public long time;
+        internal readonly Database db; // for Context.BackTo, see GraphInsertStatement
         public bool ifNeeded = false;
-        protected Physical(Type tp, long pp)
+        protected Physical(Type tp, long pp, Database d)
         {
             type = tp;
             ppos = pp;
+            db = d;
             time = DateTime.Now.Ticks;
         }
         /// <summary>
@@ -79,6 +81,7 @@ namespace Pyrrho.Level2
         {
             type = tp;
             ppos = rdr.Position-1;
+            db = rdr.context.db;
             rdr.Set(this);
         }
         protected Physical(Physical ph,Writer wr)
@@ -86,6 +89,7 @@ namespace Pyrrho.Level2
             type = ph.type;
             ppos = wr.Length;
             wr.cx.uids += (ph.ppos, ppos);
+            db = wr.cx.db;
             time = ph.time;
         }
         /// <summary>
@@ -191,7 +195,7 @@ namespace Pyrrho.Level2
     internal class Curated : Physical
     {
         public Curated(Reader rdr) : base(Type.Curated, rdr) { }
-        public Curated(long pp) : base(Type.Curated, pp) { }
+        public Curated(long pp,Database d) : base(Type.Curated, pp, d) { }
         protected Curated(Curated x, Writer wr) : base(x, wr) { }
         public override long Dependent(Writer wr, Transaction tr)
         {
@@ -218,7 +222,7 @@ namespace Pyrrho.Level2
     {
         public long idindexdefpos;
         public AlterIndex(Reader rdr) : base(Type.AlterIndex, rdr) { }
-        public AlterIndex(long ix,long pp) : base(Type.AlterIndex, pp) 
+        public AlterIndex(long ix,long pp, Database d) : base(Type.AlterIndex, pp, d) 
         {
             idindexdefpos = ix;
         }
@@ -377,7 +381,8 @@ namespace Pyrrho.Level2
         public long edgetype;
         public AlterEdgeType(Reader rdr) : base(Type.AlterEdgeType, rdr) { }
         protected AlterEdgeType(Type t, Reader rdr) : base(t, rdr) { }
-        public AlterEdgeType(int id, long rt, long et, long pp) : base(Type.AlterEdgeType, pp)
+        public AlterEdgeType(int id, long rt, long et, long pp, Database d) 
+            : base(Type.AlterEdgeType, pp, d)
         {
             cid = id; reftype = rt; edgetype = et;
         }
@@ -461,8 +466,8 @@ namespace Pyrrho.Level2
     {
         public long perioddefpos;
         public Versioning(Reader rdr) : base(Type.Versioning,rdr) { }
-        public Versioning(long pd, long pp)
-            : base(Type.Versioning, pp)
+        public Versioning(long pd, long pp, Database d)
+            : base(Type.Versioning, pp, d)
         {
             perioddefpos = pd;
         }
@@ -539,8 +544,8 @@ namespace Pyrrho.Level2
         public Namespace(Reader rdr) : base(Type.Namespace, rdr) 
         {
         }
-        public Namespace(string pf, string ur, long pp)
-            : base(Type.Namespace, pp) 
+        public Namespace(string pf, string ur, long pp, Database d)
+            : base(Type.Namespace, pp, d) 
         {
             prefix = pf;
             uri = ur;
@@ -606,7 +611,8 @@ namespace Pyrrho.Level2
         {
             return new Classify(this, wr);
         }
-        public Classify(long ob, Level cl, long pp) : base(Type.Classify, pp)
+        public Classify(long ob, Level cl, long pp, Database d) 
+            : base(Type.Classify, pp, d)
         {
             obj = ob;
             classification = cl;
@@ -674,7 +680,7 @@ namespace Pyrrho.Level2
         /// <param name="nm">The definer's name for the new object</param>
         /// <param name="priv">The definer's privileges on the new object</param>
         protected Defined(Type tp, long pp, Context cx, string nm, Grant.Privilege priv) 
-            : base(tp, pp)
+            : base(tp, pp, cx.db)
         {
             definer = cx.role.defpos;
             owner = cx.user?.defpos ?? -1L;
@@ -806,7 +812,7 @@ namespace Pyrrho.Level2
         internal Context _cx;
         internal bool committed = false;
         internal Post(string u, string tn, string s, string us, long vw,
-            PTrigger.TrigType t, long cp, Context cx) : base(Type.Post, cp)
+            PTrigger.TrigType t, long cp, Context cx) : base(Type.Post, cp, cx.db)
         {
             url = u;
             sql = s;

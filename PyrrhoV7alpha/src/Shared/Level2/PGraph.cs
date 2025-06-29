@@ -108,16 +108,16 @@ namespace Pyrrho.Level2
             dataType = et;
         }
     }
-    internal class PGraph : Physical
+/*    internal class PGraph : Physical
     {
         public string iri = "";
-        public string name = ""; // placed by Graph constructor
+        public string name = ""; 
         public CTree<long, bool> types = CTree<long,bool>.Empty;
         public CTree<long, TNode> records = CTree<long, TNode>.Empty;
         public PGraph(long pp,string s,CTree<long,bool> ts,CTree<long,TNode> ns) 
             : base(Type.PGraph, pp)
         {
-            iri = s;
+            iri = s; // will be split by Graph constructor
             types = ts;
             records = ns;
         }
@@ -207,6 +207,7 @@ namespace Pyrrho.Level2
         public override string ToString()
         {
             var sb = new StringBuilder("PGraph ");
+            sb.Append(name); sb.Append(" in ");
             sb.Append(iri);
             var cm = " [";
             for (var b = types.First(); b != null; b = b.Next())
@@ -224,14 +225,14 @@ namespace Pyrrho.Level2
                 sb.Append(']');
             return sb.ToString();
         }
-    }
+    } */
     internal class PGraphType : Physical
     {
         public string iri = "";
         public string name = ""; // final component of iri, set in Graph constructor
         public CTree<long, bool> types = CTree<long, bool>.Empty;
-        public PGraphType(long pp,  string s, CTree<long, bool> ts)
-            : base(Type.PGraphType, pp)
+        public PGraphType(long pp,  string s, CTree<long, bool> ts, Database d)
+            : base(Type.PGraphType, pp, d)
         {
             iri = s;
             types = ts;
@@ -295,6 +296,7 @@ namespace Pyrrho.Level2
             cx.db += ro;
             cx.Add(ro);
             cx.Add(g);
+            cx.graph = g;
             return g;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
@@ -319,8 +321,8 @@ namespace Pyrrho.Level2
     }
     internal class PSchema : Physical
     {
-        public string directoryPath = "";
-        public PSchema(long pp, string s) : base(Type.PSchema, pp)
+        public string directoryPath = ""; // may begin with http:// etc
+        public PSchema(long pp, string s, Database d) : base(Type.PSchema, pp, d)
         {
             directoryPath = s;
         }
@@ -359,6 +361,7 @@ namespace Pyrrho.Level2
             cx.db += ro;
             cx.Add(ro);
             cx.Add(g);
+            cx.schema = g;
             return g;
         }
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)

@@ -35,8 +35,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="dp">The object to drop</param>
         /// <param name="db">The local database</param>
-        public Drop(long dp,long pp)
-            : this(Type.Drop, dp, pp)
+        public Drop(long dp,long pp, Database d)
+            : this(Type.Drop, dp, pp, d)
 		{
 		}
         /// <summary>
@@ -46,8 +46,8 @@ namespace Pyrrho.Level2
         /// <param name="tb">The PhysBase</param>
         /// <param name="ob">The defining position of the object being dropped</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected Drop(Type t, long ob, long pp)
-            : base(t, pp)
+        protected Drop(Type t, long ob, long pp, Database d)
+            : base(t, pp, d)
 		{
 			delpos = ob;
 		}
@@ -224,8 +224,8 @@ namespace Pyrrho.Level2
     }
     internal class Drop1 : Drop
     {
-        public Drop1(long dp, DropAction a, long pp)
-            : base(Type.Drop1, dp, pp) 
+        public Drop1(long dp, DropAction a, long pp, Database d)
+            : base(Type.Drop1, dp, pp, d) 
         {
             dropAction = a;
         }

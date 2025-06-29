@@ -152,10 +152,10 @@ namespace Pyrrho.Level2
             if (!Committed(wr,refpos)) return refpos;
             return -1;
         }
-        public PMetadata(string nm, long sq, DBObject ob, string s,TMetadata md, long pp)
-            : this(Type.Metadata, nm, sq, ob, s, md, pp) { }
-        public PMetadata(Type t,string nm,long sq,DBObject ob, string s, TMetadata md,long pp)
-            :base(t,pp)
+        public PMetadata(string nm, long sq, DBObject ob, string s,TMetadata md, long pp, Database d)
+            : this(Type.Metadata, nm, sq, ob, s, md, pp, d) { }
+        public PMetadata(Type t,string nm,long sq,DBObject ob, string s, TMetadata md,long pp, Database d)
+            :base(t,pp, d)
         { 
             name = nm;
             seq = sq;
@@ -229,7 +229,6 @@ namespace Pyrrho.Level2
                     case Qlx.MIME:
                     case Qlx.SQLAGENT:
                     case Qlx.USER:
-                    case Qlx.PASSWORD:
                         sb.Append(b.key());
                         sb.Append(" \"");
                         sb.Append(b.value());
@@ -333,8 +332,9 @@ namespace Pyrrho.Level2
         /// <param name="sq">The column seq no for a view column</param>
         /// <param name="ob">the DBObject</param>
         /// <param name="db">The physical database</param>
-        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, string s, TMetadata md, long pp)
-         : base(tp, nm, sq, ob, s, md, pp)
+        protected PMetadata2(Type tp,string nm, long sq, DBObject ob, string s, 
+            TMetadata md, long pp, Database d)
+         : base(tp, nm, sq, ob, s, md, pp, d)
         {
         }
         public PMetadata2(Reader rdr) : base (Type.Metadata2,rdr){}
@@ -386,8 +386,9 @@ namespace Pyrrho.Level2
         /// <param name="ob">the DBObject</param>
         /// <param name="wh">The physical database</param>
         /// <param name="curpos">The position in the datafile</param>
-        public PMetadata3(string nm, long sq, DBObject ob, string s, TMetadata md, long pp)
-            : base(Type.Metadata3, nm, sq, ob, s, md, pp)
+        public PMetadata3(string nm, long sq, DBObject ob, string s, 
+            TMetadata md, long pp, Database d)
+            : base(Type.Metadata3, nm, sq, ob, s, md, pp, d)
         {  }
         public PMetadata3(Reader rdr) : base(Type.Metadata3, rdr) { }
         protected PMetadata3(PMetadata3 x, Writer wr) : base(x, wr)

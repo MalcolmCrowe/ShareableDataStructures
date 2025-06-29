@@ -225,7 +225,8 @@ namespace Pyrrho.Level2
         {
         }
 
-        public Enforcement(Table tb, Grant.Privilege en, long pp) : base(Type.Enforcement, pp)
+        public Enforcement(Table tb, Grant.Privilege en, long pp, Database d) 
+            : base(Type.Enforcement, pp, d)
         {
             tabledefpos = tb.defpos;
             enforcement = en;
@@ -235,8 +236,8 @@ namespace Pyrrho.Level2
         {
         }
 
-        protected Enforcement(Type typ, long pt, Grant.Privilege en, long pp)
-            : base(typ, pp)
+        protected Enforcement(Type typ, long pt, Grant.Privilege en, long pp, Database d)
+            : base(typ, pp, d)
         {
             tabledefpos = pt;
             enforcement = en;

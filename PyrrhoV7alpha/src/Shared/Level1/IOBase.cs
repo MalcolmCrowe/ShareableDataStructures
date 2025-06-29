@@ -284,7 +284,7 @@ namespace Pyrrho.Level2
                 Physical.Type.Update2 => new Update1(this),
                 Physical.Type.Delete2 => new Delete1(this),
                 Physical.Type.PSchema => new PSchema(this),
-                Physical.Type.PGraph => new PGraph(this),
+         //       Physical.Type.PGraph => new PGraph(this),
                 Physical.Type.PGraphType => new PGraphType(this),
                 _ => throw new PEException("PE35"),
             };

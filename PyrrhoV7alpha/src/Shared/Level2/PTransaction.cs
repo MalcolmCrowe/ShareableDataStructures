@@ -45,8 +45,8 @@ namespace Pyrrho.Level2
         /// <param name="rl">The role for the commit</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        public PTransaction(int nr, User? usr, Role rl, long pp)
-            : this (Type.PTransaction,nr,usr,rl,pp)
+        public PTransaction(int nr, User? usr, Role rl, long pp, Database d)
+            : this (Type.PTransaction,nr,usr,rl,pp, d)
 		{ }
         /// <summary>
         /// Constructor: a Transaction record for a Commit
@@ -57,8 +57,8 @@ namespace Pyrrho.Level2
         /// <param name="rl">The role for the commit</param>
         /// <param name="pb">The physical database</param>
         /// <param name="curpos">The current position in the datafile</param>
-        protected PTransaction(Type tp, int nr, User? usr, Role rl, long pp)
-            : base(tp, pp)
+        protected PTransaction(Type tp, int nr, User? usr, Role rl, long pp, Database d)
+            : base(tp, pp, d)
         {
             nrecs = nr;
             ptuser = usr;
@@ -163,8 +163,8 @@ namespace Pyrrho.Level2
         }
         internal TriggeredAction(Reader rdr) : base(Type.TriggeredAction,rdr)
         { }
-        internal TriggeredAction(long tg,long pp)
-            : base(Type.TriggeredAction,pp)
+        internal TriggeredAction(long tg,long pp, Database d)
+            : base(Type.TriggeredAction,pp, d)
         {
             trigger = tg;
         }
@@ -221,12 +221,13 @@ namespace Pyrrho.Level2
                     throw new DBException("0000"); // audit of uncommitted object ???
             return -1;
         }
-        internal Audit(User us,long ta, CTree<long,string> ma, long ts,long pp)
-            : this(Type.Audit,us,ta,ma,ts,pp)
+        internal Audit(User us,long ta, CTree<long,string> ma, long ts,long pp, Database d)
+            : this(Type.Audit,us,ta,ma,ts,pp, d)
         {
         }
-        protected Audit(Type t, User us, long ta, CTree<long,string> ma, long ts, long pp)
-            : base(t,pp)
+        protected Audit(Type t, User us, long ta, CTree<long,string> ma, long ts, 
+            long pp, Database d)
+            : base(t,pp, d)
         {
             user = us; table = ta; 
             timestamp = ts; match = ma;

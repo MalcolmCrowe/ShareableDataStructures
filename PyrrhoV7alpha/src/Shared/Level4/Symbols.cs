@@ -171,7 +171,7 @@ namespace Pyrrho.Level4
             for (Qlx t = Qlx.ABS; t <= Qlx.ZONED_TIME; t++)
                 if (t != Qlx.CLOB && t != Qlx.CURSOR && t != Qlx.INTERVAL0
                     && t != Qlx.MULTISET && t != Qlx.NCHAR && t != Qlx.NCLOB
-                    && t != Qlx.NUMERIC && t != Qlx.PASSWORD)
+                    && t != Qlx.NUMERIC)
                     AddResWd(t);
             AddResWd(Qlx.SET);
             AddResWd(Qlx.TIMESTAMP);

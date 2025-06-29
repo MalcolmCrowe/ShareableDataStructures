@@ -388,7 +388,7 @@ namespace Pyrrho.Level3
                 if (b.value() is Drop dr && dr.delpos == defpos)
                     return;
             _Cascade(cx, a, u??BTree<long,TypedValue>.Empty); // specific actions
-            cx.Add(new Drop1(defpos, a, cx.tr?.nextPos??0));
+            cx.Add(new Drop1(defpos, a, cx.tr?.nextPos??0, cx.db));
         }
         protected virtual void _Cascade(Context cx, Drop.DropAction a, BTree<long, TypedValue> u)
         { }
@@ -623,7 +623,8 @@ namespace Pyrrho.Level3
             var match = CTree<long, string>.Empty;
             for (var b = rs.matches?.First(); b != null; b = b.Next())
                 match += (b.key(), b.value()?.ToString() ?? "null");
-            var a = new Audit(cx.db.user, defpos, match, DateTime.Now.Ticks, cx.db.nextPos);
+            var a = new Audit(cx.db.user, defpos, match, DateTime.Now.Ticks, 
+                cx.db.nextPos, cx.db);
             if (cx.auds.Contains(a))
                 return;
             cx.auds += (a, true);

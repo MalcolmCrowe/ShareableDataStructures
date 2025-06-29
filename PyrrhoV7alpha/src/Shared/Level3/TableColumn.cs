@@ -208,7 +208,8 @@ namespace Pyrrho.Level3
                         generated.gfs, cx.obs[generated.exp] as QlValue??SqlNull.Value, defpos, cx.db.nextStmt));
                         break;
                     case Qlx.SECURITY:
-                        table = (Table)(cx.Add(new Classify(tc.defpos, ((TLevel)b.value()).val, cx.db.nextPos))
+                        table = (Table)(cx.Add(new Classify(tc.defpos, 
+                            ((TLevel)b.value()).val, cx.db.nextPos,cx.db))
                             ?? throw new DBException("42105"));
                         break;
                     case Qlx.CHECK:
@@ -532,7 +533,7 @@ namespace Pyrrho.Level3
     {
         internal readonly long defpos;
         internal readonly long time;
-        internal readonly long tabledefpos; // may be a label set type
+        internal readonly long tabledefpos; //Domain: Table or GqlLabel (for label set)
         internal readonly long user;
         internal readonly long ppos;
         internal readonly long prev;

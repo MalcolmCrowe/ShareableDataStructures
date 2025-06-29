@@ -78,7 +78,7 @@ namespace Pyrrho.Level3
             Under = -90, // CTree<Domain,bool> direct supertypes (GQL)
             UnionOf = -91; // CTree<Domain,bool>
         internal static Domain Null, Value, Content, // Pyrrho 5.1 default type for Document entries, from 6.2 for generic scalar value
-    Bool, Blob, Char, Password, Int, Int8, Int16, Int32, Int64, Int128, Int256,
+    Bool, Blob, Char, Int, Int8, Int16, Int32, Int64, Int128, Int256,
     UInt8, UInt16, UInt32, UInt64, UInt128, UInt256,
     Float16,Float32,Float64,Float128, Float256, _Numeric, Real, Date, Timespan, Timestamp,
     Interval, _Level, MTree, // pseudo type for MTree implementations
@@ -101,7 +101,6 @@ namespace Pyrrho.Level3
             Bool = new StandardDataType(Qlx.BOOLEAN);
             Blob = new StandardDataType(Qlx.BLOB);
             Char = new StandardDataType(Qlx.CHAR, OrderCategory.Primitive);
-            Password = new StandardDataType(Qlx.PASSWORD, OrderCategory.Primitive);
             Int = new StandardDataType(Qlx.INTEGER, OrderCategory.Primitive);
             Int8 = new ConstrainedStandardType(Qlx.INTEGER, Qlx.SIGNED, 7);
             Int16 = new ConstrainedStandardType(Qlx.INTEGER, Qlx.SIGNED, 15);
@@ -815,7 +814,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     || CanBeAssigned(v);
             switch (Equivalent(kind))
             {
-                case Qlx.PASSWORD:
                 case Qlx.CHAR: 
                     if (o is string so)
                         return prec==0 || prec>=so.Length;
@@ -863,7 +861,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 Qlx.INTERVAL => 10,
                 Qlx.TIME => 11,
                 Qlx.PERIOD => 7,
-                Qlx.PASSWORD => 3,
                 _ => 0,
             };
         }
@@ -899,7 +896,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         }
                         return r;
                     }
-                case Qlx.PASSWORD: goto case Qlx.CHAR;
                 case Qlx.INTEGER:
                     {
                         var o = rdr.GetInteger();
@@ -1070,10 +1066,10 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 DataType.Boolean => Bool,
                 DataType.Blob => Blob,
                 DataType.Row => Row,
-                DataType.Password => Password,
+                DataType.Vector => Vector,
                 DataType.List => (kind==Qlx.SET)?SetType:List,
                 DataType.Multiset => Multiset,
-                DataType.Array => (kind==Qlx.VECTOR)?Vector:Array,
+                DataType.Array => Array,
                 _ => this,
             };
         }
@@ -1093,7 +1089,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 Qlx.ROW => Row,
                 Qlx.MULTISET => Multiset,
                 Qlx.ARRAY => Array,
-                Qlx.PASSWORD => Password,
+                Qlx.VECTOR => Vector,
                 Qlx.TABLE => TableType,
                 Qlx.TYPE => TypeSpec,
                 Qlx.POSITION => Position,
@@ -1193,7 +1189,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.SET: wr.WriteByte((byte)DataType.List); break;
                 case Qlx.MULTISET: wr.WriteByte((byte)DataType.Multiset); break;
                 case Qlx.NUMERIC: wr.WriteByte((byte)DataType.Numeric); break;
-                case Qlx.PASSWORD: wr.WriteByte((byte)DataType.Password); break;
                 case Qlx.REAL: wr.WriteByte((byte)DataType.Numeric); break;
                 case Qlx.DATE: wr.WriteByte((byte)DataType.Date); break;
                 case Qlx.TIME: wr.WriteByte((byte)DataType.TimeSpan); break;
@@ -1256,7 +1251,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             wr.PutBytes(d.ToBytes());
                         return;
                     }
-                case Qlx.PASSWORD: goto case Qlx.CHAR;
 #if SIMILAR
                 case Sqlx.REGULAR_EXPRESSION: goto case Sqlx.CHAR;
 #endif
@@ -1530,7 +1524,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     else return 0;
                 case Qlx.CHAR:
                 case Qlx.NCHAR:
-                case Qlx.PASSWORD:
                 case Qlx.CLOB:
                 case Qlx.NCLOB:
                     c = Comp(culture.Name, that.culture.Name);
@@ -1865,24 +1858,11 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                     return dt.Compare(a, b);
                         throw new DBException("22G03", a?.dataType.ToString()??"??", b?.dataType.ToString()??"??");
                     }
-                case Qlx.PASSWORD:
-                    throw new DBException("22G03").ISO();
                 default:
                     c = a.ToString().CompareTo(b.ToString()); break;
             }
             ret:
             return (AscDesc==Qlx.DESC)?-c:c;
-        }
-        internal int Compare(CTree<long,TypedValue> a,CTree<long,TypedValue>b)
-        {
-            int c = 0;
-            for (var bm = rowType.First(); c == 0 && bm != null; bm = bm.Next())
-                if (bm.value() is long p)
-                {
-                    var dm = representation[p] ?? throw new PEException("PE1533");
-                    c = dm.Compare(a[p] ?? TNull.Value, b[p] ?? TNull.Value);
-                }
-            return c;
         }
         /// <summary>
         /// Creator: Add the given array at the end of this
@@ -1969,7 +1949,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 Qlx.CHAR => true,
                 Qlx.NCHAR => dk == Qlx.CHAR || dk == ki,
                 Qlx.NUMERIC => dk == Qlx.INTEGER || dk == ki,
-                Qlx.PASSWORD => dk == Qlx.CHAR || dk == ki,
                 Qlx.REAL => dk == Qlx.INTEGER || dk == Qlx.NUMERIC || dk == ki,
                 Qlx.TYPE => rowType.Length == 0 || CompareTo(dt) == 0,
                 Qlx.ROW => rowType.Length == 0 || CompareTo(dt) == 0,
@@ -2180,7 +2159,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         lx.ch = (lx.pos < lx.input.Length) ? lx.input[lx.pos] : '\0';
                         { v = c.Item2; return null; }
                     }
-                case Qlx.PASSWORD: goto case Qlx.CHAR;
                 /*                case Qlx.XML:
                                     {
                                         TXml rx = null;
@@ -3220,7 +3198,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         return v;
                     }
                 case Qlx.CONTENT: return CheckFields(v);
-                case Qlx.PASSWORD: return CheckFields(v);
                 case Qlx.DOCARRAY: goto case Qlx.DOCUMENT;
                 case Qlx.TYPE:
                     {
@@ -3692,7 +3669,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     case Qlx.NCLOB: goto case Qlx.CHAR;
                     case Qlx.REAL: return typeof(double);
                     case Qlx.CHAR: return typeof(string);
-                    case Qlx.PASSWORD: goto case Qlx.CHAR;
                     case Qlx.DATE: return typeof(Date);
                     case Qlx.TIME: return typeof(TimeSpan);
                     case Qlx.INTERVAL: return typeof(Interval);
@@ -3732,7 +3708,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 Qlx.NULL => Null,
                 Qlx.NUMERIC => _Numeric,
                 Qlx.NUMERICLITERAL => _Numeric,
-                Qlx.PASSWORD => Password,
+                Qlx.VECTOR => Vector,
                 Qlx.POSITION => Int,
                 Qlx.REAL => Real,
                 Qlx.REALLITERAL => Real,
@@ -4305,8 +4281,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 if (s <= ds && (e >= de || de < 0))
                     return this;
             }
-            if (kind == Qlx.PASSWORD && dt.kind == Qlx.CHAR)
-                return this;
             if (ki == dk && (kind == Qlx.ARRAY || kind == Qlx.MULTISET))
             {
                 if (elType!=Null)
@@ -4766,7 +4740,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             sb.Append("</" + ro.name + ">");
                         break;
                     }
-                case Qlx.PASSWORD: sb.Append("*********"); break;
             }
             return sb.ToString();
         }
