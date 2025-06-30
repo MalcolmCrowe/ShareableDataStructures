@@ -2376,9 +2376,12 @@ namespace Pyrrho.Level4
             {
                 Next();
                 id = lxr.val.ToString();
-                Mustbe(Qlx.Id);
-                if (cx.db.role.dbobjects.Contains(id) == true)
-                    throw new DBException("42104", id);
+                if (Match(Qlx.Id))
+                {
+                    Next();
+                    if (cx.db.role.dbobjects.Contains(id) == true)
+                        throw new DBException("42104", id);
+                }
             }
             // CREATE VIEW always creates a new Compiled object,
             // whose columns and datatype are recorded in the framing part.
@@ -2418,6 +2421,13 @@ namespace Pyrrho.Level4
                 Next();
                 lp = LexDp();
                 sl = lxr.start;
+                if (Match(Qlx.GRAPH)) // inline Graph def (RestView only)
+                {
+                    Next();
+                    if (Match(Qlx.TYPE))
+                        Next();
+                    ParseCreateGraphType();
+                }
                 if (Match(Qlx.LPAREN)) // inline tye def (RestView only)
                     dm = (Domain)cx.Add(ParseRowTypeSpec(Qlx.VIEW));
                 else

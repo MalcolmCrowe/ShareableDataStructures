@@ -4666,7 +4666,7 @@ namespace Pyrrho.Level3
             Record? backto = null;
             if (cx.obs[nd] is GqlNode g)
             {
-                for (var b=ps.First();b!=null;b=b.Next())
+                for (var b = ps.First(); b != null; b = b.Next())
                 {
                     if (tr.physicals[b.key()] is Record r)
                     {
@@ -4675,8 +4675,9 @@ namespace Pyrrho.Level3
                         st = r.subType;
                         lv = r.classification;
                         tbs += (r.tabledefpos, true);
+                        cx.obs -= r.tabledefpos;
                         nodeOrEdge = r.nodeOrEdge;
-                        for (var c=r.fields.First();c!=null;c=c.Next())
+                        for (var c = r.fields.First(); c != null; c = c.Next())
                         {
                             var o = fl[c.key()] ?? TNull.Value;
                             var n = r.fields[c.key()] ?? TNull.Value;
@@ -4688,7 +4689,8 @@ namespace Pyrrho.Level3
                                         fl += (c.key(), ts + ns);
                                     else
                                         fl += (c.key(), ts + n);
-                                } else if (o is TList tl)
+                                }
+                                else if (o is TList tl)
                                 {
                                     if (n is TList nl)
                                         fl += (c.key(), tl + nl);
@@ -4708,17 +4710,21 @@ namespace Pyrrho.Level3
                         tph -= b.key();
                     }
                 }
+                if (backto != null)
+                    cx.BackTo(backto);
                 var r4 = new Record4(tbs, fl, st, lv, rp, cx);
                 tph += (rp, r4);
+                cx.db = ((Transaction)cx.db) + (Transaction.Physicals, tph);
                 cx.Add(r4);
                 cx.obs += (nd, g + (_Domain, g.label));
-            }
-            // now replay the affected part of the transaction
-            if (backto != null)
-            {
-                cx.BackTo(backto);
-                for (var b = tph.PositionAt(backto.ppos); b != null; b = b.Next())
-                    cx.Add(b.value());
+                // now replay the affected part of the transaction
+                if (backto != null)
+                    for (var b = tph.PositionAt(backto.ppos); b != null; b = b.Next())
+                    {
+                        var ph = b.value();
+                        ph.db = cx.db;
+                        cx.Add(ph);
+                    }
             }
             return cx.db;
         }

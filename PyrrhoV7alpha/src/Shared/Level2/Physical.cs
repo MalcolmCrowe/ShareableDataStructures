@@ -62,7 +62,7 @@ namespace Pyrrho.Level2
         public readonly long ppos;
         public long trans;
         public long time;
-        internal readonly Database db; // for Context.BackTo, see GraphInsertStatement
+        internal Database db; // for Context.BackTo, see GraphInsertStatement, JoinRecords
         public bool ifNeeded = false;
         protected Physical(Type tp, long pp, Database d)
         {
