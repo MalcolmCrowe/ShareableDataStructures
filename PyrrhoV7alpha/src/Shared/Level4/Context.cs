@@ -122,7 +122,8 @@ namespace Pyrrho.Level4
         internal CTree<long, CTree<long, bool>> rdS = CTree<long, CTree<long, bool>>.Empty; // specific read TableRow defpos
         internal BTree<Audit, bool> auds = BTree<Audit, bool>.Empty;
         internal CTree<long, TypedValue> binding = CTree<long, TypedValue>.Empty;
-        internal CTree<long, CTree<long,bool>> newNodes = CTree<long, CTree<long,bool>>.Empty;
+        internal CTree<long, CTree<long,bool>> newNodes = CTree<long, CTree<long,bool>>.Empty; // GqlNode to Record
+        internal CTree<long, CTree<long, bool>> nodesDone = CTree<long, CTree<long, bool>>.Empty; // Trigger to GqlNode
         internal CTree<long, CTree<long, CTree<string,TMetadata>>> metaPending 
             = CTree<long, CTree<long, CTree<string, TMetadata>>>.Empty;
         public int rconflicts = 0, wconflicts = 0;
@@ -2050,6 +2051,7 @@ namespace Pyrrho.Level4
             next.values += values;
             next.warnings += warnings;
             next.deferred += deferred;
+            next.nodesDone += nodesDone;
             next.checkEdges += checkEdges;
             next.val = val;
             next.nextHeap = Math.Max(nextHeap,next.nextHeap);

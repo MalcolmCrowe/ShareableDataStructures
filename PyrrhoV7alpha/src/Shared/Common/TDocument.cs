@@ -478,6 +478,7 @@ namespace Pyrrho.Common
             }
             throw ParseException("Hex digit expected at " + (i - 1));
         }
+        /*
         /// <summary>
         /// Parser from BSON to Document
         /// </summary>
@@ -601,6 +602,7 @@ namespace Pyrrho.Common
             }
             return tv;
         }
+        */
         internal static void Field((string,TypedValue) v, StringBuilder sb)
         {
             if (v.Item2 == null)
@@ -620,12 +622,13 @@ namespace Pyrrho.Common
                         }
                         sb.Append(']');
                         break;
+                    case Qlx.TIMESTAMP:
                     case Qlx.CHAR:
                         sb.Append('\'');
-                        sb.Append(v.Item2.ToString());
+                        sb.Append(v.Item2.ToString().Replace("'","''"));
                         sb.Append('\'');
-                        break;
-                    default:
+                        break;                       
+                    default:// NB leave DATE and TIMESTAMP as strings
                         sb.Append(v.Item2.ToString());
                         break;
                 }
@@ -649,6 +652,7 @@ namespace Pyrrho.Common
             sb.Append('}');
             return sb.ToString();
         }
+        /*
         internal static int GetLength(byte[] b, int off)
         {
             return b[off] + (b[off + 1] << 8) + (b[off + 2] << 16) + (b[off + 3] << 24);
@@ -787,7 +791,7 @@ namespace Pyrrho.Common
             SetLength(r);
             return [.. r];
         }
-
+        */
         static bool IsZero((string,TypedValue) fv)
         {
             switch (fv.Item2.dataType.kind)
@@ -1015,7 +1019,7 @@ namespace Pyrrho.Common
             for (var a = rs.First(cx); a != null; a = a.Next(cx))
                 Add(new TDocument(cx,a));
             cx.funcs = fo;
-        }
+        } 
         internal TDocArray(Domain dt, BList<TypedValue>t) : base(dt)
         {
             content = t;
@@ -1027,6 +1031,7 @@ namespace Pyrrho.Common
                 content+=TDocument.GetValue(e);
         }
 #endif
+        /*
         /// <summary>
         /// Parser from BSON to DocArray
         /// </summary>
@@ -1048,6 +1053,7 @@ namespace Pyrrho.Common
             }
             off += nbytes;
         }
+        */
         internal TypedValue this[int i]
         {
             get { return content[i]??TNull.Value; }
@@ -1112,6 +1118,7 @@ namespace Pyrrho.Common
             sb.Append(']');
             return sb.ToString();
         }
+        /*
         internal byte[] ToBytes()
         {
             var r = new List<byte>
@@ -1137,5 +1144,6 @@ namespace Pyrrho.Common
                 nbytes = r.Count;
             return [.. r];
         }
+        */
     }
 }

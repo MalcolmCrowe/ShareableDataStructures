@@ -3,6 +3,7 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Globalization;
+using System.Security.Cryptography;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -5623,7 +5624,7 @@ namespace Pyrrho.Level4
                     tgtype |= PTrigger.TrigType.EachStatement;
                 }
             }
-            if ((tgtype & PTrigger.TrigType.EachRow) != PTrigger.TrigType.EachRow)
+            if (!tgtype.HasFlag(PTrigger.TrigType.EachRow))
             {
                 if (nr != null || or != null)
                     throw new DBException("42148").Mix();
@@ -6788,10 +6789,10 @@ namespace Pyrrho.Level4
             {
                 var (nm, dm, ss, md) = b.value();
                 md += (Qlx.OPTIONAL, TBool.False);
-                if (dt is Table tble && pn != null)
+                if ((k == Qlx.TYPE || k == Qlx.NODETYPE || k == Qlx.EDGETYPE) && pn != null)
                 {
                     var np = cx.db.nextPos;
-                    var pc = new PColumn3(tble, nm.ident, -1, dm, "", md, np, cx);
+                    var pc = new PColumn3((Table)dt, nm.ident, -1, dm, "", md, np, cx);
                     cx.Add(pc);
                     ms += (pc.defpos, dm);
                     sm += (nm.ident, (nm.lp,pc.defpos));
@@ -9489,7 +9490,7 @@ namespace Pyrrho.Level4
                                 var v = ParseSqlValue(m);
                                 if (v is SqlLiteral sl)
                                     v = (QlValue)cx.Add(new SqlLiteral(lp, xp.Coerce(cx, sl.val)));
-                                Mustbe(Qlx.RPAREN);
+       //                         Mustbe(Qlx.RPAREN);
                                 return v;
                         }
                         var fs = BList<DBObject>.Empty;
@@ -10050,6 +10051,17 @@ namespace Pyrrho.Level4
 #endif
                 case Qlx.POWER: goto case Qlx.MOD;
                 case Qlx.RANK: goto case Qlx.ROW_NUMBER;
+                case Qlx.RECORD:
+                    {
+                        kind = tok;
+                        Next();
+                        Mustbe(Qlx.LPAREN);
+                        op1 = ParseSqlValue((DBObject._Domain,Domain.Char));
+                        Mustbe(Qlx.COMMA);
+                        val = ParseSqlValue((DBObject._Domain, Domain.Int));
+                        Mustbe(Qlx.RPAREN);
+                        break;
+                    }
 #if OLAP
                 case Sqlx.REGR_COUNT: goto case Sqlx.COVAR_POP;
                 case Sqlx.REGR_AVGX: goto case Sqlx.COVAR_POP;

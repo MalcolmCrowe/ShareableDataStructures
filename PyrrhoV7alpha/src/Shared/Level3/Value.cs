@@ -4909,7 +4909,7 @@ namespace Pyrrho.Level3
         {
             if (from > 0)
                 return this;
-            var r = (SqlValueArray)base.AddFrom(cx, q);
+            var r = (SqlValueList)base.AddFrom(cx, q);
             var es = CList<long>.Empty;
             var ag = domain.aggs;
             var ch = false;
@@ -5651,7 +5651,7 @@ namespace Pyrrho.Level3
         public CList<long> gqlStms =>(CList<long>)(mem[AccessingStatement.GqlStms]??CList<long>.Empty);
         public QlValueQuery(long dp,Context cx,Domain r,Domain xp,CList<long> ss)
             : base(dp, _Mem(cx,ss) + (_Domain,r) + (Domain.Aggs,r.aggs)
-                  + (AccessingStatement.GqlStms, ss) + (RowSet._Scalar,xp.kind!=Qlx.TABLE))
+                  + (AccessingStatement.GqlStms, ss))// + (RowSet._Scalar,xp.kind!=Qlx.TABLE))
         {
             r += (cx,SelectRowSet.ValueSelect, dp);
             cx.Add(r);
@@ -5775,9 +5775,7 @@ namespace Pyrrho.Level3
             var rs = CList<TypedValue>.Empty;
             for (var b = re.First(cx); b != null; b = b.Next(cx))
                 rs += b;
-            var rl = new TList(domain, rs);
-     //       cx.values += (defpos, rl);
-            return rl;
+            return new TList(domain,rs);
         }
         internal override BTree<long, Register> StartCounter(Context cx, RowSet rs, BTree<long, Register> tg)
         {
@@ -6860,7 +6858,8 @@ namespace Pyrrho.Level3
                 + (ObInfo.Name, f.ToString()) + (SqlValueExpr.Op, f) + (Mod, m) + (Scope,ap)))
         { 
             cx.Add(this);
-            vl?.ConstrainScalar(cx);
+            if (vl?.domain.Length==1)
+                vl.ConstrainScalar(cx);
         }
         protected SqlFunction(long dp, BTree<long, object> m) : base(dp, m)
         { }
@@ -7279,6 +7278,7 @@ namespace Pyrrho.Level3
                 case Qlx.POSITION: return Domain.Int;
                 case Qlx.POWER: return Domain.Real;
                 case Qlx.RANK: return Domain.Int;
+                case Qlx.RECORD: return Domain.Document;
                 case Qlx.RESTRICT: return val?.domain ?? Domain.Content;
                 case Qlx.ROW_NUMBER: return Domain.Int;
                 case Qlx.SET: return Domain.Collection;
@@ -7807,6 +7807,9 @@ namespace Pyrrho.Level3
                             if (b.value() is long p && cx.cursors[p] is Cursor c)
                                 if (c is TableRowSet.TableCursor tc && tc._rec is TableRow tr) 
                                     return new TInt(tr.defpos);
+                        if (cx.cursors[rs.source] is Cursor cs)
+                            if (cs is TableRowSet.TableCursor tc && tc._rec is TableRow tr)
+                                return new TInt(tr.defpos);
                         break;
                     }
                 case Qlx.POWER:
@@ -7821,6 +7824,27 @@ namespace Pyrrho.Level3
                         return new TReal(Math.Pow(v.ToDouble(), w.ToDouble()));
                     }
                 case Qlx.RANK: goto case Qlx.ROW_NUMBER;
+                case Qlx.RECORD:
+                    {
+                        var o1 = cx.obs[op1]?.Eval(cx) ?? TNull.Value;
+                        if (cx.db.objects[cx.role.dbobjects[o1.ToString().ToUpper()] ?? -1L] is not Table tb)
+                            return TNull.Value;
+                        v = cx.obs[val]?.Eval(cx) ?? TNull.Value;
+                        if (tb.tableRows[v.ToInt()??-1L] is not TableRow tr)
+                            return TNull.Value;
+                        var sv = CList<(string, TypedValue)>.Empty;
+                        var si = CTree<string, int>.Empty;
+                        for (var b = tb.First(); b != null; b = b.Next())
+                        { 
+                            var p = b.value();
+                            if (cx.NameFor(p) is string n && tr.vals[p] is TypedValue tv)
+                            {
+                                sv += (n, tv);
+                                si += (n, b.key());
+                            }
+                        }
+                        return new TDocument(sv,si);
+                    }
                 case Qlx.RESTRICT:
                     if (fc == null)
                         break;
@@ -7985,12 +8009,13 @@ namespace Pyrrho.Level3
                     }
                 case Qlx.UNNEST:
                     {
-                        var ta = cx.obs[val]?.Eval(cx) as TArray;
-                        var r = new TSet(ta?.dataType.elType ?? Domain.Content);
-                        for (var i = 0; i < (ta?.Length??0); i++)
-                            if (ta?[i] is TypedValue x)
-                                r.Add(x);
-                        return r;
+                        if (cx.obs[val]?.Eval(cx) is TList tl)
+                        {
+                            cx.values += (defpos, tl);
+                            cx.result = (RowSet)cx.Add(new ListRowSet(cx.GetUid(),new BTree<long,object>(SqlLiteral._Val,tl)));
+                            return tl;
+                        }
+                        return TNull.Value;
                     }
                 case Qlx.UPPER:
                     {

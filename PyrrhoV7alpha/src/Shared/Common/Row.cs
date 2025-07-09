@@ -639,7 +639,8 @@ namespace Pyrrho.Common
         internal TDateTime(DateTime d) : this(Domain.Timestamp, d) { }
         public override string ToString()
         {
-            return value.ToString(Thread.CurrentThread.CurrentUICulture);
+            return value.ToString(Thread.CurrentThread.CurrentUICulture)
+                + "." + value.Millisecond.ToString("000");
         }
         internal override long? ToLong()
         {

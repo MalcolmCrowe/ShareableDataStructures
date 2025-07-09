@@ -53,6 +53,8 @@ namespace Pyrrho.Level4
             next.result = result;
             next.binding = binding;
             next.checkEdges += checkEdges;
+            next.deferred += deferred;
+            next.warnings += warnings;
             if (next.next is Context nx)
                 nx.lastret = next.lastret;
             if (db != next.db)
@@ -639,6 +641,7 @@ namespace Pyrrho.Level4
                     }
                 case PTrigger.TrigType.Delete:
                     {
+                        rc = tgc._rec ?? throw new PEException("PE631");
                         var fi = Triggers(PTrigger.TrigType.Before | PTrigger.TrigType.EachRow);
                         if (fi == true)
                             return _cx;
@@ -647,7 +650,6 @@ namespace Pyrrho.Level4
                             return _cx;
                         tgc = (TransitionRowSet.TargetCursor)(cursors[_trs.defpos] ??
                             throw new PEException("PE631"));
-                        rc = tgc._rec ?? throw new PEException("PE631");
 //#if MANDATORYACCESSCONTROL
                         if (_cx.db.user==null || 
                             _cx.db.user.defpos != _cx.db.owner && table.enforcement.HasFlag(Grant.Privilege.Delete) ?
@@ -701,7 +703,17 @@ namespace Pyrrho.Level4
                     ta.values = values;
                     ta.db = db;
                     if (ta._trig.tgType.HasFlag(fg))
+                    {
+                        var np = (next?.exec as SqlInsert)?.forNode;
+                        if (np!=null && next?.nodesDone[ta._trig.defpos]?.Contains(np??-1L) == true)
+                            continue;
                         r = ta.Exec();
+                        if (next is not null && np is not null)
+                        {
+                            var nD = next.nodesDone[ta._trig.defpos] ?? CTree<long, bool>.Empty;
+                            next.nodesDone += (ta._trig.defpos,nD + (np ?? -1L,true));
+                        }
+                    }
                 }
             SlideDown(); // get next to adopt our changes
             return r;
@@ -1073,7 +1085,14 @@ namespace Pyrrho.Level4
                 if (cx.obs[tg.oldTable] is TransitionTable tt)
                     new TransitionTableRowSet(tt.defpos, cx, trs, tt, true);
                 if (defer)
-                    cx.deferred += this;
+                {
+                    var found = false;
+                    for (var b = cx.deferred.First(); b != null; b = b.Next())
+                        if (b.value().cxid == cxid)
+                            found = true;
+                    if (!found)
+                        cx.deferred += this;
+                }
             }
         }
         static (BTree<long,long?>,BTree<long,long?>) _Map(Domain dm,Trigger tg)
@@ -1101,6 +1120,7 @@ namespace Pyrrho.Level4
                 return false;
             var rp = _trs.defpos;
             var trc = (TransitionRowSet.TransitionCursor?)next.next?.cursors[rp];
+            TNode? tn = null;
             Cursor? cu = null;
             if (trc is not null && trc._tgc is not null) // row-level trigger
                 cu = new TransitionRowSet.TriggerCursor(this, trc._tgc);
@@ -1150,7 +1170,7 @@ namespace Pyrrho.Level4
                 }
                 SlideDown();
                 if (tc != TBool.False && _trig.tgType.HasFlag(PTrigger.TrigType.Instead))
-                    return true;
+                        return true;
             }
             return false;
         }

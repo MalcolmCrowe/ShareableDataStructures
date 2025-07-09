@@ -272,6 +272,8 @@ namespace Pyrrho.Level1
                     case Qlx.CLOB:
                     case Qlx.NCLOB:
                     case Qlx.LEVEL:
+                    case Qlx.DOCARRAY:
+                    case Qlx.DOCUMENT:
                     case Qlx.CHAR:
                         return b + tv.ToString();;
                     case Qlx.POSITION:
@@ -299,18 +301,6 @@ namespace Pyrrho.Level1
                             else if (tv is TDateTime d)
                                 return b+d.value;
                             throw new PEException("PE42162");
-                        }
-                    case Qlx.DOCUMENT:
-                        {
-                            if (tv is TDocument d)
-                                return b += d.ToBytes(null);
-                            throw new PEException("PE42163");
-                        }
-                    case Qlx.DOCARRAY:
-                        {
-                            if (tv is TDocArray d)
-                                return b += d.ToBytes();
-                            throw new PEException("PE42164");
                         }
                     case Qlx.OBJECT: return b += tv.ToString(); 
                     case Qlx.BLOB:

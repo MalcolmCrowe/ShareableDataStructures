@@ -3483,6 +3483,11 @@ namespace Pyrrho.Level4
         {
             if (singleNode >= 0)
                 return SingleNodeCursor.New(cx, this);
+            for (var b = where.First(); b != null; b = b.Next())
+                if (cx.obs[b.key()] is SqlValueExpr wh && wh.op == Qlx.EQL
+                    && cx.obs[wh.left] is SqlFunction sp && cx.obs[target] is Table table
+                     && sp.op == Qlx.POSITION && cx.obs[wh.right]?.Eval(cx) is TInt p)
+                    return SingleNodeCursor.New(cx, this+(SingleNode,p.ToLong()??-1L));
             var key = CList<TypedValue>.Empty;
             for (var b = keys.First(); b != null; b = b.Next())
                 if (b.value() is long p)
@@ -3887,7 +3892,8 @@ namespace Pyrrho.Level4
         }
         internal class SingleNodeCursor : TableCursor
         {
-            protected SingleNodeCursor(Context cx, TableRowSet trs, Table tb, int pos, TableRow rec, ABookmark<long, TableRow>? bmk, MTreeBookmark? mb = null, CList<TypedValue>? key = null) 
+            protected SingleNodeCursor(Context cx, TableRowSet trs, Table tb, int pos, TableRow rec, 
+                ABookmark<long, TableRow>? bmk, MTreeBookmark? mb = null, CList<TypedValue>? key = null) 
                 : base(cx, trs, tb, pos, rec, bmk, mb, key)
             {
             }
@@ -4395,7 +4401,7 @@ namespace Pyrrho.Level4
         {
             cx.Add(this);
         }
-        protected ListRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal ListRowSet(long dp, BTree<long, object> m) : base(dp, m) { }
         public static ListRowSet operator +(ListRowSet et, (long, object) x)
         {
             var d = et.depth;
@@ -4549,17 +4555,14 @@ namespace Pyrrho.Level4
             {
                 return New(cx, _mrs, _ms, _mb.Next());
             }
-
             protected override Cursor? _Previous(Context cx)
             {
                 return New(cx, _mrs, _ms, _mb.Previous());
             }
-
             internal override BList<TableRow> Rec()
             {
                 throw new NotImplementedException();
             }
-
         }
     }
     /// <summary>

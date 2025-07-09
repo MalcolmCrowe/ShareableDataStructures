@@ -859,6 +859,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 Qlx.TABLE or Qlx.TYPE or Qlx.NODETYPE or Qlx.EDGETYPE => 12,
                 Qlx.BOOLEAN => 9,
                 Qlx.INTERVAL => 10,
+                Qlx.DOCUMENT => 14,
                 Qlx.TIME => 11,
                 Qlx.PERIOD => 7,
                 _ => 0,
@@ -877,11 +878,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 case Qlx.BLOB: return new TBlob(this, rdr.GetBytes());
                 case Qlx.BOOLEAN: return (rdr.ReadByte() == 1) ? TBool.True : TBool.False;
                 case Qlx.CHAR: return new TChar(this, rdr.GetString());
-                case Qlx.DOCUMENT:
-                    {
-                        var i = 0;
-                        return new TDocument(rdr.GetBytes(), ref i);
-                    }
+                case Qlx.DOCUMENT:  return new TDocument(rdr.GetString());
                 case Qlx.DOCARRAY: goto case Qlx.DOCUMENT;
                 case Qlx.INCREMENT:
                     {
@@ -1217,16 +1214,16 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             switch (Equivalent(kind))
             {
                 case Qlx.SENSITIVE: elType?.Put(tv, wr); return;
+                case Qlx.Null:
                 case Qlx.NULL: return;
                 case Qlx.BLOB: wr.PutBytes(((TBlob)tv).value); return;
                 case Qlx.BOOLEAN: wr.WriteByte((byte)((tv.ToBool() is bool b && b) ? 1 : 0)); return;
-                case Qlx.CHAR: wr.PutString(tv.ToString()); return;
                 case Qlx.DOCUMENT:
+                case Qlx.DOCARRAY:
                     {
-                        if (tv is TDocument d)
-                            wr.PutBytes(d.ToBytes(null));
                         return;
                     }
+                case Qlx.CHAR: wr.PutString(tv.ToString()); return;
                 case Qlx.INCREMENT:
                     {
                         if (tv is not Delta d)
@@ -1245,12 +1242,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
 #if MONGO
                 case Sqlx.OBJECT: PutBytes(p, ((TObjectId)v).ToBytes()); break;
 #endif
-                case Qlx.DOCARRAY:
-                    {
-                        if (tv is TDocArray d)
-                            wr.PutBytes(d.ToBytes());
-                        return;
-                    }
 #if SIMILAR
                 case Sqlx.REGULAR_EXPRESSION: goto case Sqlx.CHAR;
 #endif
@@ -1447,6 +1438,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         wr.PutString(m.ToString());
                         return;
                     }
+                default:
+                    throw new NotImplementedException();
             }
         }
         protected static int Comp(IComparable? a,IComparable? b)
@@ -2908,11 +2901,17 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
         }
         TypedValue CheckFields(TypedValue v)
         {
-            if (this is SelectRowSet rs && rs.aggs!=CTree<long,bool>.Empty && rs.group<0L
-                && rs.Length == 1 && rs.representation[rs[0]??-1L]?.kind == v.dataType.kind)
-                return v;
-            if (defpos>=0 && kind!=Qlx.PATH && v!=TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(this))
-                   throw new PEException("PE10702");
+            if (this is SelectRowSet rs)
+            {
+                if (rs.aggs != CTree<long, bool>.Empty && rs.group < 0L
+                && rs.Length == 1 && rs.representation[rs[0] ?? -1L]?.kind == v.dataType.kind)
+                    return v;
+                else if (v.dataType is Domain dr && representation.CompareTo(dr.representation) == 0
+                        && rowType.CompareTo(dr.rowType) == 0)
+                    return v;
+            }
+            if (defpos >= 0 && kind != Qlx.PATH && v != TNull.Value && !v.dataType.EqualOrStrongSubtypeOf(this))
+                        throw new PEException("PE10702");
             return v;
         }
         /// <summary>
@@ -3189,11 +3188,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                                         return CheckFields(new TDocument(vs));
                                     break;
                                 }
-                            case Qlx.BLOB:
-                                {
-                                    var i = 0;
-                                    return CheckFields(new TDocument(((TBlob)v).value, ref i));
-                                }
                         }
                         return v;
                     }
@@ -3423,9 +3417,6 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     {
                         if (ob is string vs && vs[0] == '{')
                             return CheckFields(new TDocument(vs));
-                        int i = 0;
-                        if (ob is byte[] bs)
-                            return CheckFields(new TDocument(bs, ref i));
                         break;
                     }
                 case Qlx.ROW:
