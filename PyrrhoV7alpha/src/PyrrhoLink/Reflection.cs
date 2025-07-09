@@ -256,12 +256,10 @@ namespace Pyrrho
         {
             conn.Send(Protocol.Update);
             conn.PutString(typeof(C).Name);
-            var bs = w.ToBytes();
-            conn.PutInt(bs.Length);
-            conn.stream.Write(bs, 0, bs.Length);
-            bs = u.ToBytes();
-            conn.PutInt(bs.Length);
-            conn.stream.Write(bs, 0, bs.Length);
+            var bs = w.ToString();
+            conn.PutString(bs);
+            bs = u.ToString();
+            conn.PutString(bs);
             return Get0<C>();
         }
         void Fix(Versioned ob)

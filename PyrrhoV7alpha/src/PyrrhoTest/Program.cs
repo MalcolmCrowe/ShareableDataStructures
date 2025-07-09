@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("22 May 2025 Repeatable tests");
+                Console.WriteLine("09 July 2025 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");

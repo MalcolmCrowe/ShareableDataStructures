@@ -1,15 +1,9 @@
-﻿using System;
-using System.Collections;
-using Pyrrho.Common;
+﻿using System.Collections;
 using System.Reflection;
-using System.Diagnostics.CodeAnalysis;
-#if !MONO1
-using System.Collections.Generic;
-#endif
 using System.Text;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
-// (c) Malcolm Crowe, University of the West of Scotland 2004-2023
+// (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
 // This software is without support and no liability for damage consequential to use.
 // You can view and test this code
@@ -157,7 +151,7 @@ namespace Pyrrho
             }
             throw new DocumentException("Incomplete syntax at " + (i - 1));
         }
-
+        /*
          internal Document(byte[] b) : this(b, 0) { }
         /// <summary>
         /// Parser from BSON to Document
@@ -267,7 +261,7 @@ namespace Pyrrho
                     }
             }
             return tv;
-        }
+        } */
         static void Field(object v, StringBuilder sb)
         {
             if (v == null)
@@ -312,6 +306,7 @@ namespace Pyrrho
             sb.Append("}");
             return sb.ToString();
         }
+        /*
         internal static int GetLength(byte[] b, int off)
         {
             return b[off] + (b[off + 1] << 8) + (b[off + 2] << 16) + (b[off + 3] << 24);
@@ -447,7 +442,7 @@ namespace Pyrrho
             for (var i = 0; i < r.Count; i++)
                 rb[i] = (byte)r[i];
             return rb;
-        }
+        } */
         public Document(object ob)
         {
             if (ob == null)
@@ -593,6 +588,7 @@ namespace Pyrrho
             }
             return i;
         }
+        /*
         internal DocArray(byte[] b) : this(b, 0) { }
         /// <summary>
         /// Parser from BSON to Document
@@ -638,7 +634,7 @@ namespace Pyrrho
             for (var i = 0; i < r.Count; i++)
                 rb[i] = (byte)r[i];
             return rb;
-        }
+        } */
 
         public override string ToString()
         {
@@ -753,7 +749,7 @@ namespace Pyrrho
                     i = d.Fields(s, i, n);
                     return d;
                 }
-                if (c=='(')
+                if (c == '(')
                 {
                     var r = new PyrrhoRow();
                     (r, i) = GetEntries(r, s, i, n);
@@ -765,12 +761,12 @@ namespace Pyrrho
                     i = d.Items(s, i, n);
                     return d;
                 }
-                if (i + 3 < n && s.Substring(i-1, 4) == "true")
+                if (i + 3 < n && s.Substring(i-1, 4).ToLower() == "true")
                 {
                     i += 3;
                     return true;
                 }
-                if (i + 4 < n && s.Substring(i-1, 5) == "false")
+                if (i + 4 < n && s.Substring(i-1, 5).ToLower() == "false")
                 {
                     i += 4;
                     return false;
@@ -784,11 +780,11 @@ namespace Pyrrho
                 if (sg && i < n)
                     c = s[i++];
                 var whole = 0L;
-                if (Char.IsDigit(c))
+                if (char.IsDigit(c))
                 {
                     i--;
                     whole = GetHex(s, n, ref i);
-                    while (i < n && Char.IsDigit(s[i]))
+                    while (i < n && char.IsDigit(s[i]))
                         whole = whole * 10 + GetHex(s, n, ref i);
                 }
                 else
@@ -798,9 +794,9 @@ namespace Pyrrho
                 int scale = 0;
                 if (s[i] == '.')
                 {
-                    if (++i >= n || !Char.IsDigit(s[i]))
+                    if (++i >= n || !char.IsDigit(s[i]))
                         throw new DocumentException("decimal part expected");
-                    while (i < n && Char.IsDigit(s[i]))
+                    while (i < n && char.IsDigit(s[i]))
                     {
                         whole = whole * 10 + GetHex(s, n, ref i);
                         scale++;
@@ -816,10 +812,10 @@ namespace Pyrrho
                 if (++i >= n)
                     throw new DocumentException("exponent part expected");
                 var esg = s[i] == '-';
-                if ((s[i] == '-' || s[i] == '+') && (++i >= n || !Char.IsDigit(s[i])))
+                if ((s[i] == '-' || s[i] == '+') && (++i >= n || !char.IsDigit(s[i])))
                     throw new DocumentException("exponent part expected");
                 var exp = 0;
-                while (i < n && Char.IsDigit(s[i]))
+                while (i < n && char.IsDigit(s[i]))
                     exp = exp * 10 + GetHex(s, n, ref i);
                 if (esg)
                     exp = -exp;
@@ -833,11 +829,17 @@ namespace Pyrrho
         {
             var sb = new StringBuilder();
             var quote = s[i-1];
+            var squote = quote == '\'';
             while (i < n)
             {
                 var c = s[i++];
                 if (c == quote)
-                    return sb.ToString();
+                {
+                    if (squote && s[i] == quote)
+                        i++;
+                    else
+                        return sb.ToString();
+                }
                 if (c == '\\')
                     c = GetEscape(s, n, ref i);
                 sb.Append(c);
@@ -903,7 +905,7 @@ namespace Pyrrho
             }
             throw new DocumentException("Hex digit expected at " + (i - 1));
         }
-        (PyrrhoRow,int) GetEntries(PyrrhoRow r,string s,int i,int n)
+        (PyrrhoRow, int) GetEntries(PyrrhoRow r, string s, int i, int n)
         {
             ParseState state = ParseState.StartKey;
             StringBuilder kb = null;
@@ -919,7 +921,7 @@ namespace Pyrrho
                         if (char.IsWhiteSpace(c))
                             continue;
                         if (c == ')' && r.row.Length == 0)
-                            return (r,i);
+                            return (r, i);
                         if (c != '"')
                         {
                             if (!char.IsLetter(c) && c != '_' && c != '$' && c != '.')
@@ -953,14 +955,14 @@ namespace Pyrrho
                             continue;
                         var cv = new CellValue();
                         cv.val = GetValue(s, n, ref i);
-                        r+=(kb.ToString(), cv);
+                        r += (kb.ToString(), cv);
                         state = ParseState.Comma;
                         continue;
                     case ParseState.Comma:
                         if (Char.IsWhiteSpace(c))
                             continue;
                         if (c == ')')
-                            return (r,i);
+                            return (r, i);
                         if (c != ',')
                             throw new DocumentException("Expected , at " + (i - 1));
                         state = ParseState.StartKey;

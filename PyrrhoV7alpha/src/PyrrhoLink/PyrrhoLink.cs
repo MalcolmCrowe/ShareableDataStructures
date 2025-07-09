@@ -379,13 +379,6 @@ namespace Pyrrho
                 case 5:
                     {
                         var bb = GetBlob();
-                        switch (cell.subType)
-                        {
-                            case "DOCUMENT": cell.val = new Document(bb); break;
-                            case "DOCARRAY": cell.val = new DocArray(bb); break;
-                            case "OBJECT": cell.val = new ObjectId(bb); break;
-                            default: cell.val = bb; break;
-                        }
                         break;
                     }
                 case 6: cell.val = GetRow(); break;
@@ -420,7 +413,7 @@ namespace Pyrrho
                 case 11: cell.val = GetTimeSpan(); break;
                 case 12: cell.val = GetRow(cell.subType); break;
                 case 13: cell.val = new Date(GetDateTime()); break;
-                case 14: cell.val = GetTable(); break;
+                case 14: cell.val = new Document(GetString()); break;
                 case 15: cell.val = GetList(); break;
                 default: throw new DatabaseError("2E204", "" + flag);
             }

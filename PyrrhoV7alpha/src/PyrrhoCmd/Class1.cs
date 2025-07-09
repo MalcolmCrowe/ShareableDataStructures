@@ -3,8 +3,7 @@ using System.Net;
 using System.Collections;
 using System.Globalization;
 using Pyrrho;
-using System.ComponentModel.Design;
-using System.ComponentModel.DataAnnotations;
+
 
 namespace PyrrhoCmd
 {
@@ -667,6 +666,8 @@ namespace PyrrhoCmd
                         object o = rdr[j];
                         if (rdr.row[j] is CellValue cl && cl.subType == "BOOLEAN" && cl.val is null)
                             row[j] = "Unknown";
+                        else if (o is DateTime dt)
+                            row[j] = dt.ToString() + "." + dt.Millisecond.ToString("000");
                         else
                             row[j] = o.ToString();
                     }
@@ -715,7 +716,7 @@ namespace PyrrhoCmd
 			{
 				Console.Write("|");
 				Column c = (Column)a[j];
-				Console.Write(r[j]);
+                Console.Write(r[j]);
 				for (int k=0;k<c.width-r[j].Length;k++)
 					Console.Write(" ");
 			}
@@ -724,6 +725,11 @@ namespace PyrrhoCmd
                 Console.Write(v);
             Console.WriteLine();
 		}
+        static string DateTimeToString(DateTime dt)
+        {
+            return dt.ToString() + "." + dt.Millisecond.ToString("000");
+        }
+
 		static Hashtable dict = null;
 		static void GetSatellite(string rname,string cu)
 		{
