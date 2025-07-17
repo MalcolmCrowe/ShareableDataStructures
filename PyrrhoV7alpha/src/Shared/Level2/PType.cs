@@ -77,6 +77,18 @@ namespace Pyrrho.Level2
         public PType(string nm, UDType dm, CTree<Domain, bool> un, long ns, long pp, Context cx)
             : this(Type.PType, nm, dm, un, ns, pp, cx) { }
         /// <summary>
+        /// hack for ad-hoc Union or Row type
+        /// </summary>
+        /// <param name="nm"></param>
+        /// <param name="dm"></param>
+        /// <param name="pp"></param>
+        /// <param name="cx"></param>
+        public PType(string nm, Domain dm,long pp, Context cx)
+            : base(Type.PType,pp,cx,nm,dm,pp)
+        {
+            dataType = dm;
+        }
+        /// <summary>
         /// Constructor: A user-defined type definition from the buffer
         /// </summary>
         /// <param name="bp">The buffer</param>
@@ -328,6 +340,7 @@ namespace Pyrrho.Level2
             ro += (Role.DBObjects, ro.dbobjects + (name, defpos));
             var ss = CTree<Domain, bool>.Empty;
             var oi = dataType.infos[cx.role.defpos];
+            var ns = Names.Empty;
             if (oi is null || oi.name != name || oi.names == Names.Empty)
             {
                 var priv = Grant.Privilege.Owner | Grant.Privilege.Insert | Grant.Privilege.Select |
@@ -337,10 +350,16 @@ namespace Pyrrho.Level2
                     Grant.Privilege.Usage | Grant.Privilege.GrantUsage;
                 oi = new ObInfo(name, priv);
                 oi += (ObInfo.SchemaKey, ppos);
-                var ns = dataType.HierarchyCols(cx);
-                oi += (ObInfo._Names, ns);
+                ns = dataType.HierarchyCols(cx);
+                var no = Names.Empty;
+                for (var b = dataType.First(); b != null; b = b.Next())
+                    if (cx.NameFor(b.value()) is string n)
+                        no += (n, ns[n]);
+                oi += (ObInfo._Names, no);
             }
             var ons = oi.names;
+            dataType += (DBObject.Infos, dataType.infos + (cx.role.defpos, oi));
+            dataType += (ObInfo._Names, ons);
             if (dataType is UDType ut)
                 for (var b = ut.super.First(); b != null; b = b.Next())
                     if ((cx.db.objects[b.key().defpos] ?? cx.obs[b.key().defpos]) is UDType tu)

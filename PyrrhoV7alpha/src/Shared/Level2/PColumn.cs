@@ -346,6 +346,7 @@ namespace Pyrrho.Level2
                 ti += (ObInfo.Defs, ti.defs + (tc.defpos, ss));
             table += (DBObject.Infos, table.infos+(cx.role.defpos,ti));
             table += (ObInfo._Names, ti.names);
+            table += (Domain.Display, (int)ti.names.Count);
             table += (cx, tc); 
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.COLUMN_NAME));
             tc += (TableColumn.Seq, seq);

@@ -3,7 +3,10 @@ using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
 using System.Globalization;
+using System.Security.AccessControl;
 using System.Security.Cryptography;
+using System.Text;
+using System.Xml.XPath;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -1384,8 +1387,9 @@ namespace Pyrrho.Level4
             }
             Domain le = xp;
             if (Match(Qlx.LABEL, Qlx.LABELS, Qlx.COLON, Qlx.DOUBLEARROW, Qlx.IMPLIES))
-                le = ParseNodeLabelExpression(xp, id.ident);
+                le = ParseNodeLabelExpression(xp, id.ident); 
             var lp = LexLp();
+ /*           var su = le.ToString();
             if (Match(Qlx.DOUBLEARROW, Qlx.IMPLIES)) // we prefer DOUBLEARROW to the keyword
             {
                 Next();
@@ -1393,11 +1397,18 @@ namespace Pyrrho.Level4
                 cx.Add(lf);
                 le = (Domain)cx.Add(new GqlLabel(lp, cx, le.defpos, lf.defpos,
                     new BTree<long, object>(Domain.Kind, Qlx.DOUBLEARROW)));
-            }
+            }*/
             if (le.kind == Qlx.NO)
                 le = CreateElementType(id, Domain.NodeType);
             else if (le.defpos > 0L && !cx.role.dbobjects.Contains(le.name))
                 le = CreateElementType(id, le);
+            else if (le.super!=CTree<Domain,bool>.Empty && cx.db is Transaction tr
+                && tr.physicals[cx.role.dbobjects[le.name] ?? -1L] is PNodeType pn)
+            {
+                pn.under = le.super;
+                tr += (Transaction.Physicals, tr.physicals + (pn.defpos,pn));
+                cx.db = tr;
+            }
             var ms = "";
             var md = TMetadata.Empty;
             var ps = BList<(Ident, Domain)>.Empty;
@@ -2699,7 +2710,7 @@ namespace Pyrrho.Level4
                 var pt = (supers.Count <= 1L)?
                     new PType(typename.ident, dd, supers, -1L, cx.db.nextPos, cx)
                     :new PType2(typename.ident, dd, supers, -1L, cx.db.nextPos, cx);
-                cx.Add(pt);
+                dt = (UDType)(cx.Add(pt)??throw new DBException("42105"));
             }
             // UNDER may have specified a node or edge tye. If so, we change the 
             // user-defined tye dt created by lines 1583/1597/1603 above into a NodeType or EdgeType
@@ -2747,17 +2758,29 @@ namespace Pyrrho.Level4
             // it is a syntax error to add NODETPE/EDGETYPE metadata to a node tye:
             // but it is okay to add edgetype metadata to an edgetype
             if ((dt is not NodeType || dt is EdgeType) && StartMetadata(Qlx.TYPE))
+            {
                 ParseTypeMetadata(typename, dt);
+                dt = (UDType)(cx.obs[dt.defpos]??dt);
+            }
+            var ms = dt.metastring;
+            var md = dt.metadata;
+            if (StartMetadata(Qlx.TABLE))
+            {
+                var (s, m) = ParseMetadata(Qlx.TABLE, (TableColumn._Table, dt));
+                ms += s; md += m;
+            }
+            dt = (UDType)dt.Add(cx, ms, md);
             cx.parse = op;
         }
         void ParseTypeMetadata(Ident typename, UDType dt)
         {
-            // BuildNodeType is also used for the CREATE NODE syntax, which is
+            // ParseTypeMetadata is also used for the CREATE NODE syntax, which is
             // part of the DML, and so any new properties added here are best prepared with
             // SqlValues/SqlLiterals instead of Domains/TableColumns.
             // We prepare a useful tree of all the columns we know about in case their names
             // occur in the metadata.
             var ls = CTree<string, QlValue>.Empty;
+            var st = lxr.start;
             var ap = LexLp();
             var nn = Names.Empty;
             for (var b = dt.rowType.First(); b != null; b = b.Next())
@@ -2779,8 +2802,32 @@ namespace Pyrrho.Level4
             var odt = dt;
             if (m[Qlx.EDGETYPE] is TSet tm) //Each entry in tm is a TConnector
             {
-                var et = new EdgeType(LexLp(), typename.uid, typename.ident, dt,
-                    BTree<long, object>.Empty + (ObInfo._Metadata, dt.metadata+(Qlx.EDGETYPE,tm)), cx);
+                var et = new EdgeType(LexLp(), typename.uid, typename.ident, dt,dt.mem,cx);
+                // watch for an edge subtype
+                TSet? sm = null;
+                for (var b=dt.super.First();b!=null;b=b.Next())
+                    if (b.key() is EdgeType be && be.metadata[Qlx.EDGETYPE] is TSet bs)
+                        if (sm == null) sm = bs; else sm += bs;
+                for (var b = sm?.First(); b != null; b = b.Next())
+                    if (b.Value() is TConnector sc)
+                        for (var c = tm.First(); c != null; c = c.Next())
+                            if (c.Value() is TConnector cc && cc.q == sc.q && cc.cn == sc.cn
+                                && cc.cp==cx.db.nextPos && sm!=null)
+                            {
+                                tm -= cc;
+                                tm += new TConnector(cc.q, cc.ct, cc.cn, cc.cd, sc.cp, "", cc.cm);
+                            }
+                if (tm.Cardinality() == 0)
+                    m -= Qlx.EDGETYPE;
+                else
+                    m += (Qlx.EDGETYPE, tm);
+                if (sm != null)
+                {
+                    var pm = new PMetadata(typename.ident, -1L, et,
+                        new string(lxr.input, st, lxr.start - st), m, cx.db.nextPos, cx.db);
+                    cx.Add(pm);
+                }
+                et = (EdgeType)cx.Add(et + (ObInfo._Metadata, dt.metadata + (Qlx.EDGETYPE, tm)));
                 et = et.FixEdgeType(cx, typename, tm.tree);
                 dt = et.Build(cx, null, 0L, typename.ident, ls);
             }
@@ -3200,10 +3247,11 @@ namespace Pyrrho.Level4
                     return Match(Qlx.PREFIX, Qlx.SUFFIX, Qlx.NODETYPE, Qlx.EDGETYPE, Qlx.SCHEMA,
                     Qlx.SENSITIVE, Qlx.CARDINALITY, Qlx.CONNECTING);
                 case Qlx.ANY:
-                    Match(Qlx.DESC, Qlx.URL, Qlx.MIME, Qlx.SQLAGENT, Qlx.USER, Qlx.DEFAULT,
+                    Match(Qlx.DESC, Qlx.URL, Qlx.MIME, Qlx.SQLAGENT, Qlx.USER, Qlx.DEFAULT, Qlx.EDGETYPE,
                         Qlx.ENTITY, Qlx.PIE, Qlx.HISTOGRAM, Qlx.LEGEND, Qlx.LINE, Qlx.POINTS, Qlx.REFERRED,
                         Qlx.ETAG, Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.REFERS, Qlx.JSON, Qlx.CSV,
-                        Qlx.INVERTS, Qlx.MONOTONIC, Qlx.PREFIX, Qlx.SUFFIX, Qlx.OPTIONAL, Qlx.CARDINALITY);
+                        Qlx.INVERTS, Qlx.MONOTONIC, Qlx.PREFIX, Qlx.SUFFIX, Qlx.OPTIONAL, Qlx.CARDINALITY,
+                        Qlx.CONNECTING);
                     return !Match(Qlx.EOF, Qlx.RPAREN, Qlx.COMMA, Qlx.RBRACK, Qlx.RBRACE);
                 default: return Match(Qlx.CHARLITERAL);
             }
@@ -3378,7 +3426,9 @@ namespace Pyrrho.Level4
                                 var pc = ((Transaction)cx.db).physicals[dt.defpos] as PType ??
                                     throw new PEException("PE50741");
                                 pc = new PEdgeType(dt.NameFor(cx), pc, Domain.EdgeType, cx);
-                                tb = (EdgeType?)cx.Add(pc);
+                                if (cx.db is Transaction tr) // it is
+                                    cx.db = tr + (Transaction.Physicals, tr.physicals + (pc.ppos,pc));
+                                tb = (EdgeType)cx.Add(new EdgeType(pc.ppos, dt.mem));
                             }
                             if (tb is null)
                                 throw new DBException("42105");
@@ -3740,37 +3790,37 @@ namespace Pyrrho.Level4
             return (Table)(cx.Add(px)??throw new DBException("42105"));    
         }
         // Connector= [id'=']Type_id{'|'Type_id}[SET][Domain_id] Metadata
-        (EdgeType,TSet) ParseConnector(EdgeType et,TSet cl, Qlx tk, int k)
+        (EdgeType, TSet) ParseConnector(EdgeType et, TSet cl, Qlx tk, int k)
         {
-            var xl = CTree<Domain,bool>.Empty;
+            var xl = CList<Domain>.Empty;
             var sc = "";
             var cd = Domain.Position;
             var ln = lxr.val;
             Mustbe(Qlx.Id);
-            if (tok==Qlx.EQL)
+            if (tok == Qlx.EQL)
             {
                 sc = ln.ToString();
                 Next();
                 ln = lxr.val;
             }
-            var tp = (NodeType)(cx._Ob(cx.role.nodeTypes[ln.ToString()]??-1L)
+            var tp = (NodeType)(cx._Ob(cx.role.nodeTypes[ln.ToString()] ?? -1L)
                 ?? throw new DBException("42107", ln));
-            xl += (tp,true);
-            if (sc!="")
+            xl += tp;
+            if (sc != "")
                 Mustbe(Qlx.Id);
-            if (sc=="")
+            if (sc == "")
             {
                 sc = tk.ToString();
                 if (k != 0)
                     sc += k;
             }
             Match(Qlx.TO);
-            while (tok==Qlx.VBAR)
+            while (tok == Qlx.VBAR)
             {
                 Next();
                 ln = lxr.val;
-                tp = (NodeType)(cx._Ob(cx.role.nodeTypes[ln.ToString()] ?? -1L)                                ?? throw new DBException("42107", ln));
-                xl += (tp, true);
+                tp = (NodeType)(cx._Ob(cx.role.nodeTypes[ln.ToString()] ?? -1L) ?? throw new DBException("42107", ln));
+                xl += tp;
                 Mustbe(Qlx.Id);
             }
             var s = false;
@@ -3783,36 +3833,68 @@ namespace Pyrrho.Level4
             if (dm == Domain.Null)
                 dm = Domain.Position;
             cd = s ? new Domain(-1L, Qlx.SET, dm) : dm;
-            var ct = (xl.Count == 1) ? xl.First()?.key() : (Domain)cx.Add(new Domain(cx.GetUid(), Qlx.UNION, xl));
+            var ct = xl.First()?.value();
+            if (xl.Count > 1)
+            {
+                var sb = new StringBuilder();
+                var cm = "";
+                for (var b = xl.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = "|";
+                    sb.Append(b.value().NameFor(cx));
+                }
+                var tn = sb.ToString();
+                var xp = cx.db.nextPos;
+                if (cx.db.role.dbobjects[tn] is long yp)
+                {
+                    xp = yp;
+                    ct = (Domain)(cx.db.objects[xp] ?? Domain.Content);
+                }
+                else
+                {
+                    var tu = Domain.UnionType(xp, xl.ListToArray())
+                        + (DBObject.Infos, new BTree<long, ObInfo>(cx.role.defpos, new ObInfo(tn)));
+                    var pt = new PType(tn, tu, xp, cx);
+                    cx.Add(pt);
+                    var ro = cx.role;
+                    ro += (Role.DBObjects, ro.dbobjects + (tn, xp));
+                    ct = (Domain?)cx.Add(tu);
+                    cx.db += tu;
+                    cx.db += ro;
+                }
+            }
             if (ct is null)
                 throw new DBException("42000");
             string ts = "";
             TMetadata? tm = null;
             if (!cx.ParsingMatch && StartMetadata(Qlx.CONNECTING))
-                (ts,tm) = ParseMetadata(Qlx.CONNECTING);
+                (ts, tm) = ParseMetadata(Qlx.CONNECTING);
             var cc = new TConnector(tk, ct.defpos, sc, cd, cx.db.nextPos, ts, tm);
-            var pc = new PColumn3(et, sc, -1, cd, "", false, GenerationRule.None, 
-                cc, cx.db.nextPos, cx);
-            et = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105"));
-            var nc = cx.obs[pc.defpos] as TableColumn?? throw new DBException("42105");
-            nc += (TableColumn.Connector, cc);
-            if (tm!=null)
-                nc += (ObInfo._Metadata, tm);
-            if (tm?.Contains(Qlx.MINVALUE)==true || tm?.Contains(Qlx.MAXVALUE)==true)
-                cx.MetaPend(et.defpos, pc.defpos, pc.name,
-                    TMetadata.Empty + (Qlx.MULTIPLICITY, new TSet(Domain.Position) + new TPosition(pc.defpos)));
-            var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
-            var px = new PIndex(sc, et, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
-                        | PIndex.ConstraintType.CascadeDelete,
-                -1L, cx.db.nextPos, cx.db, false);
-            nc += (Level3.Index.RefIndex, px.ppos);
-            cx.Add(px);
-            cx.db += (cx.obs[px.ppos] as Level3.Index) ?? throw new DBException("42105");
-            cx.Add(nc);
-            cx.db += nc;
-            et = (EdgeType)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.REF));
+            if (et.super == CTree<Domain, bool>.Empty)
+            {
+                var pc = new PColumn3(et, sc, -1, cd, "", false, GenerationRule.None,
+                        cc, cx.db.nextPos, cx);
+                et = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105"));
+                var nc = cx.obs[pc.defpos] as TableColumn ?? throw new DBException("42105");
+                nc += (TableColumn.Connector, cc);
+                if (tm != null)
+                    nc += (ObInfo._Metadata, tm);
+                if (tm?.Contains(Qlx.MINVALUE) == true || tm?.Contains(Qlx.MAXVALUE) == true)
+                    cx.MetaPend(et.defpos, pc.defpos, pc.name,
+                        TMetadata.Empty + (Qlx.MULTIPLICITY, new TSet(Domain.Position) + new TPosition(pc.defpos)));
+                var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
+                var px = new PIndex(sc, et, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
+                            | PIndex.ConstraintType.CascadeDelete,
+                    -1L, cx.db.nextPos, cx.db, false);
+                nc += (Level3.Index.RefIndex, px.ppos);
+                cx.Add(px);
+                cx.db += (cx.obs[px.ppos] as Level3.Index) ?? throw new DBException("42105");
+                cx.Add(nc);
+                cx.db += nc;
+                et = (EdgeType)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.REF));
+            }
             cx.db += et;
-            return (et,cl+cc);
+            return (et, cl + cc);
         }
         /// <summary>
         /// CheckConstraint = [ CONSTRAINT id ] CHECK '(' QlValue ')' .
@@ -6712,9 +6794,9 @@ namespace Pyrrho.Level4
         /// Handle ROW tye or TABLE tye in Type specification.
         /// </summary>
         /// <returns>The RowTypeSpec</returns>
-        internal Domain ParseRowTypeSpec(Qlx k, Ident? pn = null, CTree<Domain,bool>? under=null)
+        internal Domain ParseRowTypeSpec(Qlx k, Ident? pn = null, CTree<Domain, bool>? under = null)
         {
-            under ??= CTree<Domain,bool>.Empty;
+            under ??= CTree<Domain, bool>.Empty;
             var dt = Domain.Null;
             if (tok == Qlx.Id)
             {
@@ -6741,7 +6823,7 @@ namespace Pyrrho.Level4
                     }
                 if (b.key() is EdgeType)
                     k = Qlx.EDGETYPE;
-                if (b.key() is NodeType && k!=Qlx.EDGETYPE)
+                if (b.key() is NodeType && k != Qlx.EDGETYPE)
                     k = Qlx.NODETYPE;
             }
             var sl = lxr.start;
@@ -6778,12 +6860,13 @@ namespace Pyrrho.Level4
                 };
                 dt = ((UDType)dt).New(pn, under, st, cx) ?? throw new PEException("PE40407");
             }
-            cx.db += dt;
             if (k != Qlx.ROW)
                 pn ??= new Ident("", lp);
             var ms = dt.representation;
             var rt = dt.rowType;
             var ls = CTree<long, string>.Empty;
+            var sb = new StringBuilder();
+            var cm = '(';
             var j = 0;
             for (var b = ns.First(); b != null; b = b.Next(), j++)
             {
@@ -6795,37 +6878,52 @@ namespace Pyrrho.Level4
                     var pc = new PColumn3((Table)dt, nm.ident, -1, dm, "", md, np, cx);
                     cx.Add(pc);
                     ms += (pc.defpos, dm);
-                    sm += (nm.ident, (nm.lp,pc.defpos));
+                    sm += (nm.ident, (nm.lp, pc.defpos));
                     rt += pc.defpos;
                     var cix = pc.defpos;
-                    cx.names += (pn.ident, (nm.lp,cix));
+                    cx.names += (pn.ident, (nm.lp, cix));
+                    sb.Append(cm); cm = ',';
+                    sb.Append(nm.ident);
                 }
                 else if (pn != null && pn.ident != "")
                 {
                     var se = new SqlElement(nm, BList<Ident>.Empty, cx, pn, dm);
                     cx.Add(se);
                     ms += (se.defpos, dm);
-                    sm += (nm.ident, (nm.lp,se.defpos));
+                    sm += (nm.ident, (nm.lp, se.defpos));
                     rt += se.defpos;
-                    cx.names += (pn.ident, (nm.lp,pn.uid));
+                    cx.names += (pn.ident, (nm.lp, pn.uid));
                 }
                 else // RestView
                 {
                     var sp = nm.uid;
                     rt += sp;
                     ms += (sp, dm);
-                    sm += (nm.ident, (nm.lp,sp));
+                    sm += (nm.ident, (nm.lp, sp));
                     ls += (sp, nm.ident);
                 }
             }
-            dt = cx.db.objects[dt.defpos] as Domain ?? throw new DBException("42105").Add(Qlx.DOMAIN);
+ /*           if (cm != '(')
+            {
+                sb.Append(')');
+                tn = sb.ToString();
+                var ro = cx.role;
+                dt += (ObInfo.Name,tn);
+                dt += (DBObject.Infos, dt.infos + (cx.role.defpos,oi + (ObInfo.Name, tn)));
+                ro += (Role.DBObjects, ro.dbobjects + (tn, dt.defpos));
+                cx.db += ro;
+                cx.db += dt;
+            } */
+            if (k == Qlx.LPAREN && cx.role.dbobjects[tn] is long p && p > 0L)
+                return (Domain)(cx.db.objects[p] ?? throw new DBException("42105").Add(Qlx.DOMAIN));
+            dt = cx._Ob(dt.defpos) as Domain ?? throw new DBException("42105").Add(Qlx.DOMAIN);
             cx.Add(dt);
             oi += (ObInfo._Names, sm);
             oi += (ObInfo.Name, tn);
             var r = (Domain)dt.New(st, new BTree<long, object>(Domain.Kind, k)
                 + (ObInfo.Name, tn) + (DBObject.Definer, cx.role.defpos)
                 + (DBObject.Infos, new BTree<long, ObInfo>(cx.role.defpos, oi))
-                + (Domain.Under, under)
+                + (Domain.Under, under) + (ObInfo._Names, sm)
                 + (Domain.RowType, rt) + (Domain.Representation, ms));
             var us = "";
             var um = TMetadata.Empty;

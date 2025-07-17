@@ -1,9 +1,10 @@
-﻿using Pyrrho.Level3;
-using Pyrrho.Common;
-using Pyrrho.Level4;
-using System.Text;
+﻿using Pyrrho.Common;
 using Pyrrho.Level2;
+using Pyrrho.Level3;
+using Pyrrho.Level4;
 using System.Data.SqlTypes;
+using System.Reflection.Metadata;
+using System.Text;
 
 namespace Pyrrho.Level5
 {
@@ -1452,27 +1453,6 @@ namespace Pyrrho.Level5
             }
             return r;
         }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            if (name is string nm && nm != kind.ToString())
-            {
-                sb.Append(' '); sb.Append(nm);
-            }
-            if (defpos>0)
-            {
-                sb.Append(' '); sb.Append(kind);
-                if (left > 0)
-                {
-                    sb.Append(' '); sb.Append(Uid(left));
-                }
-                if (right > 0)
-                {
-                    sb.Append(' '); sb.Append(Uid(right));
-                }
-            }
-            return sb.ToString();
-        }
     }
     /// <summary>
     /// Structural information about edge connections is copied to subtypes.
@@ -1922,6 +1902,28 @@ CTree<string, QlValue> ls, bool allowChange = false)
                         ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, defpos));
                     cx.db += ro;
                 }
+                // watch for an edge subtype
+                TSet? sm = null;
+                for (var b = r.super.First(); b != null; b = b.Next())
+                    if (b.key() is EdgeType be && be.metadata[Qlx.EDGETYPE] is TSet bs)
+                        if (sm == null) sm = bs; else sm += bs;
+                for (var b = sm?.First(); b != null; b = b.Next())
+                    if (b.Value() is TConnector sc)
+                        for (var c = ts.First(); c != null; c = c.Next())
+                            if (c.Value() is TConnector cc && cc.q == sc.q && cc.cn == sc.cn
+                                && cc.cp == cx.db.nextPos && sm != null)
+                            {
+                                ts -= cc;
+                                ts += new TConnector(cc.q, cc.ct, cc.cn, cc.cd, sc.cp, "", cc.cm);
+                            }
+                if (ts.Cardinality() == 0)
+                    md -= Qlx.EDGETYPE;
+                else
+                    md += (Qlx.EDGETYPE, ts);
+                r += (Infos, r.infos + (cx.role.defpos, oi + (ObInfo._Metadata, md)));
+                r += (ObInfo._Metadata,md);
+                cx.Add(r);
+                cx.db += r;
             }
             if (md[Qlx.CONNECTING] is TConnector tc)
             {

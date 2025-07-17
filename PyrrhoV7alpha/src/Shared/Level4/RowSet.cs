@@ -5650,8 +5650,8 @@ namespace Pyrrho.Level4
             /// <param name="fl"></param>
             /// <param name="ix"></param>
             /// <returns></returns>
-            static CTree<long,TypedValue> CheckPrimaryKey(Context cx, TransitionCursor trc,
-                CTree<long,TypedValue>vs)
+            static CTree<long, TypedValue> CheckPrimaryKey(Context cx, TransitionCursor trc,
+                CTree<long, TypedValue> vs)
             {
                 if (cx is TableActivation ta)
                 {
@@ -5677,6 +5677,18 @@ namespace Pyrrho.Level4
                                 k += v;
                             }
                     }
+                    if (tb is EdgeType et && cx.conn.refIdsToPos
+                        && et.metadata[Qlx.EDGETYPE] is TSet ts)
+                        for (var b = ts.First(); b != null; b = b.Next())
+                            if (b.Value() is TConnector tc && cx.db.objects[tc.ct] is NodeType ln)
+                            {
+                                var lp = (vs[tc.cp] is TChar ld)? long.Parse(ld.value)
+                                    : (vs[tc.cp] as TInt)?.ToLong() ?? -1L;
+                                if (ln.FindPrimaryIndex(cx) is Level3.Index lx
+                                    && lx.rows?.impl?[new TInt(lp)] is TInt li
+                                    && li.ToLong() is long p)
+                                    vs += (tc.cp, new TPosition(p));
+                            }
                 }
                 return vs;
             }

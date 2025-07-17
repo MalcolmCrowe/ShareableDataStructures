@@ -791,6 +791,15 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 }
                 sb.Append(']');
             }
+            if (super!=CTree<Domain,bool>.Empty)
+            {
+                var cm = " under (";
+                for (var b = super.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ","; sb.Append(b.key());
+                }
+                sb.Append(')');
+            }
             return sb.ToString();
         }
         internal static Qlx Equivalent(Qlx kind)

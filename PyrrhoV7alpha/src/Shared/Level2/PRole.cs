@@ -206,11 +206,12 @@ namespace Pyrrho.Level2
 		{
 			name =rdr.GetString();
             details = rdr.GetString();
-            metadata = new Parser(rdr.context, details).ParseMetadata(Qlx.ANY).Item2;
             iri = rdr.GetString();
             seq = rdr.GetLong()-1;
             defpos = rdr.GetLong();
             flags = rdr.GetLong();
+            var ob = rdr.context.db.objects[defpos] ?? Domain.Null;
+            metadata = new Parser(rdr.context, details).ParseMetadata(Qlx.ANY,(TableColumn._Table,ob)).Item2;
             base.Deserialise(rdr);
 		}
         string Detail(Writer wr)
