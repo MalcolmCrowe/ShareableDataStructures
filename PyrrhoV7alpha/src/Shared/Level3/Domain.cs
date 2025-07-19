@@ -3143,7 +3143,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         case Qlx.DATE:
                             return CheckFields(new TDateTime(this, ((TDateTime)v).value));
                         case Qlx.CHAR:
-                            if (!v.ToString().Contains('-'))
+                            if (!(v.ToString().Contains('-')||v.ToString().Contains('/')))
                             {
                                 var s = long.Parse(v.ToString());
                                 return CheckFields(new TDateTime(new DateTime(s*10000+new DateTime(1970,1,1).Ticks)));
