@@ -2601,7 +2601,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                 h = int.Parse(parts[3 - ks]);
             if (ks <= 4 && ke > 4)
                 m = int.Parse(parts[4 - ks]);
-            if (ke > 5)
+            if (ke ==5)
                 s = (long)(double.Parse(parts[5 - ks]) * TimeSpan.TicksPerSecond);
             s = d * TimeSpan.TicksPerDay + h * TimeSpan.TicksPerHour +
                 m * TimeSpan.TicksPerMinute + s;
@@ -2610,13 +2610,9 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             return new Interval(s);
         }
         /// <summary>
-        /// Facilitate quick decoding of the interval fields
-        /// </summary>
-        internal static Qlx[] intervalParts = [Qlx.YEAR, Qlx.MONTH, Qlx.DAY, Qlx.HOUR, Qlx.MINUTE, Qlx.SECOND];
-        /// <summary>
         /// helper for encoding interval fields
         /// </summary>
-        /// <param name="e">YEAR, MONTH, DAY, HOUR, MINUTE, SECOND</param>
+        /// <param name="e">YEAR, MONTH, DAY, HOUR, MINUTE, SECOND, MILLI</param>
         /// <returns>corresponding integer 0,1,2,3,4,5</returns>
         internal static int IntervalPart(Qlx e)
         {
@@ -2661,7 +2657,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
         {
             var st = lx.pos;
             lx.Advance();
-            while (char.IsDigit(lx.ch))
+            while (char.IsDigit(lx.ch)||lx.ch=='.')
                 lx.Advance();
             return new string(lx.input, st, lx.pos - st);
         }

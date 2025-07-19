@@ -2,8 +2,6 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
-using System;
-using System.Diagnostics.CodeAnalysis;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
@@ -183,10 +181,10 @@ namespace Pyrrho.Level2
                 prevrec = tr;
                 tb.Update(cx, prevrec, fields);
             }
-            Check(cx);
+            CheckFields(cx);
             return new TableRow(this, cx, prevrec);
         }
-        internal override void Check(Context cx)
+        internal override void CheckFields(Context cx)
         {
             if (cx._Ob(tabledefpos) is Table tb)
             {
@@ -208,15 +206,18 @@ namespace Pyrrho.Level2
         {
             if (tt.defpos < 0)
                 return cx;
-            cx = _Add(cx, tt, now);
+            base.Add(cx, tt, now);
             for (var b = subTables.First(); b != null; b = b.Next())   // update subtypes
-                if (cx.db.objects[b.key()] is Table ta)
-                    cx = _Add(cx, ta, now);
+                if (cx.db.objects[b.key()] is Table ta
+                     && ta.tableRows[defpos]?.time != now.time)
+                    cx = Add(cx, ta, now);
             return cx;
         }
         internal override Table AddRow(Table tt, TableRow now, Context cx)
         {
             tt += now;
+            if (tt.name == "TRANSFER"||tt.name=="WITHDRAW"||tt.name=="REPAY"||tt.name=="DEPOSIT")
+                ;
             var pr = prevrec?.vals ?? CTree<long, TypedValue>.Empty;
             if (tt is EdgeType et)
             {
@@ -254,16 +255,7 @@ namespace Pyrrho.Level2
                         x += (nk, defpos);
                         cx.db += x;
                     }
-            for (var b = subTables.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key()] is Table tb && tb.tableRows.Contains(prev))
-                {
-                    if (prev != defpos)
-                        tb -= prev;
-                    tb += now;
-                    cx.Add(tb);
-                    cx.db += tb;
-                }
-            return (Table)cx.Add(tt);
+            return tt;
         }
         public override long Affects => _defpos;
         public override long defpos => _defpos;

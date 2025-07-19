@@ -5892,10 +5892,15 @@ namespace Pyrrho.Level3
                             && ns?[n].Item2 is long np
                             && (dn.tableRow.vals[np]??cx._Ob(np)?.Eval(cx)) is TypedValue tv)
                         {
-                            if (tg.type.HasFlag(TGParam.Type.Group))
+                            if (cx.binding[tg.uid] is TypedValue bv && bv != TNull.Value)
+                            {
+                                if (bv.CompareTo(tv) != 0)
+                                    return false;
+                            }
+                            else if (tg.type.HasFlag(TGParam.Type.Group))
                             {
                                 var ta = bi[tg.uid] as TArray ?? new TArray(tv.dataType);
-                                bi += (tg.uid, ta + (cx,ta.Length, tv));
+                                bi += (tg.uid, ta + (cx, ta.Length, tv));
                             }
                             else
                                 bi += (tg.uid, tv);

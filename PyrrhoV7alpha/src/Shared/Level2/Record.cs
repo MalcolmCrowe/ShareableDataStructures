@@ -335,7 +335,8 @@ namespace Pyrrho.Level2
             if (tt.defpos < 0)
                 return cx;
             for (var b = supTables.First(); b != null; b = b.Next())   // update supertypes: extra values are harmless
-                if (cx.db.objects[b.key()] is Table ta)
+                if (cx.db.objects[b.key()] is Table ta
+                     && ta.tableRows[defpos]?.time != now.time)
                 cx = _Add(cx, ta, now);
             cx = _Add(cx,tt,now); // this updates tableRows and indexes
             return cx;
@@ -414,7 +415,7 @@ namespace Pyrrho.Level2
                     tt = nt + (TrivialRowSet.Singleton, new TRow(nt, now.vals));
                 cx.db += tt;
             }
-            return (Table)cx.Add(tt);
+            return tt;
         }
         protected virtual TableRow Now(Context cx)
         {
