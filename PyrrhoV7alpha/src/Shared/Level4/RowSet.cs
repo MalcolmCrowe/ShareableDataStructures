@@ -173,13 +173,8 @@ namespace Pyrrho.Level4
         {
             cx.Add(this);
         }
-        /// <summary>
-        /// Constructor: relocate a rowset with no property changes
-        /// </summary>
-        /// <param name="dp"></param>
-        /// <param name="m"></param>
         protected RowSet(long dp, BTree<long, object> m) : base(dp, m)
-        { }
+        {  }
         // Compute assertions. Also watch for Matching and Ambient info from sources
         protected static BTree<long, object> _Mem(long dp, Context cx, BTree<long, object> m)
         {

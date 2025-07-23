@@ -751,6 +751,28 @@ namespace Pyrrho.Level3
             var vs = cx.ShallowReplace(vals, was, now);
             return (vs != vals) ? new TableRow(this,vs) : this; // CheckFields is done by caller: can't be done just now
         }
+        internal TypedValue SpecificType(Context cx)
+        {
+            var sb = new StringBuilder();
+            var cm = "";
+            if (subType >= 0 && cx.NameFor(subType) is string ns)
+                sb.Append(ns);//.Trim(':'));
+            else if (cx.db.objects[tabledefpos] is Table tb)
+            {
+                if (tb.nodeTypes.Count == 0 && tb.NameFor(cx) is string nm)
+                {
+                    sb.Append(cm); sb.Append(nm);//.Trim(':'));
+                }
+                else
+                    for (var b = tb.nodeTypes.First(); b != null; b = b.Next())
+                        if (b.key().NameFor(cx) is string nk)
+                        {
+                            sb.Append(cm); cm = "&";
+                            sb.Append(nk); //.Trim(':'));
+                        }
+            }
+            return new TChar(sb.ToString());
+        }
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());

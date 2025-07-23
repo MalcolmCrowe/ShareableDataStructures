@@ -56,8 +56,6 @@
     <Compile Remove="Level4\Value.cs" />
     <Compile Remove="Properties\AssemblyInfo.cs" />
     <Compile Remove="Pyrrho.cs" />
-    <Compile Remove="PyrrhoLink.cs" />
-    <Compile Remove="Reflection.cs" />
     <Compile Remove="Scripting.cs" />
     <Compile Remove="WebCtlr.cs" />
     <Compile Remove="WebSvc.cs" />

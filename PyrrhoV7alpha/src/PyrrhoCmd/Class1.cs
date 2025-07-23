@@ -118,7 +118,7 @@ namespace PyrrhoCmd
         {
             for (bool done = false; !done; done = !interactive)
             {
-                var str = GetCommand(db, null, interactive);
+                var str = GetCommand(db, file, interactive);
                 if (str == null)
                     break;
                 if (str.Trim().Length == 0)
@@ -301,26 +301,13 @@ namespace PyrrhoCmd
         {
             Console.InputEncoding = Encoding.Unicode;
             Console.OutputEncoding = Encoding.Unicode;
-            bool newfile = false;
-            int fileLines = -1;
             string? str;
             string? line = "";
             var bk = 0;
             if (interactive)
             {
                 if (file != null)
-                {
                     str = file.ReadLine();
-                    if (newfile)
-                    {
-                        if (file.CurrentEncoding == Encoding.Default)
-                            Console.WriteLine(Format("0013"));
-                    }
-                    if (++fileLines % 1000 == 0)
-                    {
-                        Console.Write(fileLines); Console.WriteLine(Format("0024"));
-                    }
-                }
                 else
                 {
                     if (db.State != ConnectionState.Open)
@@ -348,7 +335,6 @@ namespace PyrrhoCmd
                     try
                     {
                         file = new StreamReader(str.Substring(1).Trim());
-                        newfile = true;
                     }
                     catch (Exception ex)
                     {

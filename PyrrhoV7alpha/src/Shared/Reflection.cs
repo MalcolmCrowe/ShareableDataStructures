@@ -252,39 +252,6 @@ namespace Pyrrho
             if (b != Responses.Done)
                 throw new DatabaseError("2E203");
         }
-        internal C[] Update<C>(Document w,Document u) where C:new()
-        {
-            conn.Send(Protocol.Update);
-            conn.PutString(typeof(C).Name);
-            var bs = w.ToBytes();
-            conn.PutInt(bs.Length);
-            conn.stream.Write(bs, 0, bs.Length);
-            bs = u.ToBytes();
-            conn.PutInt(bs.Length);
-            conn.stream.Write(bs, 0, bs.Length);
-            return Get0<C>();
-        }
-        void Fix(Versioned ob)
-        {
-            var n = conn.GetInt();
-            if (n == 0)
-                return;
-            var dt = new PyrrhoTable();
-            var rdr = new PyrrhoReader(dt);
-            conn.GetString(); // "Table"
-            conn.GetSchema(dt, n);
-            var b = conn.stream.ReadByte(); // should be 14 (PutRow)
-            var tp = ob.GetType();
-            for (int i = 0; i < n; i++)
-            {
-                var c = dt.Columns[i];
-                var f = tp.GetField(c.ColumnName);
-                if (f == null)
-                    throw new DatabaseError("2E302", tp.Name, c.ColumnName);
-                var cv = rdr.GetCell(conn, c.datatypename, c.type);
-                f.SetValue(ob, cv.val);
-            }
-        }
         long TableSchemaKey(Type t)
         {
             var ca = t.GetCustomAttributes(false);

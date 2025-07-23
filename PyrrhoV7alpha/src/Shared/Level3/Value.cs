@@ -4,8 +4,6 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
-using System.Security.Cryptography;
-using System.Diagnostics.Metrics;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
@@ -41,7 +39,7 @@ namespace Pyrrho.Level3
     internal class QlValue : DBObject,IComparable
     {
         internal const long
-            Left = -308, // long QlValue 
+            Left = -308, // long QlValue
             Right = -309, // long QlValue
             Sub = -310; // long QlValue
         internal long left => (long)(mem[Left]??-1L);
@@ -3617,6 +3615,8 @@ namespace Pyrrho.Level3
     /// </summary>
     internal class SqlRow : QlValue
     {
+        internal CList<long> rowType     // rarely used: see ParseSqlInsert with LBRACE
+            => (CList<long>)(mem[Domain.RowType] ?? CList<long>.Empty);
         public SqlRow(long dp, BTree<long, object> m) : base(dp, m) { }
         /// <summary>
         /// A row from the parser
@@ -6516,7 +6516,12 @@ namespace Pyrrho.Level3
                     cx.values += (bp, tv);
             var p = procdefpos;
             if (cx.db.objects[p] is not Method me)
+            {
+                if (name == "SPECIFICTYPE" && v.NameFor(cx) is string n 
+                    && cx.binding[cx.names[n].Item2] is TNode vn)
+                    return vn.tableRow.SpecificType(cx);
                 throw new DBException("42108", Uid(defpos));
+            }
             var oc = cx.values;
             var act = new CalledActivation(cx,me);
             var proc = (Method)me.Instance(defpos,act);
@@ -7839,6 +7844,15 @@ namespace Pyrrho.Level3
                             var p = b.value();
                             if (cx.NameFor(p) is string n && tr.vals[p] is TypedValue tv)
                             {
+                                if (tb is EdgeType et && et.metadata[Qlx.EDGETYPE] is TSet ts)
+                                    for (var c = ts.First(); c != null; c = c.Next())
+                                        if (c.Value() is TConnector tc && tc.cp == p
+                                            && cx.db.objects[tc.ct] is Table pt
+                                            && pt.tableRows[tv.ToInt() ?? -1L] is TableRow pr
+                                            && pt.FindPrimaryIndex(cx) is Index px
+                                            && px.MakeKey(pr.vals) is CList<TypedValue> cl
+                                            && cl[0] is TypedValue pv)
+                                            tv = pv;
                                 sv += (n, tv);
                                 si += (n, b.key());
                             }
@@ -7872,25 +7886,9 @@ namespace Pyrrho.Level3
                 case Qlx.SPECIFICTYPE:
                     {
                         var rs = cx._Ob(from) as RowSet;
-                        var tr = (cx.cursors[rs?.from ?? -1L] as Cursor)?.Rec()?[0];
-                        var sb = new StringBuilder();
-                        var cm = "";
-                        if (tr?.subType >= 0 && cx.NameFor(tr.subType) is string ns)
-                            sb.Append(ns);//.Trim(':'));
-                        else if (tr is not null && cx.db.objects[tr.tabledefpos] is Table tb)
-                        {
-                            if (tb.nodeTypes.Count==0 && tb.NameFor(cx) is string nm)
-                            {
-                                sb.Append(cm); sb.Append(nm);//.Trim(':'));
-                            } else
-                            for (var b = tb.nodeTypes.First(); b != null; b = b.Next())
-                                if (b.key().NameFor(cx) is string nk)
-                                {
-                                    sb.Append(cm); cm = "&";
-                                        sb.Append(nk); //.Trim(':'));
-                                }
-                        }
-                        return new TChar(sb.ToString());
+                        if ((cx.cursors[rs?.from ?? -1L] as Cursor)?.Rec()?[0] is TableRow tr)
+                            return tr.SpecificType(cx);
+                        return TNull.Value;
                     }
                 case Qlx.SQRT:
                     {
