@@ -457,6 +457,26 @@ namespace Pyrrho.Common
             return (p ==true)?True : (p==false)? False : Unknown;
         }
     }
+    //shareable
+    internal class TIdentity : TypedValue
+    {
+        internal readonly string value;
+        internal static TIdentity Empty = new("");
+        internal TIdentity(Domain dt, string s) : base(dt) { value = s; }
+        internal TIdentity(string s) : this(Domain.Identity, s) { }
+        public override string ToString()
+        {
+            var special = Lexer.IsResWd(value);
+            if (value == null || value=="")
+                throw new DBException("42000");
+            if (!char.IsLetterOrDigit(value[0]))
+                special = true;
+            for (var i = 1; i < value.Length; i++)
+                if (!char.IsLetterOrDigit(value[i]) && value[i] != '_')
+                    special = true;
+            return special? '"'+value+'"': value;
+        }
+    }
     // shareable
     internal class TChar : TypedValue
     {

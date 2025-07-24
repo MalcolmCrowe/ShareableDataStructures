@@ -7269,6 +7269,7 @@ namespace Pyrrho.Level3
                 case Qlx.EVERY: return Domain.Bool;
                 case Qlx.EXTRACT: return Domain.Int;
                 case Qlx.FUSION: return Domain.Collection;
+                case Qlx.IDENTITY: return Domain.Identity;
                 case Qlx.INTERSECTION: return Domain.Collection;
                 case Qlx.SECURITY: return Domain._Level;
                 case Qlx.LN: return Domain.Real;
@@ -8030,8 +8031,7 @@ namespace Pyrrho.Level3
                         var sc = new Scanner(-1L, vs.ToString().ToCharArray(), 0, cx);
                         var dt = (cx.obs[op2]?.Eval(cx) as TTypeSpec)?._dataType ?? Domain.Content;
                         var nd = new Domain(-1L, Qlx.VECTOR, dt);
-                        TypedValue tv;
-                        if (nd.TryParse(sc, out tv) is DBException ex) throw ex;
+                        if (nd.TryParse(sc, out TypedValue tv) is DBException ex) throw ex;
                         tv = nd.Coerce(cx, tv);
                         if (tv is TVector ta) return ta;
                         throw new DBException("42000");

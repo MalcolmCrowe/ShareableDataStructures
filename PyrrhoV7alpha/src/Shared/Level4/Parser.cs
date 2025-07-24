@@ -3806,7 +3806,8 @@ namespace Pyrrho.Level4
                 Next();
                 ln = lxr.val;
             }
-            var tp = (NodeType)(cx._Ob(cx.role.nodeTypes[ln.ToString()] ?? -1L)
+            var tp = (NodeType)(cx._Ob(cx.role.nodeTypes[ln.ToString()]??-1L)
+                ?? cx._Ob(cx.role.edgeTypes[ln.ToString()]?? -1L)
                 ?? throw new DBException("42107", ln));
             xl += tp;
             if (sc != "")
@@ -6792,6 +6793,11 @@ namespace Pyrrho.Level4
             {
                 r = r0 = Domain.ObjectId;
                 Next();
+            } 
+            else if (Match(Qlx.IDENTITY))
+            {
+                r = r0 = Domain.Identity;
+                Next();
             }
             if (r == Domain.Null)
                 return Domain.Null; // not a standard tye
@@ -8543,15 +8549,15 @@ namespace Pyrrho.Level4
             cx.Add(fm);
             if (fm is not TableRowSet && !cx.names.Contains(ic.ident))
                 cx.Add(ic.ident, ap, fm);
-           // cx.AddDefs(ic, fm);
-            Domain? cs = null;
-            QlValue sv;
-            
+            Domain? cs = null; // the columns list, which may be different from the TableRowSet fm
+            QlValue? sv = null;            
             if (tok==Qlx.LBRACE) // a document: if so, identify columns from the doc
             {
                 var sd = ParseSqlValueItem((DBObject._Domain, fm)) as SqlRow ??
                     throw new DBException("42161", Qlx.DOCUMENT);
                 cs = new Domain(cx.GetUid(), fm.mem + (Domain.RowType, sd.rowType));
+                cx.Add(sd);
+                sv = (QlValue)cx.Add(new SqlRowArray(cx.GetUid(),cx,cs,new CList<long>(sd.defpos)));
             }
             // Ambiguous syntax here: (Cols) or (Subquery) or other possibilities
             else if (tok == Qlx.LPAREN)
@@ -8576,7 +8582,7 @@ namespace Pyrrho.Level4
             }
             else
                 // care: we might have e.g. a subquery here
-                sv = ParseSqlValue((DBObject._Domain,fm));
+                sv ??= ParseSqlValue((DBObject._Domain,fm));
             if (sv is SqlRow) // tolerate a single value without the VALUES keyword
                 sv = new SqlRowArray(vp, cx, sv.domain, new CList<long>(sv.defpos));
             var sce = sv.RowSetFor(ap, vp, cx, fm.rowType, fm.representation) + (cx, RowSet.RSTargets, fm.rsTargets)
@@ -9828,17 +9834,13 @@ namespace Pyrrho.Level4
                         var v = BList<DBObject>.Empty;
                         var ns = CTree<string,long>.Empty;
                         var cs = CList<long>.Empty;
-                        if (xp is TableRowSet ts)
-                            for (var b = ts.First(); b != null; b = b.Next())
-                                if (cx.db.objects[b.value()] is TableColumn tc)
-                                    ns += (tc.NameFor(cx), b.value());
                         Next();
                         if (tok != Qlx.RBRACE)
                         {
                             var (n, sv) = GetDocItem(lp,xp);
-                            if (ns != CTree<string, long>.Empty && n.ident is string nn)
+                            if (n.ident is string nn && nn!="" && char.IsLetter(nn[0]))
                             {
-                                if (ns[nn] is long cp && cp > 0)
+                                if (cx.names[nn].Item2 is long cp && cp > 0)
                                     cs += cp;
                                 else throw new DBException("42112", nn);
                             }
@@ -9848,9 +9850,9 @@ namespace Pyrrho.Level4
                         {
                             Next();
                             var (n, sv) = GetDocItem(lp, xp);
-                            if (ns != CTree<string, long>.Empty && n.ident is string nn)
+                            if (n.ident is string nn && nn != "" && char.IsLetter(nn[0]))
                             {
-                                if (ns[nn] is long cp && cp > 0)
+                                if (cx.names[nn].Item2 is long cp && cp > 0)
                                     cs += cp;
                                 else throw new DBException("42112", nn);
                             }

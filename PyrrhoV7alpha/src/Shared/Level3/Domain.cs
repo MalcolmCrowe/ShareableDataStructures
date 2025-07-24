@@ -89,7 +89,7 @@ namespace Pyrrho.Level3
     TableType, Row, Delta, Position,
     Metadata, HttpDate, Star, // Pyrrho v7
     _Rvv, GraphSpec, PathType, LabelType, Comparable, 
-    Connector, Vector; // Rvv is V7 validator type
+    Connector, Vector, Identity; // Rvv is V7 validator type, Identity is identifier syntax
         internal static UDType TypeSpec;
         internal static NodeType NodeType,NodeSchema;
         internal static EdgeType EdgeType,EdgeSchema;
@@ -164,6 +164,7 @@ namespace Pyrrho.Level3
             LabelType = new StandardDataType(Qlx.LABEL); // opaque
             Connector = new StandardDataType(Qlx.CONNECTING); // opaque
             Vector = new StandardDataType(Qlx.VECTOR); // opaque
+            Identity = new StandardDataType(Qlx.IDENTITY); // string version of identifier
         }
         public override Domain domain => this;
         public Qlx kind => (Qlx)(mem[Kind] ?? Qlx.NO);
@@ -3323,6 +3324,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             return new TMultiset(this, w, v.Cardinality());
                         }
                     break;
+                case Qlx.IDENTITY:
+                    return new TIdentity(v.ToString());
                 default:
                     return CheckFields(v);
             }
@@ -3626,6 +3629,9 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                         }
                         return CheckFields(new TMultiset(elType, va, n));
                     }
+                    break;
+                case Qlx.IDENTITY:
+                    if (ob is TChar tc) return new TIdentity(tc.value);
                     break;
             }
             throw new DBException("22G03", this, ob?.ToString()??"??").ISO();

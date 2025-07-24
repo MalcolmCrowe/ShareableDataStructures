@@ -185,7 +185,7 @@ namespace Pyrrho.Level4
             resWds[h] = new ResWd(t, s);
         }
         /// <summary>
-        /// CheckFields if a string matches a reserved word.
+        /// if a string matches a reserved word.
         /// tok is set if it is a reserved word.
         /// </summary>
         /// <param name="s">The given string</param>
@@ -206,6 +206,17 @@ namespace Pyrrho.Level4
 				h = (h+1)&0x7ff;
 			}
 		}
+        internal static bool IsResWd(string s)
+        {
+            int h = s.GetHashCode() & 0x7ff;
+            for (; ; )
+            {
+                ResWd r = resWds[h];
+                if (r == null)
+                    return false;
+                h = (h + 1) & 0x7ff;
+            }
+        }
         internal object Diag { get { return (val == TNull.Value) ? tok : val; } }
        /// <summary>
         /// Constructor: Start a new lexer
