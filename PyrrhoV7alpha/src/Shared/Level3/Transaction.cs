@@ -641,7 +641,8 @@ namespace Pyrrho.Level3
                         var wt = CTree<long, bool>.Empty;
                         for (var si = 0; si < n; si++)
                         {
-                            var v = psr.ParseSqlValue(new Ident(sk[si], cx.GetUid()), (DBObject._Domain, Domain.Bool));
+                            var v = psr.ParseSqlValue(new Ident(sk[si], cx.GetUid()), 
+                                new BTree<long,object>(DBObject._Domain, Domain.Bool));
                             var ls = v.Resolve(cx, f, BTree<long, object>.Empty, 0L).Item1;
                             for (var c = ls.First(); c != null; c = c.Next())
                                 if (c.value() is QlValue cv)

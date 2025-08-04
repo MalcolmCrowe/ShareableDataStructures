@@ -201,7 +201,8 @@ namespace Pyrrho.Level2
                 var s = ups;
                 if (ups == "")
                     s = name;
-                return new TConnector(q, ct.defpos, s, dm, defpos);
+                TMetadata? tm = optional?(TMetadata.Empty+(Qlx.OPTIONAL,TBool.True)):null;
+                return new TConnector(q, ct.defpos, s, dm, defpos,"",tm);
             }
             return null;
         }
@@ -509,7 +510,7 @@ namespace Pyrrho.Level2
                         cx.Add(rv);
                         cx.Add(nm, 0L, rv);
                     }
-                var sv = psr.ParseSqlValue((DBObject._Domain,dataType));
+                var sv = psr.ParseSqlValue(new BTree<long,object>(DBObject._Domain,dataType));
                 psr.cx.Add(sv);
                 generated += (GenerationRule.GenExp, sv.defpos);
                 framing = new Framing(psr.cx, nst);

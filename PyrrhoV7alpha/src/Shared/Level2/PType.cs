@@ -358,6 +358,7 @@ namespace Pyrrho.Level2
                 oi += (ObInfo._Names, no);
             }
             var ons = oi.names;
+            var oms = oi.methodInfos;
             dataType += (DBObject.Infos, dataType.infos + (cx.role.defpos, oi));
             dataType += (ObInfo._Names, ons);
             if (dataType is UDType ut)
@@ -367,10 +368,16 @@ namespace Pyrrho.Level2
                         ss -= tu;
                         dataType = tu.Inherit(ut);
                         dataType += (Table.TableChecks, ut.tableChecks + tu.tableChecks);
-                        dataType += (Table.Triggers, ut.triggers + tu.triggers);
+                        var ug = ut.triggers;
+                        for (var c = tu.triggers.First(); c != null; c = c.Next())
+                            ug += (c.key(), (ug[c.key()] ?? CTree<long, bool>.Empty) + c.value());
+                        if (ug!=ut.triggers)
+                            dataType += (Table.Triggers, ug);
                         tu += (Domain.Subtypes, tu.subtypes + (defpos, true));
                         tu += (Table.TableRows, tu.tableRows + ut.tableRows);
-                        var tn = tu.infos[cx.role.defpos]?.names ?? Names.Empty;
+                        var ui = tu.infos[cx.role.defpos];
+                        var tn = ui?.names ?? Names.Empty;
+                        var tm = ui?.methodInfos ?? BTree<string,BTree<CList<Domain>,long?>>.Empty; 
                         cx.db += tu;
                         for (var c = tu.subtypes.First(); c != null; c = c.Next())
                             if (cx.db.objects[c.key()] is UDType at)
@@ -384,8 +391,10 @@ namespace Pyrrho.Level2
                             }
                         ss += (tu, true);
                         ons += tn;
+                        oms += tm;
                     }
-            oi += (ObInfo._Names, ons); 
+            oi += (ObInfo._Names, ons);
+            oi += (ObInfo.MethodInfos, oms);
             var os = new BTree<long, ObInfo>(Database._system.role.defpos, oi)
                 + (ro.defpos, oi);
             if (ss?.Count > 0L)

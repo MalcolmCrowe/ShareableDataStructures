@@ -306,9 +306,10 @@ namespace Pyrrho.Level3
         /// Constructor: create a compound statement
         /// </summary>
         /// <param name="n">The label for the compound statement</param>
-		internal NestedStatement(long dp, Context cx,CList<CList<long>> ss, params (long, object)[] m)
-            : base(dp, BTree<long, object>.New(m)+(Stms,ss)
-                  +(_Domain, cx.result??Domain.Null) + (_Depth,cx.result?.depth??1))
+		internal NestedStatement(long dp, Context cx,CList<CList<long>> ss, 
+            BTree<long, object> m)
+            : base(dp, m+(Stms,ss) +(_Domain, cx.result??Domain.Null) 
+                  + (_Depth,cx.result?.depth??1))
         { }
         public NestedStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static NestedStatement operator +(NestedStatement et, (long, object) x)
@@ -1362,6 +1363,8 @@ namespace Pyrrho.Level3
             var dm = vb?.domain??Domain.Content;
             if (cx.obs[val] is DBObject va && va.Eval(cx) is TypedValue tv)
             {
+                if (dm.elType is null && tv.dataType is SelectRowSet ss && ss.rowType[0] is long p)
+                    tv = ss.First(cx)?[p] ??TNull.Value;
                 if (vb is SqlValueExpr se && se.op == Qlx.DOT && cx._Ob(se.left)?.Eval(cx) is TNode tl
                     && cx._Ob(se.right) is QlInstance sc && tl.dataType is Table st
                     && st.representation[sc.sPos] is Domain cd
@@ -1393,6 +1396,17 @@ namespace Pyrrho.Level3
                 {
                     cx.values += (vb?.defpos ?? -1L, v2);
                     cx.val = v2;
+                    if (vb is SqlField vf && cx.obs[vf.from] is SqlNewRow &&
+                        cx.next?.next is TableActivation ta && ta.newRow is CTree<long, TypedValue> vs)
+                    {
+                        ta.values += (vf.defpos, v2);
+                        ta.newRow += (vf.defpos, v2);
+                        if (cx.next is TriggerActivation ga)
+                            for (var b = ((Transaction)ga.db).physicals.First();
+                                b != null; b = b.Next())
+                                if (b.value() is Record r && r.tabledefpos == ta._trs.target)
+                                    r.fields += (vf.defpos, v2);
+                    }
                 }
             }
             if (next is not null && cx.obs[next.value()] is Executable e)
@@ -2067,6 +2081,8 @@ namespace Pyrrho.Level3
                 m += (Cond, q);
             if (s is NestedStatement sa)
                 m += (NestedStatement.Stms, sa.stms);
+            if (s is AccessingStatement sb)
+                m += (NestedStatement.Stms, new CList<CList<long>>(sb.gqlStms));
             return m;
         }
         public static WhenPart operator +(WhenPart et, (long, object) x)
@@ -4485,7 +4501,8 @@ namespace Pyrrho.Level3
                     if (it.value() is long p && cx.obs[p] is RowSet tb)
                         ts += tb.Update(cx, tg);
                 for (var ib = tg.First(cx); ib != null; ib = ib.Next(cx))
-                    for (var it = ts.First(); it != null; it = it.Next())
+                    for (var it = ts.First(); it != null; 
+                        it = it.Next())
                         if (it.value() is TargetActivation ta)
                         {
                             ta.db = cx.db;
@@ -4808,7 +4825,7 @@ namespace Pyrrho.Level3
         public override Context _Obey(Context cx, ABookmark<int, long>? next = null)
         {
             if (cx.result is not RowSet sr)
-                throw new DBException("02000");
+               return cx; //throw new DBException("02000");
             var nr = BList<(long, TRow)>.Empty;
             var od = (mem[RowSet.RowOrder] as Domain) ?? Domain.Row;
             var rs = (od.Length==0)?sr:sr.Sort(cx, od, false);
@@ -5089,7 +5106,7 @@ namespace Pyrrho.Level3
                 var rt = BList<DBObject>.Empty;
                 while (pd.tok == Qlx.Id)
                 {
-                    rt += ac._Ob(pd.ParseOrderItem()) ?? SqlNull.Value;
+                    rt += ac._Ob(pd.ParseOrderItem(BTree<long,object>.Empty)) ?? SqlNull.Value;
                     if (pd.tok == Qlx.COMMA)
                         pd.Next();
                     else
@@ -5573,8 +5590,15 @@ namespace Pyrrho.Level3
                 for (var b = pn.super.First(); b != null; b = b.Next())
                     if (cx._Ob(b.key().defpos) is NodeType ps)
                         ds = Traverse(cx, this, xn, truncator, cr, pd, ps, ctr, ds);
-            } // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
-            else if (ds.Count==0)
+            }
+            else if (be.matches?.Next()?.value() is long p && cx.obs[p] is GqlEdge ed
+                && cx.binding[ed.idValue] is TRow ne && ed.preCon is TConnector pc
+                && ne.values[pc.cp] is TPosition tp 
+                && cx.db.objects[xn.domain.defpos] is Table tb
+                && tp.ToLong() is long tq && tb.tableRows[tq] is TableRow nr)
+                ds = new(tq, nr);
+            // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
+            else if (ds.Count == 0)
                 ds = xn.For(cx, this, xn, ds);
             var df = ds.First();
             if (df == null && optional)
@@ -5639,9 +5663,7 @@ namespace Pyrrho.Level3
                             continue;
                         if (rt.tableRows[c.key()] is TableRow dr && xn is GqlEdge xe)
                         {
-                            if (xe.preCon is TConnector pe && 
-                                ((pe.q == Qlx.ARROWBASE && tc.q != Qlx.FROM)
-                                ||(pe.q==Qlx.RARROW && tc.q!=Qlx.TO)))
+                            if (xe.preCon is TConnector pe && pe.q!=tc.q)
                                 continue;
                             if (cx.binding[xe.before?.defpos ?? -1L] is TNode tn 
                                 && tn.defpos != dr.vals[tc.cp]?.ToLong())

@@ -152,8 +152,6 @@ namespace Pyrrho
                 catch (Exception) { }
                 goto _return;
             }
-            //       lock (PyrrhoStart.path)
-            //           Console.WriteLine("Connection " + cid + " started");
             for (; ; )
             {
                 try
@@ -161,8 +159,6 @@ namespace Pyrrho
                     p = tcp.ReadByte();
                     if ((Protocol)p != Protocol.ReaderData)
                         recovering = false;
-             //       lock (PyrrhoStart.path)
-             //             Console.WriteLine("Connection " + cid + " " + (Protocol)p);
                 }
                 catch (Exception)
                 {
@@ -1532,7 +1528,7 @@ namespace Pyrrho
  		internal static string[] Version =
         [
             "Pyrrho DBMS (c) 2025 Malcolm Crowe and University of the West of Scotland",
-            "7.1alpha","(24 July 2025)", "http://www.pyrrhodb.com"
+            "7.1alpha","(04 Aug 2025)", "http://www.pyrrhodb.com"
         ];
 	}
 }

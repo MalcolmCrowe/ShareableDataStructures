@@ -108,7 +108,7 @@ namespace Pyrrho.Level2
                 var ob = (DBObject?)rdr.context.db.objects[ckobjdefpos]??throw new PEException("PE1437");
                 var psr = new Parser(rdr, new Ident(check, ppos + 1));
                 nst = psr.cx.db.nextStmt;
-                var sv = psr.ParseSqlValue((DBObject._Domain,Domain.Bool));
+                var sv = psr.ParseSqlValue(new BTree<long, object>(DBObject._Domain,Domain.Bool));
                 test = sv.defpos;
                 framing = new Framing(psr.cx,nst);
             }
@@ -229,7 +229,7 @@ namespace Pyrrho.Level2
 			base.Deserialise(rdr);
 		}
         /// <summary>
-        /// Looks the same as PCheck::Install but gets a different constructor for Check
+        /// Looks the same as PCheck::Install but gets a different constructor for CheckFields
         /// and calls a different Add !
         /// </summary>
         /// <param name="db"></param>

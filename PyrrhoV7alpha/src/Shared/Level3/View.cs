@@ -25,8 +25,10 @@ namespace Pyrrho.Level3
     internal class View : Domain
 	{
         internal const long
+            NameList = -464, // BList<string>
             ViewDef = -379, // string
             ViewResult = -380; // long RowSet
+        public BList<string> nameList => (BList<string>)(mem[NameList] ?? BList<string>.Empty);
         public string viewDef => (string)(mem[ViewDef] ?? "");
         public long result => (long)(mem[ViewResult] ?? -1L);
         public View(PView pv,Context cx,BTree<long,object>?m=null) 

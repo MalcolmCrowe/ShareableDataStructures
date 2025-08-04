@@ -1127,9 +1127,15 @@ namespace Pyrrho.Level4
             if (defer)
                 return false;
             if (_trig.oldRow != -1L && next.values[Trigger.OldRow] is TypedValue ot)
+            {
                 values += (_trig.oldRow, ot);
+                binding += (_trig.oldRow, ot);
+            }
             if (_trig.newRow != -1L && next.values[Trigger.NewRow] is TypedValue nt)
+            {
                 values += (_trig.newRow, nt);
+                binding += (_trig.newRow, nt);
+            }
             if (obs[_trig.oldTable] is TransitionTable ott){
                 next.Add(ott);
                 Add(new TransitionTableRowSet(ott.defpos, next, _trs,

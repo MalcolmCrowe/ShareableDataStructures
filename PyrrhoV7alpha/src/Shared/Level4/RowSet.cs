@@ -430,12 +430,12 @@ namespace Pyrrho.Level4
                                                 cx.obs[se.right] is QlValue ri)
                                             {
                                                 var im = (CTree<long, TypedValue>?)m[_Matches] ?? CTree<long, TypedValue>.Empty;
-                                                if (le.isConstant(cx) && !im.Contains(ri.defpos))
+                                                if (le.isConstant(cx) && !im.Contains(ri.defpos) && Knows(cx,ri.defpos,true))
                                                 {
                                                     matched = true;
                                                     ma += (ri.defpos, le.Eval(cx));
                                                 }
-                                                if (ri.isConstant(cx) && !im.Contains(le.defpos))
+                                                if (ri.isConstant(cx) && !im.Contains(le.defpos) && Knows(cx,le.defpos,true))
                                                 {
                                                     matched = true;
                                                     ma += (le.defpos, ri.Eval(cx));
@@ -443,8 +443,10 @@ namespace Pyrrho.Level4
                                             }
                                         if (sv.KnownBy(cx, this, true) == true) // allow ambient values
                                         {
-                                            if (source >= 0)
-                                                sv.AddFrom(cx, source);
+                                            if (source < 0L)
+                                                sv = (QlValue)sv.AddFrom(cx, defpos);
+                                            else
+                                                sv = (QlValue)sv.AddFrom(cx, source);
                                             if (sv.IsAggregation(cx, CTree<long, bool>.Empty) != CTree<long, bool>.Empty)
                                                 mh += (k, true);
                                             else if (!matched)
@@ -3261,7 +3263,7 @@ namespace Pyrrho.Level4
                 if (xs.Count != 0L)
                     mm += (Table.Indexes, xs);
             }
-            if (mm[_Matches] is CTree<long,TypedValue> ma && rowOrder==Null)
+            if (mm[_Matches] is CTree<long,TypedValue> ma && rowOrder.Length==0)
             {
                 var trs = this;
                 var (index, _, _) = trs.BestForMatch(cx, ma);
@@ -3400,6 +3402,13 @@ namespace Pyrrho.Level4
             if (cx.obs[rp] is SqlFunction sf && 
                 (sf.op==Qlx.POSITION || sf.op==Qlx.SECURITY || sf.op == Qlx.SPECIFICTYPE))
                     return true;
+            if (cx.obs[rp] is SqlCall ca)
+            {
+                for (var b = ca.parms.First(); b != null; b = b.Next())
+                    if (!Knows(cx, b.value(), ambient))
+                        return false;
+                return true;
+            }
             if (cx.obs[from] is SelectRowSet ss && cx.obs[ss.valueSelect] is QlValue svs && cx.obs[svs.from] is RowSet es)
                 for (var b = es.Sources(cx).First(); b != null; b = b.Next())
                     if ((cx.obs[b.key()] as Domain)?.representation.Contains(rp)==true)

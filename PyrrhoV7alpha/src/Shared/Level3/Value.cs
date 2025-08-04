@@ -4044,6 +4044,7 @@ namespace Pyrrho.Level3
             var oi = (tg?.infos[cx.role.defpos]??new ObInfo(ic.ident,Grant.AllPrivileges))
                     +(ObInfo._Names, ids);
             r += (Infos, new BTree<long, ObInfo>(cx.role.defpos, oi));
+            r += (_Domain, fm);
             cx.names = on;
             return r;
         }
@@ -4085,6 +4086,10 @@ namespace Pyrrho.Level3
                 ta.values += (Trigger.NewRow, v);
             base.Set(cx, v);
         }
+       internal override Domain FindType(Context cx, Domain dt)
+        {
+            return cx.obs[from] as Domain??dt;
+        } 
     }
     
     internal class SqlRowArray : QlValue
@@ -6002,6 +6007,21 @@ namespace Pyrrho.Level3
         internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
         {
             return qn;
+        }
+        internal override TypedValue _Eval(Context cx)
+        {
+            var cu = cx.cursors[spec];
+            var rs = cx.obs[spec] as RowSet;
+            if (cu == null)
+                return TNull.Value;
+            for (var b = rs?.First(); b != null; b = b.Next())
+                if (b.value() is long p)
+                {
+                    if (rs is TableRowSet ts && ts.sRowType[b.key()] is long q)
+                        cx.values += (q, cu[b.key()]);
+                    cx.values += (p, cu[b.key()]);
+                }
+                return cu;
         }
         public override string ToString()
         {
@@ -12107,8 +12127,8 @@ cx.obs[high] is not QlValue hi)
                 }
                 sb.Append(']');
             }
-            if (preCon != TNull.Value) { sb.Append(' '); sb.Append(preCon); }
-            if (postCon != TNull.Value) { sb.Append(' '); sb.Append(postCon); }
+            if (preCon != TNull.Value) { sb.Append(" pre "); sb.Append(preCon); }
+            if (postCon != TNull.Value) { sb.Append(" post "); sb.Append(postCon); }
             cm = " ";
             for (var b = state.First(); b != null; b = b.Next())
                 if (b.key() < 0 && b.value() is TGParam ts)
@@ -12504,11 +12524,6 @@ cx.obs[high] is not QlValue hi)
                 }
             }
             return r;
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder(base.ToString());
-            return sb.ToString();
         }
     }
     class GqlPath : GqlEdge

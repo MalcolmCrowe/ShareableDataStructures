@@ -1552,7 +1552,7 @@ namespace Pyrrho.Level5
         internal EdgeType Connect(Context cx, GqlNode? b, GqlNode? a, TypedValue cc,
             CTree<string, QlValue> ls, bool allowChange = false, long dp = -1L)
         {
-            if (cc is not TConnector ec)
+            if (cc is not TConnector ec || ec.cp>0L)
                 return this;
             var found = false;
             for (var c = (metadata[Qlx.EDGETYPE] as TSet)?.First(); c != null; c = c.Next())
@@ -2071,6 +2071,41 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 sb.Append('}');
             return sb.ToString();
         }
+
+        internal TypedValue PreConnect(Context cx, Qlx ab, Domain ct, string cn)
+        {
+            TypedValue r = TNull.Value;
+            var q = ab switch
+            {
+                Qlx.ARROWBASE => Qlx.FROM,
+                Qlx.RARROW => Qlx.TO,
+                Qlx.ARROWBASETILDE or Qlx.TILDE or Qlx.RBRACKTILDE => Qlx.WITH,
+                _ => ab
+            };
+            for (var b = (metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+                if (b.Value() is TConnector tc && cx.db.objects[tc.ct] is Domain dt
+                    && tc.q == q && (ct.defpos<0 || ct.EqualOrStrongSubtypeOf(dt)) 
+                    && (cn == "" || cn == tc.cn))
+                    r = tc;
+            return r;
+        }
+        internal TypedValue PostConnect(Context cx, Qlx ba, Domain ct, string cn)
+        {
+            TypedValue r = TNull.Value;
+            var q = ba switch
+            {
+                Qlx.ARROW => Qlx.TO,
+                Qlx.RARROWBASE => Qlx.FROM,
+                Qlx.ARROWBASETILDE or Qlx.TILDE or Qlx.RBRACKTILDE => Qlx.WITH,
+                _ => ba
+            };
+            for (var b = (metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+                if (b.Value() is TConnector tc && cx.db.objects[tc.ct] is Domain dt
+                    && tc.q == q && (ct.defpos < 0 || ct.EqualOrStrongSubtypeOf(dt))
+                    && (cn == "" || cn == tc.cn))
+                    r = tc;
+            return r;
+        }
     }
 /*    /// <summary>
     /// This type is created as a side effect of Record4.Install: 
@@ -2540,8 +2575,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
         }
         internal override TypedValue Fix(Context cx)
         {
-            var r = (TConnector)base.Fix(cx);
-            return new TConnector(r.q,cx.Fix(r.ct), r.cn, (Domain)r.cd.Fix(cx),cx.Fix(r.cp));
+            return new TConnector(q,cx.Fix(ct), cn, (Domain)cd.Fix(cx),cx.Fix(cp),cs,cm);
         }
         internal override TypedValue Replaced(Context cx)
         {

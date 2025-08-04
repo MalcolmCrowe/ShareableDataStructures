@@ -2023,7 +2023,8 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
             if (kind == Qlx.DOCUMENT)
                 return new TDocument(s);
             if (kind== Qlx.METADATA)
-                return new Parser(Database._system,new Connection()).ParseMetadata(s,(int)off,Qlx.VIEW);
+                return new Parser(Database._system,new Connection()).ParseMetadata(s,(int)off,
+                    Qlx.VIEW,BTree<long,object>.Empty);
             return Parse(new Scanner(off,s.ToCharArray(), 0, cx));
         }
         public CTree<long, TypedValue> Parse(Context cx, string s)
@@ -2045,12 +2046,12 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     psr.Next();
                     psr.Mustbe(Qlx.EQL);
                     if (ns[a] is long p &&
-                    psr.ParseSqlValueItem((_Domain,representation[p] ?? Null)) is SqlLiteral sl)
+                    psr.ParseSqlValueItem(new BTree<long,object>(_Domain,representation[p] ?? Null)) is SqlLiteral sl)
                         vs += (p, sl.val);
                     else throw new DBException("42000", "Parse "+a);
                 }
                 else if (rowType[j++] is long rj 
-                    && psr.ParseSqlValueItem((_Domain,representation[rj] ?? Null)) is SqlLiteral v)
+                    && psr.ParseSqlValueItem(new BTree<long, object>(_Domain,representation[rj] ?? Null)) is SqlLiteral v)
                         vs += (rj, v.val);
                 if (psr.tok != Qlx.COMMA)
                     break;
@@ -3326,6 +3327,10 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     break;
                 case Qlx.IDENTITY:
                     return new TIdentity(v.ToString());
+                case Qlx.CONNECTING:
+                    if (v is TConnector cc)
+                        return cc.Fix(cx);
+                    goto default;
                 default:
                     return CheckFields(v);
             }

@@ -211,7 +211,8 @@ namespace Pyrrho.Level2
             defpos = rdr.GetLong();
             flags = rdr.GetLong();
             var ob = rdr.context.db.objects[defpos] ?? Domain.Null;
-            metadata = new Parser(rdr.context, details).ParseMetadata(Qlx.ANY,(TableColumn._Table,ob)).Item2;
+            metadata = new Parser(rdr.context, details).ParseMetadata(Qlx.ANY,
+                new BTree<long,object>(TableColumn._Table,ob)).Item2;
             base.Deserialise(rdr);
 		}
         string Detail(Writer wr)

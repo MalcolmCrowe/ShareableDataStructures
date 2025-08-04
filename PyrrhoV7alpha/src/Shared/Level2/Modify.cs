@@ -133,7 +133,9 @@ namespace Pyrrho.Level2
                 }
             cx.Install(pr);
             // and parse the body
-            if (psr.ParseStatement((DBObject._Domain,pr.domain),(NestedStatement.WfOK,true),(Procedure.ProcBody,true)) is not Executable bd)
+            var m = BTree<long, object>.Empty;
+            if (psr.ParseStatement(m+(DBObject._Domain,pr.domain)+
+                (NestedStatement.WfOK,true)+(Procedure.ProcBody,true)) is not Executable bd)
                 throw new PEException("PE1978");
             for (var b = cx.undefined.First(); b != null; b = b.Next())
                 if (b.key() is long k && cx.obs[k] is SqlCall uo)

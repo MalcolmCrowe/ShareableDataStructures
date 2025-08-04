@@ -86,7 +86,8 @@ namespace Pyrrho.Level2
                 new Ident(viewdef, ppos + 2));
             psr.Next(); psr.Next();  // VIEW name
             nst = psr.cx.db.nextStmt;
-            var vw = psr.ParseViewDefinition(name,ppos+1) ?? throw new PEException("0035");
+            var m = BTree<long, object>.Empty + (ObInfo.Name, name) + (DBObject.Defpos, ppos + 1);
+            var vw = psr.ParseViewDefinition(m) ?? throw new PEException("0035");
             dataType = vw.domain;
             infos = vw.infos;
             rdr.context.obs += vw.framing.obs;

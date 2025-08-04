@@ -267,10 +267,29 @@ namespace Pyrrho.Level2
         internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
-            var tb = (DBObject)(cx.db.objects[target]??throw new PEException("PE2102"));
+            var tb = (Table)(cx.db.objects[target]??throw new PEException("PE2102"));
             var tg = new Trigger(this,ro); // complete version of trigger with def, but framing not quite right
-            tb = tb.AddTrigger(tg);
+            tb = (Table)tb.AddTrigger(tg);
+            for (var b=tb.subtypes.First();b!=null;b=b.Next())
+                if (cx.db.objects[b.key()] is Table st)
+                {
+                    var sg = st.triggers;
+                    for (var c = tb.triggers.First(); c != null; c = c.Next())
+                        sg += (c.key(), (sg[c.key()] ?? CTree<long, bool>.Empty) + c.value());
+                    if (sg != st.triggers)
+                    {
+                        st += (Table.Triggers, sg);
+                        cx.Add(st);
+                        cx.db += st;
+                    }
+                }
             var oi = new ObInfo(name, Grant.Privilege.Execute);
+            var ns = Names.Empty;
+            if (oldRow!=null) ns += (oldRow.ident, (tg.oldRow, tg.oldRow));
+            if (newRow != null) ns += (newRow.ident, (tg.newRow, tg.newRow));
+            if (oldTable != null) ns += (oldTable.ident, (tg.oldTable, tg.oldTable));
+            if (newTable != null) ns += (newTable.ident, (tg.newTable, tg.newTable));
+            oi += (ObInfo._Names, ns);
             tg += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
             cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
