@@ -1448,14 +1448,14 @@ namespace Pyrrho.Level4
                     var tr = cx.db as Transaction ?? throw new DBException("2F003");
                     StartMetadata(Qlx.COLUMN);
                     var dm = m + (TableColumn._Table, xp) +
-                        (DBObject._Domain, dom) + (DBObject.Defpos, new TPosition(tr.nextPos));
+                        (DBObject._Domain, dom) + (DBObject.Defpos, tr.nextPos);
                     var (s, tm) = ParseMetadata(Qlx.COLUMN, dm);
                     if (dom == null)
                         throw new DBException("42120", colname.ident);
                     var pc = new PColumn3(xp, colname.ident, -1, dom, s, md, tr.nextPos, cx);
                     xp = (NodeType)(cx.Add(pc) ?? throw new DBException("42105"));
                     var tc = (TableColumn)(cx.db.objects[pc.defpos] ?? throw new PEException("PE50100"));
-                    (s, tm) = ParseMetadata(Qlx.TABLE, dm+(DBObject.Defpos, new TPosition(tc.defpos)));
+                    (s, tm) = ParseMetadata(Qlx.TABLE, dm+(DBObject.Defpos, tc.defpos));
                     ms += s; md += tm;
                     xp = (NodeType?)cx.obs[xp.defpos] ?? xp;
                     ps += (pn, dom);
@@ -3218,7 +3218,7 @@ namespace Pyrrho.Level4
             var tr = cx.db as Transaction ?? throw new DBException("2F003");
             d -= Qlx.DEFAULT;
             var m = BTree<long, object>.Empty + (TableColumn._Table, tb) +
-                (DBObject._Domain, dom) + (DBObject.Defpos, new TPosition(tr.nextPos));
+                (DBObject._Domain, dom) + (DBObject.Defpos, tr.nextPos);
             StartMetadata(Qlx.COLUMN);
             var (ms, md) = ParseMetadata(Qlx.COLUMN,m);
             if (dom == null)
@@ -5890,7 +5890,7 @@ namespace Pyrrho.Level4
                 if (cx.role.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105").Add(Qlx.METADATA).Mix();
                 var m = BTree<long, object>.Empty + (TableColumn._Table, tb) +
-                    (DBObject._Domain, ob.domain) + (DBObject.Defpos, new TPosition(cx.db.nextPos));
+                    (DBObject._Domain, ob.domain) + (DBObject.Defpos, cx.db.nextPos);
                 var (s,tm) = ParseMetadata(Qlx.COLUMN,m);
                 cx.Add(new PMetadata(ic.ident, 0, ob, s, tm, cx.db.nextPos, cx.db));
             }
@@ -6245,7 +6245,7 @@ namespace Pyrrho.Level4
             else if (Match(Qlx.ADD,Qlx.SET))
             {
                 Next();
-                var (ms, md) = ParseMetadata(Qlx.COLUMN, m+ (DBObject.Defpos, new TPosition(tc.defpos)));
+                var (ms, md) = ParseMetadata(Qlx.COLUMN, m+ (DBObject.Defpos, tc.defpos));
                 if (tb.Denied(cx, Grant.Privilege.Metadata))
                     throw new DBException("42105").Add(Qlx.METADATA).Mix();
                 var pm = new PMetadata(nm, 0, tc, ms, md, tr.nextPos, tr);
@@ -6258,7 +6258,7 @@ namespace Pyrrho.Level4
                 {
                     if (tb.Denied(cx, Grant.Privilege.Metadata))
                         throw new DBException("42105").Add(Qlx.METADATA, new TChar(tc.NameFor(cx))).Mix();
-                    var (s, tm) = ParseMetadata(Qlx.COLUMN, m+ (DBObject.Defpos, new TPosition(tc.defpos)));
+                    var (s, tm) = ParseMetadata(Qlx.COLUMN, m+ (DBObject.Defpos, tc.defpos));
                     tm += (Qlx.DROP, TBool.True);
                     var pm = new PMetadata(nm, 0, tc, s, tm, tr.nextPos, tr);
                     tc = (TableColumn)(cx.Add(pm) ?? throw new DBException("42105").Add(Qlx.COLUMN));
@@ -7013,7 +7013,7 @@ namespace Pyrrho.Level4
             var md = TMetadata.Empty;
             if (StartMetadata(Qlx.COLUMN))
                 (s,md) = ParseMetadata(Qlx.COLUMN,m + 
-                    (DBObject.Defpos, new TPosition(n?.uid??-1L)));
+                    (DBObject.Defpos,n?.uid??-1L));
             if (n == null || dm == null || md == null)
                 throw new DBException("42000", "Member");
             return (n, dm, s, md);
