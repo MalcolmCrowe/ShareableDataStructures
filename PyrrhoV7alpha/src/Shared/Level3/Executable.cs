@@ -4248,7 +4248,7 @@ namespace Pyrrho.Level3
                 if (b.value() is CList<GqlNode> ge)
                 {
                     var gb = ge.First();
-                    var se = gb?.value() is GqlEdge;
+                    var se = gb?.value() is GqlEdge; // GqlReference case is handled below
                     // Do the nodes first and then the edges
                     for (; gb != null; gb = gb.Next())
                         if (gb.value() is GqlNode nd && nd is not GqlEdge && nd is not GqlReference)
@@ -4275,9 +4275,9 @@ namespace Pyrrho.Level3
                                 if (ed.Eval(cx) is TEdge te) // we are adding something to an existing edge
                                 {
                                     var vs = te.tableRow.vals;
-                                    if (ed.preCon is TConnector cr && bn != null)
+                                    if (er.preCon is TConnector cr && bn != null)
                                         vs += (cr.cp, new TPosition(bn.defpos));
-                                    if (ed.postCon is TConnector co)
+                                    if (er.postCon is TConnector co)
                                         vs += (co.cp, new TPosition(nn.defpos));
                                     var tr = cx.db as Transaction ?? throw new PEException("PE03061");
                                     var done = false;
@@ -4286,6 +4286,8 @@ namespace Pyrrho.Level3
                                         {
                                             rr.fields += vs;
                                             done = true;
+                                            if (cx.checkEdges[rr.defpos] is TableRow ce)
+                                                cx.checkEdges += (rr.defpos,new TableRow(rr.defpos, ce.vals + vs));
                                         }
                                     if (!done)
                                     {
