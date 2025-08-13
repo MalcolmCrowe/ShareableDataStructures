@@ -172,7 +172,7 @@ namespace Pyrrho.Level2
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
             if (psr.tok != Qlx.EOF 
-                && psr.ParseStatementList(BTree<long,object>.Empty+(Procedure.ProcBody,true)+
+                && psr.ParseStatements(BTree<long,object>.Empty+(Procedure.ProcBody,true)+
                 (DBObject._Domain,dt)+(NestedStatement.WfOK,true)) is Executable bd)
                 proc = bd.defpos;
             psr.cx.parse = op;

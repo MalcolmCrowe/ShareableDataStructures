@@ -1157,7 +1157,7 @@ namespace Pyrrho.Level4
                     {
                         values += (_trs.target, v);
                         values += _trig.Frame(next.values);
-                        var nx = Executable.ObeyList(wp.stms,"",null,this);
+                        var nx = Executable.ObeyList(wp.stms,"",this);
                         if (nx != this)
                             throw new PEException("PE677");
                         if (trc != null) // row-level trigger 

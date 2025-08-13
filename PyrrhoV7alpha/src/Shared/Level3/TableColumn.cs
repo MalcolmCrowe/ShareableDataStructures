@@ -393,8 +393,8 @@ namespace Pyrrho.Level3
                 sb.Append(" UpdateString="); sb.Append(updateString);
                 sb.Append(" Update:"); sb.Append(update);
             }
-            if (tc is TConnector cc && cc.q!=Qlx.Null)
-                sb.Append(" "+cc.q);
+            if (tc is TConnector cc && cc.q != Qlx.Null)
+            { sb.Append(' '); sb.Append(cc); }
             return sb.ToString();
         }
     }

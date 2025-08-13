@@ -1107,6 +1107,14 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
         {
             return For(kind);
         }
+        internal override BTree<long, TableRow> For(Context cx, MatchStatement ms, GqlNode xn, BTree<long, TableRow>? ds)
+        {
+            ds ??= BTree<long, TableRow>.Empty;
+            for (var b = unionOf.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.key().defpos] is NodeType nt)
+                ds = nt.For(cx, ms, xn, ds);
+            return ds;
+        }
         /// <summary>
         /// Test for when to record subtype information. We want to do this when a value of
         /// a subtype is recorded in a column of the parent type, and the subtype information is

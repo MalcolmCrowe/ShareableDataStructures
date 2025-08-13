@@ -918,10 +918,9 @@ namespace Pyrrho.Level3
         /// <param name="pr">the privilege</param>
         /// <param name="obj">the database object</param>
         /// <param name="grantees">a tree of grantees</param>
-        static ExecuteList DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
+        static void DoAccess(Context cx, bool grant, Grant.Privilege pr, long obj,
             BList<DBObject> grantees)
         {
-            var es = ExecuteList.Empty;
             var np = cx.db.nextPos;
             if (grantees != BList<DBObject>.Empty) // PUBLIC
                 for (var b = grantees.First(); b != null; b = b.Next())
@@ -929,11 +928,10 @@ namespace Pyrrho.Level3
                     {
                         var gee = mk.defpos;
                         if (grant)
-                            es += cx.Add(new Grant(pr, obj, gee, np++, cx));
+                            cx.Add(new Grant(pr, obj, gee, np++, cx));
                         else
-                            es += cx.Add(new Revoke(pr, obj, gee, np++, cx));
+                            cx.Add(new Revoke(pr, obj, gee, np++, cx));
                     }
-            return es;
         }
         /// <summary>
         /// Implement Grant/Revoke on a tree of TableColumns
@@ -944,20 +942,18 @@ namespace Pyrrho.Level3
         /// <param name="tb">the table</param>
         /// <param name="list">(Privilege,columnnames[])</param>
         /// <param name="grantees">a tree of grantees</param>
-        static ExecuteList AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, BList<DBObject> grantees)
+        static void AccessColumns(Context cx, bool grant, Grant.Privilege pr, Table tb, PrivNames list, BList<DBObject> grantees)
         {
-            var es = ExecuteList.Empty;
             var ne = list.cols != BTree<string, bool>.Empty;
             for (var b = tb.representation.First(); b != null; b = b.Next())
                 if (b.value() is DBObject oc && oc.infos[cx.role.defpos] is ObInfo ci && ci.name != null
                     && !ne && list.cols.Contains(ci.name))
                 {
                     list.cols -= ci.name;
-                    es += DoAccess(cx, grant, pr, b.key(), grantees);
+                    DoAccess(cx, grant, pr, b.key(), grantees);
                 }
             if (list.cols.First()?.key() is string cn)
                 throw new DBException("42112", cn);
-            return es;
         }
         /// <summary>
         /// Implement grant/revoke on a Role
@@ -966,9 +962,8 @@ namespace Pyrrho.Level3
         /// <param name="roles">a tree of Roles (ids)</param>
         /// <param name="grantees">a tree of Grantees</param>
         /// <param name="opt">whether with ADMIN option</param>
-		internal ExecuteList AccessRole(Context cx, bool grant, CList<string> rols, BList<DBObject> grantees, bool opt)
+		internal void AccessRole(Context cx, bool grant, CList<string> rols, BList<DBObject> grantees, bool opt)
         {
-            var es = ExecuteList.Empty;
             Grant.Privilege op;
             if (opt == grant) // grant with grant option or revoke
                 op = Grant.Privilege.UseRole | Grant.Privilege.AdminRole;
@@ -978,8 +973,7 @@ namespace Pyrrho.Level3
                 op = Grant.Privilege.UseRole;
             for (var b = rols.First(); b is not null; b = b.Next())
                 if (b.value() is string s && roles.Contains(s) && objects[roles[s] ?? -1L] is Role ro)
-                    es += DoAccess(cx, grant, op, ro.defpos, grantees);
-            return es;
+                    DoAccess(cx, grant, op, ro.defpos, grantees);
         }
         /// <summary>
         /// Implement grant/revoke on a database obejct
@@ -989,9 +983,8 @@ namespace Pyrrho.Level3
         /// <param name="dp">the database object defining position</param>
         /// <param name="grantees">a tree of grantees</param>
         /// <param name="opt">whether with GRANT option (grant) or GRANT for (revoke)</param>
-        internal ExecuteList AccessObject(Context cx, bool grant, BList<PrivNames> privs, long dp, BList<DBObject> grantees, bool opt)
+        internal void AccessObject(Context cx, bool grant, BList<PrivNames> privs, long dp, BList<DBObject> grantees, bool opt)
         {
-            var es = ExecuteList.Empty;
             if (role is not null && objects[dp] is DBObject ob && ob.infos[role.defpos] is ObInfo gd)
             {
                 Grant.Privilege defp = Grant.Privilege.NoPrivilege;
@@ -1012,7 +1005,7 @@ namespace Pyrrho.Level3
                                 var pp = defp;
                                 if (grant)
                                     pp = gp;
-                                es += DoAccess(cx, grant, pp, c, grantees);
+                                DoAccess(cx, grant, pp, c, grantees);
                             }
                     }
                 }
@@ -1047,15 +1040,14 @@ namespace Pyrrho.Level3
                             {
                                 if (changed)
                                     changed = grant;
-                                es += AccessColumns(cx, grant, q, (Table)ob, mk, grantees);
+                                AccessColumns(cx, grant, q, (Table)ob, mk, grantees);
                             }
                             else
                                 p |= q;
                         }
                 if (changed)
-                    es += DoAccess(cx, grant, p, ob?.defpos ?? 0, grantees);
+                    DoAccess(cx, grant, p, ob?.defpos ?? 0, grantees);
             }
-            return es;
         }
     }
     /// <summary>

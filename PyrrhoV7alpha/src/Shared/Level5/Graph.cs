@@ -1550,7 +1550,7 @@ namespace Pyrrho.Level5
             cx.db += this;
         }
         internal EdgeType Connect(Context cx, GqlNode? b, GqlNode? a, TypedValue cc,
-            CTree<string, QlValue> ls, bool allowChange = false, long dp = -1L)
+             bool allowChange = false, long dp = -1L)
         {
             if (cc is not TConnector ec || ec.cp>0L)
                 return this;
@@ -1586,9 +1586,7 @@ namespace Pyrrho.Level5
                         _ => TNull.Value
                     };
                     if (qv!=TNull.Value)
-                    {
                         found = true;
-                    }
                 }
             var r = this;
             if (!found)
@@ -1609,18 +1607,18 @@ namespace Pyrrho.Level5
                 var cn = (ec.cn == "") ? q.ToString() : ec.cn;
                 var nc = new TConnector(q, nn, cn, Position);
                 if (nn > 0 && defpos > 0)
-                    (r, _) = BuildNodeTypeConnector(cx,nc);
+                    (r, _) = BuildNodeTypeConnector(cx, nc);
                 else
-                    cx.MetaPend(dp+1L, dp+1L, cn, 
-                        TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Connector)+nc));
+                    cx.MetaPend(dp + 1L, dp + 1L, cn,
+                        TMetadata.Empty + (Qlx.EDGETYPE, new TSet(Connector) + nc));
             }
             return r;
         }
         internal (EdgeType, CTree<string, QlValue>) Connect(Context cx, TNode? b, TNode a, GqlEdge ed, TypedValue cc,
-CTree<string, QlValue> ls, bool allowChange = false)
+                CTree<string, QlValue> ls, bool allowChange = false)
         {
             if (cc is not TConnector nc)
-                return (this, ls);
+                return (this,ls);
             var found = false;
             for (var c = (metadata[Qlx.EDGETYPE] as TSet)?.First(); c != null; c = c.Next())
                 if (c.Value() is TConnector tc)
@@ -1653,12 +1651,12 @@ CTree<string, QlValue> ls, bool allowChange = false)
                     if (qv != TNull.Value)
                     {
                         var n = cx.NameFor(tc.cp) ?? tc.cn;
-                        if (tc.cd.kind==Qlx.POSITION)
+                        if (tc.cd.kind == Qlx.POSITION)
                             ls += (n, new SqlLiteral(cx.GetUid(), qv));
                         else
                         {
-                            var ov = ls[tc.cn]?._Eval(cx)??TNull.Value;
-                            ls += (n, new SqlLiteral(cx.GetUid(), tc.cd.Coerce(cx,qv + ov)));
+                            var ov = ls[tc.cn]?._Eval(cx) ?? TNull.Value;
+                            ls += (n, new SqlLiteral(cx.GetUid(), tc.cd.Coerce(cx, qv + ov)));
                         }
                         found = true;
                         break;
@@ -1690,8 +1688,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
             }
             return (r, ls);
         }
-
-        static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec, GqlEdge ed)
+        internal static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec, GqlEdge ed)
         {
             if (n == null || (nc.cn != "" && ec.cn.ToUpper() != nc.cn.ToUpper()))
                 return TNull.Value;
@@ -1700,10 +1697,9 @@ CTree<string, QlValue> ls, bool allowChange = false)
                     if (Connect(cx, n, (NodeType)b.key(), nc, ec, ed) is TypedValue v && v != TNull.Value)
                         return v;
             if (n.dataType is NodeType nt)
-                return Connect(cx,n,nt,nc,ec,ed)??TNull.Value;
+                return Connect(cx, n, nt, nc, ec, ed) ?? TNull.Value;
             throw new DBException("22G0V");
         }
-
         static TypedValue? Connect(Context cx, TNode n, NodeType? nt, TConnector nc, TConnector ec, GqlEdge ed)
         {
             if (nt is null)
@@ -1712,7 +1708,7 @@ CTree<string, QlValue> ls, bool allowChange = false)
             {
                 if (en is NodeType && !nt.EqualOrStrongSubtypeOf(en))
                     return null;
-                if (en is GqlLabel el && el.kind==Qlx.AMPERSAND)
+                if (en is GqlLabel el && el.kind == Qlx.AMPERSAND)
                 {
                     var ok = false;
                     for (var b = el._NodeTypes(cx).First(); (!ok) && b != null; b = b.Next())
@@ -1729,7 +1725,6 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 return n;
             throw new DBException("22G0V");
         }
-
         internal (EdgeType,TConnector) BuildNodeTypeConnector(Context cx, TConnector tc)
         {
             if (metadata[Qlx.EDGETYPE] is TSet ts && ts.Contains(tc))
@@ -2071,7 +2066,6 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 sb.Append('}');
             return sb.ToString();
         }
-
         internal TypedValue PreConnect(Context cx, Qlx ab, Domain ct, string cn)
         {
             TypedValue r = TNull.Value;
@@ -2082,11 +2076,14 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 Qlx.ARROWBASETILDE or Qlx.TILDE or Qlx.RBRACKTILDE => Qlx.WITH,
                 _ => ab
             };
-            for (var b = (metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+            for (var b = (metadata[Qlx.EDGETYPE] as TSet)?.First(); 
+                r==TNull.Value && b != null; b = b.Next())
                 if (b.Value() is TConnector tc && cx.db.objects[tc.ct] is Domain dt
                     && tc.q == q && (ct.defpos<0 || ct.EqualOrStrongSubtypeOf(dt)) 
                     && (cn == "" || cn == tc.cn))
                     r = tc;
+            if (r == TNull.Value && !cx.ParsingMatch)
+                return BuildNodeTypeConnector(cx, new TConnector(q, ct.defpos, cn, Position), this).Item2;
             return r;
         }
         internal TypedValue PostConnect(Context cx, Qlx ba, Domain ct, string cn)
@@ -2099,124 +2096,24 @@ CTree<string, QlValue> ls, bool allowChange = false)
                 Qlx.ARROWBASETILDE or Qlx.TILDE or Qlx.RBRACKTILDE => Qlx.WITH,
                 _ => ba
             };
-            for (var b = (metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
+            for (var b = (metadata[Qlx.EDGETYPE] as TSet)?.First(); 
+                r==TNull.Value && b != null; b = b.Next())
                 if (b.Value() is TConnector tc && cx.db.objects[tc.ct] is Domain dt
                     && tc.q == q && (ct.defpos < 0 || ct.EqualOrStrongSubtypeOf(dt))
                     && (cn == "" || cn == tc.cn))
                     r = tc;
+            if (r == TNull.Value && !cx.ParsingMatch)
+                return BuildNodeTypeConnector(cx, new TConnector(q, ct.defpos, cn, Position), this).Item2;
             return r;
-        }
-    }
-/*    /// <summary>
-    /// This type is created as a side effect of Record4.Install: 
-    /// Records in this table are posted into and indexed by the separate nodeTypes.
-    /// </summary>
-    internal class JoinedNodeType : NodeType
-    {
-        internal JoinedNodeType(long lp, long dp, string nm, UDType dt, BTree<long,object> m, Context cx) 
-            : base(lp, dp, nm, dt, m, cx)
-        {
-            var oi = new ObInfo(nm, Grant.AllPrivileges);
-            var ns = Names.Empty;
-            for (var b = nodeTypes.First(); b != null; b = b.Next())
-                if (b.key().infos[cx.role.defpos] is ObInfo fi)
-                    ns += fi.names;
-            cx.Add(this + (Infos,new BTree<long,ObInfo>(cx.role.defpos,oi+(ObInfo._Names,ns))));
-        }
-        public JoinedNodeType(long dp, BTree<long, object> m) : base(dp, m)
-        { }
-        public static JoinedNodeType operator+(JoinedNodeType nt,(long,object)x)
-        {
-            return (JoinedNodeType)nt.New(nt.mem + x);
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new JoinedNodeType(defpos,m);
-        }
-        internal override DBObject _Replace(Context cx, DBObject so, DBObject sv)
-        {
-            return base._Replace(cx, so, sv);
-        }
-        internal override DBObject New(long dp, BTree<long, object> m)
-        {
-            return base.New(dp, m);
-        }
-        internal override NodeType Build(Context cx, GqlNode? x, long ap, string nm, 
-            CTree<string,QlValue>?ls=null,Qlx q=Qlx.NO, NodeType? nn=null, CList<TypedValue>? md=null)
-        {
-            var ids = CTree<long, TypedValue>.Empty;
-            var it = Null;
-            ls ??= CTree<string,QlValue>.Empty;
-            // examine any provided id values
-            for (var b = nodeTypes.First(); b != null; b = b.Next())
-                if (b.key() is NodeType nt && cx._Ob(nt.idCol) is TableColumn ec
-                        && ec.infos[cx.role.defpos] is ObInfo ci && ci.name is string cn
-                        && ls?[cn] is QlValue sv)
-                {
-                    var tv = sv.Eval(cx);
-                    for (var nc = ids.First(); nc != null; nc = nc.Next())
-                        if (nc.value() is TypedValue cv && cv.CompareTo(tv) != 0)
-                            throw new DBException("42000", "Conflicting id values");
-                    if (it.defpos == Null.defpos)
-                        it = tv.dataType;
-                    else if (it.CompareTo(tv.dataType) != 0)
-                        throw new DBException("42000", "Conflicting id types");
-                }
-            if (cx.parse != ExecuteStatus.Obey)
-                return this;
-            var fl = CTree<long, TypedValue>.Empty;
-            var dp = cx.db.nextPos;
-            var tbs = CTree<long, bool>.Empty;
-            for (var b = nodeTypes.First(); b != null; b = b.Next())
-                if (b.key() is NodeType nt && x is not null)
-                {
-                    var np = cx.GetUid();
-                    var m = new BTree<long, object>(GqlNode._Label,
-                        cx.Add(new GqlLabel(ap,cx.GetUid(),nt.name,cx)));
-                    var nd = new GqlNode(new Ident(Uid(np), np), CList<Ident>.Empty, cx,
-                        -1L, x.docValue, x.state, nt, m);
-                    nd.Create(cx, this, ap, x.docValue,false);
-                    // locate the Record that has just been constructed in et
-                    tbs += (nt.defpos, true);
-                    var tr = (Transaction)cx.db; // must be inside this loop
-                    for (var nc = tr.physicals.Last(); nc != null; nc = nc.Previous())
-                        if (nc.value() is Record rc 
-                            && (rc.tabledefpos==nt.defpos 
-                            || (rc as Record4)?.extraTables.Contains(nt.defpos)==true))
-                        { 
-                            fl += rc.fields;
-                            break;
-                        }
-                    // and make sure the next Record uses the same position!
-                    cx.db += (Database.NextPos, dp);
-                }
-            var nr = new Record4(tbs, fl, -1L, Level.D, cx.db.nextPos, cx);
-            if (x is not null)
-                cx.values += (x.defpos, new TNode(cx, new TableRow(nr,cx)));
-            cx.Add(nr);
-            return this;
-        }
-        internal override Table _PathDomain(Context cx)
-        {
-            return base._PathDomain(cx);
-        }
-        internal override CTree<Domain, bool> _NodeTypes(Context cx)
-        {
-            return nodeTypes;
-        }
-        internal override TNode Node(Context cx, TableRow r)
-        {
-            if (cx.db.joinedNodes.Contains(r.defpos))
-                return new TJoinedNode(cx, r);
-            return base.Node(cx, r);
         }
         public override string ToString()
         {
-            var sb = new StringBuilder("JoinedNodeType");
-            sb.Append(base.ToString());
+            var sb = new StringBuilder(base.ToString());
+            if (metadata[Qlx.EDGETYPE] is TypedValue v)
+            { sb.Append(' '); sb.Append(v); }
             return sb.ToString();
-        } 
-    } */
+        }
+    }
     /// <summary>
     /// See GQL 4.13: it is a set of node types and edge types that are defined as constraints on a Graph
     /// </summary>

@@ -5017,18 +5017,14 @@ namespace Pyrrho.Level4
             }
         }
     }
-    internal class TrueRowSet : ExplicitRowSet
+    internal class TrueRowSet : TrivialRowSet
     {
         internal const long
             TrueResult = -437; // TrueRowSet
-        TrueRowSet(Context cx) : base(cx.GetUid(), BTree<long, object>.Empty
+        internal TrueRowSet(Context cx) : base(cx.GetUid(), BTree<long, object>.Empty
             + (_Domain, new Domain(cx.GetUid(), cx, Qlx.TABLE,
-                new BList<DBObject>(new SqlLiteral(--_uid, TBool.True)))))
-        {
-            Context._system.obs += (TrueResult, this);
-        }
-        internal static TrueRowSet OK(Context cx) => 
-            (TrueRowSet)(cx.obs[TrueResult] ?? new TrueRowSet(cx));
+                new BList<DBObject>(new SqlLiteral(TrueResult, TBool.True)))))
+        { }
     }
     internal class ProcRowSet : RowSet
     {
