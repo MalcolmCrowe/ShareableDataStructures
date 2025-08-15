@@ -15,7 +15,8 @@ using Pyrrho.Level4;
 namespace Pyrrho.Level2
 {
 	/// <summary>
-	/// The Change record in the database is used for renaming of objects
+	/// The Change record in the database is used for renaming of objects.
+    /// Most object names are role-specific
 	/// </summary>
 	internal class Change : Defined
 	{
@@ -25,7 +26,8 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="pt">The defining position for this object</param>
         /// <param name="nm">The (new) name</param>
-        /// <param name="idType">The identifier type</param>
+        /// <param name="pp">The transaction position of this Physical</param>
+        /// <param name="cx">The Context</param>
         public Change(long pt, string nm, long pp, Context cx)
             : this(Type.Change, pt, nm, pp, cx)
 		{  }
@@ -35,7 +37,8 @@ namespace Pyrrho.Level2
         /// <param name="t">The Change type</param>
         /// <param name="pt">The defining position for this object</param>
         /// <param name="nm">The (new) name</param>
-        /// <param name="idType">The identifier type</param>
+        /// <param name="pp">The transaction position of this Physical</param>
+        /// <param name="cx">The Context</param>
         protected Change(Type t, long pt, string nm, long pp, Context cx)
 			:base(t,pp,cx,nm,cx.Priv(pt))
 		{
@@ -44,9 +47,13 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Change object from the buffer
         /// </summary>
-        /// <param name="bp">the buffer</param>
-        /// <param name="pos">the defining position</param>
+        /// <param name="rdr">the Reader for the file</param>
 		public Change(Reader rdr) :base(Type.Change,rdr) { }
+        /// <summary>
+        /// Commit this Physical to the database file
+        /// </summary>
+        /// <param name="x">The transaction version of the Physical</param>
+        /// <param name="wr">The Writer for the file</param>
         protected Change(Change x, Writer wr) : base(x, wr)
         {
             defpos = wr.cx.Fix(x.defpos);
@@ -94,6 +101,16 @@ namespace Pyrrho.Level2
 		{ 
 			return "Change "+Pos(defpos)+" to "+name; 
 		}
+        /// <summary>
+        /// During the validation step of the transaction, we review Physical records that
+        /// have been committed by other threads since the start of our transaction.
+        /// If any conflict with our changes, return an exception.
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A possibly conflicting transaction</param>
+        /// <param name="ct">The enclosing Transaction</param>
+        /// <returns>The exceptio n to be raised if any</returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
@@ -141,6 +158,11 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
+        /// <summary>
+        /// Update the Database to include the Physical
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns>The new Database</returns>
         internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;

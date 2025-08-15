@@ -5427,7 +5427,7 @@ namespace Pyrrho.Level4
             cs._Obey(cx);
             if (cx.result is RowSet rs && rs.Length > 0)
             {
-                var cn = new PyrrhoConnect("Files=" + dbn.ToString());
+                var cn = new PyrrhoConnect("Files=" + dbn.ToString() + ";Locale=" + cx.conn.props["Locale"]);
                 cn.Open();
                 if (pre != TNull.Value)
                     cn.Act(pre.ToString());
@@ -5546,7 +5546,8 @@ namespace Pyrrho.Level4
             {
                 var st = tok;
                 Next();
-                Mustbe(Qlx.ATOMIC);
+                if (Match(Qlx.ATOMIC)) 
+                    Next();
                 var cs = new NestedStatement(LexDp(), cx, CList<long>.Empty,
                     BTree<long,object>.Empty);
                 var et = (st == Qlx.BEGIN) ? Qlx.END : Qlx.RBRACE;

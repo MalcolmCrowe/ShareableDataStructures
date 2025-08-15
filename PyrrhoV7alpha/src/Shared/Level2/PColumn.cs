@@ -2,9 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
 using Pyrrho.Level5;
-using System.Runtime.Intrinsics.Arm;
 using System.Text;
-using System.Xml;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
@@ -64,10 +62,11 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="t">The PColumn type</param>
         /// <param name="pr">The table</param>
-        /// <param name="nm">The name of the columns</param>
-        /// <param name="sq">The 0-based position in the table</param>
+        /// <param name="nm">The name of the column</param>
+        /// <param name="sq">The 0-based position in the table (-1 if append)</param>
         /// <param name="dm">The domain</param>
-        /// <param name="tb">The local database</param>
+        /// <param name="pp">The transaction's position for this Physical</param>
+        /// <param name="cx">The Context</param>
         public PColumn(Type t, Table pr, string nm, int sq, Domain dm, long pp, 
             Context cx) : base(t,pp,cx,nm,dm,-1L)
 		{
@@ -80,15 +79,13 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Column definition from the buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
 		public PColumn(Reader rdr) : base (Type.PColumn,rdr){}
         /// <summary>
         /// Constructor: a new Column definition from the buffer
         /// </summary>
         /// <param name="t">The PColumn type</param>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
 		protected PColumn(Type t,Reader rdr) : base(t,rdr) {}
         protected PColumn(PColumn x, Writer wr) : base(x, wr)
         {
@@ -105,6 +102,12 @@ namespace Pyrrho.Level2
         {
             return new PColumn(this, wr);
         }
+        /// <summary>
+        /// Update the ongoing Transaction on Commit
+        /// </summary>
+        /// <param name="wr">The Writer for the file</param>
+        /// <param name="tr">The Transaction</param>
+        /// <returns>The updated Transaction and updated PColumn</returns>
         public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
         {
             if (tr is not null && wr.cx.uids[ppos] is long q
@@ -155,6 +158,11 @@ namespace Pyrrho.Level2
             } 
             return (nt,ph);
         }
+        /// <summary>
+        /// Handle supertype recursion
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <param name="ta">A Table</param>
         void Commit(Context cx,Table ta)
         {
             var rt = CList<long>.Empty;
@@ -171,7 +179,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Relocation information for positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
 		{
             if (table == null || dataType == null)
@@ -185,6 +193,11 @@ namespace Pyrrho.Level2
             wr.PutLong(domdefpos);
 			base.Serialise(wr);
 		}
+        /// <summary>
+        /// For EdgeType information
+        /// </summary>
+        /// <param name="cx"></param>
+        /// <returns></returns>
         public TConnector? TCon(Context cx)
         {
             if (flags != 0L && cx.db.objects[toType] is Domain ct)
@@ -237,7 +250,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr)
         {
             tabledefpos = rdr.GetLong();
@@ -316,6 +329,11 @@ namespace Pyrrho.Level2
             sb.Append(']');
             return sb.ToString();
         }
+        /// <summary>
+        /// Update the Database/Transaction on creation of this Column
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns>The updated Domain (/Table/Type/View etc)</returns>
         internal override DBObject? Install(Context cx)
         {
             var ro = /* (table is VirtualTable) ? Database._system?.role : */ cx.role;
@@ -401,7 +419,11 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the column (may be null)</param>
         /// <param name="sq">The position of the column in the table</param>
         /// <param name="dm">The domain</param>
-        /// <param name="db">The local database</param>
+        /// <param name="ds">The default value as a string</param>
+        /// <param name="opt">Whether the column is optional</param>
+        /// <param name="ge">The generation rule if any</param>
+        /// <param name="pp">The transaction's position for this Physical</param>
+        /// <param name="cx">GThe Context</param>
         public PColumn2(Table pr, string nm, int sq, Domain dm, 
             string ds, bool opt, GenerationRule ge, long pp, Context cx)
             : this(Type.PColumn2,pr,nm,sq,dm,ds,opt,ge,pp,cx)
@@ -414,7 +436,11 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the ident</param>
         /// <param name="sq">The position of the ident in the table</param>
         /// <param name="dm">The domain</param>
-        /// <param name="db">The database</param>
+        /// <param name="ds">The default value as a string</param>
+        /// <param name="opt">Whether the column is optional</param>
+        /// <param name="ge">The generation rule if any</param>
+        /// <param name="pp">The transaction's position for this Physical</param>
+        /// <param name="cx">GThe Context</param>
         protected PColumn2(Type t, Table pr, string nm, int sq, Domain dm, 
             string ds, bool opt, GenerationRule ge, long pp, Context cx)
             : base(t, pr, nm, sq, dm, pp, cx)
@@ -431,15 +457,13 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: A new Column definition from the buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for thefile</param>
 		public PColumn2(Reader rdr) : this(Type.PColumn2,rdr){}
         /// <summary>
         /// Constructor: A new Column definition from the buffer
         /// </summary>
         /// <param name="t">The PColumn2 type</param>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        ///<param name="rdr">The Reader for thefile</param>
         protected PColumn2(Type t, Reader rdr) : base(t, rdr) { }
         protected PColumn2(PColumn2 x, Writer wr) : base(x, wr)
         {
@@ -455,7 +479,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Relocation information for positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
 		{
             wr.PutString(dfs.ToString());
@@ -466,7 +490,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr) 
 		{
             var dfsrc = new Ident(rdr.GetString(),ppos + 1);
@@ -488,6 +512,10 @@ namespace Pyrrho.Level2
                         dfs, SqlNull.Value, defpos, rdr.context.db.nextStmt);
             }
         }
+        /// <summary>
+        /// We are a subclass of Compiled: compile/recompile the source on creation and load
+        /// </summary>
+        /// <param name="rdr">The Reader for the file</param>
         internal override void OnLoad(Reader rdr)
         {
             if (table == null || dataType == null)
@@ -540,10 +568,11 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table column</param>
         /// <param name="sq">The position of the table column in the table</param>
         /// <param name="dm">The declared domain of the table column</param>
+        /// <param name="ms">The string version of the Metadata</param>
         /// <param name="md">Column Metadata</param>
-        /// <param name="pp">The new physical position</param>
-        /// <param name="db">The local database</param>
+        /// <param name="pp">The ransaction's position for this Physical</param>
         /// <param name="cx">The context</param>
+        /// <param name="ifN">Only commit if referenced</param>
         public PColumn3(Table pr, string nm, int sq, Domain dm, string ms, 
             TMetadata md, long pp, Context cx, bool ifN = false)
             : this(pr, nm, sq, dm, _Meta(cx,ms,md,pp), pp, cx, ifN)
@@ -561,9 +590,13 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table column</param>
         /// <param name="sq">The position of the table column in the table</param>
         /// <param name="dm">The declared domain of the table column</param>
-        /// <param name="pp">The new physical position</param>
-        /// <param name="db">The local database</param>
-        /// <param name="cx">The context</param>
+        /// <param name="ds">The default value as a string</param>
+        /// <param name="opt">Whether the column is optional</param>
+        /// <param name="ge">The generation rule if any</param>
+        /// <param name="tm">The connector or TNull</param>
+        /// <param name="pp">The transaction's position for this Physical</param>
+        /// <param name="cx">The Context</param>
+        ///<param name="ifN">Only commit if referenced</param>
         public PColumn3(Table pr, string nm, int sq, Domain dm, 
             string ds, bool opt, GenerationRule ge, TypedValue tm, long pp,
             Context cx, bool ifN = false)
@@ -579,10 +612,12 @@ namespace Pyrrho.Level2
         /// <param name="nm">The name of the table column</param>
         /// <param name="sq">The position of the table column in the table</param>
         /// <param name="dm">The declared domain of the table column</param>
-        /// <param name="md">Column Metadata</param>
-        /// <param name="pp">The new physical position</param>
-        /// <param name="db">The local database</param>
-        /// <param name="cx">The context</param>
+        /// <param name="ds">The default value as a string</param>
+        /// <param name="opt">Whether the column is optional</param>
+        /// <param name="ge">The generation rule if any</param>
+        /// <param name="tt">The connector or TNull</param>
+        /// <param name="pp">The transaction's position for this Physical</param>
+        /// <param name="cx">GThe Context</param>
         protected PColumn3(Type t, Table pr, string nm, int sq, Domain dm, 
             string ds, bool opt, GenerationRule ge, TypedValue tt, long pp, Context cx)
             : base(t, pr, nm, (sq<0)?pr.Length:sq, dm, ds, opt, ge, pp, cx)
@@ -601,8 +636,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: A new Column definition from the buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
         public PColumn3(Reader rdr) : this(Type.PColumn3, rdr) { }
         /// <summary>
         /// Constructor: A new Column definition from the buffer
@@ -619,6 +653,14 @@ namespace Pyrrho.Level2
             table = (Table?)wr.cx.db.objects[wr.cx.Fix(x.table?.defpos??-1L)]??table;
             toType = wr.cx.Fix(x.toType);
         }
+        /// <summary>
+        /// Break out metdata pieces
+        /// </summary>
+        /// <param name="cx">The context</param>
+        /// <param name="ms">The metadata string</param>
+        /// <param name="md">The Metadata</param>
+        /// <param name="pp">The transaction's position for the Physical</param>
+        /// <returns>Default string,whether optional,Generation rule,The Metadata,Framing</returns>
         static (string, bool, GenerationRule, TypedValue, Framing) _Meta(Context cx,
             string ms, TMetadata md, long pp)
         {
@@ -650,7 +692,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Relocation information for positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
         {
             wr.PutString(ups??"");
@@ -662,7 +704,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr)
         {
             ups = rdr.GetString();
@@ -717,7 +759,8 @@ namespace Pyrrho.Level2
         /// <param name="co">The Column</param>
         /// <param name="pa">The path string</param>
         /// <param name="dm">The domain defining position</param>
-        /// <param name="db">The local database</param>
+        /// <param name="pp">The trasaction's position for this Physical</param>
+        /// <param name="cx">The Context</param>
         public PColumnPath(long co, string pa, long dm, long pp, Context cx)
             : base(Type.ColumnPath, pp, cx, "", Grant.AllPrivileges)
         { 
@@ -728,8 +771,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: from the file buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
         public PColumnPath(Reader rdr) : base(Type.ColumnPath, rdr) { }
         public override void Serialise(Writer wr)
         {
@@ -756,7 +798,6 @@ namespace Pyrrho.Level2
         {
             throw new NotImplementedException();
         }
-
         protected override Physical Relocate(Writer wr)
         {
             throw new NotImplementedException();

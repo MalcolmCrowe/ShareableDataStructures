@@ -28,13 +28,18 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Alter record from the disk file
         /// </summary>
-        /// <param name="bp">The buffer being read</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
         public Alter(Reader rdr) : base(Type.Alter, rdr) { }
         protected Alter(Alter x, Writer wr) : base(x, wr)
         {
             _defpos = wr.cx.Fix(x.defpos);
         }
+        /// <summary>
+        /// During Commit, Physical records are appended to the file
+        /// once their fields have been updated to reflect their new positions
+        /// </summary>
+        /// <param name="wr">The Writer for the file</param>
+        /// <returns>The committed version of the Physical</returns>
         protected override Physical Relocate(Writer wr)
         {
             return new Alter(this, wr);
@@ -42,13 +47,18 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise the Alter from the disk file buffer
         /// </summary>
-        /// <param name="buf">The buffer</param>
+        /// <param name="rdr">The Reader for the file</param>
         public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
             _defpos = rdr.Prev(prev) ?? ppos;
             base.Deserialise(rdr);
         }
+        /// <summary>
+        /// Update the in-memory Database objects to include the new Physical
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns>The enclosing DBObject if any</returns>
         internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
@@ -100,8 +110,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Alter2 record from the disk
         /// </summary>
-        /// <param name="bp">The buffer being read</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
         public Alter2(Reader rdr) : base(Type.Alter2, rdr) { }
         protected Alter2(Alter2 x, Writer wr) : base(x, wr)
         {
@@ -114,7 +123,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise the Alter from the disk file buffer
         /// </summary>
-        /// <param name="buf"></param>
+        /// <param name="rdr">The Reader for the file</param>
         public override void Deserialise(Reader rdr)
         {
             var prev = rdr.GetLong();
@@ -165,7 +174,12 @@ namespace Pyrrho.Level2
         /// <param name="sq">The (new) table column position (0,1,..)</param>
         /// <param name="tb">The table</param>
         /// <param name="dm">The (new) domain </param>
-        /// <param name="db">The local database</param>
+        /// <param name="ds">The default value string</param>
+        /// <param name="opt">Whether the field is Optional</param>
+        /// <param name="ge">The generation rule</param>
+        /// <param name="md">The metadata</param>
+        /// <param name="pp">The transaction position of the Physical</param>
+        /// <param name="cx">The Context</param>
         public Alter3(long co, string nm, int sq, Table tb, Domain dm,
             string ds,bool opt,GenerationRule ge, TypedValue md, long pp, Context cx) :
             base(Type.Alter3, tb, nm, -1, dm, ds, opt, ge, md, pp, cx)
@@ -175,9 +189,13 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Alter record from the disk
         /// </summary>
-        /// <param name="bp">The buffer being read</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
 		public Alter3(Reader rdr) : base(Type.Alter3, rdr) { }
+        /// <summary>
+        /// Fix internal position references for Commit
+        /// </summary>
+        /// <param name="x">The Alter</param>
+        /// <param name="wr">The Writer for the file</param>
         protected Alter3(Alter3 x, Writer wr) : base(x, wr)
         {
             _defpos = wr.cx.Fix(x.defpos);
@@ -205,6 +223,11 @@ namespace Pyrrho.Level2
             _defpos = rdr.Prev(previous) ?? -1L;
 			base.Deserialise(rdr);
 		}
+        /// <summary>
+        /// Update the Database object for the new Physical
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns></returns>
         internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
@@ -227,7 +250,6 @@ namespace Pyrrho.Level2
             cx.obs += (tc.defpos, tc);
             table += (cx, tc);
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT));
-     //       seq = tc.seq;
             cx.Install(table);
             cx.db += ro;
             if (cx.db.mem.Contains(Database.Log))
@@ -243,6 +265,16 @@ namespace Pyrrho.Level2
 		{ 
 			return "Alter3 TableColumn  ["+defpos+"] "+base.ToString(); 
 		}
+        /// <summary>
+        /// The validation step of the Commit process checks for conflict with
+        /// changes committed to the database by other threads 
+        /// since the start of the transaction
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A possibly conflicting Physical to check</param>
+        /// <param name="ct">The enclosing transaction</param>
+        /// <returns>An exception or null</returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             if (table == null)

@@ -29,7 +29,8 @@ namespace Pyrrho.Level2
         /// <param name="nm">The (new) name</param>
         /// <param name="sd">The (new) structure definition</param>
         /// <param name="dt">The (new) Domain</param>
-        /// <param name="pb">The local database</param>
+        /// <param name="pp">The transaction's defining position for this Physical</param>
+        /// <param name="cx">The Context</param>
         public Edit(Domain old, string nm, Domain dt,long pp,Context cx)
             : base(Type.Edit, nm, dt.kind, dt.prec, (byte)dt.scale, dt.charSet,
                   dt.culture.Name,dt.defaultString,
@@ -59,7 +60,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Reclocation info for Positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
 		{
             wr.PutLong(_defpos);
@@ -68,7 +69,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise from the buffer
         /// </summary>
-        /// <param name="buf">The buffer</param>
+        /// <param name="rdr">TheReader for the file</param>
         public override void Deserialise(Reader rdr)
 		{
 			_defpos = rdr.GetLong();
@@ -76,6 +77,16 @@ namespace Pyrrho.Level2
 			base.Deserialise(rdr);
 		}
         public override long Affects => _defpos;
+        /// <summary>
+        /// At the validation point for the Transaction, all possibly conflicting Physicals
+        /// are fetched from the Database (i.e. committed since the start of the transaction).
+        /// We examine each one against this for conflict, and report an Exception if so.
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A Physical to check against this</param>
+        /// <param name="ct">The enclosing Transaction</param>
+        /// <returns></returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
@@ -135,7 +146,7 @@ namespace Pyrrho.Level2
         /// <param name="nm">The (new) name</param>
         /// <param name="old">The previous version of the Domain</param>
         /// <param name="sd">The (new) structure definition</param>
-        /// <param name="un">The UNDER domain if any</param>
+        /// <param name="un">The UNDER domains if any</param>
         /// <param name="pp">The ppos for this log record</param>
         public EditType(string nm, UDType old, UDType sd, CTree<Domain,bool> un, long pp, Context cx)
             : base(Type.EditType, nm, sd, un, cx.db.nextStmt, pp, cx)
@@ -149,8 +160,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: an Edit request from the buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
 		public EditType(Reader rdr) : base(Type.EditType, rdr) 
         {  }
         protected EditType(EditType x, Writer wr) : base(x, wr)
@@ -169,7 +179,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Reclocation info for Positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
         {
             wr.PutLong(_defpos);
@@ -178,7 +188,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise from the buffer
         /// </summary>
-        /// <param name="buf">The buffer</param>
+        /// <param name="rdr">The Reader for the file</param>
         public override void Deserialise(Reader rdr)
         {
             _defpos = rdr.GetLong();
@@ -191,6 +201,16 @@ namespace Pyrrho.Level2
             rdr.context.db += dataType;
         }
         public override long Affects => defpos;
+        /// <summary>
+        /// At the validation point for a Transaction, we fetch all the DDatabase's Physicals
+        /// that have been committed since the start of our transaction by other threads.
+        /// Each is checked against this Physical for conflict and an execption reported if so.
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A Physical to check</param>
+        /// <param name="ct">The Physical for the transaction</param>
+        /// <returns></returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
@@ -243,12 +263,9 @@ namespace Pyrrho.Level2
         /// (a) Column merging occurs when a column name is repeated in t.rowType
         /// (b) Column merging occurs when a column name occurs in two subtypes
         /// If such column merging fails, the EditType is prohibited.
-        /// With these constraints, this is the only place that HierarchyCols is needed.
         /// </summary>
-        /// <param name="cx"></param>
-        /// <returns></returns>
-        /// <exception cref="PEException"></exception>
-        /// <exception cref="DBException"></exception>
+        /// <param name="cx">The Context</param>
+        /// <returns>The modified UDType</returns>
         internal override DBObject Install(Context cx)
         {
             var r = base.Install(cx);

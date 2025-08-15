@@ -59,7 +59,8 @@ namespace Pyrrho.Level2
         /// <param name="pr">The privilege</param>
         /// <param name="ob">The object</param>
         /// <param name="ge">The grantee</param>
-        /// <param name="pb">The local base</param>
+        /// <param name="pp">The Transaction's position for this Physical</param>
+        /// <param name="cx">The Context</param>
         public Grant(Privilege pr, long ob, long ge, long pp, Context cx)
             : this(Type.Grant, pr, ob, ge, pp, cx) { }
         protected Grant(Type t,Privilege pr, long ob, long ge, long pp, Context cx)
@@ -74,8 +75,7 @@ namespace Pyrrho.Level2
         /// Constructor: a Grant request
         /// </summary>
         /// <param name="tp">The Grant type</param>
-        /// <param name="bp">the buffer</param>
-        /// <param name="pos">the defining position</param>
+        /// <param name="rdr">the Reader for the file</param>
 		protected Grant(Type tp, Reader rdr) : base(tp,rdr)
 		{}
         protected Grant(Grant x, Writer wr) : base(x, wr)
@@ -91,7 +91,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serilaise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Relocation information for positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
 		{
             wr.PutInt((int)priv);
@@ -102,7 +102,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise the Physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr)
 		{
 			priv = (Privilege)rdr.GetInt();
@@ -160,12 +160,11 @@ namespace Pyrrho.Level2
 			return "Grant "+priv.ToString()+" on "+Pos(obj)+" to "+((grantee>0)?Pos(grantee):"PUBLIC");
 		}
         /// <summary>
+        /// Update the Database with this grant information
         /// (Proc and View always use definer's role so no reparsing)
         /// </summary>
-        /// <param name="db"></param>
-        /// <param name="ro"></param>
-        /// <param name="p"></param>
-        /// <returns></returns>
+        /// <param name="cx">The Context</param>
+        /// <returns>The updated Role object</returns>
         internal override DBObject? Install(Context cx)
         {
             if (cx.db.objects[obj] is not DBObject ob)
@@ -199,6 +198,9 @@ namespace Pyrrho.Level2
             return rg;
         }
     }
+    /// <summary>
+    /// DEPRECATED
+    /// </summary>
     internal class Authenticate : Physical
     {
         internal long userpos;

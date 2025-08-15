@@ -15,6 +15,7 @@ namespace Pyrrho.Level2
     /// The EndOfFile marker discourages tampering with obs files,
     /// by recording a hash value of the contents. The marker is overwritten
     /// by the next transaction.
+    /// This Physical is not used for append storage (the default)
     /// </summary>
 	internal class EndOfFile : Physical
 	{

@@ -5004,7 +5004,7 @@ namespace Pyrrho.Level3
         {
             public Qlx mode = matchMode;
             public ABookmark<int, long>? matches = m; // the current place in the matchExp
-            public ABookmark<int, long>? alts = ab; // the current place in the alts
+            public ABookmark<int, long>? alts => ab; // the current place in the alts
             public Step next = n; // the continuation
 
             /// <summary>
@@ -5281,9 +5281,8 @@ namespace Pyrrho.Level3
             }
             else if (be.matches?.Next()?.value() is long p && cx.obs[p] is GqlEdge ed
                 && cx.binding[ed.idValue] is TRow ne && ed.preCon is TConnector pc
-                && ne.values[pc.cp] is TPosition tp 
-                && cx.db.objects[xn.domain.defpos] is Table tb
-                && tp.ToLong() is long tq && tb.tableRows[tq] is TableRow nr)
+                && ne.values[pc.cp] is TPosition tp  && tp.ToLong() is long tq 
+                && FindTableRow(cx,xn,tq) is TableRow nr)
                 ds = new(tq, nr);
             // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
             else if (ds.Count == 0)
@@ -5294,6 +5293,20 @@ namespace Pyrrho.Level3
             else if (df != null && !Done(cx))
                 DbNode(cx, new NodeStep(be.mode, xn, df, 
                     new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._e)),qd);
+        }
+        TableRow? FindTableRow(Context cx, GqlNode x, long p)
+        {
+            if (x.domain.defpos > 0 && cx.db.objects[x.domain.defpos] is Table xt)
+                return xt.tableRows[p];
+            for (var b = cx.role.nodeTypes?.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value() ?? -1L] is Table t
+                    && t.tableRows[p] is TableRow r)
+                    return r;
+            for (var b = cx.role.edgeTypes?.First(); b != null; b = b.Next())
+                if (cx.db.objects[b.value() ?? -1L] is Table t
+                    && t.tableRows[p] is TableRow r)
+                    return r;
+            return null;
         }
         bool Connects(TConnector ec,TConnector tc)
         {

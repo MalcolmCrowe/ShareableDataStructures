@@ -34,7 +34,8 @@ namespace Pyrrho.Level2
         /// Constructor: a Drop request from the Parser
         /// </summary>
         /// <param name="dp">The object to drop</param>
-        /// <param name="db">The local database</param>
+        /// <param name="pp">The transaction position of this request</param>
+        /// <param name="d">The Database</param>
         public Drop(long dp,long pp, Database d)
             : this(Type.Drop, dp, pp, d)
 		{
@@ -43,9 +44,9 @@ namespace Pyrrho.Level2
         /// Constructor: a Drop request from the Parser
         /// </summary>
         /// <param name="t">The Drop type</param>
-        /// <param name="tb">The PhysBase</param>
         /// <param name="ob">The defining position of the object being dropped</param>
-        /// <param name="curpos">The current position in the datafile</param>
+        /// <param name="pp">The transaction position of the request</param>
+        /// <param name="d">The Database</param>
         protected Drop(Type t, long ob, long pp, Database d)
             : base(t, pp, d)
 		{
@@ -54,14 +55,18 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a Drop request from the buffer
         /// </summary>
-        /// <param name="bp">the buffer</param>
-        /// <param name="pos">the defining position</param>
+        /// <param name="rdr">the Reader for the file</param>
 		public Drop(Reader rdr) : base (Type.Drop,rdr) {}
         protected Drop(Type t, Reader rdr) : base(t, rdr) { }
         protected Drop(Drop x, Writer wr) : base(x, wr)
         {
             delpos = wr.cx.Fix(x.delpos);
         }
+        /// <summary>
+        /// Prepare the Physical for Commit
+        /// </summary>
+        /// <param name="wr">The Writer for the file</param>
+        /// <returns></returns>
         protected override Physical Relocate(Writer wr)
         {
             return new Drop(this, wr);
@@ -79,7 +84,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this to the database
         /// </summary>
-        /// <param name="r">Relocation information for positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
 		{
             wr.PutLong(delpos);
@@ -88,7 +93,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// deserialise this Physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr) 
 		{ 
 			delpos = rdr.GetLong();
@@ -106,6 +111,16 @@ namespace Pyrrho.Level2
 		{ 
 			return GetType().Name+" ["+Pos(delpos)+"]"; 
 		}
+        /// <summary>
+        /// During the validation step of Commit, all Physical objects committed
+        /// since the start of our transaction are check for possible conflict with
+        /// our Physicals.
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A Physical to check against this one</param>
+        /// <param name="ct">The enclosing transaction</param>
+        /// <returns>An exception to raise if found</returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
@@ -210,6 +225,11 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
+        /// <summary>
+        /// Update the Dataase to take account of this Drop
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns>Null (A Drop has no enclosing object)</returns>
         internal override DBObject? Install(Context cx)
         {
             if (cx.db != null && cx.db.objects[delpos] is DBObject ob)
@@ -222,6 +242,9 @@ namespace Pyrrho.Level2
             return null;
         }
     }
+    /// <summary>
+    /// This subclass of Drop knows about Drop actions
+    /// </summary>
     internal class Drop1 : Drop
     {
         public Drop1(long dp, DropAction a, long pp, Database d)

@@ -12,7 +12,6 @@ namespace Pyrrho.Common
     /// The base class for all Trees in Pyrrho
     /// Uses generic KeyValuePair because tuples don't allow typecasts.
     /// </summary>
-    //   [System.Diagnostics.DebuggerDisplay("{ToString()}")]
     public abstract class ATree<K,V>(Bucket<K, V>? r) where K:IComparable
 	{
         /// <summary>
@@ -161,7 +160,7 @@ namespace Pyrrho.Common
             return tree.Remove(k);
         }
         protected virtual ATree<K, V> Remove(K k, V v)
-        { // overridden for PPTree and PMTree where k may lead to several objects
+        { 
             return Remove(k);
         }
         /// <summary>
@@ -180,7 +179,7 @@ namespace Pyrrho.Common
         /// Note: we do not check that key is actually in the tree.
         /// </summary>
         /// <param name="key"></param>
-        /// <returns></returns>
+        /// <returns>the position for insertion, or null</returns>
         public virtual ABookmark<K, V>? PositionAt(K key)
         {
             ABookmark<K, V>? bmk = null;

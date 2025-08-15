@@ -15,13 +15,15 @@ namespace Pyrrho.Level2
 {
 	/// <summary>
 	/// A Delete entry notes a base table record to delete.
+    /// The process is complicated because of relationships between
+    /// records in a transaction (indexing, supertypes etc)
     /// Deprecated: Delete1 is much faster since v7
 	/// </summary>
 	internal class Delete : Physical
 	{
-        public long delpos;
-        public long tabledefpos;
-        public TableRow? delrec;
+        public long delpos; // the record being deleted
+        public long tabledefpos; // its base table
+        public TableRow? delrec; // the TableRow if provided
         public override long _table => tabledefpos;
         public override CTree<long, bool> subTables => sbT;
         public override CTree<long, bool> supTables => suT;
@@ -42,8 +44,9 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Delete request from the engine
         /// </summary>
-        /// <param name="rc">The defining position of the record</param>
-        /// <param name="tb">The local database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="rw">The table row</param>
+        /// <param name="pp">The transaction position of the Delete Physical</param>
         public Delete(Context cx, TableRow rw, long pp)
             : this(Type.Delete, rw, pp, cx) { }
         protected Delete(Type t, TableRow rw, long pp, Context cx)
@@ -70,8 +73,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Delete request from the buffer
         /// </summary>
-        /// <param name="bp">the buffer</param>
-        /// <param name="pos">a defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
 		public Delete(Reader rdr) : base(Type.Delete, rdr) { }
         protected Delete(Type t,Reader rdr) : base(t, rdr) { }
         protected Delete(Delete x, Writer wr) : base(x, wr)
@@ -82,6 +84,11 @@ namespace Pyrrho.Level2
             deC = wr.cx.FixTlTDD(x.deC);
             siC = wr.cx.FixTlTlTlb(x.siC);
         }
+        /// <summary>
+        /// Prepare the Delete Physical for Commit to the disk file
+        /// </summary>
+        /// <param name="wr"></param>
+        /// <returns></returns>
         protected override Physical Relocate(Writer wr)
         {
             return new Delete(this, wr);
@@ -99,7 +106,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise the Delete to the transaction log
         /// </summary>
-        /// <param name="r">Reclocation of position information</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
 		{
             var dp = wr.cx.Fix(delpos);
@@ -113,7 +120,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise the Delete from the buffer
         /// </summary>
-        /// <param name="buf">The buffer</param>
+        /// <param name="rdr">The Reader for the file</param>
         public override void Deserialise(Reader rdr)
         {
             var dp = rdr.GetLong();
@@ -128,6 +135,16 @@ namespace Pyrrho.Level2
         {
             return "Delete Record "+Pos(delpos);
         }
+        /// <summary>
+        /// During the validation step for the transaction, the engine
+        /// fetches all Physicals committed by other threads since the transcation start.
+        /// These are examined for conflict with this Physical.
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A possibly conflicting Physical</param>
+        /// <param name="ct">The enclosinh transacton</param>
+        /// <returns>An exception to raise (if any)</returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch (that.type)
@@ -225,12 +242,17 @@ namespace Pyrrho.Level2
             return rt;
         }
     }
+    /// <summary>
+    /// An improved version of Delete: to delete a record in a base table
+    /// </summary>
     internal class Delete1 : Delete
     {
         /// <summary>
         /// Constructor: a new Delete request from the engine
         /// </summary>
-        /// <param name="rc">The defining position of the record</param>
+        /// <param name="rw">The TableRow to delete</param>
+        /// <param name="pp">The transaction position of this Physical</param>
+        /// <param name="cx">The Context</param>
         public Delete1(TableRow rw, long pp, Context cx)
             :this(Type.Delete1, rw, pp, cx)
         { }
@@ -243,8 +265,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: a new Delete request from the buffer
         /// </summary>
-        /// <param name="bp">the buffer</param>
-        /// <param name="pos">a defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
 		public Delete1(Reader rdr) : base(Type.Delete1, rdr) { }
         protected Delete1(Type t,Reader rdr) : base(t, rdr) { }
         protected Delete1(Delete1 x, Writer wr) : base(x, wr)
@@ -259,7 +280,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise the Delete to the PhysBase
         /// </summary>
-        /// <param name="r">Reclocation of position information</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
         {
             wr.PutLong(tabledefpos);
@@ -268,12 +289,17 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise the Delete from the buffer
         /// </summary>
-        /// <param name="buf">The buffer</param>
+        /// <param name="rdr">The Reader for the file</param>
         public override void Deserialise(Reader rdr)
         {
             tabledefpos = rdr.GetLong();
             base.Deserialise(rdr);
         }
+        /// <summary>
+        /// Update the Database to include this Physical
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns>The new state of the base table</returns>
         internal override DBObject? Install(Context cx)
         {
             Table? r = null;

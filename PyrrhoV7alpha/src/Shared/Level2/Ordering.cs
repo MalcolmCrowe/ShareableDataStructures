@@ -46,7 +46,8 @@ namespace Pyrrho.Level2
         /// <param name="tp">The type being ordered</param>
         /// <param name="fn">The ordering function</param>
         /// <param name="fl">The ordering flags</param>
-        /// <param name="db">The local database</param>
+        /// <param name="pp">The transaction's position for this Physical</param>
+        /// <param name="cx">The Context</param>
         public Ordering(Domain tp, long fn, OrderCategory fl, long pp, Context cx)
             : base(Type.Ordering,pp,cx,"",Grant.AllPrivileges)
         {
@@ -58,11 +59,15 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: an Ordering definition from the buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
         public Ordering(Reader rdr)
             : base(Type.Ordering, rdr)
         { }
+        /// <summary>
+        /// Update the internal fields when serialising to the file
+        /// </summary>
+        /// <param name="x">The Transaction version of this Physical</param>
+        /// <param name="wr">The Writer for the file</param>
         protected Ordering(Ordering x, Writer wr) : base(x, wr)
         {
             domain = (Domain)x.domain.Relocate(wr.cx);
@@ -77,7 +82,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Relocation information for positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
         {
             wr.PutLong(wr.cx.db.Find(domain)?.defpos??throw new PEException("PE48800"));
@@ -89,7 +94,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr)
         {
             domdefpos = rdr.GetLong();
@@ -98,6 +103,16 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             rdr.Setup(this);
         }
+        /// <summary>
+        /// At the validation point of the Transaction, we check this against all
+        /// Physicals committed to the Database since our transaction start.
+        /// Watch out for and return an exception 
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A Physical to check</param>
+        /// <param name="ct">The Physical describing the Transaction</param>
+        /// <returns>An exception if reported</returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
@@ -125,6 +140,11 @@ namespace Pyrrho.Level2
             return "Ordering for " + domain.name +
                 flags + Pos(funcdefpos);
         }
+        /// <summary>
+        /// Update the Database or Transaction with the new information
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns>The updated Domain (may be a Table/RowSet/Type etc)</returns>
         internal override DBObject? Install(Context cx)
         {
             var dm = domain 

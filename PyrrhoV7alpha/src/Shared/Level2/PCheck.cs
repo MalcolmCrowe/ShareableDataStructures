@@ -1,7 +1,3 @@
-using System;
-using System.Runtime.Intrinsics.Arm;
-using System.Security.AccessControl;
-using System.Xml;
 using Pyrrho.Common;
 using Pyrrho.Level3;
 using Pyrrho.Level4;
@@ -38,9 +34,11 @@ namespace Pyrrho.Level2
         /// </summary>
         /// <param name="ob">The object to which the check applies</param>
         /// <param name="nm">The name of the constraint</param>
+        /// <param name="se">The Check object </param>
         /// <param name="cs">The constraint as a string</param>
         /// <param name="nst">Start of framing executables</param>
-        /// <param name="db">The local database</param>
+        /// <param name="pp">The transaction's position for this Physical</param>
+        /// <param name="cx">The Context</param>
         public PCheck(DBObject ob, string nm, QlValue se, string cs, long nst, long pp, Context cx)
             : this(Type.PCheck, ob, nm, se, cs, nst, pp, cx) { }
         protected PCheck(Type tp, DBObject ob, string nm, QlValue se, string cs, long nst,
@@ -54,8 +52,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: A new check constraint from the buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for this file</param>
 		public PCheck(Reader rdr) : base (Type.PCheck,rdr)
 		{}
         protected PCheck(PCheck x, Writer wr) : base(x, wr)
@@ -81,7 +78,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Relocation information for positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
 		{
             wr.PutLong(ckobjdefpos);
@@ -92,7 +89,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr)
 		{
 			ckobjdefpos = rdr.GetLong();
@@ -101,6 +98,11 @@ namespace Pyrrho.Level2
             check = rdr.GetString();
 			base.Deserialise(rdr);
         }
+        /// <summary>
+        /// We are a subclass of Compiled: our source code is compiled/recompiled
+        /// OnLoad and on Install.
+        /// </summary>
+        /// <param name="rdr">The Reader for the file</param>
         internal override void OnLoad(Reader rdr)
         {
             if (check != "" && check is not null)
@@ -113,6 +115,16 @@ namespace Pyrrho.Level2
                 framing = new Framing(psr.cx,nst);
             }
         }
+        /// <summary>
+        /// At the validation stage for Transaction Commit, this Physical is checked
+        /// against all Physicals committed to the Database since our transaction started.
+        /// We report an exception if we find a conflict.
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A Physical to check</param>
+        /// <param name="ct">The Physical describing the Transaction</param>
+        /// <returns></returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
@@ -137,6 +149,11 @@ namespace Pyrrho.Level2
             }
             return base.Conflicts(db, cx, that, ct);
         }
+        /// <summary>
+        /// Update the Database to include this Check
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns>The new object that the Check is for</returns>
         internal override DBObject? Install(Context cx)
         {
             var ro = cx.db.role;
@@ -153,6 +170,12 @@ namespace Pyrrho.Level2
             cx.Install(ck);
             return ob;
         }
+        /// <summary>
+        /// Update the ongoing Transaction on Commit
+        /// </summary>
+        /// <param name="wr">The Writer for the file</param>
+        /// <param name="t">The Transaction</param>
+        /// <returns>The modified Transaction object and modified this</returns>
         public override (Transaction?,Physical) Commit(Writer wr, Transaction? t)
         {
             var (tr,ph) = base.Commit(wr, t);
@@ -174,12 +197,14 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: A new check constraint from the Parser
         /// </summary>
-        /// <param name="dm">The object to which the check applies</param>
+        /// <param name="ob">The object to which the check applies</param>
         /// <param name="so">The subobject to which the check applies</param>
         /// <param name="nm">The name of the constraint</param>
+        /// <param name="se">The Check object</param>
         /// <param name="cs">The constraint as a string</param>
         /// <param name="nst">The first possible framing object</param>
-        /// <param name="pb">The local database</param>
+        /// <param name="pp">The transaction's position for this Physical</param>
+        /// <param name="cx">The Context</param>
         public PCheck2(DBObject ob, DBObject so, string nm, QlValue se, string cs, long nst, long pp, 
             Context cx)
             : base(Type.PCheck2,ob,nm,se,cs,nst,pp,cx)
@@ -189,8 +214,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: A new check constraint from the buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
 		public PCheck2(Reader rdr) : base(rdr)
 		{}
         protected PCheck2(PCheck2 p, Writer wr) : base(p, wr) 
@@ -212,7 +236,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhysBase
         /// </summary>
-        /// <param name="r">Relocation information for positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr)
 		{
 			subobjdefpos = wr.cx.Fix(subobjdefpos);
@@ -222,7 +246,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Deserialise this Physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr)
 		{
 			subobjdefpos = rdr.GetLong();
@@ -232,10 +256,8 @@ namespace Pyrrho.Level2
         /// Looks the same as PCheck::Install but gets a different constructor for CheckFields
         /// and calls a different Add !
         /// </summary>
-        /// <param name="db"></param>
-        /// <param name="ro"></param>
-        /// <param name="p"></param>
-        /// <returns></returns>
+        /// <param name="cx">The Context</param>
+        /// <returns>The DBObject with the new Check constraint</returns>
         internal override DBObject? Install(Context cx)
         {
             var ro = cx.role;
@@ -247,7 +269,6 @@ namespace Pyrrho.Level2
             cx.Install(ck);
             var nc = co.Add(ck, cx.db);
             cx.Install(nc);
-            //        cx.Add(ck.framing);
             Domain dm = ((co is TableColumn tc) ? cx.db.objects[tc.tabledefpos] as Domain :
     (co is Table tb) ? tb : co as Domain) ?? Domain.Null;
             ck = (Check)ck.Apply(cx, dm);

@@ -14,7 +14,7 @@ namespace Pyrrho.Level2
 {
 	/// <summary>
 	/// Modify is used for changes to procs, methods, functions, and views.
-    /// Extend this if the syntax ever allows ALTER for triggers, views, checks, or indexes (!)
+    /// Extend this if the syntax ever allows ALTER for triggers, checks, or indexes (!)
 	/// </summary>
 	internal class Modify : Compiled
 	{
@@ -39,10 +39,12 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: A Modify request from the parser
         /// </summary>
-        /// <param name="nm">The (new) name of the routine</param>
         /// <param name="dp">The defining position of the routine</param>
-        /// <param name="pc">The (new) parameters and body of the routine</param>
-        /// <param name="pb">The local database</param>
+        /// <param name="me">The Procedure object</param>
+        /// <param name="sce">The source code for the body (as an Ident)</param>
+        /// <param name="nst">The Framing limit</param>
+        /// <param name="pp">The transaction position of this Physical</param>
+        /// <param name="cx">The Context</param>
         public Modify(long dp, Procedure me, Ident sce, long nst, long pp, Context cx)
             : base(Type.Modify, pp, _Pre(cx), me.NameFor(cx), ((Method)me).udType.defpos,
                   me.domain, nst)
@@ -66,8 +68,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Constructor: A Modify request from the buffer
         /// </summary>
-        /// <param name="bp">The buffer</param>
-        /// <param name="pos">The defining position</param>
+        /// <param name="rdr">The Reader for the file</param>
 		public Modify(Reader rdr) : base(Type.Modify,rdr) {}
         protected Modify(Modify x, Writer wr) : base(x, wr)
         {
@@ -84,7 +85,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Serialise this Physical to the PhyBase
         /// </summary>
-        /// <param name="r">Relocation information for the positions</param>
+        /// <param name="wr">The Writer for the file</param>
         public override void Serialise(Writer wr) 
 		{
             if (source == null)
@@ -99,7 +100,7 @@ namespace Pyrrho.Level2
         /// <summary>
         /// Desrialise this physical from the buffer
         /// </summary>
-        /// <param name="buf">the buffer</param>
+        /// <param name="rdr">the Reader for the file</param>
         public override void Deserialise(Reader rdr)
 		{
 			modifydefpos = rdr.GetLong();
@@ -107,6 +108,11 @@ namespace Pyrrho.Level2
 			source = new Ident(rdr.GetString(), ppos + 1);
 			base.Deserialise(rdr);
 		}
+        /// <summary>
+        /// This is a subclass of the Compiled class.
+        /// It compiles the procedure body on Load and on Install
+        /// </summary>
+        /// <param name="rdr">The Reader for the file</param>
         internal override void OnLoad(Reader rdr)
         {
             if (rdr.context.db.objects[modifydefpos] is not Method pr || source==null)
@@ -149,6 +155,16 @@ namespace Pyrrho.Level2
             pr += (DBObject._Framing,framing);
             rdr.context.Install(pr);
         }
+        /// <summary>
+        /// At the Validation stage of Transaction Commit we fetch from the Database
+        /// all Physicals that have been committed (by other threads) since our transaction start.
+        /// Each is checked for conflict against this, and an exception reported if so.
+        /// </summary>
+        /// <param name="db">The Database</param>
+        /// <param name="cx">The Context</param>
+        /// <param name="that">A Physical to check</param>
+        /// <param name="ct">The Transaction Physical</param>
+        /// <returns>An exception or null</returns>
         public override DBException? Conflicts(Database db, Context cx, Physical that, PTransaction ct)
         {
             switch(that.type)
@@ -182,6 +198,11 @@ namespace Pyrrho.Level2
 		{
             return "Modify " + name + "["+ modifydefpos+"] to " + source?.ident;
 		}
+        /// <summary>
+        /// Update the Database to include this Physical with its Framing
+        /// </summary>
+        /// <param name="cx">The Context</param>
+        /// <returns>The updated Procedure object</returns>
         internal override DBObject? Install(Context cx)
         {
             if (cx.db.role is not Role ro ||cx.db.objects[modifydefpos] is not Method pr)
