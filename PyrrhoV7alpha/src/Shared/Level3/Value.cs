@@ -12179,6 +12179,10 @@ cx.obs[high] is not QlValue hi)
             : this(dp, BTree<long,object>.Empty + (_Domain,tg) + (RefersTo, v.defpos)) 
         { }
         protected GqlReference(long dp, BTree<long, object> m) : base(dp, m) { }
+        internal override DBObject New(long dp,BTree<long, object> m)
+        {
+            return new GqlReference(dp,m);
+        }
         public static GqlReference operator+ (GqlReference r,(long,object)x)
         {
             return new GqlReference(r.defpos, r.mem + x);
