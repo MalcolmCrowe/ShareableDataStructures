@@ -77,7 +77,7 @@ namespace Pyrrho.Level3
         /// The EFFECT OF THESE CONTORTIONS ARE
         /// (1) uids of framing objects of any sort of committed Database.objects
         /// are never lexical or heap uids.
-        /// (2) Show prepared statements the framing objects always have heap uids
+        /// (2) prepared statements the framing objects always have heap uids
         /// (prepared statements are never committed)
         /// (3) compiled objects referenced in Views in use (in Contexts) are always 
         /// on the heap, except for the domain uid for the View

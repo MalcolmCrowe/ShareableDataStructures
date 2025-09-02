@@ -160,7 +160,7 @@ namespace Pyrrho.Level3
             NodeSchema = new NodeType(Qlx.SCHEMA);
             EdgeType = new EdgeType(Qlx.EDGETYPE);
             EdgeSchema = new EdgeType(Qlx.SCHEMA);
-            PathType = new StandardDataType(Qlx.PATH,OrderCategory.Primitive,NodeType);
+            PathType = new StandardDataType(Qlx.PATH);
             LabelType = new StandardDataType(Qlx.LABEL); // opaque
             Connector = new StandardDataType(Qlx.CONNECTING); // opaque
             Vector = new StandardDataType(Qlx.VECTOR); // opaque
@@ -206,6 +206,7 @@ namespace Pyrrho.Level3
         public TGParam.Type mod => (TGParam.Type)(mem[SqlFunction.Mod] ?? TGParam.Type.None);
         public CTree<Domain, bool> unionOf =>
             (CTree<Domain, bool>?)mem[UnionOf] ?? CTree<Domain, bool>.Empty;
+        public long target => (long)(mem[RowSet.Target] ?? -1L);
         internal Domain(Context cx, CTree<long, Domain> rs, CList<long> rt, BTree<long, ObInfo> ii)
             : this(-1L, _Mem(cx, Qlx.TABLE, rs, rt, rt.Length) + (Infos, ii)
                   + (ObInfo._Names, ii[cx.role.defpos]?.names??Names.Empty)
@@ -800,6 +801,10 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                     sb.Append(cm); cm = ","; sb.Append(b.key());
                 }
                 sb.Append(')');
+            }
+            if (target is long ct && ct>0L)
+            {
+                sb.Append('[');sb.Append(Uid(ct));sb.Append(']');
             }
             return sb.ToString();
         }
@@ -3466,7 +3471,7 @@ ColsFrom(Context cx, long dp, CList<long> rt, CTree<long, Domain> rs, CList<long
                             if (f.Key == "$check")
                             {
                                 vs += (LastChange, new TPosition((long)f.Value));
-                                vs += (Defpos, new TPosition((long)(d["$pos"]??0L)));
+                                vs += (Defpos, new TPosition((long)(d["$pos"]??0L),defpos));
                             }
                             if (f.Key == "$classification")
                                 vs += (Classification,

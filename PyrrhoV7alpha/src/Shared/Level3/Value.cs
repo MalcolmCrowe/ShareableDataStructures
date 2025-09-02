@@ -381,7 +381,10 @@ namespace Pyrrho.Level3
                         && sv[defpos] is TypedValue lv && lv != TNull.Value)
                             return lv;
             if (name != null && cx.names[name].Item2 is long p)
-                return cx.values[p]??TNull.Value;
+            {
+                Console.WriteLine("Named eval for " + name);
+                return cx.values[p] ?? TNull.Value;
+            }
             return _Default();
         }
         internal override void Set(Context cx, TypedValue v)
@@ -3954,7 +3957,8 @@ namespace Pyrrho.Level3
         static BTree<long, object> _Mem(Ident ic, Context cx, RowSet fm)
         {
             var tg = cx._Dom(fm.target);
-            var r = fm.mem + (ObInfo.Name, ic.ident) + (_From, fm.defpos) + (_Depth, fm.depth + 1);
+            var r = fm.mem + (_Ident, ic.ident) + (ObInfo.Name, ic.ident) 
+                + (_From, fm.defpos) + (_Depth, fm.depth + 1);
             var ids = Names.Empty;
             var on = cx.names;
             for (var b = tg?.rowType.First(); b is not null; b = b.Next())
@@ -4027,7 +4031,7 @@ namespace Pyrrho.Level3
         static BTree<long,object> _Mem(Ident ic, Context cx, RowSet fm)
         {
             var tg = cx._Dom(fm.target);
-            var r = fm.mem + (_Depth,fm.depth+1)
+            var r = fm.mem + (_Depth,fm.depth+1) + (_Ident,ic.ident)
                    + (ObInfo.Name, ic.ident) + (_From, fm.defpos);
             var ids = Names.Empty;
             var on = cx.names;
@@ -6516,9 +6520,12 @@ namespace Pyrrho.Level3
             var p = procdefpos;
             if (cx.db.objects[p] is not Method me)
             {
-                if (name == "SPECIFICTYPE" && v.NameFor(cx) is string n 
+                if (name == "SPECIFICTYPE" && v.NameFor(cx) is string n
                     && cx.binding[cx.names[n].Item2] is TNode vn)
+                {
+                    Console.WriteLine("Run-time lookup of method " + n);
                     return vn.tableRow.SpecificType(cx);
+                }
                 throw new DBException("42108", Uid(defpos));
             }
             var oc = cx.values;
@@ -7264,6 +7271,7 @@ namespace Pyrrho.Level3
                 case Qlx.CURRENT_TIMESTAMP: return Domain.Timestamp;
                 case Qlx.DESCRIBE: return Domain.Char;
                 case Qlx.ELEMENT: return val?.domain.elType ?? Domain.Content;
+                case Qlx.END: return val?.domain.elType ?? Domain.Content;
                 case Qlx.EXP: return Domain.Real;
                 case Qlx.EVERY: return Domain.Bool;
                 case Qlx.EXTRACT: return Domain.Int;
@@ -7289,6 +7297,7 @@ namespace Pyrrho.Level3
                 case Qlx.SET: return Domain.Collection;
                 case Qlx.SPECIFICTYPE: return Domain.Char;
                 case Qlx.SQRT: return Domain.Real;
+                case Qlx.START: return val?.domain.elType ?? Domain.Content;
                 case Qlx.STDDEV_POP: return Domain.Real;
                 case Qlx.STDDEV_SAMP: return Domain.Real;
                 case Qlx.SUBSTRING: return Domain.Char;
@@ -7499,7 +7508,7 @@ namespace Pyrrho.Level3
                         var vl = (QlValue?)cx.obs[val] ?? throw new PEException("PE1960");
                         v = vl.Eval(cx) ?? TNull.Value;
                         if (v == TNull.Value)
-                            return dv;
+                            return new TInt(0);
                         return vl.domain.kind switch
                         {
                             Qlx.MULTISET => new TInt(((TMultiset)v).Count),
@@ -7614,6 +7623,13 @@ namespace Pyrrho.Level3
                         if (a is not TNode n)
                             return TNull.Value;
                         return new TInt(n.tableRow.defpos);
+                    }
+                case Qlx.END:
+                    {
+                        TypedValue? a = cx.obs[val]?.Eval(cx);
+                        if (a is TArray n)
+                            return n.array.Last()?.value()??TNull.Value;
+                        return TNull.Value;
                     }
                 case Qlx.EXP:
                     {
@@ -7897,6 +7913,13 @@ namespace Pyrrho.Level3
                         if (v == TNull.Value)
                             return dv;
                         return new TReal(Math.Sqrt(v.ToDouble()));
+                    }
+                case Qlx.START:
+                    {
+                        TypedValue? a = cx.obs[val]?.Eval(cx);
+                        if (a is TArray n)
+                            return n.array.First()?.value() ?? TNull.Value;
+                        return TNull.Value;
                     }
                 case Qlx.STDDEV_POP:
                     {
@@ -11574,6 +11597,7 @@ cx.obs[high] is not QlValue hi)
             PreCon = -469, // TypedValue
             State = -245;       // CTree<long,TGParam> tgs in this GqlNode  (always empty for GraphInsertStatement)
         internal GqlNode? before => (GqlNode?)mem[Before];
+        internal GqlNode? after => (GqlNode?)mem[After];
         internal virtual long RefNode => defpos;
         internal bool delimit => (bool?)mem[Delimit]??false;
         public CTree<string, QlValue> docValue => (CTree<string,QlValue>)(mem[DocValue]??CTree<string,QlValue>.Empty);
@@ -11589,7 +11613,7 @@ cx.obs[high] is not QlValue hi)
             (BTree<long,Names>)(mem[ObInfo.Defs] ?? BTree<long,Names>.Empty);
         public GqlNode(Ident nm, BList<Ident> ch, Context cx, long i, CTree<string, QlValue> d,
             CTree<long, TGParam> tgs, Domain? dm = null, BTree<long, object>? m = null)
-           : this(cx, nm, ch, i, d, tgs, _Type(dm,cx,d,m), m)
+           : this(cx, nm, ch, i, d, Fix(nm,tgs), _Type(dm,cx,d,m), m)
         {  }
         GqlNode(Context cx, Ident nm, BList<Ident> ch, long i, CTree<string, QlValue> d,
             CTree<long, TGParam> tgs, Domain dm, BTree<long, object>? m = null)
@@ -11603,8 +11627,15 @@ cx.obs[high] is not QlValue hi)
         }
         protected GqlNode(long dp, BTree<long, object> m) : base(dp, m)
         { }
-        static BTree<long, object> _Mem(Ident nm, long i, CTree<string, QlValue> d, CTree<long, TGParam> tgs,
-            Domain dm, Context cx, BTree<long, object>? m)
+        static CTree<long,TGParam> Fix(Ident nm,CTree<long,TGParam>tgs)
+        {
+            for (var b = tgs.First(); b != null; b = b.Next())
+                if (b.value() is TGParam t && t.value == nm.ident)
+                    tgs += (nm.uid, new TGParam(nm.uid, nm.ident,t.dataType, t.type, t.from));
+            return tgs;
+        }
+        static BTree<long, object> _Mem(Ident nm, long i, CTree<string, QlValue> d, 
+            CTree<long, TGParam> tgs, Domain dm, Context cx, BTree<long, object>? m)
         {
             m ??= BTree<long, object>.Empty;
             if (i > 0)
@@ -11621,6 +11652,7 @@ cx.obs[high] is not QlValue hi)
                 if (cx.parse.HasFlag(ExecuteStatus.Compile) || (b.key() >= Transaction.Analysing && b.key() < Transaction.Executables))
                 {
                     if (b.value() is TGParam tg && cx.names[tg.value].Item2 is long p)
+   //                     && !(cx.obs[p] is FormalParameter)) // there may be others to avoid
                     {
                         tg = new TGParam(p,tg.value,tg.dataType,tg.type,tg.from);
                         ng += (p, tg);
@@ -11655,8 +11687,8 @@ cx.obs[high] is not QlValue hi)
             if (dm?.kind == Qlx.AMPERSAND)
                 return dm;
             Domain r = (m[_Label] as Domain)?.ForExtra(cx, m + (DocValue, d)) ?? Domain.NodeType;
-            if (m[Before] is GqlEdge be && be.postCon is TConnector pc)
-                r ??= cx.obs[pc.ct] as Domain??Domain.NodeType;
+            if (r.defpos<0 && m[Before] is GqlNode be && be.postCon is TConnector pc)
+                r = cx._Ob(pc.ct) as Domain??Domain.NodeType;
             return r;
         }
         internal override string NameFor(Context cx)
@@ -11983,9 +12015,10 @@ cx.obs[high] is not QlValue hi)
                     return false;
             } else
             {
-                cx.ParsingMatch = true; // yuk prevent creation of nodetype binding variable
+                var opg = cx.ParsingGQL;
+                cx.ParsingGQL = 2; // yuk prevent creation of nodetype binding variable
                 var ts = label.OnInsert(cx, defpos);
-                cx.ParsingMatch = false;
+                cx.ParsingGQL = opg;
                 for (var b=ts.First();b!=null;b=b.Next())
                     if (b.key().defpos==Domain.NodeType.defpos || b.key().defpos==Domain.EdgeType.defpos 
                         ||(cx.obs[ms.bindings] as RowSet)?.domain.representation.Contains(b.key().defpos)!=false)
@@ -12026,10 +12059,10 @@ cx.obs[high] is not QlValue hi)
                     }
                 }
             var ob = cx.names;
-            if (search != CTree<long, bool>.Empty)
+  /*          if (search != CTree<long, bool>.Empty)
                 for (var b = n.dataType.infos[cx.role.defpos]?.names.First(); b != null; b = b.Next())
                     if (b.value().Item2 is long p)
-                        cx.names += (b.key(), (b.value().Item1, p));
+                        cx.names += (b.key(), (b.value().Item1, p)); */
             for (var b = search.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is QlValue se)
                 {
@@ -12045,6 +12078,7 @@ cx.obs[high] is not QlValue hi)
             var r = CTree<long, TypedValue>.Empty;
             if (nt.infos[cx.role.defpos] is not ObInfo ni)
                 return r;
+            // this is used only in Schema queries
             for (var b = docValue?.First(); b != null; b = b.Next())
                 if (cx._Ob(ni.names[b.key()].Item2) is DBObject ob && b.value().Eval(cx) is TypedValue v)
                     r += (ob.defpos, v);
@@ -12063,6 +12097,19 @@ cx.obs[high] is not QlValue hi)
                     tb = (NodeType?)cx.Add(pc);
                 }
             return tb;
+        }
+        protected override BTree<long, object> _Fix(Context cx, BTree<long, object> m)
+        {
+            var r = base._Fix(cx, m);
+            var nd = CTree<string,QlValue>.Empty;
+            for (var b = docValue.First(); b != null; b = b.Next())
+                nd += (b.key(), (QlValue)b.value().Fix(cx));
+            r += (DocValue, nd);
+            var ns = CTree<long, TGParam>.Empty;
+            for (var b = state.First(); b != null; b = b.Next())
+                ns += (cx.Fix(b.key()), b.value());
+            r += (State, ns);
+            return r;
         }
         public override string ToString()
         {
@@ -12090,6 +12137,8 @@ cx.obs[high] is not QlValue hi)
             }
             if (preCon != TNull.Value) { sb.Append(" pre "); sb.Append(preCon); }
             if (postCon != TNull.Value) { sb.Append(" post "); sb.Append(postCon); }
+            if (before != null) { sb.Append(" before "); sb.Append(Uid(before.defpos)); }
+            if (after != null) { sb.Append(" after "); sb.Append(Uid(after.defpos)); }
             cm = " ";
             for (var b = state.First(); b != null; b = b.Next())
                 if (b.key() < 0 && b.value() is TGParam ts)
@@ -12126,9 +12175,8 @@ cx.obs[high] is not QlValue hi)
         {
             cx.names += (n.name ?? throw new PEException("PE40431"), (ap,n.defpos));
         }
-        internal GqlReference(long dp, NodeType nt)
-            : this(dp, nt.mem - PreCon - PostCon - Before - After 
-                  + (RefersTo, nt.defpos) + (_Domain, nt)) 
+        internal GqlReference(long dp, QlValue v, NodeType tg)
+            : this(dp, BTree<long,object>.Empty + (_Domain,tg) + (RefersTo, v.defpos)) 
         { }
         protected GqlReference(long dp, BTree<long, object> m) : base(dp, m) { }
         public static GqlReference operator+ (GqlReference r,(long,object)x)
@@ -12193,15 +12241,15 @@ cx.obs[high] is not QlValue hi)
             if (dm is null && tgs[-(long)Qlx.TYPE] is TGParam tg
                && cx.names[tg.value].Item2 is long p && p < Transaction.Analysing && cx.bindings.Contains(p))
                 cx.names += (tg.value, (nm.lp,p));
-            if (cx.ParsingMatch && m[Before] is GqlNode bn && bn.domain.defpos<0
+            if (cx.ParsingGQL==2 && m[Before] is GqlNode bn && bn.domain.defpos<0
                 && dm is EdgeType et) //we are in a MatchExp and should constrain b
             {
                 var u = CTree<Domain,bool>.Empty;
                 Domain bd = bn.domain;
                 for (var b = (et.metadata[Qlx.EDGETYPE]as TSet)?.First();b!=null;b=b.Next())
                     if (b.Value() is TConnector tc && m[PreCon] is TConnector ec 
-                        && cx.db.objects[tc.ct] is NodeType nt && nt.defpos>0L
-                        && cx.db.objects[ec.ct] is NodeType tt && nt.EqualOrStrongSubtypeOf(et))
+                        && cx.db.objects[tc.ct] is NodeType nt && nt.defpos>0 
+                        && cx.db.objects[ec.ct] is NodeType tt)
                     {
                         if (tc.cn != "" && ec.cn != "" && tc.cn != ec.cn) continue;
                         if ((ec.q == Qlx.ARROWBASE || ec.q == Qlx.FROM) && tc.q != Qlx.FROM) continue;
@@ -12226,7 +12274,7 @@ cx.obs[high] is not QlValue hi)
             var po = (TypedValue)(m?[PostCon] ?? TNull.Value);
             var bf = (GqlNode?)m?[Before];
             var af = (GqlNode?)m?[After];
-            if (cx.ParsingMatch && dm is null) // Wildcard Edge in MatchExp
+            if (cx.ParsingGQL == 2 && dm is null) // Wildcard Edge in MatchExp
                 return Domain.EdgeType;
             if (dm is not EdgeType et)
                 et = (EdgeType)Domain.EdgeType.Relocate(cx.GetUid());
@@ -12471,8 +12519,11 @@ cx.obs[high] is not QlValue hi)
         internal CList<long> pattern => (CList<long>)(mem[Pattern]??CList<long>.Empty);
         internal (int, int) quantifier => ((int, int))(mem[MatchQuantifier]??(1, 1));
         internal Qlx inclusionMode => (Qlx)(mem[GqlMatchAlt.InclusionMode] ?? Qlx.ANY); // SHORTEST/LONGEST
-        public GqlPath(long lp,Context cx, CList<long> p, (int, int) lh, long i, long a)
-            : base(lp,_Mem(cx,p)+(Pattern,p)+(MatchQuantifier, lh)+(GqlMatchAlt.InclusionMode,cx.inclusionMode))
+        public GqlPath(Ident nm, Context cx)
+            : base(nm.uid,BTree<long,object>.Empty+(ObInfo.Name,nm.ident)+(_Domain,Domain.PathType))
+        { }
+        public GqlPath(long lp, Context cx, CList<long> p, (int, int) lh, long i, long a)
+    : base(lp, _Mem(cx, p) + (Pattern, p) + (MatchQuantifier, lh) + (GqlMatchAlt.InclusionMode, cx.inclusionMode))
         { }
         protected GqlPath(long dp, BTree<long, object> m) : base(dp, m)
         { }

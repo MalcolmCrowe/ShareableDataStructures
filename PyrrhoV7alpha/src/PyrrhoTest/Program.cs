@@ -27,7 +27,7 @@ namespace Test
         {
             try
             {
-                Console.WriteLine("09 July 2025 Repeatable tests");
+                Console.WriteLine("02 Sept 2025 Repeatable tests");
                 if (args.Length == 0)
                 {
                     Console.WriteLine("Tests 22,23,24 need Server with +s");
@@ -1252,8 +1252,8 @@ namespace Test
                 "(Joe:Customer {Name:'Joe Edwards', Address:'10 Station Rd.'}),"+
                 "(Joe)-[:Ordered {\"Date\":date'2002-11-22'} ]->(:\"Order\"{id:201})");
             Act(358, "MATCH (O:\"Order\"{id:201})"+
-                "begin MATCH(X: Product{ spec: '16/8x4'}) CREATE(O)-[:Item{Qty:5}]->(X);"+
-                "MATCH(X: Product{ spec: '18cm'}) CREATE(O)-[:Item{Qty:3}]->(X)end");
+                "{ MATCH(X: Product{ spec: '16/8x4'}) CREATE(O)-[:Item{Qty:5}]->(X);"+
+                "MATCH(X: Product{ spec: '18cm'}) CREATE(O)-[:Item{Qty:3}]->(X) }");
             CheckResults(25, 4, "match ()-[{Qty:QT}]->(:ST{spec:SA}) where QT>4",
                 "[{ST:'WOODSCREW',QT:5,SA:'16/8x4'}]");
             Act(359, "CREATE (p1:Person {name:'Fred Smith'})<-[:Child]-(p2:Person {name:'Pete Smith'})," +
@@ -1277,7 +1277,7 @@ namespace Test
             Act(364, "MATCH (ee:Person {name:'Emil'}) CREATE (d:Dog {name:'Rex'}),"
                 +"(ee)-[:owns]->(d),(d)-[:owned_by]->(ee)");
             Act(365, "MATCH (dg:Dog {name: 'Rex'})-[ro:owned_by]->() DELETE ro");
-            Act(366, "MATCH (ka{name:'Karin'}),()-[ow:owns ]->({name:'Rex'}) SET ow.\"FROM\"=ka");
+            Act(366, "MATCH (ka{name:'Karin'}),()-[ow:owns ]->({name:'Rex'}) SET ow.\"FROM1\"=ka");
             CheckResults(25, 10, "select count(*) from owned_by", "[{COUNT:0}]");
             CheckResults(25, 11, "MATCH (n)-[:owns]->(dg) RETURN n.name,dg.name as dog", 
                 "[{NAME:'Karin',DOG:'Rex'}]");

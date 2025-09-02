@@ -1,5 +1,3 @@
-using System.Net.Http.Headers;
-using System.Security.Cryptography;
 using System.Text;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
@@ -364,10 +362,14 @@ namespace Pyrrho.Common
     // shareable
     internal class TPosition : TInt
     {
-        internal TPosition(long p) : base(Domain.Position, p) { }
+        internal readonly long tabledefpos;
+        internal TPosition(long p, long type=-1L) : base(Domain.Position, p)
+        {
+            tabledefpos = type;
+         }
         internal override TypedValue Fix(Context cx)
         {
-            return new TPosition(cx.uids[value]??value);
+            return new TPosition(cx.uids[value]??value,cx.Fix(tabledefpos));
         }
         public override string ToString()
         {
@@ -377,9 +379,11 @@ namespace Pyrrho.Common
                     return (s.Length > 5) ? (s[0..3]+"..") : s;
                 return "";
             }
-            return DBObject.Uid(value);
+            if (tabledefpos<0)
+                return DBObject.Uid(value);
+            return DBObject.Uid(value) + '[' + DBObject.Uid(tabledefpos) + ']';
         }
-    }
+    } 
     // shareable
     internal class TInteger : TInt
     {
@@ -978,7 +982,7 @@ namespace Pyrrho.Common
     {
         internal readonly CTree<long,TypedValue> array;
         internal TArray(Domain dt)
-            : base(dt)
+            : base((dt.elType is Domain)?dt:new Domain(-1L,Qlx.ARRAY,dt))
         {
             array = CTree<long, TypedValue>.Empty;
         }

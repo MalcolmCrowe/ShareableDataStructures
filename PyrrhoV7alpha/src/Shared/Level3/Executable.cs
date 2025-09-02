@@ -1147,6 +1147,7 @@ namespace Pyrrho.Level3
                     && tn.dataType is Table tt && tt.names[ci.ident].Item2 is long cc
                     && tt.representation[cc] is Domain d4 && d4.Coerce(cx, tv) is TypedValue v4)
                 {
+                    Console.WriteLine("Review at run time for " + id.ident + '.' + Uid(id.uid));
                     cx.Add(new Update(tn.tableRow, tt.defpos, new CTree<long, TypedValue>(cc, v4),
                         cx.db.nextPos, cx));
                     cx.val = v4;
@@ -4243,7 +4244,7 @@ namespace Pyrrho.Level3
         /// <exception cref="DBException"></exception>
         public override Context _Obey(Context cx)
         {
-            var ob = cx.names;
+    //        var ob = cx.names;
             for (var b = graphExps.First(); b != null; b = b.Next())
                 if (b.value() is CList<GqlNode> ge)
                 {
@@ -4276,9 +4277,9 @@ namespace Pyrrho.Level3
                                 {
                                     var vs = te.tableRow.vals;
                                     if (er.preCon is TConnector cr && bn != null)
-                                        vs += (cr.cp, new TPosition(bn.defpos));
+                                        vs += (cr.cp, new TPosition(bn.defpos, cr.ct));
                                     if (er.postCon is TConnector co)
-                                        vs += (co.cp, new TPosition(nn.defpos));
+                                        vs += (co.cp, new TPosition(nn.defpos, co.ct));
                                     var tr = cx.db as Transaction ?? throw new PEException("PE03061");
                                     var done = false;
                                     for (var bp = tr.physicals.First(); bp != null && !done; bp = bp.Next())
@@ -4353,7 +4354,7 @@ namespace Pyrrho.Level3
             for (var c = cx.newNodes.First(); c != null; c = c.Next())
                 if (c.value() is CTree<long, bool> ln && ln.Count > 1L)
                     cx.db = JoinRecords(cx, c.key(), ln);
-            cx.names = ob;
+     //      cx.names = ob;
             return cx;
         }
         internal CTree<long,bool> GraphTypes(Context cx)
@@ -4743,14 +4744,14 @@ namespace Pyrrho.Level3
             return size>=0 && cx.obs[bindings] is BindingRowSet se && se.rows.Count >= size;
         }
         /// <summary>
-        /// We traverse the given match graphs in the order given, matching with possible database nodes as we move.
-        /// The match graphs and the set of TGParams are in this MatchStatement.
+        /// We traverse the given patterns in the order given, matching with possible database nodes as we move.
+        /// The patterns and the set of TGParams are in this MatchStatement.
         /// The database graph is in ac.db.graphs and ac.db.nodeids.
         /// The handling of a binding variable x defined within a path pattern is quite tricky: 
         /// during the path matching process x stands for a simple value 
         /// (a single node, or an expression evalated from its properties),
         /// But, as a field of the path value p, p.x is an array of the values constructed so far.
-        /// In valueType rowset, RETURN, WHERE, or the body statement of the MATCH, x will be an array
+        /// In the explicit rowset, RETURN, WHERE, or the body statement of the MATCH, x will be an array
         /// for the current binding set.
         /// Accordingly, the MatchStatement defines such x as array types, except within the body of DbNode.
         /// At the end of a pattern, in PathStep, we change the binding to contain the array values instead,
@@ -4763,14 +4764,15 @@ namespace Pyrrho.Level3
         /// <returns>the context</returns>
         public override Context _Obey(Context cx)
         {
-            cx.binding += cx.values;
+        //    cx.binding += cx.values;
             for (var b = cx.undefined.First(); b != null; b = b.Next())
                 if (cx.obs[b.key()] is SqlReview sr)
                 {
                     var ns = cx.names;
                     DBObject v = sr;
                     string? nm = null;
-                    long? t = null; 
+                    long? t = null;
+                    string warn = "";
                     for (var c = sr.chain?.First(); c != null; c = c.Next())
                         if (c.value() is Ident id && ns[id.ident].Item2 is long cp
                             && cx._Ob(cp) is DBObject nv)
@@ -4778,8 +4780,10 @@ namespace Pyrrho.Level3
                             t ??= cp;
                             v = nv;
                             nm = id.ident;
+                            warn += '.' + nm;
                             ns = nv.domain.infos[cx.role.defpos]?.names ?? Names.Empty;
                         }
+                    Console.WriteLine("Review of " + warn);
                     var tg = t ?? -1L;
                     if (v is TableColumn tc)
                         v = new SqlField(sr.defpos, nm ?? "", tc.seq, tg, tc.domain, tg);
@@ -5226,6 +5230,15 @@ namespace Pyrrho.Level3
             {
                 if (cx.binding[gr.refersTo] is TNode tr)
                     ds += (gr.refersTo, tr.tableRow);
+                else if (cx.obs[gr.refersTo] is QlValue qv && qv.Eval(cx) is TypedValue uv)
+                {
+                    if (uv is TNode ur)
+                        ds += (gr.refersTo, ur.tableRow);
+                    else if (uv is TInt ir && ir.ToLong() is long il
+                        && cx.db.objects[qv.domain.target] is Table it
+                        && it.tableRows[il] is TableRow vr)
+                        ds += (gr.refersTo, vr);
+                }
                 else if (pd is TEdge te && te.dataType is EdgeType et && cr is TConnector ec)
                     //     for (var b = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
                     for (var c = Connects(et, ec).First(); c != null; c = c.Next())
@@ -5258,7 +5271,7 @@ namespace Pyrrho.Level3
                            is TableRow tn)
                                 ds += (tn.defpos, tn);
             }
-            if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
+            else if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
                 if (pd.dataType is NodeType pg)
                 {
@@ -5270,7 +5283,7 @@ namespace Pyrrho.Level3
                             ds += (tq.defpos, tq);
                 }
             }
-            if (pd is not null && pd.dataType is NodeType pn)// && pn is not EdgeType) // an edge attached to the TNode pd
+            else if (pd is not null && pd.dataType is NodeType pn)// && pn is not EdgeType) // an edge attached to the TNode pd
             {
                 var ctr = CTree<Domain, int>.Empty;
                 var tg = truncator != CTree<long, (int, Domain)>.Empty;
@@ -5279,10 +5292,10 @@ namespace Pyrrho.Level3
                     if (cx._Ob(b.key().defpos) is NodeType ps)
                         ds = Traverse(cx, this, xn, truncator, cr, pd, ps, ctr, ds);
             }
-            else if (be.matches?.Next()?.value() is long p && cx.obs[p] is GqlEdge ed
-                && cx.binding[ed.idValue] is TRow ne && ed.preCon is TConnector pc
+            else if (be.matches?.Next()?.value() is long p && cx.obs[p] is GqlEdge ee
+                && cx.binding[ee.idValue] is TRow ne && ee.preCon is TConnector pc
                 && ne.values[pc.cp] is TPosition tp  && tp.ToLong() is long tq 
-                && FindTableRow(cx,xn,tq) is TableRow nr)
+                && FindTableRow(cx,xn,pc.ct,tq) is TableRow nr)
                 ds = new(tq, nr);
             // use Label, Label expression, xn's domain, or all node/edge types, and the properties specified
             else if (ds.Count == 0)
@@ -5294,10 +5307,17 @@ namespace Pyrrho.Level3
                 DbNode(cx, new NodeStep(be.mode, xn, df, 
                     new ExpStep(be.mode, be.matches?.Next(), be.alts, be.next, be._e)),qd);
         }
-        TableRow? FindTableRow(Context cx, GqlNode x, long p)
+        TableRow? FindTableRow(Context cx, GqlNode x, long ct, long p)
         {
+            var nt = cx.db.objects[ct] as NodeType;
             if (x.domain.defpos > 0 && cx.db.objects[x.domain.defpos] is Table xt)
+            {
+                if (nt is not null && !xt.EqualOrStrongSubtypeOf(nt))
+                    return null;
                 return xt.tableRows[p];
+            }
+            if (nt?.defpos > 0L)
+                return nt.tableRows[p];
             for (var b = cx.role.nodeTypes?.First(); b != null; b = b.Next())
                 if (cx.db.objects[b.value() ?? -1L] is Table t
                     && t.tableRows[p] is TableRow r)
@@ -5312,9 +5332,9 @@ namespace Pyrrho.Level3
         {
             return ec.q switch
             {
-                Qlx.ARROW or Qlx.RARROW => tc.q == Qlx.TO,
-                Qlx.RARROWBASE or Qlx.ARROWBASE => tc.q==Qlx.FROM,
-                Qlx.TILDE or Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE => tc.q == Qlx.WITH,
+                Qlx.ARROW or Qlx.RARROW or Qlx.TO => tc.q == Qlx.TO,
+                Qlx.RARROWBASE or Qlx.ARROWBASE or Qlx.FROM => tc.q==Qlx.FROM,
+                Qlx.TILDE or Qlx.ARROWBASETILDE or Qlx.RBRACKTILDE or Qlx.WITH => tc.q == Qlx.WITH,
                 _ => false
             };
         }
@@ -5497,7 +5517,7 @@ namespace Pyrrho.Level3
                             pa += (cx, dn);
                             cx.binding += (-1L, pa[0L]);
                         }
-                        if (!DoBindings(cx, bn.xn, dn))
+                        if (!DoBindings(cx, bn, bn.xn, dn))
                             goto another;
                         if (bn.xn is GqlReference && dn is TEdge de && de.dataType is EdgeType et
                             && bn.xn.preCon is TConnector xc)
@@ -5569,7 +5589,7 @@ namespace Pyrrho.Level3
             var fb = bp.sp.pattern.First();
             if (cx.obs[fb?.value() ?? -1] is not GqlNode xi)
                 goto backtrack;
-            if (!DoBindings(cx, xi, dn))
+            if (!DoBindings(cx, bp, xi, dn))
                 goto backtrack;
             if (!xi.CheckProps(cx, this, dn))
                 goto backtrack;
@@ -5589,7 +5609,7 @@ namespace Pyrrho.Level3
         /// <param name="cx">The context</param>
         /// <param name="xn">The GqlNode or GqlEdge or GqlPath</param>
         /// <param name="dn">The current database node (TNode or TEdge)</param>
-        bool DoBindings(Context cx, GqlNode xn, TNode dn)
+        bool DoBindings(Context cx, Step st, GqlNode xn, TNode dn)
         {
             var nd = dn._Names(cx);
             cx.values += dn.tableRow.vals;
@@ -5613,17 +5633,17 @@ namespace Pyrrho.Level3
                             && ns?[n].Item2 is long np
                             && (dn.tableRow.vals[np]??cx._Ob(np)?.Eval(cx)) is TypedValue tv)
                         {
-                            if (cx.binding[tg.uid] is TypedValue bv && bv != TNull.Value)
-                            {
-                                if (bv.CompareTo(tv) != 0)
-                                    return false;
-                            }
-                            else if (tg.type.HasFlag(TGParam.Type.Group))
+                            if (tg.type.HasFlag(TGParam.Type.Group))
                             {
                                 var ta = bi[tg.uid] as TArray ?? new TArray(tv.dataType);
                                 bi += (tg.uid, ta + (cx, ta.Length, tv));
                             }
-                            else
+                            else if (cx.binding[tg.uid] is TypedValue bv && bv != TNull.Value)
+                            {
+                                if (bv.CompareTo(tv) != 0)
+                                    return false;
+                            }
+                            else 
                                 bi += (tg.uid, tv);
                         }
                 for (var b = xn.state.First(); b != null; b = b.Next())
@@ -5655,7 +5675,7 @@ namespace Pyrrho.Level3
                                 var ta = bi[tg.uid] as TArray ?? new TArray(tv.dataType);
                                 bi += (tg.uid, ta + (cx, ta.Length, tv));
                             }
-                            else
+                            else if (cx.obs[tg.uid] is not FormalParameter)
                                 bi += (tg.uid, tv);
                         }
                     }
@@ -5716,6 +5736,7 @@ namespace Pyrrho.Level3
         public override string ToString()
         {
             var sb = new StringBuilder(base.ToString());
+            sb.Append(' '); sb.Append(domain);
             if (optional) sb.Append(" OPTIONAL");
             sb.Append(" GDefs (");
             sb.Append(gDefs);

@@ -1385,7 +1385,7 @@ namespace Pyrrho.Level5
             var nt = cx.FindNodeType(nm, dc);
             if (nt is null || nt.defpos<0)
             {
-                if (cx.ParsingMatch)
+                if (cx.ParsingGQL==2)
                     return NodeType;
                 var pt = new PNodeType(nm, NodeType, nu, -1L, cx.db.nextPos, cx);
                 nt = (NodeType)(cx.Add(pt) ?? throw new DBException("42105"));
@@ -1402,7 +1402,7 @@ namespace Pyrrho.Level5
         }
         internal static EdgeType EdgeTypeFor(Ident nm, BTree<long, object> m, Context cx, CTree<TypedValue,bool>? cs=null)
         {
-            if (cx.ParsingMatch)
+            if (cx.ParsingGQL==2)
                 return EdgeType;
             cs ??= CTree<TypedValue, bool>.Empty;
             var un = (CTree<Domain, bool>)(m[Under] ?? CTree<Domain, bool>.Empty);
@@ -1683,7 +1683,7 @@ namespace Pyrrho.Level5
                     (r, var rc) = BuildNodeTypeConnector(cx,
                         new TConnector(q, nn.dataType.defpos, nc.cn, Position));
                     ls += (cx.NameFor(rc.cp) ?? rc.cn,
-                        (SqlLiteral)cx.Add(new SqlLiteral(cx.GetUid(), new TPosition(nn.defpos))));
+                        (SqlLiteral)cx.Add(new SqlLiteral(cx.GetUid(), new TPosition(nn.defpos,nc.ct))));
                 }
             }
             return (r, ls);
@@ -1718,9 +1718,9 @@ namespace Pyrrho.Level5
                 }
             }
             if (ec.cd.kind == Qlx.POSITION)
-                return new TPosition(n.defpos);
+                return new TPosition(n.defpos,n.tableRow.tabledefpos);
             if (ec.cd.kind == Qlx.SET && ec.cd.elType is Domain de)
-                return (de.kind == Qlx.POSITION) ? new TPosition(n.defpos) : n;
+                return (de.kind == Qlx.POSITION) ? new TPosition(n.defpos,n.tableRow.tabledefpos) : n;
             if (cx.db.objects[ec.ct] is Domain d && n.dataType.EqualOrStrongSubtypeOf(d))
                 return n;
             throw new DBException("22G0V");
@@ -1743,23 +1743,20 @@ namespace Pyrrho.Level5
             var ut = cx.db.objects[cx.role.edgeTypes[name] ?? -1L] as EdgeType ?? this;
             var cs = CTree<(Qlx, Domain), CTree<TypedValue,bool>>.Empty;
             var ns = CTree<string, TConnector>.Empty;
+            var k = 1;
             for (var b = (ut.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
                 if (b.Value() is TConnector c && cx._Ob(c.ct) is NodeType n)
                 {
-                    var cl = cs[(c.q, n)] ?? CTree<TypedValue,bool>.Empty; 
+                    var cl = cs[(c.q, n)] ?? CTree<TypedValue,bool>.Empty;
+                    if (tc.q == c.q)
+                        k++;
                     cs += ((c.q, n), cl+(c,true));
-                    var nn = (c.cn=="") ? c.q.ToString() : c.cn;
-                    if (ns.Contains(nn))
-                        nn += c;
-                    ns += (nn, c);
+                    ns += (c.cn, c);
                 }
             var dn = cx._Ob(tc.ct) as Domain ?? throw new PEException("PE90152"); // dn might be a Union of NodeTypes
             var tt = cs[(tc.q, dn)];
-            var cn = (tc.cn == "")? tc.q.ToString() : tc.cn;
-            if (ut.names.Contains(cn))
-                cn += cs.Count;
-            var cc = (tt?.Count == 1) ? tt?.First()?.key() ?? ns[cn] : null;
-            if (cc is TConnector x && x.cp>0L)
+            var cn = (tc.cn == "")? (tc.q.ToString()+k) : tc.cn;
+            if (ns[cn] is TConnector x && x.cp>0L)
                 return (ut,x);
             var tn = new TConnector(tc.q, tc.ct, tc.cn, tc.cd, cx.db.nextPos, tc.cs, tc.cm);
             var md = (tc.cm ?? TMetadata.Empty) + (Qlx.CONNECTING, tn) + (Qlx.OPTIONAL,TBool.False);
@@ -2082,7 +2079,7 @@ namespace Pyrrho.Level5
                     && tc.q == q && (ct.defpos<0 || ct.EqualOrStrongSubtypeOf(dt)) 
                     && (cn == "" || cn == tc.cn))
                     r = tc;
-            if (r == TNull.Value && !cx.ParsingMatch)
+            if (r == TNull.Value && cx.ParsingGQL!=2)
                 return BuildNodeTypeConnector(cx, new TConnector(q, ct.defpos, cn, Position), this).Item2;
             return r;
         }
@@ -2102,7 +2099,7 @@ namespace Pyrrho.Level5
                     && tc.q == q && (ct.defpos < 0 || ct.EqualOrStrongSubtypeOf(dt))
                     && (cn == "" || cn == tc.cn))
                     r = tc;
-            if (r == TNull.Value && !cx.ParsingMatch)
+            if (r == TNull.Value && cx.ParsingGQL!=2)
                 return BuildNodeTypeConnector(cx, new TConnector(q, ct.defpos, cn, Position), this).Item2;
             return r;
         }

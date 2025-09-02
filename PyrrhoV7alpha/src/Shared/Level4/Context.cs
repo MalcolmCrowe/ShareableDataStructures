@@ -1,5 +1,4 @@
 using System.Net;
-using System.Runtime.CompilerServices;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level1;
@@ -75,20 +74,20 @@ namespace Pyrrho.Level4
         internal BTree<long, BTree<TRow, BTree<long, Register>>> funcs = BTree<long, BTree<TRow, BTree<long, Register>>>.Empty; // Agg GroupCols
         internal BTree<long, BTree<long, TableRow>> newTables = BTree<long, BTree<long, TableRow>>.Empty;
         internal BTree<Domain, long?> newTypes = BTree<Domain, long?>.Empty; // uncommitted types
-        internal BTree<long,Names> defs = BTree<long,Names>.Empty; // lexical scopes at lower levels
+        internal BTree<long,Names> defs = BTree<long,Names>.Empty; // nested lexical scopes
         internal TRow? path = null;
         internal Qlx inclusionMode = Qlx.ANY;
         internal CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>> paths // shortest/longest
             = CTree<long,CTree<long,CTree<long,(int,CTree<long,TypedValue>)>>>.Empty; // GqlPath,TNode,TNode,Bindings
-        internal Names names = Names.Empty; // QlValue names at current level
-        internal Names dnames = Names.Empty; // non-QlValue (e.g. Domain, TableColumn) names at current level
-        internal Names anames = Names.Empty; // ambient names
+        internal Names names = Names.Empty; // QlValue names in current scope
+        internal Names dnames = Names.Empty; // non-QlValue (e.g. Domain, TableColumn) names in current scope
+        internal Names anames = Names.Empty; // ambient names (i.e. outside current scope)
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
         internal CTree<long,int> size = CTree<long,int>.Empty; // BindingSet. yuk: A hack for limit with match statements 
         internal GraphType? graph = null; // current graph, set by USE
         internal Schema? schema = null; // current schema, set by USE
-        internal bool ParsingMatch = false;
+        internal int ParsingGQL = 0; // 1=Insert, 2=Match
         internal CTree<long, long> undefined = CTree<long, long>.Empty;
         // bindings, and cache of RowSetPredicate RowSet (not initialised from parent, not copied to parent on exit)
         public BTree<long, Domain> bindings = BTree<long,Domain>.Empty;

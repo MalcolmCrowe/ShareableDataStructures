@@ -2,6 +2,7 @@ using System.Text;
 using Pyrrho.Level3;
 using Pyrrho.Common;
 using Pyrrho.Level5;
+using System.Xml;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2025
 //
@@ -34,7 +35,7 @@ namespace Pyrrho.Level4
             uid = psr.LexDp();
             lp = (uid>=Transaction.Executables&&uid<Transaction.HeapStart)?lx.pos:lx.Position;
             ident = ((lx.tok == Qlx.Id && lx.val is not null)? lx.val.ToString() : DBObject.Uid(uid));
-            if (lx.tgs[uid] is TGParam gp)
+            if (psr.cx.ParsingGQL>0 && lx.tgs[uid] is TGParam gp && !psr.cx.anames.Contains(ident))
                 lx.tgs += (lp, new TGParam(uid, gp.value, gp.dataType, gp.type, gp.from));
             sub = null;
         }
@@ -311,7 +312,7 @@ namespace Pyrrho.Level4
             var vo = (val is TChar tc) ? tc.value : s;
             var gd = (tgg == TGParam.Type.None) ? Domain.NodeType : NodeArray;
             var gc = (tgg == TGParam.Type.None) ? Domain.Char : CharArray;
-            if (tgs != null)
+            if (cx.ParsingGQL > 0 && !cx.anames.Contains(vo))
             {
                 switch (prevtok)
                 {

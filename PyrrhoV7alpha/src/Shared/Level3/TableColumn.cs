@@ -245,7 +245,8 @@ namespace Pyrrho.Level3
                     case Qlx.MAXVALUE:
                         {
                             tc += (ObInfo._Metadata, tc.metadata + (b.key(), b.value()));
-                            tm += (Qlx.MULTIPLICITY, new TSet(Domain.Position) + new TPosition(defpos));
+                            tm += (Qlx.MULTIPLICITY, new TSet(Domain.Position) 
+                                + new TPosition(defpos, tabledefpos));
                             break;
                         }
                 }
@@ -813,7 +814,7 @@ namespace Pyrrho.Level3
     }
     
     internal class RemoteTableRow(long dp, CTree<long, TypedValue> v, string u, RestRowSet r) 
-        : TableRow(r.target,v+(DBObject.Defpos,new TPosition(dp))) 
+        : TableRow(r.target,v+(DBObject.Defpos,new TPosition(dp,r.target))) 
     {
         internal readonly string url = u;
         internal readonly RestRowSet rrs = r;

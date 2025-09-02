@@ -1638,12 +1638,12 @@ namespace Pyrrho.Level4
         /// MatchMode: [TRAIL|ACYCLIC|SIMPLE][SHORTEST|LONGEST|ALL|ANY].
         /// </summary>
         /// <returns></returns>
-        (CTree<long, TGParam>, CList<long>) ParseGqlMatchList()
+        (CTree<long, TGParam>, CList<long>) ParseGqlMatchList(BTree<long, object> m)
         {
             // Step M10
             var svgs = CList<long>.Empty;
             var tgs = CTree<long, TGParam>.Empty;
-            Ident? pi = null;
+            Ident? pi = null; // Path identifier
             while (Match(Qlx.LPAREN, Qlx.USING, Qlx.TRAIL, Qlx.ACYCLIC, Qlx.SIMPLE,
                 Qlx.LONGEST, Qlx.SHORTEST, Qlx.ALL, Qlx.ANY))
             {
@@ -1673,9 +1673,8 @@ namespace Pyrrho.Level4
                         {
                             gp = new TGParam(pi.uid, gp.value, Domain.PathType, TGParam.Type.Path, dp);
                             lxr.tgs += (pi.uid, gp);
-                            var qi = cx.Add(new QlValue(pi, BList<Ident>.Empty, cx, Domain.PathType)
-                                +(DBObject._From,dp));
-                            cx.Add(pi.ident,pi.lp,qi);
+                            var qi = cx.Add(new GqlPath(pi, cx));
+                            cx.Add(pi.ident, pi.lp, qi);
                             cx.bindings += (pi.uid, qi.domain);
                             tgs = lxr.tgs;
                         }
@@ -1683,16 +1682,16 @@ namespace Pyrrho.Level4
                     }
                 }
                 // state M12
-                (tgs, var s) = ParseGqlMatch(dp, pi, tgs);
+                (tgs, var s) = ParseGqlMatch(dp, pi, tgs, m);
                 // state M13
-                alts += cx.Add(new GqlMatchAlt(dp, cx, mo, sh, s, pi?.uid?? -1L)).defpos;
+                alts += cx.Add(new GqlMatchAlt(dp, cx, mo, sh, s, pi?.uid ?? -1L)).defpos;
                 // state M14
                 while (tok == Qlx.VBAR)
                 {
                     Next();
                     // state M15
                     dp = cx.GetUid();
-                    (tgs, s) = ParseGqlMatch(dp, pi, tgs);
+                    (tgs, s) = ParseGqlMatch(dp, pi, tgs, m);
                     // state M16
                     var ns = BTree<string, TGParam>.Empty;
                     alts += cx.Add(new GqlMatchAlt(dp, cx, mo, sh, s, pi?.uid ?? -1L)).defpos;
@@ -1704,9 +1703,31 @@ namespace Pyrrho.Level4
                     Next();
                 // goto state M11
                 else break;
-            };
+            }
             // state M18
             // we now can define pi properly.
+            if (pi != null)
+            {
+                var pt = CList<long>.Empty;
+                var pn = Names.Empty;
+                var ps = CTree<long, Domain>.Empty;
+                for (var b = tgs.First(); b != null; b = b.Next())
+                    if (b.value() is TGParam p && p.uid > pi.uid
+                        && cx.obs[p.uid] is GqlNode gn && gn.name !=null)
+                    {
+                        if (gn is GqlReference)
+                            continue;
+                        pt += b.key();
+                        pn += (gn.name, (0L,b.key()));
+                        var cd = gn.domain;
+                        if (p.type.HasFlag(TGParam.Type.Group))
+                            cd = new Domain(-1L, Qlx.ARRAY, cd);
+                        ps += (b.key(), cd);
+                    }
+                if (cx.obs[pi.uid] is GqlPath gp)
+                    cx.Add(gp + (DBObject._Domain, new Domain(cx.GetUid(), cx, Qlx.PATH, ps, pt))
+                        + (ObInfo._Names,pn));
+            }
             return (tgs, svgs);
         }
         // we have just passed '(' or ',' in
@@ -1786,17 +1807,18 @@ namespace Pyrrho.Level4
         }
         // state M19
         // This will give us a pattern of SqlNodes svg and will update tgs and cx.defs (including pi)
-        (CTree<long, TGParam>, CList<long>) ParseGqlMatch(long f, Ident? pi, CTree<long, TGParam> tgs)
+        (CTree<long, TGParam>, CList<long>) ParseGqlMatch(long f, Ident? pi, CTree<long, TGParam> tgs,
+            BTree<long,object> m)
         {
             // the current token is LPAREN
             var svg = CList<long>.Empty;
-            var pm = cx.ParsingMatch;
-            cx.ParsingMatch = true;
-            (var n, svg, tgs) = ParseMatchExp(svg, pi, tgs, f, tok, BTree<long, object>.Empty);
+            var pm = cx.ParsingGQL;
+            cx.ParsingGQL = 2;
+            (var n, svg, tgs) = ParseMatchExp(svg, pi, tgs, f, tok, m);
             // state M20
             tgs += n.state;
             lxr.tgs = CTree<long, TGParam>.Empty;
-            cx.ParsingMatch = pm; 
+            cx.ParsingGQL = pm; 
             return (tgs, svg);
         }
         /// <summary>
@@ -1952,8 +1974,8 @@ namespace Pyrrho.Level4
         /// <param name="svg">The graph fragments so far</param>
         /// <param name="ln">The node to attach the new edge</param>
         /// <returns>An GqlNode for the new node or edge, the list of all the pattern fragments, and TGParams</returns>
-        (GqlNode, CList<long>, CTree<long, TGParam>) ParseMatchExp(CList<long> svg, Ident? pi, CTree<long, TGParam> tgs, long f,
-            Qlx lt, BTree<long,object> m, Ident? ln = null, GqlNode? bf = null)
+        (GqlNode, CList<long>, CTree<long, TGParam>) ParseMatchExp(CList<long> svg, Ident? pi, 
+            CTree<long, TGParam> tgs, long f, Qlx lt, BTree<long,object> m, Ident? ln = null, GqlNode? bf = null)
         {
             // state M21
             var st = CTree<long, TGParam>.Empty; // for match
@@ -1974,6 +1996,26 @@ namespace Pyrrho.Level4
             GqlNode? r = null;
             GqlNode? an = null;
             var b = new Ident(this);
+            if (Match(Qlx.Id))
+            {
+                var ot = tok;
+                var ov = lxr.val;
+                Next();
+                if (!Match(Qlx.COLON, Qlx.LBRACE, Qlx.RPAREN))
+                {
+                    var on = cx.names;
+                    tok = lxr.PushBack(ot);
+                    lxr.val = ov;
+                    var be = ParseSqlValue(m + (DBObject._Domain, Domain.NodeType));
+                    if (be.domain.kind == Qlx.POSITION && cx.db.objects[be.domain.target] is NodeType tg)
+                    {
+                        r = (GqlNode)cx.Add(new GqlReference(cx.GetUid(), be, tg));
+                        cx.names = on + (b.ident, (b.uid, be.defpos));
+                    }
+                }
+                else if (cx.obs[cx.names[b.ident].Item2] is GqlNode ob)
+                        r = new GqlReference(cx, b.lp, b.uid, ob, BTree<long, object>.Empty);
+            }
             long id = -1L;
             var ahead = CList<long>.Empty;
             if (ab == Qlx.LBRACK)
@@ -1982,7 +2024,7 @@ namespace Pyrrho.Level4
                     throw new DBException("42002", b.ident);
                 // state M22
                 var pl = cx.GetUid();
-                var (tgp, svp) = ParseGqlMatch(f, pi, lxr.tgs);
+                var (tgp, svp) = ParseGqlMatch(f, pi, lxr.tgs, m);
                 var pe = cx.obs[svp.Last()?.value() ?? -1L] as GqlNode;
                 var ps = cx.obs[svp.First()?.value() ?? -1L] as GqlNode;
                 Mustbe(Qlx.RBRACK);
@@ -2042,8 +2084,8 @@ namespace Pyrrho.Level4
                         dm = nt;
                     if (lb is Domain ld && (ld.kind == Qlx.NODETYPE||ld.kind==Qlx.EDGETYPE) && ld is NodeType tye)
                         dm = tye;
-                    else if (lb is QlValue gl && gl.Eval(cx) is TTypeSpec tt)
-                        dm = tt._dataType as NodeType;
+                    else if (lb is QlValue gl && gl.Eval(cx) is TTypeSpec tu)
+                        dm = tu._dataType as NodeType;
                     cx.bindings += (b.uid, dm??Domain.NodeType);
                     var pg = (dm is not null) ? dm.kind switch
                     {
@@ -2092,33 +2134,39 @@ namespace Pyrrho.Level4
                     if (r is not null)
                         throw new DBException("42002", b.ident);
                     var cd = cx.names;
-                    var ot = lxr.tgs;
                     var od = dm ?? Domain.NodeType;
                     cx.names += lb.names;
-                    cx.Add(new GqlNode(b, BList<Ident>.Empty, cx, -1L, CTree<string, QlValue>.Empty,
-                        CTree<long, TGParam>.Empty, od));
                     cx.names += (b.ident, (lp,b.uid));
-                    wh = ParseWhereClause(m+(DBObject.Scope,lp));
+                    wh = ParseWhereClause(m+(DBObject.Scope,lp)+(MatchStatement.GDefs,tgs));
                     cx.names = cd;
                     cx.obs -= b.uid; // wow
-                    if (ot is not null) // why is this required?
-                        lxr.tgs = ot;
                 }
          //       cx.defs -= cx.sD-1;
                 st += lxr.tgs;
                 TypedValue pr = TNull.Value;
+                dm ??=cx.obs[cx.names[b.ident].Item2]?.domain as NodeType;
                 dm ??= cx.obs[(cx.obs[cx.names[b.ident].Item2]?.domain as TableRowSet)?.target ?? -1L] as NodeType;
-                var ed = dm as EdgeType;
+                var ed = dm as EdgeType??r?.domain as EdgeType;
                 // state M31
-                if (ln is not null && ab != Qlx.LBRACK && ab != Qlx.LPAREN)
+                if (ln is not null && ed is null
+                    && cx.db.objects[cx.obs[cx.names[ln.ident].Item2]?.domain.target ?? -1L] is EdgeType tt)
                 {
+                    ed = tt;
                     if (ed?.metadata[Qlx.EDGETYPE] is TSet ts)
-                    pr = ed.PreConnect(cx, ab, (bf?.label??Domain.NodeType), cn);
+                        pr = ed.PreConnect(cx, ab, bf?.label??Domain.NodeType, cn);
                     lt = ab;
                     if (ln.ident != "COLON" && st[ln.uid] is TGParam lg)
                         st += (-(int)ab, lg);
-                    if (lxr.tgs != null)
-                        lxr.tgs = CTree<long, TGParam>.Empty;
+                    lxr.tgs = CTree<long, TGParam>.Empty;
+                }
+                if (ln is not null && ab != Qlx.LBRACK && ab != Qlx.LPAREN)
+                {
+                    if (ed?.metadata[Qlx.EDGETYPE] is TSet ts)
+                    pr = ed.PreConnect(cx, ab, bf?.label??Domain.NodeType, cn);
+                    lt = ab;
+                    if (ln.ident != "COLON" && st[ln.uid] is TGParam lg)
+                        st += (-(int)ab, lg);
+                    lxr.tgs = CTree<long, TGParam>.Empty;
                 }
                 cn = (lxr.val is TChar cl) ? cl.ToString() : "";
                 ba = Mustbe(Qlx.RPAREN, Qlx.TILDE, Qlx.RBRACKTILDE, Qlx.ARROW, 
@@ -2256,6 +2304,7 @@ namespace Pyrrho.Level4
         /// we have just matched MATCH|WITH
         /// MatchStatement: Match {',' Match} [WhereClause] [[THEN] Statement].
         /// Match: MatchMode MatchPattern
+        /// Paths accumulate from the sequence of Match for use in WhereClause
         /// </summary>
         /// <returns></returns>
         /// <exception cref="DBException"></exception>
@@ -2282,8 +2331,10 @@ namespace Pyrrho.Level4
                 tg = ParseTruncation(m);
             }
             lxr.tgs = CTree<long, TGParam>.Empty;
-            cx.ParsingMatch = true;
-            var (tgs, svgs) = ParseGqlMatchList();
+            var pm = cx.ParsingGQL;
+            cx.ParsingGQL = 2;
+            lxr.tgs = CTree<long, TGParam>.Empty;
+            var (tgs, svgs) = ParseGqlMatchList(m+(DBObject.Scope,lp));
             var xs = CTree<long, bool>.Empty;
             for (var b = svgs.First(); b != null; b = b.Next())
                 if (cx.obs[b.value()] is GqlMatch ss)
@@ -2293,12 +2344,13 @@ namespace Pyrrho.Level4
                                 if (dd.value() is long ep)
                                     xs += (ep, true);
             // state M18
-            cx.ParsingMatch = false;
+            cx.ParsingGQL = pm;
             var (ers, ns) = BindingTable(cx, lp, tgs, svgs);
             m += ers.mem;
             m += (ObInfo._Names, ns);
             m += (MatchStatement.MatchFlags, flags);
             m += (MatchStatement.BindingTable, ers.defpos);
+            m += (MatchStatement.GDefs, tgs);
             m += (DBObject._Domain, ers);
             if (Match(Qlx.WHERE) && ParseWhereClause(m) is CTree<long, bool> wh) // GQL-169
                 m += (RowSet._Where, wh);
@@ -2317,8 +2369,8 @@ namespace Pyrrho.Level4
         internal static (BindingRowSet, Names) BindingTable(Context cx, long ap, CTree<long, TGParam> gs, CList<long> svgs)
         {
             var incoming = cx.result as RowSet ?? TrivialRowSet.Static;
-            var rt = incoming.rowType;
-            var re = incoming.representation;
+            var rt = CList<long>.Empty; // was incoming.rowType;
+            var re = CTree<long, Domain>.Empty; // was incoming.representation;
             var ns = Names.Empty;
             var ds = CTree<long, Domain>.Empty;
             for (var a = svgs.First(); a != null; a = a.Next())
@@ -2346,7 +2398,7 @@ namespace Pyrrho.Level4
                     var gp = g.uid;
                     if (g.type.HasFlag(TGParam.Type.Type))
                         dr = Domain.Char;
-                    if (g.type.HasFlag(TGParam.Type.Group) && dr.kind != Qlx.ARRAY)
+                    if (g.type.HasFlag(TGParam.Type.Group) && dr.kind!=Qlx.ARRAY)
                         dr = new Domain(-1L, Qlx.ARRAY, dr);
                     re += (gp, dr);
                     rt += gp;
@@ -3436,26 +3488,36 @@ namespace Pyrrho.Level4
                             var tb = m[TableColumn._Table] as EdgeType;
                             if (m[TableColumn._Table] is not UDType dt)
                                 throw new PEException("PE50731");
-                            if (dt is not EdgeType)
+                            if (dt is not EdgeType et)
                             {
                                 var pc = ((Transaction)cx.db).physicals[dt.defpos] as PType ??
                                     throw new PEException("PE50741");
                                 pc = new PEdgeType(dt.NameFor(cx), pc, Domain.EdgeType, cx);
                                 if (cx.db is Transaction tr) // it is
                                     cx.db = tr + (Transaction.Physicals, tr.physicals + (pc.ppos,pc));
-                                tb = (EdgeType)cx.Add(new EdgeType(pc.ppos, dt.mem));
+                                et = (EdgeType)cx.Add(new EdgeType(pc.ppos, dt.mem))
+                                    ?? throw new DBException("42105");
                             }
-                            if (tb is null)
-                                throw new DBException("42105");
-                            var cl = new TSet(Domain.Connector);
+                            var cl = (et.metadata[Qlx.EDGETYPE] as TSet)??new TSet(Domain.Connector);
+                            var fc = 0;
+                            var ac = 0;
+                            var wc = 0;
+                            for (var b=cl.First();b!=null;b=b.Next())
+                                if (b.Value() is TConnector c)
+                                    switch (c.q)
+                                    {
+                                        case Qlx.FROM: fc++; break;
+                                        case Qlx.TO: ac++; break;
+                                        case Qlx.WITH: wc++; break;
+                                    }
                             if (tok == Qlx.LPAREN)
                             {
                                 Next();
                                 if (Match(Qlx.Id)) // old syntax
                                 {
-                                    (tb,cl) = ParseConnector(tb,cl,Qlx.FROM,0);
+                                    (tb,cl) = ParseConnector(et,cl,Qlx.FROM,++fc);
                                     Mustbe(Qlx.COMMA,Qlx.TO,Qlx.ARROWR);
-                                    (tb, cl) = ParseConnector(tb,cl, Qlx.TO,0);
+                                    (tb, cl) = ParseConnector(et,cl, Qlx.TO,++ac);
                                 }
                                 else
                                 {
@@ -3463,35 +3525,32 @@ namespace Pyrrho.Level4
                                         throw new DBException("42161", "identifier,FROM,TO,WITH", tok);
                                     if (Match(Qlx.FROM))
                                     {
-                                        int j = 0;
                                         Next();
-                                        (tb, cl) = ParseConnector(tb,cl, Qlx.FROM,++j);
+                                        (tb, cl) = ParseConnector(et,cl, Qlx.FROM,++fc);
                                         while (Match(Qlx.COMMA))
                                         {
                                             Next();
-                                            (tb, cl) = ParseConnector(tb,cl, Qlx.FROM,++j);
+                                            (tb, cl) = ParseConnector(et,cl, Qlx.FROM,++fc);
                                         }
                                     }
                                     if (Match(Qlx.WITH))
                                     {
-                                        int j = 0;
                                         Next();
-                                        (tb, cl) = ParseConnector(tb,cl, Qlx.WITH,++j);
+                                        (tb, cl) = ParseConnector(et,cl, Qlx.WITH,++wc);
                                         while (Match(Qlx.COMMA))
                                         {
                                             Next();
-                                            (tb, cl) = ParseConnector(tb,cl, Qlx.WITH,++j);
+                                            (tb, cl) = ParseConnector(et,cl, Qlx.WITH,++wc);
                                         }
                                     }
                                     if (Match(Qlx.TO, Qlx.COMMA))
                                     {
-                                        int j = 0;
                                         Next();
-                                        (tb, cl) = ParseConnector(tb,cl, Qlx.TO, ++j);
+                                        (tb, cl) = ParseConnector(et,cl, Qlx.TO, ++ac);
                                         while (Match(Qlx.COMMA))
                                         {
                                             Next();
-                                            (tb, cl) = ParseConnector(tb, cl, Qlx.TO, ++j);
+                                            (tb, cl) = ParseConnector(et, cl, Qlx.TO, +ac);
                                         }
                                     }
                                 }
@@ -3554,7 +3613,7 @@ namespace Pyrrho.Level4
                                 throw new PEException("PE50731");
                             var upf = tok;
                             var x = ConstraintDefinition(tb, tc, drop);
-                            tm += (upf, new TPosition(x.defpos));
+                            tm += (upf, new TPosition(x.defpos,tc?.tabledefpos??-1L));
                             break;
                         }
                     case Qlx.CONSTRAINT:
@@ -3573,7 +3632,7 @@ namespace Pyrrho.Level4
                             Next();
                             int dd = lxr.start;
                             var sv = (QlValue)cx.Add(ParseSqlValue(m));
-                            tm += (Qlx.VALUE, new TPosition(sv.defpos));
+                            tm += (Qlx.VALUE, new TPosition(sv.defpos,sv.domain.defpos));
                             tm += (Qlx.DEFAULT, new TChar(new string(lxr.input, dd, lxr.pos - dd)));
                             break;
                         }
@@ -3788,7 +3847,8 @@ namespace Pyrrho.Level4
             return (Table)(cx.Add(px)??throw new DBException("42105"));    
         }
         // Connector= [id'=']Type_id{'|'Type_id}[SET][Domain_id] Metadata
-        (EdgeType, TSet) ParseConnector(EdgeType et, TSet cl, Qlx tk, int k)
+        // Default connector names have form FROMk/TOk/WITHk
+        (EdgeType, TSet) ParseConnector(EdgeType et, TSet cl, Qlx tk, int k) 
         {
             var xl = CList<Domain>.Empty;
             var sc = "";
@@ -3808,11 +3868,7 @@ namespace Pyrrho.Level4
             if (sc != "")
                 Mustbe(Qlx.Id);
             if (sc == "")
-            {
-                sc = tk.ToString();
-                if (k != 0)
-                    sc += k;
-            }
+                sc = tk.ToString()+k;
             Match(Qlx.TO);
             while (tok == Qlx.VBAR)
             {
@@ -3866,7 +3922,7 @@ namespace Pyrrho.Level4
                 throw new DBException("42000");
             string ts = "";
             TMetadata? tm = null;
-            if (!cx.ParsingMatch && StartMetadata(Qlx.CONNECTING))
+            if (cx.ParsingGQL<2 && StartMetadata(Qlx.CONNECTING))
                 (ts, tm) = ParseMetadata(Qlx.CONNECTING,BTree<long,object>.Empty);
             var cc = new TConnector(tk, ct.defpos, sc, cd, cx.db.nextPos, ts, tm);
             if (et.super == CTree<Domain, bool>.Empty)
@@ -3880,7 +3936,8 @@ namespace Pyrrho.Level4
                     nc += (ObInfo._Metadata, tm);
                 if (tm?.Contains(Qlx.MINVALUE) == true || tm?.Contains(Qlx.MAXVALUE) == true)
                     cx.MetaPend(et.defpos, pc.defpos, pc.name,
-                        TMetadata.Empty + (Qlx.MULTIPLICITY, new TSet(Domain.Position) + new TPosition(pc.defpos)));
+                        TMetadata.Empty + (Qlx.MULTIPLICITY, new TSet(Domain.Position) 
+                        + new TPosition(pc.defpos,cc.ct)));
                 var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
                 var px = new PIndex(sc, et, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
                             | PIndex.ConstraintType.CascadeDelete,
@@ -4113,6 +4170,7 @@ namespace Pyrrho.Level4
         }
         internal Domain ParseReturnsClause(Ident pn)
         {
+            var on = cx.names;
             if (!Match(Qlx.RETURNS))
                 return Domain.Null;
             Next();
@@ -4128,6 +4186,7 @@ namespace Pyrrho.Level4
             }
             var dm = ParseDataType(pn);
             cx.Add(dm);
+            cx.names = on;
             return dm;
         }
         /// <summary>
@@ -5023,11 +5082,14 @@ namespace Pyrrho.Level4
             var lp = LexDp();
             if (tok == Qlx.LPAREN)
             {
+                var fl = (lxr.prevval is TChar pt) ? (pt.value == "FIRST") ? Qlx.START
+                    : (pt.value == "LAST") ? Qlx.END : Qlx.NO : Qlx.NO;
                 Next();
                 var ps = CList<long>.Empty;
                 if (tok != Qlx.RPAREN)
                     ps = ParseSqlValueList(BTree<long,object>.Empty);
                 Mustbe(Qlx.RPAREN);
+
                 var n = cx.db.Signature(cx,ps);
                 if (ic.Length == 0 || ic[ic.Length - 1] is not Ident pn)
                     throw new DBException("42000", "Signature");
@@ -5053,6 +5115,15 @@ namespace Pyrrho.Level4
                 else if (ic.Prefix(ic.Length - 2) is Ident pf)
                 {
                     var qo = Identify(pf, il, Domain.Null);
+                    if (fl != Qlx.NO)
+                    {
+                        if (qo.domain.elType == null)
+                            if (m[MatchStatement.GDefs] is CTree<long,TGParam> tgs
+                                && tgs[cx.names[pf.sub?.ident??""].Item2]?.type.HasFlag(TGParam.Type.Group) == true)
+                                qo = cx.Add(qo+(DBObject._Domain, new Domain(-1L, Qlx.ARRAY, qo.domain)));
+                            else throw new DBException("22000");
+                        return new SqlFunction(lp, cx.GetUid(), cx, fl, (QlValue)qo, null, null, Qlx.NO);
+                    }
                     if (qo is TableRowSet ts && cx.db.objects[ts.target] is UDType ut
                         && ut.infos[cx.role.defpos] is ObInfo ui
                         && cx.db.objects[ui.methodInfos[pn.ident]?[n] ?? -1L] is Method me
@@ -5134,9 +5205,10 @@ namespace Pyrrho.Level4
                 var nc = new SqlValueExpr(ic, cx, Qlx.DOTTOKEN, sv, co, Qlx.NO);
                 return nc;
             }
-            if (pa is QlValue sv1 && sv1.domain is NodeType && sub is not null)
+            if (pa is QlValue sv1 && sv1.domain is NodeType tt && sub is not null)
             {
-                var co = new SqlField(sub, cx, -1, sv1.defpos, Domain.Content, sv1.defpos);
+                var dm = tt.representation[tt.names[sub.ident].Item2] ?? Domain.Content;
+                var co = new SqlField(sub, cx, -1, sv1.defpos, dm, sv1.defpos);
                 return cx.Add(co);
             }
             if (cx.bindings.Contains(ic.uid)) // a binding or local variable
@@ -5151,29 +5223,33 @@ namespace Pyrrho.Level4
                 {// the ident of the component to create
                     if (i == len - 1)
                     {
-                        if (!cx.ParsingMatch) // flag as undefined unless we are parsing a MATCH
+                        if (cx.names[ic.ident].Item2 is long px && px>0
+                            && cx.obs[px]?.domain is UDType ut && ic[1] is Ident ip 
+                            && ut.names.Contains(ip.ident))
+                        {
+                            var pb = cx.obs[px] ?? new QlValue(new Ident(ic.ident, px), il, cx, xp);
+                            cx.Add(pb);
+                            ob = new SqlField(ic.uid, c.ident, -1, pb.defpos, xp, pb.defpos);
+                            cx.Add(ob);
+                        }                         
+                        else if (cx.ParsingGQL>0)
+                        {
+                            ob = cx.Add(new QlValue(c, il, cx, 
+                                lxr.tgg.HasFlag(TGParam.Type.Group)?new Domain(-1L,Qlx.ARRAY,xp):xp));
+                            cx.bindings += (c.uid, ob.domain);
+                        }
+                        else
                         {
                             for (var b = cx.bindings.First(); b != null && ob is null; b = b.Next())
-                                if (cx.obs[b.key()] is GqlNode g && g.name == ic[i-1]?.ident
+                                if (cx.obs[b.key()] is GqlNode g && g.name == ic[i - 1]?.ident
                                     && g.domain.names[c.ident].Item2 is long pb && pb > 0
                                     && cx.db.objects[pb] is DBObject po)
                                     ob = new SqlField(ic.uid, c.ident, -1, b.key(), po.domain, b.key());
                             ob ??= new SqlReview(c, ic, il, cx, xp) ?? throw new PEException("PE1561");
                             cx.Add(ob);
                         }
-                        else if (ic[i - 1] is Ident ip && cx.names[ip.ident].Item2 is long px && px>0)
-                        {
-                            var pb = cx.obs[px] ?? new QlValue(new Ident(ip.ident, px), il, cx, xp);
-                            cx.Add(pb);
-                            ob = new SqlField(ic.uid, c.ident, -1, pb.defpos, xp, pb.defpos);
-                            cx.Add(ob);
-                        }
-                        else
-                        {
-                            ob = cx.Add(new QlValue(c, il, cx, 
-                                lxr.tgg.HasFlag(TGParam.Type.Group)?new Domain(-1L,Qlx.ARRAY,xp):xp));
-                            cx.bindings += (c.uid, ob.domain);
-                        }
+
+
                         pa = ob;
                     }
                     else
@@ -5513,8 +5589,10 @@ namespace Pyrrho.Level4
             }
             if (trig.oldRow != null)
             {
-                cx.Add(new SqlOldRow(trig.oldRow, cx, fm));
+                var so = new SqlOldRow(trig.oldRow, cx, fm);
+                cx.Add(so);
                 cx.binding += (trig.oldRow.uid, new TTypeSpec(fm));
+                cx.anames += (trig.oldRow.ident, (trig.oldRow.lp,so.defpos));
             }
             if (trig.newTable != null)
             {
@@ -5525,8 +5603,10 @@ namespace Pyrrho.Level4
             }
             if (trig.newRow != null)
             {
-                cx.Add(new SqlNewRow(trig.newRow, cx, fm));
+                var sn = new SqlNewRow(trig.newRow, cx, fm);
+                cx.Add(sn);
                 cx.binding += (trig.newRow.uid, new TTypeSpec(fm));
+                cx.anames += (trig.newRow.ident, (trig.newRow.lp, sn.defpos));
             }
             var on = cx.names;
             for (var b = trig.dataType.rowType.First(); b != null; b = b.Next())
@@ -8769,7 +8849,7 @@ namespace Pyrrho.Level4
                         Disjoin(ParseSqlValueDisjunct(m)), Qlx.NO);
                 }
             }
-            else if (xp.kind == Qlx.TABLE || xp.kind == Qlx.VIEW || xp is NodeType)
+            else if (xp.kind == Qlx.TABLE || xp.kind == Qlx.VIEW)
             {
                 if (Match(Qlx.TABLE))
                     Next();
@@ -8810,7 +8890,8 @@ namespace Pyrrho.Level4
         }
         QlValue ParseSqlTableValue(BTree<long, object> m)
         {
-            cx.names = cx.anames;
+            var ax = cx.anames;
+            (cx.names, cx.anames) = (cx.anames, cx.names);
             var xp = (m[DBObject._Domain] as Domain) ?? Domain.TableType;
             if (xp.kind!=Qlx.TABLE)
                 m += (DBObject._Domain,Domain.TableType);
@@ -8822,6 +8903,8 @@ namespace Pyrrho.Level4
                     var es = ParseStatement(m);
                     Mustbe(Qlx.RPAREN);
                     var dr = cx.result as RowSet ?? throw new DBException("42000");
+                    cx.names = cx.anames + cx.names;
+                    cx.anames = ax;
                     return (QlValue)cx.Add(new QlValueQuery(cx.GetUid(), cx, dr, xp,
                         es.defpos));
                 }
@@ -8829,6 +8912,8 @@ namespace Pyrrho.Level4
             if (Match(Qlx.SELECT))
             {
                 var cs = ParseSelectStatement(m);
+                cx.names = cx.anames + cx.names;
+                cx.anames = ax;
                 return (QlValue)cx.Add(new QlValueQuery(cx.GetUid(), cx,
                     (RowSet)(cx.obs[cs.result] ?? throw new DBException("PE2013")), 
                     cs.domain, cs.defpos));
@@ -8838,10 +8923,14 @@ namespace Pyrrho.Level4
                 var lp = LexDp();
                 Next();
                 var v = ParseSqlValueList(m);
+                cx.names = cx.anames + cx.names;
+                cx.anames = ax;
                 return (QlValue)cx.Add(new SqlRowArray(lp, cx, xp, v));
             }
             if (Match(Qlx.TABLE))
                 Next();
+            cx.names = cx.anames + cx.names;
+            cx.anames = ax;
             return ParseSqlValueItem(m);
         }
         CTree<long,bool> Disjoin(long e) 
@@ -10806,7 +10895,10 @@ namespace Pyrrho.Level4
                 cx.bindings += (k.uid, Domain.Null);
                 cx.names += (k.ident, (k.lp,k.uid));
             }
-            var xd = (cx.db.objects[lb.infos[cx.role.defpos]?.names[k.ident].Item2?? -1L] as TableColumn)?.domain ?? Domain.Char;
+            var tc = cx.db.objects[lb.infos[cx.role.defpos]?.names[k.ident].Item2 ?? -1L] as TableColumn;
+            var xd = tc?.domain ?? Domain.Content;
+            if (tc?.mem[TableColumn.Connector] is TConnector cc)
+                xd += (RowSet.Target, cc.ct);
             Mustbe(Qlx.Id);
             lxr.docValue = true;
             Mustbe(Qlx.COLON,Qlx.DOUBLECOLON,Qlx.TYPED); // GQL extra options
@@ -10818,14 +10910,12 @@ namespace Pyrrho.Level4
             {
                 cx.bindings += (q.uid, Domain.Null);
                 cx.names += (q.ident,(q.lp, q.uid));
-                if (cx.obs[lb.names[k.ident].Item2] is TableColumn dc)
-                    xd = dc.domain;
                 if (cx.Lookup(q.ident) is QlValue qi)
                 {
                     q = new(q.ident, qi.defpos);
                     r = qi;
                 }
-                r = new QlValue(q, BList<Ident>.Empty, cx, Domain.Content);
+                r = new QlValue(q, BList<Ident>.Empty, cx, xd);
                 Next();
             } 
             lxr.docValue = false;
@@ -10876,7 +10966,8 @@ namespace Pyrrho.Level4
                 var vv = new SqlField(q.uid, q.ident, -1, -1L, xd, pa);
                 cx.Add(vv);
                 cx.names += (q.ident, (q.lp,q.uid));
-                lxr.tgs += (q.uid, new TGParam(q.uid, q.ident, xd, lxr.tgg | TGParam.Type.Value, pa));
+                if (cx.ParsingGQL>0 && !cx.anames.Contains(q.ident))
+                    lxr.tgs += (q.uid, new TGParam(q.uid, q.ident, xd, lxr.tgg | TGParam.Type.Value, pa));
             }
             var dm = (lb is TableRowSet ts && cx.db.objects[ts.target] is Table lt) ? xd
                 : (lb.representation[ns[k.ident].Item2] ?? Domain.Content); 

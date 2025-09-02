@@ -2,6 +2,7 @@ using Pyrrho.Common;
 using Pyrrho.Level2;
 using Pyrrho.Level3;
 using Pyrrho.Level5;
+using System.Net.Http.Headers;
 using System.Numerics;
 using System.Runtime;
 using System.Text;
@@ -3651,7 +3652,7 @@ namespace Pyrrho.Level4
                         if (trs.iSMap[p] is long sp && rw.vals[sp] is TypedValue v)
                             ws += (p, v);
                         else if (cx.obs[p] is SqlFunction f && f.op == Qlx.POSITION)
-                            ws += (p, new TPosition(rw.defpos));
+                            ws += (p, new TPosition(rw.defpos,rw.tabledefpos));
                 return new TRow(trs, ws);
             }
             internal static TableCursor? New(Context cx,TableRowSet trs,long defpos)
@@ -4173,13 +4174,16 @@ namespace Pyrrho.Level4
                 distinct ? TreeBehaviour.Ignore : TreeBehaviour.Allow, TreeBehaviour.Allow);
             for (var e = sce.First(cx); e != null; e = e.Next(cx))
             {
+                var ob = cx.binding;
+                cx.binding = CTree<long, TypedValue>.Empty; // this seems questionable?
                 var vs = CTree<long, TypedValue>.Empty;
                 cx.cursors += (sce.defpos, e);
                 for (var b = rowOrder.First(); b != null; b = b.Next())
                     if (cx.obs[b.value()] is QlValue s)
-                        vs += (s.defpos, s.Eval(cx));
-                var rw = new TRow(keys, vs);
+                        vs += (s.defpos, s.Eval(cx)); 
+                var rw = new TRow(keys, vs); 
                 tree += (rw, SourceCursors(cx));
+                cx.binding = ob;
             }
             return (RowSet)cx.Add((this + (_Built, true) + (Level3.Index.Tree, tree.mt) + (_RTree, tree)));
         }
@@ -5687,7 +5691,7 @@ namespace Pyrrho.Level4
                                 if (ln.FindPrimaryIndex(cx) is Level3.Index lx
                                     && lx.rows?.impl?[new TInt(lp)] is TInt li
                                     && li.ToLong() is long p)
-                                    vs += (tc.cp, new TPosition(p));
+                                    vs += (tc.cp, new TPosition(p,tc.ct));
                             }
                 }
                 return vs;
@@ -7522,7 +7526,7 @@ namespace Pyrrho.Level4
                                         if (c.value() is long cp)
                                             switch (c.key())
                                             {
-                                                case 0: vs += (cp, new TPosition(p)); break;
+                                                case 0: vs += (cp, new TPosition(p,lrs.targetTable)); break;
                                                 case 1: vs += (cp, new TChar("Insert")); break;
                                                 case 2: vs += (cp, new TPosition(rc.defpos)); break;
                                                 case 3: vs += (cp, new TPosition(rc.trans)); break;
@@ -7543,7 +7547,7 @@ namespace Pyrrho.Level4
                                     if (c.value() is long cp)
                                         vs += c.key() switch
                                         {
-                                            0 => (cp, new TPosition(p)),
+                                            0 => (cp, new TPosition(p, lrs.targetTable)),
                                             1 => (cp, new TChar("Update")),
                                             2 => (cp, new TPosition(rc.defpos)),
                                             3 => (cp, new TPosition(rc.trans)),
@@ -7562,7 +7566,7 @@ namespace Pyrrho.Level4
                                         if (c.value() is long cp)
                                             vs += c.key() switch
                                             {
-                                                0 => (cp, new TPosition(p)),
+                                                0 => (cp, new TPosition(p, lrs.targetTable)),
                                                 1 => (cp, new TChar("Delete")),
                                                 2 => (cp, new TPosition(rc.ppos)),
                                                 3 => (cp, new TPosition(rc.trans)),
@@ -7724,7 +7728,7 @@ namespace Pyrrho.Level4
                         var b = lrs.rowType.First();
                         if (b != null && b.value() is long p1)
                         {
-                            vs += (p1, new TPosition(rc.ppos));
+                            vs += (p1, new TPosition(rc.ppos,rc.tabledefpos));
                             b = b.Next();
                         }
                         if (b != null && b.value() is long p2)

@@ -264,7 +264,7 @@ namespace Pyrrho.Level3
         }
         internal virtual DBObject AddFrom(Context cx, long q)
         {
-            if (from >= 0)
+            if (from >= 0 || GetType().Name=="QlValue")
                 return this;
             return cx.Add(this + (_From, q));
         }

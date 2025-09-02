@@ -168,7 +168,6 @@ namespace Pyrrho.Level2
                 rdr.context.defs += (ppos, pr.names);
                 rdr.context.Add(pr);
             }
-            psr.LexDp(); //synchronise with CREATE
             var op = psr.cx.parse;
             psr.cx.parse = ExecuteStatus.Compile;
             if (psr.tok != Qlx.EOF 
