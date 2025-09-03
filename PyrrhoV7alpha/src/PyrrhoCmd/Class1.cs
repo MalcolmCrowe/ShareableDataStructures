@@ -51,11 +51,13 @@ namespace PyrrhoCmd
         [STAThread]
         static void Main(string[] args)
         {
+            if (args.Length == 0)
+                args = ["ab"];
             string host = "::1";
             string port = "5433";
             string line = "";
-            Console.InputEncoding = Encoding.Unicode;
-            Console.OutputEncoding = Encoding.Unicode;
+    //        Console.InputEncoding = Encoding.Unicode;
+    //        Console.OutputEncoding = Encoding.Unicode;
             int k = 0;
             while (args.Length > k)
             {
@@ -299,8 +301,8 @@ namespace PyrrhoCmd
         }
     static string? GetCommand(PyrrhoConnect db, StreamReader? file, bool interactive)
         {
-            Console.InputEncoding = Encoding.Unicode;
-            Console.OutputEncoding = Encoding.Unicode;
+   //         Console.InputEncoding = Encoding.Unicode;
+   //         Console.OutputEncoding = Encoding.Unicode;
             string? str;
             string? line = "";
             var bk = 0;

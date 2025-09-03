@@ -19,9 +19,9 @@ applicable law.
 
 This is version 7.010(alpha) of the DBMS, compiled for .NET 9.0.
 It passes tests 1 to 25 of the current PyrrhoTest program (02 Sept 2025), 
-and should run on Windows, Linux, and MacOS with Mono.
+and should run on Windows, Linux, and MacOS with DotNet.
 
 Malcolm Crowe
 malcolm.crowe@uws.ac.uk
-02 Sept 2025
+03 Sept 2025
 
