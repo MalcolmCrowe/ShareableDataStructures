@@ -27,9 +27,6 @@ namespace Pyrrho.Level2
         /// The defining position of the record
         /// </summary>
         public virtual long defpos { get { return ppos; } }
-        /// <summary>
-        /// The defining position of the table or JoinedNodeType
-        /// </summary>
         public long tabledefpos;
         internal CTree<long, bool> extraTables = CTree<long, bool>.Empty;
         public bool nodeOrEdge = false; // set in constructor
@@ -46,7 +43,6 @@ namespace Pyrrho.Level2
         public virtual Level classification => _classification;
         public long subType = -1L;
         public override long _table => tabledefpos;
-        // For JoinedNodeTypes, we may have record hierarchies with more entries than nodetype hierarchies
         public long node = -1L;
         protected CTree<long,bool> suT = CTree<long,bool>.Empty;
         protected CTree<long,bool> sbT = CTree<long,bool>.Empty;
@@ -66,7 +62,12 @@ namespace Pyrrho.Level2
             for (var b = supTables.First(); b != null; b = b.Next())
                 if (!Committed(wr, b.key())) return b.key();
             for (var b = fields.PositionAt(0); b != null; b = b.Next())
+            {
                 if (!Committed(wr, b.key())) return b.key();
+                if (tr.objects[b.key()] is TableColumn tc && tc.domain.kind==Qlx.POSITION
+                    && b.value().ToLong() is long p && !Committed(wr,p))
+                        return p;
+            }
             return -1;
         }
         public Record(long tb, CTree<long, TypedValue> fl, long pp, Context cx)
@@ -94,13 +95,9 @@ namespace Pyrrho.Level2
             if (cx._Ob(tp) is Table tb)
             {
                 nodeOrEdge = tb is NodeType;
- /*               if (tb is JoinedNodeType jt)
-                    for (var b = jt.nodeTypes.First(); b != null; b = b.Next())
-                            suT += (b.key().defpos, true);
-                else */
-                    for (var b = tb.super.First(); b != null; b = b.Next())
-                            suT += (b.key().defpos, true);
-                siC += tb.sindexes; 
+                for (var b = tb.super.First(); b != null; b = b.Next())
+                    suT += (b.key().defpos, true);
+                siC += tb.sindexes;
                 inC += tb.indexes; // Domains are keys: all have defpos -1L
                 riC += tb.rindexes;
             }
@@ -173,12 +170,8 @@ namespace Pyrrho.Level2
             if (rdr.context.db.objects[tabledefpos] is Table tb)
             {
                 nodeOrEdge = tb is NodeType;
-/*                if (tb is JoinedNodeType jt)
-                    for (var b = jt.nodeTypes.First(); b != null; b = b.Next())
-                        suT += (b.key().defpos, true);
-                else */
-                    for (var b = tb.super.First(); b != null; b = b.Next())
-                        suT += (b.key().defpos, true);
+                for (var b = tb.super.First(); b != null; b = b.Next())
+                    suT += (b.key().defpos, true);
                 siC += tb.sindexes;
                 inC += tb.indexes; // Domains are keys: all have defpos -1L
                 riC += tb.rindexes;
@@ -601,6 +594,11 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
         }
     }
+    /// <summary>
+    /// Record4 is for nodes that are shared between node types.
+    /// This is sufficiently unusual that it is handled like unlabelledNoddeTypes i.e. 
+    /// the database knows them all individually, in db.joinedNodes
+    /// </summary>
     internal class Record4 : Record3
     {
         public Record4(CTree<long,bool> tbs, CTree<long, TypedValue> fl, long st, 
@@ -634,6 +632,7 @@ namespace Pyrrho.Level2
                 jt += (tb, true);
                 r = tb;
             }
+            cx.db += (Database.JoinedNodes, cx.db.joinedNodes + (defpos, jt));
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return r ?? throw new PEException("PE0302");

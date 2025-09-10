@@ -1309,7 +1309,7 @@ namespace Pyrrho.Level5
         internal override CTree<Domain, bool> OnInsert(Context cx, long ap, BTree<long, object>? m = null,
             CTree<TypedValue,bool>? cs = null)
         {
-           var r = CTree<Domain, bool>.Empty;
+            var r = CTree<Domain, bool>.Empty;
             var lf = cx.obs[left] as Domain ?? Empty;
             var rg = cx.obs[right] as Domain ?? Empty;
             cs ??= CTree<TypedValue, bool>.Empty;
@@ -1452,6 +1452,16 @@ namespace Pyrrho.Level5
                     r += nr._NodeTypes(cx);
             }
             return r;
+        }
+        public override string ToString()
+        {
+            var sb = new StringBuilder(GetType().Name);
+            if (left > 0)
+                { sb.Append(' '); sb.Append(Uid(left)); }
+            sb.Append(' '); sb.Append(kind);
+            if (right>0)
+                { sb.Append(' '); sb.Append(Uid(right)); }
+            return sb.ToString();
         }
     }
     /// <summary>
@@ -1688,19 +1698,24 @@ namespace Pyrrho.Level5
             }
             return (r, ls);
         }
-        internal static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec, GqlEdge ed)
+        internal static TypedValue Connect(Context cx, TNode? n, TConnector nc, TConnector ec, GqlEdge ed,
+            CTree<long,long>? rn = null)
         {
             if (n == null || (nc.cn != "" && ec.cn.ToUpper() != nc.cn.ToUpper()))
                 return TNull.Value;
             if (cx._Ob(nc.ct) is GqlLabel gl && gl.kind == Qlx.AMPERSAND)
                 for (var b = gl._NodeTypes(cx).First(); b != null; b = b.Next())
-                    if (Connect(cx, n, (NodeType)b.key(), nc, ec, ed) is TypedValue v && v != TNull.Value)
+                    if (Connect(cx, n, (NodeType)b.key(), nc, ec, ed, rn) is TypedValue v && v != TNull.Value)
                         return v;
             if (n.dataType is NodeType nt)
-                return Connect(cx, n, nt, nc, ec, ed) ?? TNull.Value;
+                return Connect(cx, n, nt, nc, ec, ed, rn)
+                        ?? ((cx.values[rn?[n.defpos] ?? -1L] is TNode m)?
+                        Connect(cx,m,m.dataType as NodeType,nc,ec,ed,rn) ?? TNull.Value
+                        : TNull.Value);
             throw new DBException("22G0V");
         }
-        static TypedValue? Connect(Context cx, TNode n, NodeType? nt, TConnector nc, TConnector ec, GqlEdge ed)
+        static TypedValue? Connect(Context cx, TNode n, NodeType? nt, TConnector nc, TConnector ec, GqlEdge ed,
+            CTree<long,long>? rn = null)
         {
             if (nt is null)
                 return null;
@@ -1717,10 +1732,11 @@ namespace Pyrrho.Level5
                         return null;
                 }
             }
+            var m = (rn?[n.defpos] is long mp && mp > 0) ? mp : n.defpos;
             if (ec.cd.kind == Qlx.POSITION)
-                return new TPosition(n.defpos,n.tableRow.tabledefpos);
+                return new TPosition(m,n.tableRow.tabledefpos);
             if (ec.cd.kind == Qlx.SET && ec.cd.elType is Domain de)
-                return (de.kind == Qlx.POSITION) ? new TPosition(n.defpos,n.tableRow.tabledefpos) : n;
+                return (de.kind == Qlx.POSITION) ? new TPosition(m,n.tableRow.tabledefpos) : n;
             if (cx.db.objects[ec.ct] is Domain d && n.dataType.EqualOrStrongSubtypeOf(d))
                 return n;
             throw new DBException("22G0V");
@@ -2311,6 +2327,10 @@ namespace Pyrrho.Level5
         {
             return new TNode(cx,tableRow.Fix(cx));
         }
+        internal virtual Names _Names(Context cx)
+        {
+            return dataType.infos[cx.role.defpos]?.names ?? Names.Empty;
+        }
         internal override string ToString(Context cx)
         {
             if (cx.db.objects[dataType.defpos] is not NodeType nt ||
@@ -2377,10 +2397,6 @@ namespace Pyrrho.Level5
             if (obj is not TNode that) return 1;
             return tableRow.defpos.CompareTo(that.tableRow.defpos);
         }
-        internal virtual Names _Names(Context cx)
-        {
-            return (dataType.names!=Names.Empty)?dataType.names:dataType.infos[cx.role.defpos]?.names ?? Names.Empty;
-        }
         internal TNode Cast(Context cx,Domain dt)
         {
             if (dt.defpos == dataType.defpos)
@@ -2433,6 +2449,8 @@ namespace Pyrrho.Level5
                 tm ??= TMetadata.Empty;
                 tm += (Qlx.OPTIONAL, TBool.False);
             }
+            if ((a == Qlx.TO || a == Qlx.FROM || a == Qlx.WITH) && s == "")
+                s = a + "1";
             q = a; ct = x; cn = s; cd = d; cp = p; cs = ss;  cm = tm;
         }
         public override int CompareTo(object? obj)
@@ -2487,23 +2505,6 @@ namespace Pyrrho.Level5
             return sb.ToString();
         }
     }
-/*    internal class TJoinedNode : TNode
-    {
-        public CTree<Domain, bool>? nodeTypes => (dataType as JoinedNodeType)?.nodeTypes; 
-        internal TJoinedNode(Context cx,TableRow tr) : base(cx, tr) { }
-        internal override Names _Names(Context cx)
-        {
-            var r = Names.Empty;
-            for (var b = cx.db.joinedNodes[defpos]?.First(); b != null; b = b.Next())
-                if (b.key() is NodeType nt && nt.infos[cx.role.defpos] is ObInfo oi)
-                    r += oi.names;
-            return r;
-        }
-        public override string ToString()
-        {
-            return "TJoinedNode " + DBObject.Uid(defpos) + "[" + dataType + "]";
-        }
-    } */
     /// <summary>
     /// A class for an unbound identifier (A variable in Francis's paper)
     /// </summary>

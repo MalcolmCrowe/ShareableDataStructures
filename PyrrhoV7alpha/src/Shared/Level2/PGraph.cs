@@ -174,20 +174,6 @@ namespace Pyrrho.Level2
 
         internal override DBObject? Install(Context cx)
         {
-            var ns = CTree<long, TNode>.Empty;
-            for (var b = records.First(); b != null; b = b.Next())
-                if (cx.db.objects[b.key()] is Record r)
-                {
-                    var t = new TableRow(r, cx);
-                    if (cx.db.objects[r.tabledefpos] is NodeType nt)
-                    {
-                        if (nt is JoinedNodeType)
-                            for (var c = (r as Record4)?.extraTables.First(); c != null; c = c.Next())
-                                ns += (c.key(), new TNode(cx, t));
-                        else
-                            ns += (r.defpos, nt.Node(cx, t));
-                    }
-                }
             var g = new Graph(this,cx,0L);
             cx.db += g;
             var ro = cx.role;

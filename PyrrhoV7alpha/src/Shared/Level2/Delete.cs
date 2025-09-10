@@ -57,17 +57,13 @@ namespace Pyrrho.Level2
             delpos = rw.defpos;
             if (cx._Ob(tabledefpos) is Table tb)
             {
-/*                if (tb is JoinedNodeType jt)
-                    for (var b = jt.nodeTypes.First(); b != null; b = b.Next())
-                            suT += (b.key().defpos, true);
-                else */
-                    for (var b = tb.super.First(); b != null; b = b.Next())
-                            suT += (b.key().defpos, true);
+                for (var b = tb.super.First(); b != null; b = b.Next())
+                    suT += (b.key().defpos, true);
                 siC += tb.sindexes;
                 deC += tb.rindexes;
                 siC += tb.sindexes;
-                for (var b=tb.subtypes.First();b!=null;b=b.Next())
-                        sbT += (b.key(), true);
+                for (var b = tb.subtypes.First(); b != null; b = b.Next())
+                    sbT += (b.key(), true);
             }
         }
         /// <summary>

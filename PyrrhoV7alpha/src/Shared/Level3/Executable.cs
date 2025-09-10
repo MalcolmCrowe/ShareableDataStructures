@@ -1,3 +1,4 @@
+using System.Net.NetworkInformation;
 using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level2;
@@ -4244,7 +4245,7 @@ namespace Pyrrho.Level3
         /// <exception cref="DBException"></exception>
         public override Context _Obey(Context cx)
         {
-    //        var ob = cx.names;
+            //        var ob = cx.names;
             for (var b = graphExps.First(); b != null; b = b.Next())
                 if (b.value() is CList<GqlNode> ge)
                 {
@@ -4253,15 +4254,19 @@ namespace Pyrrho.Level3
                     // Do the nodes first and then the edges
                     for (; gb != null; gb = gb.Next())
                         if (gb.value() is GqlNode nd && nd is not GqlEdge && nd is not GqlReference)
-                        //&& cx.db.objects[nd.domain.defpos] is NodeType nt)
                         {
                             nd.label.OnInsert(cx, nd.defpos); // for side effects
-                            nd.Create(cx, nd.domain, defpos, nd.docValue);
+                            nd.Create(cx, (nd.label.kind == Qlx.AMPERSAND) ? nd.label : nd.domain, defpos, nd.docValue);
                         }
                     TNode? bn = null;
                     GqlEdge? ed = null;
                     GqlNode? bv = null;
                     GqlNode? er = null;
+                    var rn = CTree<long, long>.Empty;
+                    for (var c = cx.newNodes.First(); c != null; c = c.Next())
+                        if (c.value().First() is ABookmark<long, bool> m && m.key() is long mn)
+                            for (var mb = m.Next(); mb != null; mb = mb.Next())
+                                rn += (mb.key(), mn);
                     for (gb = ge.First(); gb != null; gb = gb.Next())
                         if (gb.value() is GqlNode g)
                         {
@@ -4271,7 +4276,7 @@ namespace Pyrrho.Level3
                             { ed = re; er = gr; se = true; }
                             else if (ed is not null && er is not null
                                 && ((se == true) || bn is not null)
-                                && ((g is GqlReference gg && cx.obs[gg.refersTo] is GqlNode rg) ? rg.Eval(cx):g.Eval(cx)) is TNode nn)
+                                && ((g is GqlReference gg && cx.obs[gg.refersTo] is GqlNode rg) ? rg.Eval(cx) : g.Eval(cx)) is TNode nn)
                             {
                                 if (ed.Eval(cx) is TEdge te) // we are adding something to an existing edge
                                 {
@@ -4288,7 +4293,7 @@ namespace Pyrrho.Level3
                                             rr.fields += vs;
                                             done = true;
                                             if (cx.checkEdges[rr.defpos] is TableRow ce)
-                                                cx.checkEdges += (rr.defpos,new TableRow(rr.defpos, ce.vals + vs));
+                                                cx.checkEdges += (rr.defpos, new TableRow(rr.defpos, ce.vals + vs));
                                         }
                                     if (!done)
                                     {
@@ -4327,16 +4332,16 @@ namespace Pyrrho.Level3
                                     et ??= (EdgeType)ed._NodeType(cx, Domain.EdgeType, 0L, false);
                                     var ls = ed.docValue;
                                     if (er.preCon is TConnector rc && rc.cp > 0)
-                                        ls += (cx.NameFor(rc.cp)??rc.cn, 
-                                            new SqlLiteral(cx.GetUid(),EdgeType.Connect(cx, bn, rc, rc, ed)));
+                                        ls += (cx.NameFor(rc.cp) ?? rc.cn,
+                                            new SqlLiteral(cx.GetUid(), EdgeType.Connect(cx, bn, rc, rc, ed, rn)));
                                     else
                                         (_, ls) = et.Connect(cx, bn, nn, ed, er.preCon, ls);
                                     if (er.postCon is TConnector oc && oc.cp > 0)
                                         ls += (cx.NameFor(oc.cp) ?? oc.cn,
-                                            new SqlLiteral(cx.GetUid(), EdgeType.Connect(cx, nn, oc, oc, ed)));
+                                            new SqlLiteral(cx.GetUid(), EdgeType.Connect(cx, nn, oc, oc, ed, rn)));
                                     else
                                         (_, ls) = et.Connect(cx, bn, nn, ed, er.postCon, ls);
-                                    ed.Create(cx, et, defpos,ls);
+                                    ed.Create(cx, et, defpos, ls);
                                 }
                                 bv = g;
                                 bn = g.Eval(cx) as TNode;
@@ -4350,11 +4355,9 @@ namespace Pyrrho.Level3
                                 ed?.InsertSchema(cx);
                         }
                 }
-            // RECOMBINE JoinedNodeType Nodes here
             for (var c = cx.newNodes.First(); c != null; c = c.Next())
                 if (c.value() is CTree<long, bool> ln && ln.Count > 1L)
                     cx.db = JoinRecords(cx, c.key(), ln);
-     //      cx.names = ob;
             return cx;
         }
         internal CTree<long,bool> GraphTypes(Context cx)

@@ -1353,8 +1353,6 @@ namespace Pyrrho.Level4
                 if (un.Count == 0 && dm.defpos >= 0)
                     un += (dm, true);
             }
-/*            if (un.Count > 1L)
-                return new JoinedNodeType(id.lp, cx.GetUid(),id.ident,Domain.NodeType,new BTree<long,object>(Domain.NodeTypes,un),cx); */
             NodeType? ut = null;
             if (dm.kind==Qlx.NODETYPE) // It is a new node tye
             {

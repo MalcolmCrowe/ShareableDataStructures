@@ -147,7 +147,7 @@ namespace Pyrrho.Level3
             Curated = -53, // long
             Format = -54,  // int (50 for Pyrrho v5,v6; 51 for Pyrrho v7)
             Guest = -55, // long: a role holding all grants to PUBLIC
-            JoinedNodes = -430,// CTree<long,CTree<Domain,bool>> JoinedNodeType
+            JoinedNodes = -430,// CTree<long,CTree<Domain,bool>> see Record4
             KeyLabels = -461, // BTree<CTree<string,bool>,long?> NodeType 
             LastModified = -279, // DateTime
             Levels = -56, // BTree<Level,long?>
@@ -206,8 +206,9 @@ namespace Pyrrho.Level3
             (BTree<string, long?>?)mem[Prefixes] ?? BTree<string, long?>.Empty;
         public BTree<string, long?> suffixes =>
             (BTree<string, long?>?)mem[Suffixes] ?? BTree<string, long?>.Empty;
-        internal CTree<long,CTree<Domain,bool>> joinedNodes =>
-            (CTree<long, CTree<Domain, bool>>)(mem[JoinedNodes] ?? CTree<long, CTree<Domain, bool>>.Empty);  
+        internal CTree<long, CTree<Domain, bool>> joinedNodes =>
+    (CTree<long, CTree<Domain, bool>>)(mem[JoinedNodes] ?? CTree<long, CTree<Domain, bool>>.Empty);
+
         internal static Role schemaRole;
         internal static Role guestRole;
         /// <summary>

@@ -599,14 +599,6 @@ namespace Pyrrho.Level3
             }
             return name??"";
         }
-        /// <summary>
-        /// Compute relevant equality pairings.
-        /// Currently this is only for EQL joinConditions
-        /// </summary>
-        /// <param name="eqs">equality pairings (e.g. join conditions)</param>
-        internal virtual void Eqs(Context cx, ref Adapters eqs)
-        {
-        }
         internal virtual int Ands(Context cx)
         {
             return 1;
@@ -3287,31 +3279,31 @@ namespace Pyrrho.Level3
     /// and do not depend on other SqlValues
     /// 
     /// </summary>
-    internal class SqlFormal : QlValue 
+    internal class SqlFormal : QlValue
     {
-        public SqlFormal(Context cx, string nm, Domain dm, long cf=-1L)
+        public SqlFormal(Context cx, string nm, Domain dm, long cf = -1L)
             : base(cx, nm, dm, cf)
         {
             cx.Add(this);
         }
-        protected SqlFormal(long dp,BTree<long,object>m):base(dp,m){ }
+        protected SqlFormal(long dp, BTree<long, object> m) : base(dp, m) { }
         internal override Basis New(BTree<long, object> m)
         {
-            return new SqlFormal(defpos,m);
+            return new SqlFormal(defpos, m);
         }
-        internal override DBObject New(long dp, BTree<long, object>m)
+        internal override DBObject New(long dp, BTree<long, object> m)
         {
-            return new SqlFormal(dp,m);
+            return new SqlFormal(dp, m);
         }
-        internal override CTree<long, bool> Needs(Context cx, long r,CTree<long, bool> qn)
+        internal override CTree<long, bool> Needs(Context cx, long r, CTree<long, bool> qn)
         {
-            return CTree<long,bool>.Empty;
+            return CTree<long, bool>.Empty;
         }
         internal override bool KnownBy(Context cx, RowSet q, bool ambient = false)
         {
             return true;
         }
-        internal override bool KnownBy<V>(Context cx, CTree<long,V> cs, bool ambient = false)
+        internal override bool KnownBy<V>(Context cx, CTree<long, V> cs, bool ambient = false)
         {
             return true;
         }
@@ -3336,6 +3328,7 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
+
     /// <summary>
     /// The SqlLiteral subclass
     /// 
@@ -6344,14 +6337,6 @@ namespace Pyrrho.Level3
             cx.funcs = ac.funcs;
             return r??TNull.Value;
         }
-        internal override void Eqs(Context cx,ref Adapters eqs)
-        {
-            if (cx.obs[procdefpos] is not Procedure proc)
-                throw new PEException("PE47168");
-            if (cx.db.objects[proc.inverse] is Procedure inv && parms[0] is long cp)
-                eqs = eqs.Add(proc.defpos, cp, proc.defpos, inv.defpos);
-            base.Eqs(cx,ref eqs);
-        }
         internal override QlValue Having(Context c, Domain dm, long ap)
         {
             return base.Having(c, dm, ap); // throws error
@@ -6547,7 +6532,7 @@ namespace Pyrrho.Level3
         }
     }
     /// <summary>
-    /// An QlValue that is a constructor expression
+    /// A QlValue that is a constructor expression
     /// 
     /// </summary>
     internal class SqlConstructor : SqlCall
@@ -8766,81 +8751,6 @@ namespace Pyrrho.Level3
             return sb.ToString();
         }
     }
-    
-    internal class SqlTypeUri : SqlFunction
-    {
-        internal SqlTypeUri(long ap, long dp, Context cx, QlValue op1)
-            : base(ap, dp, cx, Qlx.TYPE_URI, null, op1, null, Qlx.NO)
-        {
-            cx.Add(this);
-        }
-        protected SqlTypeUri(long dp, BTree<long, object> m) : base(dp, m) { }
-        public static SqlTypeUri operator +(SqlTypeUri et, (long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is DBObject bb && dp != _Depth)
-            {
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (SqlTypeUri)et.New(m + x);
-        }
-        public static SqlTypeUri operator +(SqlTypeUri et, (Context, long, object) x)
-        {
-            var d = et.depth;
-            var m = et.mem;
-            var (cx, dp, ob) = x;
-            if (et.mem[dp] == ob)
-                return et;
-            if (ob is long p && cx.obs[p] is DBObject bb)
-            {
-                d = Math.Max(bb.depth + 1, d);
-                if (d > et.depth)
-                    m += (_Depth, d);
-            }
-            return (SqlTypeUri)et.New(m + (dp, ob));
-        }
-        internal override Basis New(BTree<long, object> m)
-        {
-            return new SqlTypeUri(defpos,m);
-        }
-        internal override DBObject New(long dp, BTree<long, object>m)
-        {
-            return new SqlTypeUri(dp,m);
-        }
-        internal override QlValue Having(Context c, Domain dm, long ap)
-        {
-            return base.Having(c, dm, ap); // throws error
-        }
-        internal override bool Match(Context c, QlValue v)
-        {
-            return false;
-        }
-        internal override TypedValue _Eval(Context cx)
-        {
-            TypedValue v = TNull.Value;
-            if (cx.obs[op1] is DBObject ob)
-                v = ob.Eval(cx);
-            if (v == TNull.Value)
-                return domain.defaultValue;
-            var st = v.dataType;
-            if (st.name != null)
-                return new TChar(st.name);
-            return domain.defaultValue;
-        }
-        public override string ToString()
-        {
-            return "TYPE_URI(..)";
-        }
-    }
-    /// <summary>
-    ///     /
-    /// </summary>
     internal class SqlStar : QlValue
     {
         public readonly long prefix = -1L; // QlValue
@@ -11811,29 +11721,6 @@ cx.obs[high] is not QlValue hi)
                 if (cx.db.objects[nt.defpos] is NodeType nn)
                     nt = nn;
             }
-/*            else if (label.kind == Qlx.AMPERSAND)
-            {
-                var sb = new StringBuilder();
-                var oi = new ObInfo(label.ToString());
-                var cm = "";
-                for (var b = tl.First(); b != null; b = b.Next())
-                {
-                    sb.Append(cm); cm = "&"; sb.Append(b.key().name);
-                    oi += (ObInfo._Names, oi.names + b.key().names);
-                }
-                for (var b = cx.db.joinedNodes.First(); b != null; b = b.Next())
-                    if (b.value().CompareTo(tl) == 0)
-                        return cx.db.objects[b.key()] as JoinedNodeType ?? throw new PEException("PE80851");
-                // JoinedNodeType needs to have connection persistence so use cx.db.nextStmt
-                NodeType jt = new JoinedNodeType(ap, cx.db.nextStmt, sb.ToString(), Domain.NodeType,
-                    new BTree<long, object>(Domain.NodeTypes, tl), cx);
-                jt += (Infos,new BTree<long,ObInfo>(cx.role.defpos,oi));
-                cx.Add(jt);
-                cx.db += jt;
-                cx.db += (Database.JoinedNodes, cx.db.joinedNodes + (jt.defpos, tl));
-                cx.db += (Database.NextStmt, cx.db.nextStmt + 1);
-                return jt;
-            } */
             else if (tl.Count>0)
             {
                 var fi =  tl.First()?.key() as NodeType ?? throw new PEException("PE70301");
@@ -11882,9 +11769,13 @@ cx.obs[high] is not QlValue hi)
             if (dt is GqlLabel lb && lb.kind==Qlx.AMPERSAND)
             {
                 var r1 = this;
-                for (var b = dt._NodeTypes(cx).First();b!=null;b=b.Next())
+                var ds = CTree<Domain, bool>.Empty;
+                for (var b = dt._NodeTypes(cx).First(); b != null; b = b.Next())
+                {
                     r1 = r1.Create(cx, b.key(), ap, ls, false);
-                return r1;
+                    ds += (b.key(), true);
+                }
+                return (GqlNode)cx.Add(r1+(_Domain,new Domain(cx.GetUid(),Qlx.UNION,ds)));
             }
             var nd = this;
             // If there are no labels, we create new node types rather than adding altering existing
@@ -11895,7 +11786,7 @@ cx.obs[high] is not QlValue hi)
             if (allowExtras)
             {
                 nt = (NodeType)_NodeType(cx, (NodeType)dt, ap, allowExtras);
-                if (nt.CompareTo(nd.domain)!=0)
+                if (nt.CompareTo(nd.domain) != 0)
                 {
                     nd += (_Domain, nt);
                     cx.Add(nd);
@@ -11904,16 +11795,14 @@ cx.obs[high] is not QlValue hi)
                     throw new DBException("42161", "Specification", name ?? "Unbound");
                 // We are now ready to check or build the node type nt
                 cx.defs = defs;
-                cx.names = dt.infos[cx.role.defpos]?.names??Names.Empty;
+                cx.names = dt.infos[cx.role.defpos]?.names ?? Names.Empty;
                 if (nt.defpos >= 0 && nt.defpos < Transaction.Analysing)
                     nt = nt.Check(cx, nd, 0L, allowExtras);
                 else if (cx.db.objects[cx.role.defpos] is Role rr
                                     && cx.db.objects[rr.dbobjects[nt.name ?? "_"] ?? -1L] is NodeType ot)
                     nt = ot;
                 else
-                    nt = nt.Build(cx, this, ap, nt.name??label.name, ls);
- /*               if (nt is JoinedNodeType) // JoinedNodeType will have done everything
-                    return (GqlNode)cx.Add(nd+(_Domain,nt)); */
+                    nt = nt.Build(cx, this, ap, nt.name ?? label.name, ls);
             }
             else
                 nt = (NodeType)dt;
@@ -12356,21 +12245,6 @@ cx.obs[high] is not QlValue hi)
             cx.Add(et);
             return et;
         }
-        private bool CanConnect(Context cx, long end, long defpos)
-        {
-            if (end == defpos)
-                return true;
-            if (cx.db.objects[end] is NodeType et && cx.db.objects[defpos] is NodeType dt
-                && dt.EqualOrStrongSubtypeOf(et))
-                return true;
-/*            if (cx._Ob(defpos) is JoinedNodeType jt)
-                for (var b=jt.nodeTypes.First();b!=null;b=b.Next()) */
-            for (var b=domain.super.First();b!=null;b=b.Next())
-                  if (b.key().defpos==end)
-                        return true;
-            return false;
-        } 
-
         internal override GqlNode Add(Context cx, GqlNode an, CTree<long, TGParam> tgs, long ap,TypedValue po)
         {
             if (an is null)
@@ -12382,13 +12256,6 @@ cx.obs[high] is not QlValue hi)
             r += (PostCon, po);
             return (GqlEdge)cx.Add(r);
         }
-/*        protected override CTree<string, QlValue> _AddEnds(Context cx, CTree<string, QlValue> ls)
-        {
-            ls = base._AddEnds(cx, ls);
-            if (cx.db.objects[domain.defpos] is not EdgeType et)
-                return ls;
-            return ls;
-        } */
         internal override NodeType? InsertSchema(Context cx)
         {
             var r = base.InsertSchema(cx) as EdgeType;
