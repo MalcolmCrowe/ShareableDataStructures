@@ -427,15 +427,15 @@ namespace Pyrrho.Level5
             {
                 var cl = xn.EvalProps(cx, th);
                 if (th.FindPrimaryIndex(cx) is Level3.Index px
-                    && px.MakeKey(cl) is CList<TypedValue> pk
-                    && tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)
-                    return ds + (tr0.defpos, tr0);
+                    && px.MakeKey(cl) is CList<TypedValue> pk)
+                    return (tableRows[px.rows?.Get(pk, 0) ?? -1L] is TableRow tr0)?
+                        ds + (tr0.defpos, tr0):ds;
                 for (var c = indexes.First(); c != null; c = c.Next())
                     for (var d = c.value().First(); d != null; d = d.Next())
                         if (cx.db.objects[d.key()] is Level3.Index x
-                            && x.MakeKey(cl) is CList<TypedValue> xk
-                            && th.tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)
-                            return ds + (tr.defpos, tr);
+                            && x.MakeKey(cl) is CList<TypedValue> xk)
+                            return (th.tableRows[x.rows?.Get(xk, 0) ?? -1L] is TableRow tr)?
+                                ds + (tr.defpos, tr) : ds;
                 // let DbNode check any given properties match
                 var lm = ms.truncating.Contains(defpos) ? ms.truncating[defpos].Item1 : int.MaxValue;
                 var la = ms.truncating.Contains(EdgeType.defpos) ? ms.truncating[EdgeType.defpos].Item1 : int.MaxValue;
