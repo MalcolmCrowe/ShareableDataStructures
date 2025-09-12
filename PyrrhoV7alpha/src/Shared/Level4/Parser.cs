@@ -964,7 +964,7 @@ namespace Pyrrho.Level4
         /// | CREATE SCHEMA [IF NOT EXISTS] Path_Value id
 		/// |	CREATE TABLE id TableContents [UriType] {Metadata}
 		/// |	CREATE TRIGGER id (BEFORE|AFTER) Event ON id [ RefObj ] Trigger
-		/// |	CREATE TYPE id [UNDER id] AS Representation [ Method {',' Method} ] {Metadata}
+		/// |	CREATE [NODE|EDGE] TYPE id [UNDER id] AS Representation [ Method {',' Method} ] {Metadata}
 		/// |	CREATE ViewDefinition 
         /// |   CREATE XMLNAMESPACES NamespaceList
         /// |   CREATE (Node) {-[Edge]->(Node)|<-[Edge]-(Node)}
@@ -1011,10 +1011,13 @@ namespace Pyrrho.Level4
                 Next();
                 ParseDomainDefinition(BTree<long, object>.Empty);
             }
-            else if (Match(Qlx.TYPE))
+            else if (Match(Qlx.NODE,Qlx.EDGE,Qlx.TYPE))
             {
-                Next();
-                ParseTypeClause(BTree<long,object>.Empty);
+                var ne = tok;
+                if (ne == Qlx.NODE || ne == Qlx.EDGE)
+                    Next();
+                Mustbe(Qlx.TYPE);
+                ParseTypeClause(new BTree<long,object>(Domain.Kind,ne));
             }
             else if (Match(Qlx.ROLE))
             {
@@ -2355,7 +2358,7 @@ namespace Pyrrho.Level4
             cx.Add(ers);
             cx.result = ers;
             StartStatement();
-            if (Match(Qlx.MATCH,Qlx.BEGIN))
+            if (Match(Qlx.MATCH,Qlx.BEGIN,Qlx.SET,Qlx.Id))
             {
                 m += (Procedure.Body, ParseStatement(m).defpos);
                 m += (MatchStatement.BindingTable, cx.result.defpos);
@@ -2760,6 +2763,15 @@ namespace Pyrrho.Level4
                 Next();
                 if (tok == Qlx.LPAREN)
                     dt = (UDType)ParseRowTypeSpec(dt.kind, typename, supers);
+                else if (tok==Qlx.MATCH)
+                {
+                    var ma = ParseMatchStatement(BTree<long, object>.Empty);
+                    var mx = new Context(cx);
+                    ma._Obey(mx);
+                    if (mx.result is RowSet mr)
+                        dt = new UDType(mr.defpos, mr.mem);
+                    mx.SlideDown();
+                }
                 else
                 {
                     var d = ParseStandardDataType() ??
@@ -4838,7 +4850,6 @@ namespace Pyrrho.Level4
             lf += (ObInfo._Names, cx.names);
             cx.Add(lf);
             var tk = Mustbe(Qlx.EXCEPT,Qlx.INTERSECT,Qlx.UNION,Qlx.OTHERWISE);
-            cx.result = null;
             cx.binding = CTree<long, TypedValue>.Empty;
             cx.names = cx.anames;
             m += (QlValue.Left, lf.defpos);
@@ -4957,6 +4968,8 @@ namespace Pyrrho.Level4
             {
                 if (ParseStatement(m) is not Executable b)
                     throw new DBException("42161", "statement");
+                if (b is QueryStatement && cx.result is null)
+                    b._Obey(cx);
                 s += ((Executable)cx.Add(b)).defpos;
                 cx.result = b.domain;
                 BindingAggs(s);
@@ -7509,15 +7522,20 @@ namespace Pyrrho.Level4
         {
             var xp = m[DBObject._Domain] as Domain ?? Domain.Content;
             var id = new Ident(this);
-            Mustbe(Qlx.SELECT, Qlx.RETURN, Qlx.YIELD);
-            var on = cx.names;
-            if (m[ObInfo._Names] is Names nn)
-                cx.names += nn;
-            var lp = LexDp();
-            var d = ParseDistinctClause();
-            var dm = ParseSelectList(id.uid, m + (DBObject.Scope, id.lp));
-            cx.Add(dm);
-            cx.names += on;
+            var d = false;
+            var dm = cx.db.objects[cx.role.dbobjects[lxr.val.ToString()] ?? -1L] as Domain;
+            if (dm is null)
+            {
+                Mustbe(Qlx.SELECT, Qlx.RETURN, Qlx.YIELD);
+                var on = cx.names;
+                if (m[ObInfo._Names] is Names nn)
+                    cx.names += nn;
+                var lp = LexDp();
+                d = ParseDistinctClause();
+                dm = ParseSelectList(id.uid, m + (DBObject.Scope, id.lp));
+                cx.Add(dm);
+                cx.names += on;
+            }
             RowSet te = ParseTableExpression(id.uid, m+ (DBObject._Domain,dm) 
                 + (DBObject.Scope,id.lp));
 /*            if (Match(Qlx.FOR))
@@ -7648,7 +7666,7 @@ namespace Pyrrho.Level4
         {
             var d = m[DBObject._Domain] as Domain ?? Domain.TableType;
             RowSet fm = ParseFromClause(lp, m);
-            if (cx.obs[d.defpos] is not Domain dm)
+            if (cx._Ob(d.defpos) is not Domain dm)
                 throw new PEException("PE50310");
             var mf = fm.mem;
             for (var b = fm.SourceProps.First(); b is not null; b = b.Next())
