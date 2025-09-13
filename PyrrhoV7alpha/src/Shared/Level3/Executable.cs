@@ -5372,7 +5372,8 @@ namespace Pyrrho.Level3
                 if (cx.db.objects[b.key()] is TableColumn cc
                     && cx.db.objects[cc.tabledefpos] is EdgeType rt
                     && rt.NameFor(cx) is string ne && xn.domain.NameFor(cx) is string nx
-                    && (ne == "" || nx == "" || ne == nx)
+                    && (ne == "" || nx == "" || // ne == nx)
+                        xn.domain.EqualOrStrongSubtypeOf(rt))
                     && (cc.tc is TConnector tc && tc.q!=Qlx.Null)
                     && b.value() is CTree<long, bool> pt)
                     for (var c = pt.First(); c != null; c = c.Next())
