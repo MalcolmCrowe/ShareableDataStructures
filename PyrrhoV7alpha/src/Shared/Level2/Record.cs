@@ -65,8 +65,8 @@ namespace Pyrrho.Level2
             {
                 if (!Committed(wr, b.key())) return b.key();
                 if (tr.objects[b.key()] is TableColumn tc && tc.domain.kind==Qlx.POSITION
-                    && b.value().ToLong() is long p && !Committed(wr,p))
-                        return p;
+                    && b.value() is TPosition tp && !Committed(wr,tp.value))
+                        return tp.value;
             }
             return -1;
         }
