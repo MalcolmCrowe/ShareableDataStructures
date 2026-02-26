@@ -348,6 +348,12 @@ namespace Pyrrho.Level3
                     cx.uids += (p.ppos, wr.Length);
                     (tr, _) = p.Commit(wr, tr);
                 }
+                for (var b = wr.cx.toFix.First(); b != null; b = b.Next())
+                {
+                    var nk = wr.cx.Fix(b.key());
+                    var nb = wr.cx.db.objects[nk] as DBObject ?? throw new PEException("PE77771");
+                    wr.cx.db += (DBObject)nb.Fix(wr.cx);
+                }
                 cx.affected = (cx.affected ?? Rvv.Empty) + wr.cx.affected;
                 cx.parse = ExecuteStatus.Obey;
                 wr.cx.db += (LastModified, File.GetLastWriteTimeUtc(name));

@@ -369,7 +369,7 @@ namespace Pyrrho.Level3
             }
         }
         /// <summary>
-        /// Start a new Transtion if necessary (Transaction override does very little)
+        /// Start a new Transaction if necessary (Transaction override does very little)
         /// </summary>
         /// <param name="t">usually nextId except for Prepared statements</param>
         /// <param name="sce"></param>

@@ -5872,7 +5872,7 @@ namespace Pyrrho.Level3
             var sb = new StringBuilder(base.ToString());
             if (scalar)
                 sb.Append(" scalar ");
-            sb.Append(' '); sb.Append(worker);
+            sb.Append(' '); sb.Append(Uid(worker));
             return sb.ToString();
         }
     }

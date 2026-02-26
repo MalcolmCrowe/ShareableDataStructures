@@ -96,6 +96,7 @@ namespace Pyrrho.Level2
             if (x.table != null && x.dataType is not null)
             {
                 table = (Table)x.table.Fix(wr.cx);
+                coldefault = wr.cx.Fix(x.coldefault);
                 tabledefpos = table.defpos;
                 seq = x.seq;
                 domdefpos = x.domdefpos;
@@ -336,6 +337,7 @@ namespace Pyrrho.Level2
             var cd = tc.domain;
             tc += (TableColumn._Generation, generation);
             tc += (TableColumn.ColumnDefault, coldefault);
+            tc += (DBObject._Framing, framing);
             if (cx._Ob(reftype) is Table rt && rt.defpos>0 && TCon(rt) is TConnector nc)
             {
     /*            tc = tc + (TableColumn.Connectors, new CTree<Domain,TConnector>(nc.rd,nc))
@@ -347,6 +349,7 @@ namespace Pyrrho.Level2
                 var u = table.colRefs[reftype] ?? CTree<long, bool>.Empty;
                 table += (Domain.ColRefs, table.colRefs + (reftype,u+ (tc.defpos,true)));
                 rt += (Table.RefCols, rt.refCols + (tc.defpos, true));
+                cx.toFix += (rt.defpos, true);
                 cx.Add(rt);
                 cx.db += rt;
             }
@@ -380,14 +383,6 @@ namespace Pyrrho.Level2
                 }
                 nt.AddNodeOrEdgeType(cx);
             }
-  /*          var n = table.colRefs.Count;
-            if (table.HasRefCols(cx.db) is CTree<long, CTree<long,bool>> er 
-                && table.Refs() > n && table.defpos > 0)
-            {
-                table += (Domain.ColRefs, er);
-                cx.Add(table);
-                cx.db += table;
-            } */
             if (cx.db.format < 51)
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));

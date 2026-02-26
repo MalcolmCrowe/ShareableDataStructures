@@ -1276,7 +1276,7 @@ namespace Pyrrho.Level5
                     r = (EdgeType)r.BuildNodeTypeConnector(cx, tc).Item1;
             return r;
         }
-        /// <summary>
+/*        /// <summary> This seems to be unreferenced
         /// Two cases: adding new Table metadata (REFERENCES) define a set of connector columns 
         ///            adding a single new Column metadata (CONNECTING) for defining its index
         /// The column case is usually called from the table case (s is likely "" i.e. unchanged)
@@ -1355,7 +1355,7 @@ namespace Pyrrho.Level5
             cx.db += r;
             cx.Add(r);
             return (cx,r);
-        }
+        } */
         internal override TNode Node(Context cx, TableRow r)
         {
             return new TEdge(cx, r);

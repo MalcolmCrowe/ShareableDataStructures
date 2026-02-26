@@ -341,6 +341,8 @@ namespace Pyrrho.Level3
         /// </summary>
         internal virtual (Context,DBObject) Add(Context cx,TMetadata md)
         {
+            if (defpos>0 && defpos<Transaction.TransPos)
+                cx.toFix += (defpos, true);
             var dmd = TMetadata.Empty;
             var rmd = TMetadata.Empty;
             for (var b=md.First();b!=null;b=b.Next())

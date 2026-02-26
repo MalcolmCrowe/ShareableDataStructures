@@ -53,6 +53,7 @@ namespace Pyrrho.Level4
             next.nextHeap = Math.Max(next.nextHeap, nextHeap);
             next.result = result;
             next.binding = binding;
+            next.toFix += toFix;
             next.checkEdges += checkEdges;
             next.deferred += deferred;
             next.warnings += warnings;
@@ -138,6 +139,7 @@ namespace Pyrrho.Level4
                 next.binding = binding;
                 next.funcs = funcs;
                 next.checkEdges += checkEdges;
+                next.toFix += toFix;
             }
             return base.SlideDown();
         }
@@ -181,6 +183,7 @@ namespace Pyrrho.Level4
                 next.obs += obs;
                 next.nextHeap = nextHeap;
                 next.result = result;
+                next.toFix += toFix;
             }
             return base.SlideDown();
         }
@@ -1206,6 +1209,7 @@ namespace Pyrrho.Level4
             next.values = values;
             next.warnings += warnings;
             next.deferred += deferred;
+            next.toFix += toFix;
             next.nextHeap = Math.Max(next.nextHeap,nextHeap);
             next.lastret = lastret;
             if (db != next.db)

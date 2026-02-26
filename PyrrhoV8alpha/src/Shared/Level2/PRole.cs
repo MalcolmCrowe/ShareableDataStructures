@@ -2,6 +2,7 @@ using System.Text;
 using Pyrrho.Common;
 using Pyrrho.Level4;
 using Pyrrho.Level3;
+using System.CodeDom.Compiler;
 
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
@@ -202,21 +203,28 @@ namespace Pyrrho.Level2
         /// Deserialise this Physical from the buffer
         /// </summary>
         /// <param name="buf">the buffer</param>
-        public override void Deserialise(Reader rdr) 
-		{
-			name =rdr.GetString();
+        public override void Deserialise(Reader rdr)
+        {
+            name = rdr.GetString();
             details = rdr.GetString();
             iri = rdr.GetString();
-            seq = rdr.GetLong()-1;
+            seq = rdr.GetLong() - 1;
             defpos = rdr.GetLong();
             flags = rdr.GetLong();
             var ob = rdr.context.db.objects[defpos] as DBObject ?? Domain.Null;
             var nst = rdr.context.db.nextStmt;
-            metadata = new Parser(rdr.context, details).ParseMetadata(Qlx.ANY,
-                BTree<long,object>.Empty+(DBObject.Defpos,defpos)).Item2;
+            var m = new BTree<long, object>(DBObject.Defpos, defpos);
+            var psr = new Parser(rdr.context, details);
+            var op = psr.cx.parse;
+            psr.cx.parse = ExecuteStatus.Compile;
+            metadata = psr.ParseMetadata(Qlx.ANY,
+                BTree<long, object>.Empty + (DBObject.Defpos, defpos)).Item2;
+            var fr = new Framing(psr.cx, nst);
+            psr.cx.parse = op;
             if (ob is TableColumn tc && metadata[Qlx.VALUE]?.ToLong() is long dp)
-                rdr.context.Add(tc + (TableColumn.ColumnDefault,dp)
-                    +(DBObject._Framing,tc.framing + new Framing(rdr.context, nst)));
+                ob = (TableColumn)rdr.context.Add(tc + (TableColumn.ColumnDefault, dp)
+                    + (TableColumn._Generation,Generation.Default)
+                    + (DBObject._Framing, tc.framing + fr));
             var rp = rdr.context.role.defpos;
             (rdr.context,_) = rdr.context.Add(ob, metadata);
             base.Deserialise(rdr);

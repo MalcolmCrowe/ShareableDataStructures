@@ -94,6 +94,7 @@ namespace Pyrrho.Level4
         // bindings, and cache of RowSetPredicate RowSet (not initialised from parent, not copied to parent on exit)
         public BTree<long, Domain> bindings = BTree<long,Domain>.Empty;
         internal CTree<long,long> uids =CTree<long,long>.Empty;
+        internal CTree<long, bool> toFix = CTree<long, bool>.Empty; // Fix these objects on next Commit
         /// <summary>
         /// Used in Replace cascade
         /// </summary>
@@ -157,6 +158,7 @@ namespace Pyrrho.Level4
                 cx.graph = cx._Ob(cx.role.graphs[gn]) as GraphType;
             nextHeap = conn.nextPrep;
             parseStart = 0L;
+            toFix = cx.toFix;
             this.db = db;
             if (db is Transaction)
             {
@@ -187,6 +189,7 @@ namespace Pyrrho.Level4
                 parse = cx.parse;
             rdC = cx.rdC;
             rdS = cx.rdS;
+            toFix = cx.toFix;
             nid = cx.nid;
             restRowSets = cx.restRowSets;
             groupCols = cx.groupCols;
@@ -2479,6 +2482,7 @@ namespace Pyrrho.Level4
             next.deferred += deferred;
             next.nodesDone += nodesDone;
             next.checkEdges += checkEdges;
+            next.toFix += toFix;
             next.val = val;
             next.nextHeap = Math.Max(nextHeap,next.nextHeap);
             next.lastret = lastret;
@@ -3272,12 +3276,6 @@ namespace Pyrrho.Level4
         { }
         internal Framing(Context cx,long nst) : base(_Mem(cx,nst))
         { }
-        internal Framing(ObTree ot) :base (new BTree<long, object>(Obs,ot)) 
-        {
-            if (ot.First()?.key() is long p &&
-                (p < Transaction.Executables || p >= Transaction.HeapStart))
-                Console.WriteLine("???");
-        }
         static BTree<long, object> _Mem(Context cx,long nst)
         {
             var r = BTree<long, object>.Empty;

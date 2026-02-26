@@ -152,7 +152,7 @@ namespace Pyrrho.Level3
         internal override (Context,DBObject) Add(Context cx, TMetadata md)
         {
             var ckp = 0L;
-            var tc = this;
+            (cx,var tc) = base.Add(cx,md);
             var table = cx._Ob(tabledefpos) as Table ?? throw new PEException("PE30331");
             var tm = TMetadata.Empty; // this will become the new bits of metadata to add to the TableColumn 
             var oi = tc.infos[cx.role.defpos] ?? new ObInfo(name);
