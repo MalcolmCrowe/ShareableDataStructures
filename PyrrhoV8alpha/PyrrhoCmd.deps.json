@@ -8,13 +8,13 @@
     ".NETCoreApp,Version=v9.0": {
       "PyrrhoCmd/1.0.0": {
         "dependencies": {
-          "PyrrhoLink": "1.0.0.0"
+          "PyrrhoLink.Reference": "1.0.0.0"
         },
         "runtime": {
           "PyrrhoCmd.dll": {}
         }
       },
-      "PyrrhoLink/1.0.0.0": {
+      "PyrrhoLink.Reference/1.0.0.0": {
         "runtime": {
           "PyrrhoLink.dll": {
             "assemblyVersion": "1.0.0.0",
@@ -30,7 +30,7 @@
       "serviceable": false,
       "sha512": ""
     },
-    "PyrrhoLink/1.0.0.0": {
+    "PyrrhoLink.Reference/1.0.0.0": {
       "type": "reference",
       "serviceable": false,
       "sha512": ""

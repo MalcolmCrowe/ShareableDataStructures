@@ -13,6 +13,10 @@
   </ItemGroup>
 
   <ItemGroup>
+    <ProjectReference Include="..\PyrrhoLink\PyrrhoLink.csproj" />
+  </ItemGroup>
+
+  <ItemGroup>
     <Reference Include="PyrrhoLink">
       <HintPath>..\PyrrhoLink\bin\Debug\net9.0\PyrrhoLink.dll</HintPath>
     </Reference>
