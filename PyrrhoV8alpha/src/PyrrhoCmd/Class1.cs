@@ -300,8 +300,8 @@ namespace PyrrhoCmd
         }
     static string? GetCommand(PyrrhoConnect db, StreamReader? file, bool interactive)
         {
-            Console.InputEncoding = Encoding.Unicode;
-            Console.OutputEncoding = Encoding.Unicode;
+ //           Console.InputEncoding = Encoding.Unicode;
+ //          Console.OutputEncoding = Encoding.Unicode;
             bool newfile = false;
             int fileLines = -1;
             string? str;
