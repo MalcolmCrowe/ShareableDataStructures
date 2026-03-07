@@ -1891,7 +1891,7 @@ namespace Pyrrho.Level4
                         case Procedure.Params: v = ((Domain)v).Fix(this); break;
                         case SqlCall.Parms: v = FixLl((CList<long>)v); break;
                         case WindowSpecification.PartitionType: v = ((Domain)v).Fix(this); break;
-                        case GqlPath.Pattern: v = Fix((long)v); break;
+                        case GqlPath.Pattern: v = FixLl((CList<long>)v); break;
                         case RowSet.Periods: v = FixTlP((BTree<long, PeriodSpec>)v); break;
                         case GqlNode.PostCon: v = ((TypedValue)v).Fix(this); break;
                         case GqlNode.PreCon: v = ((TypedValue)v).Fix(this); break;

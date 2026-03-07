@@ -380,8 +380,8 @@ namespace Pyrrho.Level4
                     case Qlx.EOF: return new Executable(LexDp());
                     case Qlx.EXCEPT: return ParseCompositeQueryStatement(m);
                     case Qlx.FETCH: Next();
-                        if (Match(Qlx.LPAREN))
-                            return ParseFetchForDoStatement();
+                     //   if (Match(Qlx.LPAREN))
+                     //       return ParseFetchForDoStatement();
                         if (Match(Qlx.FIRST))
                             goto case Qlx.ORDER;
                         return ParseFetchStatement(m);
@@ -5700,7 +5700,7 @@ namespace Pyrrho.Level4
                 cx.Get(o, Domain.TableType) as SqlCursor
                 ?? throw new DBException("34000", o.ToString())));
         }
-        /// <summary>
+ /*       /// <summary>
         /// Special syntax for LDBC Financial benchmark reverse engineering
         /// FETCH ( query ) FOR dbname DO stmt
         /// where in each row, stmt $identifiers are replaced with fields from query row.
@@ -5756,7 +5756,7 @@ namespace Pyrrho.Level4
                 cn.Close();
             }
             return Executable.None;
-        }
+        }*/
         /// <summary>
 		/// Fetch =		FETCH Cursor_id INTO VariableRef { ',' VariableRef } .
         /// </summary>
