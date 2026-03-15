@@ -1782,7 +1782,7 @@ namespace Pyrrho.Level4
                         case Database.Catalog: v = FixTsl((CTree<string, long>)v); break;
                         case TableColumn.Checks: v = FixTlb((CTree<long, bool>)v); break;
                         case TransitionTable.ColIds: v = FixLl((CList<long>)v); break;
-                        case Domain.ColRefs: v = FixTDTlq((CTree<Domain,CTree<long,Qlx>>)v); break;
+                        case Domain.ColRefs: v = FixTlTlb((CTree<long,CTree<long,bool>>)v); break;
                         case BindingRowSet.ColTypes: v = FixTlTDi((CTree<long, CTree<Domain, int>>)v); break;
                         case TableColumn.ColumnDefault: v = Fix((long)v); break;
                         case WhenPart.Cond: v = Fix((long)v); break;

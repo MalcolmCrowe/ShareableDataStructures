@@ -106,111 +106,112 @@ namespace Pyrrho.Level2
             base.Deserialise(rdr);
             dataType.Fix(rdr.context); // add this edge type to the catalogue
         }
-    } 
-/*    internal class PGraph : Physical
-    {
-        public string iri = "";
-        public string name = ""; 
-        public CTree<long, bool> types = CTree<long,bool>.Empty;
-        public CTree<long, TNode> records = CTree<long, TNode>.Empty;
-        public PGraph(long pp,string s,CTree<long,bool> ts,CTree<long,TNode> ns) 
-            : base(Type.PGraph, pp)
+    }
+    /*    internal class PGraph : Physical
         {
-            iri = s; // will be split by Graph constructor
-            types = ts;
-            records = ns;
-        }
-        public PGraph(Reader rdr) : base(Type.PGraph, rdr)
-        { }
-        public PGraph(PGraph x, Writer wr) : base(x, wr)
-        {
-            iri = x.iri;
-            types = wr.cx.Fix(x.types);
-            records = wr.cx.Fix(x.records);
-        }
-        public override void Deserialise(Reader rdr)
-        {
-            iri = rdr.GetString();
-            var n = rdr.GetInt();
-            for (var i = 0; i < n; i++)
-                types += (rdr.GetLong(), true);
-            n = rdr.GetInt();
-            for (var i = 0; i < n; i++)
+            public string iri = "";
+            public string name = ""; 
+            public CTree<long, bool> types = CTree<long,bool>.Empty;
+            public CTree<long, TNode> records = CTree<long, TNode>.Empty;
+            public PGraph(long pp,string s,CTree<long,bool> ts,CTree<long,TNode> ns) 
+                : base(Type.PGraph, pp)
             {
-                var p = rdr.GetLong();
-                if (rdr.context.db.objects[rdr.GetLong()] is not NodeType tb || tb.tableRows[p] is not TableRow tr)
-                    Console.WriteLine("Warning: bad Graph record list");
-                else
-                    records += (p, tb.Node(rdr.context,tr));
+                iri = s; // will be split by Graph constructor
+                types = ts;
+                records = ns;
             }
-            base.Deserialise(rdr);
-        }
-        public override void Serialise(Writer wr)
-        {
-            wr.PutString(iri);
-            wr.PutInt((int)types.Count);
-            for (var b = types.First(); b != null; b = b.Next())
-                wr.PutLong(b.key());
-            wr.PutInt((int)records.Count);
-            for (var b = records.First(); b != null; b = b.Next())
+            public PGraph(Reader rdr) : base(Type.PGraph, rdr)
+            { }
+            public PGraph(PGraph x, Writer wr) : base(x, wr)
             {
-                wr.PutLong(b.value().dataType.defpos);
-                wr.PutLong(b.key());
+                iri = x.iri;
+                types = wr.cx.Fix(x.types);
+                records = wr.cx.Fix(x.records);
             }
-            base.Serialise(wr);
-        }
-        public override long Dependent(Writer wr, Transaction tr)
-        {
-            return -1L;
-        }
+            public override void Deserialise(Reader rdr)
+            {
+                iri = rdr.GetString();
+                var n = rdr.GetInt();
+                for (var i = 0; i < n; i++)
+                    types += (rdr.GetLong(), true);
+                n = rdr.GetInt();
+                for (var i = 0; i < n; i++)
+                {
+                    var p = rdr.GetLong();
+                    if (rdr.context.db.objects[rdr.GetLong()] is not NodeType tb || tb.tableRows[p] is not TableRow tr)
+                        Console.WriteLine("Warning: bad Graph record list");
+                    else
+                        records += (p, tb.Node(rdr.context,tr));
+                }
+                base.Deserialise(rdr);
+            }
+            public override void Serialise(Writer wr)
+            {
+                wr.PutString(iri);
+                wr.PutInt((int)types.Count);
+                for (var b = types.First(); b != null; b = b.Next())
+                    wr.PutLong(b.key());
+                wr.PutInt((int)records.Count);
+                for (var b = records.First(); b != null; b = b.Next())
+                {
+                    wr.PutLong(b.value().dataType.defpos);
+                    wr.PutLong(b.key());
+                }
+                base.Serialise(wr);
+            }
+            public override long Dependent(Writer wr, Transaction tr)
+            {
+                return -1L;
+            }
 
-        protected override Physical Relocate(Writer wr)
-        {
-            types = wr.cx.Fix(types);
-            records = wr.cx.Fix(records);
-            return new PGraph(this, wr);
-        }
+            protected override Physical Relocate(Writer wr)
+            {
+                types = wr.cx.Fix(types);
+                records = wr.cx.Fix(records);
+                return new PGraph(this, wr);
+            }
 
-        internal override DBObject? Install(Context cx)
-        {
-            var g = new Graph(this,cx,0L);
-            cx.db += g;
-            var ro = cx.role;
-            ro += (Role.Graphs, ro.graphs + (name, ppos));
-            cx.db += g;
-            cx.db += ro;
-            cx.Add(ro);
-            cx.Add(g);
-            return g;
-        }
-        public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
-        {
-            if (iri.StartsWith("http")) // do not commit
-                return (tr, this);
-            return base.Commit(wr, tr);
-        }
-        public override string ToString()
-        {
-            var sb = new StringBuilder("PGraph ");
-            sb.Append(name); sb.Append(" in ");
-            sb.Append(iri);
-            var cm = " [";
-            for (var b = types.First(); b != null; b = b.Next())
+            internal override DBObject? Install(Context cx)
             {
-                sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key()));
+                var g = new Graph(this,cx,0L);
+                cx.db += g;
+                var ro = cx.role;
+                ro += (Role.Graphs, ro.graphs + (name, ppos));
+                cx.db += g;
+                cx.db += ro;
+                cx.db += (Database.Role, ro);
+                cx.Add(ro);
+                cx.Add(g);
+                return g;
             }
-            if (cm == ",")
-                sb.Append(']');
-            cm = " [";
-            for (var b = records.First(); b != null; b = b.Next())
+            public override (Transaction?, Physical) Commit(Writer wr, Transaction? tr)
             {
-                sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key()));
+                if (iri.StartsWith("http")) // do not commit
+                    return (tr, this);
+                return base.Commit(wr, tr);
             }
-            if (cm == ",")
-                sb.Append(']');
-            return sb.ToString();
-        }
-    } */
+            public override string ToString()
+            {
+                var sb = new StringBuilder("PGraph ");
+                sb.Append(name); sb.Append(" in ");
+                sb.Append(iri);
+                var cm = " [";
+                for (var b = types.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key()));
+                }
+                if (cm == ",")
+                    sb.Append(']');
+                cm = " [";
+                for (var b = records.First(); b != null; b = b.Next())
+                {
+                    sb.Append(cm); cm = ","; sb.Append(DBObject.Uid(b.key()));
+                }
+                if (cm == ",")
+                    sb.Append(']');
+                return sb.ToString();
+            }
+        } */
     internal class PGraphType : Physical
     {
         public string iri = "";
@@ -280,6 +281,7 @@ namespace Pyrrho.Level2
             ro += (Role.Graphs, ro.graphs + (name, ppos));
             cx.db += g;
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             cx.Add(ro);
             cx.Add(g);
             cx.graph = g;
@@ -345,6 +347,7 @@ namespace Pyrrho.Level2
             ro += (Role.Schemas, ro.schemas + (directoryPath, ppos));
             cx.db += g;
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             cx.Add(ro);
             cx.Add(g);
             cx.schema = g;

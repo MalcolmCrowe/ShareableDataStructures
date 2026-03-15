@@ -4222,6 +4222,7 @@ namespace Pyrrho.Level3
         /// <exception cref="DBException"></exception>
         public override Context _Obey(Context cx)
         {
+            var ne = CTree<long, GqlEdge>.Empty;  // edges to build
             if (cx.next is Context px)
                 cx.names += px.names;
             for (var b = graphExps.First(); b != null; b = b.Next())
@@ -4250,8 +4251,8 @@ namespace Pyrrho.Level3
                             else if (g is GqlReference gr && cx.obs[gr.refersTo] is GqlEdge re && !se)
                             { ed = re; er = gr; se = true; }
                             else if (ed is not null && er is not null
-                                && ((se == true) || bn is not null)
-                                && ((g is GqlReference gg && cx.obs[gg.refersTo] is GqlNode rg) ? rg.Eval(cx) : g.Eval(cx)) is TNode nn)
+                                    && ((se == true) || bn is not null)
+                                    && ((g is GqlReference gg && cx.obs[gg.refersTo] is GqlNode rg) ? rg.Eval(cx) : g.Eval(cx)) is TNode nn)
                             {
                                 if (ed.Eval(cx) is TEdge te) // we are adding something to an existing edge
                                 {
@@ -4334,7 +4335,11 @@ namespace Pyrrho.Level3
                                     }
                                     else
                                         (_, ls) = et.Connect(cx, bn, nn, ed, er.postCon, ls);
-                                    ed.Create(cx, et, defpos, ls);
+                                    ed += (_Domain, et);
+                                    ed += (Scope, defpos);
+                                    ed += (GqlNode.DocValue, ls);
+                                    cx.obs += (ed.defpos,ed);
+                                    ne += (ed.defpos, ed);
                                 }
                                 bv = g;
                                 bn = g.Eval(cx) as TNode;
@@ -4348,9 +4353,10 @@ namespace Pyrrho.Level3
                                 ed?.InsertSchema(cx);
                         }
                 }
-        /*    for (var c = cx.newNodes.First(); c != null; c = c.Next())
-                if (c.value() is CTree<long, bool> ln && ln.Count > 1L)
-                    cx.db = JoinRecords(cx, c.key(), ln); */
+            for (var gb = ne.First(); gb != null; gb = gb.Next())
+                if (gb.value() is GqlEdge gc
+                    && gc.domain is Table et)
+                    gc.Create(cx, et, gc.scope, gc.docValue);
             return cx;
         }
         internal CTree<long,bool> GraphTypes(Context cx)
@@ -5222,6 +5228,9 @@ namespace Pyrrho.Level3
             var ds = BTree<long, TableRow>.Empty; // the set of database nodes that can match with xn
             if (cr == TBool.True && pd != null)
                 ds += (pd.defpos, pd.tableRow);
+            else if (cr is TConnector po && pd?.tableRow.vals[po.cp]?.ToLong() is long pp
+                && cx.db.objects[po.rd.defpos] is Table tb && tb.tableRows[pp] is TableRow pr)
+                ds += (pp, pr);
             else if (xn is GqlReference gr)
             {
                 if (cx.binding[gr.refersTo] is TNode tr)
@@ -5236,9 +5245,9 @@ namespace Pyrrho.Level3
                         ds += (gr.refersTo, vr);
                 }
                 else if (pd is TEdge te && te.dataType is Table et && et.infos[et.definer] is ObInfo ei
-                    && ei.metadata.Contains(Qlx.REFERENCES)==true && cr is TConnector ec)
+                    && ei.metadata.Contains(Qlx.REFERENCES) == true && cr is TConnector ec)
                     //     for (var b = (et.metadata[Qlx.EDGETYPE] as TSet)?.First(); b != null; b = b.Next())
-                    for (var c = Connects(cx,et, ec).First(); c != null; c = c.Next())
+                    for (var c = Connects(cx, et, ec).First(); c != null; c = c.Next())
                     {
                         if (c.key() is TConnector x
                                 && (x.rd as Table)?.GetS(cx,
@@ -5247,27 +5256,24 @@ namespace Pyrrho.Level3
                             ds += (yn.defpos, yn);
                     }
             }
-            else if (pd is not null && pd.dataType is Table pe && pe.colRefs.Count>0
+            else if (pd is not null && pd.dataType is Table pe && pe.colRefs.Count > 0
                 && pd.defpos != pd.dataType.defpos && cr is TConnector ed)
             {
                 for (var b = pe.colRefs.First(); b != null; b = b.Next())
-                    for (var c = b.value().First();c!=null;c=c.Next())
+                    for (var c = b.value().First(); c != null; c = c.Next())
                         if (Connects(ed, ed.q))
-                        if (ed.cn == "" || ed.cn.ToUpper() == cx.NameFor(c.key())?.ToUpper())
-                            if ((cx.db.objects[b.key()] as Table)?.GetS(cx, pd.tableRow.vals[c.key()] as TInt)
-                           is TableRow tn)
-                                ds += (tn.defpos, tn);
+                            if (ed.cn == "" || ed.cn.ToUpper() == cx.NameFor(c.key())?.ToUpper())
+                                if ((cx.db.objects[b.key()] as Table)?.GetS(cx, pd.tableRow.vals[c.key()] as TInt)
+                               is TableRow tn)
+                                    ds += (tn.defpos, tn);
             }
             else if (pd is not null && pd.defpos == pd.dataType.defpos) // rowType case
             {
                 if (pd.dataType is Table pg)
                 {
                     for (var b = pg.sindexes.First(); b != null; b = b.Next())
-                        if ((cx._Ob(b.key()) as Table)?.Schema(cx) is TableRow tq)
-                            ds += (tq.defpos, tq);
-               //     for (var b = pg.rindexes.First(); b != null; b = b.Next())
-               //         if ((cx.db.objects[b.key()] as Table)?.Schema(cx) is TableRow tq)
-               //             ds += (tq.defpos, tq);
+                        if ((cx._Ob(b.key()) as Table)?.Schema(cx) is TableRow tx)
+                            ds += (tx.defpos, tx);
                 }
             }
             else if (pd is not null && pd.dataType is Table pn)
@@ -5335,20 +5341,6 @@ namespace Pyrrho.Level3
                         ds = Traverse(cx, ms, xn, tr, cr, pd, nl, ctr, ds);
                 return ds;
             }
-            // case 1: pn has a primary index
-     /*       for (var b = pn.rindexes.First(); b != null; b = b.Next())
-                if (cx._Ob(b.key()) is Table rt && b.value() is CTree<Domain, Domain> pt)
-                {
-                    if (xn.domain.kind == Qlx.UNION && !xn.domain.unionOf.Contains(rt))
-                        continue;
-                    if (pd.defpos == pd.dataType.defpos) // schema flag
-                    {
-                        ds += (rt.defpos, rt.Schema(cx));
-                        continue;
-                    }
-                    if (xn.domain.defpos >= 0 && xn.domain.name != rt.name)
-                        continue;
-                } */
            var la = tr.Contains(Domain.TypeSpec.defpos) ? tr[Domain.TypeSpec.defpos].Item1 : int.MaxValue;
             for (var b = (cx.db.objects[pn.defpos] as Table)?.sindexes[pd.tableRow.defpos]?.First();
                 b != null; b = b.Next())
@@ -5366,30 +5358,6 @@ namespace Pyrrho.Level3
                             && lm-- > 0 && la-- > 0)
                             ds += (dr.defpos, dr);
                 }
-      /*              for (var d = cc.cs.First(); d != null; d = d.Next())
-                        if (d.value() is TConnector tc && tc.q != Qlx.Null
-                            && b.value() is CTree<long, bool> pt)
-                            for (var c = pt.First(); c != null; c = c.Next())
-                            {
-                                var lm = tr.Contains(rt.defpos) ? tr[rt.defpos].Item1 : int.MaxValue;
-                                if (pd.defpos == pd.dataType.defpos && lm-- > 0 && la-- > 0)  // rowType flag
-                                {
-                                    ds += (rt.defpos, rt.Schema(cx));
-                                    continue;
-                                }
-                                if (xn.domain.defpos > 0 && xn.domain.defpos != rt.defpos)
-                                    continue;
-                                if (rt.tableRows[c.key()] is TableRow dr && xn is GqlEdge xe)
-                                {
-                                    if (xe.preCon is TConnector pe && pe.q != tc.q)
-                                        continue;
-                                    if (cx.binding[xe.before?.defpos ?? -1L] is TNode tn
-                                        && tn.defpos != dr.vals[tc.cp]?.ToLong())
-                                        continue;
-                                    if (lm-- > 0 && la-- > 0)
-                                        ds += (dr.defpos, dr);
-                                }
-                            } */
             return ds;
         }
         static CTree<Domain,int> AddIn1(CTree<Domain,int> ctr,Table tb)

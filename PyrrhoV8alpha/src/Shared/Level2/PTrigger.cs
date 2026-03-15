@@ -292,6 +292,7 @@ namespace Pyrrho.Level2
             oi += (ObInfo._Names, ns);
             tg += (DBObject.Infos, new BTree<long, ObInfo>(ro.defpos, oi));
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb);

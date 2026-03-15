@@ -571,8 +571,11 @@ namespace Pyrrho.Level2
                 throw new DBException("42105").Add(Qlx.SECURITY);
             for (var b = cx.db.roles.First(); b != null; b = b.Next())
                 if (b.value() is long bp && cx.db.objects[bp] is Role ro && ob.infos[ro.defpos] is ObInfo oi)
+                {
                     cx.db += ro + (obj, oi + (DBObject.Classification, classification));
-            ob = (DBObject)ob.New(ob.mem+ (DBObject.Classification, classification));
+                    cx.db += (Database.Role, ro);
+                }
+            ob = (DBObject)ob.New(ob.mem + (DBObject.Classification, classification));
             cx.db += ob;
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

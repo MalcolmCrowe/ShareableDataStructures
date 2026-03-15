@@ -188,6 +188,7 @@ namespace Pyrrho.Level2
             ob = (DBObject)ob.New(m);
             cx.db += ob;
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             cx.obs += (defpos, ob);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));

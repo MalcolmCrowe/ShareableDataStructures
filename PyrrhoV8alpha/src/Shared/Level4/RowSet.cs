@@ -1863,8 +1863,8 @@ namespace Pyrrho.Level4
             if (Built(cx))
                 return this;
             base.Build(cx);
-            if (cx.obs[builder] is Executable e)
-                e._Obey(cx);
+      //      if (cx.obs[builder] is Executable e)
+      //          e._Obey(cx);
             var r = (RowSet)(cx.obs[defpos] ?? this);
             cx.result = r;
             return r;
@@ -5528,8 +5528,12 @@ namespace Pyrrho.Level4
                                         {
                                             if (c.Value() is TConnector cc
                                             && (cc.rd as Table)?.FindPrimaryIndex(cx) is Level3.Index px
+                                            && trc[p] !=TNull.Value
                                          && px.rows?.Get(CList<TypedValue>.Empty+new TInt(long.Parse(trc[p].ToString())), 0) is long lp)
                                                 v = new TRef(lp, rt);
+                           //                 var tx = ((c.Value() as TConnector)?.rd as Table)?.FindPrimaryIndex(cx);
+                           //                 var rl = long.Parse(trc[p].ToString());
+                           //                 var tl = tx?.rows?.Get(CList<TypedValue>.Empty + new TInt(rl), 0);
                                         }
                                     else
                                         throw new DBException("23000");

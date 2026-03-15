@@ -387,6 +387,7 @@ namespace Pyrrho.Level2
             {
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
                 cx.db += ro;
+                cx.db += (Database.Role, ro);
             }
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
@@ -546,7 +547,7 @@ namespace Pyrrho.Level2
         /// <param name="ifN">Only commit if referenced</param>
         public PColumn3(Table pr, string nm, Domain dm, string ms, 
             TMetadata md, long nst, long pp, Context cx, bool ifN = false)
-            : this(pr, nm, dm, _Meta(cx,ms,md), nst, pp, cx, ifN)
+            : this(pr, nm, dm, _Meta(cx,pr is not UDType, ms,md), nst, pp, cx, ifN)
         {  }
         PColumn3(Table pr, string nm, Domain dm, 
             (string,bool,Generation,long,long,long,long) xx, long nst, long pp, Context cx, bool ifN = false)
@@ -621,7 +622,7 @@ namespace Pyrrho.Level2
         /// <param name="md">The Metadata</param>
         /// <param name="pp">The generation rule expression/param>
         /// <returns>Default string,whether optional,Generation rule,The Metadata,Framing</returns>
-        static (string, bool, Generation, long, long, long, long) _Meta(Context cx,
+        static (string, bool, Generation, long, long, long, long) _Meta(Context cx,bool dop,
             string ms, TMetadata md)
         {
             Generation g = Generation.No;
@@ -637,7 +638,7 @@ namespace Pyrrho.Level2
                 g = Generation.RowStart;
             if (md.Contains(Qlx.END))
                 g = Generation.RowEnd;
-            bool opt = md[Qlx.OPTIONAL].ToBool() ?? true;
+            bool opt = md[Qlx.OPTIONAL].ToBool() ?? dop;
             long dv = md[Qlx.VALUE].ToLong() ?? -1L;
             long flags = md[Qlx.ACTION].ToLong() ?? 0L;
             long refType = md[Qlx.REFERENCING].ToLong() ?? -1L;

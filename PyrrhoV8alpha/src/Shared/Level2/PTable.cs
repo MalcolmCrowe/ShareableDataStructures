@@ -146,6 +146,7 @@ namespace Pyrrho.Level2
             if (cx.db.format < 51)
                 ro += (Role.DBObjects, ro.dbobjects + ("" + defpos, defpos));
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tb);

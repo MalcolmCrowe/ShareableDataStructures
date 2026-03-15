@@ -380,8 +380,8 @@ namespace Pyrrho.Level4
                     case Qlx.EOF: return new Executable(LexDp());
                     case Qlx.EXCEPT: return ParseCompositeQueryStatement(m);
                     case Qlx.FETCH: Next();
-                     //   if (Match(Qlx.LPAREN))
-                     //       return ParseFetchForDoStatement();
+                        if (Match(Qlx.LPAREN))
+                            return ParseFetchForDoStatement();
                         if (Match(Qlx.FIRST))
                             goto case Qlx.ORDER;
                         return ParseFetchStatement(m);
@@ -2130,7 +2130,10 @@ namespace Pyrrho.Level4
                     var cd = cx.names;
                     var od = dm ?? Domain.TypeSpec;
                     cx.names += b;
-                    wh = ParseWhereClause(m+(DBObject.Scope,lp)+(MatchStatement.GDefs,tgs));
+                    if (dm?.defpos > 0L)
+                        cx.defs += (b.uid, dm.names);
+                    var rs =_From(b, od, od, Grant.Privilege.NoPrivilege, lp);
+                    wh = ParseWhereClause(m+(DBObject._From,b.uid)+(DBObject.Scope,lp)+(MatchStatement.GDefs,tgs));
                     cx.names = cd;
                     cx.obs -= b.uid; // wow
                 }
@@ -2440,8 +2443,6 @@ namespace Pyrrho.Level4
             m += (DBObject._Domain, ers);
             if (Match(Qlx.WHERE) && ParseWhereClause(m) is CTree<long, bool> wh) // GQL-169
                 m += (RowSet._Where, wh);
-            cx.Add(ers);
-            cx.result = ers;
             StartStatement();
             if (Match(Qlx.MATCH,Qlx.BEGIN,Qlx.SET,Qlx.Id,Qlx.CREATE,Qlx.INSERT))
             {
@@ -2450,6 +2451,10 @@ namespace Pyrrho.Level4
             }
             var ms = new MatchStatement(cx, tg, tgs, svgs, m);
             cx.Add(ms);
+            ers += (BindingRowSet.Builder, ms.defpos);
+            ers += (RowSet._Built, false);
+            cx.Add(ers);
+            cx.result = ers;
             return ms;
         }
         internal static (BindingRowSet, Names) BindingTable(Context cx, long ap, CTree<long, TGParam> gs, CList<long> svgs)
@@ -3427,7 +3432,7 @@ namespace Pyrrho.Level4
                     Qlx.FOREIGN, Qlx.CARDINALITY, Qlx.CONNECTING, Qlx.NODETYPE);
                 case Qlx.COLUMN:
                     return Match(Qlx.ARROW,Qlx.ATTRIBUTE, Qlx.X, Qlx.Y, Qlx.CAPTION, Qlx.DROP, Qlx.NOT,
-                    Qlx.CHARLITERAL, Qlx.SECURITY, Qlx.MULTIPLICITY, 
+                    Qlx.CHARLITERAL, Qlx.SECURITY, Qlx.MULTIPLICITY, Qlx.OPTIONAL,
                     Qlx.COLLATE, Qlx.DEFAULT, Qlx.GENERATED, Qlx.CARDINALITY);
                 case Qlx.CONNECTING:
                     return Match(Qlx.CARDINALITY, Qlx.OPTIONAL, Qlx.MULTIPLICITY);
@@ -3733,6 +3738,7 @@ namespace Pyrrho.Level4
                                 Mustbe(Qlx.INTEGERLITERAL, Qlx.TIMES, Qlx.NULL);
                                 tm += (Qlx.MAXVALUE, lw);
                             }
+                            Match(Qlx.TO, Qlx.FROM, Qlx.WITH);
                             if (lb)
                                 Mustbe(Qlx.RPAREN);
                             break;
@@ -3770,8 +3776,14 @@ namespace Pyrrho.Level4
                                 if (b.value() is long p && cx.db.objects[p] is TableColumn c)
                                 {
                                     var nm = c.NameFor(cx) ?? "";
-                                    var rv = new QlInstance(0L, cx.GetUid(), cx, nm, -1L, c.defpos);
-                                    cx.Add(rv);
+                                        var dp = cx.GetUid();
+                                        var ni = new Ident(nm, dp);
+                                        QlValue rv = (cx.db.objects[c.toType] is Domain dm) ?
+                                                new GqlNode(ni, new BList<Ident>(ni), cx, -1,
+                                                CTree<string, QlValue>.Empty,
+                                                CTree<long, TGParam>.Empty, dm)
+                                                : new QlInstance(0L, dp, cx, nm, -1L, c.defpos);
+                                        cx.Add(rv);
                                     cx.Add(nm, 0L, rv);
                                 }
                             var sv = (QlValue)cx.Add(ParseSqlValue(m));
@@ -4208,9 +4220,7 @@ namespace Pyrrho.Level4
                 if (tm != null)
                     nc += (ObInfo._Metadata, tm); */
                 if (tm?.Contains(Qlx.MINVALUE) == true || tm?.Contains(Qlx.MAXVALUE) == true)
-                    cx.MetaPend(et.defpos, pc.defpos, pc.name,
-                        TMetadata.Empty + (Qlx.MULTIPLICITY, new TSet(Domain.Ref)
-                        + new TRef(pc.defpos, cc.rd ?? Domain.Content)));
+                    cx.MetaPend(et.defpos, pc.defpos, cc.cs,  cc.cm??TMetadata.Empty);
                 //    var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
                 //    var px = new PIndex(sc, et, di, 0, -1L, cx.db.nextPos, cx.db, false);
                 //    cx.Add(px);
@@ -4742,20 +4752,51 @@ namespace Pyrrho.Level4
             Next();
             if (tok == Qlx.LPAREN)
                 return ParseMultipleAssignment();
-            if (Match(Qlx.AUTHORIZATION, Qlx.ROLE, Qlx.TIMEOUT,Qlx.TABLE, Qlx.DOMAIN,Qlx.TYPE,
+            if (Match(Qlx.AUTHORIZATION, Qlx.ROLE, Qlx.TIMEOUT, Qlx.TABLE, Qlx.DOMAIN, Qlx.TYPE,
                 Qlx.PROCEDURE, Qlx.FUNCTION, Qlx.TRIGGER, Qlx.METHOD, Qlx.REFERENCING,
                 Qlx.STATIC, Qlx.INSTANCE, Qlx.OVERRIDING, Qlx.CONSTRUCTOR))
             {
-                if (Match(Qlx.TO))
+                if (Match(Qlx.AUTHORIZATION))
+                {
+                    Next();
+                    Mustbe(Qlx.EQL);
+                    Mustbe(Qlx.CURATED);
+                    if (cx.db is not Transaction) throw new DBException("2F003");
+                    if (cx.db.user == null || cx.db.user.defpos != cx.db.owner)
+                        throw new DBException("42105").Add(Qlx.OWNER).Mix();
+                    if (cx.parse.HasFlag(ExecuteStatus.Obey))
+                    {
+                        var pc = new Curated(cx.db.nextPos, cx.db);
+                        cx.Add(pc);
+                    }
+                    return Executable.None;
+                }
+                else if (Match(Qlx.TIMEOUT))
+                {
+                    Next();
+                    Mustbe(Qlx.EQL);
+                    if (cx.db.user == null || cx.db.user.defpos != cx.db.owner)
+                        throw new DBException("42105").Add(Qlx.OWNER).Mix();
+                    Mustbe(Qlx.INTEGERLITERAL);
+                    // ignore for now
+                    return Executable.None;
+                }
+                else if (Match(Qlx.REFERENCING))
+                {
+                    cx.conn.refIdsToPos = true;
+                    Next();
+                    return Executable.None;
+                }
+                else if (Match(Qlx.TO))
                 {
                     Next();
                     ParseSqlSet();
-                } 
-                return Executable.None; 
+                    return Executable.None;
+                }
             }
-            var vb = ParseVarOrColumn(m+(DBObject.Scope, LexLp()));
+            var vb = ParseVarOrColumn(m + (DBObject.Scope, LexLp()));
             cx.Add(vb);
-            if (Match(Qlx.COLON,Qlx.IS) && cx.binding[vb.defpos] is TNode tn)
+            if (Match(Qlx.COLON, Qlx.IS) && cx.binding[vb.defpos] is TNode tn)
             {
                 Next();
                 var ln = new Ident(this);
@@ -4771,7 +4812,7 @@ namespace Pyrrho.Level4
                 return Executable.None;
             }
             Mustbe(Qlx.EQL);
-            var va = ParseSqlValue(m+(DBObject._Domain,vb.domain));
+            var va = ParseSqlValue(m + (DBObject._Domain, vb.domain));
             var sa = new AssignmentStatement(lp, vb, va);
             return (Executable)cx.Add(sa);
         }
@@ -5321,7 +5362,6 @@ namespace Pyrrho.Level4
                 if (tok != Qlx.RPAREN)
                     ps = ParseSqlValueList(BTree<long,object>.Empty);
                 Mustbe(Qlx.RPAREN);
-
                 var n = cx.db.Signature(cx,ps);
                 if (ic.Length == 0 || ic[ic.Length - 1] is not Ident pn)
                     throw new DBException("42000", "Signature");
@@ -5700,7 +5740,7 @@ namespace Pyrrho.Level4
                 cx.Get(o, Domain.TableType) as SqlCursor
                 ?? throw new DBException("34000", o.ToString())));
         }
- /*       /// <summary>
+        /// <summary>
         /// Special syntax for LDBC Financial benchmark reverse engineering
         /// FETCH ( query ) FOR dbname DO stmt
         /// where in each row, stmt $identifiers are replaced with fields from query row.
@@ -5756,7 +5796,7 @@ namespace Pyrrho.Level4
                 cn.Close();
             }
             return Executable.None;
-        }*/
+        }
         /// <summary>
 		/// Fetch =		FETCH Cursor_id INTO VariableRef { ',' VariableRef } .
         /// </summary>
@@ -6540,7 +6580,9 @@ namespace Pyrrho.Level4
                                 cx.Add(nm, 0L, rv);
                             }
                     var st = lxr.start;
-                    var sv = (QlValue)cx.Add(ParseSqlValue(m));
+                    var sv = (QlValue)cx.Add(ParseSqlValue(m + (DBObject._Domain, tc.domain)));
+           //         if (Match(Qlx.RPAREN))
+           //             Next();
                     cx.Add(sv);
                     tm += (Qlx.VALUE, new TInt(sv.defpos));
                     tm += (Qlx.DEFAULT, new TChar(new string(lxr.input, dd, lxr.pos - dd)));
@@ -7404,121 +7446,90 @@ namespace Pyrrho.Level4
         /// <returns>the executable</returns>
 		void ParseSqlSet()
         {
-            if (Match(Qlx.AUTHORIZATION))
+            // Rename
+            Ident? n;
+            Match(Qlx.DOMAIN, Qlx.ROLE, Qlx.VIEW, Qlx.TYPE);
+            MethodModes();
+            DBObject? ob;
+            if (Match(Qlx.TABLE, Qlx.DOMAIN, Qlx.ROLE, Qlx.VIEW, Qlx.TYPE))
             {
                 Next();
-                Mustbe(Qlx.EQL);
-                Mustbe(Qlx.CURATED);
-                if (cx.db is not Transaction) throw new DBException("2F003");
-                if (cx.db.user == null || cx.db.user.defpos != cx.db.owner)
-                    throw new DBException("42105").Add(Qlx.OWNER).Mix();
-                if (cx.parse.HasFlag(ExecuteStatus.Obey))
-                {
-                    var pc = new Curated(cx.db.nextPos, cx.db);
-                    cx.Add(pc);
-                }
-            }
-            else if (Match(Qlx.TIMEOUT))
-            {
-                Next();
-                Mustbe(Qlx.EQL);
-                if (cx.db.user == null || cx.db.user.defpos != cx.db.owner)
-                    throw new DBException("42105").Add(Qlx.OWNER).Mix();
-                Mustbe(Qlx.INTEGERLITERAL);
-                // ignore for now
-            }
-            else if (Match(Qlx.REFERENCING))
-            {
-                cx.conn.refIdsToPos = true;
-                Next();
+                n = new Ident(this);
+                Mustbe(Qlx.Id);
+                ob = cx._Ob(cx.role.dbobjects[n.ident])
+                    ?? cx._Ob(cx.db.roles[n.ident])
+                    ?? throw new DBException("42107", n.ident);
+                var oi = ob.infos[cx.db.role.defpos] ?? ob.infos[ob.definer]
+                    ?? throw new DBException("42105").Add(Qlx.ROLE);
+                ob += (DBObject.Infos, oi + (ObInfo.Name, n.ident));
+                cx.Add(ob);
             }
             else
             {
-                // Rename
-                Ident? n;
-                Match(Qlx.DOMAIN, Qlx.ROLE, Qlx.VIEW, Qlx.TYPE);
-                MethodModes();
-                DBObject? ob;
-                if (Match(Qlx.TABLE, Qlx.DOMAIN, Qlx.ROLE, Qlx.VIEW, Qlx.TYPE))
+                bool meth = false;
+                PMethod.MethodType mt = PMethod.MethodType.Instance;
+                if (Match(Qlx.OVERRIDING, Qlx.STATIC, Qlx.INSTANCE, Qlx.CONSTRUCTOR))
                 {
-                    Next();
-                    n = new Ident(this);
-                    Mustbe(Qlx.Id);
-                    ob = cx._Ob(cx.role.dbobjects[n.ident])
-                        ?? cx._Ob(cx.db.roles[n.ident])
-                        ?? throw new DBException("42107", n.ident);
-                    var oi = ob.infos[cx.db.role.defpos] ?? ob.infos[ob.definer]
-                        ?? throw new DBException("42105").Add(Qlx.ROLE);
-                    ob += (DBObject.Infos, oi + (ObInfo.Name, n.ident));
-                    cx.Add(ob);
-                }
-                else
-                {
-                    bool meth = false;
-                    PMethod.MethodType mt = PMethod.MethodType.Instance;
-                    if (Match(Qlx.OVERRIDING, Qlx.STATIC, Qlx.INSTANCE, Qlx.CONSTRUCTOR))
+                    switch (tok)
                     {
-                        switch (tok)
-                        {
-                            case Qlx.OVERRIDING: mt = PMethod.MethodType.Overriding; break;
-                            case Qlx.STATIC: mt = PMethod.MethodType.Static; break;
-                            case Qlx.CONSTRUCTOR: mt = PMethod.MethodType.Constructor; break;
-                        }
-                        Next();
-                        Mustbe(Qlx.METHOD);
-                        meth = true;
+                        case Qlx.OVERRIDING: mt = PMethod.MethodType.Overriding; break;
+                        case Qlx.STATIC: mt = PMethod.MethodType.Static; break;
+                        case Qlx.CONSTRUCTOR: mt = PMethod.MethodType.Constructor; break;
                     }
-                    else if (Match(Qlx.METHOD))
-                        meth = true;
-                    else if (!Match(Qlx.PROCEDURE, Qlx.FUNCTION))
-                        throw new DBException("42126").Mix();
                     Next();
-                    n = new Ident(this);
-                    var nid = n.ident;
-                    Mustbe(Qlx.Id);
-                    var a = CList<Domain>.Empty;
-                    if (tok == Qlx.LPAREN)
+                    Mustbe(Qlx.METHOD);
+                    meth = true;
+                }
+                else if (Match(Qlx.METHOD))
+                    meth = true;
+                else if (!Match(Qlx.PROCEDURE, Qlx.FUNCTION))
+                    throw new DBException("42126").Mix();
+                Next();
+                n = new Ident(this);
+                var nid = n.ident;
+                Mustbe(Qlx.Id);
+                var a = CList<Domain>.Empty;
+                if (tok == Qlx.LPAREN)
+                {
+                    Next();
+                    a += ParseDataType();
+                    while (tok == Qlx.COMMA)
                     {
                         Next();
                         a += ParseDataType();
-                        while (tok == Qlx.COMMA)
-                        {
-                            Next();
-                            a += ParseDataType();
-                        }
-                        Mustbe(Qlx.RPAREN);
                     }
-                    if (meth)
+                    Mustbe(Qlx.RPAREN);
+                }
+                if (meth)
+                {
+                    Ident? type = null;
+                    if (mt == PMethod.MethodType.Constructor)
+                        type = new Ident(nid, 0L);
+                    if (tok == Qlx.FOR)
                     {
-                        Ident? type = null;
-                        if (mt == PMethod.MethodType.Constructor)
-                            type = new Ident(nid, 0L);
-                        if (tok == Qlx.FOR)
-                        {
-                            Next();
-                            type = new Ident(this);
-                            Mustbe(Qlx.Id);
-                        }
-                        if (type == null)
-                            throw new DBException("42134").Mix();
-                        if (cx.role is not Role ro ||
-                            cx.GetObject(type.ident) is not DBObject ot ||
-                            ot.infos[ro.defpos] is not ObInfo oi)
-                            throw new DBException("42105").Add(Qlx.OBJECT);
-                        ob = (Method?)cx._Ob(oi.methodInfos[n.ident]?[a] ?? -1L);
+                        Next();
+                        type = new Ident(this);
+                        Mustbe(Qlx.Id);
                     }
-                    else
-                        ob = cx.GetProcedure(LexDp(), n.ident, a);
-                    if (ob == null)
-                        throw new DBException("42135", n.ident).Mix();
-                    Mustbe(Qlx.TO);
-                    var nm = new Ident(this);
-                    Mustbe(Qlx.Id);
-                    if (cx.parse.HasFlag(ExecuteStatus.Obey) && cx.db is Transaction tr)
-                    {
-                        var pc = new Change(ob.defpos, nm.ident, tr.nextPos, cx);
-                        cx.Add(pc);
-                    }
+                    if (type == null)
+                        throw new DBException("42134").Mix();
+                    if (cx.role is not Role ro ||
+                        cx.GetObject(type.ident) is not DBObject ot ||
+                        ot.infos[ro.defpos] is not ObInfo oi)
+                        throw new DBException("42105").Add(Qlx.OBJECT);
+                    ob = (Method?)cx._Ob(oi.methodInfos[n.ident]?[a] ?? -1L);
+                }
+                else
+                    ob = cx.GetProcedure(LexDp(), n.ident, a);
+                if (ob == null)
+                    throw new DBException("42135", n.ident).Mix();
+                Mustbe(Qlx.TO);
+                var nm = new Ident(this);
+                Mustbe(Qlx.Id);
+                if (cx.parse.HasFlag(ExecuteStatus.Obey) && cx.db is Transaction tr)
+                {
+                    var pc = new Change(ob.defpos, nm.ident, tr.nextPos, cx);
+                    cx.Add(pc);
                 }
             }
         }
@@ -7674,7 +7685,6 @@ namespace Pyrrho.Level4
         {
             if (tok != Qlx.ORDER)
                 return ord;
-            //cx.IncSD(new Ident(this)); // order by columns will be in the foregoing cursor spec
             var on = cx.names;
             var lp = LexDp();
             var ap = LexLp();
@@ -7698,7 +7708,6 @@ namespace Pyrrho.Level4
             }
             if (lb)
                 Mustbe(Qlx.RPAREN);
-            //cx.DecSD();
             cx.defs -= lp;
             cx.names = on;
             return new Domain(cx.GetUid(), cx, Qlx.ROW, bs, bs.Length);
@@ -9766,8 +9775,6 @@ namespace Pyrrho.Level4
 		/// 	|	'('  TypedValue AS Type ')' '.' Method_id  [ '(' [  TypedValue { ','  TypedValue } ] ')']
 		///     |	Type'::' Method_id [ '(' [  TypedValue { ','  TypedValue } ] ')' ] .
         /// </summary>
-        /// <param name="t">the expected object type</param>
-        /// <param name="wfok">whether a window function is allowed</param>
         /// <returns>the ql value</returns>
         internal QlValue ParseSqlValueItem(BTree<long, object> m)
         {
@@ -9972,13 +9979,18 @@ namespace Pyrrho.Level4
                 case Qlx.LPAREN:// subquery
                     {
                         Next();
+                        var tk = tok;
+                        var ox = cx.result;
                         if (Match(Qlx.SELECT, Qlx.MATCH))
                         {
                             var es = ParseStatement(m);
+                                  cx.result = es.domain;
+                            var cp = cx.GetUid();
                             Mustbe(Qlx.RPAREN);
-                            var dm = cx.result as RowSet ?? throw new DBException("42000");
-                            return (QlValue)cx.Add(new QlValueQuery(cx.GetUid(), cx, dm, xp,
-                                es.defpos));
+                            var qv = new QlValueQuery(cx.GetUid(), cx, xp, xp, es.defpos)
+                                + (RowSet._Scalar, true);
+                            cx.result = xp;
+                            return (QlValue)cx.Add(qv);
                         }
                         Domain et = Domain.Null;
                         switch (xp.kind)
@@ -9998,7 +10010,7 @@ namespace Pyrrho.Level4
                                 var v = ParseSqlValue(m);
                                 if (v is SqlLiteral sl)
                                     v = (QlValue)cx.Add(new SqlLiteral(lp, xp.Coerce(cx, sl.val)));
-       //                         Mustbe(Qlx.RPAREN);
+                                //                         Mustbe(Qlx.RPAREN);
                                 return v;
                         }
                         var fs = BList<DBObject>.Empty;

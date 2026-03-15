@@ -196,6 +196,7 @@ namespace Pyrrho.Level2
             var tg = (Trigger?)cx.db.objects[trigger] ?? throw new PEException("PE1415");
             var ro = (Role?)cx.db.objects[tg.definer] ?? throw new PEException("PE1416");
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             return null;

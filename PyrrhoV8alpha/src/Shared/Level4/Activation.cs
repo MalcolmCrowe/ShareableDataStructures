@@ -6,6 +6,7 @@ using System.Text;
 using System.Net;
 using static Pyrrho.Level3.Basis;
 using System.Runtime.InteropServices;
+using System.CodeDom.Compiler;
 // Pyrrho Database Engine by Malcolm Crowe at the University of the West of Scotland
 // (c) Malcolm Crowe, University of the West of Scotland 2004-2026
 //
@@ -650,17 +651,6 @@ namespace Pyrrho.Level4
                 {
                     var fd = false;
                     var rd = tgc.values[tc.defpos]?.CompareTo(vs[tc.defpos]) != 0;
-      /*              // For the special case of conn.RefIdsToPos (ID-style single reference)
-                    if (conn.refIdsToPos)
-                    {
-                        var lp = (vs[tc.defpos] is TChar ld) ? long.Parse(ld.value)
-                           : (vs[tc.defpos] as TInt)?.ToLong() ?? -1L;
-                        if (table.FindPrimaryIndex(this) is Level3.Index lx
-                            && lx.rows?.impl?[new TInt(lp)] is TInt li
-                            && li.ToLong() is long p)
-                            vs += (tc.defpos, new TRef(p, rt));
-                    } else */
-                    // For a column defined as FOREIGN KEY REFERENCES
                     if (_Ob(tc.keyMap) is Level3.Index rx
                         && rt.FindPrimaryIndex(this) is Level3.Index px)
                     {
@@ -681,9 +671,22 @@ namespace Pyrrho.Level4
                             for (var c = rx.keys.First(); c != null; c = c.Next())
                             {
                                 var p = c.value();
-                                vs += (p, rv?.vals[p]??TNull.Value);
+                                vs += (p, rv?.vals[p] ?? TNull.Value);
                             }
                         } // if both the same or both different, do nothing!
+                    }
+                    else if (vs[tc.defpos]?.ToLong() == -1L)
+                    {
+                        TypedValue gv = TNull.Value;
+                        var gl = -1L;
+                        if (tc.generation == Generation.Default && tc.framing.obs[tc.colDefault] is QlValue qe)
+                        {
+                            gv = qe.Eval(this);
+                            gl = gv.ToLong() ?? throw new DBException("22004");
+                        }
+                        if (rt.tableRows[gl] is not TableRow tr)
+                            vs += (tc.defpos, gv);
+                        throw new DBException("22004");
                     }
                 }
             return vs;

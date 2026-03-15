@@ -1051,7 +1051,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
             if (md.Contains(Qlx.GRAPH))
                 ro += (Role.Graphs, ro.graphs + (NameFor(cx), defpos));
             cx.db += ro;
-            cx.db += (Database.Role, cx.db.objects[cx.role.defpos] ?? throw new DBException("42105"));
+            cx.db += (Database.Role, ro);
             return r;
         }
         // We have been updated. Ensure that all our subtypes are updated
@@ -1226,8 +1226,7 @@ ColsFrom(Context cx, long dp,CTree<int,long> rt, CTree<long, Domain> rs, CTree<i
                 else
                 {
                     ns = (os ?? new TSet(Connector)) + nc;
-                    cx.MetaPend(dp + 1L, dp + 1L, cn,
-                        TMetadata.Empty + (Qlx.REFERENCES, ns));
+                    cx.MetaPend(dp + 1L, dp + 1L, nc.cs, nc.cm??TMetadata.Empty);
                 }
                 if (ns!=os && ns.Cardinality() >= 1)
                     r = (Table)cx.Add(r,TMetadata.Empty+ (Qlx.REFERENCES, ns)).Item2;

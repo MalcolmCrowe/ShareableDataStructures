@@ -81,6 +81,7 @@ namespace Pyrrho.Level2
             seq = tc.seq;
             cx.Install(table);
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tc);
@@ -159,6 +160,7 @@ namespace Pyrrho.Level2
             seq = tc.seq;
             cx.Install(table);
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tc);
@@ -259,6 +261,7 @@ namespace Pyrrho.Level2
             tc = (TableColumn)(cx.obs[tc.defpos] ?? throw new DBException("42105").Add(Qlx.CREATE_GRAPH_TYPE_STATEMENT));
             cx.Install(table);
             cx.db += ro;
+            cx.db += (Database.Role, ro);
             if (cx.db.mem.Contains(Database.Log))
                 cx.db += (Database.Log, cx.db.log + (ppos, type));
             cx.Install(tc);

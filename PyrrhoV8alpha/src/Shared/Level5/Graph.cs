@@ -244,7 +244,8 @@ namespace Pyrrho.Level5
                {
                    ro += (Role.NodeTypes, ro.nodeTypes + (oi.name, defpos));
                    cx.db += ro;
-               }
+                cx.db += (Database.Role, ro);
+            }
                return (cx,r);
            }
            public static NodeType operator +(NodeType et, (long, object) x)
@@ -926,6 +927,7 @@ namespace Pyrrho.Level5
                 {
                     ro += (Role.EdgeTypes, ro.edgeTypes + (nm, defpos));
                     cx.db += ro;
+                    cx.db += (Database.Role, ro);
                 }
                 else if (ed is not null && ed.defpos != defpos)
                 {
@@ -938,9 +940,9 @@ namespace Pyrrho.Level5
                     ro += (Role.DBObjects, ro.dbobjects + (nm, ed.defpos));
                     cx.db += ed;
                     cx.db += ro;
+                    cx.db += (Database.Role, ro);
                 }
             }
-            cx.db += (Database.Role, cx._Ob(cx.role.defpos) ?? throw new DBException("42105"));
             var r = this;
             if (infos[cx.role.defpos] is ObInfo oi)
             {
@@ -1276,86 +1278,87 @@ namespace Pyrrho.Level5
                     r = (EdgeType)r.BuildNodeTypeConnector(cx, tc).Item1;
             return r;
         }
-/*        /// <summary> This seems to be unreferenced
-        /// Two cases: adding new Table metadata (REFERENCES) define a set of connector columns 
-        ///            adding a single new Column metadata (CONNECTING) for defining its index
-        /// The column case is usually called from the table case (s is likely "" i.e. unchanged)
-        /// but we will probably allow the edgetype to be extended by an extra connector.
-        /// This means we should check & modify the REFERENCES metadata if needed (but avoid further recursion)
-        /// </summary>
-        /// <param name="cx"></param>
-        /// <param name="s"></param>
-        /// <param name="md"></param>
-        /// <returns></returns>
-        internal override (Context,DBObject) Add(Context cx, TMetadata md)
-        {
-            var ro = cx.role;
-            (cx,var r) = base.Add(cx,md);
-            if (infos[definer]?.metadata[Qlx.REFERENCES] is TSet ts && r.infos[ro.defpos] is ObInfo oi
-                && oi.name is not null)
-            {
-                if (oi.name != "")
+        /*        /// <summary> This seems to be unreferenced
+                /// Two cases: adding new Table metadata (REFERENCES) define a set of connector columns 
+                ///            adding a single new Column metadata (CONNECTING) for defining its index
+                /// The column case is usually called from the table case (s is likely "" i.e. unchanged)
+                /// but we will probably allow the edgetype to be extended by an extra connector.
+                /// This means we should check & modify the REFERENCES metadata if needed (but avoid further recursion)
+                /// </summary>
+                /// <param name="cx"></param>
+                /// <param name="s"></param>
+                /// <param name="md"></param>
+                /// <returns></returns>
+                internal override (Context,DBObject) Add(Context cx, TMetadata md)
                 {
-                    if (cx.role.edgeTypes[oi.name] is long ep && cx._Ob(ep) is Domain ed)
+                    var ro = cx.role;
+                    (cx,var r) = base.Add(cx,md);
+                    if (infos[definer]?.metadata[Qlx.REFERENCES] is TSet ts && r.infos[ro.defpos] is ObInfo oi
+                        && oi.name is not null)
                     {
-                        if (ed.kind == Qlx.UNION)
+                        if (oi.name != "")
                         {
-                            var ev = cx.Add(new Table(ep, ed.alts));
-                            ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, ev.defpos));
-                        }
-                    }
-                    else
-                        ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, defpos));
-                    cx.db += ro;
-                }
-                // watch for an edge subtype
-                TSet? sm = null;
-                for (var b = (r as EdgeType)?.super.First(); b != null; b = b.Next())
-                    if (b.key() is EdgeType be && be.infos[be.definer]?.metadata[Qlx.REFERENCES] is TSet bs)
-                        if (sm == null) sm = bs; else sm += bs;
-                for (var b = sm?.First(); b != null; b = b.Next())
-                    if (b.Value() is TConnector sc)
-                        for (var c = ts.First(); c != null; c = c.Next())
-                            if (c.Value() is TConnector cc && cc.q == sc.q && cc.cn == sc.cn
-                                && cc.cp == cx.db.nextPos && sm != null)
+                            if (cx.role.edgeTypes[oi.name] is long ep && cx._Ob(ep) is Domain ed)
                             {
-                                ts -= cc;
-                                ts += new TConnector(cc.q, cc.cn, cc.rd, sc.cp, sc.fk, "", cc.cm);
+                                if (ed.kind == Qlx.UNION)
+                                {
+                                    var ev = cx.Add(new Table(ep, ed.alts));
+                                    ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, ev.defpos));
+                                }
                             }
-                if (ts.Cardinality() == 0)
-                    md -= Qlx.REFERENCES;
-                else
-                    md += (Qlx.REFERENCES, ts);
-                cx.db += r;
-            }
-            if (md[Qlx.CONNECTING] is TConnector tc)
-            {
-                var nc = cx.obs[tc.cp] as TableColumn;
-                if (nc == null)
-                    if (r is Table t) // this is a surprise but likely allowed
-                    {
-                        var cm = tc.cm ?? TMetadata.Empty + (Qlx.OPTIONAL, TBool.False);
-                        var pc = new PColumn3(t, tc.cn, Ref, "", cm, cx.db.nextStmt, tc.cp, cx, true);
-                        pc.reftype = t.defpos;
-                        r = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
-                        nc = cx.obs[tc.cp] as TableColumn ?? throw new PEException("PE20832");
-                        var om = r.infos[r.definer]?.metadata[Qlx.REFERENCES] as TSet ?? new TSet(Connector);
-                        (cx, r) = r.Add(cx, TMetadata.Empty + (Qlx.REFERENCES, om + tc));
+                            else
+                                ro += (Role.EdgeTypes, ro.edgeTypes + (oi.name, defpos));
+                            cx.db += ro;
+                    cx.db += (Database.Role, ro);
+                        }
+                        // watch for an edge subtype
+                        TSet? sm = null;
+                        for (var b = (r as EdgeType)?.super.First(); b != null; b = b.Next())
+                            if (b.key() is EdgeType be && be.infos[be.definer]?.metadata[Qlx.REFERENCES] is TSet bs)
+                                if (sm == null) sm = bs; else sm += bs;
+                        for (var b = sm?.First(); b != null; b = b.Next())
+                            if (b.Value() is TConnector sc)
+                                for (var c = ts.First(); c != null; c = c.Next())
+                                    if (c.Value() is TConnector cc && cc.q == sc.q && cc.cn == sc.cn
+                                        && cc.cp == cx.db.nextPos && sm != null)
+                                    {
+                                        ts -= cc;
+                                        ts += new TConnector(cc.q, cc.cn, cc.rd, sc.cp, sc.fk, "", cc.cm);
+                                    }
+                        if (ts.Cardinality() == 0)
+                            md -= Qlx.REFERENCES;
+                        else
+                            md += (Qlx.REFERENCES, ts);
+                        cx.db += r;
                     }
-                    else
-                        throw new DBException("42000");
-                var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
-                var px = new PIndex(tc.cn, this, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
-                            | PIndex.ConstraintType.CascadeDelete,
-                    -1L, cx.db.nextPos, cx.db, false);
-       //         nc += (Level3.Index.RefIndex, px.ppos);
-                cx.Add(nc);
-                r = (EdgeType)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.REF));
-            }
-            cx.db += r;
-            cx.Add(r);
-            return (cx,r);
-        } */
+                    if (md[Qlx.CONNECTING] is TConnector tc)
+                    {
+                        var nc = cx.obs[tc.cp] as TableColumn;
+                        if (nc == null)
+                            if (r is Table t) // this is a surprise but likely allowed
+                            {
+                                var cm = tc.cm ?? TMetadata.Empty + (Qlx.OPTIONAL, TBool.False);
+                                var pc = new PColumn3(t, tc.cn, Ref, "", cm, cx.db.nextStmt, tc.cp, cx, true);
+                                pc.reftype = t.defpos;
+                                r = (EdgeType)(cx.Add(pc) ?? throw new DBException("42105").Add(Qlx.COLUMN));
+                                nc = cx.obs[tc.cp] as TableColumn ?? throw new PEException("PE20832");
+                                var om = r.infos[r.definer]?.metadata[Qlx.REFERENCES] as TSet ?? new TSet(Connector);
+                                (cx, r) = r.Add(cx, TMetadata.Empty + (Qlx.REFERENCES, om + tc));
+                            }
+                            else
+                                throw new DBException("42000");
+                        var di = new Domain(-1L, cx, Qlx.ROW, new BList<DBObject>(nc), 1);
+                        var px = new PIndex(tc.cn, this, di, PIndex.ConstraintType.ForeignKey | PIndex.ConstraintType.CascadeUpdate
+                                    | PIndex.ConstraintType.CascadeDelete,
+                            -1L, cx.db.nextPos, cx.db, false);
+               //         nc += (Level3.Index.RefIndex, px.ppos);
+                        cx.Add(nc);
+                        r = (EdgeType)(cx.Add(px) ?? throw new DBException("42105").Add(Qlx.REF));
+                    }
+                    cx.db += r;
+                    cx.Add(r);
+                    return (cx,r);
+                } */
         internal override TNode Node(Context cx, TableRow r)
         {
             return new TEdge(cx, r);
