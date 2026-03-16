@@ -363,6 +363,10 @@ namespace Pyrrho.Common
         {
             return new TRef((cx.uids[value] is long p && p!=0L)?p:value,(Domain?)elType?.Fix(cx)??Domain.Null);
         }
+        internal override long? ToLong()
+        {
+            return base.ToLong();
+        }
         public override string ToString()
         {
             var sb = new StringBuilder();
@@ -1610,11 +1614,11 @@ namespace Pyrrho.Common
         internal TSet Add(TypedValue a)
         {
             var nt = tree;
-            if (dataType.elType is null || !a.dataType.EqualOrStrongSubtypeOf(dataType.elType))
-                throw new DBException("2200G", dataType.elType??Domain.Null, a.dataType);
-            if (!nt.Contains(a))
-                nt += (a, true);
-            return new TSet(dataType, nt);
+            if (a is not TConnector c)
+                throw new DBException("22G0L");
+            if (!nt.Contains(c))
+                nt += (c, true);
+            return new TSet(Domain.Connector, nt);
         }
         /// <summary>
         /// Whether an element is already in the set

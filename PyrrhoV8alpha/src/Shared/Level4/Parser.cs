@@ -2104,7 +2104,7 @@ namespace Pyrrho.Level4
                 var al = CTree<Domain, bool>.Empty;
                 if ((dm is GqlLabel || dm.defpos < 0) && dc.Count > 0L)
                 {
-                    for (var c = cx.role.nodeTypes.First(); c != null; c = c.Next())
+                    for (var c = (cx.role.nodeTypes?.First())??cx.role.dbobjects?.First(); c != null; c = c.Next())
                         if (cx._Ob(c.value()) is Table t)
                         {
                             for (var d = dc.First(); d != null; d = d.Next())
@@ -3540,6 +3540,7 @@ namespace Pyrrho.Level4
                                 Mustbe(Qlx.COMMA);
                                 tm += (Qlx.Y, lxr.val);
                                 Mustbe(Qlx.Id);
+                                Mustbe(Qlx.RPAREN);
                             }
                             else
                                 continue;
@@ -9983,13 +9984,22 @@ namespace Pyrrho.Level4
                         var ox = cx.result;
                         if (Match(Qlx.SELECT, Qlx.MATCH))
                         {
-                            var es = ParseStatement(m);
-                                  cx.result = es.domain;
-                            var cp = cx.GetUid();
+                            var on = cx.names;
+                            var od = cx.defs;
+                            var oa = cx.anames;
+                            cx.defs = BTree<long, Names>.Empty;
+                            cx.names = Names.Empty;
+                            cx.anames = Names.Empty;
+                            var es = (tk == Qlx.MATCH) ? ParseStatements(m + (DBObject.Scope, LexLp()))
+                             : ParseStatement(m + (DBObject.Scope, LexLp()));
+                            cx.result = es.domain;
                             Mustbe(Qlx.RPAREN);
                             var qv = new QlValueQuery(cx.GetUid(), cx, xp, xp, es.defpos)
                                 + (RowSet._Scalar, true);
                             cx.result = xp;
+                            cx.defs = od;
+                            cx.names = on;
+                            cx.anames = oa;
                             return (QlValue)cx.Add(qv);
                         }
                         Domain et = Domain.Null;

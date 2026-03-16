@@ -11728,7 +11728,9 @@ cx.obs[high] is not QlValue hi)
             if (((Transaction)cx.db).physicals[cx.newNodes[defpos]?.First()?.key() ?? -1L] is Record r
                 && cx._Ob(r.tabledefpos) is Table tb && tb.tableRows[r.defpos] is TableRow tr)
                 return new TNode(cx, tr);
-            return cx.values[defpos] ?? cx.binding[idValue] ?? TNull.Value;
+            if ((cx.values[defpos] ?? cx.binding[idValue]) is TypedValue v && v != TNull.Value)
+                return v;
+            return new TTypeSpec(name??"",domain);
         }
         internal virtual int MinLength(Context cx)
         {
@@ -11740,16 +11742,16 @@ cx.obs[high] is not QlValue hi)
             if (cx.db.objects[v.dataType.defpos] is NodeType nt) // or EdgeType
                 return nt.For(cx, ms, xn, ds);
             var r = BTree<long, TableRow>.Empty;
-            if (xn.domain.kind == Qlx.UNION)
-            { 
-                for (var b=xn.domain.alts.First();b!=null;b=b.Next())
-                    if (cx.db.objects[b.key().defpos] is Table at)
-                        r += at.For(cx,ms,xn,ds);
-                return r;
-            }
-            var dm = cx.db.objects[domain.defpos] as Domain ?? throw new PEException("PE81811");
             if (v == TNull.Value)
             {
+                if (xn.domain.kind == Qlx.UNION)
+                {
+                    for (var b = domain.alts.First(); b != null; b = b.Next())
+                        if (cx.db.objects[b.key().defpos] is Table at)
+                            r += at.For(cx, ms, xn, ds);
+                    return r;
+                }
+                var dm = cx.db.objects[domain.defpos] as Domain ?? throw new PEException("PE81811");
                 if (dm.defpos > 0)
                     return dm.For(cx, ms, xn, ds);
                 for (var b = cx.role.nodeTypes.First(); b != null; b = b.Next())
@@ -11760,8 +11762,8 @@ cx.obs[high] is not QlValue hi)
             for (var b=v.dataType.alts.First();b!=null;b=b.Next())
                 if (b.key() is Table t)
                         r += t.For(cx, ms, xn, ds);
-            if (r==BTree<long,TableRow>.Empty)
-                return dm.For(cx, ms, xn, ds);
+            if (r == BTree<long, TableRow>.Empty)
+                return domain.For(cx, ms, xn, ds);
             return r;
         }
         internal virtual GqlNode Add(Context cx, GqlNode an, CTree<long, TGParam> tgs, long ap, TypedValue t)

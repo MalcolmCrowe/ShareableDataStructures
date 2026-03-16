@@ -230,7 +230,16 @@ namespace Pyrrho.Level3
                BTree<long, object> m)
                : base(dp, m + (Stms, ss) + (_Domain, cx.result ?? Domain.Null)
                      + (_Depth, cx.result?.depth ?? 1))
-        { }
+        {
+            MatchStatement? ms = null; // limit 1 is quite likely and worth indicating toa preceding ms
+            for (var b = ss.First(); b != null; b = b.Next())
+                if (cx.obs[b.value()] is Executable e)
+                    if (e is OrderAndPageStatement os && os.rowOrder == Domain.Null
+                        && ms != null && os.offset==0)
+                        cx.obs += (ms.defpos,ms + (RowSetSection.Size,os.size));
+                    else
+                        ms = e as MatchStatement; 
+        }
         public NestedStatement(long dp, BTree<long, object> m) : base(dp, m) { }
         public static NestedStatement operator +(NestedStatement et, (long, object) x)
         {
@@ -4538,6 +4547,11 @@ namespace Pyrrho.Level3
         {
             if (cx.result is not RowSet sr)
                return cx; //throw new DBException("02000");
+            if (sr.Built(cx) && sr.rows?.Length<=offset+size && rowOrder==Domain.Null)
+            {
+                cx.result = sr;
+                return cx;
+            }
             var nr = BList<(long, TRow)>.Empty;
             var od = (mem[RowSet.RowOrder] as Domain) ?? Domain.Row;
             var rs = (od.Length==0)?sr:sr.Sort(cx, od, false);
@@ -4547,7 +4561,7 @@ namespace Pyrrho.Level3
                 rs = new RowSetSection(cx, rs, ff, lm);
             for (var b = rs.First(cx); b != null; b = b.Next(cx))
                 nr += (b._pos, b);
-            var nb = new ExplicitRowSet(sr.scope,sr.defpos, cx, sr, nr);
+            var nb = new ExplicitRowSet(sr.scope,cx.GetUid(), cx, sr, nr);
             cx.Add(nb);
             cx.result = nb;
             return cx;
@@ -4660,6 +4674,7 @@ namespace Pyrrho.Level3
         internal enum Flags { None = 0, Bindings = 1, Body = 2, Return = 4, Schema = 8 }
         internal Flags flags => (Flags)(mem[MatchFlags] ?? Flags.None);
         internal bool optional => (bool)(mem[CallStatement.Optional] ?? false);
+        internal int size => (int)(mem[RowSetSection.Size] ?? 0); // see NestedStatement._Obey()
         /// <summary>
         /// This private field is modified only at the start of _Obey
         /// </summary>
@@ -4742,8 +4757,7 @@ namespace Pyrrho.Level3
         }
         public bool Done(Context cx)
         {
-            var size = cx.size.Contains(bindings)?cx.size[bindings]: -1;
-            return size>=0 && cx.obs[bindings] is BindingRowSet se && se.rows.Count >= size;
+            return size>0 && cx.obs[bindings] is BindingRowSet se && se.rows.Count >= size;
         }
         /// <summary>
         /// We traverse the given patterns in the order given, matching with possible database nodes as we move.

@@ -85,7 +85,6 @@ namespace Pyrrho.Level4
         internal CTree<long, CTree<long, CTree<string, Qlx>>> model = CTree<long, CTree<long, CTree<string, Qlx>>>.Empty; // ad-hoc graph model
         internal int sD => (int)defs.Count; // used for forgetting blocks of names
         internal long offset = 0L; // set in Framing._Relocate, constant during relocation of compiled objects
-        internal CTree<long,int> size = CTree<long,int>.Empty; // BindingSet. yuk: A hack for limit with match statements 
         internal GraphType? graph = null; // current graph, set by USE
         internal Schema? schema = null; // current schema, set by USE
         internal enum ParsingGQL { No = 0, Insert = 1, Match = 2, Schema = 4 };
